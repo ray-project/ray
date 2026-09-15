@@ -1,10 +1,12 @@
 import os
+import openai
 import pytest
 import requests
 import sys
 
+import ray
 from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
+from ray.serve.llm import LLMConfig, build_openai_app, build_pd_openai_app
 from vllm import AsyncEngineArgs
 
 from vllm.v1.engine.async_llm import AsyncLLM
@@ -13,6 +15,7 @@ from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
+from ray.serve._private.test_utils import wait_for_haproxy_routing_to_replica
 import time
 
 from utils import shutdown_serve_and_wait_for_controller
@@ -127,6 +130,175 @@ async def test_engine_metrics_with_spec_decode():
 
         async for _ in results:
             pass
+
+
+@direct_streaming_only
+def test_lora_requests():
+    """Serve cold and cached LoRA requests through the public HTTP endpoints."""
+    model_id = "llama-test"
+    adapter_id = f"{model_id}:llama-3.2-216M-lora-dummy"
+    config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_id,
+            model_source=dict(bucket_uri="s3://air-example-data/llama-3.2-216M-dummy"),
+        ),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enable_lora=True,
+            max_lora_rank=16,
+            max_model_len=256,
+            gpu_memory_utilization=0.4,
+            enforce_eager=True,
+        ),
+        lora_config=dict(dynamic_lora_loading_path="s3://air-example-data"),
+    )
+    try:
+        serve.run(build_openai_app({"llm_configs": [config]}), blocking=False)
+        wait_for_condition(is_default_app_running, timeout=300)
+
+        with openai.OpenAI(
+            base_url="http://localhost:8000/v1",
+            api_key="unused",
+            timeout=60,
+            max_retries=0,
+        ) as client:
+            # Load the adapter through the public completions endpoint.
+            response = client.completions.create(
+                model=adapter_id,
+                prompt="Hello",
+                max_tokens=4,
+                temperature=0,
+                stream=False,
+                extra_body={"ignore_eos": True},
+            )
+            assert response.model == adapter_id
+            assert response.usage.completion_tokens == 4
+            assert response.choices[0].finish_reason == "length"
+
+            # Confirm the native API exposes the loaded adapter.
+            assert adapter_id in {model.id for model in client.models.list().data}
+
+            # Exercise base and cached adapter requests across both APIs.
+            for create, prompt in [
+                (client.completions.create, {"prompt": "Hello"}),
+                (
+                    client.chat.completions.create,
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                ),
+            ]:
+                for stream in (False, True):
+                    for requested_model in (model_id, adapter_id):
+                        response = create(
+                            model=requested_model,
+                            **prompt,
+                            max_tokens=4,
+                            temperature=0,
+                            stream=stream,
+                            extra_body={"ignore_eos": True},
+                        )
+                        if stream:
+                            chunks = list(response)
+                            assert chunks
+                            assert {chunk.model for chunk in chunks} == {
+                                requested_model
+                            }
+                            assert chunks[-1].choices[0].finish_reason == "length"
+                        else:
+                            assert response.model == requested_model
+                            assert response.usage.completion_tokens == 4
+                            assert response.choices[0].finish_reason == "length"
+    finally:
+        shutdown_serve_and_wait_for_controller()
+
+
+@direct_streaming_only
+def test_pd_lora_requests():
+    """Serve cold and cached LoRA requests through direct-streaming P/D."""
+    model_id = "llama-test"
+    adapter_id = f"{model_id}:llama-3.2-216M-lora-dummy"
+    config = LLMConfig(
+        model_loading_config=dict(
+            model_id=model_id,
+            model_source=dict(bucket_uri="s3://air-example-data/llama-3.2-216M-dummy"),
+        ),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(
+            enable_lora=True,
+            max_lora_rank=16,
+            max_model_len=256,
+            gpu_memory_utilization=0.4,
+            enforce_eager=True,
+            kv_transfer_config=dict(kv_connector="NixlConnector", kv_role="kv_both"),
+        ),
+        lora_config=dict(dynamic_lora_loading_path="s3://air-example-data"),
+    )
+    # P/D assigns decode a separate NIXL port.
+    decode_config = config.model_copy(deep=True)
+    try:
+        serve.run(
+            build_pd_openai_app(
+                {
+                    "prefill_config": config,
+                    "decode_config": decode_config,
+                }
+            ),
+            blocking=False,
+        )
+        wait_for_condition(is_default_app_running, timeout=300)
+        wait_for_haproxy_routing_to_replica()
+
+        with openai.OpenAI(
+            base_url="http://localhost:8000/v1",
+            api_key="unused",
+            timeout=60,
+            max_retries=0,
+        ) as client:
+            # Resolve the adapter through prefill and decode.
+            response = client.completions.create(
+                model=adapter_id,
+                prompt="Hello",
+                max_tokens=4,
+                temperature=0,
+                stream=False,
+                extra_body={"ignore_eos": True},
+            )
+            assert response.model == adapter_id
+            assert response.usage.completion_tokens == 4
+            assert response.choices[0].finish_reason == "length"
+
+            # A decode-only request can also return valid LoRA output. Require
+            # the cold request to have resolved the adapter on remote prefill.
+            controller = serve.context._get_global_client()._controller
+
+            def prefill_has_adapter():
+                deployments = ray.get(controller._all_running_replicas.remote())
+                prefill_replicas = next(
+                    replicas
+                    for deployment, replicas in deployments.items()
+                    if deployment.name.startswith("Prefill:")
+                )
+                assert len(prefill_replicas) == 1
+                assert adapter_id in prefill_replicas[0].multiplexed_model_ids
+                return True
+
+            wait_for_condition(prefill_has_adapter)
+
+            # Exercise a cached adapter in a streamed request.
+            chunks = list(
+                client.completions.create(
+                    model=adapter_id,
+                    prompt="Hello",
+                    max_tokens=4,
+                    temperature=0,
+                    stream=True,
+                    extra_body={"ignore_eos": True},
+                )
+            )
+            assert chunks
+            assert {chunk.model for chunk in chunks} == {adapter_id}
+            assert chunks[-1].choices[0].finish_reason == "length"
+    finally:
+        shutdown_serve_and_wait_for_controller()
 
 
 def is_default_app_running():
