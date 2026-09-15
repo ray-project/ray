@@ -426,28 +426,47 @@ class SchedulingContext:
     node_labels: Dict[str, Dict[str, str]]
 
 
-class NodeFilter(ABC):
-    """Owns one placement rule.
+@dataclass
+class DownscaleContext:
+    """The state a constraint needs to veto the stop of one replica.
 
-    `eligible` applies the rule to cached node state so the scheduler can choose
-    a node itself. `required_labels` expresses the same rule as a label selector
-    for Ray Core, which is where a replica waits and what the autoscaler reads
-    when no current node satisfies the rule.
+    `replicas_per_node` counts only running replicas and shrinks as the
+    scheduler picks replicas to stop, so each veto sees the layout that the
+    already picked replicas would leave behind.
     """
 
-    @abstractmethod
+    deployment_id: DeploymentID
+    target_num_replicas: int
+    node_by_replica: Dict[ReplicaID, str]
+    replicas_per_node: "Counter[str]"
+
+
+class SchedulingConstraint:
+    """One placement rule, applied at every point where it has an opinion.
+
+    `eligible` applies the rule to cached node state, so the scheduler can
+    choose a node itself. `required_labels` states the same rule as a label
+    selector for Ray Core, which is where a replica waits and what the
+    autoscaler reads when no current node satisfies the rule. `may_stop` vetoes
+    a downscale that would break the rule. Each default is a no-op, so a
+    constraint overrides only the points it cares about.
+    """
+
     def eligible(
         self,
         candidates: Dict[str, AvailableNodeResources],
         ctx: SchedulingContext,
     ) -> Dict[str, AvailableNodeResources]:
-        raise NotImplementedError
+        return candidates
 
     def required_labels(self, ctx: SchedulingContext) -> Dict[str, str]:
         return {}
 
+    def may_stop(self, replica_id: ReplicaID, ctx: DownscaleContext) -> bool:
+        return True
 
-class MinReplicaNodesFilter(NodeFilter):
+
+class MinReplicaNodesConstraint(SchedulingConstraint):
     """Spreads a deployment over at least `min_replica_nodes` nodes."""
 
     def __init__(self, min_replica_nodes: int):
@@ -476,8 +495,15 @@ class MinReplicaNodesFilter(NodeFilter):
             return {}
         return {RAY_NODE_ID_LABEL: f"!in({','.join(sorted(avoid))})"}
 
+    def may_stop(self, replica_id: ReplicaID, ctx: DownscaleContext) -> bool:
+        node_id = ctx.node_by_replica.get(replica_id)
+        if node_id is None or ctx.replicas_per_node[node_id] > 1:
+            return True
+        floor = min(self._min_replica_nodes, ctx.target_num_replicas)
+        return len(ctx.replicas_per_node) > floor
 
-class LabelSelectorFilter(NodeFilter):
+
+class LabelSelectorConstraint(SchedulingConstraint):
     """Applies a replica's own label selector.
 
     `required_labels` stays empty because Ray already enforces this selector from
@@ -582,6 +608,29 @@ class SpreadNodeScorer(NodeScorer):
         return key[2] < other[2]
 
 
+@dataclass(frozen=True)
+class SchedulingProfile:
+    """The constraints and the scorer that one scheduling strategy uses.
+
+    Strategies share constraint objects rather than reimplement them. A strategy
+    that wants no floor omits `MinReplicaNodesConstraint`; one that wants a
+    different floor names it with a different value.
+    """
+
+    constraints: List[SchedulingConstraint]
+    scorer: NodeScorer
+
+
+def default_scheduling_profile() -> SchedulingProfile:
+    """The profile built from the cluster's environment variables."""
+    return SchedulingProfile(
+        constraints=[MinReplicaNodesConstraint(RAY_SERVE_MIN_REPLICA_NODES)],
+        scorer=PackNodeScorer()
+        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
+        else SpreadNodeScorer(),
+    )
+
+
 class DeploymentScheduler(ABC):
     """A centralized scheduler for all Serve deployments.
 
@@ -593,8 +642,7 @@ class DeploymentScheduler(ABC):
         cluster_node_info_cache: ClusterNodeInfoCache,
         head_node_id: str,
         create_placement_group_fn: Callable,
-        scorer: Optional[NodeScorer] = None,
-        min_replica_nodes: Optional[int] = None,
+        profile: Optional[SchedulingProfile] = None,
     ):
         # {deployment_id: scheduling_policy}
         self._deployments: Dict[DeploymentID, DeploymentSchedulingInfo] = {}
@@ -627,16 +675,7 @@ class DeploymentScheduler(ABC):
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
         self._create_placement_group_fn = create_placement_group_fn
-        self._scorer = scorer or (
-            PackNodeScorer()
-            if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
-            else SpreadNodeScorer()
-        )
-        self._min_replica_nodes = (
-            RAY_SERVE_MIN_REPLICA_NODES
-            if min_replica_nodes is None
-            else min_replica_nodes
-        )
+        self._profile = profile or default_scheduling_profile()
 
     def on_deployment_created(
         self,
@@ -1233,14 +1272,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         available_resources_per_node = self._get_available_resources_per_node()
         node_to_assigned_replicas = self._get_node_to_running_replicas()
         nodes_by_deployment = self._get_active_nodes_by_deployment(active_nodes)
-        filters = self._build_filters()
+        constraints = self._profile.constraints
 
         for scheduling_request in scheduling_requests:
             deployment_id = scheduling_request.replica_id.deployment_id
             if scheduling_request.is_non_strict_pack_pg():
                 self._schedule_replica(
                     scheduling_request,
-                    default_scheduling_strategy=self._scorer.fallback_scheduling_strategy,
+                    default_scheduling_strategy=self._profile.scorer.fallback_scheduling_strategy,
                 )
                 continue
 
@@ -1252,15 +1291,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 node_labels=node_labels,
             )
             required_labels: Dict[str, str] = {}
-            for node_filter in filters:
-                required_labels.update(node_filter.required_labels(ctx))
+            for constraint in constraints:
+                required_labels.update(constraint.required_labels(ctx))
 
             target_node = self._select_node(
                 scheduling_request,
                 available_resources_per_node,
                 node_to_assigned_replicas,
                 ctx,
-                filters,
+                constraints,
             )
             succeeded = self._bind_replica(
                 scheduling_request, target_node, required_labels
@@ -1301,7 +1340,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         )
         logger.info(
             f"Scheduling {len(scheduling_requests)} pending replica(s) with "
-            f"{type(self._scorer).__name__}. Resource priority: {priority_desc}. "
+            f"{type(self._profile.scorer).__name__}. Resource priority: {priority_desc}. "
             f"Schedule order (first scheduled first): {order_desc}."
         )
 
@@ -1321,10 +1360,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     nodes_by_deployment[deployment_id].add(node_id)
         return nodes_by_deployment
 
-    def _build_filters(self) -> List[NodeFilter]:
-        """Placement rules applied to every replica, in order."""
-        return [MinReplicaNodesFilter(self._min_replica_nodes)]
-
     def _num_replicas(self, deployment_id: DeploymentID) -> int:
         return (
             len(self._pending_replicas[deployment_id])
@@ -1339,20 +1374,20 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         available_resources_per_node: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         ctx: SchedulingContext,
-        filters: List[NodeFilter],
+        constraints: List[SchedulingConstraint],
     ) -> Optional[str]:
         tie_break_key = self._node_tie_break_key(ctx.deployment_id)
         for required_resources, label_selectors in self._build_placement_candidates(
             scheduling_request
         ):
             candidates = available_resources_per_node
-            for node_filter in filters + [
-                LabelSelectorFilter(selector) for selector in label_selectors
+            for constraint in constraints + [
+                LabelSelectorConstraint(selector) for selector in label_selectors
             ]:
-                candidates = node_filter.eligible(candidates, ctx)
+                candidates = constraint.eligible(candidates, ctx)
                 if not candidates:
                     break
-            target_node = self._scorer.choose(
+            target_node = self._profile.scorer.choose(
                 ctx.deployment_id,
                 required_resources,
                 candidates,
@@ -1384,12 +1419,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             logger.info(
                 f"Could not place {replica_id} ({resources_desc}): no node with "
                 f"sufficient resources{labels_desc}. Falling back to "
-                f"{self._scorer.fallback_scheduling_strategy} scheduling."
+                f"{self._profile.scorer.fallback_scheduling_strategy} scheduling."
             )
 
         succeeded = self._schedule_replica(
             scheduling_request,
-            default_scheduling_strategy=self._scorer.fallback_scheduling_strategy,
+            default_scheduling_strategy=self._profile.scorer.fallback_scheduling_strategy,
             target_node_id=target_node,
             required_labels=required_labels or None,
         )
@@ -1521,23 +1556,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replicas_to_stop.update(replicas_by_gang_id[gang_id])
             return replicas_to_stop
 
-        node_floor = min(
-            self._min_replica_nodes, len(replicas_priority) - max_num_to_stop
+        ctx = DownscaleContext(
+            deployment_id=deployment_id,
+            target_num_replicas=len(replicas_priority) - max_num_to_stop,
+            node_by_replica=running_nodes,
+            replicas_per_node=Counter(running_nodes.values()),
         )
-        replicas_per_node = Counter(running_nodes.values())
         for replica_id in replicas_priority:
-            replica_node_id = running_nodes.get(replica_id)
-            if (
-                replica_node_id is not None
-                and replicas_per_node[replica_node_id] == 1
-                and len(replicas_per_node) <= node_floor
-            ):
+            if not all(c.may_stop(replica_id, ctx) for c in self._profile.constraints):
                 continue
             replicas_to_stop.add(replica_id)
-            if replica_node_id is not None:
-                replicas_per_node[replica_node_id] -= 1
-                if replicas_per_node[replica_node_id] == 0:
-                    del replicas_per_node[replica_node_id]
+            stopped_node_id = ctx.node_by_replica.get(replica_id)
+            if stopped_node_id is not None:
+                ctx.replicas_per_node[stopped_node_id] -= 1
+                if ctx.replicas_per_node[stopped_node_id] == 0:
+                    del ctx.replicas_per_node[stopped_node_id]
             if len(replicas_to_stop) == max_num_to_stop:
                 break
         return replicas_to_stop

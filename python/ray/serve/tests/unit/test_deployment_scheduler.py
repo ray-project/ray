@@ -27,15 +27,17 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
-    LabelSelectorFilter,
-    MinReplicaNodesFilter,
-    NodeFilter,
+    DownscaleContext,
+    LabelSelectorConstraint,
+    MinReplicaNodesConstraint,
     PackNodeScorer,
     ReplicaSchedulingRequest,
     ReplicaSchedulingRequestStatus,
     RequestedResources,
     Resources,
+    SchedulingConstraint,
     SchedulingContext,
+    SchedulingProfile,
     SpreadDeploymentSchedulingPolicy,
     SpreadNodeScorer,
     _filter_nodes_by_label_selector,
@@ -1979,13 +1981,15 @@ def make_scheduler(
     scorer,
     min_replica_nodes: int = 1,
     create_placement_group_fn=None,
+    constraints=None,
 ):
+    if constraints is None:
+        constraints = [MinReplicaNodesConstraint(min_replica_nodes)]
     return DefaultDeploymentScheduler(
         cluster_node_info_cache,
         "fake-head-node-id",
         create_placement_group_fn or default_impl._default_create_placement_group,
-        scorer=scorer,
-        min_replica_nodes=min_replica_nodes,
+        profile=SchedulingProfile(constraints=constraints, scorer=scorer),
     )
 
 
@@ -2010,7 +2014,7 @@ def scheduled_node_ids(on_scheduled: Mock) -> List[str]:
     return node_ids
 
 
-class TestNodeFilters:
+class TestSchedulingConstraints:
     def _ctx(self, occupied, num_replicas=3, node_labels=None):
         return SchedulingContext(
             deployment_id=DeploymentID(name="d1"),
@@ -2021,7 +2025,7 @@ class TestNodeFilters:
 
     def test_min_replica_nodes_filter_owns_both_forms_of_its_rule(self):
         nodes = {"n1": AvailableNodeResources(), "n2": AvailableNodeResources()}
-        node_filter = MinReplicaNodesFilter(2)
+        node_filter = MinReplicaNodesConstraint(2)
 
         unmet = self._ctx(occupied=["n1"])
         assert set(node_filter.eligible(nodes, unmet)) == {"n2"}
@@ -2033,7 +2037,7 @@ class TestNodeFilters:
 
     def test_min_replica_nodes_filter_capped_by_replica_count(self):
         nodes = {"n1": AvailableNodeResources()}
-        node_filter = MinReplicaNodesFilter(2)
+        node_filter = MinReplicaNodesConstraint(2)
         single = self._ctx(occupied=["n1"], num_replicas=1)
         assert set(node_filter.eligible(nodes, single)) == {"n1"}
         assert node_filter.required_labels(single) == {}
@@ -2043,11 +2047,11 @@ class TestNodeFilters:
         ctx = self._ctx(
             occupied=[], node_labels={"n1": {"zone": "a"}, "n2": {"zone": "b"}}
         )
-        node_filter = LabelSelectorFilter({"zone": "a"})
+        node_filter = LabelSelectorConstraint({"zone": "a"})
         assert set(node_filter.eligible(nodes, ctx)) == {"n1"}
         assert node_filter.required_labels(ctx) == {}
 
-    def test_build_filters_is_the_extension_point(self):
+    def test_a_profile_composes_constraints(self):
         """A new rule needs no change to the scorer or to binding."""
         d_id = DeploymentID(name="d1")
         node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
@@ -2055,19 +2059,12 @@ class TestNodeFilters:
         cache.add_node(node_1, {"CPU": 4})
         cache.add_node(node_2, {"CPU": 4})
 
-        class BanFirstNodeFilter(NodeFilter):
+        class BanFirstNode(SchedulingConstraint):
             def eligible(self, candidates, ctx):
                 return {n: r for n, r in candidates.items() if n != node_1}
 
-        class BannedScheduler(DefaultDeploymentScheduler):
-            def _build_filters(self):
-                return [BanFirstNodeFilter()]
-
-        scheduler = BannedScheduler(
-            cache,
-            "fake-head-node-id",
-            default_impl._default_create_placement_group,
-            scorer=PackNodeScorer(),
+        scheduler = make_scheduler(
+            cache, PackNodeScorer(), constraints=[BanFirstNode()]
         )
         scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_deployed(
@@ -2082,6 +2079,47 @@ class TestNodeFilters:
             downscales={},
         )
         assert scheduled_node_ids(on_scheduled) == [node_2, node_2]
+
+    def test_a_profile_can_omit_the_floor(self):
+        """A strategy with no floor packs from the first replica."""
+        d_id = DeploymentID(name="d1")
+        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(node_1, {"CPU": 4})
+        cache.add_node(node_2, {"CPU": 4})
+        scheduler = make_scheduler(cache, PackNodeScorer(), constraints=[])
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [make_request(d_id, f"r{i}", 1, on_scheduled) for i in range(2)]
+            },
+            downscales={},
+        )
+        assert len(set(scheduled_node_ids(on_scheduled))) == 1
+
+    def test_min_replica_nodes_constraint_vetoes_a_stop(self):
+        d_id = DeploymentID(name="d1")
+        replicas = [ReplicaID(unique_id=f"r{i}", deployment_id=d_id) for i in range(3)]
+        node_by_replica = {replicas[0]: "n1", replicas[1]: "n1", replicas[2]: "n2"}
+        constraint = MinReplicaNodesConstraint(2)
+
+        ctx = DownscaleContext(
+            deployment_id=d_id,
+            target_num_replicas=2,
+            node_by_replica=node_by_replica,
+            replicas_per_node=Counter(node_by_replica.values()),
+        )
+        # n1 holds two replicas, so either may go. n2 holds the last one on it.
+        assert constraint.may_stop(replicas[0], ctx) is True
+        assert constraint.may_stop(replicas[2], ctx) is False
+
+        # A replica with no node is pending, so the floor has no opinion on it.
+        assert constraint.may_stop(ReplicaID(unique_id="r9", deployment_id=d_id), ctx)
 
 
 class TestReplicaNodeFloor:
