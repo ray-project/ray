@@ -92,15 +92,15 @@ Liveness note: the pusher threads block inside
 executor's ``_num_waiting_consumers`` / ``OutputBackpressureGuard`` machinery
 keeps working unchanged.
 
-Consumer replacement: if a consumer dies mid-epoch, its pusher parks (the
-split's remaining data stays queued in the executor, paced by backpressure);
-a replacement worker that registers for the split joins the ACTIVE epoch via
-a barrier fast-path and receives the remainder of the stream. Rows already
-delivered to the dead consumer were freed at delivery and are lost for that
-epoch (re-reading them is the data-checkpointing integration's job).
+If a consumer dies mid-epoch, its pusher parks (the split's remaining data
+stays queued in the executor, paced by backpressure) rather than draining, so
+supporting a mid-epoch replacement worker later stays easy — see the TODO in
+_pusher_loop. Until then, recovery is Ray Train's group restart: the next
+epoch's barrier tears the parked pusher down and fresh registrations take
+over.
 
 Not implemented (prototype): stats/metrics export, byte-based credit,
-locality-aware pushing, re-splitting across a changed world size.
+locality-aware pushing, mid-epoch consumer replacement.
 """
 
 import logging
@@ -187,9 +187,6 @@ class PushSplitCoordinator:
 
     # How long a pusher sleeps between polls while the consumer has no credit.
     POLL_INTERVAL_S = 0.05
-    # How often a PARKED pusher (dead consumer, waiting for a replacement
-    # to register) re-checks for the replacement.
-    PARKED_POLL_INTERVAL_S = 1.0
     # Always keep at least this many blocks in flight (queued/undelivered at
     # the consumer) regardless of the row credit. This is the push analog of
     # the pull model's 1-deep RPC pipelining (gen_blocks issues the next
@@ -223,14 +220,6 @@ class PushSplitCoordinator:
 
         # split_idx -> (handle, key); see register().
         self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, str]] = {}
-        # Bumped on every register(); a PARKED pusher watches it to detect a
-        # replacement consumer for its split. Guarded by _lock for writes;
-        # pushers read it lock-free (GIL-atomic int).
-        self._registration_version: Dict[int, int] = dict.fromkeys(range(n), 0)
-        # Splits whose consumer died mid-epoch (pusher parked, split data
-        # kept queued). A replacement consumer's start_epoch joins the
-        # ACTIVE epoch instead of the next-epoch barrier. Guarded by _lock.
-        self._awaiting_rejoin: Set[int] = set()
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
@@ -272,7 +261,6 @@ class PushSplitCoordinator:
         """
         with self._lock:
             self._consumers[split_idx] = (consumer, key)
-            self._registration_version[split_idx] += 1
         logger.debug(f"Registered consumer for split {split_idx}.")
 
     def start_epoch(self, split_idx: int) -> int:
@@ -334,24 +322,8 @@ class PushSplitCoordinator:
     # ------------------------------------------------------------------
 
     def _barrier(self, split_idx: int) -> int:
-        """Arrive and block until the start of the next epoch.
-
-        Exception: a replacement consumer for a split whose previous consumer
-        died mid-epoch (pusher parked, split in ``_awaiting_rejoin``) joins
-        the ACTIVE epoch immediately instead of arriving at the next-epoch
-        barrier; its parked pusher resumes with the remainder of the split's
-        stream. If the replacement registers before the pusher has detected
-        the death, it degrades benignly to a normal barrier arrival (i.e. it
-        starts at the next epoch).
-        """
+        """Arrive and block until the start of the next epoch."""
         with self._lock:
-            if split_idx in self._awaiting_rejoin:
-                self._awaiting_rejoin.discard(split_idx)
-                logger.info(
-                    f"Split {split_idx}: replacement consumer joining active "
-                    f"epoch {self._cur_epoch}."
-                )
-                return self._cur_epoch
             logger.debug(
                 f"Split {split_idx} arriving at barrier for epoch "
                 f"{self._cur_epoch + 1}."
@@ -454,7 +426,6 @@ class PushSplitCoordinator:
     def _reset_state(self) -> None:
         self._num_unarrived_splits_at_barrier = self._n
         self._finished_splits.clear()
-        self._awaiting_rejoin.clear()
         self._gen_epoch_error = None
         # Safe without a lock: the previous epoch's pushers were joined in
         # _teardown_epoch before the barrier released, so no other thread
@@ -528,7 +499,6 @@ class PushSplitCoordinator:
             epoch_id, split_idx
         )
         output_iterator = self._output_iterator
-        reg_version = self._registration_version[split_idx]
         # Per-split push sequence number. The consumer may be a multi-threaded
         # actor, so Ray may execute receive tasks out of order (dispatch
         # follows argument readiness); the consumer re-sequences by ``seq``.
@@ -543,47 +513,34 @@ class PushSplitCoordinator:
                 except Exception as e:
                     # Consumer died. PARK instead of draining: keep the
                     # split's remaining data queued in the executor (paced by
-                    # the normal backpressure) so a replacement worker can
-                    # register and consume it mid-epoch.
+                    # the normal backpressure) so replacing the worker stays
+                    # possible; the parked thread is cheap. The epoch's
+                    # teardown (or notify_split_finished) sets `stop` and
+                    # releases it.
+                    #
+                    # TODO(push-split): support a replacement worker joining
+                    # mid-epoch. Sketch (validated once in git history):
+                    # register() bumps a per-split registration version that
+                    # wakes this parked thread to rebind via
+                    # _make_consumer_ops and reset seq/blocks/rows/bytes
+                    # accounting to 0, and start_epoch fast-paths a split
+                    # whose pusher is parked into the ACTIVE epoch instead of
+                    # the next-epoch barrier. Rows already delivered to the
+                    # dead consumer need the data-checkpointing integration
+                    # to be re-read.
                     logger.warning(
                         f"Split {split_idx} epoch {epoch_id}: consumer poll "
-                        f"failed ({e}); parking until a replacement "
-                        "registers."
+                        f"failed ({e}); parking this split's pusher (its "
+                        "remaining data stays queued)."
                     )
-                    with self._lock:
-                        self._awaiting_rejoin.add(split_idx)
                     # Rows already delivered to the dead consumer are gone
                     # (freed at delivery); zero their in-flight contribution.
-                    # Without the data-checkpointing integration they are
-                    # lost for this epoch.
                     self._bytes_consumed_reported[split_idx] = self._bytes_pushed[
                         split_idx
                     ]
                     self._update_external_consumer_bytes()
-                    while (
-                        not stop.is_set()
-                        and self._registration_version[split_idx] == reg_version
-                    ):
-                        stop.wait(self.PARKED_POLL_INTERVAL_S)
-                    if stop.is_set():
-                        return
-                    # A replacement registered: rebind to the new handle and
-                    # restart this split's sequence/accounting from zero (the
-                    # replacement's receiver starts fresh).
-                    reg_version = self._registration_version[split_idx]
-                    poll, push_block, push_eof, push_error = self._make_consumer_ops(
-                        epoch_id, split_idx
-                    )
-                    seq = 0
-                    blocks_pushed = 0
-                    self._rows_pushed[split_idx] = 0
-                    self._bytes_pushed[split_idx] = 0
-                    self._bytes_consumed_reported[split_idx] = 0
-                    logger.info(
-                        f"Split {split_idx} epoch {epoch_id}: replacement "
-                        "consumer registered; resuming pushes."
-                    )
-                    continue
+                    stop.wait()
+                    return
 
                 self._bytes_consumed_reported[split_idx] = resp.bytes_consumed
                 rows_in_flight = self._rows_pushed[split_idx] - resp.rows_consumed
