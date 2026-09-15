@@ -79,6 +79,14 @@ ANNOTATION_STYLE = "info"
 # build page rather than the job it is about.
 ANNOTATION_SCOPE = "job"
 
+# Build-scoped agent meta-data key, one per test, holding the id of the job
+# that took responsibility for this build's github comment. A test with
+# `repeated_run` gets one job per repeat and a manual retry adds another, all in
+# the same build and all in separate processes; meta-data is the only state they
+# share. The annotation is deliberately *not* deduped this way -- one agent
+# report per test job is the point of it.
+COMMENT_CLAIM_PREFIX = "obs-agent-commented-"
+
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
 # from the people who know what actually broke.
@@ -250,6 +258,16 @@ class ObservabilityAgentReporter(Reporter):
             )
             return
 
+        # Checked before the claim below, so that a job with nothing to say does
+        # not take the claim away from one that has an analysis.
+        if not summary and not slack_thread:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; the agent returned neither a summary nor a "
+                f"slack thread, so the comment would carry nothing"
+            )
+            return
+
         try:
             ray_repo = TestStateMachine.get_ray_repo()
             # The issue itself rather than a yes/no, so that commenting on it
@@ -264,9 +282,20 @@ class ObservabilityAgentReporter(Reporter):
                 )
                 return
 
-            issue.create_comment(
-                self._issue_comment(test, result, summary, slack_thread)
-            )
+            # Claimed last, immediately before posting: an unreachable github
+            # or a closed issue above must not consume this build's one comment.
+            if not self._claim_the_builds_comment(test):
+                return
+
+            try:
+                issue.create_comment(
+                    self._issue_comment(test, result, summary, slack_thread)
+                )
+            except Exception as e:
+                if self._is_transient(e):
+                    # Hand the claim back so a later job in this build can try.
+                    self._release_the_builds_comment(test)
+                raise
         except Exception:
             # Commenting is supplementary, and glue.py does not guard the
             # reporting loop, so nothing here may reach the test's result.
@@ -280,6 +309,74 @@ class ObservabilityAgentReporter(Reporter):
             f"Commented the observability agent analysis on github issue "
             f"{issue_number} for test {test.get_name()}"
         )
+
+    def _meta_data(self, *args: str) -> Optional[str]:
+        """Run `buildkite-agent meta-data`, or None if it could not be run.
+
+        None is also what an unset key gives, since `get` exits non-zero for
+        one. Both mean "no claim is recorded", so a broken agent falls open to
+        commenting rather than silently dropping the analysis.
+        """
+        try:
+            completed = subprocess.run(
+                ["buildkite-agent", "meta-data", *args],
+                capture_output=True,
+                text=True,
+            )
+        except Exception as e:
+            logger.warning(f"Could not run buildkite-agent meta-data: {e}")
+            return None
+        if completed.returncode != 0:
+            return None
+        return completed.stdout.strip()
+
+    def _claim_the_builds_comment(self, test: Test) -> bool:
+        """Take responsibility for this build's comment, if nobody else has.
+
+        Claimed *before* the comment is posted rather than after, so that the
+        window this exists to close stays shut. `exists`-then-`set` is not
+        atomic -- the agent has no compare-and-set -- so two jobs can still both
+        claim; the window is two fast local calls, against repeats that reach
+        this point after their own minute-long agent queries. Worst case is a
+        second comment, not a fifth.
+        """
+        if not os.environ.get("BUILDKITE"):
+            return True
+
+        key = f"{COMMENT_CLAIM_PREFIX}{test.get_name()}"
+        # The value, not `exists`: a released claim leaves the key in place with
+        # an empty value, because the agent cannot delete one.
+        claimed_by = self._meta_data("get", key)
+        if claimed_by:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; job {claimed_by} already commented for "
+                f"this build"
+            )
+            return False
+
+        self._meta_data("set", key, os.environ.get("BUILDKITE_JOB_ID", "claimed"))
+        return True
+
+    def _release_the_builds_comment(self, test: Test) -> None:
+        """Give the claim back, so another job in this build can try."""
+        if not os.environ.get("BUILDKITE"):
+            return
+        self._meta_data("set", f"{COMMENT_CLAIM_PREFIX}{test.get_name()}", "")
+
+    @staticmethod
+    def _is_transient(error: Exception) -> bool:
+        """Whether retrying this failure from another job could succeed.
+
+        Releasing the claim on a permanent failure would make every remaining
+        job try and fail the same way: a body over github's size cap 422s every
+        time, and so does a missing permission.
+        """
+        from ray_release.github_client import GitHubException
+
+        if isinstance(error, GitHubException):
+            return error.status >= 500 or error.status == 429
+        return isinstance(error, (requests.Timeout, requests.ConnectionError))
 
     @staticmethod
     def _sanitize_summary(summary: str) -> str:
@@ -327,9 +424,18 @@ class ObservabilityAgentReporter(Reporter):
         A url that does not qualify is shown as code, which renders whatever
         it holds and links none of it.
         """
-        if re.fullmatch(r"https?://[^\s<>()\[\]`]+", url):
+        if ObservabilityAgentReporter._is_plain_url(url):
             return f"[{text}](<{url}>)"
         return f"{text}: `{url.replace('`', '')}`"
+
+    @staticmethod
+    def _is_plain_url(url: str) -> bool:
+        """Whether a url from the agent's response can be written as markdown.
+
+        Anything else could be read as markdown of its own in a comment written
+        by the CI bot, so callers render it as code instead.
+        """
+        return bool(re.fullmatch(r"https?://[^\s<>()\[\]`]+", url))
 
     def _issue_comment(
         self,
@@ -338,18 +444,29 @@ class ObservabilityAgentReporter(Reporter):
         summary: Optional[str],
         slack_thread: Optional[str],
     ) -> str:
-        """The comment body: the summary, and where to go for the rest."""
+        """The comment body: the summary, and where to go for the rest.
+
+        With no summary the slack thread is the whole of what the agent has to
+        say, so it is pasted as the body rather than buried under a line
+        announcing that there is nothing to read. _comment_on_github_issue does
+        not get this far when there is neither.
+        """
         lines = [
             "The observability agent looked at the latest failure of "
             f"`{test.get_name()}`.",
-            "",
-            self._sanitize_summary(summary)
-            if summary
-            else "The agent returned no summary for this job.",
         ]
+        if summary:
+            lines += ["", self._sanitize_summary(summary)]
+        else:
+            lines += [
+                "",
+                slack_thread
+                if self._is_plain_url(slack_thread)
+                else f"`{slack_thread.replace('`', '')}`",
+            ]
         if result.buildkite_url:
             lines += ["", f"Failing build: {result.buildkite_url}"]
-        if slack_thread:
+        if summary and slack_thread:
             lines += [
                 "",
                 f"The full report, with the evidence and next steps behind the "

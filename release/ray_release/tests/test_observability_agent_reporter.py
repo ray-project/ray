@@ -8,12 +8,14 @@ import pytest
 import requests
 
 from ray_release.exception import ExitCode
+from ray_release.github_client import GitHubException
 from ray_release.logger import logger
 from ray_release.reporter.observability_agent import (
     ANALYSIS_FILE_ENV,
     ANNOTATION_CONTEXT_PREFIX,
     ANNOTATION_SCOPE,
     COMMAND_FAILURE_RETURN_CODES,
+    COMMENT_CLAIM_PREFIX,
     DEBUG_SESSION_QUERY,
     FEEDBACK_REMINDER,
     ObservabilityAgentReporter,
@@ -532,9 +534,10 @@ def test_empty_analysis_still_reports_the_failure(caplog, tmpdir):
 
 
 class FakeCompleted:
-    def __init__(self, returncode: int = 0, stderr: str = ""):
+    def __init__(self, returncode: int = 0, stderr: str = "", stdout: str = ""):
         self.returncode = returncode
         self.stderr = stderr
+        self.stdout = stdout
 
 
 def _report_annotating(result, responses, env=None):
@@ -803,21 +806,6 @@ def test_a_github_failure_does_not_propagate(caplog):
     assert "Could not comment the observability agent analysis" in caplog.text
 
 
-def test_the_comment_names_the_missing_summary():
-    issue = FakeIssue(state="open")
-    repo = FakeRepo(issue=issue)
-    query_response = {"result": {"analysis": {}, "metadata": {}}}
-
-    _report(
-        _result(ResultStatus.ERROR.value),
-        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
-        test=_test_with_issue(),
-        repo=repo,
-    )
-
-    assert "returned no summary" in issue.comments[0]
-
-
 def test_the_comment_cannot_mention_people_or_link_issues():
     """The summary is the agent's prose; a mention would notify a real person."""
     issue = FakeIssue(state="open")
@@ -913,6 +901,178 @@ def test_the_slack_link_uses_a_bounded_destination():
     body = _comment_on(FakeRepo(issue=issue))
 
     assert f"[this slack thread](<{SLACK_THREAD}>)" in body
+
+
+class FakeAgent:
+    """`buildkite-agent`, backed by an in-memory build meta-data store."""
+
+    def __init__(self, meta_data=None):
+        self.meta_data = dict(meta_data or {})
+        self.commands = []
+
+    def run(self, command, **kwargs):
+        self.commands.append(command)
+        if command[:2] != ["buildkite-agent", "meta-data"]:
+            return FakeCompleted()  # the annotate call
+        operation, key = command[2], command[3]
+        if operation == "get":
+            # `get` exits non-zero for a key that was never set.
+            if key not in self.meta_data:
+                return FakeCompleted(returncode=1)
+            return FakeCompleted(stdout=f"{self.meta_data[key]}\n")
+        if operation == "set":
+            self.meta_data[key] = command[4]
+            return FakeCompleted()
+        return FakeCompleted(returncode=1)
+
+
+CLAIM_KEY = f"{COMMENT_CLAIM_PREFIX}test_name"
+
+
+def _report_on_buildkite(repo, agent, job_id="01a0691c-job", summary=SUMMARY):
+    """Run the reporter as one job of a build, against a shared fake agent."""
+    query_response = {
+        "result": {
+            "analysis": {"summary": summary} if summary else {},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+                "BUILDKITE": "true",
+                "BUILDKITE_JOB_ID": job_id,
+            },
+            clear=True,
+        ),
+        patch(
+            "ray_release.reporter.observability_agent.requests.post",
+            FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)]),
+        ),
+        patch("ray_release.reporter.observability_agent.subprocess.run", agent.run),
+        patch(
+            "ray_release.reporter.observability_agent.TestStateMachine.get_ray_repo",
+            MagicMock(return_value=repo),
+        ),
+    ):
+        ObservabilityAgentReporter().report_result(
+            _test_with_issue(), _result(ResultStatus.ERROR.value)
+        )
+
+
+def test_only_one_job_per_build_comments():
+    """Five repeated_run jobs share a build; the issue gets one comment."""
+    issue = FakeIssue(state="open")
+    agent = FakeAgent()
+
+    for job in ("job-1", "job-2", "job-3", "job-4", "job-5"):
+        _report_on_buildkite(FakeRepo(issue=issue), agent, job_id=job)
+
+    assert len(issue.comments) == 1
+    assert agent.meta_data[CLAIM_KEY] == "job-1"
+
+
+def test_the_claim_is_taken_before_the_comment_is_posted():
+    """Claiming afterwards would leave the window this exists to close open."""
+    issue = FakeIssue(state="open")
+    issue.create_comment = MagicMock(side_effect=GitHubException(500, "boom"))
+    agent = FakeAgent()
+
+    _report_on_buildkite(FakeRepo(issue=issue), agent)
+
+    # The key exists, so the claim was written before the post was attempted.
+    assert CLAIM_KEY in agent.meta_data
+
+
+def test_a_transient_failure_hands_the_claim_back():
+    issue = FakeIssue(state="open")
+    issue.create_comment = MagicMock(side_effect=GitHubException(503, "unavailable"))
+    agent = FakeAgent()
+
+    _report_on_buildkite(FakeRepo(issue=issue), agent, job_id="job-1")
+
+    # Released, not deleted: the agent cannot delete a key.
+    assert agent.meta_data[CLAIM_KEY] == ""
+
+    # So the next job in the build takes it and comments.
+    working = FakeIssue(state="open")
+    _report_on_buildkite(FakeRepo(issue=working), agent, job_id="job-2")
+    assert len(working.comments) == 1
+    assert agent.meta_data[CLAIM_KEY] == "job-2"
+
+
+@pytest.mark.parametrize(
+    "status", [422, 403, 404], ids=["too_long", "forbidden", "gone"]
+)
+def test_a_permanent_failure_keeps_the_claim(status):
+    """Releasing here would make every remaining job fail the same way."""
+    issue = FakeIssue(state="open")
+    issue.create_comment = MagicMock(side_effect=GitHubException(status, "nope"))
+    agent = FakeAgent()
+
+    _report_on_buildkite(FakeRepo(issue=issue), agent, job_id="job-1")
+
+    assert agent.meta_data[CLAIM_KEY] == "job-1"
+
+    second = FakeIssue(state="open")
+    _report_on_buildkite(FakeRepo(issue=second), agent, job_id="job-2")
+    assert second.comments == []
+
+
+def test_the_annotation_is_not_deduped_by_build():
+    """One agent report per test job is the point of the annotation."""
+    agent = FakeAgent()
+
+    for job in ("job-1", "job-2", "job-3"):
+        _report_on_buildkite(FakeRepo(issue=FakeIssue()), agent, job_id=job)
+
+    annotates = [c for c in agent.commands if c[:2] == ["buildkite-agent", "annotate"]]
+    assert len(annotates) == 3
+
+
+def test_no_claim_is_taken_outside_buildkite():
+    repo = FakeRepo(issue=FakeIssue(state="open"))
+    agent = FakeAgent()
+    with patch("ray_release.reporter.observability_agent.subprocess.run", agent.run):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            test=_test_with_issue(),
+            repo=repo,
+        )
+
+    assert agent.commands == []
+
+
+def test_the_comment_pastes_the_slack_thread_when_there_is_no_summary():
+    """The thread is the whole of what the agent has to say; paste it."""
+    issue = FakeIssue(state="open")
+
+    _report_on_buildkite(FakeRepo(issue=issue), FakeAgent(), summary=None)
+
+    body = issue.comments[0]
+    assert SLACK_THREAD in body
+    assert "returned no summary" not in body
+
+
+def test_no_comment_when_the_agent_returned_nothing():
+    """Neither a summary nor a thread means the comment would carry nothing."""
+    issue = FakeIssue(state="open")
+    repo = FakeRepo(issue=issue)
+
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse({"result": {}})],
+        test=_test_with_issue(),
+        repo=repo,
+    )
+
+    assert issue.comments == []
+    # Not even fetched: there was nothing to post before github was reached.
+    assert repo.get_issue_calls == []
 
 
 if __name__ == "__main__":
