@@ -34,6 +34,7 @@ from ray.serve._private.common import (
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
+    TargetCapacityDirection,
     TimeStampedValue,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
@@ -1096,6 +1097,114 @@ def test_apply_app_config_echoes_version(check_obj_ref_ready_nowait):
     info_before = deployment_infos_before["a"]
     assert info_after.deployment_config == info_before.deployment_config
     assert info_after.version == info_before.version
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/new")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_config_noop_reapply(check_obj_ref_ready_nowait):
+    """Re-applying an identical config, or one that differs only in `version`,
+    keeps the app RUNNING and its deploy timestamp; anything else redeploys."""
+    app_state_manager, deployment_state_manager = _make_app_state_manager()
+    deployment_id = DeploymentID(name="a", app_name="test_app")
+
+    def make_config(num_replicas: int = 1, **overrides) -> ServeApplicationSchema:
+        return ServeApplicationSchema(
+            name="test_app",
+            import_path="fa.ke",
+            deployments=[DeploymentSchema(name="a", num_replicas=num_replicas)],
+            **overrides,
+        )
+
+    def run_until_running():
+        app_state.update()
+        deployment_state_manager.set_deployment_healthy(deployment_id)
+        app_state.update()
+        assert app_state.status == ApplicationStatus.RUNNING
+
+    app_state_manager.apply_app_configs([make_config(version="v1")], deployment_time=1)
+    app_state = app_state_manager._application_states["test_app"]
+    check_obj_ref_ready_nowait.return_value = True
+    run_until_running()
+    assert app_state._deployment_timestamp == 1
+    target_state_before = app_state._target_state
+
+    # Identical config: nothing changes.
+    app_state_manager.apply_app_configs([make_config(version="v1")], deployment_time=2)
+    assert app_state.status == ApplicationStatus.RUNNING
+    assert app_state._deployment_timestamp == 1
+    assert app_state._target_state is target_state_before
+
+    # Version-only change: echoed, nothing else changes.
+    app_state_manager.apply_app_configs([make_config(version="v2")], deployment_time=3)
+    assert app_state_manager.get_app_version("test_app") == "v2"
+    assert app_state.status == ApplicationStatus.RUNNING
+    assert app_state._deployment_timestamp == 1
+    assert app_state._target_state is target_state_before
+
+    # A real config change still redeploys.
+    app_state_manager.apply_app_configs(
+        [make_config(num_replicas=2, version="v3")], deployment_time=4
+    )
+    assert app_state_manager.get_app_version("test_app") == "v3"
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    assert app_state._deployment_timestamp == 4
+    assert app_state._target_state is not target_state_before
+    run_until_running()
+
+    # A capacity-only change is not a no-op either.
+    app_state_manager.apply_app_configs(
+        [make_config(num_replicas=2, version="v3")],
+        target_capacity=50,
+        target_capacity_direction=TargetCapacityDirection.UP,
+        deployment_time=5,
+    )
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    assert app_state._deployment_timestamp == 5
+    assert app_state._target_state.target_capacity == 50
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/new")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_recovery_replay_restores_deploy_timestamp(check_obj_ref_ready_nowait):
+    """On recovery the controller re-applies the checkpointed config with the
+    original deployment time; the no-op fast path must still restore it."""
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+    config = ServeApplicationSchema(name="test_app", import_path="fa.ke", version="v1")
+    app_state_manager.apply_app_configs([config], deployment_time=100)
+    app_state = app_state_manager._application_states["test_app"]
+    check_obj_ref_ready_nowait.return_value = True
+    app_state.update()
+    deployment_state_manager.set_deployment_healthy(
+        DeploymentID(name="a", app_name="test_app")
+    )
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+    app_state_manager.save_checkpoint()
+
+    recovered_manager = ApplicationStateManager(
+        MockDeploymentStateManager(kv_store),
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+    recovered = recovered_manager._application_states["test_app"]
+    assert recovered_manager.get_app_version("test_app") == "v1"
+    assert recovered._deployment_timestamp > 100
+
+    recovered_manager.apply_app_configs([config], deployment_time=100)
+    assert recovered._deployment_timestamp == 100
+    assert recovered_manager.get_app_version("test_app") == "v1"
 
 
 def test_get_app_version_none_for_imperative_app(mocked_application_state_manager):

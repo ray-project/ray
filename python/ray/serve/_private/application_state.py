@@ -393,6 +393,24 @@ class ApplicationState:
                 ),
             )
 
+    def _is_noop_reapply(
+        self,
+        config: ServeApplicationSchema,
+        target_capacity: Optional[float],
+        target_capacity_direction: Optional[TargetCapacityDirection],
+    ) -> bool:
+        """Whether applying `config` would change nothing but its `version`."""
+        current = self._target_state.config
+        if current is None:
+            return False
+        exclude = {"version"}
+        return (
+            current.model_dump(exclude=exclude) == config.model_dump(exclude=exclude)
+            and self._target_state.target_capacity == target_capacity
+            and self._target_state.target_capacity_direction
+            == target_capacity_direction
+        )
+
     def _set_target_state(
         self,
         deployment_infos: Optional[Dict[str, DeploymentInfo]],
@@ -673,13 +691,26 @@ class ApplicationState:
         the declarative API (i.e., through the REST API).
         """
 
-        self._deployment_timestamp = deployment_time
-
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
             # `deployment_infos` is non-None whenever `code_version` is
             # non-None (they are always set together in the target state).
             assert self._target_state.deployment_infos is not None
+            if self._is_noop_reapply(
+                config, target_capacity, target_capacity_direction
+            ):
+                # Nothing but the `version` label can differ. Echo the new
+                # config without flipping the status back to DEPLOYING or
+                # bumping the deploy timestamp. An earlier `deployment_time`
+                # only arrives when the controller replays the config
+                # checkpoint on recovery, and must be restored.
+                self._target_state.config = config
+                self._deployment_timestamp = min(
+                    self._deployment_timestamp, deployment_time
+                )
+                return
+
+            self._deployment_timestamp = deployment_time
             try:
                 overrided_infos = override_deployment_info(
                     self._target_state.deployment_infos,
@@ -712,6 +743,7 @@ class ApplicationState:
                     ),
                 )
         else:
+            self._deployment_timestamp = deployment_time
             # If there is an in progress build task, cancel it.
             if self._build_app_task_info and not self._build_app_task_info.finished:
                 logger.info(
