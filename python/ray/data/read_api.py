@@ -6058,9 +6058,37 @@ def read_delta(
         error_msg = str(e)
         # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
         if "deletionVectors" in error_msg:
+            # No deltalake version lifts this: the restriction is specific to
+            # `to_pyarrow_dataset`, which hands raw Parquet fragments to pyarrow.
+            # pyarrow cannot apply the deletion-vector bitmaps, so honouring them
+            # is impossible on that path and deltalake refuses rather than
+            # returning deleted rows. It refuses on the *declared* reader feature,
+            # so a table with deletion vectors enabled but none written is
+            # rejected too. Don't suggest upgrading -- it will not help.
             raise RuntimeError(
-                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
-                f"Error: {error_msg}\n"
+                "This Delta table declares the `deletionVectors` reader "
+                "feature, which deltalake cannot honour when reading through "
+                "pyarrow datasets -- the path `ray.data.read_delta` uses. "
+                "Upgrading deltalake will not change this, and note the table "
+                "is rejected for *declaring* the feature, whether or not any "
+                "deletion vectors have actually been written.\n"
+                "\n"
+                "Reading it with Ray Data needs the `delta.enableDeletionVectors"
+                "` table property turned off and the feature dropped from the "
+                "table's protocol. That rewrites data files and changes what "
+                "other readers and writers see, so it is worth reading your "
+                "Delta engine's documentation on removing the feature before "
+                "doing it -- some engines, Databricks included, enable deletion "
+                "vectors by default. If the property is already off, the "
+                "declaration can linger until existing deletion vectors are "
+                "purged and the feature is dropped.\n"
+                "\n"
+                "If reading deletion-vector tables directly matters to you, "
+                "please open or comment on a Ray issue -- it would need a read "
+                "path that does not go through pyarrow datasets, and knowing "
+                "there is demand helps us prioritise it.\n"
+                "\n"
+                f"Underlying error: {error_msg}"
             ) from e
         raise
 

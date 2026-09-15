@@ -12,7 +12,9 @@ from dataclasses import KW_ONLY, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+
+from packaging.version import parse as parse_version
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -44,6 +46,83 @@ _AWS_SESSION_TOKEN = "AWS_SESSION_TOKEN"
 _AWS_REGION = "AWS_REGION"
 _AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
 _AZURE_STORAGE_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
+
+# deltalake's object_store config key for a SAS, passed via `storage_options`
+# rather than the environment so it pickles into the read tasks.
+_AZURE_STORAGE_SAS_TOKEN_OPTION = "azure_storage_sas_token"
+
+# `pyarrow.fs.AzureFileSystem` gained a `sas_token` parameter in pyarrow 20.0.0
+# (apache/arrow#45705). Before that it accepts only `account_key`, and reads no
+# SAS environment variable, so a Unity Catalog SAS cannot reach it by any route.
+_AZURE_SAS_PYARROW_VERSION_MIN = "20.0.0"
+
+
+def _check_azure_sas_pyarrow_support() -> None:
+    """Raise if pyarrow is too old to authenticate with a vended Azure SAS.
+
+    Only the Parquet reader needs this: it is filesystem-only, so the SAS has to
+    reach it through a `pyarrow.fs.AzureFileSystem`. Delta is unaffected -- its
+    credential travels in `storage_options` to deltalake's object_store, which
+    has its own Azure client and no pyarrow floor.
+
+    Failing here is worth the strictness: pyarrow's Azure filesystem does not
+    report a missing credential as a Python error. It falls through to
+    `DefaultAzureCredential`, which either stalls on the instance-metadata
+    endpoint or, over a plain-HTTP endpoint, calls `abort()` in C++ and takes
+    the whole process down with SIGABRT -- uncatchable from Python.
+    """
+    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+
+    version = get_pyarrow_version()
+    minimum = parse_version(_AZURE_SAS_PYARROW_VERSION_MIN)
+    if version is None:
+        # Version undetectable (pyarrow vendored inside another package). Warn
+        # rather than block -- the same stance `_check_pyarrow_version` takes.
+        logger.warning(
+            "Reading an Azure-backed Parquet table through Unity Catalog needs "
+            "pyarrow >= %s to use the vended SAS, but the installed pyarrow "
+            "version could not be determined.",
+            _AZURE_SAS_PYARROW_VERSION_MIN,
+        )
+        return
+    if version < minimum:
+        raise ImportError(
+            f"Reading an Azure-backed Parquet table through Unity Catalog "
+            f"requires pyarrow >= {_AZURE_SAS_PYARROW_VERSION_MIN}, but "
+            f"{version} is installed. Unity Catalog vends a SAS token, and "
+            f"`pyarrow.fs.AzureFileSystem` only accepts one from pyarrow "
+            f"{_AZURE_SAS_PYARROW_VERSION_MIN} onwards (apache/arrow#45705). "
+            f'Upgrade with `pip install -U "pyarrow>='
+            f'{_AZURE_SAS_PYARROW_VERSION_MIN}"`, or read the table as Delta '
+            f"(`ray.data.read_delta`), which carries the SAS in "
+            f"`storage_options` and has no pyarrow floor."
+        )
+
+
+def _parse_azure_url(url: str) -> Tuple[str, str, str]:
+    """Split ``abfss://<container>@<account>.dfs.core.windows.net/<key>``.
+
+    Returns ``(account, container, key)``. This is the shape Unity Catalog vends
+    for ADLS Gen2; anything else is a bug in our own assumptions rather than
+    something to recover from.
+    """
+    parsed = urlparse(url, allow_fragments=False)
+    if parsed.scheme not in ("abfs", "abfss") or "@" not in parsed.netloc:
+        raise ValueError(
+            f"Expected an abfss://<container>@<account>.dfs.core.windows.net/... "
+            f"URL from Unity Catalog, got {url!r}."
+        )
+    container, _, host = parsed.netloc.partition("@")
+    account = host.split(".")[0]
+    if not account or not container:
+        raise ValueError(f"Could not parse account/container out of {url!r}.")
+    return account, container, parsed.path.lstrip("/")
+
+
+def _azure_url_without_authority(url: str) -> str:
+    """Rewrite the vended URL to ``abfs://<container>/<key>``."""
+    _, container, key = _parse_azure_url(url)
+    return f"abfs://{container}/{key}" if key else f"abfs://{container}"
 
 
 def _normalize_host(host: str) -> str:
@@ -249,12 +328,38 @@ class DatabricksUnityCatalog(Catalog):
                 creds.gcp_oauth_token, creds.expiration_time
             )
 
-        # Deliver vended credentials via environment variables. This is the
-        # mechanism the underlying libraries read uniformly: pyarrow (Parquet
+        # Azure. Delta needs no filesystem -- the SAS travels in
+        # `storage_options` below, which deltalake's object_store reads and
+        # which pickles into the read tasks. Parquet is filesystem-only, so it
+        # needs an explicit `AzureFileSystem` carrying the SAS; that requires
+        # pyarrow >= 20, hence the check.
+        storage_options = None
+        if creds.azure_user_delegation_sas is not None:
+            storage_options = self._azure_storage_options(
+                creds.azure_user_delegation_sas
+            )
+            if reader is ReaderFormat.PARQUET:
+                _check_azure_sas_pyarrow_support()
+                filesystem = self._build_azure_filesystem(
+                    table_url, creds.azure_user_delegation_sas
+                )
+                # Drop the `<container>@<account>.dfs.core.windows.net`
+                # authority. PyArrow only parses that Hadoop-style form when it
+                # builds the filesystem from the URI itself; given a filesystem
+                # it strips the scheme and treats the authority as part of the
+                # path, so reads land on
+                # `<account>.blob.core.windows.net/<container>@<account>...`
+                # and 404. The account lives on the filesystem object instead.
+                # Same reasoning as `_rewrite_azure_blob_https_url` in
+                # `datasource/path_util.py`.
+                table_url = _azure_url_without_authority(table_url)
+
+        # Deliver vended credentials via environment variables as well. This is
+        # the mechanism the underlying libraries read uniformly: pyarrow (Parquet
         # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
-        # (the Delta transaction *log* read in `DeltaTable(...)`, which neither
-        # a pyarrow `filesystem` nor `storage_options` keyed for pyarrow would
-        # satisfy). See `_apply_env` for the worker-propagation note.
+        # (the Delta transaction *log* read in `DeltaTable(...)`). Still needed
+        # for the readers that take no `storage_options` at all -- notably
+        # `read_parquet`, which is filesystem-only.
         #
         # TODO: remove the env-var + ray.init mechanism once credential vending
         # is performed inside the read tasks themselves (worker-side).
@@ -263,6 +368,7 @@ class DatabricksUnityCatalog(Catalog):
         return ResolvedSource(
             path=table_url,
             filesystem=filesystem,
+            storage_options=storage_options,
             data_format=self._infer_format(table_info, table_url),
         )
 
@@ -443,11 +549,55 @@ class DatabricksUnityCatalog(Catalog):
         )
 
     @staticmethod
-    def _parse_azure_creds(sas: "AzureUserDelegationSas") -> Dict[str, Optional[str]]:
+    def _azure_sas_token(sas: "AzureUserDelegationSas") -> str:
         sas_token = sas.sas_token
+        # Unity Catalog may return the SAS as a full query string ("?sv=..."),
+        # but every consumer wants it bare.
         if sas_token and sas_token.startswith("?"):
             sas_token = sas_token[1:]
         if not sas_token:
             raise ValueError("Azure UC credentials missing a SAS token.")
-        creds: Dict[str, Optional[str]] = {_AZURE_STORAGE_SAS_TOKEN: sas_token}
+        return sas_token
+
+    @classmethod
+    def _parse_azure_creds(
+        cls, sas: "AzureUserDelegationSas"
+    ) -> Dict[str, Optional[str]]:
+        creds: Dict[str, Optional[str]] = {
+            _AZURE_STORAGE_SAS_TOKEN: cls._azure_sas_token(sas)
+        }
         return creds
+
+    @classmethod
+    def _build_azure_filesystem(
+        cls, table_url: str, sas: "AzureUserDelegationSas"
+    ) -> "pyarrow.fs.FileSystem":
+        """An `AzureFileSystem` carrying the vended SAS, for the Parquet scan.
+
+        The leading ``?`` matters and is why this does not reuse
+        `_azure_sas_token`'s bare form: pyarrow appends `sas_token` to the
+        service URL verbatim, so without it the token is taken as a *path
+        segment* -- requests go to
+        `<account>.blob.core.windows.net/<the-whole-sas>/<container>/...` and
+        fail unauthenticated. deltalake's object_store and
+        ``AZURE_STORAGE_SAS_TOKEN`` both want it stripped, so the two channels
+        genuinely disagree on the format.
+        """
+        import pyarrow.fs as pafs
+
+        account, _, _ = _parse_azure_url(table_url)
+        return pafs.AzureFileSystem(
+            account_name=account, sas_token="?" + cls._azure_sas_token(sas)
+        )
+
+    @classmethod
+    def _azure_storage_options(cls, sas: "AzureUserDelegationSas") -> Dict[str, str]:
+        """Vended SAS in the form deltalake's object_store reads.
+
+        `azure_storage_sas_token` is one of object_store's accepted aliases for
+        the SAS config key. The account name is not included: it is already in
+        the `abfss://<container>@<account>.dfs.core.windows.net/...` URL that
+        accompanies these options, and duplicating it here would let the two
+        disagree.
+        """
+        return {_AZURE_STORAGE_SAS_TOKEN_OPTION: cls._azure_sas_token(sas)}
