@@ -307,14 +307,14 @@ def _external_shuffle_reduce_task(
         assert map_task_context is not None and data_context is not None
         with DataContext.current(data_context), TaskContext.current(map_task_context):
             from ray.data._internal.execution.operators.map_transformer import (
-                UDFTimeScope,
+                TransformClock,
             )
 
             map_transformer.override_target_max_block_size(
                 map_task_context.target_max_block_size_override
             )
             for out_block in map_transformer.apply_transform(
-                blocks, map_task_context, udf_time_scope=UDFTimeScope()
+                blocks, map_task_context, clock=TransformClock()
             ):
                 yield from _yield_with_stats(out_block)
 
@@ -362,10 +362,10 @@ def _external_shuffle_reduce_task(
                 [] for _ in range(num_inputs)
             ]
             output_buffer: Optional[BlockOutputBuffer] = None
-            # Codec from data_context.hash_shuffle_compression (same field the map used).
+            # Codec from data_context.shuffle_compression (same field the map used).
             _compression = (
                 data_context if data_context is not None else DataContext.get_current()
-            ).hash_shuffle_compression
+            ).shuffle_compression
 
             def _flush(tables_by_input: List[List[pa.Table]]):
                 """Call reduce_fn on ``tables_by_input`` and yield reshaped raw blocks.

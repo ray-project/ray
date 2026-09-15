@@ -7,6 +7,7 @@ import pytest
 from ray_release.bazel import bazel_runfile
 from ray_release.buildkite.step import (
     _DEFAULT_STEP_TEMPLATE,
+    DOCKER_PLUGIN_KEY,
     get_step,
     get_step_for_test_group,
 )
@@ -46,6 +47,13 @@ def test_get_step(mock):
     # run_release_test.sh reads this to know whether the current attempt is the
     # last one, so it has to match the limit Buildkite retries against.
     assert step["env"]["BUILDKITE_MAX_RETRIES"] == "3"
+    # The reporters shell out to `buildkite-agent`, which needs the binary the
+    # agent is running and the access token; the plugin provides both. A
+    # hand-rolled volume for the binary would shadow it, because /usr/local/bin
+    # precedes /usr/bin on PATH in the python image.
+    docker_plugin = step["plugins"][0][DOCKER_PLUGIN_KEY]
+    assert docker_plugin["mount-buildkite-agent"] is True
+    assert not any("buildkite-agent" in v for v in docker_plugin["volumes"])
     assert "commands" in step
     first_command = shlex.split(step["commands"][0])
     assert first_command[0] == "./release/run_release_test.sh"

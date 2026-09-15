@@ -361,9 +361,13 @@ class PathPartitionParser:
                 return bool(result.as_py())
 
             return bool(result)
-        except Exception:
+        except KeyError:
+            # Only a missing partition column is a genuine "can't tell" -- keep
+            # the file. Narrow, so a type mismatch (ArrowNotImplementedError,
+            # e.g. a string partition value compared to an int) propagates
+            # instead of silently keeping every file.
             logger.debug(
-                "Failed to evaluate predicate on partition for path %s, "
+                "Path %s has no value for a partition column in the predicate, "
                 "conservatively including file.",
                 path,
                 exc_info=True,
