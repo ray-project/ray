@@ -190,11 +190,20 @@ class CoreWorkerMemoryStore {
                  bool abort_if_any_object_is_exception,
                  bool at_most_num_objects);
 
-  /// Reports an unhandled error after releasing the store mutex.
+  /**
+   * @brief Invokes the unhandled-error handler with `mu_` released.
+   *
+   * @param obj Error object that `IsUnhandledError` accepted under the lock.
+   */
   void ReportUnhandledError(const std::shared_ptr<RayObject> &obj)
       ABSL_LOCKS_EXCLUDED(mu_);
 
-  /// Reports all unhandled errors, then rethrows the first callback exception.
+  /**
+   * @brief Reports all unhandled errors with `mu_` released, then rethrows the
+   * first exception thrown by a handler.
+   *
+   * @param unhandled_errors Error objects collected under the lock.
+   */
   void ReportUnhandledErrors(
       const std::vector<std::shared_ptr<RayObject>> &unhandled_errors)
       ABSL_LOCKS_EXCLUDED(mu_);
