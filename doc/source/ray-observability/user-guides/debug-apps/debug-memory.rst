@@ -1,3 +1,6 @@
+.. meta::
+   :description: Debug Ray out-of-memory errors: detect OOM, attribute memory to individual tasks and actors, reduce parallelism, and profile per-worker usage.
+
 .. _ray-core-mem-profiling:
 
 Debugging Memory Issues
@@ -40,7 +43,7 @@ which continually monitors the memory usage of the host and kills the Ray Worker
 Detecting Out-of-Memory errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-You can monitor out-of-memory errors on the Ray Dashboard's :ref:`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
+You can monitor out-of-memory errors on the Ray dashboard's :ref:`metrics page <dash-metrics-view>` via the Ray OOM Kills panel and the Unexpected System Level Worker Failures panel.
 The Ray OOM Kills panel shows the number of workers killed by the Ray OOM killer.
 The Unexpected System Level Worker Failures panel shows the number of workers that failed unexpectedly. These failures are typically
 caused by the Linux out-of-memory killer; correlate with memory usage metrics to confirm.
@@ -157,7 +160,7 @@ Ray memory monitor also periodically prints the aggregated out-of-memory killer 
   (raylet) 
   (raylet) Refer to the documentation on how to address the out of memory issue: https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. Consider provisioning more memory on this node or reducing task parallelism by requesting more CPUs per task. To adjust the kill threshold, set the environment variable `RAY_memory_usage_threshold` when starting Ray. To disable worker killing, set the environment variable `RAY_memory_monitor_refresh_ms` to zero.
 
-Ray Dashboard's :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
+Ray dashboard's :ref:`event page <dash-event>` also provides the out-of-memory killer-specific events and metrics.
 
 .. image:: ../../images/oom-events.png
     :align: center
@@ -221,7 +224,7 @@ First, check the head node memory usage from the metrics page. Find the head nod
 .. image:: ../../images/head-node-addr.png
     :align: center
 
-Then check the memory usage from the head node from the node memory usage view inside the Dashboard :ref:`metrics view <dash-metrics-view>`.
+Then check the memory usage from the head node from the node memory usage view inside the dashboard :ref:`metrics view <dash-metrics-view>`.
 
 .. image:: ../../images/metrics-node-view.png
     :align: center

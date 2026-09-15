@@ -17,13 +17,25 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture(
     autouse=True,
-    params=[ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.HASH_SHUFFLE_V2],
-    ids=["shufflev1", "shufflev2"],
+    params=[
+        (ShuffleStrategy.HASH_SHUFFLE, False),
+        (ShuffleStrategy.SHUFFLE_V2, False),
+        (ShuffleStrategy.SHUFFLE_V2, True),
+    ],
+    ids=["shufflev1", "shufflev2", "shufflev2external"],
 )
 def hash_shuffle_version(request, restore_data_context):
-    """Run every join test on both v1 (old actor-based) & v2 shuffle."""
-    DataContext.get_current().shuffle_strategy = request.param
-    return request.param
+    """Run every join test on v1 (old actor-based), v2 (object-store), and v2
+    external (on-disk, file-transport) shuffle."""
+    strategy, use_external = request.param
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = strategy
+    ctx.use_external_hash_shuffle = use_external
+    if strategy == ShuffleStrategy.SHUFFLE_V2:
+        # One map task per input bundle, so reducers see multiple shards per
+        # partition (the default batching folds small test data into one mapper).
+        ctx.shuffle_input_batch_bytes = 0
+    return strategy
 
 
 @pytest.mark.parametrize(
@@ -410,6 +422,59 @@ def test_anti_join_no_matches(
     expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+@pytest.mark.parametrize("empty_side", ["left", "right"])
+def test_join_with_unknown_schema_empty_side(
+    ray_start_regular_shared_2_cpus,
+    hash_shuffle_version,
+    join_type,
+    empty_side,
+):
+    if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2:
+        pytest.skip("Unknown-schema empty-side handling is specific to shuffle V2")
+
+    non_empty = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+    unknown_schema_empty = ray.data.range(0).map_batches(lambda batch: batch)
+
+    if empty_side == "left":
+        left, right = unknown_schema_empty, non_empty
+    else:
+        left, right = non_empty, unknown_schema_empty
+
+    result = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+    ).take_all()
+
+    preserves_non_empty_side = (
+        join_type == "full_outer"
+        or join_type in ("left_outer", "left_anti")
+        and empty_side == "right"
+        or join_type in ("right_outer", "right_anti")
+        and empty_side == "left"
+    )
+    expected = (
+        [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
+        if preserves_non_empty_side
+        else []
+    )
+    assert sorted(result, key=lambda row: row["id"]) == expected
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])

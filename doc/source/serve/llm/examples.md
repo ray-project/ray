@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "End-to-end tutorials for deploying LLMs with Ray Serve, organized by model size and by capability."
+---
+
 # Examples
 
 End-to-end tutorials for deploying LLMs with Ray Serve. Each one walks through configuration, deployment, and querying for a representative model. For the minimal path, start with the {doc}`Quickstart <quick-start>`.

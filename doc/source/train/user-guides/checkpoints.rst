@@ -1,3 +1,6 @@
+.. meta::
+   :description: Save and load Ray Train checkpoints: distributed checkpointing from multiple workers, upload modes, async uploads, and post-training use.
+
 .. _train-checkpointing:
 
 Saving and Loading Checkpoints

@@ -74,10 +74,6 @@ def test_report_issues():
             ),
         ]
     )
-    assert input_operator.metrics.issue_detector_hanging == 1
-    assert input_operator.metrics.issue_detector_high_memory == 0
-    assert map_operator.metrics.issue_detector_hanging == 0
-    assert map_operator.metrics.issue_detector_high_memory == 1
 
     data = _get_exported_data()
     assert len(data) == 2

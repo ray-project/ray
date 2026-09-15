@@ -1,3 +1,6 @@
+.. meta::
+   :description: Utility classes for actors: ActorPool for load-balanced method calls and Ray Queue for message passing between tasks and actors.
+
 Utility Classes
 ===============
 

@@ -252,3 +252,11 @@ Pre-hooks support template variable substitution and are modeled as nodes in the
 --quiet
 --unsafe-package setuptools  (unless include_setuptools: true)
 ```
+
+`--emit-index-url` keeps the `--extra-index-url` entries (PyTorch, libtpu) in the
+lock file, where an install needs them to find artifacts that are not on PyPI.
+The primary `--index-url` it also emits is removed again before the lock is
+written, because a requirements file's index URL overrides both `PIP_INDEX_URL`
+and a `--index-url` passed on the command line — leaving it in would pin every
+install to whichever index compiled the lock. Absent it, pip and uv use PyPI
+unless the environment points them elsewhere.

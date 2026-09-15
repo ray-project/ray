@@ -1,3 +1,6 @@
+.. meta::
+   :description: Iterate over a Ray Data Dataset by rows or batches, including the framework-specific batch formats used in training loops.
+
 .. _iterating-over-data:
 
 ===================

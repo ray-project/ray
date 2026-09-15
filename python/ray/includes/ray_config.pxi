@@ -143,3 +143,28 @@ cdef class Config:
     @staticmethod
     def enable_task_events_to_dashboard_head():
         return RayConfig.instance().enable_task_events_to_dashboard_head()
+
+    @staticmethod
+    def task_events_max_num_task_in_gcs():
+        return RayConfig.instance().task_events_max_num_task_in_gcs()
+
+    @staticmethod
+    def task_events_max_num_profile_events_per_task():
+        return RayConfig.instance().task_events_max_num_profile_events_per_task()
+
+    @staticmethod
+    def task_events_max_dropped_task_attempts_tracked_per_job_in_gcs():
+        return (RayConfig.instance()
+                .task_events_max_dropped_task_attempts_tracked_per_job_in_gcs())
+
+    @staticmethod
+    def task_events_gc_job_summary_interval_ms():
+        return RayConfig.instance().task_events_gc_job_summary_interval_ms()
+
+    @staticmethod
+    def gcs_mark_task_failed_on_worker_dead_delay_ms():
+        return RayConfig.instance().gcs_mark_task_failed_on_worker_dead_delay_ms()
+
+    @staticmethod
+    def gcs_mark_task_failed_on_job_done_delay_ms():
+        return RayConfig.instance().gcs_mark_task_failed_on_job_done_delay_ms()

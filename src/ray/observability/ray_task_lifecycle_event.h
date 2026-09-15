@@ -14,10 +14,15 @@
 
 #pragma once
 
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
+#include "ray/common/id.h"
 #include "ray/observability/ray_event.h"
 #include "ray/observability/task_ray_event_interface.h"
+#include "ray/observability/task_state_update.h"
 #include "src/ray/protobuf/public/events_task_lifecycle_event.pb.h"
 
 namespace ray {
@@ -32,11 +37,19 @@ template class RayEvent<rpc::events::TaskLifecycleEvent>;
  *
  * Multiple lifecycle events for the same task attempt are merged by the recorder into a
  * single time series via MergeData.
+ *
+ * Each recorded status change is kept as-is and the whole series is turned into
+ * a proto when the event is serialized for export, so the conversion stays off the task's
+ * call path.
  */
 class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent>,
                               public TaskRayEventInterface {
  public:
-  RayTaskLifecycleEvent(rpc::events::TaskLifecycleEvent data,
+  RayTaskLifecycleEvent(const TaskID &task_id,
+                        const JobID &job_id,
+                        int32_t task_attempt,
+                        rpc::TaskStatus task_status,
+                        const std::optional<const TaskStateUpdate> &state_update,
                         const std::string &session_name,
                         int64_t timestamp);
 
@@ -50,6 +63,20 @@ class RayTaskLifecycleEvent : public RayEvent<rpc::events::TaskLifecycleEvent>,
  protected:
   void MergeData(RayEvent<rpc::events::TaskLifecycleEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
+
+ private:
+  // One recorded status change of the task attempt.
+  struct StatusChange {
+    rpc::TaskStatus task_status;
+    int64_t timestamp;
+    std::optional<TaskStateUpdate> state_update;
+  };
+
+  TaskID task_id_;
+  JobID job_id_;
+  int32_t task_attempt_;
+  // Status changes of this attempt, in the order they were recorded.
+  std::vector<StatusChange> status_changes_;
 };
 
 }  // namespace observability

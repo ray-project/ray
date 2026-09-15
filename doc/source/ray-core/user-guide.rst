@@ -23,4 +23,5 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     direct-transport/direct-transport
     compiled-graph/ray-compiled-graph
     resource-isolation-with-cgroupv2
+    sandboxes
     advanced-topics

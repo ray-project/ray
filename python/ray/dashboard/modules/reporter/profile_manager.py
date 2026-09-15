@@ -8,6 +8,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Tuple, Union
 
+from ray._private.ray_constants import (
+    VALID_CPU_PROFILING_FORMATS,
+    VALID_MEMORY_PROFILING_FORMATS,
+)
+
 logger = logging.getLogger(__name__)
 
 DARWIN_SET_CHOWN_CMD = "sudo chown root: `which {profiler}`"
@@ -153,11 +158,11 @@ class CpuProfilingManager:
         if pyspy is None:
             return False, "Failed to execute: py-spy is not installed"
 
-        if format not in ("flamegraph", "raw", "speedscope"):
+        if format not in VALID_CPU_PROFILING_FORMATS:
             return (
                 False,
                 f"Failed to execute: Invalid format {format}, "
-                + "must be [flamegraph, raw, speedscope]",
+                + f"must be [{', '.join(VALID_CPU_PROFILING_FORMATS)}]",
             )
 
         if format == "flamegraph":
@@ -236,27 +241,20 @@ class MemoryProfilingManager:
 
         profiler_name, _ = os.path.splitext(profiler_filename)
         profile_visualize_path = self.profile_dir_path / f"{profiler_name}.html"
-        if format == "flamegraph":
-            visualize_cmd = [
-                memray,
-                "flamegraph",
-                "-o",
-                profile_visualize_path,
-                "-f",
-            ]
-        elif format == "table":
-            visualize_cmd = [
-                memray,
-                "table",
-                "-o",
-                profile_visualize_path,
-                "-f",
-            ]
-        else:
+        if format not in VALID_MEMORY_PROFILING_FORMATS:
             return (
                 False,
                 f"Failed to execute: Report with format: {format} is not supported",
             )
+        # Each valid format is also the name of the memray reporter subcommand
+        # that produces it.
+        visualize_cmd = [
+            memray,
+            format,
+            "-o",
+            profile_visualize_path,
+            "-f",
+        ]
 
         if leaks:
             visualize_cmd.append("--leaks")

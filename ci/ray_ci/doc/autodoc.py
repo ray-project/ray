@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List, Set
+from typing import List, Optional, Set
 
 from ci.ray_ci.doc.api import (
     _SPHINX_AUTOCLASS_HEADER,
@@ -11,6 +11,45 @@ from ci.ray_ci.doc.api import (
 _SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 _SPHINX_TOCTREE_HEADER = ".. toctree::"
 _SPHINX_INCLUDE_HEADER = ".. include::"
+
+# A MyST landing page writes the same toctree as a directive fence rather than an
+# RST directive: ```{toctree} (or :::{toctree}), options as `:key: value` lines,
+# entries at the fence's own indentation, closed by a line of the same fence
+# character. An API landing page converted from .rst to .md keeps its children
+# only if this form is recognized too -- otherwise the walk finds no children and
+# the whole team's documented-API set silently collapses to the landing page.
+_MYST_TOCTREE_HEADER = re.compile(r"^(?P<fence>`{3,}|:{3,})\{toctree\}\s*$")
+
+# A toctree entry is a bare docname, a "Title <docname>" pair, or either of those
+# carrying an explicit source extension. Sphinx strips a known suffix and
+# resolves a bare docname to whichever source file exists, so this walk has to do
+# the same. Matching only ".rst" would drop a child page the moment it converts
+# to Markdown, taking that page's autosummary entries out of the team's
+# documented-API set with it.
+_TOCTREE_TITLED_ENTRY = re.compile(r"^.*<(?P<target>[^<>]+)>$")
+_SOURCE_SUFFIXES = (".rst", ".md")
+
+
+def _toctree_entry_path(directory: str, entry: str) -> Optional[str]:
+    """Resolve one toctree line to a source path, or None if it isn't an entry.
+
+    Returns None for a blank line, a directive option (":maxdepth: 2"), and for
+    an entry written root-relative ("/path/to/page"), which can't be resolved
+    without the Sphinx source root. No API landing page uses that form.
+    """
+    entry = entry.strip()
+    if not entry or entry.startswith((":", "/")):
+        return None
+    titled = _TOCTREE_TITLED_ENTRY.match(entry)
+    if titled:
+        entry = titled.group("target").strip()
+    if entry.endswith(_SOURCE_SUFFIXES):
+        return os.path.join(directory, entry)
+    for suffix in _SOURCE_SUFFIXES:
+        candidate = os.path.join(directory, entry + suffix)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
 
 
 class Autodoc:
@@ -73,6 +112,15 @@ class Autodoc:
 
             area_01.rst
             area_02.rst
+
+        A MyST page writes the same toctree as a fence:
+
+        ```{toctree}
+        :maxdepth: 2
+
+        area_01.rst
+        area_02.rst
+        ```
         """
         if not os.path.exists(rst_file):
             return set()
@@ -94,6 +142,23 @@ class Autodoc:
                     line = f.readline()
                     continue
 
+                # look for a MyST toctree fence
+                myst_toctree = _MYST_TOCTREE_HEADER.match(line)
+                if myst_toctree:
+                    fence_char = myst_toctree.group("fence")[0]
+                    line = f.readline()
+                    while line:
+                        entry = line.strip()
+                        if entry and set(entry) == {fence_char}:
+                            # closing fence, end of the toctree
+                            break
+                        child = _toctree_entry_path(dir, entry)
+                        if child:
+                            rsts.add(child)
+                        line = f.readline()
+                    line = f.readline()
+                    continue
+
                 # look for the toctree block
                 if not line == _SPHINX_TOCTREE_HEADER:
                     line = f.readline()
@@ -106,8 +171,9 @@ class Autodoc:
                         # end of toctree, \s means empty space, this line is checking if
                         # the line is not empty and not starting with empty space
                         break
-                    if line.strip().endswith(".rst"):
-                        rsts.add(os.path.join(dir, line.strip()))
+                    child = _toctree_entry_path(dir, line)
+                    if child:
+                        rsts.add(child)
                     line = f.readline()
 
         return rsts

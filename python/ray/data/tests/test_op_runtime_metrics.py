@@ -17,11 +17,13 @@ from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 
-def test_average_max_uss_per_task():
+def test_max_uss_bytes_distribution():
     op = MagicMock()
     op.data_context.enable_get_object_locations_for_metrics = False
     metrics = OpRuntimeMetrics(op)
-    assert metrics.average_max_uss_per_task is None
+    assert metrics.max_uss_bytes.num_samples == 0
+    assert metrics.max_uss_bytes.mean == 0
+    assert metrics.max_uss_bytes.max is None
 
     input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
@@ -33,7 +35,9 @@ def test_average_max_uss_per_task():
         TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
-    assert metrics.average_max_uss_per_task == 100
+    assert metrics.max_uss_bytes.num_samples == 1
+    assert metrics.max_uss_bytes.mean == 100
+    assert metrics.max_uss_bytes.max == 100
 
     # Submit and finish second task with USS of 300 bytes.
     metrics.on_task_submitted(1, input_bundle)
@@ -43,7 +47,9 @@ def test_average_max_uss_per_task():
         TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=300),
         TaskExecDriverStats(task_output_backpressure_s=0),
     )
-    assert metrics.average_max_uss_per_task == 200  # (100 + 300) / 2
+    assert metrics.max_uss_bytes.num_samples == 2
+    assert metrics.max_uss_bytes.mean == 200  # (100 + 300) / 2
+    assert metrics.max_uss_bytes.max == 300
 
 
 def test_task_completion_time_histogram():
@@ -486,6 +492,61 @@ def test_obj_store_mem_estimation(
     assert (
         actual == expected
     ), f"Expected {test_property} to be {expected}, got {actual}"
+
+
+def _metrics_for_one_output(**phases):
+    """An `OpRuntimeMetrics` fed one output block with the given phase times."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+
+    stats = BlockExecStats(
+        wall_time_s=1.0,
+        block_ser_time_s=0.0,
+        block_transform_time_s=0.5,
+        **phases,
+    )
+    metadata = BlockMetadata(
+        num_rows=1, size_bytes=0, input_files=None, exec_stats=stats
+    )
+    output = RefBundle(
+        [BlockEntry(ray.put(pa.Table.from_pydict({})), metadata)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, RefBundle([], owns_blocks=False, schema=None))
+    metrics.on_task_output_generated(0, output)
+    return metrics
+
+
+def test_phase_metrics_stay_none_when_unmeasured():
+    """A chain timed only as a whole must not export three zeros.
+
+    A row transform reports no phase breakdown unless
+    `DataContext.accurate_map_phase_timing` is set. Summing those `None`s as
+    zero would put three zeros beside a non-zero `block_transform_time_s`,
+    which a dashboard can't tell from "these phases took no time".
+    """
+    metrics = _metrics_for_one_output()
+
+    assert metrics.block_transform_time_s == pytest.approx(0.5)
+    assert metrics.input_prep_time_s is None
+    assert metrics.function_body_time_s is None
+    assert metrics.output_build_time_s is None
+
+
+def test_phase_metrics_accumulate_when_measured():
+    """The `None` default must not swallow a measured phase."""
+    metrics = _metrics_for_one_output(
+        input_prep_time_s=0.1,
+        function_body_time_s=0.3,
+        output_build_time_s=0.1,
+    )
+
+    assert metrics.input_prep_time_s == pytest.approx(0.1)
+    assert metrics.function_body_time_s == pytest.approx(0.3)
+    assert metrics.output_build_time_s == pytest.approx(0.1)
 
 
 if __name__ == "__main__":

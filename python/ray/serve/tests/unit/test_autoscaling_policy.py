@@ -6,11 +6,13 @@ import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.gang_scheduling_autoscaling_policy import (
     GangSchedulingAutoscalingPolicy,
 )
@@ -1355,6 +1357,31 @@ class TestGangSchedulingAutoscalingPolicy:
         policy = self._make_policy(gang_size=4, inner_result=0)
         assert policy(ctx)[0] == 0
 
+    def test_scale_to_zero_after_downscaling_to_one_gang(self):
+        """The base policy's logical 1 -> 0 transition removes one gang."""
+        ctx = self._make_ctx(current_num_replicas=8)
+        ctx.target_num_replicas = 8
+        ctx.config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=8,
+            downscale_delay_s=0,
+            downscale_to_zero_delay_s=0,
+        )
+        policy = GangSchedulingAutoscalingPolicy(
+            _apply_autoscaling_config(lambda _: (0, {})), gang_size=2
+        )
+
+        # The first scale-down preserves one complete gang.
+        decision, ctx.policy_state = policy(ctx)
+        assert decision == 2
+
+        # The next evaluation must interpret that gang as the base policy's
+        # logical single replica, then allow the final transition to zero.
+        ctx.current_num_replicas = decision
+        ctx.target_num_replicas = decision
+        decision, _ = policy(ctx)
+        assert decision == 0
+
     def test_gang_size_one_no_op(self):
         ctx = self._make_ctx(current_num_replicas=3)
         policy = self._make_policy(gang_size=1, inner_result=5)
@@ -1569,6 +1596,33 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
         assert final_state[d2]["counter"] == 5
+
+
+def test_last_decision_total_num_requests_reuses_decision_value():
+    """record_autoscaling_metrics stashes the decision's total; the getter returns it
+    verbatim.
+    """
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=42.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+    )
+    assert st.get_last_decision_total_num_requests() == 42.0
 
 
 if __name__ == "__main__":

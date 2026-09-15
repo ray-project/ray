@@ -43,12 +43,13 @@ class WorkerContext {
   /// or specify both at the same time. Otherwise it will panic.
   ///
   /// \param[in] task_id The task id of the dynamically generated return ID.
-  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// Nil() together with a std::nullopt put_index deduces both from the current
   /// worker context.
   /// \param[in] put_index The equivalent of the return value of
   /// WorkerContext::GetNextPutIndex.
-  /// If std::nullopt is specified, it will deduce the put index from the
-  /// current worker context.
+  /// Both task_id and put_index have to be supplied, or neither: deducing one
+  /// while the caller supplies the other would key the ObjectID to one task
+  /// while drawing the index from another. Mixing them panics.
   ObjectID GetGeneratorReturnId(const TaskID &task_id,
                                 std::optional<ObjectIDIndexType> put_index);
 

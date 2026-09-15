@@ -14,7 +14,7 @@ def get_object_locations(
 
     Args:
         obj_refs: List of object refs.
-        timeout_ms: The maximum amount of time in micro seconds to wait
+        timeout_ms: The maximum amount of time in milliseconds to wait
             before returning. Wait infinitely if it's negative.
 
     Returns:

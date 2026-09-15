@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -43,12 +44,12 @@ from ray.serve._private.test_utils import (
     get_application_url,
     get_application_urls,
     ping_grpc_list_applications,
+    ping_grpc_model_multiplexing,
     send_signal_on_cancellation,
 )
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -59,6 +60,7 @@ from ray.serve.schema import (
     ServeInstanceDetails,
 )
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
+from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
 
 
 @ray.remote
@@ -410,18 +412,14 @@ def test_http_request_id(_skip_if_ff_not_enabled, serve_instance, use_fastapi: b
     assert r.text == "TEST-HEADER" and r.text == r.headers["x-request-id"]
 
 
-def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
-    pytest.skip("TODO: test that sends a MM ID and checks that it's set correctly")
-
-
-def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_instance):
-    """Model multiplexing on the ingress deployment is unsupported with direct ingress.
-
-    The multiplexed model ID is propagated through the proxy, which direct ingress
-    bypasses, so deploying such an app is rejected at build time with a clear error.
-    """
-
-    @serve.deployment(name="multiplexed-ingress")
+@pytest.mark.parametrize(
+    "header_name",
+    [SERVE_MULTIPLEXED_MODEL_ID, SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-")],
+)
+def test_multiplexed_model_id(
+    _skip_if_ff_not_enabled, serve_instance, header_name: str
+):
+    @serve.deployment
     class MultiplexedIngress:
         @serve.multiplexed(max_num_models_per_replica=2)
         async def load_model(self, model_id: str) -> str:
@@ -430,8 +428,23 @@ def test_multiplexing_on_ingress_not_supported(_skip_if_ff_not_enabled, serve_in
         async def __call__(self, request: Request) -> str:
             return await self.load_model(serve.get_multiplexed_model_id())
 
-    with pytest.raises(RayServeException, match="model multiplexing"):
-        serve.run(MultiplexedIngress.bind())
+    serve.run(MultiplexedIngress.bind())
+    response = httpx.get(
+        get_application_url("HTTP", from_proxy_manager=True),
+        headers={header_name: "adapter"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.text == "adapter"
+
+
+def test_grpc_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
+    serve.run(multiplexed_g)
+    for grpc_url in get_application_urls("gRPC", from_proxy_manager=True):
+        channel = grpc.insecure_channel(grpc_url)
+        try:
+            ping_grpc_model_multiplexing(channel, SERVE_DEFAULT_APP_NAME)
+        finally:
+            channel.close()
 
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
@@ -1340,9 +1353,14 @@ def test_port_recovery_on_controller_restart(_skip_if_ff_not_enabled, serve_inst
     wait_for_condition(validate_port_recovery)
 
 
+# These tests deliberately queue up to 1000 requests behind `max_ongoing_requests`,
+# so a request's deadline must cover the whole queue drain, not one request's service.
+BACKPRESSURE_REQUEST_TIMEOUT_S = 60
+
+
 class TestDirectIngressBackpressure:
     def _do_http_request(self, url: str) -> bool:
-        r = httpx.get(url, timeout=10)
+        r = httpx.get(url, timeout=BACKPRESSURE_REQUEST_TIMEOUT_S)
         if r.status_code == 200:
             return True
         elif r.status_code == 503:
@@ -1354,7 +1372,10 @@ class TestDirectIngressBackpressure:
         channel = grpc.insecure_channel(url)
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         try:
-            stub.Method1(serve_pb2.UserDefinedMessage(), timeout=20)
+            stub.Method1(
+                serve_pb2.UserDefinedMessage(),
+                timeout=BACKPRESSURE_REQUEST_TIMEOUT_S,
+            )
             return True
         except grpc.RpcError as e:
             if e.code() == grpc.StatusCode.RESOURCE_EXHAUSTED:
@@ -2553,6 +2574,10 @@ def test_get_serve_instance_details_json_serializable(
                                 "name": "autoscaling_app",
                                 "max_ongoing_requests": 5,
                                 "max_queued_requests": -1,
+                                "backpressure_config": {
+                                    "status_code": 503,
+                                    "retry_after_s": None,
+                                },
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,

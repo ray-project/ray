@@ -14,8 +14,12 @@
 
 #pragma once
 
+#include <cstdint>
+#include <memory>
 #include <string>
 
+#include "ray/common/id.h"
+#include "ray/common/task/task_spec.h"
 #include "ray/observability/ray_event.h"
 #include "ray/observability/task_ray_event_interface.h"
 #include "src/ray/protobuf/public/events_task_definition_event.pb.h"
@@ -33,19 +37,16 @@ template class RayEvent<rpc::events::TaskDefinitionEvent>;
  * spec-carrying status event), so MergeData must never be called; therefore
  * RAY_CHECK fails.
  *
- * TODO(karticam): this proto is built EAGERLY -- the caller passes a fully-populated
- * TaskDefinitionEvent, constructed at task-submission time. The legacy TaskEventBuffer
- * instead deferred definition-proto building to the flush thread, keeping it off the task
- * submission/execution critical path. Building the proto eagerly here might increase
- * latency in the task submission time. Benchmark this and if it regresses, implement lazy
- * serialization. Definition events are the only ones eligible for deferral since they are
- * never merged, so the proto need not exist before the recorder's grouping step.
- * Lifecycle/profile are mergeable and must stay eager.
+ * The event keeps a reference to the task spec and builds the proto when it is
+ * serialized for export, so the conversion stays off the task's call path.
  */
 class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent>,
                                public TaskRayEventInterface {
  public:
-  RayTaskDefinitionEvent(rpc::events::TaskDefinitionEvent data,
+  RayTaskDefinitionEvent(std::shared_ptr<const TaskSpecification> task_spec,
+                         const TaskID &task_id,
+                         const JobID &job_id,
+                         int32_t task_attempt,
                          const std::string &session_name,
                          int64_t timestamp);
 
@@ -56,6 +57,12 @@ class RayTaskDefinitionEvent : public RayEvent<rpc::events::TaskDefinitionEvent>
  protected:
   void MergeData(RayEvent<rpc::events::TaskDefinitionEvent> &&other) override;
   ray::rpc::events::RayEvent SerializeData() && override;
+
+ private:
+  std::shared_ptr<const TaskSpecification> task_spec_;
+  TaskID task_id_;
+  JobID job_id_;
+  int32_t task_attempt_;
 };
 
 }  // namespace observability

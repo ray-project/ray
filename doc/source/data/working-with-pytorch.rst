@@ -1,3 +1,6 @@
+.. meta::
+   :description: Use Ray Data with PyTorch: iterate torch tensors for training, integrate with Ray Train, apply built-in transforms, and migrate off DataLoader.
+
 .. _working_with_pytorch:
 
 Working with PyTorch
@@ -493,7 +496,7 @@ The following table describes how the arguments for PyTorch DataLoader map to Ra
    * - ``drop_last``
      - ``drop_last`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
    * - ``num_workers``
-     - Use ``prefetch_batches`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to indicate how many batches to prefetch. The number of prefetching threads are automatically configured according to ``prefetch_batches``.
+     - Not needed. Ray Data automatically parallelizes reading and transforming data across the cluster, so there's no separate worker pool to configure for :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
    * - ``prefetch_factor``
      - Use ``prefetch_batches`` argument to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to indicate how many batches to prefetch. The number of prefetching threads are automatically configured according to ``prefetch_batches``.
    * - ``pin_memory``

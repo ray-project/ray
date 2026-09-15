@@ -12,3 +12,14 @@ try:
     VLLM_FATAL_ERRORS = (EngineDeadError,)
 except ImportError:
     pass
+
+# vLLM errors caused by the request itself. They derive from ``VLLMError``, not
+# ``ValueError``, so pydantic leaves them alone during request parsing and they would
+# otherwise be reported as 500s.
+VLLM_CLIENT_ERRORS: Tuple[Type[Exception], ...] = ()
+try:
+    from vllm.exceptions import VLLMClientError
+
+    VLLM_CLIENT_ERRORS = (VLLMClientError,)
+except ImportError:
+    pass

@@ -20,12 +20,12 @@ from pydantic import (
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
 from ray._common.runtime_env_uri import parse_uri
+from ray._private.label_utils import validate_label_selector
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
     RequestProtocol,
-    ServeDeployMode,
 )
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
@@ -34,6 +34,8 @@ from ray.serve._private.constants import (
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
+    RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+    RAY_SERVE_TRACING_SAMPLING_RATIO,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -41,6 +43,7 @@ from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -220,6 +223,55 @@ class LoggingConfig(BaseModel):
         return self._compute_hash() == other._compute_hash()
 
 
+@PublicAPI(stability="alpha")
+class TracingConfig(BaseModel):
+    """Tracing config schema for configuring distributed tracing on Serve components.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.schema import TracingConfig
+
+            # Enable tracing with default exporter
+            serve.start(tracing_config=TracingConfig(enabled=True))
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH != "",
+        description=(
+            "Whether tracing is enabled. Defaults to True when the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable is set. "
+            "When enabled, spans will be exported using the configured exporter."
+        ),
+    )
+    exporter_import_path: str = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        description=(
+            "Import path to a custom tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
+            "If empty and tracing is enabled, the default file-based exporter is used."
+        ),
+    )
+    sampling_ratio: float = Field(
+        default_factory=lambda: RAY_SERVE_TRACING_SAMPLING_RATIO,
+        description=(
+            "Sampling ratio for traces (0.0 to 1.0). Defaults to the "
+            "RAY_SERVE_TRACING_SAMPLING_RATIO environment variable (0.01, i.e. 1%)."
+        ),
+    )
+
+    @field_validator("sampling_ratio")
+    @classmethod
+    def validate_sampling_ratio(cls, v):
+        if v < 0.0 or v > 1.0:
+            raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
+        return v
+
+
 @PublicAPI(stability="stable")
 class RayActorOptionsSchema(BaseModel):
     """Options with which to start a replica actor."""
@@ -228,7 +280,7 @@ class RayActorOptionsSchema(BaseModel):
         default={},
         description=(
             "This deployment's runtime_env. working_dir and "
-            "py_modules may contain only remote URIs."
+            "py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     num_cpus: Optional[float] = Field(
@@ -281,6 +333,15 @@ class RayActorOptionsSchema(BaseModel):
         ),
     )
 
+    @field_validator("label_selector")
+    @classmethod
+    def label_selector_is_valid(cls, v):
+        error_message = validate_label_selector(v)
+        if error_message:
+            raise ValueError(error_message)
+
+        return v
+
     @field_validator("runtime_env")
     @classmethod
     def runtime_env_contains_remote_uris(cls, v):
@@ -298,8 +359,9 @@ class RayActorOptionsSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -341,8 +403,18 @@ class DeploymentSchema(BaseModel):
             "Maximum number of requests to this deployment that will be queued at "
             "each caller (proxy or DeploymentHandle). Once this limit is reached, "
             "subsequent requests will raise a BackPressureError (for handles) or "
-            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 "
+            "return an HTTP 503 status code by default (configurable via "
+            "`backpressure_config.status_code`) for HTTP requests. Defaults to -1 "
             "(no limit)."
+        ),
+    )
+    backpressure_config: BackpressureConfig = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Configuration of the HTTP response returned when a request to "
+            "this deployment is rejected due to backpressure "
+            "(`max_queued_requests` exceeded): the status code (503 by "
+            "default, or 429) and an optional `Retry-After` header."
         ),
     )
     user_config: Optional[Dict] = Field(
@@ -532,11 +604,6 @@ class DeploymentSchema(BaseModel):
                         exclude_unset=True
                     )
 
-                min_replicas = autoscaling_config.get("min_replicas")
-                if min_replicas is not None and min_replicas == 0:
-                    raise ValueError(
-                        "Scale to zero isn't supported for gang scheduling."
-                    )
                 for field_name in ["min_replicas", "max_replicas", "initial_replicas"]:
                     val = autoscaling_config.get(field_name)
                     if val is not None and val % gang_config.gang_size != 0:
@@ -666,6 +733,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         name=name,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
+        # Dump to a plain dict (like autoscaling_config below) so the details
+        # API always returns the full, stable shape regardless of which fields
+        # were explicitly set.
+        backpressure_config=info.deployment_config.backpressure_config.model_dump(),
         user_config=info.deployment_config.user_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
@@ -746,7 +817,7 @@ class ServeApplicationSchema(BaseModel):
         description=(
             "The runtime_env that the deployment graph will be run in. "
             "Per-deployment runtime_envs will inherit from this. working_dir "
-            "and py_modules may contain only remote URIs."
+            "and py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     host: str = Field(
@@ -827,8 +898,9 @@ class ServeApplicationSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -1041,6 +1113,10 @@ class ServeDeploySchema(BaseModel):
     logging_config: Optional[LoggingConfig] = Field(
         default=None,
         description="Logging config for configuring serve components logs.",
+    )
+    tracing_config: Optional[TracingConfig] = Field(
+        default=None,
+        description="Tracing config for configuring serve components tracing.",
     )
     applications: List[ServeApplicationSchema] = Field(
         ..., description="The set of applications to run on the Ray cluster."
@@ -1679,6 +1755,47 @@ class ControllerHealthMetrics(BaseModel):
         default=0, description="Number of pending asyncio tasks."
     )
 
+    # Ingestion-path metrics (autoscaling metrics fan-in)
+    handle_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_handle (rolling window, ms)."
+        ),
+    )
+    replica_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_replica (rolling window, ms)."
+        ),
+    )
+    metrics_decompress_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decompress time for cloudpickle metric reports "
+            "(rolling window, ms)."
+        ),
+    )
+    handle_reports_received: int = Field(
+        default=0, description="Total handle metric reports ingested since start."
+    )
+    replica_reports_received: int = Field(
+        default=0, description="Total replica metric reports ingested since start."
+    )
+    ingest_reports_received: int = Field(
+        default=0,
+        description="Total autoscaling metric reports ingested since start.",
+    )
+    ingest_cpu_fraction: float = Field(
+        default=0.0,
+        description=(
+            "Fraction of one event-loop core consumed by the metrics ingestion "
+            "path over the recent sampling window. Approaches 1.0 as ingestion "
+            "monopolizes the single control-loop thread."
+        ),
+    )
+
     # Component update durations (rolling window stats)
     deployment_state_update_duration_s: Optional[DurationStats] = Field(
         default=None,
@@ -1754,13 +1871,6 @@ class ServeInstanceDetails(BaseModel):
             "Mapping from node_id to details about the Proxy running on that node."
         )
     )
-    deploy_mode: ServeDeployMode = Field(
-        default=ServeDeployMode.MULTI_APP,
-        description=(
-            "[DEPRECATED]: single-app configs are removed, so this is always "
-            "MULTI_APP. This field will be removed in a future release."
-        ),
-    )
     applications: Dict[str, ApplicationDetails] = Field(
         description="Details about all live applications running on the cluster."
     )
@@ -1787,7 +1897,6 @@ class ServeInstanceDetails(BaseModel):
         """
 
         return {
-            "deploy_mode": "MULTI_APP",
             "controller_info": {},
             "proxies": {},
             "applications": {},

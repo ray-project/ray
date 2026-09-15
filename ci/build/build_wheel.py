@@ -68,6 +68,7 @@ class BuildConfig:
             "IS_LOCAL_BUILD": "true",
             "RAY_JAVA_IMAGE": java_image,
             "RAY_DASHBOARD_IMAGE": dashboard_image,
+            "WHEEL_NAME_SUFFIX": "",
         }
 
     @classmethod

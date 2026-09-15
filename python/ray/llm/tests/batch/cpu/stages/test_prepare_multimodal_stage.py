@@ -1,10 +1,36 @@
 import sys
 
 import pytest
+import torch
 
 from ray.llm._internal.batch.stages.prepare_multimodal_stage import (
     PrepareMultimodalUDF,
 )
+
+
+@pytest.mark.parametrize(
+    ("model_config_kwargs", "expected_dtype"),
+    [
+        ({"model": "Qwen/Qwen2.5-VL-3B-Instruct"}, torch.float32),
+        ({"model": "Qwen/Qwen2.5-VL-3B-Instruct", "dtype": None}, torch.float32),
+        ({"model": "Qwen/Qwen2.5-VL-3B-Instruct", "dtype": "auto"}, torch.float32),
+        (
+            {"model": "Qwen/Qwen2.5-VL-3B-Instruct", "dtype": "bfloat16"},
+            torch.bfloat16,
+        ),
+    ],
+)
+def test_prepare_multimodal_udf_uses_cpu_safe_model_config_dtype(
+    model_config_kwargs, expected_dtype
+):
+    udf = PrepareMultimodalUDF(
+        data_column="__data",
+        expected_input_keys=["messages"],
+        model_config_kwargs=model_config_kwargs,
+        chat_template_content_format="string",
+    )
+
+    assert udf.model_config.dtype == expected_dtype
 
 
 @pytest.mark.asyncio

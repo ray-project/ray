@@ -84,13 +84,16 @@ class MockEventAggregatorAddEvents
 class TaskEventBufferTest : public ::testing::Test {
  public:
   TaskEventBufferTest() {
+    // The buffer records only while one of its destinations is enabled, so name one
+    // here to exercise the ring.
     RayConfig::instance().initialize(
         R"(
 {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_status_events_buffer_on_worker": 100,
   "task_events_send_batch_size": 100,
-  "task_events_shutdown_flush_timeout_ms": 100
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_core_worker_task_event_to_gcs": true
 }
   )");
 
@@ -460,6 +463,36 @@ TEST_F(TaskEventBufferTest, TestAddEvents) {
   // Test add profile events
   task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id_1, 1));
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 2);
+}
+
+// Buffer configured with no destination live (GCS, aggregator and export all off, and the
+// recorder disabled). The buffer should short-circuit and record nothing.
+class TaskEventBufferTestNoDestination : public TaskEventBufferTest {
+ public:
+  TaskEventBufferTestNoDestination() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 100,
+  "task_events_send_batch_size": 100,
+  "task_events_shutdown_flush_timeout_ms": 100,
+  "enable_ray_task_event_recorder": false,
+  "enable_core_worker_task_event_to_gcs": false,
+  "enable_core_worker_ray_event_to_aggregator": false
+}
+  )");
+  }
+};
+
+TEST_F(TaskEventBufferTestNoDestination, TestNoRecordingWhenNoDestination) {
+  ASSERT_FALSE(task_event_buffer_->Enabled());
+
+  auto task_id = RandomTaskId();
+  task_event_buffer_->AddTaskEvent(GenStatusTaskEvent(task_id, 0));
+  task_event_buffer_->AddTaskEvent(GenProfileTaskEvent(task_id, 1));
+
+  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
 TEST_P(TaskEventBufferTestDifferentDestination, TestFlushEvents) {
@@ -1736,29 +1769,25 @@ INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestBatchSendDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestDroppedAttemptsOnly,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 INSTANTIATE_TEST_SUITE_P(TaskEventBufferTest,
                          TaskEventBufferTestLimitBufferDifferentDestination,
                          ::testing::Values(DifferentDestination{true, true},
                                            DifferentDestination{true, false},
-                                           DifferentDestination{false, true},
-                                           DifferentDestination{false, false}));
+                                           DifferentDestination{false, true}));
 
 }  // namespace worker
 

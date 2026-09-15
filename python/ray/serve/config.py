@@ -4,7 +4,7 @@ import logging
 import warnings
 from enum import Enum
 from functools import cached_property
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from pydantic import (
     BaseModel,
@@ -61,6 +61,10 @@ class AutoscalingContext:
     Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
     You can pass callables that will be evaluated only when accessed, with results
     cached for subsequent accesses.
+
+    Note: total_num_requests and total_queued_requests are both aggregated over
+    `look_back_period_s` using the deployment's `aggregation_function`, so under `min`
+    or `max` they report the window trough or peak rather than the current value.
     """
 
     def __init__(
@@ -112,10 +116,10 @@ class AutoscalingContext:
 
         # Built-in metrics
         self._total_num_requests_value = (
-            total_num_requests  #: Total number of requests across all replicas.
+            total_num_requests  #: Ongoing (running + queued) requests.
         )
         self._total_queued_requests_value = (
-            total_queued_requests  #: Number of requests currently queued.
+            total_queued_requests  #: Requests queued at handles.
         )
 
         # Custom metrics - store potentially lazy callables privately
@@ -172,9 +176,9 @@ class AutoscalingContext:
 
     @property
     def total_running_requests(self) -> float:
-        # NOTE: for non-additive aggregation functions, total_running_requests is not
-        # accurate, consider this is an approximation.
-        return self.total_num_requests - self.total_queued_requests
+        # Approximate: the two operands are reduced over independently derived windows,
+        # so their difference can even go negative. Clamped until they share one window.
+        return max(0.0, self.total_num_requests - self.total_queued_requests)
 
     @property
     def total_pending_async_requests(self) -> int:
@@ -550,6 +554,49 @@ class AutoscalingPolicy(BaseModel):
             ) from e
         self._cached_policy = policy
         return policy
+
+
+@PublicAPI(stability="alpha")
+class BackpressureConfig(BaseModel):
+    """Config for the HTTP response returned on backpressure rejections.
+
+    When a deployment's ``max_queued_requests`` limit is reached, additional
+    requests are rejected. This class configures the HTTP response for those
+    rejections; requests rejected because the deployment is unavailable
+    (e.g., it failed to deploy) always return 503. The gRPC path is
+    unaffected: backpressure rejections always map to ``RESOURCE_EXHAUSTED``.
+
+    Example:
+
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.config import BackpressureConfig
+
+            @serve.deployment(
+                max_queued_requests=64,
+                backpressure_config=BackpressureConfig(
+                    status_code=429,
+                    retry_after_s=5,
+                ),
+            )
+            class Deployment:
+                ...
+
+    Args:
+        status_code: HTTP status code returned for requests rejected due to
+            backpressure. Must be 503 (default) or 429.
+        retry_after_s: If set, rejected HTTP responses include a
+            `Retry-After` header with this value (rounded up to an integer
+            number of seconds). Defaults to None (no header).
+    """
+
+    # Reject unknown keys so typos (e.g. `retry_after` instead of
+    # `retry_after_s`) fail at config parse time instead of being dropped.
+    model_config = ConfigDict(extra="forbid")
+
+    status_code: Literal[503, 429] = 503
+    retry_after_s: Optional[NonNegativeFloat] = Field(default=None, allow_inf_nan=False)
 
 
 @PublicAPI(stability="stable")

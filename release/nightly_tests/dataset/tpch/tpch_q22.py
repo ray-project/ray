@@ -6,6 +6,7 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        join_num_partitions = 200
         # Q22: Global Sales Opportunity Query
         # Identify geographic areas where there are customers who may be
         # likely to make a purchase (above-average balance, no existing orders).
@@ -68,7 +69,7 @@ def main(args):
         custsale = custsale.join(
             orders,
             join_type="left_anti",
-            num_partitions=16,
+            num_partitions=join_num_partitions,
             on=("c_custkey",),
             right_on=("o_custkey",),
         )

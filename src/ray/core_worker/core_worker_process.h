@@ -16,6 +16,7 @@
 
 #include <boost/thread.hpp>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "ray/asio/asio_util.h"
@@ -95,6 +96,13 @@ class CoreWorkerProcess {
   /// \return The `CoreWorker` instance.
   static std::shared_ptr<CoreWorker> TryGetWorker();
 
+  /// Whether a running task has been marked for cancellation and should be interrupted.
+  /// Empty once the core worker is gone, so that background threads polling during
+  /// shutdown can tell that case apart in one read instead of exiting the process the way
+  /// GetCoreWorker() does. No reference to the CoreWorker escapes, which keeps a caller
+  /// from becoming its last owner.
+  static std::optional<bool> ShouldInterruptTaskForCancellation();
+
   /// Whether the current process has been initialized for core worker.
   static bool IsInitialized();
 
@@ -136,6 +144,9 @@ class CoreWorkerProcessImpl {
 
   /// Try to get core worker. Returns nullptr if core worker doesn't exist.
   std::shared_ptr<CoreWorker> TryGetCoreWorker() const;
+
+  /// Whether a running task should be interrupted. Empty if core worker doesn't exist.
+  std::optional<bool> ShouldInterruptTaskForCancellation() const;
 
   std::shared_ptr<CoreWorker> CreateCoreWorker(CoreWorkerOptions options,
                                                const WorkerID &worker_id);

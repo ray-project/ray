@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve a Stable Diffusion model on GKE TPUs with RayService, from TPU node pool creation to text-to-image prompts."
+---
+
 (kuberay-tpu-stable-diffusion-example)=
 
 # Serve a Stable Diffusion model on GKE with TPUs
@@ -21,7 +27,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 
 KubeRay operator v1.1.0 adds a new `NumOfHosts` field to the RayCluster CR, supporting multi-host worker groups. This field specifies the number of workers to create per replica, with each replica representing a multi-host Pod slice. The value for `NumOfHosts` should match the number of TPU VM hosts that the given `cloud.google.com/gke-tpu-topology` node selector expects. For this example, the Stable Diffusion model is small enough to run on a single TPU host, so `numOfHosts` is set to 1 in the RayService manifest.
 
-## Step 4: View the Serve deployment in the Ray Dashboard
+## Step 4: View the Serve deployment in the Ray dashboard
 
 Verify that you deployed the RayService CR and it's running:
 
@@ -32,13 +38,13 @@ kubectl get rayservice
 # stable-diffusion-tpu-serve-svc   Running          2
 ```
 
-Port-forward the Ray Dashboard from the Ray head service. To view the dashboard, open http://localhost:8265/ on your local machine.
+Port-forward the Ray dashboard from the Ray head service. To view the dashboard, open http://localhost:8265/ on your local machine.
 
 ```sh
 kubectl port-forward svc/stable-diffusion-tpu-head-svc 8265:8265 &
 ```
 
-Monitor the status of the RayService CR in the Ray Dashboard from the 'Serve' tab. The installed RayService CR should create a running app with the name 'stable_diffusion'. The app should have two deployments, the API ingress, which receives input prompts, and the Stable Diffusion model server.
+Monitor the status of the RayService CR in the Ray dashboard from the 'Serve' tab. The installed RayService CR should create a running app with the name 'stable_diffusion'. The app should have two deployments, the API ingress, which receives input prompts, and the Stable Diffusion model server.
 
 ![serve_dashboard](../images/serve_dashboard.png)
 

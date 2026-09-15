@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Create a GKE cluster with TPU node pools for KubeRay, including manual install of the TPU webhook."
+---
+
 (kuberay-gke-tpu-cluster-setup)=
 
 # Start Google Cloud GKE Cluster with TPUs for KubeRay
@@ -78,13 +84,13 @@ The remote GKE cluster is now reachable through `kubectl`. For more details, see
 
 ### [Optional] Manually install KubeRay and the TPU webhook in a GKE cluster without the Ray Operator Addon:
 
-In a cluster without the Ray Operator Addon enabled, KubeRay can be manually installed using [helm](https://ray-project.github.io/kuberay/deploy/helm/) with the following commands:
+In a cluster without the Ray Operator Addon enabled, KubeRay can be manually installed using Helm with the following commands. See {ref}`KubeRay Operator Installation <kuberay-operator-deploy>` for the full installation guide.
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 
-# Install both CRDs and KubeRay operator v1.6.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.6.0
+# Install both CRDs and KubeRay operator v1.7.0.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 ```
 
 GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.

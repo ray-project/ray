@@ -354,6 +354,19 @@ def _get_autoscaling_config_with_options() -> dict:
     return config
 
 
+def _get_ray_cr_with_worker_group_priority() -> dict:
+    """CR with a `priority` field set on a worker group."""
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][1]["priority"] = 10
+    return cr
+
+
+def _get_autoscaling_config_with_worker_group_priority() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["gpu-group"]["priority"] = 10
+    return config
+
+
 def _get_tpu_group_with_no_node_selectors() -> dict[str, Any]:
     cr = get_basic_ray_cr()
     tpu_group = cr["spec"]["workerGroupSpecs"][2]
@@ -487,6 +500,14 @@ TEST_DATA = (
             None,
             None,
             id="autoscaler-options",
+        ),
+        pytest.param(
+            _get_ray_cr_with_worker_group_priority(),
+            _get_autoscaling_config_with_worker_group_priority(),
+            None,
+            None,
+            None,
+            id="worker-group-priority",
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),

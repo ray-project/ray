@@ -8,6 +8,7 @@ import ray._private.ray_constants as ray_constants
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
 from ray._private.accelerators import AcceleratorManager
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
+from ray._private.test_utils import mock_accelerator_detection, mock_no_accelerators
 
 
 class FakeAcceleratorManager(AcceleratorManager):
@@ -68,7 +69,8 @@ def test_resource_and_label_spec_resolves_with_params():
         labels={"ray.io/market-type": "spot"},
     )
 
-    spec.resolve(is_head=False)
+    with mock_accelerator_detection(FakeAcceleratorManager("TPU", "TPU-V4", 42)):
+        spec.resolve(is_head=False)
 
     # Verify that explicit Ray Params values are preserved.
     assert spec.num_cpus == 8
@@ -97,7 +99,8 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
     )  # 4GB
 
     spec = ResourceAndLabelSpec()
-    spec.resolve(is_head=True)
+    with mock_no_accelerators():
+        spec.resolve(is_head=True)
 
     assert spec.resolved()
 
@@ -145,7 +148,8 @@ def test_env_resource_overrides_with_conflict(monkeypatch):
         labels={},
     )
 
-    spec.resolve(is_head=True)
+    with mock_accelerator_detection(FakeAcceleratorManager("TPU", "TPU-V4", 4)):
+        spec.resolve(is_head=True)
 
     # Environment overrides values take precedence after resolve
     assert spec.num_cpus == 8
@@ -164,14 +168,31 @@ def test_to_resource_dict_with_invalid_types():
         resources={"INVALID": -5},  # Invalid
         labels={},
     )
-    spec.resolve(is_head=True, node_ip_address="127.0.0.1")
+    with mock_no_accelerators():
+        spec.resolve(is_head=True, node_ip_address="127.0.0.1")
     with pytest.raises(ValueError):
         spec.to_resource_dict()
+
+
+def _patch_swap_total(monkeypatch, swap_bytes: int) -> None:
+    """Pin the cgroup-aware swap total so tests don't depend on host swap."""
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory",
+        lambda: (swap_bytes, 0),
+    )
+
+
+def _enable_count_swap_flag(monkeypatch, enabled: bool) -> None:
+    """Override the module-level flag (read once at import time)."""
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec._COUNT_SWAP_IN_MEMORY_MONITOR", enabled
+    )
 
 
 def test_resolve_memory_resources(monkeypatch):
     """Validate that resolve correctly sets system object_store memory and
     raises ValueError when configured memory is too low."""
+    _patch_swap_total(monkeypatch, 0)
     # object_store_memory capped at 95% of shm size to avoid low performance.
     monkeypatch.setattr(
         "ray._common.utils.get_system_memory", lambda: 2 * 1024**3
@@ -184,7 +205,8 @@ def test_resolve_memory_resources(monkeypatch):
     )  # 512 MB
 
     spec1 = ResourceAndLabelSpec()
-    spec1.resolve(is_head=False)
+    with mock_no_accelerators():
+        spec1.resolve(is_head=False)
 
     max_shm = 512 * 1024**2 * 0.95
     assert spec1.object_store_memory <= max_shm
@@ -202,8 +224,134 @@ def test_resolve_memory_resources(monkeypatch):
     )  # 50 MB
 
     spec2 = ResourceAndLabelSpec()
-    with pytest.raises(ValueError, match="available for tasks and actors"):
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ), pytest.raises(ValueError, match="available for tasks and actors"):
         spec2.resolve(is_head=False)
+
+
+@pytest.mark.parametrize(
+    "swap_bytes",
+    [0, 512 * 1024**2, 4 * 1024**3],
+)
+def test_resolve_memory_includes_swap_when_flag_enabled(
+    monkeypatch, swap_bytes: int
+) -> None:
+    """With RAY_count_swap_in_memory_monitor=1, the auto-computed `memory`
+    resource includes host swap so `ray status` matches the OOM killer's view."""
+    _enable_count_swap_flag(monkeypatch, True)
+    _patch_swap_total(monkeypatch, swap_bytes)
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    available = 4 * 1024**3
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: available
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    spec.resolve(is_head=False)
+
+    assert spec.memory == available + swap_bytes - spec.object_store_memory
+
+
+def test_resolve_memory_ignores_swap_when_flag_disabled(monkeypatch) -> None:
+    """Default behavior: swap must NOT inflate the `memory` resource. This is
+    the pre-existing contract; flipping it silently would change scheduling
+    behavior on every existing deployment."""
+    _enable_count_swap_flag(monkeypatch, False)
+    _patch_swap_total(monkeypatch, 4 * 1024**3)
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    available = 4 * 1024**3
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: available
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    spec.resolve(is_head=False)
+
+    assert spec.memory == available - spec.object_store_memory
+
+
+def test_resolve_memory_skips_swap_when_memory_explicitly_set(monkeypatch) -> None:
+    """If the user passes --memory explicitly, swap must NOT be added on top
+    regardless of the flag."""
+    _enable_count_swap_flag(monkeypatch, True)
+    _patch_swap_total(monkeypatch, 4 * 1024**3)
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: 4 * 1024**3
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    user_memory = 2 * 1024**3
+    spec = ResourceAndLabelSpec(memory=user_memory)
+    spec.resolve(is_head=False)
+
+    assert spec.memory == user_memory
+
+
+def test_resolve_memory_raises_on_swap_lookup_failure(monkeypatch) -> None:
+    """If the operator opted into swap accounting and the lookup raises (e.g.
+    psutil unsupported on the platform), startup must fail fast rather than
+    silently degrade to "swap disabled". Swallowing here masks a real
+    misconfiguration."""
+    _enable_count_swap_flag(monkeypatch, True)
+
+    def _raise(*_args, **_kwargs):
+        raise OSError("swap unavailable")
+
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory", _raise
+    )
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: 4 * 1024**3
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    with pytest.raises(OSError, match="swap unavailable"):
+        spec.resolve(is_head=False)
+
+
+def test_resolve_memory_does_not_call_swap_when_flag_disabled(monkeypatch) -> None:
+    """Even if get_cgroup_aware_swap_memory would raise, it must not be called
+    when the flag is off — otherwise the default-off path could regress to a
+    crash on any platform where psutil swap support is missing."""
+    _enable_count_swap_flag(monkeypatch, False)
+    called = []
+
+    def _raise(*_args, **_kwargs):
+        called.append(True)
+        raise OSError("should not be called")
+
+    monkeypatch.setattr(
+        "ray._private.resource_and_label_spec.get_cgroup_aware_swap_memory", _raise
+    )
+    monkeypatch.setattr("ray._common.utils.get_system_memory", lambda: 8 * 1024**3)
+    available = 4 * 1024**3
+    monkeypatch.setattr(
+        "ray._private.utils.estimate_available_memory", lambda: available
+    )
+    monkeypatch.setattr(
+        "ray._private.utils.get_shared_memory_bytes", lambda: 1 * 1024**3
+    )
+
+    spec = ResourceAndLabelSpec()
+    spec.resolve(is_head=False)
+
+    assert not called
+    assert spec.memory == available - spec.object_store_memory
 
 
 def test_resolve_raises_on_reserved_head_resource():
@@ -217,10 +365,7 @@ def test_resolve_handles_no_accelerators():
     """Check resolve() is able to handle the no accelerators detected case."""
     spec = ResourceAndLabelSpec()
     # No accelerators are returned.
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=[],
-    ):
+    with mock_no_accelerators():
         spec.resolve(is_head=False, node_ip_address="test")
 
     # With no accelerators detected or num_gpus, GPU count should default to 0
@@ -237,7 +382,8 @@ def test_label_spec_resolve_merged_env_labels(monkeypatch):
         ray_constants.LABELS_ENVIRONMENT_VARIABLE, json.dumps(override_labels)
     )
     spec = ResourceAndLabelSpec()
-    spec.resolve(is_head=True)
+    with mock_no_accelerators():
+        spec.resolve(is_head=True)
 
     assert any(key == "autoscaler-override-label" for key in spec.labels)
 
@@ -254,13 +400,7 @@ def test_merge_labels_populates_defaults(monkeypatch):
     spec = ResourceAndLabelSpec()
 
     # AcceleratorManager for node with 1 GPU
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager("GPU", "A100", 1),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("GPU", "A100", 1)):
         spec.resolve(is_head=False)
 
     # Verify all default labels are present
@@ -277,14 +417,8 @@ def test_resolve_raises_if_exceeds_visible_devices():
     spec = ResourceAndLabelSpec()
     spec.num_gpus = 3  # request 3 GPUs
 
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager(
-            "GPU", "A100", num_accelerators=5, visible_ids=2
-        ),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
+    with mock_accelerator_detection(
+        FakeAcceleratorManager("GPU", "A100", num_accelerators=5, visible_ids=2)
     ):
         with pytest.raises(ValueError, match="Attempting to start raylet"):
             spec.resolve(is_head=False)
@@ -295,13 +429,7 @@ def test_resolve_sets_accelerator_resources():
     spec = ResourceAndLabelSpec()
 
     # Mock a node with GPUs with 4 visible IDs
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager("GPU", "A100", 4),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("GPU", "A100", 4)):
         spec.resolve(is_head=False)
 
     assert spec.num_gpus == 4
@@ -313,13 +441,7 @@ def test_respect_configured_num_gpus():
     # Create a ResourceAndLabelSpec with num_gpus=2 from Ray Params.
     spec = ResourceAndLabelSpec(num_gpus=2)
     # Mock a node with GPUs with 4 visible IDs
-    with patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=FakeAcceleratorManager("GPU", "A100", 4),
-    ), patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["GPU"],
-    ):
+    with mock_accelerator_detection(FakeAcceleratorManager("GPU", "A100", 4)):
         spec.resolve(is_head=False)
 
     assert spec.num_gpus == 2, (

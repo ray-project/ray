@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Ray inside Jupyter Notebook and JupyterLab, covering notebook setup and connecting to an existing cluster.
+
 Working with Jupyter Notebooks & JupyterLab
 ===========================================
 
@@ -52,7 +55,7 @@ CLI’s such as ``ray exec`` and ``ray submit`` fit the second use case better.
 
 4. Forward the ports.
 Assuming the Notebook runs on an EC2 instance,
-you should forward both the Notebook port and the Ray Dashboard port.
+you should forward both the Notebook port and the Ray dashboard port.
 The default ports are 8888 and 8265 respectively.
 They will increase if the default ones are not available.
 You can forward them with the following (run from bash/zsh):

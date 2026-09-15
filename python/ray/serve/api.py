@@ -41,6 +41,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -63,7 +64,12 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+    TracingConfig,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -78,6 +84,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ):
@@ -104,6 +111,9 @@ def start(
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        tracing_config: Tracing config for distributed tracing. Can be passed as
+            a dictionary or a ``TracingConfig`` instance. See ``TracingConfig``
+            for supported options.
         controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
           Currently scoped to a strictly-validated ``runtime_env.env_vars``
           (other ``runtime_env`` keys are rejected). See
@@ -118,6 +128,7 @@ def start(
         proxy_location=proxy_location,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        global_tracing_config=tracing_config,
         controller_options=controller_options,
         **kwargs,
     )
@@ -523,6 +534,7 @@ def deployment(
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -558,7 +570,9 @@ def deployment(
     Args:
         _func_or_class: The class or function to be decorated.
         name: Name uniquely identifying this deployment within the application.
-            If not provided, the name of the class or function is used.
+            If not provided, the name of the class or function is used. The name
+            must not contain the `#` character, which Serve reserves as the
+            replica ID delimiter; passing one raises a ValueError.
         version: Removed. Specifying this argument raises a ValueError.
         num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.
@@ -590,8 +604,15 @@ def deployment(
         max_queued_requests: Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
-            BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
-            requests). Defaults to -1 (no limit).
+            BackPressureError (for handles) or return an HTTP 503 status code by
+            default (configurable via `backpressure_config.status_code`) for HTTP
+            requests. Defaults to -1 (no limit).
+        backpressure_config: Configuration of the HTTP response returned for
+            requests rejected due to backpressure (`max_queued_requests`
+            exceeded): the status code (503 by default, or 429) and an optional
+            `Retry-After` header. Requests rejected because the deployment is
+            unavailable (e.g., it failed to deploy) always return 503. See
+            `BackpressureConfig` for options.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
@@ -691,6 +712,7 @@ def deployment(
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
+        backpressure_config=backpressure_config,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,

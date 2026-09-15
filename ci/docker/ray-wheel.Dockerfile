@@ -22,6 +22,15 @@ FROM ${RAY_DASHBOARD_IMAGE} AS ray-dashboard
 # Main build stage - manylinux2014 provides GLIBC 2.17
 FROM ${MANYLINUX_IMAGE} AS builder
 
+# Where pip resolves from while building the wheel. This stage builds FROM the upstream
+# manylinux image, so it inherits nothing from the CI image roots, and a docker build
+# cannot see an index configured in the step's environment -- BuildKit RUN steps inherit
+# nothing from it. So it arrives as a build arg, which wanda resolves from
+# RAYCI_IMAGE_PIP_INDEX_URL in the job environment. Empty outside CI, and then this is
+# the index pip would have used anyway.
+ARG RAYCI_IMAGE_PIP_INDEX_URL=""
+ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
+
 ARG PYTHON_VERSION=3.10
 ARG BUILDKITE_COMMIT
 

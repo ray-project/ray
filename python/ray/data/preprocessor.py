@@ -350,16 +350,12 @@ class Preprocessor(abc.ABC):
     def _transform_batch(self, data: "DataBatchType") -> "DataBatchType":
         import numpy as np
         import pandas as pd
+        import pyarrow
 
         from ray.data.util.data_batch_conversion import (
             _convert_batch_type_to_numpy,
             _convert_batch_type_to_pandas,
         )
-
-        try:
-            import pyarrow
-        except ImportError:
-            pyarrow = None
 
         if not isinstance(
             data, (pd.DataFrame, pyarrow.Table, collections.abc.Mapping, np.ndarray)

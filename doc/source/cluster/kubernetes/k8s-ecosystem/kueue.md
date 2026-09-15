@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Integrate KubeRay with Kueue for gang scheduling, priority scheduling, and autoscaling across the KubeRay CRDs."
+---
+
 (kuberay-kueue)=
 # Gang scheduling, Priority scheduling, and Autoscaling for KubeRay CRDs with Kueue
 
@@ -593,7 +599,7 @@ spec:
         import_path: fruit.deployment_graph
         route_prefix: /fruit
         runtime_env:
-          working_dir: "https://github.com/ray-project/test_dag/archive/78b4a5da38796123d9f9ffff59bab2792a043e95.zip"
+          working_dir: "https://github.com/ray-project/test_dag/archive/e58e12a051b484b3ce5988685a91d4d0dbc4c1c2.zip"
         deployments:
           - name: MangoStand
             num_replicas: 2
@@ -622,7 +628,7 @@ spec:
         import_path: conditional_dag.serve_dag
         route_prefix: /calc
         runtime_env:
-          working_dir: "https://github.com/ray-project/test_dag/archive/78b4a5da38796123d9f9ffff59bab2792a043e95.zip"
+          working_dir: "https://github.com/ray-project/test_dag/archive/e58e12a051b484b3ce5988685a91d4d0dbc4c1c2.zip"
         deployments:
           - name: Adder
             num_replicas: 1

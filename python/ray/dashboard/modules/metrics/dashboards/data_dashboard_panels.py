@@ -431,6 +431,21 @@ FAILED_TASKS_PANEL = Panel(
     stack=False,
 )
 
+MAX_USS_PER_TASK_PANEL = Panel(
+    id=91,
+    title="Max Task USS Memory per Operator",
+    description="Maximum unique set size (USS) memory usage in bytes among completed tasks for each operator.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='max(ray_data_max_uss_bytes_max{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Max Task USS: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     id=46,
     title="Task Throughput (by Node)",
@@ -459,6 +474,44 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     ],
     fill=0,
     stack=False,
+)
+
+BLOCK_TRANSFORM_TIME_PANEL = Panel(
+    id=126,
+    title="Block Transform Time",
+    description="Average time (in seconds) a map, read, or write operator spent transforming data per output block over a recent 5-minute window. This covers the whole transform chain: forming the batches or rows the operator's stages consume, running the stage bodies, and building the output blocks. Block Generation Time measures the same blocks as wall clock over everything between them, so it is always the larger of the two and the gap is Ray Data's own per-block work rather than yours. Neither includes the object store write, which ray_data_block_serialization_time_s reports. Only map, read, and write operators report this; shuffles and aggregations don't.",
+    unit="s",
+    targets=[
+        Target(
+            expr='increase(ray_data_block_transform_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Block Transform Time: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL = Panel(
+    id=127,
+    title="Block Transform Time by Phase",
+    description="The Block Transform Time panel broken into the three phases that sum to it, averaged per output block over a recent 5-minute window. Input prep is turning input blocks into the batches or rows your functions receive; Function body is the stage bodies themselves, both yours and the ones Ray Data supplies; Output block build is assembling what they return back into blocks. This panel is empty for row-based transforms such as map and filter unless DataContext.accurate_map_phase_timing is set, because timing each row individually costs more than the breakdown reports; the Block Transform Time panel still plots the total.",
+    unit="s",
+    targets=[
+        Target(
+            expr='increase(ray_data_input_prep_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Input Prep: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='increase(ray_data_function_body_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Function Body: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='increase(ray_data_output_build_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Output Block Build: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=10,
+    stack=True,
 )
 
 TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
@@ -1462,6 +1515,8 @@ DATA_GRAFANA_ROWS = [
             AVERAGE_BYTES_PER_BLOCK_PANEL,
             AVERAGE_BLOCKS_PER_TASK_PANEL,
             BLOCK_GENERATION_TIME_PANEL,
+            BLOCK_TRANSFORM_TIME_PANEL,
+            BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL,
         ],
         collapsed=True,
     ),
@@ -1479,6 +1534,7 @@ DATA_GRAFANA_ROWS = [
             TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
             TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
             TASK_SUBMISSION_BACKPRESSURE_PANEL,
+            MAX_USS_PER_TASK_PANEL,
             TASK_THROUGHPUT_BY_NODE_PANEL,
             TASKS_WITH_OUTPUT_PANEL,
             SUBMITTED_TASKS_PANEL,

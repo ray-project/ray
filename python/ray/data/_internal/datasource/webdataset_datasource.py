@@ -18,6 +18,9 @@ ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
     "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
 )
 
+# Number of samples accumulated into each emitted DataFrame block.
+WEBDATASET_READ_CHUNK_SIZE = 512
+
 
 if TYPE_CHECKING:
     import pyarrow
@@ -159,6 +162,14 @@ def _group_by_keys(
 ) -> Iterator[Dict[str, Any]]:
     """Return function over iterator that groups key, value pairs into samples.
 
+    The WebDataset specification requires entries that share a sample key to be
+    contiguous in the tar archive. This function relies on that invariant: it
+    flushes the in-progress sample whenever the key changes. If a key is seen
+    again after its run has ended, the resulting samples would be silently
+    fragmented (e.g. `001.jpg, 002.jpg, 001.txt` would yield three partial
+    samples instead of two complete ones), so we detect that case and raise a
+    clear, actionable error. See GH #44068.
+
     Args:
         data: iterator over key, value pairs
         keys: function that returns key, suffix for a given key
@@ -171,6 +182,7 @@ def _group_by_keys(
     """
     meta = meta or {}
     current_sample = None
+    seen_keys: set = set()
     for filesample in data:
         assert isinstance(filesample, dict)
         fname, value = filesample["fname"], filesample["data"]
@@ -178,9 +190,27 @@ def _group_by_keys(
         if prefix is None:
             continue
         if current_sample is None or prefix != current_sample["__key__"]:
-            if _valid_sample(current_sample):
-                current_sample.update(meta)
-                yield current_sample
+            if current_sample is not None:
+                # Capture the key before yielding: the consumer (which may
+                # include user-provided decoders) could mutate or clear the
+                # dict before this generator resumes, which would otherwise
+                # KeyError on `current_sample["__key__"]` below.
+                last_key = current_sample["__key__"]
+                if _valid_sample(current_sample):
+                    current_sample.update(meta)
+                    yield current_sample
+                seen_keys.add(last_key)
+            if prefix in seen_keys:
+                raise ValueError(
+                    f"WebDataset tar entries for key '{prefix}' are not "
+                    f"contiguous in the archive (tar is "
+                    f"{meta.get('__url__')}). `read_webdataset` requires "
+                    "files sharing a sample key (the base name before the "
+                    "first '.') to be adjacent in the tar, per the "
+                    "WebDataset specification. Re-create the archive with "
+                    "entries sorted by name, e.g. via `tar --sort=name ...` "
+                    "or `find ... | sort | tar -T - ...`."
+                )
             current_sample = dict(__key__=prefix)
             if "__url__" in filesample:
                 current_sample["__url__"] = filesample["__url__"]
@@ -416,6 +446,10 @@ class WebDatasetDatasource(FileBasedDatasource):
         default_decoder = partial(
             _default_decoder, allow_unsafe=self._allow_unsafe_deserialization
         )
+
+        # Accumulate samples into chunks.
+        rows = []
+
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=default_decoder)
@@ -434,9 +468,15 @@ class WebDatasetDatasource(FileBasedDatasource):
                     if k not in sample:
                         sample[k] = []
                     sample[k].append(v)
-            yield pd.DataFrame(
+            rows.append(
                 {
-                    k: v if isinstance(v, list) and len(v) == 1 else [v]
+                    k: v[0] if isinstance(v, list) and len(v) == 1 else v
                     for k, v in sample.items()
                 }
             )
+            if len(rows) >= WEBDATASET_READ_CHUNK_SIZE:
+                yield pd.DataFrame.from_records(rows)
+                rows = []
+
+        if len(rows) > 0:
+            yield pd.DataFrame.from_records(rows)

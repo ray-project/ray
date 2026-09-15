@@ -1,3 +1,6 @@
+.. meta::
+   :description: Create and register a custom collective communication backend for Ray, with driver-managed and worker-managed group initialization.
+
 .. _ray-collective-custom-backend:
 
 Custom Collective Backends

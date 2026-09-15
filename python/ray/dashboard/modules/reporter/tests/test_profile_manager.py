@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import ray
+from ray._private import ray_constants
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
@@ -264,6 +265,104 @@ class TestTraceDump:
         # By default the `--subprocesses` flag should be absent.
         cmd = await self._capture_pyspy_cmd()
         assert "--subprocesses" not in cmd
+
+
+@pytest.mark.asyncio
+class TestProfilingFormatValidation:
+    """Both profilers must honor the format sets declared in `ray_constants`.
+
+    The sets are shared with the dashboard's format-default validation, so a
+    drift between the two would let an operator configure a default that every
+    request then rejects. Subprocess execution is mocked out, so these run
+    everywhere -- including macOS, where the live memray suite above is skipped.
+    """
+
+    async def _capture_memray_cmd(self, format):
+        """Run `get_profile_result` with the subprocess mocked out.
+
+        Returns the memray command that would have been executed (or None if the
+        format was rejected before any command was built) plus the message.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            memory_profiler = MemoryProfilingManager(tmpdir)
+            # get_profile_result requires the raw profile to already exist.
+            (memory_profiler.profile_dir_path / "profile.bin").touch()
+
+            fake_process = AsyncMock()
+            fake_process.communicate.return_value = (b"", b"boom")
+            fake_process.returncode = 1
+
+            with patch(
+                "ray.dashboard.modules.reporter.profile_manager.shutil.which",
+                return_value="/fake/memray",
+            ), patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=fake_process),
+            ) as mock_exec:
+                _, message = await memory_profiler.get_profile_result(
+                    pid=12345, profiler_filename="profile.bin", format=format
+                )
+
+            if not mock_exec.call_count:
+                return None, message
+            return list(mock_exec.call_args.args), message
+
+    async def _capture_pyspy_cmd(self, format):
+        """Run `cpu_profile` with the subprocess mocked out.
+
+        Returns the py-spy command that would have been executed (or None if the
+        format was rejected before any command was built) plus the message.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cpu_profiler = CpuProfilingManager(tmpdir)
+
+            fake_process = AsyncMock()
+            fake_process.communicate.return_value = (b"", b"boom")
+            fake_process.returncode = 1
+
+            with patch(
+                "ray.dashboard.modules.reporter.profile_manager.shutil.which",
+                return_value="/fake/py-spy",
+            ), patch(
+                "ray.dashboard.modules.reporter.profile_manager."
+                "_can_passwordless_sudo",
+                new=AsyncMock(return_value=False),
+            ), patch(
+                "asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=fake_process),
+            ) as mock_exec:
+                _, message = await cpu_profiler.cpu_profile(pid=12345, format=format)
+
+            if not mock_exec.call_count:
+                return None, message
+            return list(mock_exec.call_args.args), message
+
+    @pytest.mark.parametrize("format", ray_constants.VALID_CPU_PROFILING_FORMATS)
+    async def test_cpu_profile_accepts_every_declared_format(self, format):
+        cmd, message = await self._capture_pyspy_cmd(format)
+        assert cmd is not None, message
+        # py-spy takes the format as the argument to `-f`.
+        assert cmd[cmd.index("-f") + 1] == format
+
+    async def test_cpu_profile_rejects_memray_only_format(self):
+        # `table` is a memray format; py-spy must reject it and name its own.
+        cmd, message = await self._capture_pyspy_cmd("table")
+        assert cmd is None
+        for valid_format in ray_constants.VALID_CPU_PROFILING_FORMATS:
+            assert valid_format in message
+
+    @pytest.mark.parametrize("format", ray_constants.VALID_MEMORY_PROFILING_FORMATS)
+    async def test_memory_profile_accepts_every_declared_format(self, format):
+        cmd, message = await self._capture_memray_cmd(format)
+        assert cmd is not None, message
+        # Each valid format is also the memray reporter subcommand.
+        assert cmd[1] == format
+
+    async def test_memory_profile_rejects_pyspy_only_format(self):
+        # `speedscope` is a py-spy format; memray must reject it.
+        cmd, message = await self._capture_memray_cmd("speedscope")
+        assert cmd is None
+        assert "speedscope is not supported" in message
 
 
 if __name__ == "__main__":

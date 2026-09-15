@@ -1,3 +1,6 @@
+.. meta::
+   :description: Move an expensive collate function into Ray Data so it scales across the cluster, with batch size alignment and tensor serialization.
+
 .. _scaling_collation_functions:
 
 Advanced: Scaling out expensive collate functions

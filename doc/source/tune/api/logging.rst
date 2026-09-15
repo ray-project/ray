@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Tune's LoggerCallback interface and built-in loggers, plus the MLflow, Weights & Biases, Comet, and Aim integrations.
+
 .. _loggers-docstring:
 
 Tune Loggers (tune.logger)
@@ -95,7 +98,7 @@ See the :doc:`tutorial here </tune/examples/tune-comet>`.
 Aim Integration
 ---------------
 
-Tune also provides a logger for the `Aim <https://aimstack.io/>`_ experiment tracker.
+Tune also provides a logger for the `Aim <https://aimstack.readthedocs.io/>`_ experiment tracker.
 You can install Aim via ``pip install aim``.
 See the :doc:`tutorial here </tune/examples/tune-aim>`.
 

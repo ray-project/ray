@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Architecture overview of Ray Serve LLM: the Serve primitives it builds on, LLMServer and OpenAiIngress, and its main serving patterns."
+---
+
 (serve-llm-architecture-overview)=
 # Architecture overview
 

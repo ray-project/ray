@@ -116,7 +116,7 @@ config["applications"].append(
         "import_path": "read_file:app",
         "route_prefix": "/app2",
         "runtime_env": {
-            "working_dir": "https://github.com/ray-project/test_dag/archive/4d2c9a59d9eabfd4c8a9e04a7aae44fc8f5b416f.zip"  # noqa
+            "working_dir": "https://github.com/ray-project/test_dag/archive/e58e12a051b484b3ce5988685a91d4d0dbc4c1c2.zip"  # noqa
         },
         "deployments": [
             {

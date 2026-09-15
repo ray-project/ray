@@ -1,3 +1,6 @@
+.. meta::
+   :description: Pattern: use custom resource requirements to cap how many tasks or actors run concurrently, limiting memory pressure.
+
 .. _core-patterns-limit-running-tasks:
 
 Pattern: Using resources to limit the number of concurrently running tasks

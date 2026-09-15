@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Experimental tutorial serving an inference model on AWS NeuronCores with Ray Serve and FastAPI."
 ---
 (aws-neuron-core-inference-tutorial)=
 
@@ -9,7 +12,7 @@ This example compiles a BERT-based model and deploys the traced model on an AWS 
 
 :::{note}
   Before starting this example:
-  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/setup/torch-neuronx.html#setup-torch-neuronx)
+  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/frameworks/torch/torch-setup.html)
   * Install AWS NeuronCore drivers and tools, and torch-neuronx based on the instance-type
 
 :::

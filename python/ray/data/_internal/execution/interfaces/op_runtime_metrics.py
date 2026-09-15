@@ -45,7 +45,6 @@ class MetricsGroup(Enum):
     OUTPUTS = "outputs"
     TASKS = "tasks"
     OBJECT_STORE_MEMORY = "object_store_memory"
-    MISC = "misc"
     ACTORS = "actors"
 
 
@@ -54,6 +53,7 @@ class MetricsType(Enum):
     Gauge = 1
     Histogram = 2
     Unsupported = 3
+    Distribution = 4
 
 
 @dataclass(frozen=True)
@@ -405,6 +405,53 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent serializing blocks produced.",
         metrics_group=MetricsGroup.TASKS,
     )
+    block_transform_time_s: float = metric_field(
+        default=0,
+        description=(
+            "Time spent transforming one output block. The input prep, function "
+            "body and output build metrics decompose this."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    # `None`, not zero, until a block reports a phase: a row transform is timed
+    # as a whole unless `DataContext.accurate_map_phase_timing` is set, and a
+    # consumer has to be able to tell that apart from a phase that took no time.
+    input_prep_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent turning input blocks into the batches or rows the "
+            "operator's stages consume. Absent when the operator measured only "
+            "its total, which is what a row transform does by default."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    function_body_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent inside the bodies of the operator's stages, the ones Ray "
+            "Data supplies as well as the ones you passed in, excluding the "
+            "batch/row formatting and block building around them. Absent when "
+            "the operator measured only its total."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    output_build_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent assembling stage output back into blocks, including "
+            "materializing Python objects into Arrow. Absent when the operator "
+            "measured only its total."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
     task_submission_backpressure_time: float = metric_field(
         default=0,
         description="Wall-clock time operator wasn't able to launch any new tasks.",
@@ -543,9 +590,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
 
-    # === Miscellaneous metrics ===
-    # Use "metrics_group: "misc" in the metadata for new metrics in this section.
-
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
@@ -565,9 +609,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
-
-        self._issue_detector_hanging = 0
-        self._issue_detector_high_memory = 0
 
         # Initialize the histogram and distribution metrics
         self.task_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
@@ -899,36 +940,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @metric_property(
         description="Distribution of max USS bytes across tasks.",
         metrics_group=MetricsGroup.TASKS,
-        metrics_type=MetricsType.Unsupported,
+        metrics_type=MetricsType.Distribution,
     )
     def max_uss_bytes(self) -> DistributionTracker:
         return self._max_uss_bytes
-
-    @metric_property(
-        description="Average USS usage of tasks.",
-        metrics_group=MetricsGroup.TASKS,
-    )
-    def average_max_uss_per_task(self) -> Optional[float]:
-        """Average max USS usage of tasks."""
-        if self.max_uss_bytes.num_samples == 0:
-            return None
-        return self.max_uss_bytes.mean
-
-    @metric_property(
-        description="Indicates if the operator is hanging.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
-    )
-    def issue_detector_hanging(self) -> int:
-        return self._issue_detector_hanging
-
-    @metric_property(
-        description="Indicates if the operator is using high memory.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
-    )
-    def issue_detector_high_memory(self) -> int:
-        return self._issue_detector_high_memory
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
@@ -1067,6 +1082,19 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             self.block_generation_time += exec_stats.wall_time_s
             self.block_serialization_time_s += exec_stats.block_ser_time_s
+            self.block_transform_time_s += exec_stats.block_transform_time_s or 0
+            # Leave the phases `None` rather than summing them to zero when the
+            # chain measured only its total: three zeros that don't add up to
+            # `block_transform_time_s` read as "no time here" rather than as
+            # "not measured".
+            for name in (
+                "input_prep_time_s",
+                "function_body_time_s",
+                "output_build_time_s",
+            ):
+                measured = getattr(exec_stats, name)
+                if measured is not None:
+                    setattr(self, name, (getattr(self, name) or 0) + measured)
 
             task_info.cum_block_gen_time_s += exec_stats.wall_time_s
             task_info.cum_block_ser_time_s += exec_stats.block_ser_time_s

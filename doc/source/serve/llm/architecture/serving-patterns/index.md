@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Architecture reference for Ray Serve LLM's distributed serving patterns, including data parallel attention and prefill-decode disaggregation."
+---
+
 # Serving patterns
 
 Architecture documentation for distributed LLM serving patterns.

@@ -7,12 +7,14 @@ import asyncio
 import logging
 import os
 import random
+import shutil
 import socket
 import sys
 import time
 
 import httpx
 import pytest
+from opentelemetry import trace
 
 import ray
 import ray._private.state as state
@@ -29,7 +31,8 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.test_utils import expected_proxy_actors
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import expected_proxy_actors, get_application_url
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
 from ray.serve.config import (
     ControllerOptions,
@@ -38,7 +41,8 @@ from ray.serve.config import (
     ProxyLocation,
 )
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema, TracingConfig
+from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
 
 
@@ -701,6 +705,52 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     serve.start(**options)
     client = _get_global_client()
     assert client.get_serve_details()["proxy_location"] == expected
+
+
+def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
+    """Tracing config passed to ``serve.start()`` reaches the controller and is
+    applied to replicas (the imperative flow).
+
+    Verifies that the controller stores the config and that, after a request,
+    a tracing span file is produced for the replica -- proving the config
+    propagated from serve.start() through the controller to the replica.
+
+    Note: proxy tracing is not wired via this path (proxies start before the
+    controller is queryable); that is handled separately via long poll.
+    """
+    tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
+    serve.start(
+        http_options=HTTPOptions(host="0.0.0.0"),
+        tracing_config=tracing_config,
+    )
+
+    # The controller received the tracing config from serve.start().
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()) == tracing_config
+
+    @serve.deployment
+    class Model:
+        def __call__(self, request):
+            tracer = trace.get_tracer(__name__)
+            with tracer.start_as_current_span(
+                "application_span", context=get_trace_context()
+            ):
+                return "hello"
+
+    serve.run(Model.bind())
+
+    url = get_application_url("HTTP")
+    assert httpx.post(f"{url}/").text == "hello"
+
+    serve.shutdown()
+
+    # Tracing was set up on the replica, so a replica span file exists.
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+    span_files = os.listdir(spans_dir)
+    try:
+        assert any("replica" in f for f in span_files), span_files
+    finally:
+        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 @pytest.mark.parametrize(
