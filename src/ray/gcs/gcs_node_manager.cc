@@ -644,7 +644,7 @@ void GcsNodeManager::CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
   RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
                    "registration in-memory. node_id: "
                 << node_id;
-  passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+  passive_local_node_ = std::make_unique<rpc::GcsNodeInfo>(node_info);
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
@@ -925,6 +925,30 @@ void GcsNodeManager::UpdateAliveNode(
   // variables
   alive_nodes_[node_id] =
       std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
+}
+
+void GcsNodeManager::PromoteNodeManager() {
+  auto local_node = TakePassiveLocalNode();
+  if (local_node == nullptr) {
+    return;
+  }
+
+  const NodeID node_id = NodeID::FromBinary(local_node->node_id());
+  RAY_LOG(INFO).WithField(node_id)
+      << "GCS promoted to leader. Registering the head node cached while passive.";
+  rpc::RegisterNodeRequest request;
+  *request.mutable_node_info() = *local_node;
+
+  auto reply = std::make_shared<rpc::RegisterNodeReply>();
+  HandleRegisterNode(
+      std::move(request),
+      reply.get(),
+      // No status to check: GCS_RPC_SEND_REPLY always passes OK here, and a failed Put
+      // already RAY_CHECKs inside HandleRegisterNode.
+      [reply, node_id](const Status &, std::function<void()>, std::function<void()>) {
+        RAY_LOG(INFO).WithField(node_id)
+            << "Registered the local head node on promotion.";
+      });
 }
 
 }  // namespace gcs
