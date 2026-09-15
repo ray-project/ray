@@ -988,6 +988,15 @@ bool ReferenceCounter::HasReference(const ObjectID &object_id) const {
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }
 
+bool ReferenceCounter::IsObjectOutOfScope(const ObjectID &object_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  return it->second.OutOfScope(lineage_pinning_enabled_);
+}
+
 size_t ReferenceCounter::NumObjectIDsInScope() const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.size();
