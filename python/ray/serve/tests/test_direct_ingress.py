@@ -396,9 +396,15 @@ def test_direct_http_replicas_published_in_target_groups(
     child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
     assert child_port is not None
 
+    # Under HAProxy the controller answers a non-proxy-manager caller with the
+    # *proxy* target groups (which never carry direct targets); ask as the proxy
+    # manager does to see the app's own inventory. Without HAProxy the flag is
+    # ignored, so this is right in both modes.
     http_target_group = next(
         tg
-        for tg in get_target_groups(app_name=SERVE_DEFAULT_APP_NAME)
+        for tg in get_target_groups(
+            app_name=SERVE_DEFAULT_APP_NAME, from_proxy_manager=True
+        )
         if tg.protocol == RequestProtocol.HTTP
     )
 
@@ -416,7 +422,9 @@ def test_without_direct_http_no_targets_published(
     """Without the flag, the app's target groups are unchanged."""
     serve.run(ParentIngress.bind(DirectChild.bind()))
 
-    for target_group in get_target_groups(app_name=SERVE_DEFAULT_APP_NAME):
+    for target_group in get_target_groups(
+        app_name=SERVE_DEFAULT_APP_NAME, from_proxy_manager=True
+    ):
         assert target_group.direct_http_targets == {}
 
 
