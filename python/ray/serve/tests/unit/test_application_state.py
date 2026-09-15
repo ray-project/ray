@@ -18,6 +18,7 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
+    _deployment_override_options_removed,
     _get_shared_build_app_label_selector,
     build_serve_application,
     override_deployment_info,
@@ -66,6 +67,22 @@ from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
 )
+
+
+def test_deployment_override_options_removed_with_duplicate_names():
+    old_config = ServeApplicationSchema(
+        import_path="module.app",
+        deployments=[
+            {"name": "A", "user_config": {"increment": 10}},
+            {"name": "A", "num_replicas": 2},
+        ],
+    )
+    new_config = ServeApplicationSchema(
+        import_path="module.app",
+        deployments=[{"name": "A", "num_replicas": 2}],
+    )
+
+    assert _deployment_override_options_removed(old_config, new_config)
 
 
 class MockEndpointState:
