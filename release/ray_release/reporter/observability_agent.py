@@ -1,5 +1,7 @@
+import html
 import json
 import os
+import subprocess
 from typing import Any, Dict, Optional
 
 import requests
@@ -9,7 +11,7 @@ from ray_release.logger import logger
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
-from ray_release.util import ANYSCALE_HOST, format_link
+from ray_release.util import ANYSCALE_HOST, anyscale_job_url, format_link
 
 # Result statuses that trigger the observability agent. These are the failures
 # that are attributable to the test workload itself, TIMEOUT included: it is set
@@ -56,6 +58,24 @@ DEBUG_SESSION_QUERY = "Why did this job fail?"
 # inline keeps it out of the middle of the reporting output, where it competes
 # with the other reporters and the traceback.
 ANALYSIS_FILE_ENV = "RELEASE_TEST_OBS_AGENT_FILE"
+
+# An annotation is identified by its context within its scope, and buildkite
+# defaults that context to "default". Scope already separates the attempts of a
+# retried test -- a retry is a new job, so it annotates separately whatever this
+# value is -- so the context is not what keeps their reports apart. It is the
+# test name to make the annotation identifiable in the buildkite UI, and to keep
+# it clear of anything else annotating the same job.
+ANNOTATION_CONTEXT_PREFIX = "obs-agent-"
+
+# info rather than warning or error: the analysis is advisory, and error is what
+# the build's own failures use.
+ANNOTATION_STYLE = "info"
+
+# `--scope` is what decides where buildkite displays the annotation, and it
+# defaults to "build". `--job` only records which job the annotation came from,
+# so passing it alone is not enough: without this the annotation lands on the
+# build page rather than the job it is about.
+ANNOTATION_SCOPE = "job"
 
 # Logged with every analysis. Only the summary is logged; the agent posts the
 # full report to a slack thread, which is also where it collects its feedback,
@@ -142,16 +162,6 @@ class ObservabilityAgentReporter(Reporter):
             )
             return
 
-        # The full analysis also holds the findings, issues and next steps that
-        # back the summary; those stay out of the logs to keep them readable.
-        logger.debug(f"Observability agent response: {json.dumps(response)}")
-
-        # `or {}` guards against nulls in the response: raising here would
-        # escape the reporter, and glue.py does not guard the reporting loop.
-        query_result = response.get("result") or {}
-        summary = (query_result.get("analysis") or {}).get("summary")
-        slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
-
         # Whatever the agent leaves out is called out in the message rather
         # than left blank: the group is the prominent part of the step, so a
         # response that came back empty has to say so there, not only in an
@@ -185,6 +195,8 @@ class ObservabilityAgentReporter(Reporter):
                 "\n>>> and its feedback buttons cannot be reached from here."
             )
 
+        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
+
         analysis_file = self._write_analysis(message)
         if analysis_file:
             logger.info(
@@ -193,6 +205,95 @@ class ObservabilityAgentReporter(Reporter):
             )
         else:
             logger.info(message)
+
+    def _annotate(
+        self,
+        test: Test,
+        job_id: str,
+        debug_session_id: str,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> None:
+        """Annotate the buildkite job with this attempt's analysis.
+
+        The annotation is scoped to the job, so each attempt of a retried test
+        annotates its own job and buildkite shows them together on the build
+        page: every attempt's report is kept, attributed to the attempt that
+        produced it.
+
+        `--append` is passed for the case of a job annotating twice under this
+        context. That does not happen today -- one release test job runs one
+        test once -- but replacing would be the wrong behaviour if it ever did.
+        """
+        if not os.environ.get("BUILDKITE"):
+            return
+
+        # Buildkite labels the first try "Retry 1 of N", while
+        # BUILDKITE_RETRY_COUNT counts retries *after* it and so is 0 there.
+        # Rendering the raw value would put "attempt 3" on the attempt the UI
+        # calls "Retry 4 of 5"; render both, so the annotation reconciles with
+        # the label it hangs off and with the job log, which prints the raw
+        # value.
+        retry_count = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
+        try:
+            attempt = str(int(retry_count) + 1)
+        except ValueError:
+            attempt = "?"
+        # Buildkite renders the body as markup, and everything interpolated
+        # below either comes from the agent's response or is a name this
+        # reporter does not control, so all of it is escaped. The summary
+        # matters most: it is free-form prose, and an unescaped `<` in it would
+        # be rendered rather than shown.
+        def esc(value: str) -> str:
+            return html.escape(str(value), quote=True)
+
+        lines = [
+            f"<strong>{esc(test.get_name())}</strong> — attempt {attempt} "
+            f"(BUILDKITE_RETRY_COUNT={esc(retry_count)}) — "
+            f'<a href="{esc(anyscale_job_url(job_id))}">{esc(job_id)}</a>',
+            "",
+            esc(summary) if summary else "The agent returned no summary for this job.",
+        ]
+        if slack_thread:
+            lines += [
+                "",
+                f'<a href="{esc(slack_thread)}">Full report and feedback</a> — rate '
+                "it with the 'All good' or 'Needs correction' buttons in the thread.",
+            ]
+        else:
+            lines += ["", f"No slack thread; debug session {esc(debug_session_id)}."]
+        lines.append("<br/>")
+
+        command = [
+            "buildkite-agent",
+            "annotate",
+            f"--style={ANNOTATION_STYLE}",
+            f"--scope={ANNOTATION_SCOPE}",
+            f"--context={ANNOTATION_CONTEXT_PREFIX}{test.get_name()}",
+            "--append",
+        ]
+        if os.environ.get("BUILDKITE_JOB_ID"):
+            command += ["--job", os.environ["BUILDKITE_JOB_ID"]]
+        # The body is the positional argument, so it stays last.
+        command.append("\n".join(lines))
+
+        # Logged so that a build is self-describing about what was actually
+        # run: which flags the annotation was created with is otherwise
+        # invisible from the job log, and it decides where the annotation lands.
+        logger.info(f"Annotating the buildkite job: {' '.join(command[:-1])}")
+        try:
+            # Not check=True: an annotation is advisory, and a missing binary or
+            # a non-zero exit must not change the outcome of the test run.
+            completed = subprocess.run(command, capture_output=True, text=True)
+        except Exception as e:
+            logger.warning(f"Could not annotate the buildkite job: {e}")
+            return
+
+        if completed.returncode != 0:
+            logger.warning(
+                f"buildkite-agent annotate exited {completed.returncode}: "
+                f"{completed.stderr.strip()}"
+            )
 
     def _write_analysis(self, message: str) -> Optional[str]:
         """Write the message to the file the test harness prints, if configured.
