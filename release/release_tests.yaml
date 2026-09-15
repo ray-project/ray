@@ -1496,6 +1496,38 @@
         cluster_compute: rte_gce_small.yaml
 
 
+- name: runtime_env_local_working_dir
+  python: "3.10"
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  frequency: nightly
+  team: core
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_local_working_dir.sh
+    cluster_compute: rte_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/rte_local_working_dir.py
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: rte_gce_small.yaml
+
+
 - name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
