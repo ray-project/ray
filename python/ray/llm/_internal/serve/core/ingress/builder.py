@@ -116,8 +116,11 @@ def _build_openai_ingress_request_router(
         max_ongoing_requests=1000,
         ray_actor_options=ray_actor_options,
     )
+    # `LLMRouter` keys its handles by the model id clients send. This helper
+    # still takes the single `server` the OpenAI, DP and PD builders pass; the
+    # multi-model builder binds `servers` with one entry per model directly.
     return deployment.bind(
-        server=server,
+        servers={llm_config.model_id: server},
         llm_config=llm_config if is_kv_aware(llm_config) else None,
     )
 
