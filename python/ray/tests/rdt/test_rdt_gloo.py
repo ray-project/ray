@@ -56,6 +56,28 @@ class GPUTestActor:
         rdt_manager = ray._private.worker.global_worker.rdt_manager
         return rdt_manager.rdt_store.get_num_objects()
 
+    def retain_borrowed_rdt_ref(self, refs):
+        if not hasattr(self, "_borrowed_rdt_refs"):
+            self._borrowed_rdt_refs = []
+        self._borrowed_rdt_refs.append(refs[0])
+        obj_id = refs[0].hex()
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        return obj_id, rdt_manager.is_managed_object(obj_id)
+
+    def release_one_borrowed_rdt_ref(self):
+        ref = self._borrowed_rdt_refs.pop()
+        obj_id = ref.hex()
+        del ref
+        return ray._private.worker.global_worker.rdt_manager.is_managed_object(obj_id)
+
+    def release_borrowed_rdt_refs(self):
+        obj_id = self._borrowed_rdt_refs[0].hex()
+        del self._borrowed_rdt_refs
+        return obj_id
+
+    def has_rdt_metadata(self, obj_id):
+        return ray._private.worker.global_worker.rdt_manager.is_managed_object(obj_id)
+
     def fail(self, error_message):
         raise Exception(error_message)
 
@@ -146,6 +168,45 @@ def test_gc_rdt_metadata(ray_start_regular):
     wait_for_condition(
         lambda: not rdt_manager.is_managed_object(rdt_ref_id),
     )
+
+
+def test_gc_borrowed_rdt_metadata(ray_start_regular):
+    actors = [GPUTestActor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="gloo")
+
+    tensor = torch.randn((100, 100))
+    ref = actors[0].echo.remote(tensor)
+    rdt_ref_id = ref.hex()
+    rdt_manager = ray._private.worker.global_worker.rdt_manager
+    wait_for_condition(
+        lambda: rdt_manager.get_rdt_metadata(rdt_ref_id).tensor_transport_meta
+        is not None,
+    )
+    # The driver owns this ref, so the borrower-only callback must not be
+    # registered on the owner lifecycle path.
+    assert not ray._private.worker.global_worker.core_worker.add_borrowed_object_out_of_scope_callback(
+        ref, lambda _: None
+    )
+
+    for _ in range(2):
+        borrowed_id, has_metadata = ray.get(
+            actors[1].retain_borrowed_rdt_ref.remote([ref])
+        )
+        assert borrowed_id == rdt_ref_id
+        assert has_metadata
+
+    # Releasing one independently deserialized ref must not remove metadata
+    # while another ref remains live in the borrowing process.
+    assert ray.get(actors[1].release_one_borrowed_rdt_ref.remote())
+    assert ray.get(actors[1].has_rdt_metadata.remote(rdt_ref_id))
+
+    # The borrower's metadata should be removed after its final local reference
+    # goes out of scope, without affecting the owner's copy on the driver.
+    assert ray.get(actors[1].release_borrowed_rdt_refs.remote()) == rdt_ref_id
+    wait_for_condition(
+        lambda: not ray.get(actors[1].has_rdt_metadata.remote(rdt_ref_id)),
+    )
+    assert rdt_manager.is_managed_object(rdt_ref_id)
 
 
 @pytest.mark.parametrize("data_size_bytes", [100])
