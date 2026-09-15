@@ -1136,6 +1136,26 @@ class TestLoggingConfig:
         )
         assert schema.additional_log_standard_attrs == ["name"]
 
+    @pytest.mark.parametrize(
+        "initial_attrs,updated_attrs",
+        [([], ["name"]), (["name"], ["process"]), (["name"], [])],
+    )
+    def test_additional_log_standard_attrs_affect_equality(
+        self, initial_attrs, updated_attrs
+    ):
+        initial = LoggingConfig(additional_log_standard_attrs=initial_attrs)
+        updated = LoggingConfig(additional_log_standard_attrs=updated_attrs)
+
+        assert initial != updated
+
+    def test_additional_log_standard_attrs_order_does_not_affect_equality(self):
+        initial = LoggingConfig(additional_log_standard_attrs=["name", "process"])
+        reordered = LoggingConfig(
+            additional_log_standard_attrs=["process", "name", "process"]
+        )
+
+        assert initial == reordered
+
 
 # This function is defined globally to be accessible via import path
 def global_f():
