@@ -30,6 +30,14 @@ logger = get_logger(__name__)
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
+# HAProxy forwards the original request line on these headers so the router can
+# tell a request the application ingress owns (e.g. `GET /v1/models`) from model
+# traffic. Sent regardless of whether body forwarding is enabled, since a
+# deployment choice must not depend on that escape hatch. Looked up through
+# Starlette's case-insensitive headers.
+_REQUEST_METHOD_HEADER = "x-serve-request-method"
+_REQUEST_PATH_HEADER = "x-serve-request-path"
+
 # A request body routes on one of these fields. Body-aware routers read it off
 # the namespace; a body without any of them degrades to load-balancing. Extend
 # as routers learn to route additional request types.
@@ -166,6 +174,7 @@ class LLMRouter:
         self,
         servers: Dict[str, DeploymentHandle],
         llm_config: Optional["LLMConfig"] = None,
+        ingress: Optional[DeploymentHandle] = None,
     ):
         if not servers:
             raise ValueError(
@@ -173,6 +182,11 @@ class LLMRouter:
             )
         # model id -> handle to the `_direct_http` deployment serving that model.
         self._servers: Dict[str, DeploymentHandle] = dict(servers)
+        # Application ingress, when it is a separate deployment that owns routes
+        # of its own (model discovery, control plane). None for the builders
+        # whose ingress *is* the model server.
+        self._ingress: Optional[DeploymentHandle] = ingress
+        self._ingress_routes = None
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -220,6 +234,24 @@ class LLMRouter:
         for handle in self._servers.values():
             handle._init()
 
+        if self._ingress is not None:
+            self._ingress._init()
+            # Ask the running replica what it actually serves, rather than
+            # reading build-time metadata off the controller, which can be stale
+            # or missing before replicas report in. Fetched once and cached for
+            # this replica's life; an ingress-only route change needs a restart.
+            #
+            # Deliberately unguarded: if this fails the router has no idea which
+            # paths the ingress owns, and every control request would fall
+            # through to model selection and be answered by a model deployment.
+            # Failing initialization is the safe outcome.
+            from ray.serve._private.thirdparty.get_asgi_route_name import (
+                ASGIRoutePatternMatcher,
+            )
+
+            patterns = await self._ingress.__serve_route_patterns__.remote()
+            self._ingress_routes = ASGIRoutePatternMatcher(patterns)
+
     def _select_handle(self, model: Optional[str]) -> DeploymentHandle:
         """Resolve the request's ``model`` to a deployment handle.
 
@@ -257,8 +289,58 @@ class LLMRouter:
             )
         return handle
 
+    async def _route_to_ingress(self) -> dict:
+        """Select an ingress replica for a request the ingress owns.
+
+        Deliberately does none of the model-request work: the body is never read
+        (a control request has nothing to route on, and HAProxy may have
+        truncated it anyway), no session affinity is applied (session pinning is
+        a model-deployment concern), and no KV tokenization is attempted.
+        Selection still goes through the handle's normal request router rather
+        than reaching into a replica set directly.
+        """
+        try:
+            host, port, replica_id, _ = await self._pick_replica(
+                handle=self._ingress,
+                routing_payload=None,
+                request_token_ids=None,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except (RuntimeError, DeploymentUnavailableError) as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        return {
+            "host": host,
+            "port": port,
+            "deployment": self._ingress.deployment_id.name,
+            "replica_id": replica_id,
+        }
+
+    def _matches_ingress_route(self, request: Request) -> bool:
+        """Whether this request belongs to a route the application ingress owns.
+
+        HAProxy forwards the original method and path (it consults the router for
+        every request now, not just model traffic). Both are required: `GET /foo`
+        and `POST /foo` can legitimately belong to different destinations. An
+        older HAProxy that does not send them simply never matches, so the
+        router keeps its previous model-only behavior.
+        """
+        if self._ingress_routes is None:
+            return False
+        method = request.headers.get(_REQUEST_METHOD_HEADER)
+        path = request.headers.get(_REQUEST_PATH_HEADER)
+        if not method or not path:
+            return False
+        return self._ingress_routes.matches(method, path)
+
     @router_app.post("/internal/route")
     async def route(self, request: Request):
+        # A route the ingress declares is the ingress's, whatever the body says.
+        # Checked before the body is read at all, so a control request is never
+        # subject to model selection or its 400/404s.
+        if self._matches_ingress_route(request):
+            return await self._route_to_ingress()
+
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         data = _parse_body(body)
