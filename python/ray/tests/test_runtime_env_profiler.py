@@ -1,14 +1,18 @@
 import glob
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.runtime_env.nsight import parse_nsight_config
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.nsight import NsightPlugin, parse_nsight_config
+from ray.core.generated.common_pb2 import Language
 from ray.exceptions import RuntimeEnvSetupError
 
 
@@ -260,6 +264,90 @@ def test_nsight_not_installed():
 
     nsys_reports = glob.glob(os.path.join(f"{profilers_dir}/*.nsys-rep"))
     assert len(nsys_reports) == 0
+
+
+@pytest.fixture
+def nsight_plugin():
+    with patch("ray._private.runtime_env.nsight.try_to_create_directory"):
+        plugin = NsightPlugin("/tmp/ray/session/runtime_resources")
+    plugin.nsight_cmd = parse_nsight_config(
+        {"o": "/tmp/ray/session/logs/nsight/'worker_process_%p'"}
+    )
+    return plugin
+
+
+@pytest.mark.parametrize(
+    "py_executable, expected_app_args",
+    [
+        ("/opt/ray/venv/bin/python", ["/opt/ray/venv/bin/python"]),
+        ("python -u", ["python", "-u"]),
+    ],
+)
+def test_nsight_preserves_py_executable(
+    nsight_plugin, py_executable, expected_app_args
+):
+    """Test modify_context prepends nsys and preserves the Python command"""
+    context = Mock(spec=RuntimeEnvContext)
+    context.py_executable = py_executable
+
+    nsight_plugin.modify_context([], None, context)
+
+    prefix = "nsys profile -o /tmp/ray/session/logs/nsight/'worker_process_%p'"
+    assert context.py_executable == f"{prefix} {py_executable}"
+    assert shlex.split(context.py_executable) == [
+        "nsys",
+        "profile",
+        "-o",
+        "/tmp/ray/session/logs/nsight/worker_process_%p",
+        *expected_app_args,
+    ]
+
+
+def test_nsight_noop_without_config(nsight_plugin):
+    """Test modify_context leaves the context unchanged without a nsight_cmd"""
+    nsight_plugin.nsight_cmd = []
+    context = RuntimeEnvContext()
+    original = context.py_executable
+
+    nsight_plugin.modify_context([], None, context)
+
+    assert context.py_executable == original
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses the POSIX worker command.")
+def test_nsight_preserves_worker_command(nsight_plugin):
+    """Test the wrapped py_executable survives worker command assembly"""
+    context = RuntimeEnvContext(
+        command_prefix=["source '/opt/ray venv/bin/activate'", "&&"],
+        env_vars={"NSIGHT_TEST": "preserved"},
+        py_executable="'/opt/ray venv/bin/python' -u",
+    )
+    nsight_plugin.modify_context([], None, context)
+
+    with (
+        patch("ray._private.runtime_env.context.update_envs") as update_envs,
+        patch("ray._private.runtime_env.context.os.execvp") as execvp,
+        patch.dict(os.environ, {}, clear=True),
+    ):
+        context.exec_worker(
+            ["/tmp/ray worker.py", "--node-ip-address=127.0.0.1"],
+            Language.PYTHON,
+        )
+
+    update_envs.assert_called_once_with({"NSIGHT_TEST": "preserved"})
+    execvp.assert_called_once_with(
+        "bash",
+        args=[
+            "bash",
+            "-c",
+            (
+                "source '/opt/ray venv/bin/activate' && exec "
+                "nsys profile -o /tmp/ray/session/logs/nsight/'worker_process_%p' "
+                "'/opt/ray venv/bin/python' -u "
+                "'/tmp/ray worker.py' --node-ip-address=127.0.0.1"
+            ),
+        ],
+    )
 
 
 if __name__ == "__main__":
