@@ -1807,6 +1807,9 @@ class SingletonThreadRouter(Router):
                     asyncio.wrap_future(future)
                 )
             else:
+                # Unlike reserved requests, which shield cancellation until
+                # ``__aenter__`` completes so their slot can be released, do not shield:
+                # propagate cancellation from unreserved callers to stop selection retries.
                 selection, context_manager = await asyncio.wrap_future(future)
         except BaseException:
             # Honor the cancellation now; release the orphaned slot on the
