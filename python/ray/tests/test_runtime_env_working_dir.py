@@ -122,6 +122,7 @@ def test_inherit_cluster_env_pythonpath(monkeypatch):
         "failure",
         "working_dir",
         "working_dir_zip",
+        "working_dir_tar_uri",
         "working_dir_tar_xz",
         "py_modules",
         "py_modules_tar_xz",
@@ -159,6 +160,14 @@ def test_lazy_reads(
                     os.path.join(tmp_dir, "test"), "zip", zip_dir
                 )
                 ray.init(address, runtime_env={"working_dir": package})
+        elif option == "working_dir_tar_uri":
+            package = shutil.make_archive(
+                str(tmp_path / "test"), "tar", tmp_working_dir
+            )
+            ray.init(
+                address,
+                runtime_env={"working_dir": Path(package).as_uri()},
+            )
         elif option in {"working_dir_tar_xz", "py_modules_tar_xz"}:
             package = shutil.make_archive(
                 str(tmp_path / "test"), "xztar", tmp_working_dir
@@ -236,6 +245,7 @@ def test_lazy_reads(
         "py_modules",
         "py_modules_tar_xz",
         "working_dir_zip",
+        "working_dir_tar_uri",
         "working_dir_tar_xz",
     }:
         # These options are not tested beyond this point, so return to save time.

@@ -859,8 +859,8 @@ async def download_and_unpack_package(
 ) -> str:
     """Download the package corresponding to this URI and unpack it.
 
-    Supports .zip, .jar, .tar.gz, .tgz, .tar.bz2, and .tar.xz archives for
-    remote protocols.
+    Supports .zip, .jar, .tar, .tar.gz, .tgz, .tar.bz2, and .tar.xz archives
+    for remote protocols.
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
 
