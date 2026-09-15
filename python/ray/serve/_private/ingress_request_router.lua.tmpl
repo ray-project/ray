@@ -18,6 +18,13 @@ local REQUEST_ID_HEADER = "x-request-id"
 -- same name to /internal/route so session-aware routers (e.g.
 -- ConsistentHashRouter) can use it.
 local SESSION_HEADER = "${SESSION_HEADER}"
+-- The router is consulted for every method now, and it selects a deployment as
+-- well as a replica, so it needs to know what was asked for: a path the app's
+-- ingress owns (e.g. /v1/models) is a different decision from a completion
+-- request. Sent on every call, independent of FORWARD_BODY -- routing by method
+-- and path must not depend on the body-forwarding escape hatch.
+local REQUEST_METHOD_HEADER = "X-Serve-Request-Method"
+local REQUEST_PATH_HEADER = "X-Serve-Request-Path"
 
 -- Per-app router pool and replica map. The frontend sets
 -- txn.ingress_request_router_app to the matched backend name. We look up its
@@ -29,7 +36,8 @@ local REPLICA_TARGETS = ${REPLICA_TARGETS}
 -- lua-load-per-thread, so rotation needs no cross-thread synchronization.
 local _rr_cursor = {}
 
-local function call_router(router, body, truncated_length, session_id, request_id)
+local function call_router(
+    router, body, truncated_length, session_id, request_id, method, path)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -53,6 +61,16 @@ local function call_router(router, body, truncated_length, session_id, request_i
         request_id_header = REQUEST_ID_HEADER .. ": " .. request_id .. "\r\n"
     end
 
+    local method_header = ""
+    if method and method ~= "" then
+        method_header = REQUEST_METHOD_HEADER .. ": " .. method .. "\r\n"
+    end
+
+    local path_header = ""
+    if path and path ~= "" then
+        path_header = REQUEST_PATH_HEADER .. ": " .. path .. "\r\n"
+    end
+
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
         .. "Host: " .. router.host_header .. "\r\n"
@@ -62,6 +80,8 @@ local function call_router(router, body, truncated_length, session_id, request_i
         .. truncation_header
         .. session_header
         .. request_id_header
+        .. method_header
+        .. path_header
         .. "\r\n"
         .. body
 
@@ -123,9 +143,10 @@ end
 -- because no routing was attempted.
 --
 -- `replica_map` is keyed [deployment][replica_id], matching the two-level
--- decision the router reports: which `_direct_http` deployment, then which of
--- its replicas. The app's ingress is never in it -- a request goes either to
--- the ingress by path or through the router to a direct deployment, never both.
+-- decision the router reports: which deployment, then which of its replicas.
+-- The app's ingress is one of those deployments -- it is reached by the router
+-- naming it, not by path -- so its replicas are in the map like any other
+-- deployment's, under the app's `-via-ingress-request-router` backend.
 local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- FORWARD_BODY=false: don't read or forward the body; call the router
     -- with body="" so a Content-Length: 0 POST still goes through routing
@@ -182,13 +203,20 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- Round-robin over the app's routers, one cursor step per request. On a
     -- connection failure try the next router. A non-200 is the router's answer
     -- and is not retried.
+    -- `path` is the normalized path with the query string excluded (that is
+    -- `query`), and reflects any root_path rewrite the frontend already applied,
+    -- so the router sees the same path the replica will.
+    local method = txn.sf:method()
+    local path = txn.sf:path()
+
     local n = #pool
     local start = _rr_cursor[app] or 0
     _rr_cursor[app] = start + 1
     local response = nil
     for i = 0, n - 1 do
         local router = pool[(start + i) % n + 1]
-        response = call_router(router, body, truncated, session_id, request_id)
+        response = call_router(
+            router, body, truncated, session_id, request_id, method, path)
         if response then
             break
         end
@@ -214,9 +242,10 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
-    -- Relabel before resolving, so a failure below is attributed to the
-    -- deployment whose routing broke rather than to the app's ingress (the
-    -- frontend's default for txn.serve_deployment). This is the router's own
+    -- Relabel before resolving, so a failure below is attributed in the metrics
+    -- line to the deployment whose routing broke rather than to the app's
+    -- ingress (the frontend's default for txn.serve_deployment). This var feeds
+    -- observability only; no routing rule reads it. This is the router's own
     -- claim, not a value we have validated -- deliberately, since a 503 for a
     -- deployment missing from our config is exactly the case worth seeing under
     -- its own name. The router is a first-party Serve deployment and the
@@ -252,11 +281,13 @@ end
 -- rule fires instead of letting the request silently fall through to the
 -- primary backend. The product invariant is: requests to a router-bearing app
 -- are served via the router or fail; there is no quiet alternative path.
--- Both lookup misses (`unknown_deployment`, `unknown_replica_id`) 503 for apps
--- with `_direct_http` deployments: the fallback Serve proxy cannot serve a model
--- deployment's traffic. The frontend's fallback-recovery rules still exist but
--- only arm for router apps without direct targets, which no longer get a Lua
--- map at all, so they are unreachable.
+-- Every lookup miss 503s, whichever deployment the router named:
+-- `unknown_deployment` because the deployment is absent from this config
+-- entirely, `unknown_replica_id` because the replica it named is not in our
+-- snapshot of that deployment. The two keep distinct labels since they mean
+-- different things operationally, but neither recovers today -- see the TODO on
+-- the frontend's 503 rule for why an ingress miss could and a `_direct_http`
+-- miss could not.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.
