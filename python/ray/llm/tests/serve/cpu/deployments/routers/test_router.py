@@ -68,7 +68,12 @@ class _DirectRouterReplica:
 
 def _new_direct_router(handle=None):
     router = LLMRouter.__new__(LLMRouter)
-    router._handle = handle or MagicMock()
+    if handle is None:
+        handle = MagicMock()
+        # `route` reports the tracked deployment's name alongside the replica,
+        # so a bare MagicMock attribute would leak into the response body.
+        handle.deployment_id.name = "LLMServer:x"
+    router._handle = handle
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
     router._tokenizer = None
     return router
@@ -153,6 +158,7 @@ class TestDirectStreamingLLMRouter:
         assert result == {
             "host": "127.0.0.1",
             "port": 9001,
+            "deployment": "LLMServer:x",
             "replica_id": "DeploymentName#replica",
         }
         _, kwargs = router._pick_replica.call_args
