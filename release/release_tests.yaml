@@ -1883,8 +1883,9 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
 
       # 'type: torch-cu128' means: use the 'ray-torch' image.
       type: torch-cu128
@@ -1941,7 +1942,8 @@
         byod:
           runtime_env:
             - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
+            # Only Ray OOM kills fail this test; workers are killed intentionally.
+            - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: full_training.s3_url
@@ -2047,8 +2049,9 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
@@ -2081,8 +2084,9 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
@@ -2114,8 +2118,9 @@
   cluster:
     byod:
       runtime_env:
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
       type: gpu
       post_build_script: byod_install_torchrec.sh
     anyscale_sdk_2026: true
