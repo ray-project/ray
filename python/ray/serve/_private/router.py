@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
-from contextlib import aclosing, asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
@@ -1296,10 +1296,13 @@ class AsyncioRouter:
                 # retry loop with the same PendingRequest, without probing or
                 # reserving capacity on replicas. Close the generator to clean up
                 # its backoff accounting on success and cancellation.
-                async with aclosing(
-                    self._active_request_router._choose_replicas_with_backoff(pr)
-                ) as candidates:
-                    replica = (await anext(candidates))[0]
+                candidates = self._active_request_router._choose_replicas_with_backoff(
+                    pr
+                )
+                try:
+                    replica = (await candidates.__anext__())[0]
+                finally:
+                    await candidates.aclose()
                 slot_token = None
 
             selection = ReplicaSelection(
