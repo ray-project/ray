@@ -379,14 +379,12 @@ class LearnerGroup(Checkpointable):
                     # If `return_state=True`, only return it from the first Learner
                     # actor.
                     return_state=(return_state and i == 0),
-                    **kw,
                     **kwargs,
                 )
-                for i, (td_shard, kw) in enumerate(
+                for i, td_shard in enumerate(
                     training_data.shard(
                         num_shards=len(self),
                         len_lookback_buffer=self.config.episode_lookback_horizon,
-                        **kwargs,
                     )
                 )
             ]
