@@ -859,10 +859,18 @@ def _map_task(
                 clock=clock,
             )
 
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+
         block_iter = iterate_with_retry(
             transform_iter_factory,
             description="apply UDF transform",
-            match=[] if isinstance(retry_on, bool) else retry_on,
+            match=to_match,
             max_attempts=data_context.max_map_retries + 1,
             unwrap_cause=True,
         )
