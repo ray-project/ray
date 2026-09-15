@@ -441,10 +441,14 @@ class TransformClock:
             by_stage[step.stage_idx] = by_stage.get(step.stage_idx, 0.0) + seconds
 
         # Every step carries a stage, so these sum to the total whether the
-        # chain was timed phase by phase or a stage at a time.
+        # chain was timed phase by phase or a stage at a time. `get_steps`
+        # numbers stages with `enumerate` and every stage contributes at least
+        # one step, so the keys run 0..n-1 with no gaps; indexing by position
+        # rather than by sort order means a gap would report that stage as
+        # zero instead of shifting every later stage's time up a slot.
         stage_s = (
-            tuple(by_stage[idx] for idx in sorted(by_stage))
-            if self._per_stage
+            tuple(by_stage.get(idx, 0.0) for idx in range(max(by_stage) + 1))
+            if self._per_stage and by_stage
             else None
         )
 
