@@ -100,7 +100,7 @@ class ClusterResourceManager {
   bool SubtractNodeAvailableResources(scheduling::NodeID node_id,
                                       const ResourceRequest &resource_request);
 
-  /// Check if we have available resources to fullfill resource request for an given node.
+  /// Check if we have available resources to fulfill a resource request for a given node.
   ///
   /// \param node_id: the id of the node.
   /// \param resource_request: the request we want to check.

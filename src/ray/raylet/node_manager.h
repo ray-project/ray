@@ -847,14 +847,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Garbage-collects CancelWorkerLease tombstones past their TTL.
   void GCCancelledLeaseTombstones();
 
-  /// Creates a AgentManager that creates and manages a dashboard agent.
+  /// Creates an AgentManager that creates and manages a dashboard agent.
   std::unique_ptr<AgentManager> CreateDashboardAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 
   std::tuple<int, int, int> WaitForDashboardAgentPorts(const NodeID &self_node_id,
                                                        const NodeManagerConfig &config);
 
-  /// Creates a AgentManager that creates and manages a runtime env agent.
+  /// Creates an AgentManager that creates and manages a runtime env agent.
   std::unique_ptr<AgentManager> CreateRuntimeEnvAgentManager(
       const NodeID &self_node_id, const NodeManagerConfig &config);
 

@@ -76,12 +76,12 @@ class ResourceSet {
   bool operator!=(const ResourceSet &other) const { return !(*this == other); }
 
   /// Check whether this set is a subset of another one.
-  /// If A <= B, it means for each resource, its value in A is less than or equqal to that
+  /// If A <= B, it means for each resource, its value in A is less than or equal to that
   /// in B.
   bool operator<=(const ResourceSet &other) const;
 
   /// Check whether this set is a super set of another one.
-  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// If A >= B, it means for each resource, its value in A is larger than or equal to
   /// that in B.
   bool operator>=(const ResourceSet &other) const { return other <= *this; }
 
@@ -167,7 +167,7 @@ class NodeResourceSet {
   NodeResourceSet &operator-=(const ResourceSet &other);
 
   /// Check whether this set is a super set of other.
-  /// If A >= B, it means for each resource, its value in A is larger than or equqal to
+  /// If A >= B, it means for each resource, its value in A is larger than or equal to
   /// that in B.
   bool operator>=(const ResourceSet &other) const;
 
