@@ -138,45 +138,65 @@ def _load_lua_template() -> string.Template:
         ) from e
 
 
-# (replica_id, haproxy server name, owning direct-HTTP deployment or None).
-# `DirectTargetConfig` is defined below, hence the forward reference.
-_ReplicaEntry = Tuple[str, str, Optional["DirectTargetConfig"]]
+@dataclass
+class _DeploymentTargets:
+    """One `_direct_http` deployment's replicas and the backend that holds them.
+
+    The Lua replica map is keyed `[app][deployment][replica_id]`, mirroring the
+    two-level decision `/internal/route` reports: which deployment, then which of
+    its replicas. Keeping the levels distinct lets the Lua tell "this deployment is
+    not in my config" (`unknown_deployment`, e.g. a model added since the last
+    reload) apart from "this deployment's replica set moved under me"
+    (`unknown_replica_id`, e.g. autoscaling).
+
+    Only `_direct_http` deployments appear. The app's ingress deployment does not:
+    a request goes *either* to the ingress by path *or* through the router to a
+    direct deployment, never both, so the router never names the ingress and the
+    map has no reason to hold its replicas.
+    """
+
+    # Generated HAProxy backend holding these replicas.
+    backend_name: str
+
+    # replica_id (raw actor name, as `/internal/route` returns it) -> HAProxy
+    # server name (sanitized, as `use-server` matches on).
+    replicas: Dict[str, str] = field(default_factory=dict)
 
 
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
-) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[_ReplicaEntry]]]":
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, Dict[str, _DeploymentTargets]]]":
     """Per-backend router pool and replica map, restricted to backends with both.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
     is co-located.
 
-    Each replica entry is `(replica_id, server_name, direct_target_config)`. The
-    third element is `None` for the app's own ingress replicas and the owning
-    `DirectTargetConfig` for `_direct_http` replicas -- that is how the Lua learns
-    which backend to route to without the router having to say so.
+    The replica map is `{backend_name: {deployment_name: _DeploymentTargets}}`
+    and holds only `_direct_http` deployments with at least one replica ID. The
+    ingress's own `backend.servers` are deliberately not included -- see
+    `_DeploymentTargets`. A router-bearing backend with no direct targets
+    therefore contributes nothing, and if no backend contributes anything the
+    caller writes no Lua at all.
     """
     routers: Dict[str, List[ServerConfig]] = {}
-    targets: "Dict[str, List[_ReplicaEntry]]" = {}
+    targets: Dict[str, Dict[str, _DeploymentTargets]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
             continue
-        # Annotated because the ingress comprehension alone would narrow the
-        # third element to None, rejecting the direct-HTTP entries below.
-        entries: "List[_ReplicaEntry]" = [
-            (s.replica_id, s.name, None)  # Defaults to ingress deployment
-            for s in backend.servers
-            if s.replica_id is not None
-        ]
-        entries.extend(
-            (s.replica_id, s.name, direct)
-            for direct in backend.direct_target_configs
-            for s in direct.servers
-            if s.replica_id is not None
-        )
-        if not entries:
+        by_deployment: Dict[str, _DeploymentTargets] = {}
+        # `direct_target_configs` is built sorted by deployment name, so the
+        # rendered Lua is byte-stable for `_write_if_changed`.
+        for direct in backend.direct_target_configs:
+            replicas = {
+                s.replica_id: s.name for s in direct.servers if s.replica_id is not None
+            }
+            if replicas:
+                by_deployment[direct.deployment_name] = _DeploymentTargets(
+                    backend_name=direct.name, replicas=replicas
+                )
+        if not by_deployment:
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
@@ -185,7 +205,7 @@ def _routers_and_targets_by_backend(
         else:
             pool = [min(candidates, key=lambda s: (s.host, s.port))]
         routers[backend.name] = pool
-        targets[backend.name] = entries
+        targets[backend.name] = by_deployment
     return routers, targets
 
 
@@ -206,29 +226,29 @@ def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
 
 
 def _format_replica_targets_lua(
-    targets: "Dict[str, List[_ReplicaEntry]]",
+    targets: "Dict[str, Dict[str, _DeploymentTargets]]",
 ) -> str:
-    """Render {backend_name: {replica_id: entry}} as nested Lua tables.
+    """Render {backend_name: {deployment_name: targets}} as nested Lua tables.
 
-    Each entry is `{ s = "<server name>" }`, plus `b = "<backend name>"` and
-    `d = "<deployment name>"` when the replica belongs to a `_direct_http`
-    deployment that has its own backend. The Lua resolves both the server to pin
-    and the backend to route to from this one lookup, so `/internal/route` only
-    ever has to name a replica.
+    Each deployment entry is `{ b = "<backend name>", r = { [replica_id] = "<server
+    name>" } }`. The backend name sits on the deployment, not on every replica row,
+    so it is written once however many replicas the deployment has.
     """
 
-    def _entry_lua(rid: str, sname: str, direct: "Optional[DirectTargetConfig]") -> str:
-        fields = [f"s = {json.dumps(sname)}"]
-        if direct is not None:
-            fields.append(f"b = {json.dumps(direct.name)}")
-            # Raw deployment name, used to relabel the per-request metric.
-            fields.append(f"d = {json.dumps(direct.deployment_name)}")
-        return f"        [{json.dumps(rid)}] = {{ {', '.join(fields)} }}"
+    def _deployment_lua(name: str, dep: _DeploymentTargets) -> str:
+        replicas = ",\n".join(
+            f"            [{json.dumps(rid)}] = {json.dumps(sname)}"
+            for rid, sname in dep.replicas.items()
+        )
+        return (
+            f"        [{json.dumps(name)}] = {{ b = {json.dumps(dep.backend_name)}, "
+            "r = {\n" + replicas + "\n        } }"
+        )
 
     backends_lua = []
-    for backend_name, entries in targets.items():
+    for backend_name, by_deployment in targets.items():
         inner = ",\n".join(
-            _entry_lua(rid, sname, direct) for rid, sname, direct in entries
+            _deployment_lua(name, dep) for name, dep in by_deployment.items()
         )
         backends_lua.append(
             f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
@@ -948,6 +968,9 @@ class HAProxyApi(ProxyApi):
         # file count stays bounded instead of growing with every reload.
         self._retired_logs: "deque[Tuple[str, str]]" = deque()
         self._max_retained_logs: int = 10
+        # Apps already warned about in `_write_ingress_request_router_lua`, so
+        # the warning fires once per app rather than on every config regeneration.
+        self._warned_router_apps_without_direct_targets: Set[str] = set()
 
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
@@ -1317,6 +1340,30 @@ class HAProxyApi(ProxyApi):
         routers, targets = _routers_and_targets_by_backend(
             backends, local_host=get_localhost_ip()
         )
+
+        # A router-bearing app whose only replicas are its ingress's is the
+        # pre-`_direct_http` single-model shape. The router only ever names
+        # `_direct_http` deployments now, so it is never consulted for such an
+        # app and requests load-balance across the ingress instead -- traffic
+        # flows, but without the routing policy. Say so once per app rather than
+        # letting it degrade silently. (A direct deployment that merely has no
+        # replica IDs yet is a transient during scaling and is not warned about.)
+        for backend in backends:
+            if (
+                backend.ingress_request_router_servers
+                and not backend.direct_target_configs
+                and backend.app_name
+                not in self._warned_router_apps_without_direct_targets
+            ):
+                self._warned_router_apps_without_direct_targets.add(backend.app_name)
+                logger.warning(
+                    f"Application '{backend.app_name}' has an ingress request router "
+                    "but no `_direct_http` deployments. The router is only consulted "
+                    "for `_direct_http` deployments, so it will not be called and "
+                    "requests will be load-balanced across the ingress replicas "
+                    "without the routing policy."
+                )
+
         if not routers:
             return None
 
