@@ -1,0 +1,3 @@
+:::{note}
+{{ deprecation_planned }}
+:::
