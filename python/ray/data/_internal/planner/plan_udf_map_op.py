@@ -260,8 +260,26 @@ def plan_filter_op(
             compute=compute,
         )
 
-        transform_fn = RowMapTransformFn(
-            _generate_transform_fn_for_filter(filter_fn),
+        def filter_udf_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                rows = block_accessor.iter_rows(public_row_format=True)
+                matching_indices = [i for i, row in enumerate(rows) if filter_fn(row)]
+                # Select the matching rows directly from the original block so
+                # column types (e.g. Arrow dictionary encoding) are preserved,
+                # rather than rebuilding a block from row values, which loses them.
+                if matching_indices:
+                    yield block_accessor.take(matching_indices)
+                else:
+                    # `take([])` breaks because indices with no elements are
+                    # inferred as an untyped Arrow array; slicing keeps the
+                    # schema without hitting that path.
+                    yield block_accessor.slice(0, 0)
+
+        transform_fn = BlockMapTransformFn(
+            filter_udf_block_fn,
             is_udf=True,
             output_block_size_option=output_block_size_option,
         )
@@ -740,17 +758,6 @@ def _generate_transform_fn_for_flat_map(
                 for out_row in fn(row):
                     _validate_row_output(out_row)
                     yield out_row
-
-    return transform_fn
-
-
-def _generate_transform_fn_for_filter(
-    fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            if fn(row):
-                yield row
 
     return transform_fn
 
