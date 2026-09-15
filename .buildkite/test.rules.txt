@@ -38,6 +38,7 @@
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
 ! linux_wheels macos_wheels docker doc doc_api doc_redirects python_dependencies deplock_check min_build tools windows
 ! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
+! arrow_rs
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 
 # Per-team API reference pages. Editing these can change the documented public
@@ -113,6 +114,22 @@ doc/source/llm/
 doc/source/data/doc_code/working-with-llms/
 ci/docker/llm.build.Dockerfile
 @ llm
+;
+
+# Must precede the python/ray/data/ rule below: first match wins, and that rule
+# emits only `data`, so a change to the crate or its reader would never select the
+# arrow-rs job. Emits `data` as well so the ordinary data suite still runs -- the
+# reader is on the read_parquet path whether or not the flag is on.
+#
+# Note `arrow_rs` is also the name of the bazel tag on the py_test target. Same
+# word, two namespaces: this one picks the Buildkite step, that one picks the test.
+rust/
+ci/build/build-arrow-rs-wheel.sh
+ci/docker/dataarrowrs.build.Dockerfile
+ci/docker/dataarrowrs.build.wanda.yaml
+python/ray/data/_internal/datasource_v2/readers/arrow_rs_parquet_file_reader.py
+python/ray/data/tests/datasource/test_arrow_rs_parquet_reader.py
+@ arrow_rs data
 ;
 
 python/ray/data/

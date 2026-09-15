@@ -15,6 +15,10 @@ ci/pipeline/test_conditional_testing.py: tools
 # === Ray Libraries ===
 
 python/ray/data/__init__.py: data
+python/ray/data/_internal/datasource_v2/readers/arrow_rs_parquet_file_reader.py: arrow_rs data
+python/ray/data/tests/datasource/test_arrow_rs_parquet_reader.py: arrow_rs data
+rust/ray_data_arrow_rs/src/lib.rs: arrow_rs data
+ci/docker/dataarrowrs.build.wanda.yaml: arrow_rs data
 python/ray/air/__init__.py: ml train train_gpu tune data linux_wheels
 python/ray/llm/llm.py: llm
 python/ray/workflow/workflow.py: workflow

@@ -1,0 +1,11 @@
+name: "dataarrowrsbuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/datalbuild-py$PYTHON"]
+dockerfile: ci/docker/dataarrowrs.build.Dockerfile
+srcs:
+  - ci/build/build-arrow-rs-wheel.sh
+  - rust/ray_data_arrow_rs/
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/datalbuild-py$PYTHON
+  - PYTHON=$PYTHON
+tags:
+  - cr.ray.io/rayproject/dataarrowrsbuild-py$PYTHON
