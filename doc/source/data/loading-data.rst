@@ -676,6 +676,37 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+        To read from an `Iceberg REST catalog
+        <https://py.iceberg.apache.org/configuration/#rest-catalog>`__, pass the catalog's
+        properties in ``catalog_kwargs``. Ray Data hands them to PyIceberg's `load_catalog()
+        <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
+        #pyiceberg.catalog.load_catalog>`__, so any catalog type PyIceberg supports works.
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_iceberg(
+                table_identifier="db_name.table_name",
+                catalog_kwargs={
+                    "name": "rest",
+                    "type": "rest",
+                    "uri": "https://catalog.example.com/api/catalog",  # REST endpoint
+                    "warehouse": "warehouse_name",  # catalog name on the server
+                    "token": "<bearer-token>",  # or credential, oauth2-server-uri, scope
+                },
+            )
+
+        For a catalog behind AWS SigV4, set ``rest.sigv4-enabled``, ``rest.signing-name``
+        and ``rest.signing-region`` instead of ``token``. To send extra request headers, add
+        ``header.<name>`` properties.
+
+        To write to the same catalog, pass the same ``catalog_kwargs`` to
+        :meth:`~ray.data.Dataset.write_iceberg`. The catalog has to serve the REST spec's
+        table update endpoint; a catalog that only serves the read endpoints rejects the
+        commit.
+
     .. tab-item:: Modin
 
         To create a :class:`~ray.data.dataset.Dataset` from a Modin DataFrame, call

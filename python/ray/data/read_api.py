@@ -5413,6 +5413,17 @@ def read_iceberg(
         ... ).filter(col("column_name") == "literal_value")
         >>> # Select specific columns
         >>> ds = ds.select_columns(["col1", "col2"])  #doctest: +SKIP
+        >>> # Read through an Iceberg REST catalog
+        >>> ds = ray.data.read_iceberg( #doctest: +SKIP
+        ...     table_identifier="db_name.table_name",
+        ...     catalog_kwargs={
+        ...         "name": "rest",
+        ...         "type": "rest",
+        ...         "uri": "https://catalog.example.com/api/catalog",
+        ...         "warehouse": "warehouse_name",
+        ...         "token": "<bearer-token>",
+        ...     },
+        ... )
 
     Args:
         table_identifier: Fully qualified table identifier (``db_name.table_name``)
