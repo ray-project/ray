@@ -13,12 +13,21 @@ import ray
 from ray.data._internal.datasource.parquet_datasource import (
     _row_group_uncompressed_size,
 )
+from ray.data._internal.datasource_v2.chunkers.parquet_decoded_size import (
+    LeafProfile,
+    build_leaf_profiles,
+    estimate_row_group_decoded_size,
+)
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     FileChunks,
     RowGroupInfo,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing import (
     coalesce_row_groups,
+)
+from ray.data._internal.datasource_v2.chunkers.parquet_size_statistics import (
+    LeafSizeStats,
+    read_size_statistics,
 )
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
@@ -106,7 +115,7 @@ class FooterReader:
             else list(DEFAULT_RETRIED_IO_ERRORS)
         )
         # Coalescing target: merge contiguous row groups into chunks of
-        # ~coalesce_bytes uncompressed before returning them, so the driver packs
+        # ~coalesce_bytes decoded before returning them, so the driver packs
         # fewer items. 0 disables coalescing (one chunk per physical row group).
         self.coalesce_bytes = coalesce_bytes
         self.filesystem = filesystem
@@ -164,6 +173,8 @@ class FooterReader:
         row_group: RowGroupMetaData,
         rg_idx: int,
         leaf_indices: list[int] | None,
+        leaf_profiles: list[LeafProfile] | None,
+        size_stats: list[LeafSizeStats | None] | None,
         fully_matched: bool = False,
     ) -> RowGroupInfo:
         # Sum per-column sizes on both paths -- with a projection, only the
@@ -174,11 +185,20 @@ class FooterReader:
         # tasks, which is the failure this whole path exists to avoid. Shares
         # the V1 helper so the three call sites cannot drift.
         uncompressed = _row_group_uncompressed_size(row_group, leaf_indices)
+        # The decoded size is what a read task's Arrow block actually costs, so
+        # it is what the bin budget wants. ``None`` (the estimator's answer to
+        # ``leaf_profiles``/``size_stats`` of ``None``, i.e. a footer with no
+        # usable SizeStatistics) leaves consumers on the uncompressed value; the
+        # uncompressed number is recorded either way so both stay comparable.
+        decoded = estimate_row_group_decoded_size(
+            row_group, leaf_profiles, leaf_indices, size_stats
+        )
         return RowGroupInfo(
             rg_idx=rg_idx,
             uncompressed_size=uncompressed,
             num_rows=row_group.num_rows,
             fully_matched=fully_matched,
+            decoded_size=decoded,
         )
 
     def _locate_filter_columns(self, schema: ParquetSchema) -> _FilterLeaves:
@@ -279,9 +299,12 @@ class FooterReader:
         )
         # Both column look-ups are schema-derived, and a Parquet file has a
         # single schema, so resolve them once rather than rescanning every leaf
-        # for each group. The read-column lookup reads leaf paths off row group 0,
-        # which a file with no row groups has none of; it sizes nothing either way.
-        filter_leaves = self._locate_filter_columns(metadata.schema)
+        # for each group. (``metadata.schema`` builds a fresh wrapper per access,
+        # hence the local.) The read-column lookup reads leaf paths off row group
+        # 0, which a file with no row groups has none of; it sizes nothing either
+        # way.
+        schema = metadata.schema
+        filter_leaves = self._locate_filter_columns(schema)
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
             if metadata.num_row_groups
@@ -334,11 +357,23 @@ class FooterReader:
             # falls through to its fully-matched default for every group.
             fully_by_idx = {}
 
+        # One Thrift walk per file over the footer bytes ``metadata`` already
+        # holds -- no extra IO, though ``__reduce__`` does re-serialize the
+        # footer, so skip it when the predicate pruned every row group. ``None``
+        # when the writer emitted no SizeStatistics or the walk failed its
+        # cross-check, which leaves every row group of this file on the
+        # uncompressed sizing. The leaf profiles hoist the estimator's
+        # schema-derived facts out of the per-row-group loop.
+        size_stats = read_size_statistics(metadata) if rg_indices else None
+        leaf_profiles = build_leaf_profiles(schema) if size_stats is not None else None
+
         per_rg = [
             self._row_group_info(
                 row_group=metadata.row_group(rg_idx),
                 rg_idx=rg_idx,
                 leaf_indices=leaf_indices,
+                leaf_profiles=leaf_profiles,
+                size_stats=size_stats[rg_idx] if size_stats is not None else None,
                 fully_matched=fully_by_idx.get(rg_idx, True),
             )
             for rg_idx in rg_indices

@@ -10,6 +10,7 @@ Constructed from `read_api.read_parquet` when
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
@@ -39,7 +40,7 @@ from ray.data.checkpoint.generated_id import (
     GENERATED_ID_COLUMN_TYPE,
     get_generated_id_column_name,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -191,9 +192,25 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
             OnlineBinPacker,
         )
-        from ray.data._internal.util import MiB
 
-        max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+        # Bins are budgeted in Arrow decoded bytes, which is exactly what
+        # ``target_max_block_size`` bounds, so default the cap to it rather than
+        # to an independent constant that could drift from the block target. The
+        # env var stays as an override.
+        #
+        # ``read_api`` passes ``sys.maxsize`` when block sizing is disabled, and
+        # that as a bin cap would pack every file into a single bin, so the
+        # sentinel falls back to the default block target -- the same constant
+        # ``max_bucket_size`` is derived from when block sizing is on.
+        max_bucket_size = kwargs.get("max_bucket_size")
+        default_bin_bytes = (
+            max_bucket_size
+            if max_bucket_size and max_bucket_size < sys.maxsize
+            else DEFAULT_TARGET_MAX_BLOCK_SIZE
+        )
+        max_bin_bytes = env_integer(
+            "RAY_DATA_PARQUET_BIN_PACKING_BYTES", default_bin_bytes
+        )
         max_shared_open_bins = env_integer(
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )

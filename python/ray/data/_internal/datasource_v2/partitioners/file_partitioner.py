@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 
@@ -23,6 +24,20 @@ class FilePartitioner(ABC):
         ``True``, and ``plan_list_files_op`` then runs listing as a single task.
         """
         return False
+
+    @property
+    def max_partition_decoded_bytes(self) -> Optional[int]:
+        """Upper bound, in Arrow decoded bytes, on the data in one partition.
+
+        ``None`` (the default) means the partitioner can't bound it, which is the
+        honest answer whenever partitions are sized from an encoding-ratio
+        estimate rather than from real decoded sizes. Callers use this to reserve
+        Ray ``memory`` per read task (see
+        :mod:`~ray.data._internal.datasource_v2.read_task_memory`), so returning
+        a number derived from a guess would turn that guess into a scheduling
+        constraint.
+        """
+        return None
 
     @abstractmethod
     def add_input(self, input_manifest: FileManifest):

@@ -28,6 +28,8 @@ class TestCreateChunkMetadata:
                 fully_matched=True,
                 rg_sizes=(),
                 rg_rows=(),
+                decoded_size=50,
+                rg_decoded_sizes=(),
                 extra_field="boom",
             )
 
@@ -40,6 +42,8 @@ class TestCreateChunkMetadata:
             fully_matched=True,
             rg_sizes=(),
             rg_rows=(),
+            decoded_size=50,
+            rg_decoded_sizes=(),
         )
         assert md == {
             "row_group_ids": (0, 1),
@@ -48,6 +52,8 @@ class TestCreateChunkMetadata:
             "fully_matched": True,
             "rg_sizes": (),
             "rg_rows": (),
+            "decoded_size": 50,
+            "rg_decoded_sizes": (),
         }
 
 
@@ -89,6 +95,8 @@ def test_chunk_metadata_subclasses_are_typeddicts():
         fully_matched=True,
         rg_sizes=(),
         rg_rows=(),
+        decoded_size=50,
+        rg_decoded_sizes=(),
     )
     lmd: ChunkMetadata = create_chunk_metadata(
         LineDelimitedFileChunkMetadata,
@@ -102,6 +110,8 @@ def test_chunk_metadata_subclasses_are_typeddicts():
         "fully_matched",
         "rg_sizes",
         "rg_rows",
+        "decoded_size",
+        "rg_decoded_sizes",
     }
     assert set(lmd.keys()) == {"chunk_byte_start_idx", "chunk_byte_end_idx"}
 
