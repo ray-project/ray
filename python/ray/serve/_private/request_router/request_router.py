@@ -31,6 +31,8 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
+    RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_EWMA_ALPHA,
+    RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER,
     RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S,
     RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
@@ -513,6 +515,12 @@ class RequestRouter(ABC):
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
         self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
 
+        # Sticky, latency-adaptive probe deadline: EWMA of recent successful
+        # queue-length probe round-trip times, used to seed the per-request probe
+        # deadline near the cluster's real probe latency instead of re-climbing from
+        # the static base each routing decision. None until the first clean probe.
+        self._probe_rtt_ewma_s: Optional[float] = None
+
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
         # determine the loop to attach to. This class can be constructed for the handle
@@ -962,23 +970,46 @@ class RequestRouter(ABC):
             self.max_queue_len_response_deadline_s,
         )
 
+        # Seed the deadline from the EWMA of recent successful probe round-trip
+        # times (padded by RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER), bounded below
+        # by the configured base so a healthy cluster stays at the fast default and
+        # above by the max. This lets the deadline track real probe latency without
+        # re-climbing the exponential backoff from the base every routing decision.
+        # Once real RTT reaches max/multiplier the seed saturates at the max deadline
+        # -- the cap working as designed (auto-reaching the static-inflate workaround).
+        adaptive_base_deadline_s = self.queue_len_response_deadline_s
+        if self._probe_rtt_ewma_s is not None:
+            adaptive_base_deadline_s = min(
+                max(
+                    self.queue_len_response_deadline_s,
+                    self._probe_rtt_ewma_s
+                    * RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_MULTIPLIER,
+                ),
+                max_queue_len_response_deadline_s,
+            )
+
         try:
             queue_len_response_deadline_s = min(
-                self.queue_len_response_deadline_s * (2**backoff_index),
+                adaptive_base_deadline_s * (2**backoff_index),
                 max_queue_len_response_deadline_s,
             )
         except OverflowError:
-            # self.queue_len_response_deadline_s * (2**backoff_index)
+            # adaptive_base_deadline_s * (2**backoff_index)
             # can overflow if backoff_index gets sufficiently large (e.g.
-            # 1024 when queue_len_response_deadline_s is 0.1).
+            # 1024 when the base deadline is 0.1).
             queue_len_response_deadline_s = max_queue_len_response_deadline_s
+
+        async def _timed_get_queue_len(replica):
+            start = self._event_loop.time()
+            queue_len = await replica.get_queue_len(
+                deadline_s=queue_len_response_deadline_s
+            )
+            return queue_len, self._event_loop.time() - start
 
         get_queue_len_tasks = []
         task_to_replica: Dict[asyncio.Task, RunningReplica] = {}
         for r in replicas:
-            t = self._event_loop.create_task(
-                r.get_queue_len(deadline_s=queue_len_response_deadline_s)
-            )
+            t = self._event_loop.create_task(_timed_get_queue_len(r))
             task_to_replica[t] = r
             get_queue_len_tasks.append(t)
 
@@ -987,6 +1018,11 @@ class RequestRouter(ABC):
             timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
+        # Clean round = every probed replica answered (no timeout, no error). Take RTTs
+        # from the task results below, not a shared list, so a timed-out task that
+        # finishes late can't add an RTT after it was already recorded as failed.
+        round_is_clean = len(pending) == 0
+        clean_round_rtts: List[float] = []
         for t in pending:
             replica = task_to_replica[t]
             result.append((replica, None))
@@ -1002,6 +1038,7 @@ class RequestRouter(ABC):
         for t in done:
             replica = task_to_replica[t]
             if t.exception() is not None:
+                round_is_clean = False
                 result.append((replica, None))
                 msg = (
                     "Failed to fetch queue length for "
@@ -1031,13 +1068,33 @@ class RequestRouter(ABC):
 
                 logger.warning(msg)
             else:
-                queue_len = t.result()
+                queue_len, rtt = t.result()
+                clean_round_rtts.append(rtt)
                 result.append((replica, queue_len))
                 self._replica_queue_len_cache.update(replica.replica_id, queue_len)
                 self._update_router_queue_len_gauge(replica.replica_id, queue_len)
 
+        # Fold into the RTT EWMA only on a clean round. A censored round's timed-out
+        # replicas have unknown, over-deadline RTTs, so folding only the fast successes
+        # would bias the estimate low.
+        if round_is_clean:
+            self._update_probe_rtt_ewma(clean_round_rtts)
+
         assert len(result) == len(replicas)
         return result
+
+    def _update_probe_rtt_ewma(self, rtts: List[float]) -> None:
+        """Fold each probe RTT into the EWMA with equal per-sample weight (first
+        sample seeds it). Per-replica folding makes a larger clean round shift the
+        estimate more, but boundedly -- every RTT is <= that round's deadline.
+        """
+        alpha = RAY_SERVE_QUEUE_LENGTH_PROBE_RTT_EWMA_ALPHA
+        for rtt in rtts:
+            self._probe_rtt_ewma_s = (
+                rtt
+                if self._probe_rtt_ewma_s is None
+                else (1.0 - alpha) * self._probe_rtt_ewma_s + alpha * rtt
+            )
 
     async def _select_from_candidate_replicas(
         self,
