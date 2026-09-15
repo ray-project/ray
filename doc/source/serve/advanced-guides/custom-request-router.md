@@ -66,8 +66,8 @@ Ray Serve provides utility mixins that can be used to extend the functionality o
 
 
 (throughput-aware-request-router)=
-## Define a complex throughput-aware request router
-A fully featured request router can be more complex and should take into account the multiplexed model, locality, the request queue length on each replica, and using custom statistics like throughput  to decide which replica to route the request to. The following class defines a throughput-aware request router that routes requests to the replica with these factors in mind. Add the following code into the `custom_request_router.py` file:
+## Define a throughput-aware request router
+The following router first prefers replicas that have the requested model loaded, then those with the fewest loaded models. Within each model rank, it prefers replicas on the same node, in the same availability zone, and elsewhere, in that order. It breaks ties using increasing reported throughput. Add this class to `custom_request_router.py`:
 
 ```{literalinclude} ../doc_code/custom_request_router.py
 :start-after: __begin_define_throughput_aware_request_router__
@@ -75,7 +75,9 @@ A fully featured request router can be more complex and should take into account
 :language: python
 ```
 
-This request router inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst), as well as [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) for FIFO request routing, [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst) for locality-aware request routing, and [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) for multiplexed model support. It implements [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) to take the highest ranked replicas from [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.LocalityMixin.rank_replicas_via_locality.rst) and uses the [`select_available_replicas`](../api/doc/ray.serve.request_router.RequestRouter.select_available_replicas.rst) helper to filter out replicas that have reached their maximum request queue length. Finally, it takes the replicas with the minimum throughput and returns the top one.
+The router keeps every rank returned by the multiplexing and locality helpers. The first rank can be empty when no replica has loaded a model or no replica shares the router's node. Keeping the remaining ranks provides a fallback to other replicas.
+
+`select_available_replicas` skips replicas whose cached queue length has reached `max_ongoing_requests`. The router returns each remaining replica in its own rank so the base router tries them in throughput order. If a preferred replica rejects the request, lower-ranked replicas remain available as fallbacks. This policy returns all fallback ranks in one call and sets `routing_context.should_backoff` to `True` for the next retry. If every replica is at capacity, it returns an empty list and the base router retries with backoff.
 
 (deploy-app-with-throughput-aware-request-router)=
 ## Deploy an app with the throughput-aware request router
