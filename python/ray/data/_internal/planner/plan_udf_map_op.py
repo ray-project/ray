@@ -246,7 +246,6 @@ def plan_filter_op(
         init_fn = None
         transform_fn = BlockMapTransformFn(
             filter_block_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
     else:
@@ -262,7 +261,6 @@ def plan_filter_op(
 
         transform_fn = RowMapTransformFn(
             _generate_transform_fn_for_filter(filter_fn),
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -313,7 +311,6 @@ def plan_udf_map_op(
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -327,7 +324,6 @@ def plan_udf_map_op(
 
         transform_fn = RowMapTransformFn(
             udf_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 

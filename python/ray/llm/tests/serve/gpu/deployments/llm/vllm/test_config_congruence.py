@@ -142,7 +142,7 @@ async def get_vllm_standalone_config() -> Tuple[Any, str]:
         return mock_engine
 
     # Create CLI args using vLLM's argument parser
-    from vllm.entrypoints.openai.cli_args import make_arg_parser
+    from vllm.entrypoints.launchers.cli_args import make_arg_parser
     from vllm.utils.argparse_utils import FlexibleArgumentParser
 
     parser = make_arg_parser(FlexibleArgumentParser())
