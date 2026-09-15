@@ -13,12 +13,10 @@ import hashlib
 import importlib.metadata
 import logging
 import os
-from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
-import ray
 from ray._common.usage.usage_lib import usage_stats_enabled
 from ray._private.worker import global_worker
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -233,7 +231,7 @@ def record_usage_info(info: UsageInfo) -> None:
 
 def _send_to_usage_actor(info: UsageInfo) -> None:
     """Fire-and-forget the entry to the actor; never blocks the executor."""
-    get_or_create_usage_collection_actor().record_usage_info.remote(info)
+    get_or_create_usage_collection_actor().record.remote(info)
 
 
 def build_usage_id_map(
@@ -425,13 +423,3 @@ def _format_plan_str(
     for child in op.input_dependencies:
         line += _format_plan_str(child, op_name_fn, depth + 1, usage_id_map)
     return line
-
-
-def reset_for_testing() -> None:
-    """Reset the actor's buffer. Tests only; requires a running cluster."""
-    ray.get(get_or_create_usage_collection_actor().reset.remote())
-
-
-def get_executions() -> "OrderedDict[str, UsageInfo]":
-    """Get the actor's current executions. Tests only; requires a running cluster."""
-    return ray.get(get_or_create_usage_collection_actor().get_executions.remote())
