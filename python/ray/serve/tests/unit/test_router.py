@@ -2150,6 +2150,7 @@ class TestChooseReplica:
         )
         replica = FakeReplica(r1_id)
         fake_request_router._replicas_list = [replica]
+        fake_request_router._replicas = {r1_id: replica}
 
         async def fake_choose_replicas(candidate_replicas, pending_request=None):
             return [candidate_replicas]

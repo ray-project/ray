@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import aclosing, asynccontextmanager, contextmanager
 from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
@@ -1291,23 +1291,15 @@ class AsyncioRouter:
             if reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
             else:
-                # Fast path: synchronously ask the configured RequestRouter to
-                # pick a replica from the current snapshot, bypassing the
-                # _pending_requests_to_fulfill queue and the routing-task
-                # workers. Safe because there's no reservation -> no rejection
-                # -> no retry, so the queue's ordering/backoff guarantees are
-                # unused.
-                ranks = await self._active_request_router.choose_replicas(
-                    candidate_replicas=self._active_request_router._replicas_list,
-                    pending_request=pr,
-                )
-                flat = [r for rank in ranks for r in rank]
-                candidate = flat[0] if flat else None
-                if candidate is None:
-                    raise RuntimeError(
-                        f"no replicas available for {self.deployment_id}"
-                    )
-                replica = candidate
+                # Policies can return no candidates temporarily (e.g. while
+                # waiting for multiplexed model metadata). Reuse their selection
+                # retry loop with the same PendingRequest, without probing or
+                # reserving capacity on replicas. Close the generator to clean up
+                # its backoff accounting on success and cancellation.
+                async with aclosing(
+                    self._active_request_router._choose_replicas_with_backoff(pr)
+                ) as candidates:
+                    replica = (await anext(candidates))[0]
                 slot_token = None
 
             selection = ReplicaSelection(
