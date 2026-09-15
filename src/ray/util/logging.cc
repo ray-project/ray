@@ -429,25 +429,66 @@ void RayLog::InitLogFormat() {
   initialized_ = true;
 }
 
+namespace {
+
+#ifdef _WIN32
+constexpr std::array<int, 5> kInstalledSignals = {
+    SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM};
+#else
+// Ray pins Abseil 20230802.1, whose failure-signal table is defined here:
+// https://github.com/abseil/abseil-cpp/blob/fb3621f4f897824c0dbe0615fa94543df6192f30/absl/debugging/failure_signal_handler.cc#L94-L104
+constexpr std::array<int, 7> kInstalledSignals = {
+    SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM, SIGBUS, SIGTRAP};
+#endif
+
+#ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
+using SignalDisposition = void (*)(int);
+#else
+using SignalDisposition = struct sigaction;
+#endif
+
+// Saved on install so uninstall can put back what the embedding process had. Resetting to
+// SIG_DFL instead silently disables a handler installed before Ray, such as an embedded
+// JVM's or an application's own crash reporter.
+//
+// Zero initialization is SIG_DFL, so a restore without a prior save degrades to the
+// historical behavior rather than to an invalid disposition.
+std::array<SignalDisposition, kInstalledSignals.size()>
+    previous_signal_dispositions;  // NOLINT
+
+void SavePreviousSignalDispositions() {
+  for (size_t i = 0; i < kInstalledSignals.size(); ++i) {
+#ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
+    // Windows has no query-only form of signal(), so read the current disposition by
+    // setting it and immediately putting it back.
+    SignalDisposition previous = signal(kInstalledSignals[i], SIG_DFL);
+    RAY_CHECK(previous != SIG_ERR);
+    RAY_CHECK(signal(kInstalledSignals[i], previous) != SIG_ERR);
+    previous_signal_dispositions[i] = previous;
+#else
+    RAY_CHECK(sigaction(kInstalledSignals[i],
+                        /*act=*/nullptr,
+                        &previous_signal_dispositions[i]) == 0);
+#endif
+  }
+}
+
+}  // namespace
+
 void RayLog::UninstallSignalAction() {
   if (!is_failure_signal_handler_installed_) {
     return;
   }
   RAY_LOG(DEBUG) << "Uninstall signal handlers.";
-  std::vector<int> installed_signals({SIGSEGV, SIGILL, SIGFPE, SIGABRT, SIGTERM});
+  for (size_t i = 0; i < kInstalledSignals.size(); ++i) {
 #ifdef _WIN32  // Do NOT use WIN32 (without the underscore); we want _WIN32 here
-  for (int signal_num : installed_signals) {
-    RAY_CHECK(signal(signal_num, SIG_DFL) != SIG_ERR);
-  }
+    RAY_CHECK(signal(kInstalledSignals[i], previous_signal_dispositions[i]) != SIG_ERR);
 #else
-  struct sigaction sig_action;
-  memset(&sig_action, 0, sizeof(sig_action));
-  sigemptyset(&sig_action.sa_mask);
-  sig_action.sa_handler = SIG_DFL;
-  for (int signal_num : installed_signals) {
-    RAY_CHECK(sigaction(signal_num, &sig_action, NULL) == 0);
-  }
+    RAY_CHECK(sigaction(kInstalledSignals[i],
+                        &previous_signal_dispositions[i],
+                        /*oldact=*/nullptr) == 0);
 #endif
+  }
   is_failure_signal_handler_installed_ = false;
 }
 
@@ -496,6 +537,7 @@ void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_h
   if (is_failure_signal_handler_installed_) {
     return;
   }
+  SavePreviousSignalDispositions();
 #ifndef _WIN32
   // InitializeSymbolizer cannot be called twice on windows, (causes a
   // crash)and is called in other libraries like pytorchaudio. It does not seem
