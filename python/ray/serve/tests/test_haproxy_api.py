@@ -19,6 +19,7 @@ from fastapi import FastAPI, Request, Response
 
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -35,6 +36,7 @@ from ray.serve._private.haproxy import (
     _routers_and_targets_by_backend,
 )
 from ray.serve.config import HTTPOptions
+from ray.serve.schema import Target, TargetGroup
 
 logger = logging.getLogger(__name__)
 
@@ -1028,6 +1030,67 @@ def test_direct_backend_names_survive_sanitization_collisions(deployment_names):
         for deployment_name in deployment_names
     }
     assert len(names) == len(deployment_names)
+
+
+def _target_group(*, with_router: bool) -> TargetGroup:
+    """An HTTP app with one ingress replica and one `_direct_http` deployment."""
+    return TargetGroup(
+        targets=[
+            Target(ip="10.0.0.1", port=8000, instance_id="", name="app#Ingress#i1")
+        ],
+        route_prefix="/",
+        protocol=RequestProtocol.HTTP,
+        app_name="app",
+        ingress_deployment_name="Ingress",
+        ingress_request_router_targets=(
+            [Target(ip="10.0.0.9", port=9000, instance_id="", name="app#LLMRouter#r1")]
+            if with_router
+            else []
+        ),
+        direct_http_targets={
+            "LLMServer:m": [
+                Target(
+                    ip="10.0.0.2", port=8001, instance_id="", name="app#LLMServer:m#d1"
+                )
+            ]
+        },
+    )
+
+
+@pytest.mark.parametrize("with_router", [True, False])
+def test_direct_backends_require_an_ingress_request_router(with_router):
+    """Direct backends are built, and awaited by `serving()`, only for apps with
+    an ingress request router -- and the two always agree.
+
+    A direct backend is reachable only through the router's dispatch variable, so
+    without a router there is nothing to render. Awaiting one that is never
+    rendered is what wedged the proxy: `serving()` compared its desired backends
+    to HAProxy's stats and never saw the missing one come UP, so `_direct_http`
+    apps without a router (e.g. the `_direct_http` integration tests) hung on
+    "Proxies not available".
+    """
+    manager = _bare_haproxy_manager()
+    manager._node_ip_address = "10.0.0.250"
+    tg = _target_group(with_router=with_router)
+    manager._target_groups = [tg]
+
+    backend = manager._create_backend_config(tg, fallback_target=None)
+    desired = manager._desired_backend_servers()
+
+    app_backend = manager._generate_backend_name(tg)
+    direct_backend = manager._generate_direct_backend_name(app_backend, "LLMServer:m")
+
+    if with_router:
+        assert [d.name for d in backend.direct_target_configs] == [direct_backend]
+        assert set(desired) == {app_backend, direct_backend}
+        assert desired[direct_backend] == {manager.get_safe_name("app#LLMServer:m#d1")}
+    else:
+        assert backend.direct_target_configs == []
+        assert set(desired) == {app_backend}
+    # Whatever the case, what `serving()` waits for is exactly what is rendered.
+    assert set(desired) == {app_backend} | {
+        d.name for d in backend.direct_target_configs
+    }
 
 
 def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup):

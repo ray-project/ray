@@ -2060,23 +2060,7 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
-            desired_backend_servers = {
-                self._generate_backend_name(tg): {
-                    self._generate_server_name(target) for target in tg.targets
-                }
-                for tg in self._target_groups
-            }
-            # `_direct_http` deployments render their own backends. Without them
-            # here, `serving()` reports ready while a model backend still has no
-            # UP server, and the first request to that model 503s.
-            for tg in self._target_groups:
-                app_backend_name = self._generate_backend_name(tg)
-                for deployment_name, targets in tg.direct_http_targets.items():
-                    desired_backend_servers[
-                        self._generate_direct_backend_name(
-                            app_backend_name, deployment_name
-                        )
-                    ] = {self._generate_server_name(target) for target in targets}
+            desired_backend_servers = self._desired_backend_servers()
             fallback_servers = {
                 self._generate_server_name(target)
                 for target in (
@@ -2105,6 +2089,35 @@ class HAProxyManager(ProxyActorInterface):
                 pass
             if not ready_to_serve:
                 await asyncio.sleep(0.2)
+
+    def _desired_backend_servers(self) -> Dict[str, Set[str]]:
+        """Backend name -> server names that `serving()` waits to see UP.
+
+        Must agree with what `_create_backend_config` renders: a backend listed
+        here that HAProxy never reports keeps `serving()` waiting forever and
+        wedges the proxy. In particular, `_direct_http` deployments render their
+        own backends only for apps with an ingress request router, so they are
+        included only then. With them, `serving()` would otherwise report ready
+        while a model backend still has no UP server and the first request to
+        that model 503s.
+        """
+        desired: Dict[str, Set[str]] = {
+            self._generate_backend_name(tg): {
+                self._generate_server_name(target) for target in tg.targets
+            }
+            for tg in self._target_groups
+        }
+        for tg in self._target_groups:
+            if not tg.ingress_request_router_targets:
+                continue
+            app_backend_name = self._generate_backend_name(tg)
+            for deployment_name, targets in tg.direct_http_targets.items():
+                desired[
+                    self._generate_direct_backend_name(
+                        app_backend_name, deployment_name
+                    )
+                ] = {self._generate_server_name(target) for target in targets}
+        return desired
 
     def _is_draining(self) -> bool:
         """Whether is haproxy is in the draining status or not."""
@@ -2251,18 +2264,28 @@ class HAProxyManager(ProxyActorInterface):
 
         backend_name = self._generate_backend_name(target_group)
 
+        # Direct backends are only reachable through the app's ingress request
+        # router (the frontend dispatches to them on a variable the Lua sets), so
+        # an app without one gets none: rendering an unreachable backend would
+        # also make `serving()` wait on servers HAProxy never reports.
         # Sorted so the rendered config is byte-stable across reconciles;
         # `_write_if_changed` and reload avoidance depend on that.
-        direct_target_configs = [
-            DirectTargetConfig(
-                deployment_name=deployment_name,
-                name=self._generate_direct_backend_name(backend_name, deployment_name),
-                servers=[self._target_to_server(target) for target in targets],
-            )
-            for deployment_name, targets in sorted(
-                target_group.direct_http_targets.items()
-            )
-        ]
+        direct_target_configs = (
+            [
+                DirectTargetConfig(
+                    deployment_name=deployment_name,
+                    name=self._generate_direct_backend_name(
+                        backend_name, deployment_name
+                    ),
+                    servers=[self._target_to_server(target) for target in targets],
+                )
+                for deployment_name, targets in sorted(
+                    target_group.direct_http_targets.items()
+                )
+            ]
+            if ingress_request_router_servers
+            else []
+        )
 
         fallback_server = None
         if fallback_target is not None:

@@ -340,7 +340,7 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} track {{ backend.name or 'unknown' }}/{{ backend.fallback_server.name }} backup
     {%- endif %}
 {%- endif %}
-{%- if has_ingress_request_router %}
+{%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 {%- for direct in backend.direct_target_configs %}
 backend {{ direct.name }}
     log global
