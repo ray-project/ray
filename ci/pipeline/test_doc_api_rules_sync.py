@@ -1,11 +1,20 @@
 """Keep the ``doc_api`` conditional-testing rule in sync with the API-page set.
 
-The ``doc_api`` tag in ``.buildkite/test.rules.txt`` selects the API-consistency
-CI checks ("doc: check API annotations" and "doc: check API doc consistency" in
-``.buildkite/doc.rayci.yml``). It covers two populations: the API reference
-pages, and the autodoc machinery that determines what those pages contain
-(``conf.py``, ``api_autogen.py``, ``api_mock_imports.py``, the in-repo Sphinx
-extensions, and the docs dependency locks).
+The ``doc_api`` tag selects the API-consistency CI checks ("doc: check API
+annotations" and "doc: check API doc consistency" in ``.buildkite/doc.rayci.yml``).
+It covers two populations: the API reference pages, and the autodoc machinery
+that determines what those pages contain (``conf.py``, ``api_autogen.py``,
+``api_mock_imports.py``, the in-repo Sphinx extensions, and the docs dependency
+locks).
+
+The rules that emit ``doc_api`` for those two populations live in the
+``.buildkite/doc.rules.txt`` documentation fragment (the docs deplock rule, which
+also touches ``python/deplocks/``, stays in ``.buildkite/test.rules.txt``). rayci
+evaluates each ``.buildkite/*.rules.txt`` file on its own and unions the emitted
+tags, so this test reads both files and unions their tags to match what a real
+build sees. Merging the two files into one rule set would be wrong: a skip rule
+in one file cannot suppress a match in another, but it would in a single merged
+first-match-wins pass.
 
 This test polices the first population only. Its directory list must track
 ``API_PATH_PREFIXES`` in ``doc/source/_ext/api_sidebar.py``, which is the source
@@ -127,24 +136,51 @@ def _api_path_prefixes(root: Path) -> set:
     raise AssertionError("API_PATH_PREFIXES not found in api_sidebar.py")
 
 
+def _doc_api_rulesets(root: Path) -> list:
+    """The per-file rule sets whose ``doc_api`` tags rayci unions.
+
+    doc_api routing lives in the doc.rules.txt fragment; the docs deplock rule,
+    which also touches python/deplocks/, stays in test.rules.txt. Read both, and
+    keep them as separate rule sets so tag matching unions across files rather
+    than merging into a single first-match-wins pass (see the module docstring).
+    """
+    return [
+        TagRuleSet((root / ".buildkite" / "test.rules.txt").read_text()),
+        TagRuleSet((root / ".buildkite" / "doc.rules.txt").read_text()),
+    ]
+
+
+def _match_tags_union(rulesets: list, path: str) -> set:
+    """Union of the tags each rule set emits for ``path`` -- rayci's model."""
+    tags = set()
+    for rules in rulesets:
+        matched, _ = rules.match_tags(path)
+        tags |= set(matched)
+    return tags
+
+
 def _doc_api_rule_dirs(root: Path) -> set:
-    """Directories that emit the ``doc_api`` tag in test.rules.txt, normalized
-    to be relative to doc/source/ so they compare against API_PATH_PREFIXES."""
-    rules = TagRuleSet((root / ".buildkite" / "test.rules.txt").read_text())
+    """Directories that emit the ``doc_api`` tag across the doc routing rules,
+    normalized to be relative to doc/source/ so they compare against
+    API_PATH_PREFIXES. Enumerates every rule in both files (union of rule dirs),
+    which is order-independent, unlike tag matching."""
     dirs = set()
-    for rule in rules.rules:
-        if "doc_api" not in rule.tags:
-            continue
-        for d in rule.dirs:  # stored without a trailing slash
-            if d in _NON_PAGE_DOC_API_DIRS:
-                # Not an API page (e.g. the checker's own source); intentionally
-                # outside the page<->API_PATH_PREFIXES alignment this test checks.
+    for rules in _doc_api_rulesets(root):
+        for rule in rules.rules:
+            if "doc_api" not in rule.tags:
                 continue
-            assert d.startswith(_DOC_SOURCE), (
-                f"doc_api rule directory {d!r} is not under {_DOC_SOURCE!r}; the "
-                "sync check assumes API reference pages live under doc/source/."
-            )
-            dirs.add(d[len(_DOC_SOURCE) :] + "/")
+            for d in rule.dirs:  # stored without a trailing slash
+                if d in _NON_PAGE_DOC_API_DIRS:
+                    # Not an API page (e.g. the checker's own source);
+                    # intentionally outside the page<->API_PATH_PREFIXES
+                    # alignment this test checks.
+                    continue
+                assert d.startswith(_DOC_SOURCE), (
+                    f"doc_api rule directory {d!r} is not under {_DOC_SOURCE!r}; "
+                    "the sync check assumes API reference pages live under "
+                    "doc/source/."
+                )
+                dirs.add(d[len(_DOC_SOURCE) :] + "/")
     return dirs
 
 
@@ -158,9 +194,9 @@ def test_doc_api_rule_matches_api_path_prefixes():
     extra_in_rule = actual - expected
 
     assert not missing_from_rule and not extra_in_rule, (
-        "The doc_api rule in .buildkite/test.rules.txt has drifted from "
+        "The doc_api rule in .buildkite/doc.rules.txt has drifted from "
         "API_PATH_PREFIXES in doc/source/_ext/api_sidebar.py.\n"
-        f"  API pages with no doc_api rule (add these dirs to test.rules.txt so "
+        f"  API pages with no doc_api rule (add these dirs to doc.rules.txt so "
         f"the API checks fire on them): {sorted(missing_from_rule)}\n"
         f"  doc_api rule dirs not in API_PATH_PREFIXES (remove them, or, if the "
         f"divergence is intentional, add them to the documented exception list "
@@ -199,7 +235,7 @@ def _conf_py_local_imports(root: Path) -> set:
 def test_conf_py_imports_route_to_doc_api():
     """Every local module conf.py imports is classified, not left to a catch-all.
 
-    The autodoc machinery block in test.rules.txt is a hand-enumerated list, and
+    The autodoc machinery block in doc.rules.txt is a hand-enumerated list, and
     a `doc/source/*.py` pattern can't replace it (fnmatch `*` crosses `/`, so it
     would swallow every example script under doc/source/<lib>/doc_code/). That
     makes the list drift-prone in a way that fails silently and badly: a new
@@ -212,7 +248,7 @@ def test_conf_py_imports_route_to_doc_api():
     exception.
     """
     root = _find_ray_root()
-    rules = TagRuleSet((root / ".buildkite" / "test.rules.txt").read_text())
+    rulesets = _doc_api_rulesets(root)
 
     found = _conf_py_local_imports(root)
     missing_floor = _MACHINERY_IMPORT_FLOOR - found
@@ -231,17 +267,17 @@ def test_conf_py_imports_route_to_doc_api():
         if module in _CONF_IMPORTS_NOT_API_MACHINERY:
             continue
         path = f"doc/source/{module.replace('.', '/')}.py"
-        tags, _ = rules.match_tags(path)
+        tags = _match_tags_union(rulesets, path)
         if "doc_api" not in tags:
             unclassified[path] = sorted(tags)
 
     assert not unclassified, (
-        "conf.py imports these modules, but test.rules.txt does not route them "
-        "to doc_api, so editing them would not run the API-consistency "
+        "conf.py imports these modules, but the doc routing rules do not route "
+        "them to doc_api, so editing them would not run the API-consistency "
         "checks:\n"
         + "\n".join(f"  {p} currently emits {t}" for p, t in unclassified.items())
         + "\n\nAdd each one to the autodoc machinery block in "
-        ".buildkite/test.rules.txt, or, if it genuinely cannot affect the "
+        ".buildkite/doc.rules.txt, or, if it genuinely cannot affect the "
         "documented API surface, to _CONF_IMPORTS_NOT_API_MACHINERY in this "
         "test with a comment saying why."
     )
