@@ -5,6 +5,7 @@ from typing import Generator, Tuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -12,6 +13,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve import HTTPOptions
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
     ASGIReceiveProxy,
     MessageQueue,
     configure_http_middlewares,
@@ -22,6 +24,9 @@ from ray.serve._private.http_util import (
     send_http_response_on_exception,
 )
 from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
+)
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
 
@@ -429,6 +434,94 @@ class TestBackpressureHTTPResponse:
         exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
         assert exc.status_code == 503
         assert exc.retry_after_s is None
+
+
+class TestASGIAppReplicaWrapperRoutePatterns:
+    """`__serve_route_patterns__` reports what the replica's ASGI app serves.
+
+    Internal Serve method reached over a `DeploymentHandle`. The LLM ingress
+    request router calls it once at startup to learn which method/path pairs
+    belong to the application ingress rather than to a model deployment, so an
+    empty or wrong answer here sends control requests to a model.
+    """
+
+    @staticmethod
+    def _app():
+        app = FastAPI()
+
+        @app.get("/v1/models")
+        def list_models():
+            return []
+
+        @app.get("/v1/models/{model:path}")
+        def get_model(model: str):
+            return {}
+
+        @app.post("/admin/pause")
+        def pause():
+            return {}
+
+        return app
+
+    @staticmethod
+    def _by_path(patterns):
+        return {p.path: p for p in patterns}
+
+    def test_reports_paths_and_methods(self):
+        patterns = ASGIAppReplicaWrapper(self._app()).__serve_route_patterns__()
+        by_path = self._by_path(patterns)
+
+        assert "/v1/models" in by_path
+        assert by_path["/v1/models"].methods == ["GET"]
+        assert by_path["/admin/pause"].methods == ["POST"]
+
+    def test_reports_parameterized_paths_unexpanded(self):
+        """The pattern, not a concrete path: the router matches against it."""
+        by_path = self._by_path(
+            ASGIAppReplicaWrapper(self._app()).__serve_route_patterns__()
+        )
+        assert "/v1/models/{model:path}" in by_path
+        assert by_path["/v1/models/{model:path}"].methods == ["GET"]
+
+    def test_late_bound_app_reports_routes_after_set(self):
+        """A `serve.ingress()` app supplied at replica init time, rather than at
+        decoration time, must report the same routes."""
+        wrapper = ASGIAppReplicaWrapper(None)
+        wrapper._set_asgi_app(self._app())
+
+        by_path = self._by_path(wrapper.__serve_route_patterns__())
+        assert "/v1/models" in by_path
+        assert "/admin/pause" in by_path
+
+    def test_reads_the_app_it_was_given(self):
+        """Two wrappers over different apps report different routes -- the
+        method reads the initialized app, not any process-wide state."""
+        other = FastAPI()
+
+        @other.get("/only-here")
+        def only_here():
+            return {}
+
+        assert "/only-here" in self._by_path(
+            ASGIAppReplicaWrapper(other).__serve_route_patterns__()
+        )
+        assert "/only-here" not in self._by_path(
+            ASGIAppReplicaWrapper(self._app()).__serve_route_patterns__()
+        )
+
+    def test_routes_are_matchable_by_the_shared_matcher(self):
+        """The consumer side: what this returns is what decides ingress
+        ownership in the LLM router."""
+        matcher = ASGIRoutePatternMatcher(
+            ASGIAppReplicaWrapper(self._app()).__serve_route_patterns__()
+        )
+        assert matcher.matches("GET", "/v1/models")
+        assert matcher.matches("GET", "/v1/models/meta-llama/Llama-3")
+        assert matcher.matches("POST", "/admin/pause")
+        # Model traffic is not the ingress's.
+        assert not matcher.matches("POST", "/v1/chat/completions")
+        # Right path, wrong method.
+        assert not matcher.matches("POST", "/v1/models")
 
 
 if __name__ == "__main__":

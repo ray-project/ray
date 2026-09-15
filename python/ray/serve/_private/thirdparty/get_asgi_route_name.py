@@ -242,6 +242,18 @@ def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
     return sorted(patterns, key=lambda x: x.path)
 
 
+_ALL_HTTP_METHODS = [
+    "GET",
+    "HEAD",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+    "TRACE",
+]
+
+
 class ASGIRoutePatternMatcher:
     """Matches (method, path) pairs against a fixed list of `RoutePattern`s.
 
@@ -273,7 +285,20 @@ class ASGIRoutePatternMatcher:
 
         self._app = Starlette(
             routes=[
-                Route(pattern.path, _dummy_endpoint, methods=pattern.methods)
+                Route(
+                    pattern.path,
+                    _dummy_endpoint,
+                    # `RoutePattern.methods is None` means "no method
+                    # restrictions" (a WebSocket route or a mounted ASGI app).
+                    # Passing that straight to Starlette would silently mean
+                    # GET-only, since `Route` defaults `methods` to `["GET"]`,
+                    # so spell out the full set instead.
+                    methods=(
+                        _ALL_HTTP_METHODS
+                        if pattern.methods is None
+                        else pattern.methods
+                    ),
+                )
                 for pattern in self._patterns
             ]
         )

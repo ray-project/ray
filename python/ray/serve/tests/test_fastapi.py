@@ -37,6 +37,9 @@ from ray.serve._private.http_util import (
     make_fastapi_class_based_view,
 )
 from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
@@ -1320,6 +1323,58 @@ def test_ingress_include_router_with_self(serve_instance):
     resp = httpx.get(f"{url}/direct")
     assert resp.status_code == 200, f"Direct failed: {resp.text}"
     assert resp.json() == {"source": "app"}
+
+
+def test_serve_route_patterns_over_a_deployment_handle(serve_instance):
+    """`__serve_route_patterns__` reports a replica's real routes over a handle.
+
+    Internal Serve method, not a supported public API. The LLM ingress request
+    router calls it once at startup to learn which method/path pairs belong to
+    the application ingress rather than to a model deployment, so it has to
+    survive the handle round trip -- the returned `RoutePattern`s are
+    serialized back to the caller.
+    """
+    app = FastAPI()
+
+    @app.get("/v1/models")
+    def list_models():
+        return []
+
+    @app.get("/v1/models/{model:path}")
+    def get_model(model: str):
+        return {"model": model}
+
+    @app.post("/admin/pause")
+    def pause():
+        return {}
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Ingress:
+        pass
+
+    handle = serve.run(Ingress.bind())
+
+    patterns = handle.__serve_route_patterns__.remote().result()
+    by_path = {pattern.path: pattern for pattern in patterns}
+
+    # The replica's actual routes, with methods and unexpanded parameters.
+    assert by_path["/v1/models"].methods == ["GET"]
+    assert by_path["/v1/models/{model:path}"].methods == ["GET"]
+    assert by_path["/admin/pause"].methods == ["POST"]
+
+    # And they drive the matcher the router decides ingress ownership with.
+    matcher = ASGIRoutePatternMatcher(patterns)
+    assert matcher.matches("GET", "/v1/models")
+    assert matcher.matches("GET", "/v1/models/meta-llama/Llama-3")
+    assert matcher.matches("POST", "/admin/pause")
+    assert not matcher.matches("POST", "/v1/models")
+    assert not matcher.matches("POST", "/v1/chat/completions")
+
+    # The routes really are the app's: a path it does not serve 404s.
+    url = get_application_url("HTTP")
+    assert httpx.get(f"{url}/v1/models").status_code == 200
+    assert httpx.post(f"{url}/v1/chat/completions").status_code == 404
 
 
 if __name__ == "__main__":
