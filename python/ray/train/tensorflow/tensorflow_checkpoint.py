@@ -8,10 +8,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.train.constants import (
-    V2_MIGRATION_GUIDE_MESSAGE,
-    _v2_migration_warnings_enabled,
-)
+from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
 from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
@@ -20,15 +17,12 @@ if TYPE_CHECKING:
 _TENSORFLOW_CHECKPOINT_DEPRECATION_MESSAGE = (
     "`TensorflowCheckpoint` is deprecated and will be removed in a future release. "
     "Use `ray.train.Checkpoint` directly instead. "
-    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
 )
 
 
 @PublicAPI(stability="beta")
-@Deprecated(
-    message=_TENSORFLOW_CHECKPOINT_DEPRECATION_MESSAGE,
-    warning=_v2_migration_warnings_enabled(),
-)
+@Deprecated(message=_TENSORFLOW_CHECKPOINT_DEPRECATION_MESSAGE, warning=True)
 class TensorflowCheckpoint(FrameworkCheckpoint):
     """A :py:class:`~ray.train.Checkpoint` with TensorFlow-specific functionality."""
 

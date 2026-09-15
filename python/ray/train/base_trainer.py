@@ -28,6 +28,7 @@ from ray.train._internal.storage import (
     get_fs_and_path,
 )
 from ray.train.constants import (
+    V2_MIGRATION_GUIDE_LINK_MESSAGE,
     V2_MIGRATION_GUIDE_MESSAGE,
     _v2_migration_warnings_enabled,
 )
@@ -59,9 +60,7 @@ PREPROCESSOR_DEPRECATION_MESSAGE = (
 
 _TRAINER_RESTORE_DEPRECATION_WARNING = (
     "The `restore` and `can_restore` APIs are deprecated and "
-    "will be removed in a future release. "
-    "See this issue for more context and migration options: "
-    "https://github.com/ray-project/ray/issues/49454."
+    f"will be removed in a future release. {V2_MIGRATION_GUIDE_LINK_MESSAGE}"
 )
 
 _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
