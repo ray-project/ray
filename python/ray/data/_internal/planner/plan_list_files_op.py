@@ -9,10 +9,13 @@ the downstream ``ReadFiles`` physical op consumes them.
 A later FileDiscovery physical step will split path listing from metadata
 fetch; this planner only relocates shuffle into the indexer.
 
-Checkpoint filtering is not attached here — it's wrapped around the
-downstream ``ReadFiles`` physical op by
+id_column checkpoint filtering is not attached here — it's wrapped around
+the downstream ``ReadFiles`` physical op by
 :func:`plan_read_files_op_with_checkpoint_filter`, matching V1's
-dispatch pattern.
+dispatch pattern. Generated-ID checkpointing, by contrast, does hook in at
+listing time: :func:`plan_list_files_op_with_checkpoint_filter` wraps this
+planner to inject the compact checkpoint block into listing tasks so
+fully-checkpointed files are dropped at the source.
 """
 from __future__ import annotations
 

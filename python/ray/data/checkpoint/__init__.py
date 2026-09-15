@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .checkpoint_filter import (  # noqa: F401
         CheckpointFilter,
         CheckpointManager,
+        GeneratedIdColumnCheckpointManager,
         IdColumnCheckpointManager,
         NumpyArrayBasedCheckpointFilter,
     )
@@ -19,6 +20,7 @@ __all__ = [
     "CheckpointBackend",
     "CheckpointFilter",
     "CheckpointManager",
+    "GeneratedIdColumnCheckpointManager",
     "IdColumnCheckpointManager",
     "NumpyArrayBasedCheckpointFilter",
 ]
@@ -26,6 +28,7 @@ __all__ = [
 _LAZY_EXPORTS = (
     "CheckpointFilter",
     "CheckpointManager",
+    "GeneratedIdColumnCheckpointManager",
     "IdColumnCheckpointManager",
     "NumpyArrayBasedCheckpointFilter",
 )
