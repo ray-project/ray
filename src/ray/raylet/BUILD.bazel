@@ -132,6 +132,7 @@ ray_cc_library(
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/strings",
+        "@nlohmann_json",
     ],
 )
 
@@ -357,6 +358,16 @@ ray_cc_library(
     ],
 )
 
+ray_cc_library(
+    name = "shutdown",
+    hdrs = ["shutdown.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
 ray_cc_binary(
     name = "raylet",
     srcs = ["main.cc"],
@@ -370,6 +381,7 @@ ray_cc_binary(
         ":local_object_manager_interface",
         ":metrics",
         ":raylet_lib",
+        ":shutdown",
         ":worker_pool",
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/asio:periodical_runner",
@@ -394,6 +406,7 @@ ray_cc_binary(
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
         "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
