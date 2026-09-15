@@ -5006,6 +5006,46 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
   CompletePendingStreamingTask(spec2, caller_address, 0);
 }
 
+TEST_F(TaskManagerLineageTest, MarkGeneratorFailedAndResubmitKeepsPendingCount) {
+  rpc::Address caller_address;
+
+  // A running streaming generator whose resubmit is queued up for object recovery.
+  did_queue_generator_resubmit_ = true;
+  auto spec = CreateTaskHelper(1,
+                               {},
+                               /*dynamic_returns=*/true,
+                               /*is_streaming_generator=*/true,
+                               /*generator_backpressure_num_objects*/ 2);
+  manager_.AddPendingTask(caller_address, spec, "", 2);
+  ASSERT_EQ(manager_.NumPendingTasks(), 1);
+  ASSERT_EQ(num_retries_, 0);
+
+  // Two recovery cycles, because the miscount was additive: one attempt was counted
+  // twice per cycle, so an unfixed second cycle reaches 3 rather than 1.
+  for (int cycle = 1; cycle <= 2; cycle++) {
+    manager_.MarkDependenciesResolved(spec.TaskId());
+    manager_.MarkTaskWaitingForExecution(
+        spec.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
+    std::vector<ObjectID> task_deps;
+    // The generator is still running, so the resubmit is queued rather than performed.
+    ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps), std::nullopt);
+    ASSERT_EQ(manager_.NumPendingTasks(), 1);
+
+    // The generator's reply arrives, so the queued resubmit fires. The task was already
+    // counted as pending and only one attempt is in flight afterwards, so the count must
+    // not change. CompletePendingTask and FailPendingTask are not called on this path,
+    // which is why the resubmit has to release the finished attempt's count itself.
+    manager_.MarkGeneratorFailedAndResubmit(spec.TaskId());
+    ASSERT_EQ(manager_.NumPendingTasks(), 1);
+    // The resubmit actually happened, so the count above is not right for the wrong
+    // reason (such as a fix that skipped SetupTaskEntryForResubmit entirely).
+    ASSERT_EQ(num_retries_, cycle);
+  }
+
+  CompletePendingStreamingTask(spec, caller_address, 0);
+  ASSERT_EQ(manager_.NumPendingTasks(), 0);
+}
+
 TEST_F(TaskManagerLineageTest, TestStreamingGeneratorReconstructableWhileLineageInScope) {
   /**
    * Streaming generator's return objects should still be reconstructable as
