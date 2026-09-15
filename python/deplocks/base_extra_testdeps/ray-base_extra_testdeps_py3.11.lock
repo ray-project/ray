@@ -1317,9 +1317,9 @@ grpcio==1.75.0 \
     #   grpcio-status
     #   grpcio-tools
     #   ray
-grpcio-reflection==1.71.2 \
-    --hash=sha256:bedfac3d2095d6c066b16b66bfce85b4be3e92dc9f3b7121e6f019d24a9c09c0 \
-    --hash=sha256:c4f1a0959acb94ec9e1369bb7dab827cc9a6efcc448bdb10436246c8e52e2f57
+grpcio-reflection==1.67.1 \
+    --hash=sha256:507d9785a72032816e9bb5add4a660c655813a6bc1537b957822c652c88bf458 \
+    --hash=sha256:622a2d0712a77f97df4ef0dc341d459e7559a3712d0d93a3d3e5e5a381c39b00
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   ray

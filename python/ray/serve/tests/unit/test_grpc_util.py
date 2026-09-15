@@ -1,7 +1,7 @@
 import pickle
 import sys
 from typing import Callable
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import grpc
 import pytest
@@ -148,23 +148,6 @@ def test_get_service_names():
     }
 
 
-def test_enable_server_reflection_without_package_is_skipped():
-    """A missing grpcio-reflection package skips reflection with a warning
-    instead of failing proxy startup."""
-    grpc_server = gRPCGenericServer(fake_service_handler_factory)
-    add_servicer_to_server("test.UserService", "Predict", Mock(), grpc_server)
-    num_handlers = len(grpc_server.generic_rpc_handlers)
-
-    # A `None` entry in `sys.modules` makes `import` raise ImportError.
-    with patch.dict(sys.modules, {"grpc_reflection.v1alpha": None}):
-        assert enable_server_reflection(grpc_server) is False
-
-    assert len(grpc_server.generic_rpc_handlers) == num_handlers
-    assert reflection.SERVICE_NAME not in get_service_names(
-        grpc_server.generic_rpc_handlers
-    )
-
-
 def test_enable_server_reflection():
     """Reflection handlers survive un-clobbered and advertise user-defined
     services, but not Serve's built-in API service."""
@@ -174,7 +157,7 @@ def test_enable_server_reflection():
     add_RayServeAPIServiceServicer_to_server(dummy_servicer, grpc_server)
     add_servicer_to_server(user_service_name, "Predict", dummy_servicer, grpc_server)
 
-    assert enable_server_reflection(grpc_server) is True
+    enable_server_reflection(grpc_server)
 
     handlers_by_service = {
         service_name: handlers[0]

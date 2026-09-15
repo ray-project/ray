@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import grpc
 from grpc.aio._server import Server
+from grpc_reflection.v1alpha import reflection
 
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.constants import (
@@ -130,28 +131,12 @@ def get_service_names(
     }
 
 
-def enable_server_reflection(server: gRPCGenericServer) -> bool:
+def enable_server_reflection(server: gRPCGenericServer) -> None:
     """Enable the gRPC server reflection protocol on the server.
 
     The reflection service is registered as a passthrough service so it
     executes on the server itself instead of being routed to replicas.
-
-    Returns whether reflection was enabled. If `grpcio-reflection` is not
-    installed, reflection is skipped with a warning rather than failing
-    proxy startup, since it's a discovery aid and on by default.
     """
-    try:
-        # Imported lazily so that a plain `import ray.serve` doesn't require
-        # grpcio-reflection; it's only needed when the gRPC proxy starts.
-        from grpc_reflection.v1alpha import reflection
-    except ImportError:
-        logger.warning(
-            "gRPC server reflection is enabled but the `grpcio-reflection` "
-            "package is not installed, so reflection will not be served. It is "
-            "included in `ray[serve]`."
-        )
-        return False
-
     service_names = get_service_names(server.generic_rpc_handlers)
     # Advertise only user-defined services, not Serve's built-in API service.
     service_names.discard(
@@ -164,7 +149,6 @@ def enable_server_reflection(server: gRPCGenericServer) -> bool:
         "Enabled gRPC server reflection. "
         f"Advertised services: {advertised_service_names}"
     )
-    return True
 
 
 async def start_grpc_server(
