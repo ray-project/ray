@@ -1,3 +1,5 @@
+from libc.stdint cimport int64_t
+from libcpp cimport bool as c_bool
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
@@ -37,3 +39,5 @@ cdef extern from "ray/stats/metric.h" nogil:
                    const c_string &unit,
                    const c_vector[double] &boundaries,
                    const c_vector[c_string] &tag_keys)
+
+    c_bool FlushMetrics "ray::stats::FlushMetrics"(int64_t timeout_ms)

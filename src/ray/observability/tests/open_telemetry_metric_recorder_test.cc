@@ -55,6 +55,17 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
   OpenTelemetryMetricRecorder &recorder_;
 };
 
+TEST_F(OpenTelemetryMetricRecorderTest, TestForceFlushLeavesRecorderUsable) {
+  // ForceFlush must return within its timeout and, unlike Shutdown, leave the recorder
+  // able to record. The suite exports to a dead endpoint, so the result is not asserted.
+  recorder_.RegisterGaugeMetric("test_force_flush_gauge", "");
+  recorder_.SetMetricValue("test_force_flush_gauge", {{"tag", "a"}}, 1.0);
+  recorder_.ForceFlush(std::chrono::seconds(5));
+
+  recorder_.SetMetricValue("test_force_flush_gauge", {{"tag", "a"}}, 2.0);
+  EXPECT_EQ(GetObservableMetricValue("test_force_flush_gauge", {{"tag", "a"}}), 2.0);
+}
+
 TEST_F(OpenTelemetryMetricRecorderTest, TestGaugeMetric) {
   recorder_.RegisterGaugeMetric("test_metric", "Test metric description");
   recorder_.SetMetricValue("test_metric", {{"tag1", "value1"}}, 42.0);
