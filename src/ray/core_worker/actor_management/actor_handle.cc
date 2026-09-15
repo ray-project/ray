@@ -18,6 +18,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "ray/util/logging.h"
+
 namespace ray {
 namespace core {
 namespace {
@@ -74,6 +76,22 @@ rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serialized)
 
 rpc::ActorHandle CreateInnerActorHandleFromActorData(
     const rpc::ActorTableData &actor_table_data, const rpc::TaskSpec &task_spec) {
+  // Options carried by neither ActorTableData nor ActorCreationTaskSpec have to come
+  // from the creator's own handle, which it serialized into the spec. Miss that and a
+  // handle obtained by name silently reports the option's default.
+  rpc::ActorHandle created_handle;
+  if (!created_handle.ParseFromString(
+          task_spec.actor_creation_task_spec().serialized_actor_handle())) {
+    // A failed parse leaves the message partially populated, so drop it.
+    created_handle.Clear();
+    // Rate limited: the name cache is only populated on first task submission, so a
+    // worker that only looks the actor up reparses on every call.
+    RAY_LOG_EVERY_MS(WARNING, 60000)
+            .WithField(ActorID::FromBinary(actor_table_data.actor_id()))
+        << "Could not parse the creator's serialized actor handle. Options carried only "
+           "by that handle will fall back to their defaults.";
+  }
+
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_table_data.actor_id());
   inner.set_owner_id(actor_table_data.parent_id());
@@ -94,7 +112,10 @@ rpc::ActorHandle CreateInnerActorHandleFromActorData(
   inner.set_ray_namespace(actor_table_data.ray_namespace());
   inner.set_allow_out_of_order_execution(
       task_spec.actor_creation_task_spec().allow_out_of_order_execution());
-  inner.set_max_pending_calls(task_spec.actor_creation_task_spec().max_pending_calls());
+  // ActorCreationTaskSpec has a max_pending_calls field too, but nothing that reaches
+  // the GCS writes it, so reading it there always yielded 0 (unlimited).
+  inner.set_max_pending_calls(created_handle.max_pending_calls());
+  inner.set_enable_tensor_transport(created_handle.enable_tensor_transport());
   inner.mutable_labels()->insert(task_spec.labels().begin(), task_spec.labels().end());
   inner.set_is_detached(task_spec.actor_creation_task_spec().is_detached());
   int64_t actor_generator_backpressure_num_objects =
