@@ -10,7 +10,10 @@ from freezegun import freeze_time
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import (
+    PhysicalOperator,
+    ReportsExtraResourceUsage,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -300,6 +303,46 @@ class TestResourceManager:
         assert resource_manager.get_global_usage() == ExecutionResources(
             global_cpu, 0, global_mem
         )
+
+    def test_update_usage_includes_extra_resource_usage(self):
+        """Operators that report extra resource usage have it added to op_usage."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        counter = StubBlockRefCounter()
+        topo = build_streaming_topology(o2, ExecutionOptions(), counter)
+
+        for op in [o1, o2]:
+            op.current_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=1, gpu=0, memory=0)
+            )
+            op.running_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=1, gpu=0, memory=0)
+            )
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op._metrics = MagicMock(obj_store_mem_pending_task_outputs=0)
+
+        assert isinstance(o2, ReportsExtraResourceUsage)
+        o2.extra_resource_usage = MagicMock(
+            return_value=ExecutionResources(cpu=2, gpu=1, memory=100)
+        )
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            counter,
+        )
+        resource_manager._op_resource_allocator = None
+        resource_manager.update_usages()
+
+        op_usage = resource_manager.get_op_usage(o2)
+        assert op_usage.cpu == 1 + 2
+        assert op_usage.gpu == 1
+        assert op_usage.memory == 100
+
+        # The extra usage rolls up into the global total as well.
+        assert resource_manager.get_global_usage().cpu == 1 + 1 + 2
 
     def test_object_store_usage(self, restore_data_context):
         """ResourceManager reads per-operator memory from BlockRefCounter."""

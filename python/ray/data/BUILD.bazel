@@ -520,6 +520,20 @@ py_test(
 )
 
 py_test(
+    name = "test_cache",
+    size = "small",
+    srcs = ["tests/test_cache.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_consumption",
     size = "large",
     srcs = ["tests/test_consumption.py"],
@@ -879,6 +893,20 @@ py_test(
     srcs = ["tests/datasource/test_json.py"],
     tags = [
         "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_lineage_reconstruction_accounting",
+    size = "medium",
+    srcs = ["tests/test_lineage_reconstruction_accounting.py"],
+    tags = [
         "exclusive",
         "team:data",
     ],

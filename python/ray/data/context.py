@@ -397,6 +397,14 @@ DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE: bool = env_bool(
 )
 
 
+# Charge lineage reconstruction tasks to the operator that owns them when
+# reporting resource usage. Enabled by default; set to 0 to fall back to
+# counting only the tasks Ray Data itself submitted.
+DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING: bool = env_bool(
+    "RAY_DATA_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING", True
+)
+
+
 DEFAULT_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO: float = env_float(
     "RAY_DATA_DOWNSTREAM_CAPACITY_BACKPRESSURE_RATIO", 2.0
 )
@@ -819,6 +827,10 @@ class DataContext:
             later. If `None`, this backpressure policy is disabled.
         enable_dynamic_output_queue_size_backpressure: Whether to cap the concurrency
             of an operator based on its and downstream operators' queue size.
+        enable_lineage_reconstruction_resource_accounting: Whether to count the
+            tasks Ray Core runs to reconstruct lost objects toward an operator's
+            reported resource usage. When disabled, those tasks occupy resources
+            that backpressure doesn't know about.
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
@@ -1033,6 +1045,10 @@ class DataContext:
 
     enable_dynamic_output_queue_size_backpressure: bool = (
         DEFAULT_ENABLE_DYNAMIC_OUTPUT_QUEUE_SIZE_BACKPRESSURE
+    )
+
+    enable_lineage_reconstruction_resource_accounting: bool = (
+        DEFAULT_ENABLE_LINEAGE_RECONSTRUCTION_RESOURCE_ACCOUNTING
     )
 
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
