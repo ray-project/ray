@@ -131,6 +131,9 @@ class GcsServer {
   /// Check if this GCS server instance is currently the active leader.
   bool IsLeader() const { return is_leader_.load(); }
 
+  /// Promote this GCS from passive to active.
+  void PromoteToLeader();
+
   /// Retrieve cluster ID
   const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
@@ -174,6 +177,20 @@ class GcsServer {
   }
 
   void DoStart(const GcsInitData &gcs_init_data);
+
+  /// Hydrate the managers from GCS tables that were not loaded at DoStart time.
+  /// Promotion path only; on the normal boot path each InitXxx() below hydrates its
+  /// own manager.
+  void HydrateManagers(const GcsInitData &gcs_init_data);
+
+  /// Perform the shared-storage writes a passive GCS skipped during init. Only for
+  /// the paths that turn a leader-election-enabled GCS active; with leader election
+  /// disabled the InitXxx() methods still write these inline.
+  void WriteActiveOnlyKeys();
+
+  /// Start the periodic RecordMetrics() and, when the agent port is already known, the
+  /// metrics exporter. Active GCS only; see the definition for why.
+  void StartMetricsReporting();
 
   /// Register all GCS gRPC services on rpc_server_ in one place, so each service's
   /// gated-vs-exempt status is explicit and a new service must be added here.
@@ -381,6 +398,10 @@ class GcsServer {
   /// (legacy behavior); enabled => starts passive until promoted (promotion wired
   /// up in a later PR).
   std::atomic<bool> is_leader_;
+  /// Whether PromoteToLeader() has begun loading the GCS tables. Closes the window
+  /// where is_leader_ is still false but a promotion is already in flight. Default io
+  /// context only, like PromoteToLeader() itself.
+  bool promotion_started_ = false;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
   // Invoked when the RPC server has bound to a port.

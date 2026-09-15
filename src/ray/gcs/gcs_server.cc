@@ -314,12 +314,28 @@ void GcsServer::Start() {
   // RPC server, so gated/allowed RPCs and health checks work. Table loading is
   // deferred to promotion.
   RAY_LOG(INFO) << "GCS leader election is enabled. Starting in passive mode.";
-  GetOrGenerateClusterId({[this](ClusterID cluster_id) {
-                            rpc_server_.SetClusterId(cluster_id);
-                            GcsInitData empty_init_data(*gcs_table_storage_);
-                            DoStart(empty_init_data);
-                          },
-                          io_context_provider_.GetDefaultIOContext()});
+  GetOrGenerateClusterId(
+      {[this](ClusterID cluster_id) {
+         rpc_server_.SetClusterId(cluster_id);
+         if (!IsLeader()) {
+           GcsInitData empty_init_data(*gcs_table_storage_);
+           DoStart(empty_init_data);
+           return;
+         }
+         // Won the election while resolving the cluster ID, so there is no passive
+         // state to promote out of: boot active with the tables loaded, exactly like
+         // the leader-election-disabled path above.
+         RAY_LOG(INFO) << "GCS was promoted during startup. Starting as the leader.";
+         auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
+         gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                                     DoStart(*gcs_init_data);
+                                     // Init skipped these: leader election was enabled,
+                                     // so this GCS was still passive when they ran.
+                                     WriteActiveOnlyKeys();
+                                   },
+                                   io_context_provider_.GetDefaultIOContext()});
+       },
+       io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::GetOrGenerateClusterId(
@@ -427,14 +443,32 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitIOContextMonitor();
 
   periodical_runner_->RunFnPeriodically(
-      [this] { RecordMetrics(); },
-      /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
-      "GCSServer.deadline_timer.metrics_report");
-
-  periodical_runner_->RunFnPeriodically(
       [this] { PrintDebugState(); },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
+
+  // With leader election disabled IsLeader() is always true.
+  if (IsLeader()) {
+    StartMetricsReporting();
+  }
+
+  is_started_ = true;
+}
+
+void GcsServer::WriteActiveOnlyKeys() {
+  WriteAutoscalerV2Flag();
+  WriteGcsPid();
+}
+
+void GcsServer::StartMetricsReporting() {
+  // Active only because RecordMetrics() writes the actor and placement group usage
+  // counters to shared storage. A passive GCS has empty tables, so it would overwrite
+  // the active leader's counts with zeroes, and being GCS-initiated the write is not
+  // something the RPC gating can catch.
+  periodical_runner_->RunFnPeriodically(
+      [this] { RecordMetrics(); },
+      /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
+      "GCSServer.deadline_timer.metrics_report");
 
   // If the metrics agent port is already known (not dynamically assigned),
   // initialize the metrics exporter now. Otherwise, it will be initialized
@@ -442,8 +476,61 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   if (config_.metrics_agent_port > 0) {
     InitMetricsExporter(config_.metrics_agent_port);
   }
+}
 
-  is_started_ = true;
+void GcsServer::HydrateManagers(const GcsInitData &gcs_init_data) {
+  // Here we only hydrate the managers that require a full table load to restore their
+  // state. The resource, autoscaler and health check managers are deliberately absent:
+  // for them hydration is per-alive-node work that the node-added listener already
+  // performs, and unlike in DoStart that listener is installed by the time we get here,
+  // so the node table load below drives it.
+  //
+  // Hydrating them again applies every node twice,
+  // which GcsHealthCheckManager::AddNode RAY_CHECKs against.
+  gcs_node_manager_->Initialize(gcs_init_data);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_placement_group_manager_->Initialize(gcs_init_data);
+  gcs_actor_manager_->Initialize(gcs_init_data);
+  gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
+}
+
+void GcsServer::PromoteToLeader() {
+  // Both conditions are needed. IsLeader() alone leaves a window: it only becomes true
+  // once the table load below completes, so a second call arriving in that window would
+  // start a second load. promotion_started_ alone misses the GCS that is already active
+  // without having run this path -- leader election disabled, or promoted before startup
+  // finished. Either way a second load hydrates twice, and hydration is not idempotent
+  // everywhere: GcsJobManager bumps a per-job function reference count that would then
+  // never drop back to zero.
+  if (IsLeader() || promotion_started_) {
+    return;
+  }
+  if (!is_started_) {
+    // Start() is still resolving the cluster ID. Becoming the leader here also
+    // releases that wait (a leader generates the cluster ID instead of waiting for
+    // one), and its continuation then boots active with the tables loaded.
+    RAY_LOG(INFO) << "GCS promoted to leader before startup finished.";
+    is_leader_ = true;
+    return;
+  }
+
+  promotion_started_ = true;
+  RAY_LOG(INFO) << "GCS promoting to leader. Loading GCS tables.";
+  auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
+  gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                              // Hydrate before opening the gate, so no mutating RPC is
+                              // served against half-loaded state, and before promoting
+                              // the node manager, so the head node registration retires
+                              // the stale head that hydration just loaded.
+                              HydrateManagers(*gcs_init_data);
+                              // Set is_leader_ before promoting the node manager.
+                              is_leader_ = true;
+                              gcs_node_manager_->PromoteNodeManager();
+                              WriteActiveOnlyKeys();
+                              StartMetricsReporting();
+                              RAY_LOG(INFO) << "GCS is now the active leader.";
+                            },
+                            io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::RegisterRpcServices() {
