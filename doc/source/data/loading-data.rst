@@ -678,9 +678,8 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
 
         To read from an `Iceberg REST catalog
         <https://py.iceberg.apache.org/configuration/#rest-catalog>`__, pass the catalog's
-        properties in ``catalog_kwargs``. Ray Data hands them to PyIceberg's `load_catalog()
-        <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-        #pyiceberg.catalog.load_catalog>`__, so any catalog type PyIceberg supports works.
+        properties in ``catalog_kwargs``. Ray Data hands them to PyIceberg's
+        `load_catalog() <https://py.iceberg.apache.org/reference/pyiceberg/catalog/#pyiceberg.catalog.load_catalog>`__, so any catalog type PyIceberg supports works.
 
         .. testcode::
             :skipif: True

@@ -5236,9 +5236,7 @@ class Dataset:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
                 function (such as name, type, etc.). For the function definition, see
-                `pyiceberg catalog
-                <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-                #pyiceberg.catalog.load_catalog>`_.
+                `pyiceberg catalog <https://py.iceberg.apache.org/reference/pyiceberg/catalog/#pyiceberg.catalog.load_catalog>`_.
             catalog: An optional :class:`~ray.data.Catalog` (e.g.
                 :class:`~ray.data.DatabricksUnityCatalog`). When provided, the catalog
                 supplies ``catalog_kwargs`` pointing at its Iceberg REST endpoint.
