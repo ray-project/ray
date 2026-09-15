@@ -1764,9 +1764,14 @@ grpcio==1.75.0 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   google-api-core
     #   google-cloud-bigquery-storage
+    #   grpcio-reflection
     #   grpcio-status
     #   tensorboard
     #   tensorflow
+grpcio-reflection==1.71.2 \
+    --hash=sha256:bedfac3d2095d6c066b16b66bfce85b4be3e92dc9f3b7121e6f019d24a9c09c0 \
+    --hash=sha256:c4f1a0959acb94ec9e1369bb7dab827cc9a6efcc448bdb10436246c8e52e2f57
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 grpcio-status==1.71.2 \
     --hash=sha256:803c98cb6a8b7dc6dbb785b1111aed739f241ab5e9da0bba96888aa74704cfd3 \
     --hash=sha256:c7a97e176df71cdc2c179cd1847d7fc86cca5832ad12e9798d7fed6b7a1aab50
@@ -3450,6 +3455,7 @@ protobuf==5.27.5 \
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
+    #   grpcio-reflection
     #   grpcio-status
     #   opentelemetry-proto
     #   proto-plus

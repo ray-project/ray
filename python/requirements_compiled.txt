@@ -735,11 +735,16 @@ grpcio==1.75.0 ; python_version < "3.14"
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
+grpcio-reflection==1.71.2 ; python_version < "3.12"
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
 grpcio-status==1.71.2 ; python_version < "3.12"
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1640,6 +1645,7 @@ protobuf==5.27.5 ; python_version < "3.12"
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   mlflow-skinny
