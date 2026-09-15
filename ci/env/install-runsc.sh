@@ -17,7 +17,6 @@ install_runsc() {
             return 0
         fi
 
-        # Detect the CPU architecture via uname; normalize both ARM names.
         local arch
         case "$(uname -m)" in
             aarch64 | arm64)
