@@ -10,18 +10,29 @@ set -euxo pipefail
 INSTALL_DIR="${1:-/usr/local/bin}"
 
 install_runsc() {
-    case "${OSTYPE}" in linux*)
+    case "${OSTYPE}" in
+    linux*)
         if command -v runsc > /dev/null 2>&1; then
             echo "runsc already installed at $(command -v runsc), skipping."
             return 0
         fi
 
-        local arch="x86_64"
-        if [ "${HOSTTYPE}" = "aarch64" ]; then
-            arch="aarch64"
-        fi
+        # Detect the CPU architecture via uname; normalize both ARM names.
+        local arch
+        case "$(uname -m)" in
+            aarch64 | arm64)
+                arch="aarch64"
+                ;;
+            x86_64)
+                arch="x86_64"
+                ;;
+            *)
+                echo "Unsupported architecture: $(uname -m)" 1>&2
+                return 1
+                ;;
+        esac
 
-        local url="https://storage.googleapis.com/gvisor/releases/release/latest/${arch}/runsc"
+        local url="https://storage.googleapis.com/gvisor/releases/release/latest/${arch}/gvisor.tar.bz2"
 
         # Quieter output under Buildkite, matching install-llvm-binaries.sh.
         local wget_options=""
@@ -29,10 +40,13 @@ install_runsc() {
             wget_options="-nv"
         fi
 
-        echo "Downloading runsc for ${arch} from ${url}"
-        wget ${wget_options} -c "${url}" -O runsc
+        # Download the tarball to a temp file so the large archive never lands
+        # in INSTALL_DIR (e.g. /usr/local/bin). Extract only runsc into INSTALL_DIR.
+        local tmp_tarball
+        tmp_tarball="$(mktemp)"
 
-        chmod 0755 runsc
+        echo "Downloading runsc for ${arch} from ${url}"
+        wget ${wget_options} -c "${url}" -O "${tmp_tarball}"
 
         # Only use sudo if the target dir isn't writable.
         local sudo_cmd=""
@@ -42,7 +56,12 @@ install_runsc() {
             sudo_cmd="sudo"
             ${sudo_cmd} mkdir -p "${INSTALL_DIR}"
         fi
-        ${sudo_cmd} mv runsc "${INSTALL_DIR}/runsc"
+
+        # Extract just the runsc binary directly into INSTALL_DIR.
+        ${sudo_cmd} tar -xjf "${tmp_tarball}" -C "${INSTALL_DIR}" runsc
+        ${sudo_cmd} chmod 0755 "${INSTALL_DIR}/runsc"
+
+        rm -f "${tmp_tarball}"
 
         echo "Installed runsc to ${INSTALL_DIR}/runsc"
         "${INSTALL_DIR}/runsc" --version
