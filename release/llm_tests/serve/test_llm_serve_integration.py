@@ -4,6 +4,7 @@ import pytest
 import requests
 import sys
 
+import ray
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app, build_pd_openai_app
 from vllm import AsyncEngineArgs
@@ -14,6 +15,7 @@ from vllm.sampling_params import SamplingParams
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.schema import ApplicationStatus
+from ray.serve._private.test_utils import wait_for_haproxy_routing_to_replica
 import time
 
 from utils import shutdown_serve_and_wait_for_controller
@@ -243,6 +245,7 @@ def test_pd_lora_requests():
             blocking=False,
         )
         wait_for_condition(is_default_app_running, timeout=300)
+        wait_for_haproxy_routing_to_replica()
 
         with openai.OpenAI(
             base_url="http://localhost:8000/v1",
@@ -260,6 +263,25 @@ def test_pd_lora_requests():
                 extra_body={"ignore_eos": True},
             )
             assert response.model == adapter_id
+            assert response.usage.completion_tokens == 4
+            assert response.choices[0].finish_reason == "length"
+
+            # A decode-only request can also return valid LoRA output. Require
+            # the cold request to have resolved the adapter on remote prefill.
+            controller = serve.context._get_global_client()._controller
+
+            def prefill_has_adapter():
+                deployments = ray.get(controller._all_running_replicas.remote())
+                prefill_replicas = next(
+                    replicas
+                    for deployment, replicas in deployments.items()
+                    if deployment.name.startswith("Prefill:")
+                )
+                assert len(prefill_replicas) == 1
+                assert adapter_id in prefill_replicas[0].multiplexed_model_ids
+                return True
+
+            wait_for_condition(prefill_has_adapter)
 
             # Exercise a cached adapter in a streamed request.
             chunks = list(
@@ -274,6 +296,7 @@ def test_pd_lora_requests():
             )
             assert chunks
             assert {chunk.model for chunk in chunks} == {adapter_id}
+            assert chunks[-1].choices[0].finish_reason == "length"
     finally:
         shutdown_serve_and_wait_for_controller()
 
