@@ -471,6 +471,56 @@ class NodeManagerTest : public ::testing::Test {
         fake_clock_);
   }
 
+  // Grant a lease that carries one plasma dependency of `arg_bytes` so the
+  // LocalLeaseManager pins it as a lease argument. Returns (lease_id, worker).
+  std::pair<LeaseID, std::shared_ptr<MockWorker>> GrantLeaseWithPinnedArg(
+      size_t arg_bytes) {
+    auto lease_spec = BuildLeaseSpec({});
+    ObjectID object_dep = ObjectID::FromRandom();
+    lease_spec.GetMutableMessage().add_dependencies()->set_object_id(object_dep.Binary());
+
+    rpc::Address owner_addr;
+    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+        object_dep,
+        owner_addr,
+        arg_bytes,
+        nullptr,
+        arg_bytes,
+        nullptr,
+        plasma::flatbuf::ObjectSource::CreatedByWorker,
+        0));
+
+    LeaseID lease_id = LeaseID::FromRandom();
+    lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+    rpc::RequestWorkerLeaseRequest request;
+    rpc::RequestWorkerLeaseReply reply;
+    request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+    request.set_backlog_size(1);
+    request.set_grant_or_reject(true);
+    request.set_is_selected_based_on_locality(true);
+
+    EXPECT_CALL(*mock_object_manager_, Pull(_, _, _))
+        .Times(::testing::AnyNumber())
+        .WillRepeatedly(Return(1));
+
+    auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+    PopWorkerCallback pop_cb;
+    EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+        .Times(1)
+        .WillOnce([&](const LeaseSpecification &, const PopWorkerCallback &cb) {
+          pop_cb = cb;
+        });
+    node_manager_->HandleRequestWorkerLease(
+        request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
+          ASSERT_TRUE(s.ok());
+        });
+    auto ready = lease_dependency_manager_->HandleObjectLocal(object_dep);
+    local_lease_manager_->LeasesUnblocked(ready);
+    RAY_CHECK(pop_cb);
+    pop_cb(worker, PopWorkerStatus::OK, "");
+    return {lease_id, worker};
+  }
+
   instrumented_io_context io_service_;
   rpc::ClientCallManager client_call_manager_;
   rpc::CoreWorkerClientPool worker_rpc_pool_;
@@ -1673,5 +1723,26 @@ TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
 INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ReleaseUnusedBundlesRetriesTest,
                          ::testing::Bool());
+
+// Regression: HandleReturnWorkerLease with worker_exiting=true must release
+// pinned lease args without waiting on DisconnectClient.
+TEST_F(NodeManagerTest, TestExitingWorkerReleasesPinnedLeaseArgs) {
+  auto [lease_id, worker] = GrantLeaseWithPinnedArg(/*arg_bytes=*/1024);
+  ASSERT_GT(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
+  ASSERT_EQ(leased_workers_.size(), 1u);
+
+  rpc::ReturnWorkerLeaseRequest request;
+  rpc::ReturnWorkerLeaseReply reply;
+  request.set_lease_id(lease_id.Binary());
+  request.set_worker_exiting(true);
+  request.set_disconnect_worker(false);
+  node_manager_->HandleReturnWorkerLease(
+      request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  EXPECT_EQ(leased_workers_.size(), 0u);
+  EXPECT_EQ(local_lease_manager_->GetPinnedLeaseArgumentsBytes(), 0);
+}
 
 }  // namespace ray::raylet
