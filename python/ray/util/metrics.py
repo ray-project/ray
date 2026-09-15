@@ -383,7 +383,15 @@ def force_flush(timeout_ms: int = 5000) -> bool:
 
     Returns:
         False if metrics are disabled or the export did not finish in time.
+
+    Raises:
+        ValueError: if timeout_ms is negative.
     """
+    if timeout_ms < 0:
+        # A negative timeout leaves the export no time at all, so it would return
+        # False rather than flushing, which is a confusing way to fail.
+        raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}.")
+
     return _force_flush_metrics(timeout_ms)
 
 

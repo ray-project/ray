@@ -435,6 +435,13 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         test_cases()  # Should fail assert
 
 
+def test_force_flush_rejects_negative_timeout():
+    from ray.util.metrics import force_flush
+
+    with pytest.raises(ValueError, match="non-negative"):
+        force_flush(-1)
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_force_flush_delivers_before_force_kill(shutdown_only):
