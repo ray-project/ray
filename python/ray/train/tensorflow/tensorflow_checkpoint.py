@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -9,7 +10,7 @@ from tensorflow import keras
 
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
 from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
@@ -73,6 +74,24 @@ class TensorflowCheckpoint(FrameworkCheckpoint):
             checkpoint.set_preprocessor(preprocessor)
         checkpoint.update_metadata({cls.MODEL_FILENAME_KEY: filename})
         return checkpoint
+
+    @classmethod
+    def _from_model_internal(
+        cls,
+        model: keras.Model,
+        *,
+        preprocessor: Optional["Preprocessor"] = None,
+    ) -> "TensorflowCheckpoint":
+        """``from_model`` for Ray's own callers, without the deprecation warning.
+
+        Ray's first-party Keras callbacks build this checkpoint on the user's
+        behalf, so warning there would be unactionable: the user never named
+        ``TensorflowCheckpoint`` and cannot avoid it without dropping the
+        callback. The public ``from_model`` still warns.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RayDeprecationWarning)
+            return cls.from_model(model, preprocessor=preprocessor)
 
     @classmethod
     def from_h5(

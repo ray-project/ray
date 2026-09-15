@@ -111,7 +111,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     @classmethod
-    @Deprecated(message=_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE)
+    @Deprecated(message=_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE, warning=True)
     def from_model(
         cls,
         model: torch.nn.Module,
