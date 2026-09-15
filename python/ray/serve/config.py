@@ -890,7 +890,7 @@ class HTTPOptions(BaseModel):
     request_timeout_s: Optional[float] = None
     keep_alive_timeout_s: int = DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S
     ssl_keyfile: Optional[str] = None
-    ssl_certfile: Optional[str] = None
+    ssl_certfile: Optional[str] = Field(default=None, validate_default=True)
     ssl_keyfile_password: Optional[str] = None
     ssl_ca_certs: Optional[str] = None
 
