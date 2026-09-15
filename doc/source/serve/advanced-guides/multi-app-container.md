@@ -100,6 +100,33 @@ Finally, you can specify the container image within which you want to run each a
 Previously you could access the feature through the `container` field of the runtime environment. That API is now deprecated in favor of `image_uri`.
 :::
 
+### Install cached Python dependencies
+
+You can combine `image_uri` with the `pip` runtime environment field. Ray creates
+an isolated virtual environment with the Python interpreter from the image, then
+mounts the completed environment read-only into each worker container. Equivalent
+workers on a node reuse the same environment instead of reinstalling packages.
+
+```python
+runtime_env = {
+    "image_uri": "rayproject/ray:2.56.0-py312",
+    "pip": ["requests==2.32.3"],
+}
+```
+
+The cache identity includes the immutable image identity, operating system and
+architecture, Python ABI, Ray version, normalized pip configuration, and pip
+installation environment. Runtime environment setup timeout settings apply to
+image inspection and dependency installation. Failed or timed-out installation
+attempts aren't published to the cache.
+
+Ray keys the cache on the immutable image that the tag resolves to on each node
+when the environment is created, and workers run that exact image so the cached
+environment always matches it. Pull an updated tag onto the nodes and recreate the
+environment when you need to refresh the base image. Local paths referenced by
+`pip` must already exist inside the image; Ray doesn't expose arbitrary host paths
+to the installation container.
+
 The following Serve config runs the `whisper` app with the image `IMG1`, and the `resnet` app with the image `IMG2`. `podman images` command can be used to list the names of the images. Concretely, all deployment replicas in the applications start and run in containers with the respective images.
 
 ```yaml
@@ -151,7 +178,7 @@ ox
 
 ### Compatibility with other runtime environment fields
 
-Currently, use of the `image_uri` field is only supported with `config` and `env_vars`. If you have a use case for pairing `image_uri` with another runtime environment feature, submit a feature request on [Github](https://github.com/ray-project/ray/issues).
+Currently, use of the `image_uri` field is only supported with `pip`, `config`, and `env_vars`. See [Install cached Python dependencies](#install-cached-python-dependencies) for how `image_uri` combines with `pip`. If you have a use case for pairing `image_uri` with another runtime environment feature, submit a feature request on [Github](https://github.com/ray-project/ray/issues).
 
 ### Environment variables
 
