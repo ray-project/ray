@@ -302,6 +302,11 @@ class ApplicationState:
         return self._target_state.external_scaler_enabled
 
     @property
+    def version(self) -> Optional[str]:
+        config = self._target_state.config
+        return config.version if config is not None else None
+
+    @property
     def docs_path(self) -> Optional[str]:
         # get the docs path from the running deployments
         # we are making an assumption that the docs path can only be set
@@ -1458,6 +1463,12 @@ class ApplicationStateManager:
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
+
+    def get_app_version(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
+        return self._application_states[name].version
 
     def get_external_scaler_enabled(self, app_name: str) -> bool:
         """Check if external scaler is enabled for the application.

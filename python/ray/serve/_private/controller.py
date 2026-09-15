@@ -1423,6 +1423,7 @@ class ServeController:
                 status=app_status_info.status,
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
+                version=self.application_state_manager.get_app_version(app_name),
                 # This can be none if the app was deployed through
                 # serve.run, the app is in deleting state,
                 # or a checkpoint hasn't been set yet

@@ -827,6 +827,79 @@ def test_deploy_separate_runtime_envs(serve_instance):
     wait_for_condition(lambda: httpx.post(url).text == "Hello world!")
 
 
+def test_deploy_multi_app_version_label(serve_instance):
+    """The app-level `version` is echoed per app and never touches replicas."""
+    client = serve_instance
+
+    def check_version(app_name: str, version: str, status=ApplicationStatus.RUNNING):
+        app = serve.status().applications[app_name]
+        assert app.version == version
+        assert app.status == status
+        return True
+
+    def get_pid(app_name: str) -> int:
+        return httpx.get(get_application_url("HTTP", app_name=app_name)).json()[0]
+
+    config = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "version": "a1",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "version": "b1",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+                "deployments": [{"name": "f", "user_config": {"name": "bob"}}],
+            },
+        ]
+    }
+    client.deploy_apps(ServeDeploySchema.model_validate(config), _blocking=True)
+    wait_for_condition(check_version, app_name="app1", version="a1")
+    wait_for_condition(check_version, app_name="app2", version="b1")
+    pid1, pid2 = get_pid("app1"), get_pid("app2")
+
+    # Version-only change: echoed, but no replica is restarted.
+    config["applications"][0]["version"] = "a2"
+    client.deploy_apps(ServeDeploySchema.model_validate(config), _blocking=True)
+    wait_for_condition(check_version, app_name="app1", version="a2")
+    check_version("app2", "b1")
+    assert get_pid("app1") == pid1 and get_pid("app2") == pid2
+
+    # Changing app2 leaves app1's echoed version alone.
+    config["applications"][1]["version"] = "b2"
+    config["applications"][1]["deployments"][0]["user_config"] = {"name": "carol"}
+    client.deploy_apps(ServeDeploySchema.model_validate(config), _blocking=True)
+    wait_for_condition(check_version, app_name="app2", version="b2")
+    wait_for_condition(
+        lambda: httpx.get(get_application_url("HTTP", app_name="app2")).json()
+        == [pid2, "carol"]
+    )
+    check_version("app1", "a2")
+    assert get_pid("app1") == pid1
+
+    # A failed deploy still echoes the version it failed at.
+    config["applications"][0]["version"] = "a3"
+    config["applications"][0]["import_path"] = "ray.serve.tests.test_config_files.fake"
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
+    wait_for_condition(
+        check_version,
+        app_name="app1",
+        version="a3",
+        status=ApplicationStatus.DEPLOY_FAILED,
+    )
+    check_version("app2", "b2")
+    assert get_pid("app2") == pid2
+
+    # The REST details carry the same field.
+    details = ServeInstanceDetails(**client.get_serve_details())
+    assert details.applications["app1"].version == "a3"
+    assert details.applications["app2"].version == "b2"
+
+
 def test_deploy_multi_app_deleting(serve_instance):
     """Test deleting an application by removing from config."""
     client = serve_instance

@@ -792,6 +792,15 @@ class ServeApplicationSchema(BaseModel):
             "Application name, the name should be unique within the serve instance"
         ),
     )
+    version: Optional[str] = Field(
+        default=None,
+        description=(
+            "Opaque version label for this application, set by whoever deploys the "
+            "config and echoed back in the application's status. Serve never reads "
+            "it: changing only this field does not redeploy, rebuild, or restart "
+            "anything."
+        ),
+    )
     route_prefix: Optional[str] = Field(
         default="/",
         description=(
@@ -1285,12 +1294,14 @@ class ApplicationStatusOverview:
         last_deployed_time_s: The time at which the application was
             deployed. A Unix timestamp in seconds.
         deployments: The deployments in this application.
+        version: The `version` from the application's config, if one was set.
     """
 
     status: ApplicationStatus
     message: str
     last_deployed_time_s: float
     deployments: Dict[str, DeploymentStatusOverview]
+    version: Optional[str] = None
 
 
 @PublicAPI(stability="alpha")
@@ -1576,6 +1587,14 @@ class ApplicationDetails(BaseModel):
     )
     last_deployed_time_s: float = Field(
         description="The time at which the application was deployed."
+    )
+    version: Optional[str] = Field(
+        default=None,
+        description=(
+            "The `version` set in the application's config, echoed from the target "
+            "state the controller is currently reconciling towards. Null if the "
+            "config did not set one or the application was deployed imperatively."
+        ),
     )
     deployed_app_config: Optional[ServeApplicationSchema] = Field(
         default=None,
@@ -1912,6 +1931,7 @@ class ServeInstanceDetails(BaseModel):
                     status=app.status,
                     message=app.message,
                     last_deployed_time_s=app.last_deployed_time_s,
+                    version=app.version,
                     deployments={
                         deployment_name: DeploymentStatusOverview(
                             status=deployment.status,

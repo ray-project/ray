@@ -1040,6 +1040,75 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
+def _make_app_state_manager() -> Tuple[
+    ApplicationStateManager, MockDeploymentStateManager
+]:
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+    return app_state_manager, deployment_state_manager
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/new")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_config_echoes_version(check_obj_ref_ready_nowait):
+    """`version` is echoed from the target state and a version-only change
+    takes the fast path: no rebuild, deployments untouched."""
+    app_state_manager, deployment_state_manager = _make_app_state_manager()
+    deployment_id = DeploymentID(name="a", app_name="test_app")
+
+    assert app_state_manager.get_app_version("test_app") is None
+
+    app_state_manager.apply_app_configs(
+        [ServeApplicationSchema(name="test_app", import_path="fa.ke", version="v1")]
+    )
+    app_state = app_state_manager._application_states["test_app"]
+    # Echoed as soon as the config is accepted, before the build finishes.
+    assert app_state_manager.get_app_version("test_app") == "v1"
+
+    check_obj_ref_ready_nowait.return_value = True
+    app_state.update()
+    deployment_state_manager.set_deployment_healthy(deployment_id)
+    app_state.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+    assert app_state_manager.get_app_version("test_app") == "v1"
+    deployment_infos_before = app_state._target_state.deployment_infos
+    build_task_before = app_state._build_app_task_info
+
+    with patch(
+        "ray.serve._private.application_state.build_serve_application"
+    ) as build_mock:
+        app_state_manager.apply_app_configs(
+            [ServeApplicationSchema(name="test_app", import_path="fa.ke", version="v2")]
+        )
+        build_mock.assert_not_called()
+
+    assert app_state_manager.get_app_version("test_app") == "v2"
+    assert app_state._build_app_task_info is build_task_before
+    info_after = app_state._target_state.deployment_infos["a"]
+    info_before = deployment_infos_before["a"]
+    assert info_after.deployment_config == info_before.deployment_config
+    assert info_after.version == info_before.version
+
+
+def test_get_app_version_none_for_imperative_app(mocked_application_state_manager):
+    app_state_manager, _, _ = mocked_application_state_manager
+    app_state_manager.deploy_app(
+        "imperative",
+        [deployment_params("a", "/")],
+        ApplicationArgsProto(external_scaler_enabled=False),
+    )
+    assert app_state_manager.get_app_version("imperative") is None
+    assert app_state_manager.get_app_version("does_not_exist") is None
+
+
 @pytest.mark.parametrize(
     "label_selectors,expected_selector",
     [

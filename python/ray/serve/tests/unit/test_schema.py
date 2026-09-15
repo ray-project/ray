@@ -1333,6 +1333,30 @@ def test_schema_to_deployment_deployment_actors_from_dict():
     assert dep.num_replicas == 2
 
 
+def test_get_app_code_version_ignores_version():
+    """The app-level `version` label must not affect the code version."""
+    base_config = {
+        "import_path": "module.graph",
+        "deployments": [{"name": "dep1"}],
+    }
+    base_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(base_config)
+    )
+
+    labeled = ServeApplicationSchema.model_validate({**base_config, "version": "v1"})
+    assert labeled.version == "v1"
+    assert get_app_code_version(labeled) == base_version
+
+    relabeled = ServeApplicationSchema.model_validate({**base_config, "version": "v2"})
+    assert get_app_code_version(relabeled) == base_version
+
+
+def test_serve_application_schema_version_default_none():
+    schema = ServeApplicationSchema.model_validate({"import_path": "module.graph"})
+    assert schema.version is None
+    assert "version" not in schema.model_dump(exclude_unset=True)
+
+
 def test_get_app_code_version_includes_deployment_actors():
     """Test that get_app_code_version changes when deployment_actors changes."""
     base_config = {

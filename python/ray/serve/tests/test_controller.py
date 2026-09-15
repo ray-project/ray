@@ -161,6 +161,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "status": "RUNNING",
                     "message": "",
                     "last_deployed_time_s": deployment_timestamp,
+                    "version": None,
                     "deployed_app_config": None,
                     "source": "imperative",
                     "deployments": {
