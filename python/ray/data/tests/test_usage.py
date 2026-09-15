@@ -29,6 +29,9 @@ def executor():
     # StreamingExecutor the callback receives at runtime.
     executor = MagicMock()
     executor.issue_detector_manager = None
+    # Mirror StreamingExecutor, which declares this slot; otherwise the
+    # MagicMock auto-creates a non-serializable attribute.
+    executor._consumption_api = "unknown"
     return executor
 
 
@@ -70,6 +73,7 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
         (map_batches_usage_id, "MapBatches"),
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
+    assert entry["consumption_api"] == "unknown"
     assert "pyarrow" in entry["env"]
     # Performance carries all four metric fields. Values are None in this
     # hermetic run (no cluster / Prometheus); the delta math is covered by
@@ -82,6 +86,45 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     }
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
+
+
+def test_consumption_api_from_executor(reset_collector, mock_record, executor):
+    """The executor's ``_consumption_api`` (set by the consuming method) is
+    carried onto the payload verbatim for non-write executions."""
+    executor._consumption_api = "iter_torch_batches"
+    ds = ray.data.range(1).map_batches(lambda b: b)
+    callback = UsageCallback(ds._logical_plan)
+    callback.before_execution_starts(executor)
+    callback.after_execution_succeeds(executor)
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["consumption_api"] == "iter_torch_batches"
+
+
+def test_write_consumption_api_from_plan(reset_collector, mock_record, executor):
+    """A write execution runs through materialize() internally, so the executor
+    carries ``materialize``; build_usage_info overrides it with the anonymized
+    sink read from the Write op at the plan root (WriteParquet, WriteCustom)."""
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
+    from ray.data._internal.logical.operators.write_operator import Write
+
+    read_ds = ray.data.range(1)
+    write_op = Write(
+        ParquetDatasink("/tmp/does_not_matter"),
+        input_dependencies=[read_ds._logical_plan.dag],
+    )
+    plan = LogicalPlan(write_op, read_ds.context)
+
+    executor._consumption_api = "materialize"  # what the write path really sets
+    callback = UsageCallback(plan)
+    callback.before_execution_starts(executor)
+    callback.after_execution_succeeds(executor)
+
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    assert entry["consumption_api"] == "WriteParquet"
 
 
 def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
@@ -97,6 +140,7 @@ def test_detected_issues_in_payload(reset_collector, mock_record, monkeypatch):
         (IssueType.HANGING, "MapBatches"),
         (IssueType.HIGH_MEMORY, "ReadRange"),
     ]
+    executor._consumption_api = "unknown"
     ds = ray.data.range(1).map_batches(lambda b: b)
     callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
