@@ -1,21 +1,25 @@
 ---
 myst:
   html_meta:
-    description: "API reference for the KubeRay custom resources, plus KubeRay's API compatibility and stability guarantees."
+    description: "Reference material for running Ray on Kubernetes with KubeRay: the custom resource API reference and the Helm chart values reference."
 ---
 
 (kuberay-api-reference)=
-# API Reference
+# References
+
+Reference material for configuring Ray on Kubernetes with KubeRay:
+
+- The {ref}`KubeRay CRD API reference <kuberay-crd-api-reference>` documents every field of the `ray.io/v1` custom resources. KubeRay generates it from the CRD definitions.
+- The {ref}`Helm chart values reference <kuberay-helm-values>` explains the operator and ray-cluster chart values.
 
 ```{toctree}
 :hidden:
 
 references/api
+references/helm-values
 ```
 
-To learn about RayCluster configuration, we recommend taking a look at the {ref}`configuration guide <kuberay-config>`.
-
-For comprehensive coverage of all supported RayCluster fields, refer to the {ref}`KubeRay CRD API reference <kuberay-crd-api-reference>`. It documents every field of the `ray.io/v1` custom resources, and is generated from the KubeRay CRD definitions.
+To learn about RayCluster configuration, see the {ref}`configuration guide <kuberay-config>`.
 
 ## KubeRay API compatibility and guarantees
 
