@@ -4,9 +4,11 @@ import os
 import subprocess
 import sys
 
+import grpc
 import pytest
 
 from ray._common.test_utils import run_string_as_driver
+from ray._common.tls_utils import generate_self_signed_tls_certs
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +150,62 @@ assert ray.is_initialized()
      """,
         env=tls_env,
     )
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" or not hasattr(grpc, "dynamic_ssl_server_credentials"),
+    reason=(
+        "Cryptography (TLS dependency) doesn't install in Mac build pipeline, "
+        "or gRPC version does not support dynamic SSL credentials"
+    ),
+)
+@pytest.mark.parametrize("use_tls", [True], indirect=True)
+def test_tls_server_cert_rotation_without_restart(use_tls, call_ray_start):
+    """Verifies server-side TLS credential hot-reload: rotating the
+    cert/key files on disk (as cert-manager would) is picked up by new
+    connections to the already-running Ray Client server, without
+    restarting any Ray process.
+
+    RAY_TLS_CA_CERT points at the same file as RAY_TLS_SERVER_CERT here
+    (see setup_tls()), so overwriting that file rotates both the server's
+    certificate and the CA that a freshly-connecting driver will trust.
+    Without the dynamic reload in add_port_to_grpc_server(), this test
+    fails: the already-running Ray Client server keeps presenting the
+    pre-rotation certificate, which the new driver process (trusting only
+    the rotated CA content it just read off disk) rejects.
+    """
+    tls_env = build_env()  # use_tls fixture sets TLS environment variables
+
+    connect_script = """
+import ray
+from ray.util.client import ray as ray_client
+ray_client.connect("localhost:10001")
+assert ray.is_initialized()
+ray_client.disconnect()
+"""
+
+    # Baseline: connect once with the certs the cluster was started with.
+    run_string_as_driver(connect_script, env=tls_env)
+
+    # Rotate the server cert/key on disk in place. No Ray process is
+    # restarted here.
+    new_cert_contents, new_key_contents = generate_self_signed_tls_certs()
+    cert_path = tls_env["RAY_TLS_SERVER_CERT"]
+    key_path = tls_env["RAY_TLS_SERVER_KEY"]
+    with open(cert_path, "w") as f:
+        f.write(new_cert_contents)
+    with open(key_path, "w") as f:
+        f.write(new_key_contents)
+    # Force the mtime forward in case the write landed within the same
+    # filesystem timestamp tick as the initial cert generation.
+    new_time = os.stat(cert_path).st_mtime + 5
+    os.utime(cert_path, (new_time, new_time))
+    os.utime(key_path, (new_time, new_time))
+
+    # A brand-new connection should succeed against the rotated cert,
+    # proving the already-running Ray Client server picked up the new
+    # certificate without a restart.
+    run_string_as_driver(connect_script, env=tls_env)
 
 
 @pytest.mark.skipif(
