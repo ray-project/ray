@@ -63,7 +63,7 @@
 /python/ray/dashboard/modules/metrics/dashboards/data_dashboard_panels.py @ray-project/ray-data
 
 # RLlib.
-/rllib/ @ray-project/ray-rllib
+/python/ray/rllib/ @ray-project/ray-rllib
 /doc/source/rllib/ @ray-project/ray-rllib @ray-project/ray-docs
 
 # Ray Tune

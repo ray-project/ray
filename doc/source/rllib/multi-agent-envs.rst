@@ -241,19 +241,19 @@ a +1 reward, the losing player -1.
 
 Here is the initial class scaffold for your Rock-Paper-Scissors Game:
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
    :language: python
    :start-after: __sphinx_doc_1_begin__
    :end-before: __sphinx_doc_1_end__
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
    :language: python
    :start-after: __sphinx_doc_2_begin__
    :end-before: __sphinx_doc_2_end__
 
 Next, you can implement the constructor of your class:
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
    :language: python
    :start-after: __sphinx_doc_3_begin__
    :end-before: __sphinx_doc_3_end__
@@ -266,7 +266,7 @@ expected to act simultaneously in the next `step()` call) and reset a `num_moves
 that keeps track of the number of moves being played in order to terminate the episode after exactly
 10 timesteps (10 actions by either player):
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
    :language: python
    :start-after: __sphinx_doc_4_begin__
    :end-before: __sphinx_doc_4_end__
@@ -277,12 +277,12 @@ and the termination dict (you set the special `__all__` agent ID to `True` iff t
 has reached 10). The truncateds- and infos dicts always remain empty:
 
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
    :language: python
    :start-after: __sphinx_doc_5_begin__
    :end-before: __sphinx_doc_5_end__
 
-`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/agents_act_simultaneously.py>`__
+`See here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/agents_act_simultaneously.py>`__
 for a complete end-to-end example script showing how to run a multi-agent RLlib setup against your
 `RockPaperScissors` env.
 
@@ -305,7 +305,7 @@ simply not allowed and therefore can never happen).
 
 Here is your initial class scaffold for the Tic-Tac-Toe game:
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
    :language: python
    :start-after: __sphinx_doc_1_begin__
    :end-before: __sphinx_doc_1_end__
@@ -314,7 +314,7 @@ In your constructor, make sure you define all possible agent IDs that can ever s
 in your game ("player1" and "player2"), the currently active agent IDs (same as all
 possible agents), and each agent's observation- and action space.
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
    :language: python
    :start-after: __sphinx_doc_2_begin__
    :end-before: __sphinx_doc_2_end__
@@ -324,7 +324,7 @@ pick a random start player, and return this start player's first observation.
 Note that you don't return the other player's observation as this player isn't
 acting next.
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
    :language: python
    :start-after: __sphinx_doc_3_begin__
    :end-before: __sphinx_doc_3_end__
@@ -339,7 +339,7 @@ Did the current player win (the opponent lost)?
 Did the current player place a piece on an already occupied field (gets penalized)?
 Is the game done because the board is full (both agents receive 0 reward)?
 
-.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+.. literalinclude:: ../../../python/ray/rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
    :language: python
    :start-after: __sphinx_doc_4_begin__
    :end-before: __sphinx_doc_4_end__
@@ -359,7 +359,7 @@ decentralized execution.
 You can use the :py:meth:`~ray.rllib.env.multi_agent_env.MultiAgentEnv.with_agent_groups`
 method to define these groups:
 
-.. literalinclude:: ../../../rllib/env/multi_agent_env.py
+.. literalinclude:: ../../../python/ray/rllib/env/multi_agent_env.py
    :language: python
    :start-after: __grouping_doc_begin__
    :end-before: __grouping_doc_end__
@@ -403,7 +403,7 @@ multi-agent environments, directly compatible with RLlib through the built-in
         .environment("pistonball", env_config={"n_pistons": 30})
     )
 
-See `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__
+See `this example script here <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__
 for an end-to-end example with the `water world env <https://pettingzoo.farama.org/environments/sisl/>`__
 
 Also, `see here for an example on the pistonball env with RLlib <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__.
@@ -436,7 +436,7 @@ The API is directly compatible with RLlib through the built-in
     config = PPOConfig().environment("open_spiel_env")
 
 
-See here for an `end-to-end example with the Connect-4 env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__
+See here for an `end-to-end example with the Connect-4 env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__
 of OpenSpiel trained by an RLlib algorithm, using a self-play strategy.
 
 
@@ -508,8 +508,8 @@ RLlib will create and route decisions to each policy based on the provided
 ``policy_mapping_fn``. Training statistics for each policy are reported
 separately in the result-dict returned by ``train()``.
 
-The example scripts `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__
-and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__
+The example scripts `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__
+and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__
 demonstrate competing policies with heuristic and learned strategies.
 
 
@@ -528,4 +528,4 @@ Variable-Sharing Between Policies
 
 RLlib supports variable-sharing across policies.
 
-See the `PettingZoo parameter sharing example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__ for details.
+See the `PettingZoo parameter sharing example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__ for details.

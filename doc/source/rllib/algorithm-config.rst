@@ -286,7 +286,7 @@ its various config settings into the following categories, each represented by i
 - :ref:`Experimental config settings <rllib-config-experimental>`
 
 To familiarize yourself with the vast number of RLlib's different config options, you can browse through
-`RLlib's examples folder <https://github.com/ray-project/ray/tree/master/rllib/examples>`__ or take a look at this
+`RLlib's examples folder <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples>`__ or take a look at this
 :ref:`examples folder overview page <rllib-examples-overview-docs>`.
 
 Each example script usually introduces a new config setting or shows you how to implement specific customizations through

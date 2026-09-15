@@ -15,8 +15,8 @@ When a subcomponent reports metrics down the hierarchy, it "reduces" the logged 
 
 We recommend using this API for any metrics that you want RLlib to report, especially if they should be reported to Ray Tune or WandB.
 To quickly see how RLlib uses MetricsLogger, check out :py:class:`~ray.rllib.env.env_runner.EnvRunner`-based :ref:`callbacks <rllib-callback-docs>`,
-a `custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__, or a custom 
-`training_step <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__ implementation.
+a `custom loss function <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__, or a custom 
+`training_step <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__ implementation.
 
 If your goal is to communicate data between RLlib components (for example, communicate a loss from Learners to EnvRunners), we recommend passing such values around through callbacks or by overriding RLlib components' attributes.
 This is mainly because MetricsLogger is designed to aggregate metrics, but not to make them available everywhere and at any time so queryig logged metrics from it can lead to unexpected results.
@@ -360,7 +360,7 @@ only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspec
 
 
 Also take a look at this more complex example on
-`how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__ here.
+`how to generate and log a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__ here.
 
 
 Example 2: How to use MetricsLogger in a custom loss function
@@ -387,7 +387,7 @@ You can log metrics inside your custom loss functions. Use the Learner's own ``L
 
 
 Take a look at this running
-`end-to-end example for logging custom values inside a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__ here.
+`end-to-end example for logging custom values inside a loss function <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/classes/custom_ppo_loss_fn_learner.py>`__ here.
 
 
 Example 3: How to use MetricsLogger in a custom Algorithm
@@ -412,7 +412,7 @@ Use the Algorithm's own ``Algorithm.metrics`` attribute for this.
 
 
 See this running
-`end-to-end example for logging inside training_step() <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__.
+`end-to-end example for logging inside training_step() <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/metrics/custom_metrics_in_algorithm_training_step.py>`__.
 
 
 Migrating to Ray 2.53

@@ -691,7 +691,7 @@ doctest(
 doctest(
     name = "doctest[rllib]",
     size = "large",
-    data = ["//rllib:cartpole-v1_large"],
+    data = ["//python/ray/rllib:cartpole-v1_large"],
     files = glob(
         include = [
             "source/rllib/**/*.md",

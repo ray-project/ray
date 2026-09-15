@@ -110,8 +110,6 @@ apply_install_mask() {
     rm -rf "${ray_dir}/train"
     rm -rf "${ray_dir}/tune"
     rm -rf "${ray_dir}/workflow"
-    # Source tree has a top-level rllib dir that symlinks into python/ray/rllib.
-    rm -rf rllib
   fi
 }
 

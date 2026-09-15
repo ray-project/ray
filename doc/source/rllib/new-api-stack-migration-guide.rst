@@ -122,7 +122,7 @@ RLModule on one or more GPUs on the Learner side, do the following:
     process and shares its compute resources, typically 1 CPU.
     For asynchronous algorithms like IMPALA or APPO, this setting should therefore always be >0.
 
-`See here for an example on how to train with fractional GPUs <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__.
+`See here for an example on how to train with fractional GPUs <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/gpus/fractional_gpus_per_learner.py>`__.
 Also note that for fractional GPUs, you should always set `num_learners` to 0 or 1.
 
 If GPUs aren't available, but you want to learn with more than one
@@ -227,7 +227,7 @@ then suddenly drops to 0, after the 1Mth timestep, do the following:
 
 In case you need to configure a more complex learning rate scheduling behavior or chain different schedulers
 into a pipeline, you can use the experimental `_torch_lr_schedule_classes` config property.
-See `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_torch_lr_schedulers.py>`__  for more details.
+See `this example script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_torch_lr_schedulers.py>`__  for more details.
 Note that this example only covers learning rate schedules, but not any other coefficients.
 
 
@@ -241,7 +241,7 @@ It allows you to specify:
 #. the number of `Learner` workers through `.learners(num_learners=...)`.
 #. the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training
    and `.learners(num_gpus_per_learner=0)` for CPU training.
-#. the custom Learner class you want to use. See this `example <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__ for more details.
+#. the custom Learner class you want to use. See this `example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__ for more details.
 #. a config dict you would like to set for your custom learner:
    `.learners(learner_config_dict={...})`. Note that every `Learner` has access to the
    entire `AlgorithmConfig` object through `self.config`, but setting the
@@ -278,8 +278,8 @@ AlgorithmConfig.env_runners()
 
     If you want to IDE-debug what's going on inside your `EnvRunners`, set `num_env_runners=0`
     and make sure you are running your experiment locally and not through Ray Tune.
-    In order to do this with any of RLlib's `example <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
-    or `tuned_example <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__ scripts,
+    In order to do this with any of RLlib's `example <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples>`__
+    or `tuned_example <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/algorithms>`__ scripts,
     simply set the command line args: `--no-tune --num-env-runners=0`.
 
 In case you were using the `observation_filter` setting, perform the following translations:
@@ -416,17 +416,17 @@ If you're using a custom ``ModelV2`` class and want to translate
 the entire NN architecture and possibly action distribution logic to the new API stack, see
 :ref:`RL Modules <rlmodule-guide>` in addition to this section.
 
-Also, see these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
-and `how to write a custom LSTM-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
+Also, see these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
+and `how to write a custom LSTM-containing RL Module <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
 
 There are various options for translating an existing, custom ``ModelV2`` from the old API stack,
 to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
 #. Move your ModelV2 code to a new, custom `RLModule` class. See :ref:`RL Modules <rlmodule-guide>` for details).
 #. Use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack
-   training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
+   training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
 #. Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-   object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
+   object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
 
 In more complex scenarios, you might've implemented custom policies, such that you could modify the behavior of constructing models
 and distributions.
@@ -532,8 +532,8 @@ See :ref:`Learner <learner-guide>` for details on how to write a custom Learner 
 
 The following example scripts show how to write:
 
-- `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__
-- `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
+- `a simple custom loss function <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/ppo_with_custom_loss_fn.py>`__
+- `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
 
 Note that the new API stack doesn't support the Policy class. In the old stack, this class holds a
 neural network, which is the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` in the new API stack,
@@ -560,7 +560,7 @@ The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is 
 The following are some examples on how to write ConnectorV2 pieces for the
 different pipelines:
 
-#. `Observation frame-stacking <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__.
-#. `Add the most recent action and reward to the RL Module's input <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__.
-#. `Mean-std filtering on all observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__.
-#. `Flatten any complex observation space to a 1D space <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py>`__.
+#. `Observation frame-stacking <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/frame_stacking.py>`__.
+#. `Add the most recent action and reward to the RL Module's input <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/prev_actions_prev_rewards.py>`__.
+#. `Mean-std filtering on all observations <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/mean_std_filtering.py>`__.
+#. `Flatten any complex observation space to a 1D space <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/connectors/flatten_observations_dict_space.py>`__.

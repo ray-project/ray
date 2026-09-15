@@ -133,7 +133,7 @@ with PPO and the default RLModule, configure your experiment as follows:
 
 The following is the complete list of all supported ``fcnet_..`` options:
 
-.. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
+.. literalinclude:: ../../../python/ray/rllib/core/rl_module/default_model_config.py
         :language: python
         :start-after: __sphinx_doc_default_model_config_fcnet_begin__
         :end-before: __sphinx_doc_default_model_config_fcnet_end__
@@ -208,7 +208,7 @@ non-Markovian, partially observable environments, you can try the convenience
 ``DefaultModelConfig.use_lstm`` setting in combination with the
 ``DefaultModelConfig.lstm_cell_size`` and ``DefaultModelConfig.max_seq_len`` settings.
 See here for a tuned
-`example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
+`example that uses a default RLModule with an LSTM layer <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/stateless_cartpole_ppo.py>`__.
 
 
 Constructing RLModule instances
@@ -648,8 +648,8 @@ To find out what APIs your Algorithms require, do the following:
     You can find examples of custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` classes
     implementing the :py:class:`~ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI` and thus
     ready to train with :py:class:`~ray.rllib.algorithms.ppo.PPO` in the
-    `tiny_atari_cnn_rlm example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
-    and in the `lstm_containing_rlm example <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__.
+    `tiny_atari_cnn_rlm example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
+    and in the `lstm_containing_rlm example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__.
 
 
 You can mix supervised losses into any RLlib algorithm through the :py:class:`~ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI`.
@@ -658,7 +658,7 @@ Your Learner actors automatically call the implemented
 passing it the outputs of the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` call.
 
 
-See here for an `example script utilizing a self-supervised loss RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
+See here for an `example script utilizing a self-supervised loss RLModule <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
 Losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html>`__.
 Note that you may want to set the :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec.learner_only` attribute to ``True`` in your custom
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your
@@ -672,7 +672,7 @@ End-to-end example
 Putting together the elements of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that you implemented,
 a working end-to-end example is as follows:
 
-.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_torch_rlm.py
+.. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_torch_rlm.py
     :language: python
 
 
@@ -691,7 +691,7 @@ To use a different distribution class and return parameters for this distributio
 :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModule.action_dist_cls` attribute inside the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
-See here for an `example script introducing a temperature parameter on top of a Categorical distribution <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/custom_action_distribution_rlm.py>`__.
+See here for an `example script introducing a temperature parameter on top of a Categorical distribution <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/classes/custom_action_distribution_rlm.py>`__.
 
 If you need more granularity and specify different distribution classes for the different forward methods of your
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, override the following methods
@@ -706,7 +706,7 @@ in your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation 
     uses the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` method of the
     distribution returned by your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_inference_action_dist_cls`.
 
-See `torch_distributions.py <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_distributions.py>`__ for common distribution implementations.
+See `torch_distributions.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/models/torch/torch_distributions.py>`__ for common distribution implementations.
 
 
 Auto-regressive action distributions
@@ -717,16 +717,16 @@ of ``a1``, such that ``a2_sampled ~ P(a2 | a1_sampled, obs)``. Note that in the 
 model in combination with an independent :py:class:`~ray.rllib.models.torch.torch_distributions.TorchMultiDistribution` and thus
 sample ``a1`` and ``a2`` independently. This makes it impossible to learn in environments, in which one action component
 should be sampled dependent on another action, already sampled, action component.
-See an `example for a "correlated actions" environment <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/correlated_actions_env.py>`__ here.
+See an `example for a "correlated actions" environment <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/classes/correlated_actions_env.py>`__ here.
 
 To write a custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that samples the various
 action components as previously described, you need to carefully implement its forward logic.
 
-Find an `example of such an autoregressive action model <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py>`__ here.
+Find an `example of such an autoregressive action model <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py>`__ here.
 
 You implement the main action sampling logic in the ``_forward_...()`` methods:
 
-.. literalinclude:: ../../../rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py
+.. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/autoregressive_actions_rlm.py
     :language: python
     :dedent: 4
     :start-after: __sphinx_begin__
@@ -778,13 +778,13 @@ You implement the main action sampling logic in the ``_forward_...()`` methods:
             inf_mask = tf.maximum(tf.log(action_mask), tf.float32.min)
             return action_logits + inf_mask, state
   Depending on your use case it may make sense to use |just the masking|_, |just action embeddings|_, or |both|_.  For a runnable example of "just action embeddings" in code,
-  check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py>`__.
+  check out `examples/parametric_actions_cartpole.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_actions_cartpole.py>`__.
   .. |just the masking| replace:: just the **masking**
-  .. _just the masking: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/action_mask_model.py
+  .. _just the masking: https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/_old_api_stack/models/action_mask_model.py
   .. |just action embeddings| replace:: just action **embeddings**
-  .. _just action embeddings: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
+  .. _just action embeddings: https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/parametric_actions_cartpole.py
   .. |both| replace:: **both**
-  .. _both: https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/parametric_actions_model.py
+  .. _both: https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/_old_api_stack/models/parametric_actions_model.py
   Note that since masking introduces ``tf.float32.min`` values into the model output, this technique might not work with all algorithm options. For example, algorithms might crash if they incorrectly process the ``tf.float32.min`` values. The cartpole example has working configurations for DQN (must set ``hiddens=[]``), PPO (must disable running mean and set ``model.vf_share_layers=True``), and several other algorithms. Not all algorithms support parametric actions; see the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__.
 
 
@@ -813,12 +813,12 @@ and outputs embedding vectors that then serve as input for the two policy heads 
 
     .. tab-item:: MultiRLModule (w/ two policy nets and one encoder)
 
-        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+        .. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
             :language: python
             :start-after: __sphinx_doc_mrlm_begin__
             :end-before: __sphinx_doc_mrlm_end__
 
-        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+        .. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
             :language: python
             :start-after: __sphinx_doc_mrlm_2_begin__
             :end-before: __sphinx_doc_mrlm_2_end__
@@ -828,11 +828,11 @@ and outputs embedding vectors that then serve as input for the two policy heads 
         Within the MultiRLModule, you need to have two policy sub-RLModules. They may be of the same
         class, which you can implement as follows:
 
-        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+        .. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
             :language: python
             :start-after: __sphinx_doc_policy_begin__
             :end-before: __sphinx_doc_policy_end__
-        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+        .. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
             :language: python
             :start-after: __sphinx_doc_policy_2_begin__
             :end-before: __sphinx_doc_policy_2_end__
@@ -841,7 +841,7 @@ and outputs embedding vectors that then serve as input for the two policy heads 
 
         Finally, the shared encoder RLModule should look similar to this:
 
-        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+        .. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
             :language: python
             :start-after: __sphinx_doc_encoder_begin__
             :end-before: __sphinx_doc_encoder_end__
@@ -853,7 +853,7 @@ with the new class and its constructor settings. Also, create one :py:class:`~ra
 for each agent and the shared encoder RLModule, because RLlib requires their observation and action spaces and their
 model hyper-parameters:
 
-.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+.. literalinclude:: ../../../python/ray/rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
     :language: python
     :start-after: __sphinx_doc_how_to_run_begin__
     :end-before: __sphinx_doc_how_to_run_end__

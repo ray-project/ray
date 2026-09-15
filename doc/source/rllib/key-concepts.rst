@@ -235,7 +235,7 @@ This data includes the observations, info dicts, actions, rewards, termination s
 model computations along the way, like recurrent states, action logits, or action log probabilities.
 
 .. tip::
-    See here for `RLlib's standardized column names <https://github.com/ray-project/ray/blob/master/rllib/core/columns.py>`__.
+    See here for `RLlib's standardized column names <https://github.com/ray-project/ray/blob/master/python/ray/rllib/core/columns.py>`__.
 
     Note that episodes conveniently don't have to store any ``next obs`` information as it always overlaps
     with the information under ``obs``. This design saves almost 50% of memory, because

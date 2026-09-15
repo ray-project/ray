@@ -8,7 +8,7 @@ exclude: |
     python/ray/_private/runtime_env/_clonevirtualenv.py|
     python/ray/data/examples/data/|
     release/release_logs/|
-    rllib/offline/tests/data|
+    python/ray/rllib/offline/tests/data|
     thirdparty/patches/|
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
@@ -94,9 +94,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0

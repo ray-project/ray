@@ -148,7 +148,6 @@ ci/docker/min.build.wanda.yaml
 @ min_build
 ;
 
-rllib/
 python/ray/rllib/
 ci/ray_ci/rllib.tests.yml
 @ rllib rllib_gpu rllib_directly

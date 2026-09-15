@@ -154,7 +154,7 @@ if __name__ == "__main__":
         "llm": None,
         "serve/llm": None,
         "data/llm.py": None,
-        "rllib": "../../../rllib",
+        "rllib": None,
         "air": None,
         "tune": None,
         "train": None,

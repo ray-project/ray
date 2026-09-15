@@ -44,9 +44,9 @@ Contributing Algorithms
 -----------------------
 
 These are the guidelines for merging new algorithms into RLlib.
-We distinguish between two levels of contributions: As an `example script <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
+We distinguish between two levels of contributions: As an `example script <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples>`__
 (possibly with additional classes in other files)
-or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.com/ray-project/ray/tree/master/rllib/algorithms>`__.
+or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.com/ray-project/ray/tree/master/python/ray/rllib/algorithms>`__.
 
 * Example Algorithms:
     - must subclass Algorithm and implement the ``training_step()`` method
@@ -57,7 +57,7 @@ or as a fully-integrated RLlib Algorithm in `rllib/algorithms <https://github.co
     - must offer substantial new functionality not possible to add to other algorithms
     - should support custom RLModules
     - should use RLlib abstractions and support distributed execution
-    - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, testing of which is part of the CI
+    - should include at least one `tuned hyperparameter example <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/algorithms>`__, testing of which is part of the CI
 
 Both integrated and contributed algorithms ship with the ``ray`` PyPI package, and are tested as part of Ray's automated tests.
 
@@ -93,7 +93,7 @@ Benchmarks
 ==========
 
 A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__,
-and there is also a list of working hyperparameter configurations in `examples/algorithms <https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms>`__, sorted by algorithm.
+and there is also a list of working hyperparameter configurations in `examples/algorithms <https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/algorithms>`__, sorted by algorithm.
 Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
 
 
