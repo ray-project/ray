@@ -21,7 +21,7 @@ from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.data.block import Block
+from ray.data.block import Block, Schema
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -125,18 +125,31 @@ def _make_join_reduce_fn(
     right_key_col_names: Tuple[str, ...],
     left_columns_suffix: Optional[str] = None,
     right_columns_suffix: Optional[str] = None,
-    left_schema: Optional[Any] = None,
-    right_schema: Optional[Any] = None,
+    left_schema: Optional[Schema] = None,
+    right_schema: Optional[Schema] = None,
 ) -> ReduceFn:
     """Build a V2-shuffle reduce fn that joins two co-partitioned inputs."""
     import pyarrow as pa
 
-    def _side_table(tables: List[Block], schema: Optional[Any]) -> Optional["pa.Table"]:
+    def _side_table(
+        tables: List[Block], schema: Optional[Schema]
+    ) -> Optional["pa.Table"]:
         if tables:
             return _combine(tables)
         if isinstance(schema, pa.Schema):
             return schema.empty_table()
         return None
+
+    def _empty_table_with_key_schema(
+        table: "pa.Table",
+        source_key_col_names: Tuple[str, ...],
+        target_key_col_names: Tuple[str, ...],
+    ) -> "pa.Table":
+        return (
+            table.select(list(source_key_col_names))
+            .schema.empty_table()
+            .rename_columns(list(target_key_col_names))
+        )
 
     def _reduce(
         partition_id: int, tables_by_input: List[List[Block]]
@@ -146,13 +159,23 @@ def _make_join_reduce_fn(
         ), f"Join reduce expects two inputs (got {len(tables_by_input)})"
         left_table = _side_table(tables_by_input[0], left_schema)
         right_table = _side_table(tables_by_input[1], right_schema)
-        if left_table is None or right_table is None:
-            # TODO(you-cheng): A whole input side is empty AND its schema can't be inferred
-            # (0 blocks + un-inferable schema, e.g. a map_batches side), so
-            # _side_table returns None and we skip the partition. This silently
-            # drops the preserved side's rows for preserving joins, left_outer/
-            # full_outer and left_anti/right_anti.
+
+        if left_table is None and right_table is None:
             return
+
+        # Synthesize an unknown empty side's join-key schema from the known side.
+        if left_table is None:
+            left_table = _empty_table_with_key_schema(
+                right_table,
+                right_key_col_names,
+                left_key_col_names,
+            )
+        elif right_table is None:
+            right_table = _empty_table_with_key_schema(
+                left_table,
+                left_key_col_names,
+                right_key_col_names,
+            )
         yield join_tables(
             left_table,
             right_table,

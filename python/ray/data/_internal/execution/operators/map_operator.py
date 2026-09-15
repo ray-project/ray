@@ -72,6 +72,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     CustomOpStatsReporter,
     MapTransformer,
+    UDFTimeScope,
 )
 from ray.data._internal.execution.util import (
     memory_string,
@@ -836,6 +837,10 @@ def _map_task(
         # This is owned by _map_task so it belongs to actual, possibly-fused, running task
         # rather than a transformer instance reused across tasks.
         op_stats_reporter = CustomOpStatsReporter()
+        # Likewise owned by _map_task: an actor pool shares one transformer
+        # across every task the actor runs, and with
+        # `max_concurrent_calls_per_actor > 1` several run at once.
+        udf_time_scope = UDFTimeScope()
 
         def transform_iter_factory():
             # Clear any per-task custom stats before each attempt (the reporter
@@ -843,11 +848,15 @@ def _map_task(
             # can't leak into this one. A producing transform repopulates it
             # before the first block is yielded.
             op_stats_reporter.clear()
+            udf_time_scope.drain()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
             return map_transformer.apply_transform(
-                blocks_iter, ctx, op_stats_reporter.report
+                blocks_iter,
+                ctx,
+                op_stats_reporter.report,
+                udf_time_scope=udf_time_scope,
             )
 
         if retry_on:
@@ -872,7 +881,7 @@ def _map_task(
                 def build_metadata(block_ser_time_s):
                     exec_stats = blk_exec_stats_builder.build(
                         block_ser_time_s=block_ser_time_s,
-                        udf_time_s=map_transformer.udf_time_s(reset=True),
+                        udf_time_s=udf_time_scope.drain(),
                         task_idx=ctx.task_idx,
                     )
                     # NOTE: This tracks task duration up to this point, though we're

@@ -24,7 +24,7 @@ from ray._private.accelerators.tpu import (
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -979,7 +979,7 @@ def slice_placement_group(
 
 
 @PublicAPI(stability="alpha")
-def dispatch(
+def run_on_slice(
     fn: Any,
     *args: Any,
     topology: Optional[str] = None,
@@ -1017,7 +1017,7 @@ def dispatch(
             ignored otherwise.
         tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
             onto. When provided, the slice is used directly and
-            ``dispatch`` does **not** create, modify, or tear down
+            ``run_on_slice`` does **not** create, modify, or tear down
             any placement groups. When ``None`` (default), a new slice
             is reserved internally and its head placement groups are
             released once the worker placement group becomes ready.
@@ -1057,7 +1057,7 @@ def dispatch(
         :skipif: True
 
         import ray
-        from ray.util.tpu import dispatch, slice_placement_group
+        from ray.util.tpu import run_on_slice, slice_placement_group
 
         @ray.remote
         def my_tpu_task():
@@ -1067,15 +1067,15 @@ def dispatch(
         # One-shot: reserve a v6e 4x4 slice, run on every host, then
         # release automatically when the driver exits.
         results = ray.get(
-            dispatch(my_tpu_task, topology="4x4", accelerator_version="v6e")
+            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
         )
 
         # Reuse an existing slice across multiple calls.
         slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
         ray.get(slice_handle.slice_placement_group.ready())
 
-        results1 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
+        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
         slice_handle.shutdown()
     """
 
@@ -1187,6 +1187,22 @@ def dispatch(
             )
 
     return results
+
+
+# Deprecated alias — ``dispatch`` was the original name of ``run_on_slice``.
+# New code should use ``run_on_slice``.
+@PublicAPI(stability="alpha")
+@Deprecated(
+    message="'dispatch' is deprecated and has been renamed to 'run_on_slice'. "
+    "Please use 'run_on_slice' instead.",
+    warning=True,
+)
+def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
+    """Run a remote function on every host in a TPU slice.
+
+    Deprecated, please use ``run_on_slice`` instead.
+    """
+    return run_on_slice(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")

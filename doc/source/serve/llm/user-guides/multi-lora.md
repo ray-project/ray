@@ -156,5 +156,5 @@ response = client.chat.completions.create(
 ## See also
 
 - {doc}`Quickstart <../quick-start>`
-- [vLLM LoRA documentation](https://docs.vllm.ai/en/stable/models/lora.html)
+- [vLLM LoRA documentation](https://docs.vllm.ai/en/stable/features/lora/)
 

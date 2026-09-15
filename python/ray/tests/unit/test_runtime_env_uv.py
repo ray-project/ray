@@ -1,17 +1,22 @@
 import sys
-from unittest.mock import patch
+from copy import deepcopy
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from ray._private.runtime_env import uv
 
 
-class TestRuntimeEnv:
+class FakeRuntimeEnv:
+    def __init__(self, uv_config=None, env_vars=None):
+        self._uv_config = uv_config or {"packages": ["requests"]}
+        self._env_vars = env_vars or {}
+
     def uv_config(self):
-        return {"packages": ["requests"]}
+        return self._uv_config
 
     def env_vars(self):
-        return {}
+        return self._env_vars
 
 
 @pytest.fixture
@@ -33,12 +38,99 @@ def mock_install_uv_packages():
 
 
 @pytest.mark.asyncio
-async def test_run(mock_install_uv, mock_install_uv_packages):
-    target_dir = "/tmp"
-    runtime_env = TestRuntimeEnv()
+async def test_run(mock_install_uv, mock_install_uv_packages, tmp_path):
+    target_dir = str(tmp_path)
+    runtime_env = FakeRuntimeEnv()
 
     uv_processor = uv.UvProcessor(target_dir=target_dir, runtime_env=runtime_env)
     await uv_processor._run()
+
+
+def test_get_uri_changes_with_referenced_working_dir():
+    packages = ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"]
+    first = {"uv": packages, "working_dir": "gcs://first.zip"}
+    second = {"uv": packages, "working_dir": "gcs://second.zip"}
+    first_before = deepcopy(first)
+    second_before = deepcopy(second)
+
+    assert uv.get_uri(first) != uv.get_uri(second)
+    assert first == first_before
+    assert second == second_before
+
+
+def test_get_uri_changes_with_referenced_env_var_in_install_options():
+    uv_config = {
+        "packages": ["demo-package==1.0"],
+        "uv_pip_install_options": ["--find-links=$UV_FIND_LINKS"],
+    }
+    first = {"uv": uv_config, "env_vars": {"UV_FIND_LINKS": "/first"}}
+    second = {"uv": uv_config, "env_vars": {"UV_FIND_LINKS": "/second"}}
+
+    assert uv.get_uri(first) != uv.get_uri(second)
+
+
+def test_get_uri_ignores_unreferenced_env_vars():
+    first = {"uv": ["demo-package==1.0"], "env_vars": {"UNUSED": "first"}}
+    second = {"uv": ["demo-package==1.0"], "env_vars": {"UNUSED": "second"}}
+    legacy_uri = "uv://" + uv._get_uv_hash(uv_dict={"packages": ["demo-package==1.0"]})
+
+    assert uv.get_uri(first) == uv.get_uri(second) == legacy_uri
+
+
+def test_get_uri_keeps_undefined_env_vars_stable():
+    runtime_env = {
+        "uv": {
+            "packages": ["demo-package==1.0"],
+            "uv_pip_install_options": ["--find-links=${UNDEFINED}"],
+        }
+    }
+    legacy_uri = "uv://" + uv._get_uv_hash(uv_dict=runtime_env["uv"])
+
+    assert uv.get_uri(runtime_env) == legacy_uri
+
+
+@pytest.mark.asyncio
+async def test_install_uv_packages_expands_env_vars_from_install_env(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("UV_TEST_ROOT", "/wrong/process/path")
+    expected_root = "/expected/runtime-env/path"
+    runtime_env = FakeRuntimeEnv(
+        uv_config={
+            "packages": [
+                "-r ${UV_TEST_ROOT}/requirements.txt",
+                "demo-package==1.0",
+            ],
+            "uv_pip_install_options": ["--find-links=${UV_TEST_ROOT}/wheels"],
+        }
+    )
+    uv_processor = uv.UvProcessor(target_dir=str(tmp_path), runtime_env=runtime_env)
+    install_env = {"UV_TEST_ROOT": expected_root}
+
+    with patch.object(
+        uv_processor,
+        "_check_uv_existence",
+        new=AsyncMock(return_value=True),
+    ):
+        with patch(
+            "ray._private.runtime_env.uv.check_output_cmd",
+            new=AsyncMock(),
+        ) as check_output_cmd:
+            await uv_processor._install_uv_packages(
+                str(tmp_path),
+                runtime_env.uv_config()["packages"],
+                str(tmp_path),
+                install_env,
+                uv.default_logger,
+            )
+
+    requirements_file = tmp_path / "ray_runtime_env_internal_pip_requirements.txt"
+    assert requirements_file.read_text().splitlines() == [
+        f"-r {expected_root}/requirements.txt",
+        "demo-package==1.0",
+    ]
+    uv_install_cmd = check_output_cmd.await_args.args[0]
+    assert f"--find-links={expected_root}/wheels" in uv_install_cmd
 
 
 if __name__ == "__main__":
