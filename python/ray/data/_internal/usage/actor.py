@@ -18,7 +18,7 @@ import ray
 from ray._common.usage import usage_lib
 
 if TYPE_CHECKING:
-    from ray.data._internal.usage.collector import UsageInfo
+    from ray.data._internal.usage.collector import ExecutionId, UsageInfo
 
 # Bounded buffer of recent executions.
 _MAX_EXECUTIONS_TO_TRACK = 100
@@ -40,7 +40,7 @@ class _UsageCollectionActor:
 
     def __init__(self):
         # OrderedDict so eviction picks the oldest-inserted entry.
-        self._executions: "OrderedDict[str, UsageInfo]" = OrderedDict()
+        self._executions: "OrderedDict[ExecutionId, UsageInfo]" = OrderedDict()
 
     def record(self, info: "UsageInfo") -> None:
         """Insert or overwrite ``info`` (evicting the oldest entry when full)

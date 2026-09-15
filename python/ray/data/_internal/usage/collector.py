@@ -112,11 +112,16 @@ class Issue:
     operator: str
 
 
+# Globally unique per-execution id (uuid4 hex), the key for deduplicating
+# executions in the usage buffer.
+ExecutionId = str
+
+
 @dataclass
 class UsageInfo:
     """Per-execution usage payload: the entry buffered and flushed to GCS."""
 
-    id: str
+    id: ExecutionId
     started_at: float
     env: EnvInfo
     workload: WorkloadInfo
