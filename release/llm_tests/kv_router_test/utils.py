@@ -15,7 +15,9 @@ from unittest import mock
 
 import ray.cloudpickle
 from ray import serve
+from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.core.ingress.router import LLMRouter as _LLMRouter
+from ray.llm._internal.serve.core.server.llm_server import LLMServer as _LLMServer
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
     _TENANT_ID,
@@ -23,6 +25,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
 )
+from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.serve.config import RequestRouterConfig
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
@@ -110,6 +113,39 @@ class _TestKVAwareRouter(RoundRobinRouter, KVAwareRouter):
     """
 
 
+class _SharedWeightsLoraModelLoader(LoraModelLoader):
+    """(Test only) Load every adapter ID from ``dynamic_lora_loading_path`` itself.
+
+    The real loader reads ``<dynamic_lora_loading_path>/<lora_id>``, which needs
+    one uploaded adapter per ID. Dropping the ID suffix lets several IDs share
+    one public adapter, and that is in fact the sharper setup here: the KV index
+    keys blocks on the adapter *name*, so with identical weights the name is the
+    only thing that can hold the adapters' KV namespaces apart.
+    """
+
+    async def load_model_from_config(self, lora_model_id, llm_config):
+        return await self.load_model(
+            lora_model_id,
+            LoraMirrorConfig(
+                lora_model_id=lora_model_id,
+                bucket_uri=llm_config.lora_config.dynamic_lora_loading_path,
+                max_total_tokens=None,
+            ),
+        )
+
+
+class LoraLLMServer(_LLMServer):
+    """(Test only) LLMServer that loads adapters via ``_SharedWeightsLoraModelLoader``.
+
+    Set as ``LLMConfig.server_cls``. Only the download is swapped; vLLM's adapter
+    load and the LoRA name it stamps on its KV events are unchanged.
+    """
+
+    async def __init__(self, llm_config, **kwargs):
+        kwargs["model_downloader"] = _SharedWeightsLoraModelLoader
+        await super().__init__(llm_config, **kwargs)
+
+
 class LLMRouter(_LLMRouter):
     """(Test only) LLMRouter that exposes its embedded KVTokenTracker over the
     deployment handle for the KV-router release tests.
@@ -192,15 +228,20 @@ class LLMRouter(_LLMRouter):
             w["worker_id"] for w in workers if w["lifecycle"] == "schedulable"
         )
 
-    async def get_kv_overlap_blocks(self, token_ids):
+    async def get_kv_overlap_blocks(self, token_ids, lora_name=None):
         """(Test only) Per-worker device-tier KV overlap blocks for a sequence."""
-        scores = await self.get_kv_overlap_scores(token_ids)
+        scores = await self.get_kv_overlap_scores(token_ids, lora_name)
         return {
             worker_id: score["device_blocks"] for worker_id, score in scores.items()
         }
 
-    async def get_kv_overlap_scores(self, token_ids):
-        """(Test only) Per-worker overlap across every KV storage tier."""
+    async def get_kv_overlap_scores(self, token_ids, lora_name=None):
+        """(Test only) Per-worker overlap across every KV storage tier.
+
+        ``lora_name`` selects the LoRA namespace to score in; the selection
+        service salts its KV hashes with it, so the base model and each adapter
+        see disjoint blocks for the same tokens.
+        """
         svc = self._kv_token_tracker._svc
         if svc is None:
             return {}
@@ -209,6 +250,7 @@ class LLMRouter(_LLMRouter):
                 "model_name": _MODEL_NAME,
                 "tenant_id": _TENANT_ID,
                 "token_ids": list(token_ids),
+                "lora_name": lora_name,
             }
         )
         return {worker["worker_id"]: worker for worker in scores["workers"]}
@@ -270,11 +312,20 @@ class LLMRouter(_LLMRouter):
         return self._kv_token_tracker.get_block_size()
 
     async def select_worker(
-        self, request_id, token_ids, allowed_worker_ids, expected_output_tokens=None
+        self,
+        request_id,
+        token_ids,
+        allowed_worker_ids,
+        expected_output_tokens=None,
+        lora_name=None,
     ):
         """(Test only) Score ``allowed_worker_ids`` for a prompt via the tracker."""
         return await self._kv_token_tracker.select_worker(
-            request_id, token_ids, allowed_worker_ids, expected_output_tokens
+            request_id,
+            token_ids,
+            allowed_worker_ids,
+            expected_output_tokens,
+            lora_name=lora_name,
         )
 
 
