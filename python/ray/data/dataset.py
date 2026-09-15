@@ -51,6 +51,7 @@ from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
+from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
@@ -5657,6 +5658,130 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_orc(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
+        arrow_orc_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        min_rows_per_file: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
+        **arrow_orc_args,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to ORC files.
+
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.orc``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom :class:`~ray.data.datasource.FilenameProvider`
+        and pass it in as the ``filename_provider`` argument.
+
+
+        Examples:
+            Write the dataset as ORC files to a local directory.
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("/tmp/data")
+
+            Write the dataset as ORC files to S3.
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("s3://bucket/folder/")  # doctest: +SKIP
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where
+                the ORC files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path if ``True``. Does nothing if all directories already
+                exist. Defaults to ``True``.
+            arrow_open_stream_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to. Don't pass ``compression`` here.
+                To configure ORC compression, pass ``compression`` directly to
+                :meth:`write_orc`.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
+            arrow_orc_args_fn: Callable that returns a dictionary of write
+                arguments that are provided to `pyarrow.orc.write_table <https://\
+                arrow.apache.org/docs/python/generated/\
+                pyarrow.orc.write_table.html#pyarrow.orc.write_table>`_ when writing
+                each block to a file. Overrides any duplicate keys from
+                ``arrow_orc_args``. Use this argument instead of ``arrow_orc_args``
+                if any of your write arguments cannot be pickled, or if you'd like to
+                lazily resolve the write arguments for each dataset block.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
+            **arrow_orc_args: Options to pass to `pyarrow.orc.write_table <https://\
+                arrow.apache.org/docs/python/generated/pyarrow.orc.write_table.html\
+                    #pyarrow.orc.write_table>`_
+                when writing each block to a file.
+        """
+        if arrow_orc_args_fn is None:
+            arrow_orc_args_fn = lambda: {}  # noqa: E731
+
+        effective_min_rows, _ = _validate_rows_per_file_args(
+            min_rows_per_file=min_rows_per_file
+        )
+
+        datasink = ORCDatasink(
+            path,
+            arrow_orc_args_fn=arrow_orc_args_fn,
+            arrow_orc_args=arrow_orc_args,
+            min_rows_per_file=effective_min_rows,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
+            dataset_uuid=self._uuid,
+            mode=mode,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
     def write_tfrecords(
         self,
@@ -7195,12 +7320,12 @@ class Dataset:
             If your model accepts a single tensor as input, specify a single feature column.
 
             >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts a dictionary as input, specify a list of feature columns.
 
             >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
-            <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+            <_PrefetchDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
             tensor as input, combine features with
@@ -7214,7 +7339,7 @@ class Dataset:
             Concatenator
             +- Dataset(num_rows=?, schema=...)
             >>> ds.to_tf("features", "target")
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts different types, shapes, or names of tensors as input, specify the type spec.
             If type specs are not specified, they are automatically inferred from the schema of the dataset.
@@ -7226,7 +7351,7 @@ class Dataset:
             ...     feature_type_spec=tf.TensorSpec(shape=(None, 4), dtype=tf.float32, name="features"),
             ...     label_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="label")
             ... )
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
 
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
@@ -7234,7 +7359,7 @@ class Dataset:
             >>> import pandas as pd
             >>> ds = ds.add_column("sample weights", lambda df: pd.Series([1] * len(df)))
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 
             If your model accepts different types, shapes, or names for the additional metadata, specify the type spec of the additional column.
 
@@ -7244,7 +7369,7 @@ class Dataset:
             ...     additional_columns="sample weights",
             ...     additional_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="weight")
             ... )
-            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.float32, name='weight'))>
+            <_PrefetchDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.float32, name='weight'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
