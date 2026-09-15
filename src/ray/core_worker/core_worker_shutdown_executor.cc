@@ -88,6 +88,9 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->event_loops_running_ = false;
   }
+  // Cancel pending WaitAsync callbacks while the interpreter is still alive
+  // (unlike ~CoreWorker). Must run before the io thread is joined.
+  core_worker->CancelAllWaitAsync();
   core_worker->io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";

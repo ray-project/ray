@@ -16,6 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -47,6 +49,8 @@ class GetRequest;
 /// actor call (see task_receiver.cc).
 class CoreWorkerMemoryStore {
  public:
+  using AsyncGetCallbackId = uint64_t;
+
   /// Create a memory store.
   ///
   /// \param[in] io_context Posts async callbacks to this context.
@@ -110,14 +114,30 @@ class CoreWorkerMemoryStore {
   /// \return Pointer to the object if it exists, otherwise nullptr.
   std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
 
-  /// Asynchronously get an object from the object store. The object will not be removed
-  /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
-  ///
-  /// \param[in] object_id The object id to get.
-  /// \param[in] callback The callback to run with the reference to the retrieved
-  ///            object value once available.
-  void GetAsync(const ObjectID &object_id,
-                std::function<void(std::shared_ptr<RayObject>)> callback);
+  /**
+   * @brief Asynchronously get an object from the object store.
+   *
+   * The object is not removed from storage after GetAsync (TODO(ekl): integrate
+   * this with object GC).
+   *
+   * @param[in] object_id The object id to get.
+   * @param[in] callback Invoked with the retrieved object once it is available.
+   * @return Non-zero cancellation token when the callback is queued. Zero when
+   * the object is already present and the callback has been posted to the io
+   * context.
+   */
+  AsyncGetCallbackId GetAsync(const ObjectID &object_id,
+                              std::function<void(std::shared_ptr<RayObject>)> callback);
+
+  /**
+   * @brief Remove a callback previously queued by GetAsync.
+   *
+   * Harmless if the token has already been posted or invoked.
+   *
+   * @param[in] object_id The object id passed to GetAsync.
+   * @param[in] callback_id Token returned by GetAsync. Zero is a no-op.
+   */
+  void CancelGetAsync(const ObjectID &object_id, AsyncGetCallbackId callback_id);
 
   /// Delete a list of objects from the object store.
   /// NOTE(swang): Objects that contain IsInPlasmaError will not be
@@ -174,6 +194,8 @@ class CoreWorkerMemoryStore {
 
  private:
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
+  FRIEND_TEST(TestMemoryStore, CancelAsyncGetRemovesCallback);
+  FRIEND_TEST(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback);
 
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
@@ -223,10 +245,15 @@ class CoreWorkerMemoryStore {
   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
       object_get_requests_ ABSL_GUARDED_BY(mu_);
 
+  struct AsyncGetRequest {
+    AsyncGetCallbackId id;
+    std::function<void(std::shared_ptr<RayObject>)> callback;
+  };
+
   /// Map from object ID to its async get requests.
-  absl::flat_hash_map<ObjectID,
-                      std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
-      object_async_get_requests_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<ObjectID, std::vector<AsyncGetRequest>> object_async_get_requests_
+      ABSL_GUARDED_BY(mu_);
+  AsyncGetCallbackId next_async_get_callback_id_ ABSL_GUARDED_BY(mu_) = 0;
 
   /// Function passed in to be called to check for signals (e.g., Ctrl-C).
   std::function<Status()> check_signals_;
