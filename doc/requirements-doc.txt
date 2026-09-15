@@ -46,6 +46,13 @@ jupytext==1.15.2
 # regeneration and Dependabot bumps; bump it deliberately rather than removing.
 urllib3==2.7.0
 
+# setup.py declares setup_requires=["cython >= 3.0.12", ...], and the doc CI steps
+# that pip-install Ray from the checkout (lint.sh api_annotations / api_policy_check)
+# otherwise have setuptools fetch it from an index at runtime. Preinstalling a
+# satisfying version makes fetch_build_eggs a no-op, so those steps never touch
+# the network. Matches setup.py's floor.
+cython==3.0.12
+
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
 click==8.5.0
