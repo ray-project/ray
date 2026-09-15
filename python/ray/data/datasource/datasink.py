@@ -135,6 +135,14 @@ class Datasink(Generic[WriteReturnType]):
         """
         return None
 
+    @property
+    def min_bytes_per_write(self) -> Optional[int]:
+        """The target number of bytes to pass to each ``write`` call.
+
+        If ``None``, Ray Data doesn't bundle write inputs based on their size.
+        """
+        return None
+
 
 @DeveloperAPI
 class DummyOutputDatasink(Datasink[None]):
