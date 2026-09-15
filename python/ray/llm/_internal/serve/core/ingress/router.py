@@ -140,7 +140,6 @@ class LLMRouter:
     ):
         self._handle: DeploymentHandle = server
         self._base_model_id = base_model_id
-        self._multiplexed_handles: Dict[str, DeploymentHandle] = {}
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -268,13 +267,7 @@ class LLMRouter:
         if not multiplexed_model_id:
             return self._handle
 
-        handle = self._multiplexed_handles.get(multiplexed_model_id)
-        if handle is None:
-            handle = self._handle.options(
-                multiplexed_model_id=multiplexed_model_id,
-            )
-            self._multiplexed_handles[multiplexed_model_id] = handle
-        return handle
+        return self._handle.options(multiplexed_model_id=multiplexed_model_id)
 
     @router_app.get("/health")
     async def health(self):
