@@ -214,6 +214,81 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
         )
 
+    @PublicAPI(stability="alpha")
+    def iter_bucket_batches(
+        self,
+        *,
+        max_tokens: int,
+        length_fn: Callable[[Dict[str, Any]], int],
+        buffer_size: int = 10000,
+        batch_format: Optional[str] = "default",
+        prefetch_batches: int = 1,
+    ) -> Iterable[DataBatch]:
+        """Iterate over batches with a bounded sum of sequence lengths.
+
+        Each window of up to ``buffer_size`` rows is sorted by ascending length
+        and greedily split into batches whose total length is at most
+        ``max_tokens``. Windows can span input blocks. Each window is drained
+        independently, including its final partially filled batch. This changes
+        row order and performs no global sort or shuffle.
+
+        The budget counts unpadded lengths. Padding sequences to the longest
+        sequence in a batch can exceed this budget. Rows are neither padded nor
+        truncated. A row exceeding the budget raises ``ValueError``.
+
+        Args:
+            max_tokens: Positive integer budget for the sum of lengths per batch.
+            length_fn: Callable receiving a row dictionary and returning its
+                non-negative integer sequence length. Called once per row per
+                iteration.
+            buffer_size: Positive maximum number of rows sorted together. Larger
+                windows improve grouping at the cost of memory and latency. This
+                bounds rows, not bytes, and is also the maximum batch row count.
+            batch_format: Output format, as in :meth:`iter_batches`.
+            prefetch_batches: Number of input windows to prefetch, as in
+                :meth:`iter_batches`.
+
+        Returns:
+            A re-iterable collection of batches. Each iteration reads the dataset
+            again, retaining every row exactly once.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([{"text": s} for s in ["a", "bb", "ccc"]])
+            >>> batches = ds.iterator().iter_bucket_batches(
+            ...     max_tokens=3, length_fn=lambda row: len(row["text"])
+            ... )
+            >>> [batch["text"].tolist() for batch in batches]
+            [['a', 'bb'], ['ccc']]
+        """
+        from ray.data._internal.bucket_batching import (
+            bucket_batches,
+            validate_bucket_batching,
+        )
+
+        validate_bucket_batching(max_tokens, buffer_size, length_fn)
+        batch_format = _apply_batch_format(batch_format)
+
+        def _create_iterator():
+            windows = iter(
+                self.iter_batches(
+                    batch_size=buffer_size,
+                    batch_format=None,
+                    prefetch_batches=prefetch_batches,
+                )
+            )
+            try:
+                for window in windows:
+                    yield from bucket_batches(
+                        window, max_tokens, length_fn, batch_format
+                    )
+            finally:
+                # Release the streaming executor on early termination or UDF errors.
+                if hasattr(windows, "close"):
+                    windows.close()
+
+        return _IterableFromIterator(_create_iterator)
+
     def _create_batch_iterator(
         self,
         ref_bundles_iter: Iterator[RefBundle],

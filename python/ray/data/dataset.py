@@ -6845,6 +6845,56 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=CD_API_GROUP)
+    def iter_bucket_batches(
+        self,
+        *,
+        max_tokens: int,
+        length_fn: Callable[[Dict[str, Any]], int],
+        buffer_size: int = 10000,
+        batch_format: Optional[str] = "default",
+        prefetch_batches: int = 1,
+    ) -> Iterable[DataBatch]:
+        """Iterate over batches grouped by sequence length within a token budget.
+
+        Sort windows of up to ``buffer_size`` rows by length, then greedily form
+        batches whose sum of lengths is at most ``max_tokens``. Each window is
+        drained independently. All rows are retained, but their order changes.
+        The budget counts unpadded lengths; this method does not pad sequences.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([{"text": s} for s in ["a", "bb", "ccc"]])
+            >>> batches = ds.iter_bucket_batches(
+            ...     max_tokens=3, length_fn=lambda row: len(row["text"])
+            ... )
+            >>> [batch["text"].tolist() for batch in batches]
+            [['a', 'bb'], ['ccc']]
+
+        Args:
+            max_tokens: Positive integer budget for the sum of lengths per batch.
+            length_fn: Callable accepting a row dictionary and returning a
+                non-negative integer length. A length exceeding ``max_tokens``
+                raises ``ValueError``.
+            buffer_size: Positive maximum number of rows sorted together. Bounds
+                rows rather than bytes, and limits the number of rows per batch.
+            batch_format: Output format, as in :meth:`iter_batches`.
+            prefetch_batches: Number of input windows to prefetch.
+
+        Returns:
+            An iterable over variable-size batches. See
+            :meth:`DataIterator.iter_bucket_batches
+            <ray.data.DataIterator.iter_bucket_batches>` for details and examples.
+        """
+        return self.iterator().iter_bucket_batches(
+            max_tokens=max_tokens,
+            length_fn=length_fn,
+            buffer_size=buffer_size,
+            batch_format=batch_format,
+            prefetch_batches=prefetch_batches,
+        )
+
+    @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
     def iter_torch_batches(
         self,
