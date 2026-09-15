@@ -49,6 +49,7 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
     PhysicalOperator,
     RefBundle,
+    ReportsExtraResourceUsage,
     TaskContext,
 )
 from ray.data._internal.execution.node_trackers.actor_location import (
@@ -62,6 +63,11 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.execution.util import locality_string, merge_label_selector
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
+from ray.data._internal.utils.cached_ray_internals import (
+    get_actor_locations,
+    get_draining_nodes,
+    get_local_ongoing_lineage_reconstruction_tasks,
+)
 from ray.data._internal.utils.heapdict import heapdict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import (
@@ -85,7 +91,7 @@ def get_map_worker_cls_name(op_name: str) -> str:
     return f"MapWorker({op_name})"
 
 
-class ActorPoolMapOperator(MapOperator):
+class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     """A MapOperator implementation that executes tasks on an actor pool.
 
     NOTE: This class is NOT thread-safe
@@ -225,7 +231,12 @@ class ActorPoolMapOperator(MapOperator):
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
         config = self._create_actor_pool_config(compute_strategy)
-        return _ActorPool(
+        pool_cls = (
+            _NodeAwareActorPool
+            if self.data_context.enable_node_aware_actor_pool
+            else _ActorPool
+        )
+        return pool_cls(
             create_actor_fn=self._start_actor,
             config=config,
             map_worker_cls_name=self._map_worker_cls_name,
@@ -663,6 +674,43 @@ class ActorPoolMapOperator(MapOperator):
 
     def min_scheduling_resources(self) -> ExecutionResources:
         return self._actor_pool.per_actor_resource_usage()
+
+    @override
+    def extra_resource_usage(self) -> ExecutionResources:
+        """Returns resources occupied by lineage reconstruction actors.
+
+        This shouldn't include resources used by actors that haven't been reconstructed,
+        even if they're running retried tasks.
+        """
+        if not self.data_context.enable_node_aware_actor_pool:
+            return ExecutionResources.zero()
+
+        num_actors = self._num_lineage_reconstructed_actors(self._actor_pool)
+        per_actor_resources = self._actor_pool.per_actor_resource_usage()
+        return per_actor_resources.scale(num_actors)
+
+    def _num_lineage_reconstructed_actors(
+        self, actor_pool: "AutoscalingActorPool"
+    ) -> int:
+        """Actors that have been recreated to lineage reconstruct an object."""
+        assert isinstance(actor_pool, _ActorPool), actor_pool
+
+        logical_id_label_key = actor_pool.get_logical_id_label_key()
+
+        # `get_local_ongoing_lineage_reconstruction_tasks` returns every task this
+        # driver is reconstructing, so filter to this operator's actor tasks. Normal
+        # tasks carry no logical actor ID.
+        reconstructing_actors = set()
+        for task_info, _ in get_local_ongoing_lineage_reconstruction_tasks():
+            if task_info.labels.get(self._OPERATOR_ID_LABEL_KEY) != self.id:
+                continue
+            logical_actor_id = task_info.labels.get(logical_id_label_key)
+            if logical_actor_id is not None:
+                reconstructing_actors.add(logical_actor_id)
+
+        # Actors still in the pool are already counted by normal accounting, so only
+        # the released ones are extra.
+        return len(reconstructing_actors - set(actor_pool._get_logical_ids()))
 
     def refresh_state(self):
         """Updates internal state"""
@@ -1366,3 +1414,51 @@ class _ActorPool(AutoscalingActorPool):
 
     def pending_logical_usage(self) -> ExecutionResources:
         return self._pending_or_restarting_usage
+
+
+class _NodeAwareActorPool(_ActorPool):
+    """An actor pool that avoids launching tasks to Actors on draining nodes. We assume
+    actors on draining nodes are unlikely to finish their tasks before the drain
+    deadline. By prioritizing ALIVE (non-restarting) actors on ACTIVE (non-draining)
+    nodes, we prevent task retries. Furthermore, unlike the parent implementation, this
+    actor pool updates actor locations upon restart.
+    """
+
+    @override
+    def refresh_actor_state(self):
+        # Snapshots state that _update_running_actor_state() depends on.
+        # Must be called before _update_running_actor_state() (see refresh_actor_state).
+        self._actor_node_id_map_snapshot: Dict[
+            LogicalActorId, NodeIdStr
+        ] = get_actor_locations(tuple(self._get_logical_ids()))
+        self._draining_nodes_snapshot: Dict[NodeIdStr, int] = get_draining_nodes()
+
+        super().refresh_actor_state()
+
+    @override
+    def _update_rank(self, actor: ActorHandle, state: _ActorState, died: bool):
+        # 1) Update node_id location.
+        # The ActorLocationTracker may return stale information when
+        #   - Actor is recently created
+        #   - get_actor_locations() returns *cached* information
+        # NOTE:
+        #   - We fallback to previous location if information is stale
+        #   - Actor locations are not updated in the base implementation
+        logical_id = self._get_actor_logical_id(actor)
+        node_id = (
+            self._actor_node_id_map_snapshot.get(logical_id) or state.actor_location
+        )
+        state.actor_location = node_id
+
+        restarting_actor = state.is_restarting
+        draining_node = node_id in self._draining_nodes_snapshot
+
+        # 2) Build node_id -> [ActorHandle] for only ALIVE actors and ACTIVE nodes
+        if not (restarting_actor or draining_node or died):
+            rank = _ActorRank(state.num_tasks_in_flight)
+            self._alive_node_to_actor_heap[node_id][actor] = rank
+            if actor not in self._alive_actors_to_in_flight_tasks_heap:
+                assert state.num_tasks_in_flight <= self.max_tasks_in_flight_per_actor()
+                self._alive_actors_to_in_flight_tasks_heap[actor] = rank
+        elif actor in self._alive_actors_to_in_flight_tasks_heap:
+            del self._alive_actors_to_in_flight_tasks_heap[actor]

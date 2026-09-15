@@ -249,6 +249,49 @@ py_test(
 )
 
 py_test(
+    name = "test_node_aware_actor_pool",
+    size = "medium",
+    srcs = ["tests/test_node_aware_actor_pool.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_advanced_fault_tolerance",
+    size = "large",
+    srcs = ["tests/test_advanced_fault_tolerance.py"],
+    tags = [
+        "data_non_parallel",
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_cache",
+    size = "small",
+    srcs = ["tests/test_cache.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_arrow_serialization",
     size = "small",
     srcs = ["tests/test_arrow_serialization.py"],
