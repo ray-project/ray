@@ -445,6 +445,16 @@ RAY_DISABLE_WORKER_LOG_PREFIX = env_bool("RAY_DISABLE_WORKER_LOG_PREFIX", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 
+# Enable launching Go workers and registering the Go language with the raylet.
+# When enabled, the raylet is started with a --go_worker_command so that Go
+# drivers can register and Go workers can be spawned.
+ENABLE_GO_SETUP_WORKER = env_bool("RAY_ENABLE_GO_SETUP_WORKER", False)
+
+# Subcommands supported by the Go raygo executable.
+RAYGO_AVAILABLE_COMMAND_SETUP_WORKER = "setup_worker"
+RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER = "defaultworker"
+RAYGO_AVAILABLE_COMMAND_RUNTIME_ENV_AGENT = "runtime-env-agent"
+
 # Regex for log messages to never deduplicate, or None. This takes precedence over
 # the skip regex below. A default pattern is set for testing.
 TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"

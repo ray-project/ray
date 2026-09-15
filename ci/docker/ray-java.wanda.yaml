@@ -10,6 +10,8 @@ srcs:
   - thirdparty/
   - src/
   - java/
+  - go/BUILD.bazel
+  - go/dependencies.bzl
   - gen_ray_pkg.py
   - release/BUILD.bazel
   - release/requirements_py310.txt

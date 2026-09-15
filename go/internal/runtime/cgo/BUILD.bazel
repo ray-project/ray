@@ -1,0 +1,67 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# cgo package - CGO bindings centralized here
+# all subdirectories merged into a single package
+go_library(
+    name = "cgo",
+    srcs = [
+        # Utils layer - Shared utilities
+        "converters.go",  # CGO helper functions
+        # Boundary layer - CGO boundary handling
+        "coreworker.go",  # CoreWorker lifecycle management
+        # Memory layer - Memory management
+        "native_allocator.go",  # Go-side object allocation callback
+        # Interfaces layer - Interface implementations
+        "native_context.go",  # WorkerContext bindings
+        "native_executor.go",  # TaskExecutor bindings
+        "native_submitter.go",  # TaskSubmitter bindings
+        # Callback layer - Called by C++
+        "task_executor.go",  # Go-side task execution callback
+    ],
+    cdeps = [
+        "//src/ray/core_worker/lib/go:native_runtime_go_headers",
+        "//src/ray/core_worker/lib/go:native_runtime",
+    ],
+    cgo = True,
+    importpath = "github.com/ray-project/ray/go/internal/runtime/cgo",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/errors",
+        "//go/internal/runtime/base",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+    ],
+)
+
+# Deferred: *_test.go not migrated (Task 1 excluded test files).
+# go_test(
+#    name = "cgo_test",
+#    srcs = [
+#        "converters_test.go",
+#        "native_allocator_test.go",
+#        "native_context_test.go",
+#        "native_executor_test.go",
+#    ],
+#    embed = [":cgo"],
+#    deps = [
+#        "//go/pkg/ids",
+#        "//go/pkg/runtime/function",
+#    ],
+# )

@@ -1,0 +1,62 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# Internal serializer package - provides low-level serialization implementation
+# This package is internal and cannot be accessed from outside the ray/go module
+go_library(
+    name = "serializer",
+    srcs = [
+        "buffer_pool_wrapper.go",
+        "context.go",
+        "extension.go",
+        "msgpack_serializer.go",
+        "object_serializer_impl.go",
+        "serializer.go",
+        "tiered_buffer_pool.go",
+        "type_utils.go",
+        "zero_copy.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/serializer",
+    visibility = [
+        "//go:__pkg__",  # For test_args_main.go
+        "//go/cmd/plugin:__pkg__",
+        "//go/internal/runtime/local_mode:__pkg__",
+        "//go/internal/runtime/native:__pkg__",
+        "//go/internal/worker:__pkg__",  # For wrapGoFunction to access serializer
+    ],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/runtime/object",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)
+
+# Unit tests for serializer package
+go_test(
+    name = "serializer_test",
+    srcs = [
+        "context_test.go",
+        "msgpack_serializer_test.go",
+        "serializer_test.go",
+        "tiered_buffer_pool_bench_test.go",
+        "tiered_buffer_pool_test.go",
+        "type_utils_test.go",
+        "zero_copy_test.go",
+    ],
+    embed = [":serializer"],
+    deps = ["//go/pkg/ids"],
+)
