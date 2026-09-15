@@ -116,11 +116,19 @@ class CallMethod(Enum):
     TRANSCRIPTIONS = "transcriptions"
 
 
-DEFAULT_ENDPOINTS = {
+# Model-discovery routes. Defined once and shared by every ingress class so a
+# request the OpenAI ingress answers on one path is answered on the same path by
+# the direct-streaming control ingress.
+DISCOVERY_ENDPOINTS = {
     "models": lambda app: app.get("/v1/models", response_model=ModelList),
     "model_data": lambda app: app.get(
         "/v1/models/{model:path}", response_model=ModelCard
     ),
+}
+
+
+DEFAULT_ENDPOINTS = {
+    **DISCOVERY_ENDPOINTS,
     "completions": lambda app: app.post("/v1/completions"),
     "chat": lambda app: app.post("/v1/chat/completions"),
     "embeddings": lambda app: app.post("/v1/embeddings"),
@@ -133,8 +141,22 @@ DEFAULT_ENDPOINTS = {
 }
 
 
-def init() -> FastAPI:
-    _fastapi_router_app = FastAPI(lifespan=metrics_lifespan)
+def init(*, enable_docs: bool = True) -> FastAPI:
+    """Build the FastAPI app shared by every Serve LLM ingress deployment.
+
+    ``enable_docs=False`` drops FastAPI's own ``/docs``, ``/redoc`` and
+    ``/openapi.json`` routes. The direct-streaming control ingress needs that:
+    its route inventory is what the ingress request router uses to decide which
+    requests belong to the ingress rather than to a model deployment, so every
+    route it declares is a path it claims away from the models. An interactive
+    schema browser for two discovery endpoints is not worth that.
+    """
+    docs_options = (
+        {}
+        if enable_docs
+        else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    )
+    _fastapi_router_app = FastAPI(lifespan=metrics_lifespan, **docs_options)
 
     # NOTE: PLEASE READ CAREFULLY BEFORE MODIFYING
     #
@@ -166,6 +188,22 @@ def init() -> FastAPI:
     _fastapi_router_app.add_middleware(SetRequestIdMiddleware)
 
     return _fastapi_router_app
+
+
+def make_direct_streaming_control_ingress() -> Type:
+    """Build the ``serve.ingress``-wrapped ``DirectStreamingIngress`` class.
+
+    The endpoint map is passed explicitly rather than defaulted so the route
+    inventory is stated in one place, and the FastAPI app drops the docs routes
+    -- see ``init``. The result declares exactly ``GET /v1/models`` and
+    ``GET /v1/models/{model:path}``, which is what ``LLMRouter`` reads back off
+    a running replica to decide what belongs to the ingress.
+    """
+    return make_fastapi_ingress(
+        DirectStreamingIngress,
+        endpoint_map=DISCOVERY_ENDPOINTS,
+        app=init(enable_docs=False),
+    )
 
 
 def make_fastapi_ingress(
@@ -245,6 +283,107 @@ async def router_request_timeout(timeout_duration: float):
         )
 
 
+class _ModelDiscovery:
+    """Model-discovery state and behavior shared by the ingress classes.
+
+    ``OpenAiIngress`` and ``DirectStreamingIngress`` answer the same two
+    discovery routes in the same way; they differ only in what else they do.
+    Discovery reads nothing but the model cards and the LoRA paths -- it never
+    calls a model deployment -- so it factors out cleanly and both ingresses
+    are guaranteed to report the same models rather than drifting apart.
+
+    Owns its copies of ``model_cards`` and ``lora_paths``: they are the
+    discovery answer, and an ingress holding a second copy is a chance for the
+    two to disagree.
+    """
+
+    def __init__(
+        self,
+        model_cards: Dict[str, ModelCard],
+        *,
+        lora_paths: Optional[Dict[str, str]] = None,
+        _get_lora_model_metadata_func: Optional[
+            Callable[[str, str], Awaitable[Dict[str, Any]]]
+        ] = None,
+    ):
+        self.model_cards: Dict[str, ModelCard] = dict(model_cards)
+        self.lora_paths: Dict[str, str] = dict(lora_paths or {})
+        self._get_lora_model_metadata_func = (
+            _get_lora_model_metadata_func or self._default_get_lora_model_metadata_func
+        )
+
+    async def _default_get_lora_model_metadata_func(
+        self, model_id: str, base_path: str
+    ) -> Dict[str, Any]:
+        return await get_lora_model_metadata(model_id, base_path)
+
+    async def model(self, model_id: str) -> Optional[ModelCard]:
+        if model_id in self.model_cards:
+            return self.model_cards[model_id]
+
+        base_model_id = get_base_model_id(model_id)
+        base_path = self.lora_paths.get(base_model_id)
+        if base_path is not None:
+            try:
+                overrides = await self._get_lora_model_metadata_func(
+                    model_id, base_path
+                )
+                base_card = self.model_cards[base_model_id]
+                return ModelCard(
+                    id=model_id,
+                    object="model",
+                    owned_by=base_card.owned_by,
+                    permission=list(base_card.permission),
+                    metadata={**base_card.metadata, **overrides},
+                )
+            except HTTPException:
+                logger.exception(
+                    "Unable to retrieve LoRA adapter config file for "
+                    f'"{model_id}". Omitting it from list of available models. '
+                    "Check that adapter config file exists in cloud bucket."
+                )
+
+    async def models(self) -> ModelList:
+        """OpenAI API-compliant endpoint to get all rayllm models."""
+        all_models = dict()
+        for base_model_id in self.model_cards:
+            # Add the base model.
+            all_models[base_model_id] = await self.model(base_model_id)
+
+            base_path = self.lora_paths.get(base_model_id)
+            if base_path is not None:
+                # Add all the fine-tuned models.
+                lora_model_ids = get_lora_model_ids(
+                    dynamic_lora_loading_path=base_path,
+                    base_model_id=base_model_id,
+                )
+                for lora_id in lora_model_ids:
+                    model_data = await self.model(lora_id)
+                    if model_data is not None:
+                        all_models[lora_id] = model_data
+
+        return ModelList(data=list(all_models.values()))
+
+    async def model_data(self, model: str) -> ModelCard:
+        """OpenAI API-compliant endpoint to get one rayllm model.
+
+        Args:
+            model: The model ID (e.g. "amazon/LightGPT").
+
+        Returns:
+            The ``ModelCard`` for ``model``.
+        """
+        model = replace_prefix(model)
+        model_data = await self.model(model)
+        if model_data is None:
+            raise OpenAIHTTPException(
+                message=f"Unable to find {model}. Please ensure that the model exists and you have permission.",
+                status_code=status.HTTP_404_NOT_FOUND,
+                type="InvalidModel",
+            )
+        return model_data
+
+
 class OpenAiIngress(DeploymentProtocol):
     def __init__(
         self,
@@ -264,22 +403,22 @@ class OpenAiIngress(DeploymentProtocol):
             )
 
         self._default_serve_handles: Dict[str, DeploymentHandle] = dict(llm_deployments)
-        self._model_cards: Dict[str, ModelCard] = dict(model_cards)
-        self._lora_paths: Dict[str, str] = dict(lora_paths or {})
+        self._discovery = _ModelDiscovery(
+            model_cards,
+            lora_paths=lora_paths,
+            _get_lora_model_metadata_func=_get_lora_model_metadata_func,
+        )
+        # Alias the discovery helper's dicts rather than taking a second copy:
+        # `_get_model_id` resolves against exactly the set of models discovery
+        # reports.
+        self._model_cards: Dict[str, ModelCard] = self._discovery.model_cards
+        self._lora_paths: Dict[str, str] = self._discovery.lora_paths
 
         # Configuring a ServeHandle with .options() creates a new ServeHandle
         # object, which contains a new metrics pusher and long-polling call.
         # Creating too many ServeHandles can impact event-loop and Serve Controller
         # performance, so we save configured ServeHandles here and reuse them.
         self._configured_serve_handles: Dict[str, DeploymentHandle] = {}
-        self._get_lora_model_metadata_func = (
-            _get_lora_model_metadata_func or self._default_get_lora_model_metadata_func
-        )
-
-    async def _default_get_lora_model_metadata_func(
-        self, model_id: str, base_path: str
-    ) -> Dict[str, Any]:
-        return await get_lora_model_metadata(model_id, base_path)
 
     async def check_health(self):
         pass
@@ -404,51 +543,11 @@ class OpenAiIngress(DeploymentProtocol):
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelCard]:
-        if model_id in self._model_cards:
-            return self._model_cards[model_id]
-
-        base_model_id = get_base_model_id(model_id)
-        base_path = self._lora_paths.get(base_model_id)
-        if base_path is not None:
-            try:
-                overrides = await self._get_lora_model_metadata_func(
-                    model_id, base_path
-                )
-                base_card = self._model_cards[base_model_id]
-                return ModelCard(
-                    id=model_id,
-                    object="model",
-                    owned_by=base_card.owned_by,
-                    permission=list(base_card.permission),
-                    metadata={**base_card.metadata, **overrides},
-                )
-            except HTTPException:
-                logger.exception(
-                    "Unable to retrieve LoRA adapter config file for "
-                    f'"{model_id}". Omitting it from list of available models. '
-                    "Check that adapter config file exists in cloud bucket."
-                )
+        return await self._discovery.model(model_id)
 
     async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
-        all_models = dict()
-        for base_model_id in self._model_cards:
-            # Add the base model.
-            all_models[base_model_id] = await self.model(base_model_id)
-
-            base_path = self._lora_paths.get(base_model_id)
-            if base_path is not None:
-                # Add all the fine-tuned models.
-                lora_model_ids = get_lora_model_ids(
-                    dynamic_lora_loading_path=base_path,
-                    base_model_id=base_model_id,
-                )
-                for lora_id in lora_model_ids:
-                    model_data = await self.model(lora_id)
-                    if model_data is not None:
-                        all_models[lora_id] = model_data
-
-        return ModelList(data=list(all_models.values()))
+        return await self._discovery.models()
 
     async def model_data(self, model: str) -> ModelCard:
         """OpenAI API-compliant endpoint to get one rayllm model.
@@ -459,15 +558,7 @@ class OpenAiIngress(DeploymentProtocol):
         Returns:
             The ``ModelCard`` for ``model``.
         """
-        model = replace_prefix(model)
-        model_data = await self.model(model)
-        if model_data is None:
-            raise OpenAIHTTPException(
-                message=f"Unable to find {model}. Please ensure that the model exists and you have permission.",
-                status_code=status.HTTP_404_NOT_FOUND,
-                type="InvalidModel",
-            )
-        return model_data
+        return await self._discovery.model_data(model)
 
     async def _process_llm_request(
         self,
@@ -692,3 +783,98 @@ class OpenAiIngress(DeploymentProtocol):
         if _all_models_scale_to_zero(llm_configs):
             options.setdefault("autoscaling_config", {})["min_replicas"] = 0
         return options
+
+
+class DirectStreamingIngress(DeploymentProtocol):
+    """Control-plane ingress for multi-model direct streaming.
+
+    Deliberately **not** an ``OpenAiIngress`` subclass. Under direct streaming
+    the ingress and the ingress request router split the application's traffic
+    by route: every route this deployment declares is claimed by the ingress,
+    and everything else is routed by the ``model`` field to an ``LLMServer``
+    deployment whose replicas HAProxy talks to directly. Inheriting the OpenAI
+    endpoints would therefore claim ``/v1/chat/completions`` for the ingress and
+    put the proxy hop this feature exists to remove straight back onto the
+    inference path.
+
+    So this class exposes model discovery and nothing else:
+
+    * ``GET /v1/models``
+    * ``GET /v1/models/{model:path}``
+
+    It holds the model deployment handles but never calls them. Keeping them in
+    the constructor is what puts the model deployments in the application graph
+    (Serve builds an app by walking the bound arguments), and it gives future
+    control-plane operations -- LoRA registration, sleep/wake -- a handle to
+    reach. Discovery itself reads only the model cards.
+
+    Internal for the direct-streaming MVP: not exported from ``ray.serve.llm``,
+    not user-subclassable, and the builder rejects a custom ingress class while
+    direct streaming is on.
+    """
+
+    def __init__(
+        self,
+        llm_deployments: Dict[str, DeploymentHandle],
+        model_cards: Dict[str, ModelCard],
+        *,
+        lora_paths: Optional[Dict[str, str]] = None,
+        _get_lora_model_metadata_func: Optional[
+            Callable[[str, str], Awaitable[Dict[str, Any]]]
+        ] = None,
+    ):
+        if set(llm_deployments) != set(model_cards):
+            raise ValueError(
+                "llm_deployments and model_cards must have the same model IDs. "
+                f"Got llm_deployments={sorted(llm_deployments)}, "
+                f"model_cards={sorted(model_cards)}."
+            )
+
+        # Retained so the model deployments stay in the application graph and so
+        # later control-plane work has somewhere to call. Never invoked for
+        # discovery: a model listing must answer while a replica is busy
+        # streaming, and must not fail because one model is unhealthy.
+        self._llm_deployments: Dict[str, DeploymentHandle] = dict(llm_deployments)
+        self._discovery = _ModelDiscovery(
+            model_cards,
+            lora_paths=lora_paths,
+            _get_lora_model_metadata_func=_get_lora_model_metadata_func,
+        )
+
+    async def check_health(self):
+        pass
+
+    async def model(self, model_id: str) -> Optional[ModelCard]:
+        return await self._discovery.model(model_id)
+
+    async def models(self) -> ModelList:
+        """OpenAI API-compliant endpoint to get all rayllm models."""
+        return await self._discovery.models()
+
+    async def model_data(self, model: str) -> ModelCard:
+        """OpenAI API-compliant endpoint to get one rayllm model.
+
+        Args:
+            model: The model ID (e.g. "amazon/LightGPT").
+
+        Returns:
+            The ``ModelCard`` for ``model``.
+        """
+        return await self._discovery.model_data(model)
+
+    @classmethod
+    def get_deployment_options(
+        cls, llm_configs: Optional[List[LLMConfig]] = None
+    ) -> Dict[str, Any]:
+        """Get the deployment options for the control-plane ingress.
+
+        The lightweight-ingress defaults, minus ``OpenAiIngress``'s
+        scale-to-zero behavior. That rule exists so an all-``min_replicas=0``
+        app can release its GPU node entirely, but under direct streaming the
+        ingress is also the only deployment that can answer ``GET /v1/models``,
+        and the ingress request router needs a live ingress replica to resolve
+        the discovery routes at all. Scaling it to zero would make model
+        discovery -- the thing that tells a client which models exist before it
+        wakes one -- the first casualty of an idle app.
+        """
+        return copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
