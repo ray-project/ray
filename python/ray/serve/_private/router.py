@@ -1291,23 +1291,18 @@ class AsyncioRouter:
             if reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
             else:
-                # Fast path: synchronously ask the configured RequestRouter to
-                # pick a replica from the current snapshot, bypassing the
-                # _pending_requests_to_fulfill queue and the routing-task
-                # workers. Safe because there's no reservation -> no rejection
-                # -> no retry, so the queue's ordering/backoff guarantees are
-                # unused.
-                ranks = await self._active_request_router.choose_replicas(
-                    candidate_replicas=self._active_request_router._replicas_list,
-                    pending_request=pr,
+                # Policies can return no candidates temporarily (e.g. while
+                # waiting for multiplexed model metadata). Reuse their selection
+                # retry loop with the same PendingRequest, without probing or
+                # reserving capacity on replicas. Close the generator to clean up
+                # its backoff accounting on success and cancellation.
+                candidates = self._active_request_router._choose_replicas_with_backoff(
+                    pr
                 )
-                flat = [r for rank in ranks for r in rank]
-                candidate = flat[0] if flat else None
-                if candidate is None:
-                    raise RuntimeError(
-                        f"no replicas available for {self.deployment_id}"
-                    )
-                replica = candidate
+                try:
+                    replica = (await candidates.__anext__())[0]
+                finally:
+                    await candidates.aclose()
                 slot_token = None
 
             selection = ReplicaSelection(
