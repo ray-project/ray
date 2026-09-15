@@ -22,6 +22,12 @@ This feature augments the familiar Ray :class:`ObjectRef <ray.ObjectRef>` API by
 .. note::
    RDT is currently in **alpha** and doesn't support all Ray Core APIs yet. Future releases may introduce breaking API changes. See the :ref:`limitations <limitations>` section for more details.
 
+RDT keeps the serialized Python portion of an object in worker memory and sends it over gRPC,
+including when it exceeds the usual object or task inlining thresholds.
+This applies to RDT actor task returns and to objects created with ``ray.put(_tensor_transport=...)``.
+Tensors use the selected tensor transport. The Python portion is still subject to the gRPC message size limit,
+and is not eligible for object-store spilling.
+
 Getting started
 ===============
 

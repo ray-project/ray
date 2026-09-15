@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <future>
 #include <memory>
 #include <string>
@@ -366,6 +367,121 @@ TaskSpecification CreateStreamingGeneratorTaskSpec() {
   task.GetMutableMessage().set_streaming_generator(true);
   task.GetMutableMessage().set_generator_backpressure_num_objects(-1);
   return task;
+}
+
+TEST_F(CoreWorkerTest, ForceInlineReturnBypassesObjectAndTaskLimits) {
+  const size_t data_size = RayConfig::instance().max_direct_call_object_size() + 1;
+  const auto metadata = MakeRayObject("", "meta")->GetMetadata();
+  int64_t inlined_bytes = RayConfig::instance().task_rpc_inlined_bytes_limit();
+  const int64_t initial_inlined_bytes = inlined_bytes;
+
+  // Explicit inlining applies to each object even after the task's aggregate
+  // inline budget is exhausted. The buffer remains private until it is written.
+  for (int i = 0; i < 2; i++) {
+    std::shared_ptr<RayObject> return_object;
+    const auto object_id = ObjectID::FromRandom();
+    ASSERT_TRUE(core_worker_
+                    ->AllocateReturnObject(object_id,
+                                           data_size,
+                                           metadata,
+                                           {},
+                                           core_worker_->GetRpcAddress(),
+                                           &inlined_bytes,
+                                           &return_object,
+                                           /*force_inline=*/true)
+                    .ok());
+    ASSERT_NE(return_object, nullptr);
+    ASSERT_NE(return_object->GetData(), nullptr);
+    EXPECT_EQ(return_object->GetData()->Size(), data_size);
+    EXPECT_FALSE(return_object->GetData()->IsPlasmaBuffer());
+    EXPECT_EQ(return_object->GetMetadata(), metadata);
+    EXPECT_EQ(memory_store_->GetIfExists(object_id), nullptr);
+    EXPECT_EQ(inlined_bytes,
+              initial_inlined_bytes + (i + 1) * static_cast<int64_t>(data_size));
+  }
+}
+
+TEST_F(CoreWorkerTest, ForceInlinePutPublishesAfterSealAndReleasesNestedReference) {
+  const auto inner_id = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(inner_id,
+                                     {},
+                                     core_worker_->GetRpcAddress(),
+                                     "",
+                                     1,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  const size_t data_size = RayConfig::instance().max_direct_call_object_size() + 1;
+  const auto metadata = MakeRayObject("", "meta")->GetMetadata();
+  ObjectID object_id;
+  std::shared_ptr<Buffer> data;
+  ASSERT_TRUE(core_worker_
+                  ->CreateOwnedAndIncrementLocalRef(
+                      /*is_experimental_mutable_object=*/false,
+                      metadata,
+                      data_size,
+                      {inner_id},
+                      &object_id,
+                      &data,
+                      /*inline_small_object=*/false,
+                      /*tensor_transport=*/std::nullopt,
+                      /*force_inline=*/true)
+                  .ok());
+  ASSERT_NE(data, nullptr);
+  EXPECT_FALSE(data->IsPlasmaBuffer());
+  EXPECT_EQ(data->Size(), data_size);
+  EXPECT_EQ(memory_store_->GetIfExists(object_id), nullptr);
+  ASSERT_TRUE(reference_counter_->HasReference(object_id));
+  auto locality = reference_counter_->GetLocalityData(object_id);
+  ASSERT_TRUE(locality.has_value());
+  EXPECT_TRUE(locality->nodes_containing_object.empty());
+
+  // Dropping the original inner reference must not free it while the new
+  // inlined object contains it, including during the write-before-seal window.
+  core_worker_->RemoveLocalReference(inner_id);
+  EXPECT_TRUE(reference_counter_->HasReference(inner_id));
+  const std::string expected(data_size, 'x');
+  std::copy(expected.begin(), expected.end(), data->Data());
+  auto object = std::make_shared<RayObject>(
+      data, metadata, core_worker_->GetObjectRefs({inner_id}));
+  ASSERT_TRUE(core_worker_->SealOwned(object_id, /*pin_object=*/true, object).ok());
+  const auto stored = memory_store_->GetIfExists(object_id);
+  ASSERT_NE(stored, nullptr);
+  EXPECT_FALSE(stored->IsInPlasmaError());
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(stored->GetData()->Data()),
+                        stored->GetData()->Size()),
+            expected);
+  ASSERT_EQ(stored->GetNestedRefs().size(), 1);
+  EXPECT_EQ(stored->GetNestedRefs()[0].object_id(), inner_id.Binary());
+  EXPECT_TRUE(
+      reference_counter_->GetLocalityData(object_id)->nodes_containing_object.empty());
+
+  // Ordinary ownership cleanup must release both the worker-memory value and
+  // the nested reference without a plasma pin or a separate cleanup callback.
+  core_worker_->RemoveLocalReference(object_id);
+  EXPECT_EQ(memory_store_->GetIfExists(object_id), nullptr);
+  EXPECT_FALSE(reference_counter_->HasReference(object_id));
+  EXPECT_FALSE(reference_counter_->HasReference(inner_id));
+}
+
+TEST_F(CoreWorkerTest, ForceInlineRejectsMutableObjectsBeforeAddingOwnership) {
+  const auto metadata = MakeRayObject("", "meta")->GetMetadata();
+  const auto initial_owned_objects = reference_counter_->NumObjectsOwnedByUs();
+  ObjectID object_id = ObjectID::Nil();
+  std::shared_ptr<Buffer> data;
+  const auto status = core_worker_->CreateOwnedAndIncrementLocalRef(
+      /*is_experimental_mutable_object=*/true,
+      metadata,
+      /*data_size=*/1,
+      {},
+      &object_id,
+      &data,
+      /*inline_small_object=*/false,
+      /*tensor_transport=*/std::nullopt,
+      /*force_inline=*/true);
+  EXPECT_TRUE(status.IsInvalid());
+  EXPECT_TRUE(object_id.IsNil());
+  EXPECT_EQ(data, nullptr);
+  EXPECT_EQ(reference_counter_->NumObjectsOwnedByUs(), initial_owned_objects);
 }
 
 TEST_F(CoreWorkerTest, PeekObjectRefStreamNReturnsExpectedRefs) {
