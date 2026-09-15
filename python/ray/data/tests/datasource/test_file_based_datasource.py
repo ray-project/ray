@@ -292,6 +292,37 @@ def test_ignore_missing_paths_false(ray_start_regular_shared, tmp_path):
         execute_read_tasks(tasks)
 
 
+def test_empty_directory_raises_no_files_found(ray_start_regular_shared, tmp_path):
+    with pytest.raises(ValueError, match="No files found under"):
+        MockFileBasedDatasource(tmp_path)
+
+
+@pytest.mark.parametrize("filename", ["_SUCCESS", ".hidden.txt"])
+def test_excluded_prefixes_only_raises_no_files_found(
+    ray_start_regular_shared, tmp_path, filename
+):
+    # Directory listing drops names starting with "_" or ".", so a directory
+    # holding only those (e.g. a Spark output directory with just its _SUCCESS
+    # marker) expands to no files at all.
+    with open(os.path.join(tmp_path, filename), "wb"):
+        pass
+
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(tmp_path)
+
+    # The prefix rule is the non-obvious cause, so the message has to name it.
+    assert "starting with '_' or '.'" in str(exc_info.value)
+
+
+def test_all_paths_missing_with_ignore_missing_paths(ray_start_regular_shared):
+    with pytest.raises(ValueError, match="No files found under") as exc_info:
+        MockFileBasedDatasource(
+            ["missing1.txt", "missing2.txt"], ignore_missing_paths=True
+        )
+
+    assert "'ignore_missing_paths' is set to True" in str(exc_info.value)
+
+
 def test_local_paths(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test.txt")
     with open(path, "w"):
@@ -399,6 +430,71 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
     datasource = FlakyFileBasedDatasource([csv_path])
     ds = ray.data.read_datasource(datasource)
     assert len(ds.take()) == 1
+
+
+def test_flaky_read_stream_retry_does_not_drop_data(ray_start_regular_shared, tmp_path):
+    """A retryable error partway through a file must not drop what was read before it.
+
+    `iterate_with_retry` skips the blocks that a failed attempt already yielded, so
+    every attempt has to replay the file from the start. If the retry reuses the
+    advanced file handle, it resumes mid-file and those skips discard real data
+    instead of duplicates.
+    """
+    CHUNK_SIZE = 1024
+    NUM_CHUNKS = 8
+    FAIL_AFTER_CHUNKS = 3
+    retried_error = ray.data.context.DEFAULT_RETRIED_IO_ERRORS[0]
+
+    path = tmp_path / "file.bin"
+    expected = bytes(i % 256 for i in range(CHUNK_SIZE * NUM_CHUNKS))
+    path.write_bytes(expected)
+
+    class FlakyInputStream:
+        """Raises one retryable error, before advancing the wrapped handle."""
+
+        fired = False
+
+        def __init__(self, file):
+            self._file = file
+            self._num_reads = 0
+
+        def read(self, num_bytes=-1):
+            self._num_reads += 1
+            if not FlakyInputStream.fired and self._num_reads > FAIL_AFTER_CHUNKS:
+                FlakyInputStream.fired = True
+                raise OSError(retried_error)
+            return self._file.read(num_bytes)
+
+        def __enter__(self):
+            self._file.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self._file.__exit__(*args)
+
+    class ChunkedDatasource(FileBasedDatasource):
+        """Yields one block per `CHUNK_SIZE` bytes of the file."""
+
+        def _open_input_source(self, filesystem, path, **open_args):
+            return FlakyInputStream(
+                super()._open_input_source(filesystem, path, **open_args)
+            )
+
+        def _read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterator[Block]:
+            while True:
+                data = f.read(CHUNK_SIZE)
+                if not data:
+                    return
+                builder = DelegatingBlockBuilder()
+                builder.add({"data": data})
+                yield builder.build()
+
+    datasource = ChunkedDatasource(path)
+    rows = execute_read_tasks(datasource.get_read_tasks(1))
+
+    assert FlakyInputStream.fired, "the retry path was never exercised"
+    assert len(rows) == NUM_CHUNKS
+    assert b"".join(row["data"] for row in rows) == expected
 
 
 @pytest.mark.parametrize(

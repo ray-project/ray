@@ -154,9 +154,7 @@ class StatefulStageUDF:
             batch: The input batch.
 
         Yields:
-            (str, Any): An async iterator of the outputs.
-
-        TODO(MARK): The yield type should be `Dict[str, Any]`, pydoclint is bugged in 0.8.4 (https://github.com/jsh9/pydoclint/issues/288)
+            Dict[str, Any]: An async iterator of the outputs.
         """
         # Handle the case where the batch is empty.
         # FIXME: This should not happen.

@@ -48,12 +48,6 @@ depsets:
     packages:
       - torch
       - torchvision
-      # ABI-coupled PyG binaries; re-pinned as +pt27cpu builds in
-      # windows-requirements.txt.
-      - torch-scatter
-      - torch-sparse
-      - torch-cluster
-      - torch-spline-conv
     output: python/deplocks/ci/relaxed_windows-tests-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
