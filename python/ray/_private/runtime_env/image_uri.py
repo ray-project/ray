@@ -1,13 +1,70 @@
 import asyncio
 import logging
 import os
+import sys
 import tempfile
+from pathlib import Path
 from typing import List, Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 default_logger = logging.getLogger(__name__)
+
+
+def validate_worker_resource_limits_support() -> None:
+    """Fail early for the Podman configuration known not to support cgroup limits."""
+    if sys.platform != "linux":
+        raise RuntimeError(
+            "Per-worker container CPU and memory limits are supported only on Linux."
+        )
+    if os.geteuid() != 0 and not Path("/sys/fs/cgroup/cgroup.controllers").exists():
+        raise RuntimeError(
+            "Per-worker container CPU and memory limits require cgroup v2 when "
+            "Podman runs rootless. Use cgroup v2 or run Podman as root."
+        )
+
+
+def apply_worker_resource_limits(
+    context: RuntimeEnvContext,
+    cpu_period_us: int,
+    cpu_quota_us: int,
+    memory_bytes: int,
+) -> None:
+    """Add one worker's normalized cgroup limits to its Podman command."""
+    if (cpu_period_us == 0) != (cpu_quota_us == 0):
+        raise ValueError("CPU period and quota must either both be set or both be zero")
+    if cpu_period_us < 0 or cpu_quota_us < 0 or memory_bytes < 0:
+        raise ValueError("Worker resource limits cannot be negative")
+    if cpu_period_us > 0 and not 1000 <= cpu_period_us <= 1_000_000:
+        raise ValueError("CPU period must be between 1000 and 1000000 microseconds")
+    if 0 < cpu_quota_us < 1000:
+        raise ValueError("CPU quota must be at least 1000 microseconds")
+    if cpu_period_us == 0 and memory_bytes == 0:
+        return
+
+    marker = " --entrypoint python "
+    command_prefix, separator, command_suffix = context.py_executable.rpartition(marker)
+    if not separator or not command_prefix.startswith("podman run "):
+        raise RuntimeError(
+            "Cannot apply per-worker resource limits: the image_uri runtime "
+            "environment did not produce the expected Podman worker command."
+        )
+
+    options = []
+    if cpu_period_us > 0:
+        options.extend(
+            [
+                f"--cpu-period={cpu_period_us}",
+                f"--cpu-quota={cpu_quota_us}",
+            ]
+        )
+    if memory_bytes > 0:
+        options.append(f"--memory={memory_bytes}b")
+
+    context.py_executable = (
+        f"{command_prefix} {' '.join(options)}{marker}{command_suffix}"
+    )
 
 
 async def _create_impl(image_uri: str, logger: logging.Logger):
@@ -121,7 +178,6 @@ def _modify_context_impl(
 
     if run_options:
         container_command.extend(run_options)
-    # TODO(chenk008): add resource limit
     container_command.append("--entrypoint")
     container_command.append("python")
     container_command.append(image_uri)

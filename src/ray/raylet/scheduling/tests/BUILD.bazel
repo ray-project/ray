@@ -61,6 +61,7 @@ ray_cc_test(
         "//src/ray/asio:periodical_runner",
         "//src/ray/common:id",
         "//src/ray/common:lease",
+        "//src/ray/common:ray_config",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
