@@ -1,5 +1,7 @@
 import functools
 import glob
+import inspect
+import json
 import logging
 import math
 import os
@@ -12,6 +14,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray._private.ray_constants import (
+    NIXL_AGENT_BACKEND_INIT_PARAMS,
+    NIXL_AGENT_BACKENDS,
+    NIXL_AGENT_NUM_THREADS,
     NIXL_REMOTE_AGENT_CACHE_MAXSIZE,
 )
 from ray.experimental.rdt.nixl_memory_pool import (
@@ -31,6 +36,66 @@ if TYPE_CHECKING:
     import torch
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_nixl_backend_init_params(raw: str) -> Dict[str, Dict[str, str]]:
+    """Parses the RAY_NIXL_BACKEND_INIT_PARAMS JSON string into a dict mapping
+    backend name to its init params. NIXL backend init params are string-to-string
+    maps, so all keys and values are stringified.
+    """
+    if not raw:
+        return {}
+    try:
+        params = json.loads(raw)
+        if not isinstance(params, dict) or not all(
+            init is None or isinstance(init, dict) for init in params.values()
+        ):
+            raise ValueError("expected a dict mapping backend name to a params dict")
+    except ValueError as e:
+        raise ValueError(
+            "Invalid RAY_NIXL_BACKEND_INIT_PARAMS value "
+            f"{raw!r}, expected a JSON dict like "
+            '\'{"UCX": {"num_workers": "8"}}\''
+        ) from e
+    return {
+        backend: {str(k): str(v) for k, v in (init or {}).items()}
+        for backend, init in params.items()
+    }
+
+
+def _build_nixl_agent_config_kwargs(
+    nixl_agent_config_cls,
+    backends: List[str],
+    num_threads: int,
+    backend_init_params: Dict[str, Dict[str, str]],
+) -> Dict[str, Any]:
+    """Builds the kwargs for nixl_agent_config from the Ray NIXL env vars.
+
+    Backends with custom init params are excluded from the config's backend
+    list since nixl_agent_config doesn't accept per-backend init params; they
+    are created separately via nixl_agent.create_backend().
+
+    Config options unsupported by the installed NIXL version are dropped with
+    a warning instead of failing agent creation.
+    """
+    config_kwargs: Dict[str, Any] = {
+        "backends": [b for b in backends if b not in backend_init_params]
+    }
+    if num_threads > 0:
+        config_kwargs["num_threads"] = num_threads
+    supported_params = inspect.signature(nixl_agent_config_cls.__init__).parameters
+    unsupported = {k for k in config_kwargs if k not in supported_params}
+    if unsupported:
+        logger.warning(
+            "The installed NIXL version does not support the agent config "
+            f"option(s) {sorted(unsupported)}; ignoring them. Consider "
+            "upgrading NIXL, or pass equivalent backend init params via "
+            "RAY_NIXL_BACKEND_INIT_PARAMS."
+        )
+        config_kwargs = {
+            k: v for k, v in config_kwargs.items() if k in supported_params
+        }
+    return config_kwargs
 
 
 @functools.lru_cache(maxsize=1)
@@ -232,11 +297,26 @@ class NixlTensorTransport(TensorTransportManager):
         """
         return "LIBFABRIC" if _is_efa_available() else "UCX"
 
-    def _make_nixl_agent(self, backend: str):
-        """Creates a NIXL agent configured with the given backend."""
+    def _make_nixl_agent(self, backends: List[str]):
+        """Creates a NIXL agent configured with the given backends.
+
+        The agent can be tuned via environment variables:
+
+        - RAY_NIXL_NUM_THREADS: number of threads the agent uses for
+          transfers. For UCX each thread gets its own worker/QPs, which can
+          significantly improve throughput.
+        - RAY_NIXL_BACKEND_INIT_PARAMS: JSON dict mapping a backend name to
+          its init params, e.g. '{"UCX": {"num_workers": "8"}}'.
+        """
         from nixl._api import nixl_agent, nixl_agent_config
 
-        agent_config = nixl_agent_config(backends=[backend])
+        backend_init_params = _parse_nixl_backend_init_params(
+            NIXL_AGENT_BACKEND_INIT_PARAMS
+        )
+        config_kwargs = _build_nixl_agent_config_kwargs(
+            nixl_agent_config, backends, NIXL_AGENT_NUM_THREADS, backend_init_params
+        )
+        agent_config = nixl_agent_config(**config_kwargs)
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         if actor_id is None:
@@ -244,7 +324,13 @@ class NixlTensorTransport(TensorTransportManager):
             import uuid
 
             actor_id = f"RAY-DRIVER-{uuid.uuid4()}"
-        return nixl_agent(actor_id, agent_config)
+        agent = nixl_agent(actor_id, agent_config)
+        # Backends with custom init params are created here since
+        # nixl_agent_config doesn't accept per-backend init params.
+        for backend in backends:
+            if backend in backend_init_params:
+                agent.create_backend(backend, backend_init_params[backend])
+        return agent
 
     def get_nixl_agent(self):
         """Returns the NIXL agent, building it once on first use."""
@@ -253,11 +339,19 @@ class NixlTensorTransport(TensorTransportManager):
         return self._nixl_agent
 
     def _init_nixl_agent(self):
-        """Builds the NIXL agent for the selected backend."""
-        backend = self.select_backend()
-        agent = self._make_nixl_agent(backend)
-        self._backend = backend
-        logger.info("Using NIXL backend: %s", backend)
+        """Builds the NIXL agent for the configured or auto-detected backends.
+
+        RAY_NIXL_BACKENDS (comma-separated) explicitly selects the backends;
+        when unset, the backend is auto-detected via select_backend().
+        """
+        backends = [b.strip() for b in NIXL_AGENT_BACKENDS.split(",") if b.strip()]
+        if not backends:
+            backends = [self.select_backend()]
+        agent = self._make_nixl_agent(backends)
+        # The primary backend, used for backend-specific error guidance in
+        # _add_tensor_descs.
+        self._backend = backends[0]
+        logger.info("Using NIXL backend(s): %s", ", ".join(backends))
         return agent
 
     def actor_has_tensor_transport(self, actor: "ray.actor.ActorHandle") -> bool:
