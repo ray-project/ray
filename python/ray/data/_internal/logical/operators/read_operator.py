@@ -453,7 +453,7 @@ class ListFiles(LogicalOperator, SourceOperator):
 
     paths: List[str]
     file_indexer: "FileIndexer"
-    filesystem: "FileSystem"
+    filesystem: Optional["FileSystem"]
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
@@ -465,13 +465,12 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
-    # Pushed-down read constraints, populated by the optimizer rules
-    # (``predicate_pushdown`` / ``projection_pushdown`` / ``limit_pushdown``).
-    # A ``StreamingFileChunker`` (e.g. the Parquet footer chunker) uses them to
-    # prune row groups, size only projected columns, and stop listing early;
-    # the per-file listing path ignores them. Whether footer-based chunking runs
-    # is decided by the indexer's chunker type, not a flag here -- this op stays
-    # format-agnostic.
+    # Pushed-down read constraints, filled in by ``DeriveListFilesPushdown``
+    # from the scanner's accepted pushdowns and forwarded to
+    # ``FileIndexer.list_files``. ``FooterFileIndexer`` uses them to drop row
+    # groups, size only projected columns and stop listing early;
+    # ``NonSamplingFileIndexer`` ignores them. Which one runs is the
+    # datasource's choice of indexer, not a flag here.
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None

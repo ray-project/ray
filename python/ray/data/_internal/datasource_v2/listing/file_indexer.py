@@ -31,11 +31,12 @@ logger = logging.getLogger(__name__)
 
 
 class FileIndexer(ABC):
-    @property
-    @abstractmethod
-    def file_chunker(self) -> FileChunker:
-        """The file chunker that this indexer uses."""
-        ...
+    """Turns root paths into ``FileManifest`` blocks inside ``ListFiles`` tasks.
+
+    Chosen by ``DataSourceV2._get_file_indexer``. How an implementation splits a
+    file into manifest rows is deliberately its own business, not part of this
+    interface.
+    """
 
     def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
         """An equivalent indexer that emits each file exactly once, or ``None``.
@@ -56,7 +57,7 @@ class FileIndexer(ABC):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -69,7 +70,9 @@ class FileIndexer(ABC):
 
         Args:
             paths: A column of paths pointing to files or directories.
-            filesystem: A PyArrow filesystem object.
+            filesystem: PyArrow filesystem to list through, or ``None`` for an
+                indexer that does its own IO (the framework forwards
+                ``DataSourceV2.filesystem`` unchanged).
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
             predicate: Pushed-down row filter. Indexers that read file
@@ -96,7 +99,7 @@ class FileIndexer(ABC):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable["FileInfo"]:
@@ -210,10 +213,9 @@ class NonSamplingFileIndexer(FileIndexer):
 
     @property
     def file_chunker(self) -> FileChunker:
-        """The file chunker that this indexer uses.
+        """The chunker ``list_files`` applies to each listed file.
 
-        Exposed primarily for tests and shuffle-aware planning code that needs
-        to introspect or override the chunking strategy.
+        Specific to this indexer -- its ``list_files`` is the only consumer.
         """
         return self._file_chunker
 
@@ -247,7 +249,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -275,7 +277,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
@@ -431,7 +433,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable[FileInfo]:
@@ -446,6 +448,13 @@ class NonSamplingFileIndexer(FileIndexer):
         partition filters) are applied here, so both listing paths share one
         filtering point.
         """
+        if filesystem is None:
+            raise ValueError(
+                f"{type(self).__name__} lists files through a PyArrow filesystem, "
+                "but the datasource returned `filesystem=None`. Resolve one in the "
+                "datasource's `__init__` (see `_resolve_paths_and_filesystem`) or "
+                "return an indexer that does its own IO."
+            )
         pruners = pruners or []
         file_info_iterator = self._get_file_info_iterator(
             paths, filesystem, preserve_order
