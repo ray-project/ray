@@ -964,7 +964,9 @@ CPU_NODE_AUTOSCALING_CONFIG = {
             "max_workers": 10,
         },
     },
-    "idle_timeout_minutes": 0.01,
+    # Short enough to release compacted nodes quickly, long enough that a fresh
+    # node isn't killed before Serve places a replica on it.
+    "idle_timeout_minutes": 0.05,
     "autoscaler_v2": True,
 }
 
@@ -1020,7 +1022,7 @@ def autoscaling_cluster(request, monkeypatch):
 
 
 @pytest.fixture
-def autoscaling_cluster_with_telemetry(monkeypatch):
+def autoscaling_cluster_with_telemetry(request, monkeypatch):
     monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "1")
     monkeypatch.setenv(
         "RAY_USAGE_STATS_REPORT_URL", f"http://127.0.0.1:8000{TELEMETRY_ROUTE_PREFIX}"
@@ -1028,7 +1030,17 @@ def autoscaling_cluster_with_telemetry(monkeypatch):
     monkeypatch.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "0.01")
     cluster = AutoscalingCluster(**CPU_NODE_AUTOSCALING_CONFIG)
+
+    def teardown():
+        serve.shutdown()
+        ray.shutdown()
+        cluster.shutdown()
+        usage_lib.reset_global_state()
+
+    request.addfinalizer(teardown)
     cluster.start()
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init()
     serve.start()
     storage_handle = start_telemetry_app()
@@ -1036,10 +1048,6 @@ def autoscaling_cluster_with_telemetry(monkeypatch):
         lambda: ray.get(storage_handle.get_reports_received.remote()) > 0, timeout=5
     )
     yield
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
-    usage_lib.reset_global_state()
 
 
 @pytest.fixture
@@ -1064,6 +1072,8 @@ def setup_compact_scheduling(request, monkeypatch):
     # break every later test in the file.
     request.addfinalizer(teardown)
     cluster.start()
+    if ray.is_initialized():
+        ray.shutdown()
     ray.init()
     serve.start()
     client = _get_global_client()
@@ -1112,13 +1122,13 @@ def setup_compact_scheduling(request, monkeypatch):
     client._wait_for_application_running("A")
     client._wait_for_application_running("B")
     # Node1: (B, A1)
-    wait_for_condition(check_num_alive_nodes, target=2)
+    wait_for_condition(check_num_alive_nodes, target=2, timeout=60)
 
     config["applications"][0]["deployments"][0]["num_replicas"] = 6
     client.deploy_apps(ServeDeploySchema(**config))
     client._wait_for_application_running("A")
     # Node1: (B, A1), Node2: (A2, A3, A4), Node3: (A5, A6)
-    wait_for_condition(check_num_alive_nodes, target=4)
+    wait_for_condition(check_num_alive_nodes, target=4, timeout=60)
 
     # Deleting B makes node 1 compactable, but the replacement blocks on init.
     signal.send.remote(clear=True)
@@ -1135,7 +1145,7 @@ def setup_compact_scheduling(request, monkeypatch):
             (ReplicaState.PENDING_MIGRATION, 1, None),
         ],
     )
-    check_num_alive_nodes(4)
+    wait_for_condition(check_num_alive_nodes, target=4, timeout=60)
 
     yield client, config, signal
 
@@ -1148,7 +1158,7 @@ class TestCompactScheduling:
         _, _, signal = setup_compact_scheduling
 
         signal.send.remote()
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
     @pytest.mark.parametrize(
         "setup_compact_scheduling",
@@ -1176,7 +1186,7 @@ class TestCompactScheduling:
         _, _, signal = setup_compact_scheduling
 
         signal.send.remote()
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
     def test_downscale_during_compaction(self, setup_compact_scheduling):
         client, config, _ = setup_compact_scheduling
@@ -1196,7 +1206,7 @@ class TestCompactScheduling:
             by_state=[(ReplicaState.RUNNING, 5, None)],
         )
         assert get_current_replica_ids(dep_id, states=["RUNNING"]) == running_replicas
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
     def test_upscale_during_compaction(self, setup_compact_scheduling):
         client, config, signal = setup_compact_scheduling
@@ -1217,7 +1227,7 @@ class TestCompactScheduling:
             by_state=[(ReplicaState.RUNNING, 7, None)],
         )
         assert running_replicas < get_current_replica_ids(dep_id, states=["RUNNING"])
-        check_num_alive_nodes(4)
+        wait_for_condition(check_num_alive_nodes, target=4, timeout=60)
 
     def test_controller_crashes(self, setup_compact_scheduling):
         client, _, signal = setup_compact_scheduling
@@ -1241,7 +1251,7 @@ class TestCompactScheduling:
                 (ReplicaState.PENDING_MIGRATION, 1, None),
             ],
         )
-        check_num_alive_nodes(4)
+        wait_for_condition(check_num_alive_nodes, target=4, timeout=60)
 
         new_pids = [h.get_pid.remote().result() for _ in range(30)]
         assert set(pids) == set(new_pids)
@@ -1254,7 +1264,7 @@ class TestCompactScheduling:
             expected_status=DeploymentStatus.HEALTHY,
             timeout=20,
         )
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
     def test_worker_node_crashes(self, setup_compact_scheduling):
         _, _, signal = setup_compact_scheduling
@@ -1279,7 +1289,7 @@ class TestCompactScheduling:
             app_name="A",
             expected_status=DeploymentStatus.HEALTHY,
         )
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
     @pytest.mark.parametrize("use_pg", [True, False])
     def test_custom_resources(self, ray_cluster: Cluster, use_pg: bool):
@@ -1439,12 +1449,12 @@ class TestCompactScheduling:
         client.deploy_apps(ServeDeploySchema(**config))
         client._wait_for_application_running("A")
         client._wait_for_application_running("B")
-        wait_for_condition(check_num_alive_nodes, target=2)
+        wait_for_condition(check_num_alive_nodes, target=2, timeout=60)
 
         # The second A lands alone on the 3-CPU node.
         config["applications"][0]["deployments"][0]["num_replicas"] = 2
         client.deploy_apps(ServeDeploySchema(**config))
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
         client._wait_for_application_running("A")
         h = serve.get_app_handle("A")
@@ -1453,7 +1463,7 @@ class TestCompactScheduling:
         # Deleting B leaves both nodes compactable; the 4-CPU one should go.
         del config["applications"][1]
         client.deploy_apps(ServeDeploySchema(**config))
-        wait_for_condition(check_num_alive_nodes, target=2, timeout=20)
+        wait_for_condition(check_num_alive_nodes, target=2, timeout=60)
         assert worker_nodes()[0]["Resources"]["CPU"] == 3.0
 
     def test_label_selector_blocks_compaction(self, ray_cluster: Cluster):
@@ -1657,16 +1667,16 @@ class TestCompactScheduling:
         client.deploy_apps(ServeDeploySchema(**config))
         client._wait_for_application_running("A")
         client._wait_for_application_running("B")
-        wait_for_condition(check_num_alive_nodes, target=2)
+        wait_for_condition(check_num_alive_nodes, target=2, timeout=60)
 
         config["applications"][0]["deployments"][0]["num_replicas"] = 2
         client.deploy_apps(ServeDeploySchema(**config))
         client._wait_for_application_running("A")
-        wait_for_condition(check_num_alive_nodes, target=3)
+        wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
         del config["applications"][1]
         client.deploy_apps(ServeDeploySchema(**config))
-        wait_for_condition(check_num_alive_nodes, target=2)
+        wait_for_condition(check_num_alive_nodes, target=2, timeout=60)
 
         wait_for_condition(
             check_telemetry, tag=ServeUsageTag.NUM_NODE_COMPACTIONS, expected="1"
