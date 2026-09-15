@@ -40,7 +40,7 @@ This page lists the key people involved in the governance and maintenance of the
 - Elliot Barnwell ([GitHub](https://github.com/elliot-barn/))
 - Eric Liang ([GitHub](https://github.com/ericl/))
 - Fengbin Fang ([GitHub](https://github.com/ffbin/))
-- Goutam Venkat ([GitHub](https://github.com/goutamvenkat-anyscale/))
+- Goutam Venkatramanan ([GitHub](https://github.com/goutamvenkat-anyscale/))
 - Guyang Song ([GitHub](https://github.com/SongGuyang/))
 - Hao Chen ([GitHub](https://github.com/raulchen/))
 - Ian Rodney ([GitHub](https://github.com/ijrsvt/))
