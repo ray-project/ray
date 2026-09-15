@@ -29,9 +29,9 @@
 namespace ray {
 namespace rpc {
 
-#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)        \
-  reply->mutable_status()->set_code(static_cast<int>(status.code())); \
-  reply->mutable_status()->set_message(status.message());             \
+#define GCS_RPC_SEND_REPLY(send_reply_callback, reply, status)          \
+  reply->mutable_status()->set_code(static_cast<int>((status).code())); \
+  reply->mutable_status()->set_message((status).message());             \
   send_reply_callback(ray::Status::OK(), nullptr, nullptr)
 
 class ActorInfoGcsServiceHandler {
@@ -41,6 +41,10 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleRegisterActor(RegisterActorRequest request,
                                    RegisterActorReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleRegisterActorBatch(RegisterActorBatchRequest request,
+                                        RegisterActorBatchReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleRestartActorForLineageReconstruction(
       RestartActorForLineageReconstructionRequest request,

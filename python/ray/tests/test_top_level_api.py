@@ -33,6 +33,7 @@ def test_api_functions():
         "java_function",
         "java_actor_class",
         "client",
+        "batch",
     ]
 
     OTHER_ALLOWED_FUNCTIONS = [

@@ -179,6 +179,8 @@ message ReportActorOutOfScopeReply {
 service ActorInfoGcsService {
   // Register actor to gcs service.
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
+  // Register actor batch to gcs service.
+  rpc RegisterActorBatch(RegisterActorBatchRequest) returns (RegisterActorBatchReply);
   rpc RestartActorForLineageReconstruction(RestartActorForLineageReconstructionRequest)
       returns (RestartActorForLineageReconstructionReply);
   // Create actor which local dependencies are resolved.
@@ -419,6 +421,14 @@ message RegisterActorRequest {
 }
 
 message RegisterActorReply {
+  GcsStatus status = 1;
+}
+
+message RegisterActorBatchRequest {
+  repeated TaskSpec task_specs = 1;
+}
+
+message RegisterActorBatchReply {
   GcsStatus status = 1;
 }
 

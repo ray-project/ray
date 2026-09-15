@@ -1038,6 +1038,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                      const std::string &call_site,
                      ActorID *actor_id);
 
+  /// Enter actor batch mode for the current thread.
+  void EnterActorBatch();
+
+  /// Exit actor batch mode for the current thread and flush buffered actor creations.
+  void ExitActorBatch();
+
   /// Create a placement group.
   ///
   /// \param[in] function The remote function that generates the placement group object.
