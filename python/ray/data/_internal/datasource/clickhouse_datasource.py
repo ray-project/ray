@@ -110,13 +110,6 @@ class ClickHouseDatasource(Datasource):
         order_by: Optional Tuple containing a list of columns to order by
             and a boolean indicating the order. Note: order_by is required to
             support parallelism.
-        auto_discover_order_by: If ``True`` and ``order_by`` isn't provided,
-            discover a simple MergeTree sorting key from ``system.tables``.
-            Discovery is skipped for filtered reads and falls back to a single
-            read task for unsupported table engines and sorting-key expressions.
-            Ray doesn't verify that the discovered key is unique. Only enable
-            this for tables that remain stable for the duration of the read and
-            whose sorting key provides deterministic pagination.
         client_settings: Optional ClickHouse server settings to be used with the
             session/every request. For more information, see
             `ClickHouse Client Settings doc
@@ -125,6 +118,13 @@ class ClickHouseDatasource(Datasource):
             ClickHouse client. For more information,
             see `ClickHouse Core Settings doc
             <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
+        auto_discover_order_by: If ``True`` and ``order_by`` isn't provided,
+            discover a simple MergeTree sorting key from ``system.tables``.
+            Discovery is skipped for filtered reads and falls back to a single
+            read task for unsupported table engines and sorting-key expressions.
+            Ray doesn't verify that the discovered key is unique. Only enable
+            this for tables that remain stable for the duration of the read and
+            whose sorting key provides deterministic pagination.
     """
 
     NUM_SAMPLE_ROWS = 100
@@ -151,9 +151,10 @@ class ClickHouseDatasource(Datasource):
         columns: Optional[List[str]] = None,
         filter: Optional[str] = None,
         order_by: Optional[Tuple[List[str], bool]] = None,
-        auto_discover_order_by: bool = False,
         client_settings: Optional[Dict[str, Any]] = None,
         client_kwargs: Optional[Dict[str, Any]] = None,
+        *,
+        auto_discover_order_by: bool = False,
     ):
         self._table = table
         self._dsn = dsn
