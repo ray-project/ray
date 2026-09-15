@@ -30,6 +30,7 @@ from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import (
+    ActorUnavailableError,
     RayActorError,
     RayError,
     RayTaskError,
@@ -81,6 +82,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
+    REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     REQUEST_LATENCY_BUCKETS_MS,
@@ -313,6 +315,8 @@ class DeploymentActorWrapper:
             try:
                 ray.get(self._health_check_ref)
                 return ReplicaHealthCheckResponse.SUCCEEDED
+            except ActorUnavailableError:
+                return ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
             except RayActorError:
                 return ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
@@ -377,6 +381,26 @@ class DeploymentActorWrapper:
                     "marking unhealthy."
                 )
                 self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD
+            ):
+                logger.warning(
+                    f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
+                    "is temporarily unavailable after "
+                    f"{self._consecutive_health_check_failures} consecutive failed "
+                    "health checks, marking it unhealthy."
+                )
+                self._healthy = False
+            else:
+                logger.warning(
+                    f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
+                    "is temporarily unavailable "
+                    f"({self._consecutive_health_check_failures}/"
+                    f"{REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD}); will retry."
+                )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             logger.warning(
                 f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
@@ -549,6 +573,7 @@ class ReplicaHealthCheckResponse(Enum):
     SUCCEEDED = 2
     APP_FAILURE = 3
     ACTOR_CRASHED = 4
+    ACTOR_UNAVAILABLE = 5
 
 
 @dataclass
@@ -1641,6 +1666,8 @@ class ActorReplicaWrapper:
             - APP_FAILURE if the active health check failed (or didn't return
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
+            - ACTOR_UNAVAILABLE if the underlying actor is temporarily unavailable
+              and may recover (e.g. a transient network partition).
         """
         # Reset the last health check status for this check cycle.
         # We do this because _check_active_health_check is being called in a loop,
@@ -1663,6 +1690,10 @@ class ActorReplicaWrapper:
                 self._last_health_check_failed = False
                 # Health check succeeded without exception.
                 response = ReplicaHealthCheckResponse.SUCCEEDED
+            except ActorUnavailableError:
+                # Communication failed without confirmed actor death at the caller.
+                response = ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
+                self._last_health_check_failed = True
             except RayActorError:
                 # Health check failed due to actor crashing.
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
@@ -1789,6 +1820,24 @@ class ActorReplicaWrapper:
                     "times in a row, marking it unhealthy."
                 )
                 self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD
+            ):
+                logger.warning(
+                    f"Actor for {self._replica_id} is temporarily unavailable after "
+                    f"{self._consecutive_health_check_failures} consecutive failed "
+                    "health checks, marking it unhealthy."
+                )
+                self._healthy = False
+            else:
+                logger.warning(
+                    f"Actor for {self._replica_id} is temporarily unavailable "
+                    f"({self._consecutive_health_check_failures}/"
+                    f"{REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD}); will retry."
+                )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.
             logger.warning(
