@@ -178,15 +178,15 @@ steps:
   # only one that holds an RtD token. It replaces the manual post-merge
   # `rtd-redirects apply` a maintainer runs today (see doc/redirects/README.md).
   #
-  # DISABLED pending the manual-apply phase. The `disabled` tag makes rayci skip
-  # this step in both premerge and postmerge, so it's safe to land now and turn on
-  # later, the same way doc: linkcheck landed before its Slack webhook secret.
-  # The bot token is already wired: REEF provisioned it at Secrets Manager
-  # secret-id `oss-ci/rtd-api-token`, read inline below. Enabling is then a
-  # one-line flip: remove the `disabled` tag below. The step stays disabled until
-  # the local-first manual-apply phase finishes reconciling the live project, so
-  # the first automated run doesn't hard-reconcile a drifted project (see the
-  # "Drift and deletion" note below).
+  # Enabled. The bot token is wired: REEF provisioned it at Secrets Manager
+  # secret-id `oss-ci/rtd-api-token`, read inline below. This step first landed
+  # disabled (the same way doc: linkcheck landed before its Slack webhook secret)
+  # so the live anyscale-ray project could be reconciled to current.yaml during
+  # the local-first manual-apply phase before automation took over. That
+  # reconciliation is done: `rtd-redirects plan` against the live project reports
+  # no changes, so the first automated run is a no-op rather than a hard
+  # reconcile of a drifted project (see the "Drift and deletion" note below). To
+  # turn the step back off, re-add a `disabled` tag below.
   #
   # Postmerge-only by construction. `skip-on-premerge` removes it from every PR
   # build (premerge skips that tag), so no PR event, fork or not, ever runs the
@@ -213,7 +213,6 @@ steps:
     tags:
       - oss
       - skip-on-premerge
-      - disabled
     commands:
       # Exit early unless this master commit changed doc/redirects/. Ray squash-
       # merges, so HEAD~1..HEAD is exactly the merged change set. `git diff
