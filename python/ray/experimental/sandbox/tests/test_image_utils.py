@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sys
 import tarfile
@@ -7,7 +8,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.experimental.sandbox._internal import image_utils
 from ray.experimental.sandbox._internal.image_utils import (
+    ROOTFS_IMAGE,
+    _owner_filter,
+    expected_extract_marker,
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
@@ -16,6 +21,24 @@ from ray.experimental.sandbox._internal.image_utils import (
     sanitize_image_name,
 )
 from ray.experimental.sandbox.exceptions import SandboxCreationError
+
+
+@pytest.fixture(autouse=True)
+def _build_images_with_fake_mkfs(fake_mkfs_erofs):
+    """Every pull here builds its image through the fake mkfs.erofs."""
+    yield
+
+
+def _image_tree(image_dir):
+    """{path: TarInfo} of a cached image built by the fake mkfs.erofs."""
+    with tarfile.open(os.path.join(image_dir, ROOTFS_IMAGE)) as tar:
+        return {os.path.normpath(m.name): m for m in tar.getmembers()}
+
+
+def _image_file(image_dir, path):
+    """Contents of ``path`` inside a cached image built by the fake mkfs.erofs."""
+    with tarfile.open(os.path.join(image_dir, ROOTFS_IMAGE)) as tar:
+        return tar.extractfile(f"./{path}").read()
 
 
 def test_sanitize_image_name():
@@ -196,15 +219,13 @@ def test_pull_and_extract_local_tar(tmp_path):
         tar.addfile(ti, io.BytesIO(data))
 
     images_dir = tmp_path / "images"
-    extracted_dir = pull_and_extract_container_image(
+    image_dir = pull_and_extract_container_image(
         str(local_tar), images_dir=str(images_dir)
     )
-    assert os.path.exists(extracted_dir)
-    assert os.path.exists(os.path.join(extracted_dir, "rootfs", "hello.txt"))
-    assert (
-        open(os.path.join(extracted_dir, "rootfs", "hello.txt"), "rb").read()
-        == b"hello from local tar"
-    )
+    assert os.path.exists(image_dir)
+    assert _image_file(image_dir, "hello.txt") == b"hello from local tar"
+    # The cache holds the image; the tree it was built from is gone.
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
 
 
 def _write_sample_tar(path):
@@ -275,28 +296,28 @@ def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
 
 def test_pull_and_extract_remote_image(tmp_path):
     images_dir = tmp_path / "images"
-    extracted_dir = pull_and_extract_container_image(
+    image_dir = pull_and_extract_container_image(
         "busybox:latest", images_dir=str(images_dir)
     )
-    assert os.path.exists(extracted_dir)
-    assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
-    assert os.path.exists(
-        os.path.join(extracted_dir, "rootfs", "bin", "sh")
-    ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
-    # Only the extracted rootfs is cached; no archive doubles its footprint.
+    assert os.path.exists(image_dir)
+    assert os.path.exists(os.path.join(image_dir, ".extracted"))
+    tree = _image_tree(image_dir)
+    assert "bin/sh" in tree or "bin/busybox" in tree
+    # Only the image is cached: no extracted tree, and no archive doubling
+    # its footprint.
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
 
 
 def test_pull_and_extract_docker_io_prefixed_image(tmp_path):
     images_dir = tmp_path / "images"
-    extracted_dir = pull_and_extract_container_image(
+    image_dir = pull_and_extract_container_image(
         "docker.io/library/busybox:latest", images_dir=str(images_dir)
     )
-    assert os.path.exists(extracted_dir)
-    assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
-    assert os.path.exists(
-        os.path.join(extracted_dir, "rootfs", "bin", "sh")
-    ) or os.path.exists(os.path.join(extracted_dir, "rootfs", "bin", "busybox"))
+    assert os.path.exists(image_dir)
+    assert os.path.exists(os.path.join(image_dir, ".extracted"))
+    tree = _image_tree(image_dir)
+    assert "bin/sh" in tree or "bin/busybox" in tree
 
 
 def test_pull_nonexistent_image(tmp_path):
@@ -328,6 +349,7 @@ def test_extract_tar_layer_usr_merge(tmp_path):
     with tarfile.open(fileobj=buf1, mode="w:gz") as tar:
         t_usr_bin = tarfile.TarInfo("usr/bin")
         t_usr_bin.type = tarfile.DIRTYPE
+        t_usr_bin.mode = 0o755  # archived dir modes are honored; 0644 blocks non-root
         tar.addfile(t_usr_bin)
 
         t_link = tarfile.TarInfo("bin")
@@ -349,6 +371,7 @@ def test_extract_tar_layer_usr_merge(tmp_path):
     with tarfile.open(fileobj=buf2, mode="w:gz") as tar:
         t_bin = tarfile.TarInfo("bin")
         t_bin.type = tarfile.DIRTYPE
+        t_bin.mode = 0o755
         tar.addfile(t_bin)
 
         d2 = b"app_binary"
@@ -431,6 +454,229 @@ def test_get_registry_auth_headers_no_auth_needed():
             "localhost:5000", "my/repo", reference="latest"
         )
         assert headers == {}
+
+
+def _add_member(
+    tar, name, data=b"", uid=0, gid=0, mode=0o644, typ=tarfile.REGTYPE, linkname=""
+):
+    ti = tarfile.TarInfo(name)
+    ti.uid = uid
+    ti.gid = gid
+    ti.mode = mode
+    ti.type = typ
+    ti.linkname = linkname
+    if typ == tarfile.REGTYPE:
+        ti.size = len(data)
+        tar.addfile(ti, io.BytesIO(data))
+    else:
+        tar.addfile(ti)
+
+
+def test_extract_tar_layer_ownership_recording(tmp_path):
+    """The ownership map accumulates across layers with normalized paths and
+    honors whiteouts and root-owned replacements (mailman-shaped image)."""
+    dest = tmp_path / "rootfs"
+    dest.mkdir()
+    ownership = {}
+
+    buf1 = io.BytesIO()
+    with tarfile.open(fileobj=buf1, mode="w:gz") as tar:
+        _add_member(
+            tar, "./var/spool/postfix/defer", uid=101, mode=0o700, typ=tarfile.DIRTYPE
+        )
+        _add_member(
+            tar,
+            "var/spool/postfix/maildrop",
+            uid=101,
+            gid=104,
+            mode=0o1730,
+            typ=tarfile.DIRTYPE,
+        )
+        _add_member(
+            tar,
+            "var/lib/mailman3/data",
+            uid=38,
+            gid=38,
+            mode=0o755,
+            typ=tarfile.DIRTYPE,
+        )
+        _add_member(tar, "var/lib/mailman3/data/gone.txt", b"x", uid=38, gid=38)
+        # A hardlink is recorded under its own name: the re-pack looks owners
+        # up by path and may emit this name before its target's.
+        _add_member(
+            tar,
+            "var/lib/mailman3/data/gone.link",
+            uid=38,
+            gid=38,
+            typ=tarfile.LNKTYPE,
+            linkname="var/lib/mailman3/data/gone.txt",
+        )
+        _add_member(tar, "etc/passwd", b"root:x:0:0::/root:/bin/sh\n")
+    extract_tar_layer(buf1.getvalue(), str(dest), ownership=ownership)
+    assert ownership == {
+        "var/spool/postfix/defer": (101, 0),
+        "var/spool/postfix/maildrop": (101, 104),
+        "var/lib/mailman3/data": (38, 38),
+        "var/lib/mailman3/data/gone.txt": (38, 38),
+        "var/lib/mailman3/data/gone.link": (38, 38),
+    }
+    assert os.path.samefile(
+        dest / "var/lib/mailman3/data/gone.link",
+        dest / "var/lib/mailman3/data/gone.txt",
+    )
+
+    # Layer 2: a deletion whiteout, an opaque whiteout, and a root-owned
+    # re-ship of a recorded path all drop entries.
+    buf2 = io.BytesIO()
+    with tarfile.open(fileobj=buf2, mode="w:gz") as tar:
+        _add_member(tar, "var/spool/postfix/.wh.maildrop")
+        _add_member(tar, "var/lib/mailman3/.wh..wh..opq")
+        _add_member(tar, "var/lib/mailman3/fresh.txt", b"y")
+        _add_member(tar, "var/spool/postfix/defer", mode=0o755, typ=tarfile.DIRTYPE)
+    extract_tar_layer(buf2.getvalue(), str(dest), ownership=ownership)
+    assert ownership == {}
+
+
+def test_owner_filter_restores_recorded_owners():
+    fn = _owner_filter({"opt/data": (38, 38)})
+    ti = tarfile.TarInfo("./opt/data")
+    ti.uid, ti.gid, ti.uname, ti.gname = 1000, 1000, "ray", "ray"
+    out = fn(ti)
+    assert (out.uid, out.gid, out.uname, out.gname) == (38, 38, "", "")
+    ti = tarfile.TarInfo("./bin/sh")
+    ti.uid = ti.gid = 1000
+    assert (fn(ti).uid, fn(ti).gid) == (0, 0)
+
+
+def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs):
+    """The cache holds an image built from a tar carrying the image's real
+    owners, no extracted tree, and the current format marker."""
+    bin_dir = fake_mkfs_erofs
+
+    local_tar = tmp_path / "sample.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        _add_member(tar, "opt/data", uid=38, gid=38, mode=0o750, typ=tarfile.DIRTYPE)
+        _add_member(tar, "opt/data/f.txt", b"z", uid=38, gid=38)
+        _add_member(
+            tar,
+            "etc/passwd",
+            b"root:x:0:0::/root:/bin/sh\nmail:x:38:38::/var/mail:/bin/sh\n",
+        )
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
+    args = (bin_dir / "mkfs.args").read_text().split()
+    assert args[:3] == ["--tar=f", "-b4096", "-E^inline_data"]
+    marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
+    assert marker == expected_extract_marker()
+    # The fake image *is* the flattened tar: check the owners it carries.
+    owners = {path: (m.uid, m.gid) for path, m in _image_tree(image_dir).items()}
+    assert owners["opt/data"] == (38, 38)
+    assert owners["opt/data/f.txt"] == (38, 38)
+    assert owners["etc/passwd"] == (0, 0)
+    assert owners["tmp/.ray-sandbox-keep"] == (0, 0)  # Docker-parity /tmp seed
+    # runsc's mount points, which an immutable image cannot grow on demand.
+    for mountpoint in ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp"):
+        assert owners[mountpoint] == (0, 0)
+
+
+def test_pull_requires_mkfs_erofs_with_tar_support(tmp_path, monkeypatch):
+    """Without a usable mkfs.erofs the pull fails before fetching anything,
+    and the error says what to install."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+
+    # No mkfs.erofs at all.
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    image_utils.mkfs_erofs_path.cache_clear()
+    with pytest.raises(SandboxCreationError, match="mkfs.erofs is not in PATH"):
+        pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+
+    # One that predates --tar (erofs-utils before 1.7).
+    old_bin = tmp_path / "old-bin"
+    old_bin.mkdir()
+    old = old_bin / "mkfs.erofs"
+    old.write_text("#!/bin/sh\necho 'usage: mkfs.erofs [options] FILE DIRECTORY'\n")
+    old.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{old_bin}:/usr/bin:/bin")
+    image_utils.mkfs_erofs_path.cache_clear()
+    with pytest.raises(SandboxCreationError, match="predates --tar"):
+        pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    # Nothing half-built is left behind.
+    assert not (images_dir / "sample").exists()
+    image_utils.mkfs_erofs_path.cache_clear()
+
+
+def _forge_old_directory_cache(image_dir):
+    """Turn a cache entry into what an earlier Ray left: an extracted
+    ``rootfs/`` tree under a format-2 marker, and no EROFS image."""
+    with open(os.path.join(image_dir, ".extracted"), "w", encoding="utf-8") as f:
+        f.write(json.dumps({"format": 2, "rootfs": "dir"}, sort_keys=True))
+    os.remove(os.path.join(image_dir, ROOTFS_IMAGE))
+    os.makedirs(os.path.join(image_dir, "rootfs", "bin"))
+    with open(os.path.join(image_dir, "rootfs", "bin", "sh"), "w") as f:
+        f.write("#!/bin/sh\n")
+
+
+def test_old_format_cache_repulls_once(tmp_path):
+    """A cache entry of another format is rebuilt on the next pull and then
+    reused; with no sandbox on the old entry, its tree goes at once."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    _forge_old_directory_cache(image_dir)
+
+    again = pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert again == image_dir
+    marker = os.path.join(image_dir, ".extracted")
+    assert open(marker, encoding="utf-8").read() == expected_extract_marker()
+    assert _image_file(image_dir, "hello.txt") == b"hello"
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
+
+    # A current entry is a hit: nothing is rebuilt.
+    built_at = os.path.getmtime(os.path.join(image_dir, ROOTFS_IMAGE))
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.getmtime(os.path.join(image_dir, ROOTFS_IMAGE)) == built_at
+
+
+def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
+    """Sandboxes running on an old extracted-directory entry keep their pins
+    and their tree across the rebuild; the tree goes once none is left."""
+    from ray.experimental.sandbox._internal.image_utils import _release_image_use
+
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir), instance_id="sb-old"
+    )
+    _forge_old_directory_cache(image_dir)
+
+    again = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir), instance_id="sb-new"
+    )
+    assert again == image_dir
+    assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
+    # The old tree moved over intact for sb-old's gofer.
+    assert os.path.isfile(os.path.join(image_dir, "rootfs", "bin", "sh"))
+    assert set(os.listdir(os.path.join(image_dir, ".users"))) == {"sb-old", "sb-new"}
+
+    # Still in use: a further hit leaves the tree alone.
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(os.path.join(image_dir, "rootfs"))
+
+    _release_image_use(image_dir, "sb-old")
+    _release_image_use(image_dir, "sb-new")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
+    assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
 
 
 if __name__ == "__main__":
