@@ -2924,6 +2924,7 @@ def test_soft_stop_old_procs_signals_live_workers():
     exited = mock.Mock(pid=222, returncode=0)
     alive_recycled = mock.Mock(pid=333, returncode=None)
     api._old_procs = [alive_ours, exited, alive_recycled]
+    api._old_worker_pids = []
     api._retired_logs = collections.deque()
     api._max_retained_logs = 10
 

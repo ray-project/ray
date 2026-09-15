@@ -915,6 +915,15 @@ RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
     "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "1"
 )
 
+# Run HAProxy in master-worker mode. A long-lived master owns the workers:
+# reloads signal the master (SIGUSR2), which re-reads the config, starts a new
+# worker, and soft-stops the old one, instead of Serve spawning a new HAProxy
+# process with `-sf` on every reload. The master CLI (`show proc`) is used to
+# verify the takeover and to detect a failed reload.
+RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED = get_env_bool(
+    "RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED", "0"
+)
+
 # Consecutive observed layer4 errors before a server is marked DOWN. Only
 # used when RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED is set; a successful
 # connection resets the counter.
