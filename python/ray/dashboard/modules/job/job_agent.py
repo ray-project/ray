@@ -15,6 +15,7 @@ from ray.dashboard.modules.job.common import (
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
+    submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
@@ -28,6 +29,25 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._job_manager = None
+        # Initialize here (not in run()) so the recorder is ready before the
+        # agent HTTP server starts accepting job submissions.
+        if submission_job_events_enabled():
+            try:
+                from ray._raylet import EventRecorder
+
+                EventRecorder.initialize(
+                    aggregator_port=dashboard_agent.grpc_port,
+                    node_ip=dashboard_agent.ip,
+                    node_id_hex=dashboard_agent.node_id,
+                    max_buffer_size=10000,
+                    metric_source="job_agent",
+                )
+                logger.info("Initialized ray event recorder in JobAgent.")
+            except Exception:
+                logger.warning(
+                    "Failed to initialize ray event recorder in JobAgent.",
+                    exc_info=True,
+                )
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()
