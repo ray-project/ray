@@ -7,8 +7,9 @@
 # content-only change they must still cover.) Skipping is only safe when the PR
 # really is documentation content. This guard runs whenever the label is present
 # and fails the build unless every changed file is documentation content:
-# anything under doc/, the Vale prose-lint configuration at the repo root, or
-# the API-consistency checker's own source under ci/ray_ci/doc/ -- in every case
+# anything under doc/, the Claude Code agent files at the repo root under
+# .claude/, the Vale prose-lint configuration at the repo root, or the
+# API-consistency checker's own source under ci/ray_ci/doc/ -- in every case
 # excluding BUILD files (which define test targets and must not be changed under
 # a test-skipping label). It cannot tell an editorial edit from a code edit
 # inside a doc file; that judgment stays with the author and is backstopped by
@@ -37,6 +38,15 @@
 # targets declared here. Editing the checker therefore still runs the checker
 # and its own unit tests, with or without the label.
 #
+# Why the repo-root .claude/ counts, on the same argument as doc/.claude/. These
+# are Claude Code skills and agent files: Markdown plus a settings JSON, no bazel
+# target and no executable Ray code, so nothing the label skips can be affected
+# by them. test.rules.txt routes the repo-root .claude/ to no tags at all,
+# alongside doc/.claude/ and ahead of the catch-all, so a change confined to it
+# selects no step in the first place and the label can only subtract from an
+# empty set. This keeps a doc PR that also updates an agent skill on the fast
+# path instead of forcing a split, matching how doc/.claude/ is already treated.
+#
 # This list is deliberately narrow. For Vale it covers the prose rules
 # themselves, not the CI wiring that runs them: ci/lint/check-documentation-style.sh
 # and the Vale hook in .pre-commit-config.yaml stay out of scope, because a change
@@ -46,9 +56,18 @@
 
 set -uo pipefail
 
-git fetch --depth=500 origin master >/dev/null 2>&1 || true
-if ! base="$(git merge-base origin/master HEAD 2>/dev/null)"; then
-  echo "docs-go scope guard: could not determine merge-base with origin/master; failing closed."
+# Diff against the PR's actual base branch, not a hardcoded master. On a
+# release-branch backport the merge-base with master is where the release
+# branch diverged, so diffing against master attributes every release-only
+# change to the PR and the guard fails a genuinely content-only backport.
+# BUILDKITE_PULL_REQUEST_BASE_BRANCH is the base the PR targets; fall back to
+# master for local runs, matching ci/lint/lint.sh and
+# ci/pipeline/determine_tests_to_run.py.
+base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
+
+git fetch -q --depth=500 origin "${base_branch}" || true
+if ! base="$(git merge-base "origin/${base_branch}" HEAD 2>/dev/null)"; then
+  echo "docs-go scope guard: could not determine merge-base with origin/${base_branch}; failing closed."
   exit 1
 fi
 
@@ -58,10 +77,10 @@ if [[ -z "${changed}" ]]; then
   exit 1
 fi
 
-# Paths that count as documentation content: everything under doc/, the Vale
-# prose-lint configuration at the repo root, and the API-consistency checker's
-# own source.
-in_scope_re='^doc/|^\.vale\.ini$|^\.vale/|^ci/ray_ci/doc/'
+# Paths that count as documentation content: everything under doc/, the
+# repo-root Claude Code agent files under .claude/, the Vale prose-lint
+# configuration at the repo root, and the API-consistency checker's own source.
+in_scope_re='^doc/|^\.claude/|^\.vale\.ini$|^\.vale/|^ci/ray_ci/doc/'
 
 # Anything outside that set is out of scope for a content-only PR.
 out_of_scope="$(printf '%s\n' "${changed}" | grep -vE "${in_scope_re}" || true)"
@@ -70,7 +89,7 @@ out_of_scope="$(printf '%s\n' "${changed}" | grep -vE "${in_scope_re}" || true)"
 build_edits="$(printf '%s\n' "${changed}" | grep -E '(^|/)BUILD(\.bazel)?$' | grep -E "${in_scope_re}" || true)"
 
 if [[ -n "${out_of_scope}" || -n "${build_edits}" ]]; then
-  echo "The 'docs-go' label is only valid on content-only PRs: changes under doc/, to the Vale configuration (.vale.ini, .vale/), or to the API-consistency checker (ci/ray_ci/doc/), excluding BUILD files."
+  echo "The 'docs-go' label is only valid on content-only PRs: changes under doc/, to the repo-root Claude Code agent files (.claude/), to the Vale configuration (.vale.ini, .vale/), or to the API-consistency checker (ci/ray_ci/doc/), excluding BUILD files."
   echo
   if [[ -n "${out_of_scope}" ]]; then
     echo "Out-of-scope files (not documentation content):"
@@ -90,5 +109,5 @@ if [[ -n "${out_of_scope}" || -n "${build_edits}" ]]; then
   exit 1
 fi
 
-echo "docs-go scope OK: all changed files are documentation content (under doc/, Vale configuration, or ci/ray_ci/doc/, excluding BUILD files)."
+echo "docs-go scope OK: all changed files are documentation content (under doc/, repo-root .claude/ agent files, Vale configuration, or ci/ray_ci/doc/, excluding BUILD files)."
 printf '%s\n' "${changed}" | sed 's/^/  /'

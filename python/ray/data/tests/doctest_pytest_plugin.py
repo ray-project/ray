@@ -1,7 +1,15 @@
 """This file is injected for Ray Data doctest targets."""
+import os
+
 import pytest
 
 import ray
+
+# Keep the footer-reader pool tiny: doctests read small Parquet fixtures, and
+# the default 32-actor pool can trip Ray's "too many worker processes" warning,
+# which pollutes Sphinx ``testoutput`` expectations. Mirrored in
+# python/ray/data/test.bzl for bazel doctest targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
 
 @pytest.fixture(autouse=True, scope="module")

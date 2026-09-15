@@ -1,5 +1,6 @@
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
 import copy
+import os
 
 import pytest
 
@@ -10,6 +11,12 @@ from ray.tests.conftest import (
     _token_auth_env_baseline,  # noqa: F401
     pytest_runtest_makereport,  # noqa
 )
+
+# Keep the Parquet footer-reader pool tiny for these tests. The production
+# default of 32 actors times out under CI parallelism; tests that need a larger
+# pool can override with monkeypatch.setenv. Mirrored in
+# python/ray/air/BUILD.bazel for bazel test targets.
+os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
 
 @pytest.fixture

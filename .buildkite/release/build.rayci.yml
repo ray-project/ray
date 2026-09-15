@@ -71,6 +71,7 @@ steps:
     wanda: docker/ray-torch/cuda.wanda.yaml
     array:
       python:
+        - "3.11"
         - "3.14"
       cuda:
         - "12.8.1-cudnn"
@@ -247,6 +248,7 @@ steps:
     env_file: rayci.env
     array:
       python:
+        - "3.11"
         - "3.14"
       gpu:
         - "cu12.8.1-cudnn"
@@ -277,6 +279,7 @@ steps:
       - ray-torch-anyscale-cuda-build($)
     array:
       python:
+        - "3.11"
         - "3.14"
       gpu:
         - cu12.8.1-cudnn

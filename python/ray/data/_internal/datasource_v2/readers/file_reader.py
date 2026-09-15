@@ -12,6 +12,7 @@ from ray.data._internal.datasource.parquet_datasource import _compute_row_hashes
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.util import iterate_with_retry, make_async_gen
+from ray.data.checkpoint.generated_id import get_generated_id_column_name
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.data.expressions import Expr
@@ -34,14 +35,6 @@ _ARROW_DEFAULT_BATCH_SIZE = 131_072
 _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
-
-# Number of worker threads used to read fragments concurrently per task.
-# Defaults to 4 to overlap remote-filesystem I/O latency across multiple
-# fragments. ``_read_fragment_batches`` caps this to ``len(fragments)``
-# at runtime so single-fragment tasks don't spin up extra workers, and
-# falls back to the sequential path entirely when
-# ``DataContext.execution_options.preserve_order`` is set.
-_DEFAULT_NUM_THREADS = env_integer("RAY_DATA_READ_FILES_NUM_THREADS", 4)
 
 ROW_HASH_COLUMN_NAME = "row_hash"
 
@@ -163,6 +156,11 @@ class FileReader(Reader[FileManifest]):
             # file already carries a ``row_hash`` column. Strip it from the
             # dataset schema so pyarrow doesn't try to cast.
             synthesized.add(ROW_HASH_COLUMN_NAME)
+
+        generated_id = get_generated_id_column_name()
+        if generated_id:
+            synthesized.add(generated_id)
+
         fields = [
             f
             for f in self._schema
@@ -247,7 +245,7 @@ class FileReader(Reader[FileManifest]):
             "filter": (
                 self._predicate.to_pyarrow() if self._predicate is not None else None
             ),
-            "batch_size": self._resolve_batch_size(dataset),
+            "batch_size": self._resolve_batch_size(dataset, input_split),
             "batch_readahead": _ARROW_SCANNER_BATCH_READAHEAD,
         }
         scanner_kwargs.update(self._arrow_scanner_kwargs())
@@ -302,6 +300,7 @@ class FileReader(Reader[FileManifest]):
                     ROW_HASH_COLUMN_NAME, pa.array(hashes, type=pa.uint64())
                 )
 
+            generated_id = get_generated_id_column_name()
             if self._columns is not None:
                 # Project/reorder to the caller's requested column order;
                 # drop any that weren't produced (matches V1's lenient
@@ -310,6 +309,12 @@ class FileReader(Reader[FileManifest]):
                 # guard below handles row preservation.
                 produced = set(table.column_names)
                 projected = [c for c in self._columns if c in produced]
+                if (
+                    generated_id
+                    and generated_id in produced
+                    and generated_id not in projected
+                ):
+                    projected.append(generated_id)
                 table = table.select(projected)
 
             if table.num_columns == 0 and table.num_rows > 0:
@@ -326,10 +331,11 @@ class FileReader(Reader[FileManifest]):
             rows_read += len(table)
             yield table
 
-    def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
+    def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
         """Return the batch size to use for scanning.
 
-        Subclasses can override this to implement adaptive batch sizing.
+        Subclasses can override this to implement adaptive batch sizing, using
+        the ``manifest`` (e.g. footer-derived per-chunk stats) to avoid re-I/O.
         """
         return self._batch_size
 
@@ -407,7 +413,7 @@ class FileReader(Reader[FileManifest]):
         (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
         the same per-fragment pattern via ``fragment.to_batches``.
 
-        When ``RAY_DATA_READ_FILES_NUM_THREADS > 1`` and
+        When there is more than one fragment and
         ``execution_options.preserve_order`` is False, fragments are
         read concurrently via :func:`make_async_gen`. We still pass
         ``preserve_ordering=True`` so concurrent reads emit blocks in
@@ -433,7 +439,7 @@ class FileReader(Reader[FileManifest]):
         if not fragments_with_offsets:
             return
 
-        num_workers = min(_DEFAULT_NUM_THREADS, len(fragments_with_offsets))
+        num_workers = len(fragments_with_offsets)
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs
