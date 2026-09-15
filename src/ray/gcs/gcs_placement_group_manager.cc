@@ -230,11 +230,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
         << "State: " << state;
 
     if (state == rpc::PlacementGroupTableData::RESCHEDULING) {
-      // NOTE: If a node is dead, the placement group scheduler should try to recover the
-      // group by rescheduling the bundles of the dead node. This should have higher
-      // priority than trying to place other placement groups.
+      // Fresh recovery gets highest priority, but failed retries must back off so
+      // they do not starve other placement groups.
       stats->set_scheduling_state(rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
-      AddToPendingQueue(std::move(placement_group), /*rank=*/0);
+      AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
     } else if (state == rpc::PlacementGroupTableData::PENDING) {
       stats->set_scheduling_state(rpc::PlacementGroupStats::NO_RESOURCES);
       AddToPendingQueue(std::move(placement_group), std::nullopt, backoff);
