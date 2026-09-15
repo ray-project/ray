@@ -20,7 +20,7 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-Under the shared encoder architecture, the target reward of 700 will typically be reached well before 100,000 iterations. A trial concludes as below:
+Under the shared encoder architecture, the target reward of 600 will typically be reached well before 100,000 iterations. A trial concludes as below:
 
 +---------------------+------------+-----------------+--------+------------------+-------+-------------------+-------------+-------------+
 | Trial name          | status     | loc             |   iter |   total time (s) |    ts |   combined return |   return p1 |   return p0 |
