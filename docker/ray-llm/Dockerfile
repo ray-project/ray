@@ -74,6 +74,7 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    # TODO (jeffreywang): Remove this patch when https://github.com/vllm-project/vllm/pull/52153 is merged.
     git apply "${VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH}"
     # TODO (jeffreywang): Remove this patch when https://github.com/vllm-project/vllm/pull/56484 is merged.
     git apply "${VLLM_PIXTRAL_TRANSFORMERS_5_17_PATCH}"

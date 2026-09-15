@@ -19,11 +19,7 @@ class NixlConnectorBackend(DefaultPDProtocolMixin, BaseConnectorBackend):
                 "NIXL_SIDE_CHANNEL_PORT_BASE", 20000
             )
         )
-        data_parallel_rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
-        if isinstance(data_parallel_rank, int) and data_parallel_rank >= 0:
-            port = base_port
-        else:
-            port = base_port + self._compute_port_offset()
+        port = base_port + self._compute_port_offset()
         os.environ["VLLM_NIXL_SIDE_CHANNEL_PORT"] = str(port)
 
     def _set_side_channel_host(self):
