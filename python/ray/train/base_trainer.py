@@ -59,7 +59,9 @@ PREPROCESSOR_DEPRECATION_MESSAGE = (
 
 _TRAINER_RESTORE_DEPRECATION_WARNING = (
     "The `restore` and `can_restore` APIs are deprecated and "
-    f"will be removed in a future release. {V2_MIGRATION_GUIDE_MESSAGE}"
+    "will be removed in a future release. "
+    "See this issue for more context and migration options: "
+    "https://github.com/ray-project/ray/issues/49454."
 )
 
 _RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING = (
@@ -265,7 +267,7 @@ class BaseTrainer(abc.ABC):
         air_usage.tag_air_trainer(self)
 
     @classmethod
-    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING)
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING, warning=True)
     def restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -367,10 +369,7 @@ class BaseTrainer(abc.ABC):
         Returns:
             BaseTrainer: A restored instance of the class that is calling this method.
         """
-        if _v2_migration_warnings_enabled():
-            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
-
-        if not cls.can_restore(path, storage_filesystem):
+        if not cls._can_restore(path, storage_filesystem):
             raise ValueError(
                 f"Invalid restore path: {path}. Make sure that this path exists and "
                 "is the experiment directory that results from a call to "
@@ -427,10 +426,7 @@ class BaseTrainer(abc.ABC):
         return trainer
 
     @classmethod
-    @Deprecated(
-        message=_TRAINER_RESTORE_DEPRECATION_WARNING,
-        warning=_v2_migration_warnings_enabled(),
-    )
+    @Deprecated(message=_TRAINER_RESTORE_DEPRECATION_WARNING, warning=True)
     def can_restore(
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
@@ -448,9 +444,19 @@ class BaseTrainer(abc.ABC):
         Returns:
             bool: Whether this path exists and contains the trainer state to resume from
         """
-        if _v2_migration_warnings_enabled():
-            _log_deprecation_warning(_TRAINER_RESTORE_DEPRECATION_WARNING)
+        return cls._can_restore(path, storage_filesystem)
 
+    @classmethod
+    def _can_restore(
+        cls: Type["BaseTrainer"],
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+    ) -> bool:
+        """Non-deprecated implementation of :meth:`can_restore`.
+
+        Used internally so that callers such as :meth:`restore` do not emit a
+        second deprecation warning on top of their own.
+        """
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
         trainer_pkl_path = Path(fs_path, _TRAINER_PKL).as_posix()
         return _exists_at_fs_path(fs, trainer_pkl_path)
