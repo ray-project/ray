@@ -80,10 +80,17 @@ class BuiltApplication:
     ingress_request_router_deployment: Optional[Deployment] = None
 
     def validate_single_fastapi_ingress(self) -> None:
-        """Validate that the application has at most one FastAPI ingress."""
+        """Validate that the application has at most one FastAPI ingress.
+
+        Deployments marked `_direct_http` are exempt. They own an HTTP port so
+        HAProxy can reach their replicas directly, but they do not own the app's
+        route prefix and are not its ingress -- a `serve.ingress`-wrapped model
+        server sitting behind a control-plane ingress is the intended shape.
+        """
         num_ingress_deployments = sum(
             inspect.isclass(deployment.func_or_class)
             and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
+            and not deployment._direct_http
             for deployment in self.deployments
         )
         if num_ingress_deployments > 1:
