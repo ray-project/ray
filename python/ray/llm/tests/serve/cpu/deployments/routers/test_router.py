@@ -66,14 +66,21 @@ class _DirectRouterReplica:
         self.routing_stats = routing_stats or {}
 
 
-def _new_direct_router(handle=None):
+def _fake_handle(deployment_name: str) -> MagicMock:
+    """A handle stand-in whose deployment name is real: ``route`` reports it in
+    the response body, so a bare MagicMock attribute would leak into it."""
+    handle = MagicMock()
+    handle.deployment_id.name = deployment_name
+    return handle
+
+
+def _new_direct_router(handle=None, servers=None):
+    """Router with ``servers`` (model id -> handle), or a single-model router
+    around ``handle`` (default: one fake handle for model ``x``)."""
     router = LLMRouter.__new__(LLMRouter)
-    if handle is None:
-        handle = MagicMock()
-        # `route` reports the tracked deployment's name alongside the replica,
-        # so a bare MagicMock attribute would leak into the response body.
-        handle.deployment_id.name = "LLMServer:x"
-    router._handle = handle
+    if servers is None:
+        servers = {"x": handle if handle is not None else _fake_handle("LLMServer:x")}
+    router._servers = dict(servers)
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
     router._tokenizer = None
     return router
@@ -162,7 +169,7 @@ class TestDirectStreamingLLMRouter:
             "replica_id": "DeploymentName#replica",
         }
         _, kwargs = router._pick_replica.call_args
-        assert kwargs["handle"] is router._handle
+        assert kwargs["handle"] is router._servers["x"]
         payload = kwargs["routing_payload"]
         assert isinstance(payload, SimpleNamespace)
         assert payload.messages == [{"role": "user", "content": "hi"}]
@@ -318,6 +325,131 @@ class TestDirectStreamingLLMRouter:
 
         with pytest.raises(RuntimeError, match="no backend HTTP endpoint"):
             await router._pick_replica(handle=handle)
+
+
+_PICK = ("127.0.0.1", 9001, "SERVE_REPLICA::app#dep#r", None)
+
+
+def _two_model_router():
+    return _new_direct_router(
+        servers={
+            "model-a": _fake_handle("LLMServer:model-a"),
+            "model-b": _fake_handle("LLMServer:model-b"),
+        }
+    )
+
+
+class TestDirectStreamingModelSelection:
+    """``route`` picks the deployment by the body's ``model`` and reports it.
+
+    The selection logic is exercised only through unit tests until the
+    multi-model builder lands; every builder still binds a single server.
+    """
+
+    @pytest.mark.asyncio
+    async def test_selects_named_model_and_reports_its_deployment(self):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(
+            _FakeRequest(
+                b'{"model":"model-b","messages":[{"role":"user","content":"hi"}]}'
+            )
+        )
+
+        assert result["deployment"] == "LLMServer:model-b"
+        assert (
+            router._pick_replica.call_args.kwargs["handle"]
+            is router._servers["model-b"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_sole_model_is_default_when_model_omitted(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(_FakeRequest(b'{"prompt":"hi"}'))
+
+        assert result["deployment"] == "LLMServer:x"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b'{"prompt":"hi"}',  # well-formed, no model
+            b'{"model":"model-a","prompt":"' + (b"x" * 64),  # truncated by HAProxy
+            b"not json",
+            b"",
+        ],
+    )
+    async def test_multiple_models_require_readable_model_field(self, body):
+        """With several models an unreadable or absent ``model`` is a 400. The
+        router never guesses a deployment, and never reaches replica selection."""
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(body))
+
+        assert exc_info.value.status_code == 400
+        assert "Model parameter is required" in exc_info.value.detail
+        router._pick_replica.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unknown_model_is_404(self):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(b'{"model":"model-c","prompt":"hi"}'))
+
+        assert exc_info.value.status_code == 404
+        assert "model-c" in exc_info.value.detail
+        router._pick_replica.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_exact_model_id_wins_over_base_model_id(self):
+        """A configured id that itself contains ':' must resolve exactly, not be
+        stripped to a base id that maps to a different deployment."""
+        router = _new_direct_router(
+            servers={
+                "org/model": _fake_handle("LLMServer:org--model"),
+                "org/model:v2": _fake_handle("LLMServer:org--model_v2"),
+            }
+        )
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(
+            _FakeRequest(b'{"model":"org/model:v2","prompt":"hi"}')
+        )
+
+        assert result["deployment"] == "LLMServer:org--model_v2"
+
+    @pytest.mark.asyncio
+    async def test_lora_style_id_resolves_to_base_model(self):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(
+            _FakeRequest(b'{"model":"model-a:my-adapter","prompt":"hi"}')
+        )
+
+        assert result["deployment"] == "LLMServer:model-a"
+
+    @pytest.mark.asyncio
+    async def test_model_is_read_from_body_without_routing_key(self):
+        """An embeddings-shaped body has no ``messages``/``prompt``, so it yields
+        no routing payload -- but it still names a model and must select it."""
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        with patch.object(router_module.logger, "warning"):
+            result = await router.route(
+                _FakeRequest(b'{"model":"model-b","input":"hello"}')
+            )
+
+        assert result["deployment"] == "LLMServer:model-b"
+        assert router._pick_replica.call_args.kwargs["routing_payload"] is None
 
 
 class TestRoutingPayload:

@@ -923,5 +923,67 @@ def test_build_app_direct_http_survives():
     assert by_name["Ingress"]._direct_http is False
 
 
+def test_direct_http_defaults_to_false():
+    @serve.deployment
+    class Ingress:
+        pass
+
+    built_app: BuiltApplication = build_app(
+        Ingress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert built_app.deployments[0]._direct_http is False
+
+
+def test_direct_http_not_recorded_as_user_configured_option():
+    """The flag is structural, not a user-tunable option.
+
+    `user_configured_option_names` drives config-override precedence, so an
+    internal flag leaking into it would change how YAML overrides are applied.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    d = D.options(_direct_http=True).bind()._bound_deployment
+    assert "_direct_http" not in d._deployment_config.user_configured_option_names
+
+
+def test_validate_single_fastapi_ingress_allows_direct_http_asgi_deployment():
+    """A second FastAPI deployment is allowed when it is marked `_direct_http`.
+
+    Such a deployment owns an HTTP port (so HAProxy can reach its replicas
+    directly) but not the app's route prefix, so it is not a second ingress. This
+    is the shape a `serve.ingress`-wrapped model server takes behind a
+    control-plane ingress. The same graph without the flag is still rejected.
+    """
+
+    @serve.deployment
+    @serve.ingress(FastAPI())
+    class Ingress:
+        def __init__(self, child):
+            self._child = child
+
+    @serve.deployment
+    @serve.ingress(FastAPI())
+    class AsgiChild:
+        pass
+
+    def _build(child: Deployment) -> BuiltApplication:
+        return build_app(
+            Ingress.bind(child.bind()),
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+    _build(AsgiChild.options(_direct_http=True)).validate_single_fastapi_ingress()
+
+    with pytest.raises(RayServeException, match="multiple FastAPI deployments"):
+        _build(AsgiChild).validate_single_fastapi_ingress()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
