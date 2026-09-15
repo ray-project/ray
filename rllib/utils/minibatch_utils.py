@@ -33,12 +33,11 @@ class MiniBatchIteratorBase:
                 batch into per epoch. The train batch is generated from the given
                 `episodes` through the Learner connector pipeline.
             num_total_minibatches: The total number of minibatches to loop through
-                (over all `num_epochs` epochs). It's only required to set this to != 0
-                in multi-agent + multi-GPU situations, in which the MultiAgentEpisodes
-                themselves are roughly sharded equally, however, they might contain
-                SingleAgentEpisodes with very lopsided length distributions. Thus,
-                without this fixed, pre-computed value, one Learner might go through a
-                different number of minibatche passes than others causing a deadlock.
+                (over all `num_epochs` epochs). 0 (the default) means: as many as it
+                takes to cover every module's data `num_epochs` times, see
+                `MiniBatchCyclicIterator.num_minibatches`. Multi-Learner setups agree
+                on one value and pass it explicitly, so that Learners holding
+                differently sized shards still step the same number of times.
         """
         pass
 
@@ -48,9 +47,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """This implements a simple multi-agent minibatch iterator.
 
     This iterator will split the input multi-agent batch into minibatches where the
-    size of batch for each module_id (aka policy_id) is equal to minibatch_size. If the
-    input batch is smaller than minibatch_size, then the iterator will cycle through
-    the batch until it has covered `num_epochs` epochs.
+    size of batch for each module_id is equal to minibatch_size,
+    cycling through the batch as needed. It yields exactly `num_total_minibatches`
+    minibatches; when that is not given, it yields as many as it takes to cover
+    every module's data `num_epochs` times.
     """
 
     def __init__(
@@ -72,39 +72,73 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
         self._batch = batch
         self._minibatch_size = minibatch_size
-        self._num_epochs = num_epochs
         self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
 
         # mapping from module_id to the start index of the batch
         self._start = {mid: 0 for mid in batch.policy_batches.keys()}
-        # mapping from module_id to the number of epochs covered for each module_id
-        self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
         self._minibatch_count = 0
-        self._num_total_minibatches = num_total_minibatches
+        self._num_total_minibatches = num_total_minibatches or self.num_minibatches(
+            batch, minibatch_size=minibatch_size, num_epochs=num_epochs
+        )
+
+    @classmethod
+    def num_minibatches(
+        cls, batch: MultiAgentBatch, *, minibatch_size: int, num_epochs: int
+    ) -> int:
+        """Returns how many minibatches cover every module's data `num_epochs` times.
+
+        Each minibatch consumes `minibatch_size` rows per module (for batches sliced
+        in the sequence dimension: the corresponding number of sequences), so the
+        module with the most data governs: ceil(num_epochs * n / step), maxed over
+        the modules. Returns 0 for a batch without any module.
+        """
+        return max(
+            (
+                math.ceil(num_epochs * n / step)
+                for n, step in (
+                    cls._len_and_step(module_batch, minibatch_size)
+                    for module_batch in batch.policy_batches.values()
+                )
+            ),
+            default=0,
+        )
+
+    @staticmethod
+    def _len_and_step(module_batch: SampleBatch, minibatch_size: int):
+        """Returns `module_batch`'s length and the amount one minibatch consumes of it.
+
+        Both are in the unit the batch is sliced in: timesteps, or -- for batches
+        flagged to be sliced in the sequence dimension B -- sequences, in which case a
+        minibatch of `minibatch_size` timesteps corresponds to proportionally many
+        sequences.
+        """
+        if module_batch._slice_seq_lens_in_B:
+            assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
+                "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"
+                "to be present in the batch for slicing a batch in the batch "
+                "dimension B."
+            )
+            n = len(module_batch[SampleBatch.SEQ_LENS])
+            step = int(n * (minibatch_size / len(module_batch)))
+            if step <= 0:
+                raise ValueError(
+                    f"`minibatch_size` ({minibatch_size}) is smaller than the average "
+                    f"sequence length ({len(module_batch) / n:.1f}), so a minibatch "
+                    "would hold less than one sequence. Increase `minibatch_size`."
+                )
+            return n, step
+        return len(module_batch), minibatch_size
 
     def __iter__(self):
-        while (
-            # Make sure each item in the total batch gets at least iterated over
-            # `self._num_epochs` times.
-            (
-                self._num_total_minibatches == 0
-                and min(self._num_covered_epochs.values()) < self._num_epochs
-            )
-            # Make sure we reach at least the given minimum number of mini-batches.
-            or (
-                self._num_total_minibatches > 0
-                and self._minibatch_count < self._num_total_minibatches
-            )
-        ):
+        while self._minibatch_count < self._num_total_minibatches:
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
                 if len(module_batch) == 0:
                     raise ValueError(
-                        f"The batch for module_id {module_id} is empty! "
-                        "This will create an infinite loop because we need to cover "
-                        "the same number of samples for each module_id."
+                        f"The batch for module_id {module_id} is empty! Minibatches "
+                        "need `minibatch_size` samples from every module_id."
                     )
                 s = self._start[module_id]  # start
 
@@ -117,28 +151,18 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 #  these setups require sequencing, BUT their batches are not yet time-
                 #  ranked (this is done only in their loss functions via the
                 #  `make_time_major` utility).
-                n_steps = self._minibatch_size
+                # One rule for how much a minibatch consumes (timesteps, or sequences
+                # for batches sliced in the sequence dimension B); `_len_and_step` also
+                # checks that SEQ_LENS is present in that case.
+                _, n_steps = self._len_and_step(module_batch, self._minibatch_size)
 
                 samples_to_concat = []
 
-                # get_len is a function that returns the length of a batch
-                # if we are not slicing the batch in the batch dimension B, then
-                # the length of the batch is simply the length of the batch
-                # o.w the length of the batch is the length list of seq_lens.
+                # Length of a (sub-)batch in the unit we slice in.
                 if module_batch._slice_seq_lens_in_B:
-                    assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
-                        "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"
-                        "to be present in the batch for slicing a batch in the batch "
-                        "dimension B."
-                    )
 
                     def get_len(b):
                         return len(b[SampleBatch.SEQ_LENS])
-
-                    n_steps = int(
-                        get_len(module_batch)
-                        * (self._minibatch_size / len(module_batch))
-                    )
 
                 else:
 
@@ -153,7 +177,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     assert len_sample > 0, "Length of a sample must be > 0!"
                     n_steps -= len_sample
                     s = 0
-                    self._num_covered_epochs[module_id] += 1
                     # Shuffle the individual single-agent batch, if required.
                     # This should happen once per minibatch iteration in order to make
                     # each iteration go through a different set of minibatches.

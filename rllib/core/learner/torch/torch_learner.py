@@ -17,7 +17,7 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import LR_KEY, Learner
+from ray.rllib.core.learner.learner import LR_KEY, Learner, UpdatePlan
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -530,6 +530,28 @@ class TorchLearner(Learner):
             return self._uncompiled_update(batch)
         else:
             return self._possibly_compiled_update(batch)
+
+    @override(Learner)
+    def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:
+        if (
+            self.config.num_learners <= 1
+            or not torch.distributed.is_available()
+            or not torch.distributed.is_initialized()
+        ):
+            return plan
+        # Both halves of the plan reduce with MAX: skip if ANY Learner wants to, and
+        # step as many minibatches as the Learner with the most data needs. The
+        # latter is what keeps every Learner's data fully trained on -- a smaller
+        # count would leave the larger shards partly unvisited (see
+        # `test_minibatch_coverage_across_unequal_shards`).
+        plan_tensor = torch.tensor(
+            [int(plan.skip), plan.num_minibatches],
+            dtype=torch.int64,
+            device=self._device,
+        )
+        torch.distributed.all_reduce(plan_tensor, op=torch.distributed.ReduceOp.MAX)
+        skip, num_minibatches = plan_tensor.tolist()
+        return UpdatePlan(skip=bool(skip), num_minibatches=num_minibatches)
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:
