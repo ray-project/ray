@@ -14,6 +14,7 @@ from typing import (
 )
 
 from fastapi import HTTPException
+from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
@@ -46,6 +47,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
     LoraModelLoader,
 )
 from ray.llm._internal.serve.utils.server_utils import (
+    get_response_for_error,
     get_serve_request_id,
 )
 
@@ -81,7 +83,16 @@ class _ResolveLoRAMiddleware:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http" and serve.get_multiplexed_model_id():
-            await self._server._maybe_resolve_lora_from_multiplex()
+            try:
+                await self._server._maybe_resolve_lora_from_multiplex()
+            except HTTPException as exc:
+                # User middleware runs outside Starlette's ExceptionMiddleware.
+                error = get_response_for_error(exc, get_serve_request_id())
+                response = JSONResponse(
+                    error.model_dump(), status_code=exc.status_code, headers=exc.headers
+                )
+                await response(scope, receive, send)
+                return
         await self.app(scope, receive, send)
 
 
