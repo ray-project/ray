@@ -59,6 +59,7 @@ class Dashboard:
             If nothing is specified, all modules are loaded.
         proxy_server_url: The url to redirect api requests to
             Ex: proxy_server_url=http://historyserver:8080
+        proxy_timeout: The timeout in seconds for proxy requests.
     """
 
     def __init__(
@@ -81,6 +82,7 @@ class Dashboard:
         serve_frontend: bool = True,
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
+        proxy_timeout: float = dashboard_consts.DEFAULT_PROXY_TIMEOUT,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -101,6 +103,7 @@ class Dashboard:
             serve_frontend=serve_frontend,
             modules_to_load=modules_to_load,
             proxy_server_url=proxy_server_url,
+            proxy_timeout=proxy_timeout,
         )
 
     async def run(self):
@@ -243,6 +246,13 @@ if __name__ == "__main__":
         help="The proxy server url to redirect requests to"
         "Ex: --proxy-server-url=http://historyserver:8080 ",
     )
+    parser.add_argument(
+        "--proxy-timeout",
+        required=False,
+        type=float,
+        default=dashboard_consts.DEFAULT_PROXY_TIMEOUT,
+        help="The timeout in seconds for the proxy server requests.",
+    )
 
     args = parser.parse_args()
 
@@ -297,6 +307,7 @@ if __name__ == "__main__":
             serve_frontend=(not args.disable_frontend),
             modules_to_load=modules_to_load,
             proxy_server_url=args.proxy_server_url,
+            proxy_timeout=args.proxy_timeout,
         )
 
         def sigterm_handler():
