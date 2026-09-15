@@ -999,6 +999,12 @@ class RequestRouter(ABC):
                 "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment variable."
             )
 
+        # Cancellation is cooperative. Wait for every timed-out probe to finish
+        # before returning so a slow replica cannot keep running after its result
+        # has been discarded.
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
         for t in done:
             replica = task_to_replica[t]
             if t.exception() is not None:
