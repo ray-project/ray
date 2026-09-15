@@ -37,9 +37,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.request_router.pow_2_router import (
-    PowerOfTwoChoicesRequestRouter,
-)
 from ray.serve._private.test_utils import (
     check_deployment_status,
     check_num_replicas_gte,
@@ -53,6 +50,7 @@ from ray.serve._private.test_utils import (
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import ProxyLocation, RequestRouterConfig
 from ray.serve.context import _get_global_client
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -66,7 +64,7 @@ from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
 
 
-class _DelayedMultiplexedMetadataRouter(PowerOfTwoChoicesRequestRouter):
+class _DelayedMultiplexedMetadataRouter(RoundRobinRouter):
     def _update_multiplexed_model_ids_with_replicas(self, replicas):
         # Hold the location index empty to deterministically exercise requests
         # arriving before multiplexed model metadata propagates.
