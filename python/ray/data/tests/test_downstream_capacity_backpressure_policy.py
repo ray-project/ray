@@ -74,6 +74,7 @@ class TestDownstreamCapacityBackpressurePolicy:
             obj_store_mem_pending_task_inputs
         )
         mock_operator.metrics.obj_store_mem_pending_task_outputs = 0
+        mock_operator.metrics.obj_store_mem_internal_outqueue = 0
         mock_operator.output_dependencies = []
 
         # Set up eligibility methods (used by ResourceManager.is_op_eligible)
@@ -491,7 +492,9 @@ class TestDownstreamCapacityBackpressurePolicy:
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         )
         self._set_utilized_budget_fraction(rm, threshold + 0.05)
-        rm.get_mem_op_outputs.return_value = 1000
+        # 900 bytes buffered in the op's output queue + the consumer's 100
+        # prefetched bytes = 1000 bytes of outputs in flight.
+        op_state.output_queue_bytes.return_value = 900
 
         policy = self._create_policy(
             topology, data_context=context, resource_manager=rm
@@ -500,6 +503,76 @@ class TestDownstreamCapacityBackpressurePolicy:
         # Capacity comes from the external consumer, not a downstream op.
         assert policy._get_downstream_capacity_size_bytes(op) == external_bytes
         assert policy._get_output_pressure(op) == pytest.approx(expected_pressure)
+        assert policy.can_add_input(op) is expected_can_add_input
+
+    def test_terminal_op_ignores_blocks_retained_by_consumer(self):
+        """Blocks the consumer has taken and still holds are not pressure."""
+        op, op_state = self._mock_task_pool_map_operator()
+        op.output_dependencies = []  # terminal: consumed by an iterator
+        topology = {op: op_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(external_bytes=100)
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        # Ref counter still sees the whole dataset (held by the consumer)...
+        rm.get_mem_op_outputs.return_value = 10**9
+        # ...but only 50 bytes are actually buffered ahead of the consumer.
+        op_state.output_queue_bytes.return_value = 50
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        assert policy._get_output_pressure(op) == pytest.approx(0.5)
+        assert policy.can_add_input(op) is True
+        assert policy.max_task_output_bytes_to_read(op) is None
+
+    @pytest.mark.parametrize(
+        "splitter_inqueue_bytes, expected_can_add_input",
+        [
+            # 50 (op outqueue) + 50 (splitter outqueue) + 100 (splitter buffer)
+            # = 200 buffered / 100 prefetched = 2.0, not above the threshold.
+            pytest.param(100, True, id="splitter_buffer_within_ratio"),
+            # 50 + 50 + 900 = 1000 buffered / 100 prefetched = 10 > 2.0.
+            pytest.param(900, False, id="splitter_buffer_backs_up"),
+        ],
+    )
+    def test_terminal_chain_counts_ineligible_downstream_queues(
+        self, splitter_inqueue_bytes, expected_can_add_input
+    ):
+        """read -> OutputSplitter -> streaming_split consumers.
+
+        The splitter is ineligible, so it is an extension of the read op. Its
+        internal buffer and output queue are buffered outputs of the read op
+        and do count toward pressure; blocks the consumers hold do not.
+        """
+        op, op_state = self._mock_task_pool_map_operator()
+        splitter, splitter_state = self._mock_operator(
+            throttling_disabled=True,
+            obj_store_mem_internal_inqueue=splitter_inqueue_bytes,
+        )
+        op.output_dependencies = [splitter]
+        splitter.output_dependencies = []
+        topology = {op: op_state, splitter: splitter_state}
+        context = self._create_context(backpressure_ratio=2.0)
+        rm = self._mock_resource_manager(external_bytes=100)
+
+        threshold = (
+            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
+        )
+        self._set_utilized_budget_fraction(rm, threshold + 0.05)
+        rm.get_mem_op_outputs.return_value = 10**9  # retained by consumers
+        op_state.output_queue_bytes.return_value = 50
+        splitter_state.output_queue_bytes.return_value = 50
+
+        policy = self._create_policy(
+            topology, data_context=context, resource_manager=rm
+        )
+
+        assert policy._get_downstream_capacity_size_bytes(op) == 100
         assert policy.can_add_input(op) is expected_can_add_input
 
     def test_max_bytes_returns_none_when_backpressure_disabled(self):

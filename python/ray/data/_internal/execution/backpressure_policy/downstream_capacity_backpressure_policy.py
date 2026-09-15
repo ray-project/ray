@@ -185,15 +185,49 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # No downstream capacity to backpressure against, so no backpressure.
             return 0
 
-        output_size_bytes = self._resource_manager.get_mem_op_outputs(
-            op, include_ineligible_downstream=True
-        )
+        output_size_bytes = self._get_output_size_bytes(op)
         # output_size_bytes includes both buffered outputs and downstream
         # in-flight inputs. Subtract 1 to isolate the buffered portion:
         #   output_pressure = op_outqueue_bytes / downstream_in_flight_bytes
         #   output_size_bytes = op_outqueue_bytes + downstream_in_flight_bytes
         #   output_pressure = output_size_bytes / downstream_in_flight_bytes - 1
         return (output_size_bytes / downstream_capacity_size_bytes) - 1
+
+    def _get_output_size_bytes(self, op: "PhysicalOperator") -> int:
+        """Bytes of ``op``'s outputs that are waiting to be consumed, plus the
+        bytes the consumer is currently working on.
+
+        When another eligible operator consumes the outputs, the ref-counted
+        output usage is the right measure: downstream tasks release blocks as
+        they finish with them, so a live block is a block still waiting.
+
+        When the consumer does not release the output blocks after reading them,
+        eg: train jobs calling ``materialize()`` on their shard and holding every
+        block until training ends, the ref-counted output usage still tracks
+        those blocks as unconsumed and can wrongly end up backpressuring the
+        producer (down to a single task). So in that case we count only the
+        blocks sitting in the queues, plus what the consumer says it is holding.
+        """
+        has_eligible_downstream = any(
+            True for _ in self._resource_manager.get_downstream_eligible_ops(op)
+        )
+        if has_eligible_downstream:
+            return self._resource_manager.get_mem_op_outputs(
+                op, include_ineligible_downstream=True
+            )
+
+        # No eligible downstream op: the outputs leave the pipeline through an
+        # iterator or streaming_split, maybe via pass-through ops such as
+        # OutputSplitter. Count what is queued instead of what is alive, without
+        # relying on the block ref counter.
+        buffered_bytes = self._topology[op].output_queue_bytes() + (
+            op.metrics.obj_store_mem_internal_outqueue or 0
+        )
+        for downstream_op in self._resource_manager._get_downstream_ineligible_ops(op):
+            buffered_bytes += self._topology[downstream_op].output_queue_bytes()
+            buffered_bytes += downstream_op.metrics.obj_store_mem_internal_inqueue or 0
+            buffered_bytes += downstream_op.metrics.obj_store_mem_internal_outqueue or 0
+        return buffered_bytes + self._resource_manager.get_external_consumer_bytes()
 
     def _should_apply_backpressure(self, op: "PhysicalOperator") -> bool:
         """Check if backpressure should be applied for the operator.
@@ -221,9 +255,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         prev = self._prev_should_backpressure.get(op)
         if prev != result:
             downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
-            output_size_bytes = self._resource_manager.get_mem_op_outputs(
-                op, include_ineligible_downstream=True
-            )
+            output_size_bytes = self._get_output_size_bytes(op)
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
                 f"({output_pressure=}, {output_size_bytes=}, "
