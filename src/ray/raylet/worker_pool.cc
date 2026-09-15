@@ -516,22 +516,7 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
   }
 
   auto &state = GetStateForLanguage(language);
-  // If we are already starting up too many workers of the same worker type, then return
-  // without starting more.
-  int starting_workers = 0;
-  for (auto &entry : state.worker_processes) {
-    if (entry.second.worker_type == worker_type) {
-      starting_workers += entry.second.is_pending_registration ? 1 : 0;
-    }
-  }
-
-  // Here we consider both task workers and I/O workers.
-  if (starting_workers >= maximum_startup_concurrency_) {
-    // Workers have been started, but not registered. Force start disabled -- returning.
-    RAY_LOG(DEBUG) << "Worker not started, exceeding maximum_startup_concurrency("
-                   << maximum_startup_concurrency_ << "), " << starting_workers
-                   << " workers of language type " << static_cast<int>(language)
-                   << " being started and pending registration";
+  if (AtStartupConcurrencyLimit(language, worker_type)) {
     *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
     process_failed_rate_limited_++;
     return {kNullProcess, WorkerID::Nil()};
@@ -1438,11 +1423,23 @@ void WorkerPool::StartNewWorker(
     }
   };
 
+  // Creating then deleting a runtime env for a request we are about to requeue costs
+  // two connections to the agent, each holding an ephemeral port in TIME_WAIT for a
+  // minute. See https://github.com/ray-project/ray/issues/66153.
+  if (AtStartupConcurrencyLimit(pop_worker_request->language_,
+                                pop_worker_request->worker_type_)) {
+    process_failed_rate_limited_++;
+    GetStateForLanguage(pop_worker_request->language_)
+        .pending_start_requests.emplace_back(pop_worker_request);
+    return;
+  }
+
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info_.serialized_runtime_env();
 
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // create runtime env.
+    GetStateForLanguage(pop_worker_request->language_).num_starting_runtime_envs++;
     GetOrCreateRuntimeEnv(
         serialized_runtime_env,
         pop_worker_request->runtime_env_info_.runtime_env_config(),
@@ -1451,6 +1448,7 @@ void WorkerPool::StartNewWorker(
             bool successful,
             const std::string &serialized_runtime_env_context,
             const std::string &setup_error_message) {
+          GetStateForLanguage(pop_worker_request->language_).num_starting_runtime_envs--;
           if (successful) {
             start_worker_process_fn(pop_worker_request, serialized_runtime_env_context);
           } else {
@@ -1604,6 +1602,9 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
                                          int64_t num_needed) {
   RAY_LOG(DEBUG) << "PrestartWorkers " << num_needed;
   for (int ii = 0; ii < num_needed; ++ii) {
+    if (AtStartupConcurrencyLimit(lease_spec.GetLanguage(), rpc::WorkerType::WORKER)) {
+      return;
+    }
     // Prestart worker with no runtime env.
     if (IsRuntimeEnvEmpty(lease_spec.SerializedRuntimeEnv())) {
       PopWorkerStatus status;
@@ -1613,6 +1614,7 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
     }
 
     // Prestart worker with runtime env.
+    GetStateForLanguage(lease_spec.GetLanguage()).num_starting_runtime_envs++;
     GetOrCreateRuntimeEnv(
         lease_spec.SerializedRuntimeEnv(),
         lease_spec.RuntimeEnvConfig(),
@@ -1620,6 +1622,7 @@ void WorkerPool::PrestartWorkersInternal(const LeaseSpecification &lease_spec,
         [this, lease_spec = lease_spec](bool successful,
                                         const std::string &serialized_runtime_env_context,
                                         const std::string &setup_error_message) {
+          GetStateForLanguage(lease_spec.GetLanguage()).num_starting_runtime_envs--;
           if (!successful) {
             RAY_LOG(ERROR) << "Fails to create or get runtime env "
                            << setup_error_message;
@@ -1805,6 +1808,27 @@ void WorkerPool::WarnAboutSize() {
 void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::RESTORE_WORKER);
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
+}
+
+bool WorkerPool::AtStartupConcurrencyLimit(const Language &language,
+                                           rpc::WorkerType worker_type) {
+  auto &state = GetStateForLanguage(language);
+  int starting_workers =
+      worker_type == rpc::WorkerType::WORKER ? state.num_starting_runtime_envs : 0;
+  // Here we consider both task workers and I/O workers.
+  for (const auto &entry : state.worker_processes) {
+    if (entry.second.worker_type == worker_type) {
+      starting_workers += entry.second.is_pending_registration ? 1 : 0;
+    }
+  }
+  if (starting_workers < maximum_startup_concurrency_) {
+    return false;
+  }
+  RAY_LOG(DEBUG) << "Worker not started, exceeding maximum_startup_concurrency("
+                 << maximum_startup_concurrency_ << "), " << starting_workers
+                 << " workers of language type " << static_cast<int>(language)
+                 << " being started and pending registration";
+  return true;
 }
 
 void WorkerPool::TryPendingStartRequests(const Language &language) {

@@ -688,4 +688,44 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   EXPECT_EQ(max_concurrency, 10);
 }
 
+// A raylet that cannot reach a healthy agent for a local, self-clearing reason, in
+// production no free ephemeral port, must fail the request rather than the node.
+// See https://github.com/ray-project/ray/issues/66153.
+TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingWhileAgentIsAlive) {
+  RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
+  ray::UnsetEnv("RAY_AUTH_TOKEN");
+
+  // Nothing listens here, so every connect fails as it does on an exhausted port range.
+  int port = GetFreePort();
+  instrumented_io_context ioc;
+  bool raylet_shutdown = false;
+
+  auto client = raylet::RuntimeEnvAgentClient::Create(
+      ioc,
+      "127.0.0.1",
+      port,
+      delay_after(ioc),
+      [&](const rpc::NodeDeathInfo &) { raylet_shutdown = true; },
+      clock,
+      /*agent_register_timeout_ms=*/0,
+      /*agent_manager_retry_interval_ms=*/1,
+      /*agent_is_alive=*/[]() { return true; });
+
+  size_t called_times = 0;
+  client->GetOrCreateRuntimeEnv(JobID::FromInt(123),
+                                "serialized_runtime_env",
+                                ray::rpc::RuntimeEnvConfig(),
+                                [&](bool successful,
+                                    const std::string &serialized_runtime_env_context,
+                                    const std::string &setup_error_message) {
+                                  ASSERT_FALSE(successful);
+                                  ASSERT_FALSE(setup_error_message.empty());
+                                  called_times += 1;
+                                });
+
+  ioc.run();
+  ASSERT_EQ(called_times, 1);
+  ASSERT_FALSE(raylet_shutdown);
+}
+
 }  // namespace ray

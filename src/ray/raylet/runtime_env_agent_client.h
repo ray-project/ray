@@ -59,7 +59,12 @@ class RuntimeEnvAgentClient {
       uint32_t agent_register_timeout_ms =
           RayConfig::instance().agent_register_timeout_ms(),
       uint32_t agent_manager_retry_interval_ms =
-          RayConfig::instance().agent_manager_retry_interval_ms());
+          RayConfig::instance().agent_manager_retry_interval_ms(),
+      // A request still failing past the timeout fails the raylet, unless this reports
+      // the agent process up: then the cause is local to the raylet and transient
+      // (https://github.com/ray-project/ray/issues/66153) and only the request fails.
+      // Empty means "cannot tell", which keeps the raylet exiting.
+      std::function<bool()> agent_is_alive = nullptr);
 
   virtual ~RuntimeEnvAgentClient() = default;
 

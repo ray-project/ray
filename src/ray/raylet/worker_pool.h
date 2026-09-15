@@ -722,6 +722,9 @@ class WorkerPool : public WorkerPoolInterface {
     /// FIFO queue of pending requests with workers NOT STARTED due to
     /// maximum_startup_concurrency_.
     std::deque<std::shared_ptr<PopWorkerRequest>> pending_start_requests;
+    /// Worker starts that are waiting on the runtime env agent. Not in
+    /// `worker_processes` yet, always rpc::WorkerType::WORKER.
+    int num_starting_runtime_envs = 0;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -749,6 +752,11 @@ class WorkerPool : public WorkerPoolInterface {
   /// A helper function that returns the reference of the pool state
   /// for a given language.
   State &GetStateForLanguage(const Language &language);
+
+  /// Callers must consult this before doing any I/O on behalf of a worker start: a
+  /// start rejected for this reason is retried in full, so the I/O is paid again on
+  /// every retry.
+  bool AtStartupConcurrencyLimit(const Language &language, rpc::WorkerType worker_type);
 
   /// Start a timer to monitor the starting worker process.
   ///

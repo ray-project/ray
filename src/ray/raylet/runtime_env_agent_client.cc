@@ -281,6 +281,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       ClockInterface &clock,
       uint32_t agent_register_timeout_ms,
       uint32_t agent_manager_retry_interval_ms,
+      std::function<bool()> agent_is_alive,
       uint32_t session_pool_size = 10)
       : io_context_(io_context),
         session_pool_(session_pool_size),
@@ -290,7 +291,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         clock_(clock),
         agent_register_timeout_ms_(agent_register_timeout_ms),
-        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
+        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms),
+        agent_is_alive_(std::move(agent_is_alive)) {}
   ~HttpRuntimeEnvAgentClient() override = default;
 
   template <typename T>
@@ -344,6 +346,19 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
       } else if (clock_.SteadyNowMillis() > deadline_ms) {
+        if (agent_is_alive_ && agent_is_alive_()) {
+          RAY_LOG(ERROR)
+              << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
+              << "ms. Status: " << status << ", address: " << this->address_
+              << ", port: " << this->port_str_
+              << ". The agent process is still running, so this raylet could not reach "
+                 "it for a local reason, such as having no free ephemeral port left to "
+                 "open the connection from (check `ss -tan state time-wait | wc -l` "
+                 "against `cat /proc/sys/net/ipv4/ip_local_port_range`). Failing this "
+                 "request instead of exiting the raylet.";
+          fail_callback(status);
+          return;
+        }
         RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
                        << "ms. Status: " << status << ", address: " << this->address_
                        << ", port: " << this->port_str_ << ", exiting immediately...";
@@ -529,6 +544,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   ClockInterface &clock_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
+  const std::function<bool()> agent_is_alive_;
 };
 }  // namespace
 
@@ -541,7 +557,8 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
-    uint32_t agent_manager_retry_interval_ms) {
+    uint32_t agent_manager_retry_interval_ms,
+    std::function<bool()> agent_is_alive) {
   return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
@@ -549,7 +566,8 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
                                                      shutdown_raylet_gracefully,
                                                      clock,
                                                      agent_register_timeout_ms,
-                                                     agent_manager_retry_interval_ms);
+                                                     agent_manager_retry_interval_ms,
+                                                     std::move(agent_is_alive));
 }
 
 }  // namespace raylet
