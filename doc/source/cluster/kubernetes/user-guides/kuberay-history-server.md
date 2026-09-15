@@ -102,6 +102,8 @@ KubeRay publishes prebuilt container images for the History Server and the colle
 * **History Server**: `quay.io/kuberay/historyserver:nightly`
 * **Collector**: `quay.io/kuberay/collector:nightly`
 
+For how KubeRay names its image tags, including stable version tags, see {ref}`kuberay-images`.
+
 To build the images from source and push them to your own registry, see [the image build and push guide](https://github.com/ray-project/kuberay/blob/master/historyserver/docs/image-build-push-guide.md).
 
 ## Deploy the History Server
