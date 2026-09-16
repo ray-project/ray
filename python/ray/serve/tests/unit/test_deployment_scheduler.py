@@ -2520,6 +2520,29 @@ class TestSpreadNodeScorer:
         assert set(scheduled_node_ids(on_scheduled_a)) == {node_1, node_2}
         assert set(scheduled_node_ids(on_scheduled_b)) == {node_1, node_2}
 
+    def test_spread_counts_replicas_launched_in_an_earlier_loop(self):
+        """Before Ray reports the first replica running, the second loop must
+        still see it, or every replica of a zero CPU deployment lands together."""
+        d_id = DeploymentID(name="d1")
+        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(node_1, {"CPU": 4})
+        cache.add_node(node_2, {"CPU": 4})
+        scheduler = make_scheduler(cache, SpreadNodeScorer())
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 0})
+        )
+
+        on_scheduled = Mock()
+        for i in range(2):
+            scheduler.schedule(
+                upscales={d_id: [make_request(d_id, f"r{i}", 0, on_scheduled)]},
+                downscales={},
+            )
+
+        assert set(scheduled_node_ids(on_scheduled)) == {node_1, node_2}
+
     def test_prefers_most_free_space(self):
         d_id = DeploymentID(name="d1")
         node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()

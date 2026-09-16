@@ -1320,7 +1320,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             for node_id in active_nodes
         }
         available_resources_per_node = self._get_available_resources_per_node()
-        node_to_assigned_replicas = self._get_node_to_running_replicas()
+        node_to_assigned_replicas = self._get_node_to_assigned_replicas()
         nodes_by_deployment = self._get_active_nodes_by_deployment(active_nodes)
         constraints = self._profile.constraints
 
@@ -1397,6 +1397,19 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             f"{type(self._profile.scorer).__name__}. Resource priority: {priority_desc}. "
             f"Schedule order (first scheduled first): {order_desc}."
         )
+
+    def _get_node_to_assigned_replicas(self) -> Dict[str, Set[ReplicaID]]:
+        """Running replicas plus launching replicas that already have a node.
+
+        The scorer counts both, so a replica placed one control loop ago is
+        visible to the next loop before Ray reports it running.
+        """
+        assigned = self._get_node_to_running_replicas()
+        for launching_replicas in self._launching_replicas.values():
+            for replica_id, info in launching_replicas.items():
+                if info.target_node_id is not None:
+                    assigned.setdefault(info.target_node_id, set()).add(replica_id)
+        return assigned
 
     def _get_active_nodes_by_deployment(
         self, active_nodes: Set[str]
