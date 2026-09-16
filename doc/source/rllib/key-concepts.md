@@ -361,4 +361,3 @@ learner_results = ray.get(learner_actor.update.remote(
 ))
 print(learner_results["default_policy"]["policy_loss"])
 ```
-</content>

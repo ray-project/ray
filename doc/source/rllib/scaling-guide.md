@@ -141,4 +141,3 @@ The Ray team is working on closing these gaps. In particular, future areas of im
 - Enable training with **thousands of multi-agent policies**. A possible solution for this scaling problem could be to split up the {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` into manageable groups of individual policies across the various {py:class}`~ray.rllib.env.env_runner.EnvRunner` and {py:class}`~ray.rllib.core.learner.learner.Learner` actors.
 
 - Enabling **vector envs for multi-agent**.
-</content>

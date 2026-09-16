@@ -412,5 +412,3 @@ Unlike for single-agent environments, multi-agent setups are not vectorizable ye
 RLlib supports variable-sharing across policies.
 
 See the [PettingZoo parameter sharing example](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py) for details.
-</content>
-</invoke>

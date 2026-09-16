@@ -454,5 +454,3 @@ The following are some examples on how to write ConnectorV2 pieces for the diffe
 1. [Add the most recent action and reward to the RL Module's input](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py).
 1. [Mean-std filtering on all observations](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py).
 1. [Flatten any complex observation space to a 1D space](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py).
-</content>
-</invoke>
