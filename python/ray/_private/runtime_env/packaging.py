@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
+from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
@@ -469,8 +470,35 @@ def _store_package_in_gcs(
     return len(data)
 
 
+def get_local_dir_uri_path(pkg_uri: str) -> Optional[Path]:
+    """Returns the on node path a `local://` URI points to.
+
+    Returns None for every other protocol, and for plain paths. Raises ValueError
+    for a `local://` URI that is malformed, such as one with a relative path.
+    """
+    if urlparse(pkg_uri).scheme != Protocol.LOCAL.value:
+        return None
+    _, path = _parse_uri(pkg_uri)
+    return Path(path)
+
+
+def raise_if_local_dir_uri_missing(local_dir: Path, pkg_uri: str, field: str) -> None:
+    """Raises unless the directory a `local://` URI points to exists on this node."""
+    if not local_dir.is_dir():
+        raise ValueError(
+            f"{field} {pkg_uri} points to '{local_dir}', which must already "
+            "exist on every node."
+        )
+
+
 def _get_local_path(base_directory: str, pkg_uri: str) -> str:
-    _, pkg_name = _parse_uri(pkg_uri)
+    protocol, pkg_name = _parse_uri(pkg_uri)
+    if protocol == Protocol.LOCAL:
+        raise ValueError(
+            '"local://" URIs refer to a directory that must already exist on '
+            f"every node, so {pkg_uri} is never downloaded or unpacked. It is "
+            "only supported in working_dir and py_modules."
+        )
     return os.path.join(base_directory, pkg_name)
 
 
