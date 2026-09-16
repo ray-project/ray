@@ -2003,6 +2003,12 @@ def test_row_transform_phases_are_opt_in(
     )
 
 
+# How far a stage's measured time may sit from the time its body slept. Covers
+# that stage's own prep and block building plus scheduling noise, none of which
+# scales with the sleep.
+STAGE_TIME_TOLERANCE_S = 0.5
+
+
 def test_per_stage_timing_splits_a_fused_chain(
     ray_start_regular_shared, restore_data_context
 ):
@@ -2047,13 +2053,17 @@ def test_per_stage_timing_splits_a_fused_chain(
 
     read, fast, slow = on.stage_time
     # Each stage should land near the time its own body slept, summed over the
-    # blocks. The sleep is a hard floor -- 10% of slack absorbs the clamp in
-    # `_self_times` -- and the headroom above covers that stage's own prep and
-    # block building plus scheduling noise.
+    # blocks. Both bounds are absolute on purpose: a stage's figure is its
+    # sleep plus its own prep and block building, and that overhead is roughly
+    # constant per block rather than a proportion of the sleep. A +-10% band
+    # would be 8ms wide on the fast stage and 80ms on the slow one, for the
+    # same few ms of real overhead, so it would fail on the fast stage alone.
     for label, stage, sleep_s in (("fast", fast, fast_s), ("slow", slow, slow_s)):
         expected_s = num_blocks * sleep_s
         assert (
-            expected_s * 0.9 <= stage.sum < expected_s + 0.5
+            expected_s - STAGE_TIME_TOLERANCE_S
+            <= stage.sum
+            < expected_s + STAGE_TIME_TOLERANCE_S
         ), f"{label} stage measured {stage.sum:.4f}s, expected ~{expected_s:.2f}s"
     # The slow stage must also dominate. The ratio is diluted by each stage's
     # own prep and block building, so assert a wide margin rather than the 10x
@@ -2103,9 +2113,14 @@ def test_per_stage_timing_is_independent_of_phase_timing(
     assert len(op.stage_time) == 3
 
     # The sleeping stage is the last one, and its figure should land near the
-    # time it actually slept across every row.
+    # time it actually slept across every row. Absolute bounds, for the reason
+    # given in `test_per_stage_timing_splits_a_fused_chain`.
     expected_s = num_rows * sleep_s
-    assert expected_s * 0.9 <= op.stage_time[-1].sum < expected_s + 0.5, (
+    assert (
+        expected_s - STAGE_TIME_TOLERANCE_S
+        <= op.stage_time[-1].sum
+        < expected_s + STAGE_TIME_TOLERANCE_S
+    ), (
         f"last stage measured {op.stage_time[-1].sum:.4f}s, "
         f"expected ~{expected_s:.2f}s"
     )
