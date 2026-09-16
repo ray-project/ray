@@ -98,6 +98,11 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
                 for replica in candidate_replicas
                 if replica.replica_id in candidate_replica_ids
             ]
+            if not candidate_replicas:
+                # No multiplex candidates yet (e.g. the adapter's location is
+                # still propagating). Return no ranks so the caller backs off
+                # and retries instead of scoring an empty worker set.
+                return []
 
         token_ids = (
             pending_request.kwargs.get(REQUEST_TOKEN_IDS_KWARG)

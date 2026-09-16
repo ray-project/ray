@@ -179,6 +179,17 @@ class TestDirectStreamingLora:
                 assert response.status_code == 200, response.text
                 assert response.headers["x-replica-id"] == cold_replica
 
+    def test_base_model_request(self, base_url):
+        """Enabling LoRA does not multiplex requests for the base model."""
+        response = httpx.post(
+            f"{base_url}/v1/completions",
+            json={"model": "test-model", "prompt": "hello", "max_tokens": 1},
+            timeout=30,
+        )
+
+        assert response.status_code == 200, response.text
+        assert "[lora_model]" not in response.text
+
     @pytest.mark.parametrize("model", ["other:adapter", "test-model:missing-adapter"])
     def test_unknown_model(self, base_url, model):
         response = httpx.post(
