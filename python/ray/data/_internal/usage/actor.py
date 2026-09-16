@@ -12,10 +12,11 @@ import json
 import threading
 from collections import OrderedDict
 from dataclasses import asdict
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import ray
 from ray._common.usage import usage_lib
+from ray.actor import ActorHandle
 
 if TYPE_CHECKING:
     from ray.data._internal.usage.collector import ExecutionId, UsageInfo
@@ -59,17 +60,21 @@ class _UsageCollectionActor:
         usage_lib.record_extra_usage_tag(usage_lib.TagKey.DATA_USAGE, payload)
 
 
-def get_or_create_usage_collection_actor() -> ray.actor.ActorHandle:
+def get_or_create_usage_collection_actor() -> "ActorHandle[_UsageCollectionActor]":
     """Return the cluster's usage collection actor, creating it if needed.
 
     Pinned to the calling process's node so it fate-shares with the driver
     (the same placement the stats actor and actor-location tracker use).
     """
     label_selector = {
+        # pyrefly: ignore[missing-attribute]  # constant lives in the Cython ext
         ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
     }
     with _get_or_create_lock:
-        return (
+        # ``ray.remote``'s overloads widen the inferred type to include the
+        # undecorated class, so name the handle type we know we get back.
+        return cast(
+            "ActorHandle[_UsageCollectionActor]",
             ray.remote(num_cpus=0)(_UsageCollectionActor)
             .options(
                 name="DataUsageCollectionActor",
@@ -78,5 +83,5 @@ def get_or_create_usage_collection_actor() -> ray.actor.ActorHandle:
                 lifetime="detached",
                 label_selector=label_selector,
             )
-            .remote()
+            .remote(),
         )

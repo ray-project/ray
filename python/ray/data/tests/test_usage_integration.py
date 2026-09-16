@@ -13,9 +13,10 @@ import threading
 import pytest
 
 import ray
+import ray.train
 from ray._common.test_utils import wait_for_condition
 from ray._common.usage import usage_lib
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient  # pyrefly: ignore[missing-module-attribute]
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -45,6 +46,7 @@ def test_train_streaming_split_reports_every_dataset(shutdown_only):
 
     TorchTrainer(
         train_func,
+        # pyrefly: ignore[bad-argument-type]  # ray.train.ScalingConfig is a v1|v2 union
         scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
         datasets={"train": train_ds, "val": val_ds},
     ).fit()
@@ -92,16 +94,15 @@ def test_concurrent_subcluster_datasets_report_every_execution(
 
 def test_executions_from_user_actors_are_merged(shutdown_only):
     """Minimal form of the cross-process case with no Train dependency: two
-    plain actors each run one execution."""
+    worker processes each run one execution."""
     ray.init()
 
     # Re-enable usage stats in the worker processes that host the executions.
     @ray.remote(runtime_env={"env_vars": {"RAY_USAGE_STATS_ENABLED": "1"}})
-    class Runner:
-        def run(self):
-            ray.data.range(1).materialize()
+    def run_one():
+        ray.data.range(1).materialize()
 
-    ray.get([Runner.remote().run.remote() for _ in range(2)])
+    ray.get([run_one.remote() for _ in range(2)])
 
     wait_for_condition(lambda: len(_reported_execution_ids()) == 2)
 
