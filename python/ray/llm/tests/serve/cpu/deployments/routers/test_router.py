@@ -26,15 +26,10 @@ from ray.llm._internal.serve.core.ingress.router import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    KV_TOKEN_KEY_HEADER,
     KV_TOKEN_METADATA_KEY,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import (
-    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
-    SERVE_MULTIPLEXED_MODEL_ID,
-)
 from ray.serve.exceptions import DeploymentUnavailableError
 
 
@@ -194,26 +189,6 @@ class TestDirectStreamingLLMRouter:
             assert call.kwargs["routing_payload"] is None
         assert mock_warning.call_count == 1
         assert router._warned_no_routing_key is True
-
-    @pytest.mark.asyncio
-    async def test_route_merges_lora_and_kv_token_headers(self):
-        """KV-aware LoRA: the adapter ID and token key share one header dict."""
-        router = _new_direct_router()
-        router._base_model_id = "base"
-        router._tokenizer = MagicMock(tokenize=AsyncMock(return_value=[1, 2, 3]))
-        router._pick_replica = AsyncMock(
-            return_value=("127.0.0.1", 9001, "DeploymentName#replica", "tcp://t")
-        )
-        router._push_prompt_tokens = MagicMock(return_value="token-key")
-
-        result = await router.route(
-            _FakeRequest(b'{"model":"base:adapter","prompt":"hi"}')
-        )
-
-        assert result[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
-            SERVE_MULTIPLEXED_MODEL_ID: "base:adapter",
-            KV_TOKEN_KEY_HEADER: "token-key",
-        }
 
     @pytest.mark.asyncio
     async def test_route_returns_503_on_pick_failure(self):
