@@ -1,6 +1,9 @@
+import pytest
 import torch
 
 from ray.train.torch import TorchCheckpoint
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 
 def assert_equal_torch_models(model1, model2):

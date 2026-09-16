@@ -259,6 +259,7 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
+      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            IsLocalhost(config.node_manager_address)),
@@ -278,7 +279,6 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
@@ -306,9 +306,11 @@ NodeManager::NodeManager(
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
-  // Pass auth token from the RPC server to the syncer service
-  node_manager_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
-      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
+  // Pass auth token from the RPC server to the syncer service.
+  ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(
+      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
+  node_manager_server_.RegisterService(
+      std::make_unique<syncer::RaySyncerGrpcService>(*ray_syncer_service_));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
