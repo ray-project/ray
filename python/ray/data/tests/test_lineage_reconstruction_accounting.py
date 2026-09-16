@@ -1,4 +1,5 @@
 import time
+from typing import List
 
 import pyarrow as pa
 import pytest
@@ -14,6 +15,10 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
+    MapTransformFn,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
 )
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data.block import BlockAccessor
@@ -44,7 +49,8 @@ def test_task_pool_map_operator_counts_lineage_reconstruction_tasks(
     metadata = BlockAccessor.for_block(block).get_metadata()
     schema = BlockAccessor.for_block(block).schema()
     bundle = RefBundle(
-        [BlockEntry(ref=block_ref, metadata=metadata)],
+        # pyrefly: ignore[bad-argument-type]
+        (BlockEntry(ref=block_ref, metadata=metadata),),
         owns_blocks=False,
         schema=schema,
     )
@@ -68,7 +74,7 @@ def test_task_pool_map_operator_counts_lineage_reconstruction_tasks(
             return self._is_map_blocked
 
     # Start with the transform function unblocked.
-    signal = Signal.remote(False)
+    signal = Signal.remote(False)  # pyrefly: ignore[missing-attribute]
 
     def block_fn(block, _):
         print("Entering block function")
@@ -80,7 +86,7 @@ def test_task_pool_map_operator_counts_lineage_reconstruction_tasks(
         print("Exiting block function")
         return block
 
-    transform_fns = [BlockMapTransformFn(block_fn)]
+    transform_fns: List[MapTransformFn] = [BlockMapTransformFn(block_fn)]
     map_transformer = MapTransformer(transform_fns)
     map_op = MapOperator.create(
         map_transformer,
@@ -88,6 +94,7 @@ def test_task_pool_map_operator_counts_lineage_reconstruction_tasks(
         data_context,
         ray_remote_args={"resources": {"worker": 1}, "num_cpus": 1},
     )
+    assert isinstance(map_op, TaskPoolMapOperator)
 
     output_bundles = []
     executor = StreamingExecutor(data_context)
