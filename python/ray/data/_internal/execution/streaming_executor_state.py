@@ -643,17 +643,19 @@ def build_streaming_topology(
     return topology
 
 
-def _reopen_chain_for_recovery(topology: Topology, read_op: PhysicalOperator) -> None:
-    """Reset the completion latches of the read op and everything downstream so a
+def _clear_downstream_completion_state(
+    topology: Topology, start_op: PhysicalOperator
+) -> None:
+    """Clear the completion state of ``start_op`` and everything downstream so a
     re-injected seed input can flow through again.
 
     A finished op clears its external input queue every tick and is filtered out
     of dispatch (see ``update_operator_states`` / ``get_eligible_operators``), and
     ``_is_execution_marked_finished`` / ``inputs_done_called`` are one-way latches.
-    Walk the linear chain from ``read_op`` to the sink and clear them; normal
+    Walk the operator subgraph downstream of ``start_op`` and clear them; normal
     completion re-fires once the recovered partition finishes draining.
     """
-    stack = [read_op]
+    stack = [start_op]
     seen = set()
     while stack:
         op = stack.pop()
@@ -668,7 +670,7 @@ def _reopen_chain_for_recovery(topology: Topology, read_op: PhysicalOperator) ->
         stack.extend(op.output_dependencies)
 
     logger.info(
-        "[lineage-recovery] Reopened operator chain for recovery: "
+        "[lineage-recovery] Cleared completion state for operators: "
         + ", ".join(f'"{op.name}"' for op in seen)
     )
 
@@ -751,9 +753,9 @@ def _recover_lost_object(
     task.mark_aborted(lost_error)
 
     for seed_id, seed_op, seed_input in resubmissions:
-        # Completion latches are one-way and a finished op is filtered out of
-        # dispatch, so the chain has to be reopened before anything can flow.
-        _reopen_chain_for_recovery(topology, seed_op)
+        # Clear the completion state of the seed op and everything downstream so a
+        # re-injected seed input can flow through again.
+        _clear_downstream_completion_state(topology, seed_op)
         # `OpState.output_queue` of the source *is* the seed op's `input_queues[0]`
         # (same object, wired in `build_streaming_topology`), and `add_output`
         # maintains the external queue counters that a bare append would leave
