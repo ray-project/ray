@@ -197,11 +197,11 @@ def finalizer_patch(
         path = "/metadata/finalizers"
         value = [finalizer]
 
-    return add_patch(path, value)
+    return [add_patch(path, value)]
 
 
-def add_patch(path: str, value: Any) -> List[Dict[str, Any]]:
-    return [{"op": "add", "path": path, "value": value}]
+def add_patch(path: str, value: Any) -> Dict[str, Any]:
+    return {"op": "add", "path": path, "value": value}
 
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
