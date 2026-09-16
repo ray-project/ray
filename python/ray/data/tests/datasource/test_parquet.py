@@ -3427,6 +3427,22 @@ def test_parquet_sampling_fails_on_permanent_error(
             ray.data.read_parquet(str(tmp_path)).materialize()
 
 
+@pytest.mark.timeout(60)
+def test_count_large_parquet_is_fast(ray_start_regular_shared):
+    """This is an E2E test that verifies that we pushdown counts. If Ray Data reads the
+    file contents rather than the metadata, the test will timeout and fail.
+    """
+    path = "s3://ray-benchmark-data/tpch/parquet/sf100/lineitem"
+
+    num_rows = ray.data.read_parquet(path).count()
+
+    # This is the number of rows measured by PyArrow.
+    assert num_rows == 600_037_902, (
+        "The number of rows returned by Ray Data doesn't match the number of rows "
+        f"returned by PyArrow. Expected 600,037,902 but got {num_rows}"
+    )
+
+
 if __name__ == "__main__":
     import sys
 
