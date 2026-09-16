@@ -15,9 +15,7 @@ from unittest import mock
 
 import ray.cloudpickle
 from ray import serve
-from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
 from ray.llm._internal.serve.core.ingress.router import LLMRouter as _LLMRouter
-from ray.llm._internal.serve.core.server.llm_server import LLMServer as _LLMServer
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     _MODEL_NAME,
     _TENANT_ID,
@@ -25,7 +23,6 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     configure_kv_events_for_kv_routing,
 )
-from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.serve.config import RequestRouterConfig
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_openai_app
@@ -111,39 +108,6 @@ class _TestKVAwareRouter(RoundRobinRouter, KVAwareRouter):
     KVAwareRouter subclass so the deployment still enables the KV-events plane
     and the tracker.
     """
-
-
-class _SharedWeightsLoraModelLoader(LoraModelLoader):
-    """(Test only) Load every adapter ID from ``dynamic_lora_loading_path`` itself.
-
-    The real loader reads ``<dynamic_lora_loading_path>/<lora_id>``, which needs
-    one uploaded adapter per ID. Dropping the ID suffix lets several IDs share
-    one public adapter, and that is in fact the sharper setup here: the KV index
-    keys blocks on the adapter *name*, so with identical weights the name is the
-    only thing that can hold the adapters' KV namespaces apart.
-    """
-
-    async def load_model_from_config(self, lora_model_id, llm_config):
-        return await self.load_model(
-            lora_model_id,
-            LoraMirrorConfig(
-                lora_model_id=lora_model_id,
-                bucket_uri=llm_config.lora_config.dynamic_lora_loading_path,
-                max_total_tokens=None,
-            ),
-        )
-
-
-class LoraLLMServer(_LLMServer):
-    """(Test only) LLMServer that loads adapters via ``_SharedWeightsLoraModelLoader``.
-
-    Set as ``LLMConfig.server_cls``. Only the download is swapped; vLLM's adapter
-    load and the LoRA name it stamps on its KV events are unchanged.
-    """
-
-    async def __init__(self, llm_config, **kwargs):
-        kwargs["model_downloader"] = _SharedWeightsLoraModelLoader
-        await super().__init__(llm_config, **kwargs)
 
 
 class LLMRouter(_LLMRouter):

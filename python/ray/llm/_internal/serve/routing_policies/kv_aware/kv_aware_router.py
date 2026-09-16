@@ -87,9 +87,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             pending_request is not None
             and pending_request.metadata.multiplexed_model_id
         ):
-            # Score within the multiplex candidates rather than around them: a
-            # replica that would have to download and load the adapter first is
-            # not a better pick than one already serving it.
+            # Score within the multiplex candidates
             candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request
             )
@@ -100,8 +98,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             ]
             if not candidate_replicas:
                 # No multiplex candidates yet (e.g. the adapter's location is
-                # still propagating). Return no ranks so the caller backs off
-                # and retries instead of scoring an empty worker set.
+                # still propagating). Return no ranks so the caller backs off.
                 return []
 
         token_ids = (

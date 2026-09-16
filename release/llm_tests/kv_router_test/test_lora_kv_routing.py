@@ -1,13 +1,3 @@
-"""GPU end-to-end LoRA KV-aware routing.
-
-Two adapter IDs are served off one base model on two replicas. Each adapter's
-prompt is prefilled on a different replica, and the test then checks that every
-stage keeps the adapters' KV caches apart: the engine's KV events carry the
-adapter name, the selection service indexes and scores each adapter in its own
-namespace, and a request through HAProxy lands on the replica holding that
-adapter's blocks and reports the prefix-cache hit to prove it.
-"""
-
 import sys
 
 import pytest
@@ -18,29 +8,25 @@ import ray
 from ray import serve
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.config import RequestRouterConfig
 from ray.serve.llm import LLMConfig, LoraConfig, ModelLoadingConfig
 from ray.serve.llm.request_router import KVAwareRouter
 
 from utils import (
-    LoraLLMServer,
     build_kv_app,
     discover_replica_endpoints,
     patch_ingress,
 )
 
-APP_NAME = "lora_kv_routing_gpu_test"
+APP_NAME = "lora_kv_routing_test"
 NUM_REPLICAS = 2
 BLOCK_SIZE = 16
 MAX_TOKENS = 4
-FRONT_DOOR = ("127.0.0.1", 8000)
 
-# A tiny randomly-initialized Llama and a matching dummy adapter, both public
-# and already used by the llm_batch_vllm release test. Nothing here asserts on
-# generated text, so random weights are fine and keep the test fast.
 BASE_MODEL_ID = "llama-216m-dummy"
 MODEL_SOURCE = "s3://anonymous@air-example-data/llama-3.2-216M-dummy/"
-ADAPTER_SOURCE = "s3://anonymous@air-example-data/llama-3.2-216M-lora-dummy"
+ADAPTER_SOURCE = "s3://anonymous@air-example-data/llama-3.2-216M-lora-dummy-multi"
 MAX_LORA_RANK = 16
 
 ADAPTER_A = f"{BASE_MODEL_ID}:adapter-a"
@@ -64,19 +50,15 @@ UNSEEN_PROMPT = (
 )
 
 
-def post_completion(endpoint, model, prompt=PROMPT, max_tokens=MAX_TOKENS):
-    """Complete ``prompt`` against ``endpoint``.
+def post_completion(url, model, prompt=PROMPT, max_tokens=MAX_TOKENS):
+    """Complete ``prompt`` against ``url``.
 
-    Sent to a replica's direct-ingress port this bypasses routing and pins the
-    prefill to that replica; sent to HAProxy it exercises the production
-    HAProxy -> LLMRouter -> KVAwareRouter path. The multiplexed model ID header
-    is what HAProxy itself adds once the router has picked a replica, and it is
-    how the replica knows which adapter to resolve. HAProxy strips any
-    client-supplied copy, so sending it is only meaningful on the direct port.
+    A replica's direct-ingress URL pins the prefill to that replica; the
+    application URL goes through routing. HAProxy sets the multiplexed model ID
+    header itself, so sending it only matters on a direct URL.
     """
-    host, port = endpoint
     response = requests.post(
-        f"http://{host}:{port}/v1/completions",
+        f"{url}/v1/completions",
         headers={SERVE_MULTIPLEXED_MODEL_ID: model} if model != BASE_MODEL_ID else {},
         json={
             "model": model,
@@ -95,15 +77,14 @@ def cached_tokens(response):
     return response["usage"]["prompt_tokens_details"]["cached_tokens"]
 
 
-def tokenize(endpoint, prompt=PROMPT):
+def tokenize(url, prompt=PROMPT):
     """The engine's exact token IDs for ``prompt``.
 
-    An adapter does not change tokenization, so the base model ID is enough and
-    works on a replica that has not loaded the adapter.
+    An adapter does not change tokenization, so the base model ID works even on
+    a replica that has not loaded the adapter.
     """
-    host, port = endpoint
     response = requests.post(
-        f"http://{host}:{port}/tokenize",
+        f"{url}/tokenize",
         json={"model": BASE_MODEL_ID, "prompt": prompt},
         timeout=60,
     )
@@ -117,7 +98,7 @@ def num_prompt_blocks(token_ids):
 
 
 async def registered_endpoints(handle, router):
-    """Map each registered worker ID to its replica's direct-ingress endpoint.
+    """Map each registered worker ID to its replica's direct-ingress URL.
 
     Replicas advertise their KV-events endpoint through routing stats, so the
     tracker registers their workers some time after the replicas are up.
@@ -130,8 +111,13 @@ async def registered_endpoints(handle, router):
 
     await async_wait_for_condition(all_replicas_registered, timeout=180)
     replica_by_worker = await router.get_kv_event_worker_replicas.remote()
+
+    def url(replica_id):
+        host, port = replica_endpoints[replica_id]
+        return f"http://{host}:{port}"
+
     return {
-        worker_id: replica_endpoints[replica_id]
+        worker_id: url(replica_id)
         for worker_id, replica_id in replica_by_worker.items()
     }
 
@@ -150,8 +136,6 @@ class TestLoraKvRouting:
                 model_source=MODEL_SOURCE,
             ),
             lora_config=LoraConfig(dynamic_lora_loading_path=ADAPTER_SOURCE),
-            # Loads every adapter ID from ADAPTER_SOURCE itself; see utils.py.
-            server_cls=LoraLLMServer,
             deployment_config=dict(
                 autoscaling_config=dict(
                     min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
@@ -189,9 +173,10 @@ class TestLoraKvRouting:
         serve.shutdown()
 
     @pytest.mark.asyncio
-    @pytest.mark.timeout(1800)
-    async def test_adapters_route_to_their_own_kv_cache(self, deployed_handle):
+    @pytest.mark.timeout(600)
+    async def test_adapter_kv_cache_affinity(self, deployed_handle):
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
+        app_url = get_application_url(app_name=APP_NAME, use_localhost=True)
         endpoints = await registered_endpoints(deployed_handle, router)
         workers = sorted(endpoints)
         # Which adapter lands where is fixed here, not by routing: each request
@@ -221,65 +206,26 @@ class TestLoraKvRouting:
             each_adapter_indexed_on_its_own_worker, timeout=120
         )
 
-        # Both replicas prefilled the same tokens, so without the adapter name
-        # on the KV events and on the scoring request each of these would see
-        # both workers.
-        for adapter, worker_id in warmed.items():
-            overlap = await router.get_kv_overlap_blocks.remote(token_ids, adapter)
-            other = next(w for w in workers if w != worker_id)
-            assert overlap[other] == 0, f"{adapter} leaked onto {other}"
-        # The base model never prefilled this prompt, and cannot borrow the
-        # adapters' blocks for it either.
-        base_overlap = await router.get_kv_overlap_blocks.remote(token_ids)
-        assert set(base_overlap.values()) == {0}
-
-        # Scoring the same prompt under each adapter therefore picks a
-        # different worker, with nothing left to prefill on it.
-        for index, (adapter, worker_id) in enumerate(warmed.items()):
-            request_id = f"lora-score-{index}"
-            selection = await router.select_worker.remote(
-                request_id, token_ids, workers, MAX_TOKENS, lora_name=adapter
-            )
-            assert selection["worker_id"] == worker_id
-            # Every full block of the prompt matched there; only the trailing
-            # partial block is left to prefill.
-            assert selection["overlap_tokens"] == prompt_blocks * BLOCK_SIZE
-            assert (
-                selection["effective_prefill_tokens"]
-                == len(token_ids) - prompt_blocks * BLOCK_SIZE
-            )
-            # Free the reservation scoring booked, so it does not weigh on the
-            # load the next selection sees.
-            await router.on_request_completed.remote(request_id)
-
-        selection = await router.select_worker.remote(
-            "lora-score-base", token_ids, workers, MAX_TOKENS
-        )
-        assert selection["overlap_tokens"] == 0
-        assert selection["effective_prefill_tokens"] == len(token_ids)
-        await router.on_request_completed.remote("lora-score-base")
-
-        # End to end through HAProxy: a cache hit is only possible on the
-        # replica that prefilled this prompt under this adapter, so
-        # cached_tokens reports the routing decision as the GPU experienced it.
+        # A cache hit is only possible on the replica that prefilled this prompt
+        # under this adapter,.
         for adapter in warmed:
-            response = post_completion(FRONT_DOOR, adapter)
+            response = post_completion(app_url, adapter)
             assert response["model"] == adapter
             assert cached_tokens(response) >= prompt_blocks * BLOCK_SIZE
 
-        # Last, because it caches the prompt in the base model's namespace: the
-        # base model cannot reuse either adapter's blocks on the GPU either.
-        response = post_completion(FRONT_DOOR, BASE_MODEL_ID)
+        # Last, because it caches the prompt in the base model's namespace.
+        response = post_completion(app_url, BASE_MODEL_ID)
         assert response["model"] == BASE_MODEL_ID
         assert cached_tokens(response) == 0
 
     @pytest.mark.asyncio
-    @pytest.mark.timeout(1800)
-    async def test_unseen_prompt_stays_on_the_adapters_replica(self, deployed_handle):
+    @pytest.mark.timeout(600)
+    async def test_adapter_affinity_without_overlap(self, deployed_handle):
         """With no KV overlap to score on, an adapter request still lands on a
         replica already holding that adapter rather than one that would have to
         load it first."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
+        app_url = get_application_url(app_name=APP_NAME, use_localhost=True)
         endpoints = await registered_endpoints(deployed_handle, router)
         adapter_worker = sorted(endpoints)[0]
         post_completion(endpoints[adapter_worker], ADAPTER_A)
@@ -290,7 +236,7 @@ class TestLoraKvRouting:
 
         # Only the replica already serving adapter A is a multiplex candidate,
         # so that is the only place this prefix can end up cached.
-        response = post_completion(FRONT_DOOR, ADAPTER_A, prompt=UNSEEN_PROMPT)
+        response = post_completion(app_url, ADAPTER_A, prompt=UNSEEN_PROMPT)
         assert response["model"] == ADAPTER_A
         assert cached_tokens(response) == 0
 

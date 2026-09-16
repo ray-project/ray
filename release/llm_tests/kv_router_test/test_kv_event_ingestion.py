@@ -477,17 +477,16 @@ class TestKvEventIngestion:
                 lora_name="adapter-b",
             )
 
-            # Neither adapter sees the other's blocks...
+            # Neither adapter sees the other's blocks
             overlap_a = await tracker.get_kv_overlap_blocks(token_ids, "adapter-a")
             overlap_b = await tracker.get_kv_overlap_blocks(token_ids, "adapter-b")
             assert overlap_a[worker_b] == 0
             assert overlap_b[worker_a] == 0
-            # ...and the base model sees neither.
+            # The base model sees neither.
             base_overlap = await tracker.get_kv_overlap_blocks(token_ids)
             assert set(base_overlap.values()) == {0}
 
-            # So scoring the same prompt under each adapter picks its replica,
-            # with the whole prompt already cached there.
+            # Scoring the same prompt under each adapter picks its replica.
             for index, (lora_name, expected) in enumerate(
                 (("adapter-a", worker_a), ("adapter-b", worker_b))
             ):
