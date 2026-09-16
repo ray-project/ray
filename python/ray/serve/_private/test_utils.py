@@ -1838,9 +1838,7 @@ def wait_for_metric_export(metric_name, timeseries, count=None):
     any number of samples."""
 
     def check():
-        metrics = get_metric_dictionaries(
-            metric_name, timeseries=timeseries, wait=False
-        )
+        metrics = get_metric_samples(metric_name, timeseries=timeseries)
         if count is None:
             assert metrics, f"Metric {metric_name} not exported yet"
         else:
@@ -1856,3 +1854,18 @@ def check_metric_float(**kwargs):
     """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
     own 20s default is larger than most callers' retry budgets."""
     return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
+
+
+def get_metric_value(**kwargs):
+    """Value-reading sibling of check_metric_float, bounded the same way."""
+    return get_metric_float(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
+
+
+def get_metric_samples(metric_name, timeseries=None):
+    """One bounded scrape with no internal wait, so the caller paces its own retries."""
+    return get_metric_dictionaries(
+        metric_name,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        timeseries=timeseries,
+        wait=False,
+    )
