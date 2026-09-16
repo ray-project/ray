@@ -326,7 +326,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Keyed by plan rather than by child: a block is dispatched to exactly one
         # consumer, so which child is owed a slot only needs resolving at release.
         # Empty unless recovery is enabled and a plan is in flight.
-        self._reconstruction_outputs: Dict[PlanId, Dict[ParentBlockOutput, RefBundle]] = {}
+        self._reconstruction_outputs: Dict[
+            PlanId, Dict[ParentBlockOutput, RefBundle]
+        ] = {}
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size_override)
 
