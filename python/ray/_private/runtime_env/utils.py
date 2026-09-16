@@ -63,7 +63,7 @@ async def check_output_cmd(
             the first item in cmd.
         logger: The logger instance.
         cmd_index_gen: The cmd index generator, default is itertools.count(1).
-        **kwargs: All arguments are passed to the create_subprocess_exec.
+        kwargs: All arguments are passed to the create_subprocess_exec.
 
     Returns:
         The stdout of cmd.
@@ -113,5 +113,51 @@ async def check_output_cmd(
                 proc.kill()
             except ProcessLookupError:
                 pass
-            # Wait process exit.
-            await proc.wait()
+            # Wait process exit and reap it to avoid zombie <defunct> processes.
+            #
+            # Notes:
+            # 1. We must guarantee that `proc.wait()` is actually executed even
+            #    when the outer task is being cancelled (e.g. `PipPlugin.delete_uri`
+            #    calls `task.cancel()`). Without `asyncio.shield`, an already
+            #    pending CancelledError would cause the `await proc.wait()` to
+            #    return immediately without reaping the child, leaving a
+            #    `[python] <defunct>` zombie whose parent later dies and gets
+            #    re-parented to init (PPID=1).
+            # 2. We also add a bounded timeout so that a hung child cannot block
+            #    the agent forever; if wait times out we fall back to detaching
+            #    via `_transport.close()` which asks asyncio to eventually reap
+            #    the child through its SIGCHLD handler / subprocess watcher.
+            cancelled_during_cleanup = False
+            try:
+                await asyncio.shield(asyncio.wait_for(proc.wait(), timeout=10))
+            except asyncio.CancelledError:
+                # A cancellation was delivered while we were awaiting the
+                # shielded reap (e.g. the outer task was cancelled *after*
+                # communicate() already succeeded). We must NOT silently
+                # swallow this cancellation: after best-effort cleanup, we
+                # re-raise it below so the caller observes the cancel.
+                cancelled_during_cleanup = True
+                # Best-effort: let the asyncio child watcher reap it in the
+                # background so we don't leak a zombie.
+                transport = getattr(proc, "_transport", None)
+                if transport is not None:
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+            except asyncio.TimeoutError:
+                # Best-effort: let the asyncio child watcher reap it in the
+                # background so we don't leak a zombie.
+                transport = getattr(proc, "_transport", None)
+                if transport is not None:
+                    try:
+                        transport.close()
+                    except Exception:
+                        pass
+            except ProcessLookupError:
+                pass
+
+            if cancelled_during_cleanup:
+                # Propagate the cancellation that arrived during cleanup so
+                # that it isn't accidentally swallowed by the finally block.
+                raise asyncio.CancelledError()
