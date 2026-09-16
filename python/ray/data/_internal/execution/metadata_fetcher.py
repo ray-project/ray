@@ -373,14 +373,16 @@ class ThreadedMetadataFetcher(MetadataFetcher):
             for t in self._drained_tasks
             if not t.has_pending_emits() and not t.has_finished
         ]
-        self._drained_tasks.difference_update(
-            {t for t in self._drained_tasks if t.has_finished}
-        )
         for task in to_mark_done:
             if task.task_error is not None:
                 failures.append((task.operator_name, task.task_error))
             task.mark_done()
-        self._drained_tasks.difference_update(to_mark_done)
+        # Drop everything now complete: the tasks just finished above, plus any that
+        # may have been aborted by the executor due to object loss while they waited
+        # here.
+        self._drained_tasks.difference_update(
+            {t for t in self._drained_tasks if t.has_finished}
+        )
         return failures
 
     def _pop_result(self, ref: "ray.ObjectRef") -> Any:
