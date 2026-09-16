@@ -2359,6 +2359,55 @@ class TestReplicaNodeFloor:
         )
         assert to_stop[d_id] == {replicas[1], replicas[2]}
 
+    def test_downscale_counts_launching_replicas(self):
+        """A replica Serve has aimed at a node already holds that node."""
+        d_id = DeploymentID(name="d1")
+        cache = MockClusterNodeInfoCache()
+        cache.add_node("n1")
+        cache.add_node("n2")
+        scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        r0, r1, r2 = (
+            ReplicaID(unique_id=f"r{i}", deployment_id=d_id) for i in range(3)
+        )
+        scheduler.on_replica_running(r0, "n1")
+        scheduler.on_replica_running(r1, "n1")
+        scheduler._on_replica_launching(r2, target_node_id="n2")
+
+        to_stop = scheduler.schedule(
+            upscales={},
+            downscales={
+                d_id: DeploymentDownscaleRequest(deployment_id=d_id, num_to_stop=1)
+            },
+        )
+        # r2 comes first in priority but is the only replica headed for n2.
+        assert to_stop[d_id] == {r1}
+
+    def test_short_downscale_is_logged_once(self, caplog):
+        d_id = DeploymentID(name="d1")
+        cache = MockClusterNodeInfoCache()
+        cache.add_node("n1")
+
+        class NoStops(SchedulingConstraint):
+            def may_stop(self, replica_id, ctx):
+                return False
+
+        scheduler = make_scheduler(cache, PackNodeScorer(), constraints=[NoStops()])
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_replica_running(
+            ReplicaID(unique_id="r0", deployment_id=d_id), "n1"
+        )
+        downscale = {
+            d_id: DeploymentDownscaleRequest(deployment_id=d_id, num_to_stop=1)
+        }
+
+        with caplog.at_level(logging.INFO, logger="ray.serve"):
+            assert scheduler.schedule(upscales={}, downscales=downscale)[d_id] == set()
+            assert scheduler.schedule(upscales={}, downscales=downscale)[d_id] == set()
+
+        assert caplog.text.count("Stopping 0 of the 1 replicas") == 1
+        assert "'NoStops': 1" in caplog.text
+
     def test_downscale_floor_shrinks_with_target(self):
         d_id = DeploymentID(name="d1")
         cache = MockClusterNodeInfoCache()

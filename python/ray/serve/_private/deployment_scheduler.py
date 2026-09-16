@@ -430,9 +430,10 @@ class SchedulingContext:
 class DownscaleContext:
     """The state a constraint needs to veto the stop of one replica.
 
-    `replicas_per_node` counts only running replicas and shrinks as the
-    scheduler picks replicas to stop, so each veto sees the layout that the
-    already picked replicas would leave behind.
+    `node_by_replica` covers running replicas and launching replicas that
+    already have a target node. `replicas_per_node` counts the same set and
+    shrinks as the scheduler picks replicas to stop, so each veto sees the
+    layout that the already picked replicas would leave behind.
     """
 
     deployment_id: DeploymentID
@@ -685,6 +686,7 @@ class DeploymentScheduler(ABC):
         self._last_schedule_order_log_key: Optional[tuple] = None
         self._logged_placement_failures: Set[ReplicaID] = set()
         self._logged_skipped_rules: Set[Tuple[DeploymentID, str]] = set()
+        self._logged_short_downscales: Set[DeploymentID] = set()
 
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
@@ -747,6 +749,7 @@ class DeploymentScheduler(ABC):
         self._logged_skipped_rules = {
             key for key in self._logged_skipped_rules if key[0] != deployment_id
         }
+        self._logged_short_downscales.discard(deployment_id)
         del self._deployments[deployment_id]
 
     def on_replica_stopping(self, replica_id: ReplicaID) -> None:
@@ -1599,16 +1602,20 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for replica_id, node_id in reversed(list(running_nodes.items())):
             newest_first_by_node[node_id].append(replica_id)
 
+        node_by_replica = dict(running_nodes)
+        for replica_id, info in self._launching_replicas[deployment_id].items():
+            if info.target_node_id is not None:
+                node_by_replica[replica_id] = info.target_node_id
         ctx = DownscaleContext(
             deployment_id=deployment_id,
             target_num_replicas=len(replicas_priority)
             + len(running_nodes)
             - max_num_to_stop,
-            node_by_replica=running_nodes,
-            replicas_per_node=Counter(running_nodes.values()),
+            node_by_replica=node_by_replica,
+            replicas_per_node=Counter(node_by_replica.values()),
             node_labels={
                 node_id: self._cluster_node_info_cache.get_node_labels(node_id)
-                for node_id in set(running_nodes.values())
+                for node_id in set(node_by_replica.values())
             },
         )
         preferences = self._profile.preferences
@@ -1649,8 +1656,18 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replicas_to_stop.update(replicas_by_gang_id[gang_id])
             return replicas_to_stop
 
+        refusals: "Counter[str]" = Counter()
         for replica_id in replicas_priority:
-            if not all(c.may_stop(replica_id, ctx) for c in self._profile.constraints):
+            veto = next(
+                (
+                    type(c).__name__
+                    for c in self._profile.constraints
+                    if not c.may_stop(replica_id, ctx)
+                ),
+                None,
+            )
+            if veto is not None:
+                refusals[veto] += 1
                 continue
             replicas_to_stop.add(replica_id)
             stopped_node_id = ctx.node_by_replica.get(replica_id)
@@ -1660,6 +1677,17 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     del ctx.replicas_per_node[stopped_node_id]
             if len(replicas_to_stop) == max_num_to_stop:
                 break
+
+        if len(replicas_to_stop) < max_num_to_stop:
+            if deployment_id not in self._logged_short_downscales:
+                self._logged_short_downscales.add(deployment_id)
+                logger.info(
+                    f"Stopping {len(replicas_to_stop)} of the {max_num_to_stop} "
+                    f"replicas requested for {deployment_id}. Refusals by rule: "
+                    f"{dict(refusals)}."
+                )
+        else:
+            self._logged_short_downscales.discard(deployment_id)
         return replicas_to_stop
 
     def get_node_to_compact(
