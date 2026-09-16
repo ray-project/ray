@@ -632,6 +632,20 @@ py_test(
 )
 
 py_test(
+    name = "test_databricks_uc_datasource",
+    size = "medium",
+    srcs = ["tests/datasource/test_databricks_uc_datasource.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_datasink",
     size = "small",
     srcs = ["tests/datasource/test_datasink.py"],
@@ -1886,6 +1900,34 @@ py_test(
     name = "test_no_progress_guard",
     size = "medium",
     srcs = ["tests/test_no_progress_guard.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_rate_based_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_rate_based_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_rate_based_cluster_autoscaler_e2e",
+    size = "medium",
+    srcs = ["tests/test_rate_based_cluster_autoscaler_e2e.py"],
     tags = [
         "exclusive",
         "team:data",

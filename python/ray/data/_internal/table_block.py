@@ -127,12 +127,19 @@ class TableBlockBuilder(BlockBuilder):
             return True
         return self._concat_would_copy() and len(self._tables) > 1
 
-    def build(self) -> Block:
+    def build(self, *, additional_blocks: Sequence[Block] = ()) -> Block:
         # Preserve insertion order: previously-compacted tables (older) first,
         # then any rows added since the last compaction (newest) last.
         tables = list(self._tables)
         if self._columns:
             tables.append(self._table_from_pydict(self._columns))
+
+        for block in additional_blocks:
+            if not isinstance(block, self._block_type):
+                raise TypeError(
+                    f"Got a block of type {type(block)}, expected {self._block_type}."
+                )
+            tables.append(block)
 
         if len(tables) == 0:
             return self._empty_table()
