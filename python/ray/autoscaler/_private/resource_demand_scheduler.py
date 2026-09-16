@@ -241,7 +241,7 @@ class ResourceDemandScheduler:
         # groups that should be strictly spread.
         logger.debug(f"Placement group demands: {pending_placement_groups}")
         # TODO(Clark): Refactor placement group bundle demands such that their placement
-        # group provenance is mantained, since we need to keep an accounting of the
+        # group provenance is maintained, since we need to keep an accounting of the
         # cumulative CPU cores allocated as fulfilled during bin packing in order to
         # ensure that a placement group's cumulative allocation is under the placement
         # group's max CPU fraction per node. Without this, and placement group with many
