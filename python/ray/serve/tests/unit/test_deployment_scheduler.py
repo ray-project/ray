@@ -1993,7 +1993,9 @@ def make_scheduler(
         "fake-head-node-id",
         create_placement_group_fn or default_impl._default_create_placement_group,
         profile=SchedulingProfile(
-            constraints=constraints, scorer=scorer, preferences=preferences or []
+            constraints=tuple(constraints),
+            scorer=scorer,
+            preferences=tuple(preferences or ()),
         ),
     )
 
@@ -2109,6 +2111,13 @@ class TestSchedulingConstraints:
             downscales={},
         )
         assert scheduled_node_ids(on_scheduled) == [node_2, node_2]
+
+    def test_a_profile_is_immutable(self):
+        profile = SchedulingProfile(constraints=(), scorer=PackNodeScorer())
+        with pytest.raises(AttributeError):
+            profile.constraints = (MinReplicaNodesConstraint(2),)
+        with pytest.raises(AttributeError):
+            profile.constraints += (MinReplicaNodesConstraint(2),)
 
     def test_a_profile_can_omit_the_floor(self):
         """A strategy with no floor packs from the first replica."""

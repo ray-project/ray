@@ -4,10 +4,20 @@ import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from functools import total_ordering
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Tuple
+from typing import (
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import ray
 from ray._raylet import (  # type: ignore[attr-defined]
@@ -630,15 +640,15 @@ class SchedulingProfile:
     constraint, or soft, and a preference; the scheduler has no other hook.
     """
 
-    constraints: List[SchedulingConstraint]
+    constraints: Tuple[SchedulingConstraint, ...]
     scorer: NodeScorer
-    preferences: List[SchedulingPreference] = field(default_factory=list)
+    preferences: Tuple[SchedulingPreference, ...] = ()
 
 
 def default_scheduling_profile() -> SchedulingProfile:
     """The profile built from the cluster's environment variables."""
     return SchedulingProfile(
-        constraints=[MinReplicaNodesConstraint(RAY_SERVE_MIN_REPLICA_NODES)],
+        constraints=(MinReplicaNodesConstraint(RAY_SERVE_MIN_REPLICA_NODES),),
         scorer=PackNodeScorer()
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
         else SpreadNodeScorer(),
@@ -1386,7 +1396,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
     def _applicable_constraints(
         self,
-        constraints: List[SchedulingConstraint],
+        constraints: Sequence[SchedulingConstraint],
         scheduling_request: ReplicaSchedulingRequest,
     ) -> List[SchedulingConstraint]:
         active = []
@@ -1408,7 +1418,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
     @staticmethod
     def _collect_rules(
-        constraints: List[SchedulingConstraint], ctx: SchedulingContext
+        constraints: Sequence[SchedulingConstraint], ctx: SchedulingContext
     ) -> Tuple[Set[str], Dict[str, str]]:
         """Unions every node exclusion and merges every other label selector."""
         nodes_to_avoid: Set[str] = set()
@@ -1435,7 +1445,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         available_resources_per_node: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         ctx: SchedulingContext,
-        constraints: List[SchedulingConstraint],
+        constraints: Sequence[SchedulingConstraint],
     ) -> Tuple[Optional[str], Dict[str, str]]:
         """Returns the chosen node, if any, and the labels the bind must carry.
 
