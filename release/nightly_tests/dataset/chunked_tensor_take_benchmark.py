@@ -50,6 +50,26 @@ WORKLOADS = (
     Workload(
         "variable_wide_matched_ingest", (2000, 1697), 128, 32, 8, 64, (1000, 3000)
     ),
+    # Match the fixed image workload's total and per-block payload.
+    Workload(
+        "variable_image_matched_ingest", (224, 224, 3), 1024, 32, 32, 256, (112, 336)
+    ),
+    # Keep the matched wide total and average batch/buffer payload constant,
+    # while increasing row count fourfold to exercise per-row overhead.
+    Workload(
+        "variable_wide_many_rows_ingest", (500, 1697), 512, 32, 32, 256, (250, 750)
+    ),
+    # Same total and per-block payload as matched wide, with a 12:1 row-size
+    # spread. Each four-row source block contains one complete shape cycle.
+    Workload(
+        "variable_wide_skewed_ingest",
+        (2000, 1697),
+        128,
+        32,
+        8,
+        64,
+        (500, 500, 1000, 6000),
+    ),
     # Retain enough rows for rare large tensors to exceed the source-size gate.
     Workload(
         "variable_skewed_ingest", (8, 4), 2048, 32, 64, 1024, (8,) * 127 + (65536,)
