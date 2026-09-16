@@ -52,4 +52,4 @@ kubectl label rayjob rayjob-sample app.kubernetes.io/managed-by=kuberay-apiserve
 
 Go to `http://localhost:3000/ray/jobs` again. You can see `rayjob-sample` in the list of RayJob custom resources.
 
-![KubeRay Dashboard List of RayJobs](./images/kuberay-dashboard-rayjobs.png)
+![KubeRay dashboard list of RayJobs](./images/kuberay-dashboard-rayjobs.png)

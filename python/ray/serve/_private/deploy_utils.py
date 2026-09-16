@@ -84,17 +84,6 @@ def deploy_args_to_deployment_info(
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
 
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        # Model multiplexing relies on the multiplexed model ID being propagated through
-        # the proxy, which direct ingress bypasses (the model ID is never populated).
-        # Only the *statically* detectable case is caught here; dynamically-initialized
-        # multiplexing is caught at replica initialization.
-        if uses_multiplexing:
-            raise RayServeException(
-                f'Ingress deployment "{deployment_name}" in application "{app_name}" uses '
-                "model multiplexing (`@serve.multiplexed`), which is not supported on the "
-                "ingress deployment when direct ingress or HAProxy is enabled."
-            )
-
         # Floor the timeout so the controller's force-kill can't cut the
         # direct-ingress drain (min draining period) short.
         floor_s = (

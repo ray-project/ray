@@ -52,7 +52,7 @@ class ImageDatasource(FileBasedDatasource):
                 f"but got {len(size)} integers instead."
             )
 
-        if size is not None and (size[0] < 0 or size[1] < 0):
+        if size is not None and (size[0] <= 0 or size[1] <= 0):
             raise ValueError(
                 f"Expected `size` to contain positive integers, but got {size} instead."
             )

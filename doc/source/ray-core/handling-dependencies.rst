@@ -493,14 +493,16 @@ API Reference
 
 The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime_env.RuntimeEnv <ray.runtime_env.RuntimeEnv>` including one or more of the following fields:
 
-- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, or ``.tgz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), or (3) a URI to a remotely-stored archive (``.zip``, ``.tar.gz``, or ``.tgz``) containing the working directory for your job (no file size limit is enforced by Ray). See :ref:`remote-uris` for details.
-  The specified directory is downloaded to each node on the cluster, and Ray workers start in their node's copy of this directory.
+- ``working_dir`` (str): Specifies the working directory for the Ray workers. This must either be (1) a local existing directory with total size at most 500 MiB, (2) a local existing archive file (``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``) with total uncompressed size at most 500 MiB (Note: ``excludes`` has no effect), (3) a URI to a remotely-stored archive (``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``) containing the working directory for your job (no file size limit is enforced by Ray), or (4) a ``local://`` URI naming a directory that already exists on every node, such as one baked into your container image. See :ref:`remote-uris` for details.
+  In cases (1) through (3), the specified directory is downloaded to each node on the cluster, and Ray workers start in their node's copy of this directory. In case (4), Ray uploads and downloads nothing, and the workers start directly in that directory. See :ref:`in-image-working-dir`.
 
   - Examples
 
     - ``"."  # cwd``
 
     - ``"/src/my_project"``
+
+    - ``"local:///app"``
 
     - ``"/src/my_project.zip"``
 
@@ -517,7 +519,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   Note: If the local directory contains symbolic links, Ray follows the links and the files they point to are uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote archive (``.zip``, ``.tar.gz``, ``.tgz``) or wheel (``.whl``) file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local ``.whl`` file.
+  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote archive (``.zip``, ``.tar.gz``, ``.tgz``, ``.tar.xz``) or wheel (``.whl``) file (see :ref:`remote-uris` for details), (3) a Python module object, (4) a path to a local ``.whl`` file, or (5) a ``local://`` URI naming a directory that already exists on every node (see :ref:`in-image-working-dir`).
 
   - Examples of entries in the list:
 
@@ -808,6 +810,42 @@ My ``runtime_env`` was installed, but when I log into the node I can't import th
 
 The runtime environment is only active for the Ray worker processes; it does not install any packages "globally" on the node.
 
+.. _in-image-working-dir:
+
+Local URIs
+----------
+
+Your code may already be on every node. It might be baked into a container image, laid down by a node setup script, or stored on a shared filesystem. In that case, point ``working_dir`` or ``py_modules`` at it in place with a ``local://`` URI instead of uploading a copy:
+
+.. code-block:: python
+
+  runtime_env = {"working_dir": "local:///app"}
+  runtime_env = {"py_modules": ["local:///app/lib"]}
+
+The path must be absolute: ``local:///app``, not ``local://app``. On Windows, put the drive letter in that same position: ``local://C:/app``.
+
+Ray uses the directory in place. It doesn't package, upload, download, or unpack anything. The directory never counts against Ray's URI cache, and Ray never evicts or deletes it.
+
+For ``working_dir``, workers start in the directory and it's first on their ``PYTHONPATH``, exactly as with a downloaded ``working_dir``.
+
+For ``py_modules``, a ``local://`` entry adds that directory to ``PYTHONPATH``, so the modules inside it are importable at the top level. Given ``/app/lib/foo.py``:
+
+.. code-block:: python
+
+  runtime_env = {"py_modules": ["local:///app/lib"]}  # import foo
+
+This differs from passing a local directory path such as ``"/app/lib"``, which uploads the directory and makes the directory itself importable as a package with ``import lib``.
+
+.. warning::
+
+  Ray cannot tell when the contents of a ``local://`` directory change. When Ray uploads a ``working_dir``, it hashes the contents, so editing a file produces a different URI. A ``local://`` URI names a path rather than a snapshot, so it resolves to whatever is on disk when each worker starts. Two nodes can therefore run different code under the same URI, as can one node over time. Keep the contents identical on every node, and treat any change to them as a new deployment.
+
+Keep three more things in mind when you use a ``local://`` URI:
+
+- The directory must exist on every node that runs your tasks or actors. If it doesn't, runtime environment setup fails with an error naming the missing path.
+- ``excludes`` has no effect, because nothing is packaged.
+- A ``local://`` URI must name a directory. Ray rejects archives such as ``.zip``, ``.whl``, ``.tar.gz``, ``.tgz``, or ``.tar.xz`` when it validates the runtime environment, because it never unpacks them.
+
 .. _remote-uris:
 
 Remote URIs
@@ -828,7 +866,7 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
   runtime_env = {..., "working_dir": "/some_path/example_dir", ...}
 
 Suppose instead you want to host your files in your ``/some_path/example_dir`` directory remotely and provide a remote URI.
-You need to first compress the ``example_dir`` directory into a ``.zip`` or ``.tar.gz`` archive.
+You need to first compress the ``example_dir`` directory into a ``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz`` archive.
 
 There should be no other files or directories at the top level of the archive, other than ``example_dir``.
 You can use one of the following commands in the Terminal:
@@ -840,6 +878,8 @@ You can use one of the following commands in the Terminal:
     zip -r archive.zip example_dir
     # Using tar.gz:
     tar -czf archive.tar.gz example_dir
+    # Using tar.xz:
+    tar -cJf archive.tar.xz example_dir
 
 Run this command from the *parent directory* of the desired ``working_dir`` to ensure that the resulting archive contains a single top-level directory.
 In general, the archive's name and the top-level directory's name can be anything.
@@ -853,6 +893,8 @@ You can check that the archive contains a single top-level directory by running 
   zipinfo -1 archive.zip
   # For tar.gz:
   tar -tzf archive.tar.gz
+  # For tar.xz:
+  tar -tJf archive.tar.xz
   # example_dir/
   # example_dir/my_file_1.txt
   # example_dir/subdir/my_file_2.txt
@@ -865,12 +907,19 @@ Your ``runtime_env`` dictionary should contain:
 
   runtime_env = {..., "working_dir": "s3://example_bucket/example.zip", ...}
 
-You can also use ``.tar.gz`` or ``.tgz`` archives:
+You can also use ``.tar.gz``, ``.tgz``, or ``.tar.xz`` archives:
 
 .. testcode::
   :skipif: True
 
   runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.gz", ...}
+
+For example, an XZ-compressed archive can be specified in the same way:
+
+.. testcode::
+  :skipif: True
+
+  runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.xz", ...}
 
 .. warning::
 
@@ -880,7 +929,7 @@ You can also use ``.tar.gz`` or ``.tgz`` archives:
   To avoid this, use ``zip -r`` or ``tar -czf`` directly on the directory you want to compress from its parent's directory. For example, if you have a directory structure such as: ``a/b`` and you want to compress ``b``, issue the command from the directory ``a``.
   If Ray detects more than a single directory at the top level, it uses the entire archive instead of the top-level directory, which may lead to unexpected behavior.
 
-Remote URIs support ``.zip``, ``.tar.gz``, and ``.tgz`` archive formats. Four types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
+Remote URIs support ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archive formats. Supported schemes are ``http``, ``https``, ``s3``, ``gs``, ``azure``, ``abfss``, and ``file``. The most common remote storage types are described below:
 
 - ``HTTPS``: ``HTTPS`` refers to URLs that start with ``https``.
   These are particularly useful because remote Git providers (e.g. GitHub, Bitbucket, GitLab, etc.) use ``https`` URLs as download links for repository archives.
