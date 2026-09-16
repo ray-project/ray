@@ -570,7 +570,7 @@ def test_mixed_tensor_columns_share_indices_and_keep_independent_fallbacks(
     indices = np.array([95, 0, 17, 0], dtype=np.int32)
     normalized = []
     original_normalize = transform_pyarrow._try_normalize_take_indices
-    original_fixed = take_module.PreparedChunkedTensorTake.take
+    original_fixed = take_module.PreparedFixedShapedTensorTake.take
     fixed_calls = []
 
     def normalize(indices, rows):
@@ -586,7 +586,7 @@ def test_mixed_tensor_columns_share_indices_and_keep_independent_fallbacks(
         raise RuntimeError("injected variable take failure")
 
     monkeypatch.setattr(transform_pyarrow, "_try_normalize_take_indices", normalize)
-    monkeypatch.setattr(take_module.PreparedChunkedTensorTake, "take", take_fixed)
+    monkeypatch.setattr(take_module.PreparedFixedShapedTensorTake, "take", take_fixed)
     if fail_variable:
         monkeypatch.setattr(take_module.PreparedVariableShapedTensorTake, "take", fail)
     result = transform_pyarrow.take_table(table, indices)

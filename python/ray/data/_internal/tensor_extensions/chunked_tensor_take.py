@@ -122,7 +122,7 @@ def try_prepare_chunked_tensor_take(
     tensor_type = column.type
     if isinstance(tensor_type, ArrowVariableShapedTensorType):
         return _try_prepare_variable_tensor_take(column, max_output_rows)
-    layout = _prepare_tensor_layout(tensor_type)
+    layout = _prepare_fixed_tensor_layout(tensor_type)
     if layout is None:
         return _log_take_fallback(
             _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
@@ -161,7 +161,7 @@ def try_prepare_chunked_tensor_take(
     chunk_starts = []
     row_offset = 0
     for chunk in chunks:
-        view = _prepare_zero_copy_chunk_view(
+        view = _prepare_fixed_chunk_view(
             chunk,
             tensor_type,
             values_per_row,
@@ -175,7 +175,7 @@ def try_prepare_chunked_tensor_take(
         chunk_starts.append(row_offset)
         row_offset += len(chunk)
 
-    plan = PreparedChunkedTensorTake(
+    plan = PreparedFixedShapedTensorTake(
         tensor_type=tensor_type,
         values_per_row=values_per_row,
         value_dtype=value_dtype,
@@ -238,7 +238,7 @@ def _passes_fixed_size_gates(
     )
 
 
-def _prepare_tensor_layout(
+def _prepare_fixed_tensor_layout(
     tensor_type: Any,
 ) -> Optional[Tuple[int, int, np.dtype]]:
     """Return validated fixed numeric layout metadata, or ``None``.
@@ -271,13 +271,13 @@ def _prepare_tensor_layout(
     return values_per_row, values_per_row * value_dtype.itemsize, value_dtype
 
 
-def _prepare_zero_copy_chunk_view(
+def _prepare_fixed_chunk_view(
     chunk: Any,
     tensor_type: Any,
     values_per_row: int,
     value_dtype: np.dtype,
 ) -> Optional[np.ndarray]:
-    """Return a validated zero-copy chunk view, or ``None``.
+    """Return a validated zero-copy fixed-shape chunk view, or ``None``.
 
     Constructing the view from the numeric child buffer makes its shape, dtype,
     contiguity, ownership, and buffer bounds explicit. The logical list
@@ -321,8 +321,8 @@ def _prepare_zero_copy_chunk_view(
     )
 
 
-class PreparedChunkedTensorTake(NamedTuple):
-    """Executable tensor take prepared from one immutable chunked column."""
+class PreparedFixedShapedTensorTake(NamedTuple):
+    """Fixed-shape tensor take prepared from an immutable chunked column."""
 
     tensor_type: Any
     values_per_row: int
@@ -660,7 +660,9 @@ class PreparedVariableShapedTensorTake(NamedTuple):
         )
 
 
-PreparedTensorTake = Union[PreparedChunkedTensorTake, PreparedVariableShapedTensorTake]
+PreparedTensorTake = Union[
+    PreparedFixedShapedTensorTake, PreparedVariableShapedTensorTake
+]
 
 
 def _gather_monotonic_chunk_ids(

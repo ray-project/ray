@@ -448,7 +448,7 @@ def test_shuffling_batcher_production_tensors(
     plan_type = (
         chunked_tensor_take.PreparedVariableShapedTensorTake
         if variable_shape
-        else chunked_tensor_take.PreparedChunkedTensorTake
+        else chunked_tensor_take.PreparedFixedShapedTensorTake
     )
     original = plan_type.take
 
