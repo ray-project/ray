@@ -462,7 +462,8 @@ class DownscaleContext:
     """The state a constraint needs to veto the stop of one replica.
 
     `node_by_replica` covers running replicas and launching replicas that
-    already have a target node. `replicas_per_node` counts the same set and
+    already have a target node, on active nodes only. `replicas_per_node`
+    counts the same set and
     shrinks as the scheduler picks replicas to stop, so each veto sees the
     layout that the already picked replicas would leave behind.
     """
@@ -1671,10 +1672,18 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for replica_id, node_id in reversed(list(running_nodes.items())):
             newest_first_by_node[node_id].append(replica_id)
 
-        node_by_replica = dict(running_nodes)
+        # A draining node is leaving, so a replica there cannot count toward the
+        # floor. Placement already filters to active nodes; this matches it.
+        active_nodes = self._cluster_node_info_cache.get_active_node_ids()
+        node_by_replica = {
+            replica_id: node_id
+            for replica_id, node_id in running_nodes.items()
+            if node_id in active_nodes
+        }
         for replica_id, info in self._launching_replicas[deployment_id].items():
-            if info.target_node_id is not None:
-                node_by_replica[replica_id] = info.target_node_id
+            launch_node = info.target_node_id
+            if launch_node is not None and launch_node in active_nodes:
+                node_by_replica[replica_id] = launch_node
         ctx = DownscaleContext(
             deployment_id=deployment_id,
             target_num_replicas=len(replicas_priority)

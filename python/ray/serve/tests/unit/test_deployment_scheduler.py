@@ -2476,6 +2476,33 @@ class TestReplicaNodeFloor:
         assert caplog.text.count("Stopping 0 of the 1 replicas") == 1
         assert "'NoStops': 1" in caplog.text
 
+    def test_downscale_ignores_replicas_on_draining_nodes(self):
+        """A replica on a node that is leaving does not hold the floor up."""
+        d_id = DeploymentID(name="d1")
+        cache = MockClusterNodeInfoCache()
+        cache.add_node("n1")
+        cache.add_node("n2")
+        cache.add_node("n3")
+        cache.draining_nodes["n1"] = 1
+        scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        a1, b, d1 = (
+            ReplicaID(unique_id=n, deployment_id=d_id) for n in ("a1", "b", "d1")
+        )
+        scheduler.on_replica_running(a1, "n1")
+        scheduler.on_replica_running(b, "n2")
+        scheduler.on_replica_running(d1, "n3")
+
+        to_stop = scheduler.schedule(
+            upscales={},
+            downscales={
+                d_id: DeploymentDownscaleRequest(deployment_id=d_id, num_to_stop=1)
+            },
+        )
+        # Without n1 the deployment covers exactly the floor, so neither active
+        # replica may go. The one on the draining node is the only choice.
+        assert to_stop[d_id] == {a1}
+
     def test_downscale_floor_shrinks_with_target(self):
         d_id = DeploymentID(name="d1")
         cache = MockClusterNodeInfoCache()
