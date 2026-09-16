@@ -17,6 +17,12 @@ from ray.experimental.rdt.util import (
     set_nixl_cuda_stream,
 )
 
+from ray.experimental.rdt.tpu_sync_tensor_transport import (
+    TpuSyncCommunicatorMetadata,
+    TpuSyncTensorTransport,
+    TpuSyncTransportMetadata,
+)
+
 __all__ = [
     "RDTManager",
     "wait_tensor_freed",
@@ -30,4 +36,7 @@ __all__ = [
     "CommunicatorMetadata",
     "set_target_for_ref",
     "set_target_device_for_ref",
+    "TpuSyncTensorTransport",
+    "TpuSyncTransportMetadata",
+    "TpuSyncCommunicatorMetadata",
 ]
