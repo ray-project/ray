@@ -61,7 +61,9 @@ class TestReadImages:
             (64, 64, 3),
         ]
 
-    @pytest.mark.parametrize("size", [(-32, 32), (32, -32), (-32, -32)])
+    @pytest.mark.parametrize(
+        "size", [(-32, 32), (32, -32), (-32, -32), (0, 32), (32, 0), (0, 0)]
+    )
     def test_invalid_size(self, ray_start_regular_shared, size):
         with pytest.raises(ValueError):
             ray.data.read_images("example://image-datasets/simple", size=size)
