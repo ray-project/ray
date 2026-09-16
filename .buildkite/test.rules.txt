@@ -36,7 +36,7 @@
 ! core_python cpp core_cpp java workflow cgraphs_direct_transport dashboard
 ! ray_client runtime_env_container
 ! data dask serve ml tune train train_gpu llm rllib rllib_gpu rllib_directly
-! linux_wheels macos_wheels docker doc doc_api doc_redirects python_dependencies min_build tools windows
+! linux_wheels macos_wheels docker doc doc_api doc_redirects python_dependencies deplock_check min_build tools windows
 ! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 
@@ -177,9 +177,18 @@ python/deplocks/ci/macos_depset_py*
 # change can alter stub generation and therefore what the API-consistency
 # checks see. Emit `doc_api` as well so those checks run on a docs dependency
 # bump.
+#
+# Emit `deplock_check`, not `python_dependencies`. The docs deplock feeds only
+# the Sphinx docbuild image; it is never installed into any Ray wheel or image,
+# so the wheel/image build matrix (which `python_dependencies` fans out to)
+# cannot be affected by a docs-only lock change. `deplock_check` triggers just
+# the `raydepsets --check` lock-consistency job in dependencies.rayci.yml, which
+# validates `--all-configs` (docs included). Every real dependency rule still
+# emits `python_dependencies`, and that job carries both tags, so lock
+# consistency is still verified on ordinary dependency changes.
 python/deplocks/docs/*.lock
 ci/raydepsets/configs/docs.depsets.yaml
-@ doc doc_api python_dependencies
+@ doc doc_api deplock_check
 ;
 
 # Raydepsets-generated lock files and raydepsets configs that drive
@@ -705,7 +714,6 @@ SECURITY.md
 CONTRIBUTING.rst
 LICENSE
 pylintrc
-semgrep.yml
 setup_hooks.sh
 .pre-commit-config.yaml
 .isort.cfg

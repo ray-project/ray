@@ -471,7 +471,7 @@ def prefetch_batches_locally(
         stats: Dataset stats object used to store ref bundle retrieval time.
 
     Yields:
-        Block: Block references (as ObjectRefs), in order.
+        ObjectRef[Block]: Block references, in order.
     """
 
     def get_next_ref_bundle() -> RefBundle:

@@ -1,3 +1,5 @@
+import math
+
 import pytest
 
 from ray.data._internal.cluster_autoscaler.throughput_solver import (
@@ -5,6 +7,7 @@ from ray.data._internal.cluster_autoscaler.throughput_solver import (
     compute_optimal_throughput,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.util import get_max_task_capacity
 
 
 class TestComputeOptimalThroughput:
@@ -142,6 +145,22 @@ class TestAllocateResources:
         )
         assert result["A"] == ExecutionResources(cpu=1)
         assert result["B"] == ExecutionResources(cpu=2)
+
+    def test_infinite_throughput_does_not_produce_nan(self):
+        """Unbounded throughput scales a 0 requirement by an infinite task count."""
+        # A GPU-only operator requires 0 CPUs, so scaling leaves CPU as `0 * inf`.
+        allocation = allocate_resources(
+            float("inf"),
+            rates={"A": 1.0},
+            resource_requirements={"A": ExecutionResources(gpu=1)},
+        )["A"]
+
+        assert allocation.cpu == 0
+        assert math.isinf(allocation.gpu)
+
+        # Dividing by a non-zero requirement is where the NaN surfaced, as
+        # `ValueError: cannot convert float NaN to integer`.
+        assert get_max_task_capacity(allocation, ExecutionResources(cpu=1)) == 0
 
 
 if __name__ == "__main__":

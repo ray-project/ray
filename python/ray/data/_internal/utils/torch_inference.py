@@ -250,7 +250,9 @@ def make_torch_inference_callable(user_cls: Type[TorchInference]) -> "CallableCl
             )
             validate_processed_batch(out, self._ti_device, user_cls)
 
-            cpu_out = move_tensors_to_device(out, _CPU_DEVICE, non_blocking=False)
+            cpu_out = move_tensors_to_device(
+                out, _CPU_DEVICE, non_blocking=False, concat=False
+            )
 
             return self._ti_user.finalize(input_batch, cpu_out, output_other)
 
