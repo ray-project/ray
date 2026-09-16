@@ -24,44 +24,51 @@ import numpy as np
 from benchmark import Benchmark
 
 import ray
+from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 
 
 @dataclass(frozen=True)
 class Workload:
     name: str
-    shape: Tuple[int, ...]
+    # One shape produces dense tensors; multiple shapes cycle by global row ID.
+    # Each shape is complete, so any dimension may vary between rows.
+    shapes: Tuple[Tuple[int, ...], ...]
     rows: int
     blocks: int
     batch_size: int
     shuffle_buffer_rows: int
-    # A nonempty cycle varies the first dimension and uses the normal ragged
-    # NumPy batch interface. Repeated small dimensions model rare large rows.
-    leading_dims: Tuple[int, ...] = ()
+
+    def shape_for_row(self, row_id: int) -> Tuple[int, ...]:
+        return self.shapes[row_id % len(self.shapes)]
 
 
 WORKLOADS = (
-    Workload("image_tensor_ingest", (224, 224, 3), 1024, 32, 32, 256),
-    Workload("wide_tensor_ingest", (2000, 1697), 128, 32, 8, 64),
-    Workload("variable_short_ingest", (4, 8), 4096, 32, 64, 256, (4, 8, 16)),
+    Workload("image_tensor_ingest", ((224, 224, 3),), 1024, 32, 32, 256),
+    Workload("wide_tensor_ingest", ((2000, 1697),), 128, 32, 8, 64),
+    Workload("variable_short_ingest", ((4, 8), (8, 8), (16, 8)), 4096, 32, 64, 256),
     # Match wide_tensor_ingest's row count, average payload, and shuffle settings.
     # Each four-row source block contains two short and two long tensors.
     Workload(
-        "variable_wide_matched_ingest", (2000, 1697), 128, 32, 8, 64, (1000, 3000)
+        "variable_wide_matched_ingest", ((1000, 1697), (3000, 1697)), 128, 32, 8, 64
     ),
     # Match the fixed image workload's total and per-block payload.
     Workload(
-        "variable_image_matched_ingest", (224, 224, 3), 1024, 32, 32, 256, (112, 336)
+        "variable_image_matched_ingest",
+        ((112, 224, 3), (336, 224, 3)),
+        1024,
+        32,
+        32,
+        256,
     ),
     # Same total and per-block payload as matched wide, with a 12:1 row-size
     # spread. Each four-row source block contains one complete shape cycle.
     Workload(
         "variable_wide_skewed_ingest",
-        (2000, 1697),
+        ((500, 1697), (500, 1697), (1000, 1697), (6000, 1697)),
         128,
         32,
         8,
         64,
-        (500, 500, 1000, 6000),
     ),
 )
 
@@ -69,18 +76,19 @@ WORKLOADS = (
 def make_tensors(
     batch: Dict[str, np.ndarray],
     *,
-    shape: Tuple[int, ...],
-    leading_dims: Tuple[int, ...] = ()
+    workload: Workload,
 ) -> Dict[str, np.ndarray]:
     """Create tensors through the normal dense or ragged NumPy batch interface."""
     row_ids = batch["id"]
-    if leading_dims:
-        values = np.empty(len(row_ids), dtype=object)
-        for i, row_id in enumerate(row_ids):
-            row_shape = (leading_dims[int(row_id) % len(leading_dims)], *shape[1:])
-            values[i] = np.full(row_shape, row_id, dtype=np.float32)
+    if len(workload.shapes) > 1:
+        values = create_ragged_ndarray(
+            [
+                np.full(workload.shape_for_row(int(row_id)), row_id, dtype=np.float32)
+                for row_id in row_ids
+            ]
+        )
     else:
-        values = np.empty((len(row_ids), *shape), dtype=np.float32)
+        values = np.empty((len(row_ids), *workload.shapes[0]), dtype=np.float32)
         values.reshape(len(row_ids), -1)[:] = row_ids[:, None]
     return {"id": row_ids, "tensor": values}
 
@@ -96,7 +104,7 @@ def run_pipeline(workload: Workload, *, validate_payload: bool) -> np.ndarray:
     ).map_batches(
         make_tensors,
         batch_format="numpy",
-        fn_kwargs={"shape": workload.shape, "leading_dims": workload.leading_dims},
+        fn_kwargs={"workload": workload},
     )
     row_ids = []
     for batch in dataset.iter_batches(
@@ -107,18 +115,15 @@ def run_pipeline(workload: Workload, *, validate_payload: bool) -> np.ndarray:
         prefetch_batches=1,
     ):
         ids, values = batch["id"], batch["tensor"]
-        if workload.leading_dims:
+        if len(workload.shapes) > 1:
             for row_id, value in zip(ids, values):
-                shape = (
-                    workload.leading_dims[int(row_id) % len(workload.leading_dims)],
-                    *workload.shape[1:],
-                )
+                shape = workload.shape_for_row(int(row_id))
                 assert value.shape == shape and value.dtype == np.float32
                 assert value.flat[0] == row_id
                 if validate_payload:
                     assert value.min() == row_id and value.max() == row_id
         else:
-            assert values.shape == (len(ids), *workload.shape)
+            assert values.shape == (len(ids), *workload.shapes[0])
             assert values.dtype == np.float32
             flat_values = values.reshape(len(ids), -1)
             np.testing.assert_array_equal(flat_values[:, 0], ids)
@@ -142,17 +147,12 @@ def measure_pipeline(
         durations.append(time.perf_counter() - start)
         np.testing.assert_array_equal(actual_order, expected_order)
     median = statistics.median(durations)
-    if workload.leading_dims:
-        payload_values = sum(
-            workload.leading_dims[i % len(workload.leading_dims)]
-            for i in range(workload.rows)
-        ) * math.prod(workload.shape[1:])
-    else:
-        payload_values = workload.rows * math.prod(workload.shape)
+    payload_values = sum(
+        math.prod(workload.shape_for_row(i)) for i in range(workload.rows)
+    )
     return {
         "fast_path_enabled": os.environ.get("RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE", "1"),
-        "shape": workload.shape,
-        "leading_dims": workload.leading_dims,
+        "shapes": workload.shapes,
         "rows_per_iteration": workload.rows,
         "source_blocks": workload.blocks,
         "batch_size": workload.batch_size,
