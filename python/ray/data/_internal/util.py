@@ -824,9 +824,18 @@ def unify_block_metadata_schema(
     # valid schemas from all such blocks.
 
     schemas_to_unify = []
+    empty_block_schemas = []
     for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+        if m.schema is None:
+            continue
+        if m.num_rows is None or m.num_rows > 0:
             schemas_to_unify.append(m.schema)
+        else:
+            empty_block_schemas.append(m.schema)
+    if not schemas_to_unify:
+        # If all blocks are empty, fall back to their schemas: an empty block
+        # (e.g., an empty Arrow table) can still carry a valid schema.
+        schemas_to_unify = empty_block_schemas
     return unify_schemas_with_validation(schemas_to_unify)
 
 
@@ -851,11 +860,19 @@ def unify_ref_bundles_schema(
     ref_bundles: List["RefBundle"],
 ) -> Optional["Schema"]:
     schemas_to_unify = []
+    empty_bundle_schemas = []
     for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
+        if bundle.schema is None:
+            continue
+        num_rows = bundle.num_rows()
+        if num_rows is None or num_rows > 0:
             schemas_to_unify.append(bundle.schema)
+        else:
+            empty_bundle_schemas.append(bundle.schema)
+    if not schemas_to_unify:
+        # If all bundles are empty, fall back to their schemas: an empty bundle
+        # (e.g., an empty Arrow table) can still carry a valid schema.
+        schemas_to_unify = empty_bundle_schemas
     return unify_schemas_with_validation(schemas_to_unify)
 
 
