@@ -49,8 +49,6 @@ const WORKER: Worker = {
   memoryInfo: {
     rss: 75,
     vms: 0,
-    pageins: 0,
-    pfaults: 0,
   },
   coreWorkerStats: [
     {
@@ -128,6 +126,19 @@ describe("WorkerRow", () => {
     expect(screen.getByText(/14%/)).toBeVisible();
     // Memory Usage
     expect(screen.getByText(/75\.0000B\/100\.0000B\(75\.0%\)/)).toBeVisible();
+  });
+
+  it("renders without crashing when memoryInfo is null", async () => {
+    // psutil's Process.as_dict() uses ad_value=None, so an AccessDenied or
+    // ZombieProcess on memory_info nulls the whole attribute, and the reporter
+    // schema types it Optional[MemoryInfo].
+    render(<WorkerRow node={NODE} worker={{ ...WORKER, memoryInfo: null }} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    await screen.findByText("echo hi");
+    expect(screen.getByText(/14%/)).toBeVisible();
+    expect(screen.queryByText(/75\.0000B/)).not.toBeInTheDocument();
   });
 
   it("renders a link to the Actor Detail page if the worker is an actor", async () => {

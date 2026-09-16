@@ -760,19 +760,20 @@ const ActorTable = ({
                     </PercentageBar>
                   </TableCell>
                   <TableCell>
-                    {mem && (
+                    {mem && processStats?.memoryInfo ? (
                       <PercentageBar
-                        num={processStats?.memoryInfo.rss}
+                        num={processStats.memoryInfo.rss}
                         total={mem[0]}
                       >
-                        {memoryConverter(processStats?.memoryInfo.rss)}/
+                        {memoryConverter(processStats.memoryInfo.rss)}/
                         {memoryConverter(mem[0])}(
-                        {(
-                          (processStats?.memoryInfo.rss / mem[0]) *
-                          100
-                        ).toFixed(1)}
+                        {((processStats.memoryInfo.rss / mem[0]) * 100).toFixed(
+                          1,
+                        )}
                         %)
                       </PercentageBar>
+                    ) : (
+                      "-"
                     )}
                   </TableCell>
                   {effectiveShowAcceleratorColumns && (

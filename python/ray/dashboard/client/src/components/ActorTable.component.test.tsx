@@ -399,4 +399,22 @@ describe("ActorTable", () => {
     expect(screen.getByText("GPU")).toBeInTheDocument();
     expect(screen.getByText("GRAM")).toBeInTheDocument();
   });
+
+  it("renders without crashing when processStats.memoryInfo is null", async () => {
+    // psutil's Process.as_dict() uses ad_value=None, so an AccessDenied or
+    // ZombieProcess on memory_info nulls the whole attribute, and the reporter
+    // schema types it Optional[MemoryInfo].
+    const { processStats } = MOCK_ACTORS.ACTOR_1;
+    const ACTORS = {
+      ACTOR_1: {
+        ...MOCK_ACTORS.ACTOR_1,
+        mem: [100, 95, 5, 5],
+        processStats: processStats && { ...processStats, memoryInfo: null },
+      },
+    } as unknown as { [actorId: string]: ActorDetail };
+
+    render(<ActorTable actors={ACTORS} />, { wrapper: TEST_APP_WRAPPER });
+
+    expect(await screen.findByText("ACTOR_1")).toBeInTheDocument();
+  });
 });

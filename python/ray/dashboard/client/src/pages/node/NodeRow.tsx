@@ -314,12 +314,14 @@ export const WorkerRow = ({
         </PercentageBar>
       </TableCell>
       <TableCell>
-        {mem && (
+        {mem && memoryInfo ? (
           <PercentageBar num={memoryInfo.rss} total={mem[0]}>
             {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
             {((memoryInfo.rss / mem[0]) * 100).toFixed(1)}
             %)
           </PercentageBar>
+        ) : (
+          "-"
         )}
       </TableCell>
       {showAcceleratorColumns && (
