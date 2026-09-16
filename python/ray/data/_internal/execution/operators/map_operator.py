@@ -285,7 +285,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # resubmittable bundle. Costs no memory: `InputDataBuffer` indexes rather than
         # pops, keeping these refs alive for the whole run anyway. Empty unless
         # recovery is enabled and this op reads straight from an `InputDataBuffer`
-        # (see `_anchors_seed_input`).
+        # (see `_is_seed_operator`).
         self._seed_task_inputs: Dict[str, RefBundle] = {}
         # block hex -> queue of (seed task id, plan id) for a seed input queued for
         # re-injection. A seed's input comes from the source, not from a task, so no
@@ -671,10 +671,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         """
         pass
 
-    def _anchors_seed_input(self) -> bool:
-        """Whether this op anchors a seed input for object-loss recovery.
+    def _is_seed_operator(self) -> bool:
+        """Whether this op is a seed operator for object-loss recovery.
 
-        An op anchors when it consumes directly from an ``InputDataBuffer`` -- a
+        It is one when it consumes directly from an ``InputDataBuffer`` -- a
         source with no upstream lineage, whose output bundle is therefore the
         durable, resubmittable seed input. This covers, uniformly:
           - ``Read`` (V1 / ``range``, input is a ``ReadTask``) and ``ReadFiles``
@@ -903,7 +903,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._lineage_tracker.register_task_submission(
                 data_task_id, dependencies, plan_id
             )
-            if self._anchors_seed_input():
+            if self._is_seed_operator():
                 # A seed consumes straight from an `InputDataBuffer`, so its input is
                 # durable and resubmittable. `register_task_failed` hands back seed
                 # *ids* and the tracker stores no `RefBundle`s, so keep it here.
@@ -927,7 +927,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             if data_task_id is not None:
                 # Attribute the block to (this task, output_index) so whichever
                 # downstream task consumes it can name its own dependencies.
-                self._lineage_tracker.register_output(
+                self._lineage_tracker.register_block_output(
                     data_task_id, output.block_refs[0].hex(), output_index
                 )
                 if plan_id is not None:
