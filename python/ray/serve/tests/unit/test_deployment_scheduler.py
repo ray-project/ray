@@ -38,6 +38,7 @@ from ray.serve._private.deployment_scheduler import (
     Resources,
     SchedulingConstraint,
     SchedulingContext,
+    SchedulingPreference,
     SchedulingProfile,
     SpreadDeploymentSchedulingPolicy,
     SpreadNodeScorer,
@@ -1983,6 +1984,7 @@ def make_scheduler(
     min_replica_nodes: int = 1,
     create_placement_group_fn=None,
     constraints=None,
+    preferences=None,
 ):
     if constraints is None:
         constraints = [MinReplicaNodesConstraint(min_replica_nodes)]
@@ -1990,7 +1992,9 @@ def make_scheduler(
         cluster_node_info_cache,
         "fake-head-node-id",
         create_placement_group_fn or default_impl._default_create_placement_group,
-        profile=SchedulingProfile(constraints=constraints, scorer=scorer),
+        profile=SchedulingProfile(
+            constraints=constraints, scorer=scorer, preferences=preferences or []
+        ),
     )
 
 
@@ -2139,6 +2143,7 @@ class TestSchedulingConstraints:
             target_num_replicas=2,
             node_by_replica=node_by_replica,
             replicas_per_node=Counter(node_by_replica.values()),
+            node_labels={},
         )
         # n1 holds two replicas, so either may go. n2 holds the last one on it.
         assert constraint.may_stop(replicas[0], ctx) is True
@@ -2432,6 +2437,61 @@ class TestSpreadNodeScorer:
         assert (
             on_scheduled.call_args.args[0]._options["scheduling_strategy"] == "SPREAD"
         )
+
+
+class TestSchedulingPreferences:
+    def test_node_preference_breaks_scorer_ties(self):
+        d_id = DeploymentID(name="d1")
+        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(node_1, {"CPU": 4})
+        cache.add_node(node_2, {"CPU": 4})
+
+        class PreferSecond(SchedulingPreference):
+            def node_preference(self, node_id, ctx):
+                return 0 if node_id == node_2 else 1
+
+        scheduler = make_scheduler(
+            cache, PackNodeScorer(), preferences=[PreferSecond()]
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={d_id: [make_request(d_id, "r0", 1, on_scheduled)]},
+            downscales={},
+        )
+        assert scheduled_node_ids(on_scheduled) == [node_2]
+
+    def test_stop_preference_reorders_equal_nodes(self):
+        d_id = DeploymentID(name="d1")
+        cache = MockClusterNodeInfoCache()
+        cache.add_node("n1")
+        cache.add_node("n2")
+
+        class StopFromSecondFirst(SchedulingPreference):
+            def stop_preference(self, node_id, ctx):
+                return 0 if node_id == "n2" else 1
+
+        scheduler = make_scheduler(
+            cache, PackNodeScorer(), preferences=[StopFromSecondFirst()]
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        r1 = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2 = ReplicaID(unique_id="r2", deployment_id=d_id)
+        scheduler.on_replica_running(r1, "n1")
+        scheduler.on_replica_running(r2, "n2")
+
+        to_stop = scheduler.schedule(
+            upscales={},
+            downscales={
+                d_id: DeploymentDownscaleRequest(deployment_id=d_id, num_to_stop=1)
+            },
+        )
+        assert to_stop[d_id] == {r2}
 
 
 def test_spread_pg_still_carries_the_floor_selector():

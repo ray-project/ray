@@ -4,7 +4,7 @@ import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from functools import total_ordering
 from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Tuple
@@ -439,6 +439,7 @@ class DownscaleContext:
     target_num_replicas: int
     node_by_replica: Dict[ReplicaID, str]
     replicas_per_node: "Counter[str]"
+    node_labels: Dict[str, Dict[str, str]]
 
 
 class SchedulingConstraint:
@@ -516,6 +517,21 @@ class LabelSelectorConstraint(SchedulingConstraint):
         return _filter_nodes_by_label_selector(
             candidates, self._label_selector, ctx.node_labels
         )
+
+
+class SchedulingPreference:
+    """One soft rule. It orders otherwise equal choices and never excludes one.
+
+    `node_preference` breaks ties between nodes the scorer rates equally, and
+    `stop_preference` breaks ties between nodes the downscale order rates
+    equally. Lower keys win. Each default is neutral.
+    """
+
+    def node_preference(self, node_id: str, ctx: SchedulingContext) -> Any:
+        return 0
+
+    def stop_preference(self, node_id: str, ctx: DownscaleContext) -> Any:
+        return 0
 
 
 class NodeScorer(ABC):
@@ -609,11 +625,13 @@ class SchedulingProfile:
 
     Strategies share constraint objects rather than reimplement them. A strategy
     that wants no floor omits `MinReplicaNodesConstraint`; one that wants a
-    different floor names it with a different value.
+    different floor names it with a different value. A rule is hard, and a
+    constraint, or soft, and a preference; the scheduler has no other hook.
     """
 
     constraints: List[SchedulingConstraint]
     scorer: NodeScorer
+    preferences: List[SchedulingPreference] = field(default_factory=list)
 
 
 def default_scheduling_profile() -> SchedulingProfile:
@@ -1431,7 +1449,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for constraint in constraints:
             eligible = constraint.eligible(eligible, ctx)
 
-        tie_break_key = self._node_tie_break_key(ctx.deployment_id)
+        tie_break_key = self._node_preference_key(ctx)
         for required_resources, label_selectors in self._build_placement_candidates(
             scheduling_request
         ):
@@ -1449,10 +1467,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 return target_node, required_labels
         return None, required_labels
 
-    def _node_tie_break_key(
-        self, deployment_id: DeploymentID
+    def _node_preference_key(
+        self, ctx: SchedulingContext
     ) -> Optional[Callable[[str], Any]]:
-        return None
+        preferences = self._profile.preferences
+        if not preferences:
+            return None
+        return lambda node_id: tuple(
+            p.node_preference(node_id, ctx) for p in preferences
+        )
 
     def _bind_replica(
         self,
@@ -1576,9 +1599,23 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         for replica_id, node_id in reversed(list(running_nodes.items())):
             newest_first_by_node[node_id].append(replica_id)
 
+        ctx = DownscaleContext(
+            deployment_id=deployment_id,
+            target_num_replicas=len(replicas_priority)
+            + len(running_nodes)
+            - max_num_to_stop,
+            node_by_replica=running_nodes,
+            replicas_per_node=Counter(running_nodes.values()),
+            node_labels={
+                node_id: self._cluster_node_info_cache.get_node_labels(node_id)
+                for node_id in set(running_nodes.values())
+            },
+        )
+        preferences = self._profile.preferences
+
         def scale_down_priority(
             node_and_replicas: Tuple[str, Set[ReplicaID]],
-        ) -> Tuple[int, int, int]:
+        ) -> Tuple[Any, ...]:
             node_id, all_replicas = node_and_replicas
             node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
             match_labels = not labels_to_check or any(
@@ -1589,6 +1626,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 int(node_id == self._head_node_id),
                 int(match_labels),
                 len(all_replicas),
+                *(p.stop_preference(node_id, ctx) for p in preferences),
             )
 
         for node_id, _ in sorted(
@@ -1611,12 +1649,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replicas_to_stop.update(replicas_by_gang_id[gang_id])
             return replicas_to_stop
 
-        ctx = DownscaleContext(
-            deployment_id=deployment_id,
-            target_num_replicas=len(replicas_priority) - max_num_to_stop,
-            node_by_replica=running_nodes,
-            replicas_per_node=Counter(running_nodes.values()),
-        )
         for replica_id in replicas_priority:
             if not all(c.may_stop(replica_id, ctx) for c in self._profile.constraints):
                 continue
