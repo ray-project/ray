@@ -226,7 +226,7 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 # Experimental: enable application-level recovery of lost objects by tracking
-# per-read-task lineage and resubmitting the affected seed input. Opt-in.
+# lineage and resubmitting the necessary seed inputs and reconstruction tasks. Opt-in.
 DEFAULT_ENABLE_SEED_INPUT_LINEAGE_RECOVERY = env_bool(
     "RAY_DATA_ENABLE_SEED_INPUT_LINEAGE_RECOVERY", False
 )
