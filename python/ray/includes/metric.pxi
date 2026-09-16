@@ -4,7 +4,6 @@ from ray.includes.metric cimport (
     CHistogram,
     CSum,
     CMetric,
-    FlushMetrics,
 )
 from libcpp.utility cimport move
 from libcpp.memory cimport unique_ptr
@@ -204,11 +203,3 @@ cdef class Histogram(Metric):
                 self.c_tag_keys
             )
         )
-
-
-def force_flush_metrics(int64_t timeout_ms):
-    """Export this process metrics now. See ray.util.metrics.force_flush."""
-    cdef c_bool flushed
-    with nogil:
-        flushed = FlushMetrics(timeout_ms)
-    return flushed

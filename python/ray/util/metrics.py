@@ -9,7 +9,6 @@ from ray._raylet import (
     Gauge as CythonGauge,
     Histogram as CythonHistogram,
     Sum as CythonSum,
-    force_flush_metrics as _force_flush_metrics,
 )  # noqa: E402
 
 # Sum is used for CythonCount because it allows incrementing by positive
@@ -371,33 +370,8 @@ class Gauge(Metric):
         return deserializer, serialized_data
 
 
-@DeveloperAPI
-def force_flush(timeout_ms: int = 5000) -> bool:
-    """Export this process metrics now rather than on the next periodic push.
-
-    A metric recorded shortly before the process is force-killed is otherwise lost,
-    because a force kill skips the flush that normal process teardown performs.
-
-    Args:
-        timeout_ms: How long to wait for the export to complete.
-
-    Returns:
-        False if metrics are disabled or the export did not finish in time.
-
-    Raises:
-        ValueError: if timeout_ms is negative.
-    """
-    if timeout_ms < 0:
-        # A negative timeout leaves the export no time at all, so it would return
-        # False rather than flushing, which is a confusing way to fail.
-        raise ValueError(f"timeout_ms must be non-negative, got {timeout_ms}.")
-
-    return _force_flush_metrics(timeout_ms)
-
-
 __all__ = [
     "Counter",
     "Histogram",
     "Gauge",
-    "force_flush",
 ]
