@@ -16,6 +16,7 @@ Utility
    ray.util.tpu.get_current_pod_name
    ray.util.tpu.get_num_tpu_chips_on_node
    ray.util.tpu.get_tpu_coordinator_env_vars
+   ray.util.tpu.get_jax_env_vars
    ray.util.tpu.get_tpu_slice_name_from_node
    ray.util.tpu.get_tpu_nodes_for_slice
    ray.util.tpu.get_num_ready_tpu_slices
@@ -23,6 +24,7 @@ Utility
    ray.util.tpu.get_tpu_version_from_type
    ray.util.tpu.get_tpu_worker_resources
    ray.util.tpu.init_jax_profiler
+   ray.util.tpu.get_torchtpu_env_vars
 
    ray.util.tpu.SlicePlacementGroup
    ray.util.tpu.slice_placement_group
