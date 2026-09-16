@@ -592,17 +592,25 @@ def _default_fixed_shape_tensor_format():
 
 
 def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
-    """Read this job's ``enable_ray_data_reconstruction`` setting from the core worker."""
+    """Read this job's core-level lineage reconstruction setting.
+
+    Reads ``disable_job_level_lineage_reconstruction`` off the core worker to
+    determine whether Ray Data's application-level fault tolerance mechanism
+    should be enabled.
+    """
     if not global_worker.connected:
         return None
 
     try:
-        return bool(global_worker.core_worker.get_enable_ray_data_reconstruction())
+        return bool(
+            global_worker.core_worker.get_disable_job_level_lineage_reconstruction()
+        )
     except Exception:
         logger.warning(
-            "Couldn't read `enable_ray_data_reconstruction` from the core worker. "
-            "Ray Data may be running without fault tolerance mechanism."
-            "Is the data reconstruction value correctly propagated to the core worker?",
+            "Couldn't read `disable_job_level_lineage_reconstruction` from the "
+            "core worker. Ray Data may be running without fault tolerance "
+            "mechanism. Is the job level lineage reconstruction config correctly "
+            "propagated to the core worker?",
             exc_info=True,
         )
         return False
@@ -1525,9 +1533,12 @@ class DataContext:
             ):
                 raise ValueError(
                     "The enable_ray_data_reconstruction value does not match "
-                    "the enable_ray_data_reconstruction value in the cluster. "
-                    "This will cause data reconstruction to fail. Please "
-                    "only set the enable_ray_data_reconstruction value using the job config."
+                    "the disable_job_level_lineage_reconstruction value in the "
+                    "cluster. When job level lineage reconstruction is disabled, "
+                    "data reconstruction must be enabled. When job level lineage "
+                    "reconstruction is enabled, data reconstruction must be "
+                    "disabled as core is configured to handle reconstruction in "
+                    "that configuration."
                 )
             return self._enable_ray_data_reconstruction
 

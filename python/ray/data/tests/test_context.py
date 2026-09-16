@@ -6,7 +6,8 @@ from ray.job_config import JobConfig
 from ray.util.annotations import RayDeprecationWarning
 
 _RECONSTRUCTION_OVERRIDE_ERROR = (
-    "only set the enable_ray_data_reconstruction value using the job config"
+    "enable_ray_data_reconstruction value does not match the "
+    "disable_job_level_lineage_reconstruction value in the cluster"
 )
 
 
@@ -16,9 +17,9 @@ def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
         ctx.write_file_retry_on_errors = []
 
 
-def _init_job_with_reconstruction(enabled: bool) -> None:
-    """Start a job whose `_enable_ray_data_reconstruction` is `enabled`."""
-    ray.init(job_config=JobConfig(_enable_ray_data_reconstruction=enabled))
+def _init_job_with_disable_job_level_lineage_reconstruction(enabled: bool) -> None:
+    """Start a job whose `_disable_job_level_lineage_reconstruction` is `enabled`."""
+    ray.init(job_config=JobConfig(_disable_job_level_lineage_reconstruction=enabled))
 
 
 @pytest.mark.parametrize(
@@ -106,12 +107,15 @@ def test_hash_shuffle_compression_alias(monkeypatch):
 def test_enable_ray_data_reconstruction_resolved_from_core_worker(
     shutdown_only, job_setting: bool
 ):
-    """The job-level ray data reconstruction setting is read off the core worker."""
+    """
+    The ray data reconstruction setting is read and based off the core worker's
+    `disable_job_level_lineage_reconstruction` setting.
+    """
     from ray.data.context import DataContext
 
     original = DataContext.get_current()
     try:
-        _init_job_with_reconstruction(job_setting)
+        _init_job_with_disable_job_level_lineage_reconstruction(job_setting)
 
         # The sealed per-Dataset copy carries it too.
         ds = ray.data.range(1)
@@ -131,24 +135,6 @@ def test_enable_ray_data_reconstruction_defaults_false(shutdown_only):
     assert DataContext().enable_ray_data_reconstruction is False
 
 
-def test_enable_ray_data_reconstruction_is_read_only(shutdown_only):
-    """The job config is the only supported way to set this.
-
-    Assigning on the `DataContext` doesn't reach the cluster -- Ray Core reads
-    `_enable_ray_data_reconstruction` off the job config to decide whether to
-    pin object lineage. We should not allow users to set this value on the context.
-    """
-    from ray.data.context import DataContext
-
-    _init_job_with_reconstruction(True)
-    context = DataContext()
-
-    with pytest.raises(AttributeError):
-        context.enable_ray_data_reconstruction = False  # pyrefly: ignore[read-only]
-
-    assert context.enable_ray_data_reconstruction is True
-
-
 @pytest.mark.parametrize("job_setting", [False, True])
 def test_enable_ray_data_reconstruction_rejects_conflicting_override(
     shutdown_only, job_setting: bool
@@ -163,7 +149,7 @@ def test_enable_ray_data_reconstruction_rejects_conflicting_override(
 
     original = DataContext.get_current()
     try:
-        _init_job_with_reconstruction(job_setting)
+        _init_job_with_disable_job_level_lineage_reconstruction(job_setting)
 
         context = DataContext(_enable_ray_data_reconstruction=not job_setting)
 

@@ -89,17 +89,17 @@ class WorkerContext {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /**
-   * @return whether the job config enables Ray Data reconstruction.
+   * @return whether the job config disables job level lineage reconstruction.
    *         Default to false.
    */
-  bool GetEnableRayDataReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
+  bool GetDisableJobLevelLineageReconstruction() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /**
    * @brief Whether this worker should pin the lineage of the objects it owns so
    *        that they can be reconstructed if lost.
    *
-   *         If Ray Data reconstruction is enabled, the application promises
-   *         to handle reconstruction of lost objects itself. In this case,
+   *         If job level lineage reconstruction is disabled, the application
+   *         needs to handle reconstruction of lost objects itself. In this case,
    *         Ray will simply throw an error when it encounters a lost object.
    *         Otherwise, we defer to the cluster wide lineage pinning configuration.
    *

@@ -180,29 +180,32 @@ def test_basic_reconstruction(config, ray_start_cluster, reconstruction_enabled)
             ray.get(obj)
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="Very flaky on Windows due to memory usage."
-)
+@pytest.mark.skipif(sys.platform == "win32", reason="Very flaky on Windows.")
 @pytest.mark.parametrize(
-    ("cluster_lineage_pinning_enabled", "ray_data_reconstruction_enabled", "expected"),
+    (
+        "cluster_lineage_pinning_enabled",
+        "disable_job_level_lineage_reconstruction",
+        "expected",
+    ),
     [
         # A job that doesn't reconstruct objects itself defers to the cluster.
         (True, False, True),
         (False, False, False),
-        # Ray Data reconstructs lost objects itself, so Ray Core stops pinning
+        # job level reconstruction is disabled, so Ray Core stops pinning
         # lineage even though the cluster-level config enables it.
         (True, True, False),
         (False, True, False),
     ],
 )
-def test_job_config_ray_data_reconstruction(
+def test_job_config_disable_job_level_lineage_reconstruction(
     config,
     ray_start_cluster,
     cluster_lineage_pinning_enabled,
-    ray_data_reconstruction_enabled,
+    disable_job_level_lineage_reconstruction,
     expected,
 ):
-    """`_enable_ray_data_reconstruction` only ever turns core lineage pinning off."""
+    """`_disable_job_level_lineage_reconstruction` should only ever turn core
+    lineage pinning off."""
     config["lineage_pinning_enabled"] = cluster_lineage_pinning_enabled
 
     cluster = ray_start_cluster
@@ -210,7 +213,7 @@ def test_job_config_ray_data_reconstruction(
     ray.init(
         address=cluster.address,
         job_config=JobConfig(
-            _enable_ray_data_reconstruction=ray_data_reconstruction_enabled
+            _disable_job_level_lineage_reconstruction=disable_job_level_lineage_reconstruction
         ),
     )
     # Node to place the initial object.

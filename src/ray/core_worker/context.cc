@@ -206,13 +206,14 @@ bool WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
   return true;
 }
 
-bool WorkerContext::GetEnableRayDataReconstruction() const {
+bool WorkerContext::GetDisableJobLevelLineageReconstruction() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return job_config_.has_value() && job_config_->enable_ray_data_reconstruction();
+  return job_config_.has_value() &&
+         job_config_->disable_job_level_lineage_reconstruction();
 }
 
 bool WorkerContext::ShouldPinObjectLineage() const {
-  if (GetEnableRayDataReconstruction()) {
+  if (GetDisableJobLevelLineageReconstruction()) {
     return false;
   }
   return RayConfig::instance().lineage_pinning_enabled();
