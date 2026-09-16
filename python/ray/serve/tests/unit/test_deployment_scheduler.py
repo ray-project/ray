@@ -1,5 +1,6 @@
 import random
 import sys
+import time
 from collections import defaultdict
 from typing import List
 from unittest import mock
@@ -2564,6 +2565,7 @@ class TestActiveCompaction:
         scheduler.on_replica_running(ReplicaID("r3", d2_id), "node2")
         assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
 
+        scheduler._next_compaction_scan_timestamp_s = 0
         cluster_node_info_cache.add_node("node3", {"CPU": 3, "customx": 1})
         scheduler.on_replica_running(ReplicaID("r4", d1_id), "node3")
         scheduler.on_replica_running(ReplicaID("r5", d1_id), "node3")
@@ -2728,6 +2730,7 @@ def test_get_node_to_compact_respects_actor_label_selector():
 
     assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
 
+    scheduler._next_compaction_scan_timestamp_s = 0
     cluster_node_info_cache.add_node(
         "node-west-2", {"CPU": 1}, labels={"region": "us-west"}
     )
@@ -2827,6 +2830,7 @@ def test_get_node_to_compact_respects_bundle_label_selector():
 
     assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
 
+    scheduler._next_compaction_scan_timestamp_s = 0
     cluster_node_info_cache.add_node(
         "node-a100-2", {"CPU": 1}, labels={"gpu-type": "A100"}
     )
@@ -2932,6 +2936,7 @@ def test_get_node_to_compact_skips_gang_deployments():
     scheduler.on_deployment_deployed(
         gang_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), is_gang=False
     )
+    scheduler._next_compaction_scan_timestamp_s = 0
     node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
     assert node_info is not None
     assert node_info[0] == "node1"
@@ -2940,34 +2945,115 @@ def test_get_node_to_compact_skips_gang_deployments():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-def test_get_node_to_compact_skips_pinned_deployments():
+def test_get_node_to_compact_ignores_pinned_replicas():
     pinned_dep_id = DeploymentID(name="pinned")
-    filler_dep_id = DeploymentID(name="filler")
+    app_dep_id = DeploymentID(name="app")
     cluster_node_info_cache = MockClusterNodeInfoCache()
     cluster_node_info_cache.add_node("node1", {"CPU": 3})
     cluster_node_info_cache.add_node("node2", {"CPU": 4})
     scheduler = _compaction_scheduler(cluster_node_info_cache)
 
     scheduler.on_deployment_created(pinned_dep_id, SpreadDeploymentSchedulingPolicy())
-    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(app_dep_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_deployment_deployed(
         pinned_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), pins_replicas=True
     )
     scheduler.on_deployment_deployed(
-        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 3})
+        app_dep_id, rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    # node1: pinned p0 + a0 (1 free). node2: a1 with 2 CPUs (2 free).
+    scheduler.on_deployment_deployed(
+        app_dep_id, rconfig(ray_actor_options={"num_cpus": 1})
     )
     scheduler.on_replica_running(ReplicaID("p0", pinned_dep_id), "node1")
-    scheduler.on_replica_running(ReplicaID("f0", filler_dep_id), "node2")
-
-    # A pinned replica can't move, so node1 isn't compactable.
-    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
-
+    scheduler.on_replica_running(ReplicaID("a0", app_dep_id), "node1")
+    big_dep_id = DeploymentID(name="big")
+    scheduler.on_deployment_created(big_dep_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_deployment_deployed(
-        pinned_dep_id, rconfig(ray_actor_options={"num_cpus": 1}), pins_replicas=False
+        big_dep_id, rconfig(ray_actor_options={"num_cpus": 2})
     )
+    scheduler.on_replica_running(ReplicaID("b0", big_dep_id), "node2")
+
+    # Only a0 needs a destination. The pinned replica leaves with its proxy.
     node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
     assert node_info is not None
     assert node_info[0] == "node1"
+    assert scheduler._compacting_node.cached_running_replicas_on_target_node == {
+        ReplicaID("a0", app_dep_id)
+    }
+
+    # A pinned replica landing on the target is not a cancelling upscale.
+    scheduler.on_replica_running(ReplicaID("p1", pinned_dep_id), "node1")
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node1"
+
+    # a0 moved off, but the node isn't empty until the pinned replicas go too.
+    scheduler.on_replica_running(ReplicaID("a0-new", app_dep_id), "node2")
+    scheduler.on_replica_stopping(ReplicaID("a0", app_dep_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node1"
+
+    scheduler.on_replica_stopping(ReplicaID("p0", pinned_dep_id))
+    scheduler.on_replica_stopping(ReplicaID("p1", pinned_dep_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    assert scheduler._num_succeeded_compactions == 1
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_fruitless_scan_waits_before_rescanning():
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node1", {"CPU": 3})
+    cluster_node_info_cache.add_node("node2", {"CPU": 3})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    for i in range(3):
+        scheduler.on_replica_running(ReplicaID(f"r{i}", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+
+    # node1 is full, so r3 has nowhere to go and the scan finds nothing.
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+    assert scheduler._next_compaction_scan_timestamp_s > time.time()
+
+    # Room opens up, but a stable cluster isn't rescanned until the interval passes.
+    scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+    # Any change to the cluster clears the wait, so the next scan runs at once.
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    assert scheduler._next_compaction_scan_timestamp_s == 0
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_tie_break_ignores_node_labels():
+    small_id = DeploymentID(name="small")
+    big_id = DeploymentID(name="big")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    # Same size nodes, told apart only by their node:<ip> label resource.
+    cluster_node_info_cache.add_node("node1", {"CPU": 3, "node:10.0.0.1": 1})
+    cluster_node_info_cache.add_node("node2", {"CPU": 3, "node:10.0.0.2": 1})
+    cluster_node_info_cache.add_node("node3", {"CPU": 8, "node:10.0.0.3": 1})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(small_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(big_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        small_id, rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    scheduler.on_deployment_deployed(big_id, rconfig(ray_actor_options={"num_cpus": 6}))
+    # node1: 1 replica to move, node2: 2. node3 can absorb either but not both,
+    # and its own 6 CPU replica fits nowhere else.
+    scheduler.on_replica_running(ReplicaID("s0", small_id), "node1")
+    scheduler.on_replica_running(ReplicaID("s1", small_id), "node2")
+    scheduler.on_replica_running(ReplicaID("s2", small_id), "node2")
+    scheduler.on_replica_running(ReplicaID("b0", big_id), "node3")
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node1"
 
 
 @pytest.mark.skipif(

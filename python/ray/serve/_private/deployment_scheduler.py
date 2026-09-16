@@ -45,6 +45,10 @@ from ray.util.scheduling_strategies import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# How long to wait before scanning a stable cluster for a compactable node again.
+# A scan simulates a bin pack for every worker node, so don't run it every loop.
+COMPACTION_SCAN_INTERVAL_S = 10.0
+
 
 class SpreadDeploymentSchedulingPolicy:
     """A scheduling policy that spreads replicas with best effort."""
@@ -1006,6 +1010,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         # Not checkpointed: a restarted controller reconciles first, then
         # re-detects compaction opportunities.
         self._compacting_node: Optional[CompactingNodeInfo] = None
+        # Set after a scan finds nothing, cleared as soon as the cluster changes.
+        self._next_compaction_scan_timestamp_s: float = 0
         self._num_consecutive_failed_compactions: int = 0
         self._next_allowed_compaction_timestamp_s: float = 0
         self._num_succeeded_compactions: int = 0
@@ -1479,11 +1485,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def _get_deployment_placement_candidates(
         self, deployment: DeploymentSchedulingInfo
     ) -> Optional[List[Tuple[RequestedResources, List[Dict[str, str]]]]]:
-        if (
-            deployment.is_gang
-            or deployment.pins_replicas
-            or deployment.is_non_strict_pack_pg()
-        ):
+        if deployment.is_gang or deployment.is_non_strict_pack_pg():
             return None
 
         actor_options: Dict[str, Any] = {}
@@ -1529,6 +1531,18 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             if node_id == target_node_id
         }
 
+    def _is_pinned(self, replica_id: ReplicaID) -> bool:
+        """Pinned replicas follow their proxy node, so compaction never moves them.
+
+        The proxy leaves a node once its other replicas are gone and takes the
+        pinned replica with it, so they neither need a destination nor count as
+        new arrivals on the target.
+        """
+        return self._deployments[replica_id.deployment_id].pins_replicas
+
+    def _movable_replicas(self, replica_ids: Set[ReplicaID]) -> Set[ReplicaID]:
+        return {r for r in replica_ids if not self._is_pinned(r)}
+
     def _fail_compaction(self):
         self._compacting_node = None
         self._num_consecutive_failed_compactions += 1
@@ -1550,7 +1564,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         current_replicas = self._running_replicas_on_node_id(
             target_node
         ) | self._launching_replicas_on_node_id(target_node)
-        new_replicas = current_replicas - info.cached_running_replicas_on_target_node
+        new_replicas = (
+            self._movable_replicas(current_replicas)
+            - info.cached_running_replicas_on_target_node
+        )
         now = time.time()
 
         if target_node not in self._cluster_node_info_cache.get_active_node_ids():
@@ -1621,9 +1638,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         if self._compacting_node:
             return self._compacting_node.target_node_id, float("inf")
 
+        if not allow_new_compaction:
+            # The cluster is changing, so scan again as soon as it settles.
+            self._next_compaction_scan_timestamp_s = 0
+            return None
+
+        now = time.time()
         if (
-            time.time() < self._next_allowed_compaction_timestamp_s
-            or not allow_new_compaction
+            now < self._next_allowed_compaction_timestamp_s
+            or now < self._next_compaction_scan_timestamp_s
             or any(self._pending_replicas.values())
             or any(self._launching_replicas.values())
             or any(self._recovering_replicas.values())
@@ -1632,13 +1655,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         target_node_id = self._find_best_node_to_compact()
         if not target_node_id:
+            self._next_compaction_scan_timestamp_s = now + COMPACTION_SCAN_INTERVAL_S
             return None
 
         self._compacting_node = CompactingNodeInfo(
             target_node_id=target_node_id,
-            start_timestamp_s=time.time(),
-            cached_running_replicas_on_target_node=self._running_replicas_on_node_id(
-                target_node_id
+            start_timestamp_s=now,
+            cached_running_replicas_on_target_node=self._movable_replicas(
+                self._running_replicas_on_node_id(target_node_id)
             ),
         )
         return target_node_id, float("inf")
@@ -1646,8 +1670,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     def _find_best_node_to_compact(self) -> Optional[str]:
         node_to_running_replicas = self._get_node_to_running_replicas()
         available_resources_per_node = self._get_available_resources_per_node()
+        # Drop the per node `node:<ip>` labels, or no two nodes ever compare
+        # equal and the fewest migrations tie break never applies.
         total_resources_per_node = {
-            node_id: AvailableNodeResources(resources)
+            node_id: AvailableNodeResources(
+                {k: v for k, v in resources.items() if not k.startswith("node:")}
+            )
             for node_id, resources in (
                 self._cluster_node_info_cache.get_total_resources_per_node().items()
             )
@@ -1669,7 +1697,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 if n != target_node_id and len(node_to_running_replicas[n]) > 0
             }
             replicas_on_target = sorted(
-                node_to_running_replicas[target_node_id],
+                self._movable_replicas(node_to_running_replicas[target_node_id]),
                 key=lambda r: self._deployments[r.deployment_id].required_resources,
                 reverse=True,
             )
