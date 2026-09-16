@@ -1336,8 +1336,8 @@ def test_schema_to_deployment_deployment_actors_from_dict():
 @pytest.mark.parametrize("flag_value", [True, False])
 def test_locality_routing_deployment_schema_roundtrip(flag_value):
     # Ensure deployment_to_schema -> schema_to_deployment preserves the locality
-    # routing flags, including the names in user_configured_option_names, which
-    # is what the router uses to decide between the config value and the env var.
+    # routing flags, including the names in user_configured_option_names so
+    # config overlays still treat them as user-set.
     dc = DeploymentConfig.from_default(
         prefer_local_node_routing=flag_value,
         prefer_local_az_routing=flag_value,

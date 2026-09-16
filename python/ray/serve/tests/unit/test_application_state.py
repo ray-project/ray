@@ -1729,8 +1729,6 @@ class TestOverrideDeploymentInfo:
         updated_info = override_deployment_info({"A": info}, config)["A"]
         assert updated_info.deployment_config.prefer_local_node_routing is False
         assert updated_info.deployment_config.prefer_local_az_routing is False
-        # The router reads the config value only when the option name is
-        # recorded here; otherwise it falls back to the env var.
         assert updated_info.deployment_config.user_configured_option_names.issuperset(
             {"prefer_local_node_routing", "prefer_local_az_routing"}
         )

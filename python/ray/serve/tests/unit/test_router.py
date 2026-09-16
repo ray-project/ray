@@ -384,6 +384,7 @@ async def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
         node_id="test-node-id",
         availability_zone="test-az",
         prefer_local_node_routing=False,
+        prefer_local_az_routing=False,
         _request_router_initialized_event=asyncio.Event(),
     )
     yield router, fake_request_router
@@ -653,6 +654,7 @@ class TestBroadcast:
             node_id="test-node-id",
             availability_zone="test-az",
             prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
             _request_router_initialized_event=asyncio.Event(),
         )
         # Simulate a router that has not finished initialization yet.
@@ -2554,6 +2556,7 @@ class TestSingletonThreadRouter:
                 node_id="test-node-id",
                 availability_zone="test-az",
                 prefer_local_node_routing=False,
+                prefer_local_az_routing=False,
             )
         router._asyncio_router = asyncio_router
         return router
@@ -3005,6 +3008,7 @@ class TestAsyncioRouterBackoffConfig:
             node_id="test-node-id",
             availability_zone="test-az",
             prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
             _request_router_initialized_event=asyncio.Event(),
         )
 
@@ -3059,6 +3063,7 @@ class TestAsyncioRouterBackoffConfig:
             node_id="test-node-id",
             availability_zone="test-az",
             prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
             _request_router_initialized_event=asyncio.Event(),
         )
 
@@ -3066,10 +3071,6 @@ class TestAsyncioRouterBackoffConfig:
             prefer_local_node_routing=True,
             prefer_local_az_routing=True,
         )
-        deployment_config.user_configured_option_names = {
-            "prefer_local_node_routing",
-            "prefer_local_az_routing",
-        }
 
         router.update_deployment_config(deployment_config)
 
@@ -3077,6 +3078,85 @@ class TestAsyncioRouterBackoffConfig:
         assert router._prefer_local_az_routing is True
         assert request_router._prefer_local_node_routing is True
         assert request_router._prefer_local_az_routing is True
+
+    async def test_update_deployment_config_applies_default_locality_params(self):
+        """DeploymentConfig defaults apply even without user_configured_option_names."""
+        from ray.serve._private.constants import (
+            RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+            RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+        )
+        from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
+
+        request_router = PowerOfTwoChoicesRequestRouter(
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            self_node_id="test-node-id",
+            self_actor_id="fake-actor-id",
+            self_actor_handle=None,
+            prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
+        )
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router=request_router,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+
+        router.update_deployment_config(DeploymentConfig())
+
+        assert (
+            router._prefer_local_node_routing
+            is RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING
+        )
+        assert (
+            router._prefer_local_az_routing is RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
+        )
+        assert (
+            request_router._prefer_local_node_routing
+            is RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING
+        )
+        assert (
+            request_router._prefer_local_az_routing
+            is RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
+        )
+
+    async def test_lazy_request_router_uses_constructor_az_routing(self):
+        """Lazily created request router uses the constructor AZ flag."""
+        from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
+
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router_class=PowerOfTwoChoicesRequestRouter,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            prefer_local_az_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+
+        with patch("ray.get_runtime_context") as mock_context:
+            mock_context.return_value.get_actor_id.return_value = None
+            request_router = router.request_router
+
+        assert request_router is not None
+        assert request_router._prefer_local_node_routing is False
+        assert request_router._prefer_local_az_routing is False
 
 
 class TestOnRequestCompleted:

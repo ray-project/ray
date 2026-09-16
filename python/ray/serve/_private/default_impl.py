@@ -19,6 +19,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     RAY_SERVE_PROXY_USE_GRPC,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -217,6 +218,7 @@ def create_router(
         node_id=node_id,
         availability_zone=availability_zone,
         prefer_local_node_routing=handle_options._prefer_local_routing,
+        prefer_local_az_routing=handle_options._prefer_local_az_routing,
     )
 
 
@@ -243,6 +245,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
         # proxy will receive the replica set from the controller early.
         handle._init(
             _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+            _prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
             _source=DeploymentHandleSource.PROXY,
             _run_router_in_separate_loop=RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
         )

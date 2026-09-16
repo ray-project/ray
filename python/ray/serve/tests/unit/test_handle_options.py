@@ -3,6 +3,7 @@ import sys
 import pytest
 
 from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.constants import RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
 from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.utils import DEFAULT
 
@@ -77,6 +78,10 @@ def test_dynamic_handle_options():
 def test_init_handle_options():
     default_options = InitHandleOptions.create()
     assert default_options._prefer_local_routing is False
+    assert (
+        default_options._prefer_local_az_routing
+        is RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
+    )
     assert default_options._source == DeploymentHandleSource.UNKNOWN
 
     default1 = InitHandleOptions.create(_prefer_local_routing=DEFAULT.VALUE)
@@ -93,8 +98,15 @@ def test_init_handle_options():
     assert prefer_local._prefer_local_routing is True
     assert prefer_local._source == DeploymentHandleSource.UNKNOWN
 
+    prefer_local_az = InitHandleOptions.create(_prefer_local_az_routing=False)
+    assert prefer_local_az._prefer_local_az_routing is False
+
     proxy_options = InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
     assert proxy_options._prefer_local_routing is False
+    assert (
+        proxy_options._prefer_local_az_routing
+        is RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
+    )
     assert proxy_options._source == DeploymentHandleSource.PROXY
 
 
