@@ -3432,7 +3432,7 @@ def test_count_parquet_is_fast(ray_start_regular_shared):
     """This is an E2E test that verifies that we pushdown counts. If Ray Data reads the
     file contents rather than the metadata, the test will timeout and fail.
     """
-    path = "s3://ray-benchmark-data/tpch/parquet/sf100/lineitem"
+    path = "s3://anonymous@ray-benchmark-data/tpch/parquet/sf100/lineitem"
 
     num_rows = ray.data.read_parquet(path).count()
 
