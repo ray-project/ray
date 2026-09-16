@@ -2555,6 +2555,38 @@ class TestSchedulingPreferences:
         assert to_stop[d_id] == {r2}
 
 
+def test_pinned_replica_skips_the_floor_and_is_counted_where_it_lands():
+    """The ingress router pins replicas with hard affinity. The floor must not
+    contradict that pin, and bookkeeping must follow the pin, not the scorer."""
+    d_id = DeploymentID(name="router")
+    proxy_node, other_node = NodeID.from_random().hex(), NodeID.from_random().hex()
+    cache = MockClusterNodeInfoCache()
+    cache.add_node(proxy_node, {"CPU": 4})
+    cache.add_node(other_node, {"CPU": 4})
+    scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    on_scheduled = Mock()
+    scheduler.schedule(
+        upscales={
+            d_id: [
+                make_request(d_id, f"r{i}", 1, on_scheduled, target_node_id=proxy_node)
+                for i in range(2)
+            ]
+        },
+        downscales={},
+    )
+
+    for call in on_scheduled.call_args_list:
+        options = call.args[0]._options
+        assert options["scheduling_strategy"].node_id == proxy_node
+        assert options["scheduling_strategy"].soft is False
+        assert "label_selector" not in options
+    launching = scheduler._launching_replicas[d_id]
+    assert {info.target_node_id for info in launching.values()} == {proxy_node}
+
+
 def test_spread_pg_still_carries_the_floor_selector():
     """Ray places the bundles, but the rule's selector rides along on them."""
     d_id = DeploymentID(name="pg")

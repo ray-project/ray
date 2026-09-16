@@ -1315,7 +1315,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 node_labels=node_labels,
             )
             active = self._applicable_constraints(constraints, scheduling_request)
-            if scheduling_request.is_non_strict_pack_pg():
+            if scheduling_request.target_node_id is not None:
+                # The caller pinned this replica with hard affinity, so there is
+                # no node to choose and no rule may contradict the pin.
+                target_node: Optional[str] = scheduling_request.target_node_id
+                required_labels: Dict[str, str] = {}
+            elif scheduling_request.is_non_strict_pack_pg():
                 # Ray places these bundles, so Serve cannot choose the node, but
                 # the selector half of each rule still travels with the group.
                 target_node = None
@@ -1328,21 +1333,23 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     ctx,
                     active,
                 )
-            succeeded = self._bind_replica(
-                scheduling_request, target_node, required_labels
-            )
-            if not succeeded or target_node is None:
+            if not self._bind_replica(scheduling_request, target_node, required_labels):
                 continue
 
-            if target_node in available_resources_per_node:
-                available_resources_per_node[target_node] = (
-                    available_resources_per_node[target_node]
+            bound_node = self._launching_replicas[deployment_id][
+                scheduling_request.replica_id
+            ].target_node_id
+            if bound_node is None:
+                continue
+            if bound_node in available_resources_per_node:
+                available_resources_per_node[bound_node] = (
+                    available_resources_per_node[bound_node]
                     - scheduling_request.requested_resources
                 )
-            node_to_assigned_replicas.setdefault(target_node, set()).add(
+            node_to_assigned_replicas.setdefault(bound_node, set()).add(
                 scheduling_request.replica_id
             )
-            hosting_nodes.add(target_node)
+            hosting_nodes.add(bound_node)
 
     def _log_schedule_order(
         self, scheduling_requests: List[ReplicaSchedulingRequest]
