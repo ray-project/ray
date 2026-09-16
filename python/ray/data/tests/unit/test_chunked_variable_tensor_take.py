@@ -501,3 +501,9 @@ def test_mixed_tensor_columns_share_indices_and_keep_independent_fallbacks(
     assert result.column("id").equals(
         pa.chunked_array([pa.array(indices.astype(np.int64))])
     )
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
