@@ -311,7 +311,7 @@ DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS = env_integer(
 
 DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
 
-DEFAULT_MAX_MAP_RETRIES = 3
+DEFAULT_MAX_MAP_RETRIES = 0
 
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
@@ -759,8 +759,8 @@ class DataContext:
             matches one of them (checked as substring first, then as regex).
             Bounded by ``max_map_retries``.
         max_map_retries: Maximum number of retry attempts per map task for user
-            exceptions. Default is 3. Ignored if ``retried_map_errors`` is
-            empty.
+            exceptions. Default is 0 (no retries). Retries also require
+            ``retried_map_errors`` to be ``True`` or a non-empty pattern list.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for

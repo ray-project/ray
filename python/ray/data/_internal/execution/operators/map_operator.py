@@ -859,16 +859,21 @@ def _map_task(
                 clock=clock,
             )
 
-        if retry_on:
-            block_iter = iterate_with_retry(
-                transform_iter_factory,
-                description="apply UDF transform",
-                match=None if retry_on is True else retry_on,
-                max_attempts=data_context.max_map_retries + 1,
-                unwrap_cause=True,
-            )
-        else:
-            block_iter = transform_iter_factory()
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+
+        block_iter = iterate_with_retry(
+            transform_iter_factory,
+            description="apply UDF transform",
+            match=to_match,
+            max_attempts=data_context.max_map_retries + 1,
+            unwrap_cause=True,
+        )
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
@@ -917,9 +922,10 @@ def _map_task(
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
-    mixed resources avoids potential starvation and deadlock issues during scheduling,
-    and should not be a serious limitation for users.
+    Map tasks default to 1 CPU. GPU map tasks that don't specify ``num_cpus`` also
+    reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+    doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+    explicitly passing ``num_cpus=0``.
     """
     ray_remote_args = ray_remote_args.copy()
 
@@ -933,7 +939,11 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
             "https://github.com/ray-project/ray/issues/new/choose"
         )
 
-    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+    if "num_cpus" not in ray_remote_args:
+        # Map tasks default to 1 CPU. GPU map tasks that don't specify num_cpus also
+        # reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+        # doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+        # explicitly passing num_cpus=0.
         ray_remote_args["num_cpus"] = 1
 
     return ray_remote_args
