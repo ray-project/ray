@@ -183,6 +183,24 @@ class TestDQNRLModule:
             assert Columns.ACTIONS in output
             assert output[Columns.ACTIONS].shape == (1,)
 
+    def test_exploration_randomness_uses_q_value_device(self):
+        """Test epsilon-greedy sampling on a non-CPU module device."""
+        obs_space = OBS_SPACES["box"]
+        # Place the module on a non-CPU device. The "meta" device is used as a
+        # stand-in for CUDA to keep this test runnable without a GPU.
+        module = _get_dqn_module(obs_space, Discrete(4)).to("meta")
+        module.eval()
+        obs = convert_to_torch_tensor(
+            obs_space.sample().astype(np.float32)[None], device="meta"
+        )
+
+        # The random mask must be created on the same device as the Q-values,
+        # otherwise `torch.where` raises a device mismatch error. Note that the
+        # epsilon schedule itself intentionally stays on the CPU.
+        output = module.forward_exploration({Columns.OBS: obs}, t=0)
+
+        assert output[Columns.ACTIONS].device == obs.device
+
 
 if __name__ == "__main__":
     import sys
