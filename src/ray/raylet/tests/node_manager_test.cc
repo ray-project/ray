@@ -515,8 +515,7 @@ class NodeManagerTest : public ::testing::Test {
         request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
           ASSERT_TRUE(s.ok());
         });
-    std::vector<LeaseID> ready =
-        lease_dependency_manager_->HandleObjectLocal(object_dep);
+    std::vector<LeaseID> ready = lease_dependency_manager_->HandleObjectLocal(object_dep);
     local_lease_manager_->LeasesUnblocked(ready);
     RAY_CHECK(pop_cb);
     pop_cb(worker, PopWorkerStatus::OK, "");
