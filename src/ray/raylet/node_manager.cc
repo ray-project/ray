@@ -1093,35 +1093,6 @@ bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   return true;
 }
 
-bool NodeManager::ResourceDeleted(const NodeID &node_id,
-                                  const std::vector<std::string> &resource_names) {
-  if (RAY_LOG_ENABLED(DEBUG)) {
-    std::ostringstream oss;
-    for (auto &resource_name : resource_names) {
-      oss << resource_name << ", ";
-    }
-    RAY_LOG(DEBUG).WithField(node_id)
-        << "[ResourceDeleted] received callback from node with deleted resources: "
-        << oss.str() << ". Updating resource map. skip=" << (node_id == self_node_id_);
-  }
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  std::vector<scheduling::ResourceID> resource_ids;
-  resource_ids.reserve(resource_names.size());
-  for (const auto &resource_label : resource_names) {
-    resource_ids.emplace_back(resource_label);
-  }
-  cluster_resource_scheduler_.GetClusterResourceManager().DeleteResources(
-      scheduling::NodeID(node_id.Binary()), resource_ids);
-  return true;
-}
-
 void NodeManager::HandleNotifyGCSRestart(rpc::NotifyGCSRestartRequest request,
                                          rpc::NotifyGCSRestartReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
