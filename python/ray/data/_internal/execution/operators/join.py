@@ -263,6 +263,18 @@ def _join_tables_iter(
                 f"(overlapping columns: {sorted(collisions)})"
             )
 
+        # The renamed sets mirror the renames below, including the left side's
+        # exclusion of its own key columns.
+        _validate_suffix_collision(
+            "left", left_columns_suffix, left_cols, collisions - set(left_on)
+        )
+        _validate_suffix_collision(
+            "right",
+            right_columns_suffix,
+            set(right_table.schema.names),
+            collisions,
+        )
+
     preprocess_result_l, preprocess_result_r = _preprocess(
         left_table, right_table, left_on, right_on, join_type
     )
@@ -359,6 +371,38 @@ def _join_tables_iter(
             empty,
             preprocess_result_l.unsupported_projection,
             preprocess_result_r.unsupported_projection,
+        )
+
+
+def _validate_suffix_collision(
+    side: str,
+    suffix: Optional[str],
+    side_col_names: Set[str],
+    renamed_col_names: Set[str],
+) -> None:
+    """Reject a suffix that renames a column onto a name already in use.
+
+    A suffix can create a duplicate instead of resolving one: renaming ``c``
+    to ``f"{c}{suffix}"`` collides when a column of that name already exists
+    on the same side. Polars reports this from deep inside the lazy plan as a
+    DuplicateError naming only the result, so name the inputs here.
+
+    Args:
+        side: ``"left"`` or ``"right"``, used in the error message.
+        suffix: The suffix to apply, or None to skip the check.
+        side_col_names: Every column name on that side.
+        renamed_col_names: The subset that the suffix will be applied to.
+    """
+    if not suffix:
+        return
+
+    conflicting = sorted(
+        f"{c}{suffix}" for c in renamed_col_names if f"{c}{suffix}" in side_col_names
+    )
+    if conflicting:
+        raise ValueError(
+            f"{side.capitalize()} columns suffix {suffix!r} collides with existing "
+            f"{side} columns: {conflicting}"
         )
 
 

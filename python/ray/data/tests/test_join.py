@@ -1079,6 +1079,61 @@ def test_overlapping_non_key_columns_without_suffixes(
         )
 
 
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_join_tables_suffix_colliding_with_existing_column(side):
+    """A suffix that renames a column onto a name already used on the same side
+    must raise a clear ValueError naming it, not a Polars DuplicateError."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    # The side carrying the suffix also already holds the suffixed name, so
+    # renaming ``value`` would duplicate it.
+    if side == "left":
+        left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [0, 0]})
+        right = pa.table({"id": [1], "value": [99]})
+        suffixes = {"left_columns_suffix": "_l"}
+        expected = "Left columns suffix '_l' collides with existing left columns"
+    else:
+        left = pa.table({"id": [1, 2], "value": [10, 20]})
+        right = pa.table({"id": [1], "value": [99], "value_r": [0]})
+        suffixes = {"right_columns_suffix": "_r"}
+        expected = "Right columns suffix '_r' collides with existing right columns"
+
+    with pytest.raises(ValueError) as exc_info:
+        join_tables(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("id",),
+            right_key_col_names=("id",),
+            **suffixes,
+        )
+
+    assert expected in str(exc_info.value)
+    assert f"value_{side[0]}" in str(exc_info.value)
+
+
+def test_join_tables_suffix_not_flagged_when_name_is_free():
+    """The check must not fire when the suffixed name is unused: a left key
+    sharing a name with a right payload column is renamed on the right only."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1, 2], "value": [10, 20]})
+    right = pa.table({"id": [1], "value": [99]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+    )
+    assert joined.column_names == ["id", "value_l", "value"]
+
+
 @pytest.mark.parametrize(
     "join_type",
     [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI, JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI],
