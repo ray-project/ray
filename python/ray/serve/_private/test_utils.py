@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import glob
+import json
 import os
 import random
 import socket
@@ -1659,6 +1660,13 @@ def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
 # Metrics test utilities
 TEST_METRICS_EXPORT_PORT = 9999
 
+# A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
+# needs room for several full-length attempts. A newly registered series is the slow
+# thing to surface, so its debut gets the larger budget and value checks the smaller.
+METRICS_FIRST_EXPORT_TIMEOUT_S = 90
+METRICS_WAIT_TIMEOUT_S = 45
+METRICS_RETRY_INTERVAL_MS = 1000
+
 
 def get_metric_float(
     metric: str,
@@ -1752,3 +1760,99 @@ def get_metric_dictionaries(
             metric_dicts.append(sample.labels)  # pyrefly: ignore[missing-attribute]
 
     return metric_dicts
+
+
+def extract_tags(line: str) -> Dict[str, str]:
+    """Extracts any tags from the metrics line."""
+
+    try:
+        tags_string = line.replace("{", "}").split("}")[1]
+    except IndexError:
+        # No tags were found in this line.
+        return {}
+
+    detected_tags = {}
+    for tag_pair in tags_string.split(","):
+        sanitized_pair = tag_pair.replace('"', "")
+        tag, value = sanitized_pair.split("=")
+        detected_tags[tag] = value
+
+    return detected_tags
+
+
+def check_sum_metric_eq(
+    metric_name: str,
+    expected: float,
+    tags: Optional[Dict[str, str]] = None,
+    timeseries: Optional[PrometheusTimeseries] = None,
+) -> bool:
+    if tags is None:
+        tags = {}
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+
+    metrics = fetch_prometheus_metric_timeseries(
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+    )
+    metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
+    metric_samples = metrics.get(metric_name, None)
+    if metric_samples is None:
+        metric_sum = 0
+    else:
+        metric_samples = [
+            sample for sample in metric_samples if tags.items() <= sample.labels.items()
+        ]
+        metric_sum = sum(sample.value for sample in metric_samples)
+
+    # Check the metrics sum to the expected number
+    assert float(metric_sum) == float(expected), (
+        f"The following metrics don't sum to {expected}: "
+        f"{json.dumps(metric_samples, indent=4)}\n."
+        f"All metrics: {json.dumps(metrics, indent=4)}"
+    )
+
+    # # For debugging
+    if metric_samples:
+        print(f"The following sum to {expected} for '{metric_name}' and tags {tags}:")
+        for sample in metric_samples:
+            print(sample)
+
+    return True
+
+
+def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
+    """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
+    agent is not hammered while it catches up."""
+    wait_for_condition(
+        predicate,
+        timeout=budget_s,
+        retry_interval_ms=METRICS_RETRY_INTERVAL_MS,
+        **kwargs,
+    )
+
+
+def wait_for_metric_export(metric_name, timeseries, count=None):
+    """Waits for a series to surface, which is the slow step; count=None accepts
+    any number of samples."""
+
+    def check():
+        metrics = get_metric_dictionaries(
+            metric_name, timeseries=timeseries, wait=False
+        )
+        if count is None:
+            assert metrics, f"Metric {metric_name} not exported yet"
+        else:
+            assert (
+                len(metrics) == count
+            ), f"Expected {count} {metric_name}, got {len(metrics)}"
+        return True
+
+    wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
+
+
+def check_metric_float(**kwargs):
+    """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
+    own 20s default is larger than most callers' retry budgets."""
+    return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
