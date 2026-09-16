@@ -23,6 +23,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.lineage_tracker import LineageTracker
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
 from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -229,9 +230,14 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
+        self._lineage_tracker = (
+            LineageTracker()
+            if self._data_context.enable_seed_input_lineage_recovery
+            else None
+        )
         self._block_ref_counter = BlockRefCounter()
         self._topology = build_streaming_topology(
-            dag, self._options, self._block_ref_counter
+            dag, self._options, self._block_ref_counter, self._lineage_tracker
         )
 
         self._resource_manager = ResourceManager(
@@ -524,6 +530,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._backpressure_policies,
             self._max_errored_blocks,
             output_backpressure_guard=self._output_backpressure_guard,
+            lineage_tracker=self._lineage_tracker,
             metadata_fetcher=self._metadata_fetcher,
         )
         if self._max_errored_blocks > 0:

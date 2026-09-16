@@ -225,6 +225,12 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
+# Experimental: enable application-level recovery of lost objects by tracking
+# per-read-task lineage and resubmitting the affected seed input. Opt-in.
+DEFAULT_ENABLE_SEED_INPUT_LINEAGE_RECOVERY = env_bool(
+    "RAY_DATA_ENABLE_SEED_INPUT_LINEAGE_RECOVERY", False
+)
+
 
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
@@ -694,6 +700,10 @@ class DataContext:
             ``get_object_locations`` for metrics. This is useful for tracking whether
             the object input of a task is local (cache hit) or not local (cache miss)
             to the node that task is running on.
+        enable_seed_input_lineage_recovery: Experimental. If True, the streaming
+            executor tracks per-read-task lineage and, when a task output is lost
+            (e.g. a node dies), resubmits the affected seed input instead of
+            failing. Opt-in; currently targets linear V2 read pipelines.
         write_file_retry_on_errors: A list of substrings of error messages that should
             trigger a retry when writing files. This is useful for handling transient
             errors when writing to remote storage systems.
@@ -1034,6 +1044,9 @@ class DataContext:
     enable_rich_progress_bars: bool = DEFAULT_ENABLE_RICH_PROGRESS_BARS
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
+    )
+    enable_seed_input_lineage_recovery: bool = (
+        DEFAULT_ENABLE_SEED_INPUT_LINEAGE_RECOVERY
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES

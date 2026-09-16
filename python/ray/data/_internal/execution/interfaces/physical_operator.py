@@ -41,9 +41,10 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
+from ray.exceptions import ObjectLostError
 
 if TYPE_CHECKING:
-
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import BlockMetadataWithSchema
 
@@ -170,6 +171,8 @@ class DataOpTask(OpTask):
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        data_task_id: Optional[str] = None,
+        plan_id: Optional[str] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -192,6 +195,12 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            data_task_id: Logical (lineage) id of this task, stable across
+                re-executions -- unlike ``task_index``, which is fresh per Ray
+                attempt. ``None`` when object-loss recovery is disabled.
+            plan_id: The reconstruction plan this attempt serves; ``None`` for a
+                fresh attempt. Carried here because the output and completion
+                callbacks need it after submission.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -207,6 +216,8 @@ class DataOpTask(OpTask):
         self._operator_name = operator_name
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
+        self._data_task_id = data_task_id
+        self._plan_id: Optional[str] = plan_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -347,6 +358,27 @@ class DataOpTask(OpTask):
                     try:
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
+                    except ObjectLostError as ex:
+                        # Propagate the original loss *untorn-down* so the executor
+                        # can attempt seed-input-lineage recovery, which needs the
+                        # task still live to abort it deliberately (see
+                        # `_recover_lost_object`).
+                        #
+                        # Only when this task is actually tracked. `_data_task_id` is
+                        # None whenever there is no lineage tracker, and on that path
+                        # nothing will ever recover the task -- skipping the teardown
+                        # would leave it in `_data_tasks` re-raising every tick, so
+                        # the dataset hangs or aborts where it used to make progress.
+                        # This runs for every user, not just those opted in.
+                        if self._data_task_id is not None:
+                            raise
+                        self._task_done_callback(
+                            ex,
+                            None,  # TaskExecStats
+                            None,  # TaskExecDriverStats
+                        )
+                        self._state = TaskGeneratorState.FINISHED
+                        raise ex from None
                     except Exception as ex:
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
@@ -402,6 +434,16 @@ class DataOpTask(OpTask):
                 time.perf_counter() - self._start_output_backpressure_s
             )
             self._start_output_backpressure_s = None
+
+    @property
+    def data_task_id(self) -> Optional[str]:
+        """Logical lineage id, stable across re-executions. None if untracked."""
+        return self._data_task_id
+
+    @property
+    def plan_id(self) -> Optional[str]:
+        """The reconstruction plan this attempt serves; ``None`` if fresh."""
+        return self._plan_id
 
     @property
     def has_finished(self) -> bool:
@@ -485,6 +527,29 @@ class DataOpTask(OpTask):
                     task_output_backpressure_s=self._total_output_backpressure_s,
                 ),
             )
+        self._state = TaskGeneratorState.FINISHED
+
+    def mark_aborted(self, exception: Exception) -> None:
+        """Tear down a task whose output was lost, without reading its stream.
+
+        Runs the normal done-callback with ``exception`` set (the same path
+        ``on_data_ready`` takes on a task error) so the owning operator releases
+        every resource the task reserved -- running-task metrics, logical
+        CPU/GPU/memory usage, actor-pool slot, and pending input refs -- and
+        pops it from ``_data_tasks``. Callers must use this instead of dropping
+        the task from ``_data_tasks`` directly, which would leave those
+        separately-tracked reservations leaked for the rest of the run.
+        """
+        if self._state is TaskGeneratorState.FINISHED:
+            # `task_done_callback` already fired (normal completion or an
+            # earlier abort); firing it twice would double-release the task's
+            # resource reservations.
+            return
+        self._task_done_callback(
+            exception,
+            None,  # TaskExecStats
+            None,  # TaskExecDriverStats
+        )
         self._state = TaskGeneratorState.FINISHED
 
 
@@ -587,6 +652,7 @@ class PhysicalOperator(Operator):
         )
         self._started = False
         self._shutdown = False
+        self._lineage_tracker: Optional["LineageTracker"] = None
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -609,6 +675,22 @@ class PhysicalOperator(Operator):
     def id(self) -> str:
         """Return a unique identifier for this operator."""
         return self._id
+
+    def owns_data_task(self, data_task_id: str) -> bool:
+        """Whether this operator minted ``data_task_id`` for one of its tasks.
+
+        Only map operators mint lineage ids (``MapOperator._data_task_id_for``);
+        every other operator answers False.
+        """
+        return False
+
+    def retained_seed_input(self, seed_task_id: str) -> Optional[RefBundle]:
+        """The input retained for seed task ``seed_task_id``, or None.
+
+        Object-loss recovery re-injects this. Only the operator that ran the seed
+        holds it, so the operator that answers is the seed's owner.
+        """
+        return None
 
     @property
     def data_context(self) -> DataContext:
