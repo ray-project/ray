@@ -974,9 +974,10 @@ class DeploymentScheduler(ABC):
                 scheduling_request.placement_group_bundle_label_selector
             )
             if required_labels:
+                num_bundles = len(scheduling_request.placement_group_bundles)
                 bundle_label_selector = [
                     {**(selector or {}), **required_labels}
-                    for selector in (bundle_label_selector or [{}])
+                    for selector in (bundle_label_selector or [{}] * num_bundles)
                 ]
             try:
                 pg = self._create_placement_group_fn(

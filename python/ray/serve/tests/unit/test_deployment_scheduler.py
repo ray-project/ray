@@ -2311,7 +2311,10 @@ class TestReplicaNodeFloor:
         assert first.target_node_id == node_1
         assert first.bundle_label_selector is None
         assert second.target_node_id is None
-        assert second.bundle_label_selector == [{RAY_NODE_ID_LABEL: f"!in({node_1})"}]
+        assert second.bundle_label_selector == [
+            {RAY_NODE_ID_LABEL: f"!in({node_1})"} for _ in second.bundles
+        ]
+        assert len(second.bundle_label_selector) == 2
 
     def test_bound_replica_still_carries_the_floor_selector(self):
         """Soft affinity can spill, so the rule travels with a placed replica too."""
