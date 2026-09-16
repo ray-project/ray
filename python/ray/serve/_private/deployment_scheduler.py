@@ -414,6 +414,26 @@ def _best_fit_node(
     return chosen_node
 
 
+def _apply_rule_labels(actor_options: Dict[str, Any], rule_labels: Dict[str, str]):
+    """Prefers nodes that satisfy the rules, then accepts any node the user allows.
+
+    Ray tries `label_selector` first and each `fallback_strategy` entry in order.
+    The user's own selectors, each merged with the rules, go first, and the same
+    selectors without the rules go last, so a replica never waits forever on a
+    rule alone. This is the ScheduleAnyway behavior of a Kubernetes topology
+    spread constraint.
+    """
+    own = [actor_options.get("label_selector") or {}] + [
+        fallback.get("label_selector") or {}
+        for fallback in actor_options.get("fallback_strategy") or []
+    ]
+    with_rules = [{**selector, **rule_labels} for selector in own]
+    actor_options["label_selector"] = with_rules[0]
+    actor_options["fallback_strategy"] = [
+        {"label_selector": selector} for selector in with_rules[1:] + own
+    ]
+
+
 def _filter_nodes_by_label_selector(
     candidates: Dict[str, AvailableNodeResources],
     required_labels: Dict[str, str],
@@ -432,6 +452,7 @@ class SchedulingContext:
 
     deployment_id: DeploymentID
     num_replicas: int
+    num_active_nodes: int
     nodes_occupied_by_deployment: Set[str]
     node_labels: Dict[str, Dict[str, str]]
 
@@ -498,7 +519,7 @@ class MinReplicaNodesConstraint(SchedulingConstraint):
         return scheduling_request.gang_placement_group is None
 
     def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
-        floor = min(self._min_replica_nodes, ctx.num_replicas)
+        floor = min(self._min_replica_nodes, ctx.num_replicas, ctx.num_active_nodes)
         occupied = ctx.nodes_occupied_by_deployment
         return set(occupied) if len(occupied) < floor else set()
 
@@ -930,9 +951,10 @@ class DeploymentScheduler(ABC):
             default_scheduling_strategy: Strategy used when no target applies.
             target_node_id: Node to place the replica on with soft affinity.
             target_labels: Node labels to prefer with a soft constraint.
-            required_labels: Label selector the filters demand, applied as a
-                hard constraint. The replica then waits for the autoscaler
-                rather than landing on a node that breaks a filter's rule.
+            required_labels: Label selector the rules demand. An actor prefers
+                nodes that satisfy it and falls back to any node it may use.
+                Placement groups have no fallback selectors in Ray, so their
+                bundles carry it as a hard constraint.
 
         Returns:
             True if the replica was successfully scheduled, False otherwise.
@@ -1026,10 +1048,7 @@ class DeploymentScheduler(ABC):
         if required_labels and not isinstance(
             scheduling_strategy, PlacementGroupSchedulingStrategy
         ):
-            actor_options["label_selector"] = {
-                **(actor_options.get("label_selector") or {}),
-                **required_labels,
-            }
+            _apply_rule_labels(actor_options, required_labels)
         if (
             scheduling_request.max_replicas_per_node is not None
             and scheduling_request.max_replicas_per_node > 0
@@ -1311,6 +1330,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             ctx = SchedulingContext(
                 deployment_id=deployment_id,
                 num_replicas=self._num_replicas(deployment_id),
+                num_active_nodes=len(active_nodes),
                 nodes_occupied_by_deployment=hosting_nodes,
                 node_labels=node_labels,
             )
@@ -1514,11 +1534,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             and replica_id not in self._logged_placement_failures
         ):
             self._logged_placement_failures.add(replica_id)
-            labels_desc = f" satisfying {required_labels}" if required_labels else ""
+            if not required_labels:
+                outcome = "Ray places it once any node has room."
+            elif scheduling_request.placement_group_bundles is not None:
+                outcome = (
+                    f"Its bundles carry {required_labels} as a hard selector, so "
+                    "it waits until a node satisfying that has room."
+                )
+            else:
+                outcome = (
+                    f"It prefers a node satisfying {required_labels} and accepts "
+                    "any node it may use if none has room."
+                )
             logger.info(
-                f"Could not place {replica_id} ({resources_desc}): no node with "
-                f"sufficient resources{labels_desc}. Falling back to "
-                f"{self._profile.scorer.fallback_scheduling_strategy} scheduling."
+                f"No node with room for {replica_id} ({resources_desc}) passed "
+                f"the placement rules. {outcome}"
             )
 
         succeeded = self._schedule_replica(

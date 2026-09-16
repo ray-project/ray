@@ -2022,10 +2022,11 @@ def scheduled_node_ids(on_scheduled: Mock) -> List[str]:
 
 
 class TestSchedulingConstraints:
-    def _ctx(self, occupied, num_replicas=3, node_labels=None):
+    def _ctx(self, occupied, num_replicas=3, node_labels=None, num_active_nodes=3):
         return SchedulingContext(
             deployment_id=DeploymentID(name="d1"),
             num_replicas=num_replicas,
+            num_active_nodes=num_active_nodes,
             nodes_occupied_by_deployment=set(occupied),
             node_labels=node_labels or {},
         )
@@ -2040,6 +2041,12 @@ class TestSchedulingConstraints:
         constraint = MinReplicaNodesConstraint(2)
         single = self._ctx(occupied=["n1"], num_replicas=1)
         assert constraint.nodes_to_avoid(single) == set()
+
+    def test_min_replica_nodes_constraint_capped_by_node_count(self):
+        """A floor above the cluster size never excludes every node."""
+        constraint = MinReplicaNodesConstraint(3)
+        ctx = self._ctx(occupied=["n1", "n2"], num_active_nodes=2)
+        assert constraint.nodes_to_avoid(ctx) == set()
 
     def test_node_exclusions_from_two_rules_compose(self):
         class AvoidN2(SchedulingConstraint):
@@ -2228,9 +2235,10 @@ class TestReplicaNodeFloor:
 
     def test_unmet_floor_excludes_hosting_nodes(self):
         d_id = DeploymentID(name="d1")
-        node_1 = NodeID.from_random().hex()
+        node_1, full_node = NodeID.from_random().hex(), NodeID.from_random().hex()
         cache = MockClusterNodeInfoCache()
         cache.add_node(node_1, {"CPU": 4}, labels={"zone": "a"})
+        cache.add_node(full_node, {"CPU": 0}, labels={"zone": "a"})
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
         scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
         scheduler.on_deployment_deployed(
@@ -2261,6 +2269,7 @@ class TestReplicaNodeFloor:
             "zone": "a",
             RAY_NODE_ID_LABEL: f"!in({node_1})",
         }
+        assert second["fallback_strategy"] == [{"label_selector": {"zone": "a"}}]
         assert (
             scheduler._launching_replicas[d_id][
                 ReplicaID(unique_id="r1", deployment_id=d_id)
@@ -2268,11 +2277,55 @@ class TestReplicaNodeFloor:
             is None
         )
 
+    def test_rules_ride_on_every_user_fallback(self):
+        """Ray treats each fallback selector as a replacement for the primary, so
+        the rules must be merged into each one, and only the last resort drops
+        them."""
+        d_id = DeploymentID(name="d1")
+        node_1, full_node = NodeID.from_random().hex(), NodeID.from_random().hex()
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(node_1, {"CPU": 4}, labels={"zone": "b"})
+        cache.add_node(full_node, {"CPU": 0}, labels={"zone": "b"})
+        scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_replica_running(
+            ReplicaID(unique_id="r0", deployment_id=d_id), node_1
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [
+                    make_request(
+                        d_id,
+                        "r1",
+                        1,
+                        on_scheduled,
+                        actor_options={
+                            "label_selector": {"zone": "a"},
+                            "fallback_strategy": [{"label_selector": {"zone": "b"}}],
+                        },
+                    )
+                ]
+            },
+            downscales={},
+        )
+
+        options = on_scheduled.call_args.args[0]._options
+        exclusion = {RAY_NODE_ID_LABEL: f"!in({node_1})"}
+        assert options["label_selector"] == {"zone": "a", **exclusion}
+        assert options["fallback_strategy"] == [
+            {"label_selector": {"zone": "b", **exclusion}},
+            {"label_selector": {"zone": "a"}},
+            {"label_selector": {"zone": "b"}},
+        ]
+
     def test_unmet_floor_excludes_hosting_nodes_for_strict_pack_pg(self):
         d_id = DeploymentID(name="d1")
-        node_1 = NodeID.from_random().hex()
+        node_1, full_node = NodeID.from_random().hex(), NodeID.from_random().hex()
         cache = MockClusterNodeInfoCache()
         cache.add_node(node_1, {"CPU": 4})
+        cache.add_node(full_node, {"CPU": 0})
         create_pg_fn = Mock(side_effect=MockPlacementGroup)
         scheduler = make_scheduler(
             cache,
@@ -2590,9 +2643,10 @@ def test_pinned_replica_skips_the_floor_and_is_counted_where_it_lands():
 def test_spread_pg_still_carries_the_floor_selector():
     """Ray places the bundles, but the rule's selector rides along on them."""
     d_id = DeploymentID(name="pg")
-    node_1 = NodeID.from_random().hex()
+    node_1, full_node = NodeID.from_random().hex(), NodeID.from_random().hex()
     cache = MockClusterNodeInfoCache()
     cache.add_node(node_1, {"CPU": 4})
+    cache.add_node(full_node, {"CPU": 0})
     create_pg_fn = Mock(side_effect=MockPlacementGroup)
     scheduler = make_scheduler(
         cache,
