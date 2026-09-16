@@ -3,6 +3,7 @@
 replica reconciliation.
 """
 
+import asyncio
 import sys
 from typing import List
 from unittest import mock
@@ -25,6 +26,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_worker_id,
 )
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentTargetInfo,
     ReplicaID,
@@ -32,6 +34,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.request_router import PendingRequest
+from ray.serve._private.test_utils import FakeRunningReplica
 from ray.serve.llm.request_router import KVAwareRouter
 
 
@@ -293,31 +296,68 @@ async def test_choose_replicas_routes_to_selected_worker():
 
 
 @pytest.mark.asyncio
-async def test_choose_replicas_honors_lora_multiplexing_and_kv_namespace():
-    """LoRA narrows candidates and salts the selection-service KV namespace."""
-    replicas = [_StubReplica("r1"), _StubReplica("r2")]
-    worker_ids = [get_worker_id("r1"), get_worker_id("r2")]
-    router = _build_kv_aware_router(worker_ids[0])
-    router.apply_multiplex_routing = mock.MagicMock(
-        return_value={replicas[0].replica_id}
-    )
-    pending = PendingRequest(
-        args=[],
-        kwargs={REQUEST_TOKEN_IDS_KWARG: [10, 11, 12]},
-        metadata=RequestMetadata(
-            request_id="req-lora",
-            internal_request_id="int-lora",
-            multiplexed_model_id="base-model:adapter-a",
-        ),
-    )
+async def test_cold_adapter_backs_off_then_routes():
+    """A LoRA request that momentarily has no multiplex candidates is still routed
+    after backing off, and follows the adapter once a replica advertises it."""
+    adapter = "base-model:adapter-a"
 
-    groups = await router.choose_replicas(replicas, pending)
+    async def select_first_allowed(
+        request_id,
+        token_ids,
+        allowed_worker_ids,
+        expected_output_tokens=None,
+        lora_name=None,
+    ):
+        return {
+            "worker_id": allowed_worker_ids[0],
+            "dp_rank": 0,
+            "overlap_tokens": 0,
+            "effective_prefill_tokens": len(token_ids),
+        }
 
-    assert groups == [[replicas[0]]]
-    router.apply_multiplex_routing.assert_called_once_with(pending_request=pending)
-    select = router._kv_token_tracker.select_worker
-    assert select.allowed == [worker_ids[0]]
-    assert select.lora_name == "base-model:adapter-a"
+    router = KVAwareRouter(
+        deployment_id=DeploymentID(name="d", app_name="app"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        self_actor_id="fake-actor-id",
+        initial_backoff_s=0.001,
+        backoff_multiplier=1,
+        max_backoff_s=0.001,
+    )
+    router._kv_token_tracker = _KVTokenTrackerStub(0)
+    router._kv_token_tracker.select_worker = select_first_allowed
+    router.update_replicas([FakeRunningReplica("r1"), FakeRunningReplica("r2")])
+
+    def lora_request():
+        return PendingRequest(
+            args=[],
+            kwargs={REQUEST_TOKEN_IDS_KWARG: [10, 11, 12]},
+            metadata=RequestMetadata(
+                request_id="req",
+                internal_request_id="int",
+                multiplexed_model_id=adapter,
+            ),
+        )
+
+    async def route(pending):
+        """Take the first rank the Serve router's retry loop yields."""
+        ranks = router._choose_replicas_with_backoff(pending)
+        try:
+            return (await ranks.__anext__())[0]
+        finally:
+            await ranks.aclose()
+
+    # The first cold request falls back to any replica. The next one finds no
+    # multiplex candidates until its retry; it must back off, not fail.
+    await route(lora_request())
+    routed = await asyncio.wait_for(route(lora_request()), timeout=5)
+    assert routed.replica_id.unique_id in {"r1", "r2"}
+
+    # Once a replica advertises the adapter, requests are scored on it alone.
+    router.update_replicas(
+        [FakeRunningReplica("r1"), FakeRunningReplica("r2", model_ids={adapter})]
+    )
+    routed = await asyncio.wait_for(route(lora_request()), timeout=5)
+    assert routed.replica_id.unique_id == "r2"
 
 
 @pytest.mark.asyncio
