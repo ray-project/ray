@@ -1,7 +1,17 @@
 import gc
+import os
+import secrets
 import sys
 import time
 from unittest.mock import Mock
+
+# test_ray_client starts the head in a subprocess but connects the driver in this
+# process via the in-process client server. RayConfig reads the auth mode once at
+# import, so set it before importing ray; an explicit env token lets both sides
+# agree without depending on the ~/.ray/auth_token file (whose home resolution
+# differs across platforms).
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import numpy as np
 import pytest
