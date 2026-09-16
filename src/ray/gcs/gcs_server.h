@@ -77,7 +77,7 @@ struct GcsServerConfig {
   // Whether GCS active-passive leader election is enabled. When true, the GCS
   // server boots as passive and its mutating RPCs are gated until it is promoted
   // to the active leader. Defaults to false (single active GCS, legacy behavior).
-  bool ray_leader_elect_enabled = false;
+  bool enable_gcs_leader_election = false;
 };
 
 class GcsNodeManager;
@@ -168,7 +168,7 @@ class GcsServer {
   typename GatedT::HandlerType &MaybeGate(std::unique_ptr<GatedT> &slot,
                                           RealHandlerT &real_handler,
                                           ExtraArgs &&...extra) {
-    if (!config_.ray_leader_elect_enabled) {
+    if (!config_.enable_gcs_leader_election) {
       return real_handler;
     }
     slot = std::make_unique<GatedT>(
@@ -394,7 +394,7 @@ class GcsServer {
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
   /// Whether this GCS is currently the active leader. Initialized from
-  /// config_.ray_leader_elect_enabled: leader election disabled => always leader
+  /// config_.enable_gcs_leader_election: leader election disabled => always leader
   /// (legacy behavior); enabled => starts passive until promoted (promotion wired
   /// up in a later PR).
   std::atomic<bool> is_leader_;

@@ -710,7 +710,7 @@ gcs::GcsServerConfig MakeGcsServerConfig(const std::string &name, bool leader_el
   config.node_ip_address = "127.0.0.1";
   config.enable_sharding_conn = false;
   config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-  config.ray_leader_elect_enabled = leader_elect;
+  config.enable_gcs_leader_election = leader_elect;
   return config;
 }
 
