@@ -129,6 +129,14 @@ class MetricSamples(NamedTuple):
         return bool(self.timestamps.size)
 
 
+class _ReplicaRunningMemo(NamedTuple):
+    """One replica's converted running series, valid while its report timestamp
+    is unchanged."""
+
+    timestamp: float
+    samples: MetricSamples
+
+
 @dataclass(frozen=True)
 class ColumnarHandleReport:
     """A handle's decoded columnar report, written once at ingest and read by the
@@ -222,9 +230,7 @@ class DeploymentAutoscalingState:
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
         # (report timestamp, samples) memo of each replica's running series, so the
         # object->array conversion runs once per report, not once per decision tick.
-        self._replica_running_arrays: Dict[
-            ReplicaID, Tuple[float, MetricSamples]
-        ] = dict()
+        self._replica_running_memo: Dict[ReplicaID, _ReplicaRunningMemo] = dict()
         # Columnar per-handle arrays: metadata + per-replica running + queued
         # (filled whenever a columnar frame arrives).
         self._handle_arrays: Dict[str, ColumnarHandleReport] = dict()
@@ -346,7 +352,7 @@ class DeploymentAutoscalingState:
     def on_replica_stopped(self, replica_id: ReplicaID):
         if replica_id in self._replica_metrics:
             del self._replica_metrics[replica_id]
-        self._replica_running_arrays.pop(replica_id, None)
+        self._replica_running_memo.pop(replica_id, None)
 
     def get_num_replicas_lower_bound(self) -> int:
         if self._config.initial_replicas is not None and (
@@ -432,11 +438,13 @@ class DeploymentAutoscalingState:
             series = report.metrics.get(RUNNING_REQUESTS_KEY)
             if not series:
                 continue
-            cached = self._replica_running_arrays.get(replica_id)
-            if cached is None or cached[0] != report.timestamp:
-                cached = (report.timestamp, MetricSamples.from_timeseries(series))
-                self._replica_running_arrays[replica_id] = cached
-            samples.append(cached[1])
+            cached = self._replica_running_memo.get(replica_id)
+            if cached is None or cached.timestamp != report.timestamp:
+                cached = _ReplicaRunningMemo(
+                    report.timestamp, MetricSamples.from_timeseries(series)
+                )
+                self._replica_running_memo[replica_id] = cached
+            samples.append(cached.samples)
         return samples
 
     def _queued_columnar_samples(self) -> List[MetricSamples]:
