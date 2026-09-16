@@ -747,14 +747,7 @@ def _recover_lost_object(
             return False
         resubmissions.append((seed_id, seed_op, seed_input))
 
-    # Tear the dead task down through its normal completion callback so the operator
-    # releases every resource it reserved -- running-task metrics, logical
-    # CPU/GPU/memory usage, the actor-pool slot, pending input refs -- and pops it
-    # from `_data_tasks` so it stops re-raising ObjectLostError every tick. A bare
-    # `_data_tasks.pop` would silence the task but leak all of those separately
-    # tracked reservations, monotonically shrinking the op's budget (via
-    # ResourceManager.can_submit_new_task) until recovery starves the operator it
-    # was trying to heal.
+    # Mark the task as aborted so the operator releases every resource it reserved.
     task.mark_aborted(lost_error)
 
     for seed_id, seed_op, seed_input in resubmissions:
