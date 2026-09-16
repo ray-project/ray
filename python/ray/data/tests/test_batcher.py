@@ -398,13 +398,23 @@ def test_no_partial_batch_mid_stream():
 
 
 @pytest.mark.parametrize("fail_stage", [None, "prepare", "take"])
-def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_stage):
+@pytest.mark.parametrize("variable_shape", [False, True])
+def test_shuffling_batcher_production_tensors(
+    shutdown_only, monkeypatch, fail_stage, variable_shape
+):
     ray.shutdown()
     ray.init(num_cpus=1)
     blocks = []
     for start in range(0, 4096, 256):
         ids = np.arange(start, start + 256, dtype=np.int64)
-        values = np.broadcast_to(ids[:, None], (256, 256)).astype(np.float32).copy()
+        if variable_shape:
+            values = np.empty(len(ids), dtype=object)
+            for i, row_id in enumerate(ids):
+                values[i] = np.full(
+                    (512 * (1 + row_id % 2), 4), row_id, dtype=np.float32
+                )
+        else:
+            values = np.broadcast_to(ids[:, None], (256, 256)).astype(np.float32).copy()
         blocks.append(
             pa.table({"row_id": ids, "tensor": ArrowTensorArray.from_numpy(values)})
         )
@@ -435,7 +445,12 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
         expected, _ = consume()
     calls = []
     failures = []
-    original = chunked_tensor_take.PreparedChunkedTensorTake.take
+    plan_type = (
+        chunked_tensor_take.PreparedVariableShapedTensorTake
+        if variable_shape
+        else chunked_tensor_take.PreparedChunkedTensorTake
+    )
+    original = plan_type.take
 
     def record_take(plan, indices):
         if fail_stage == "take":
@@ -445,9 +460,7 @@ def test_shuffling_batcher_production_tensors(shutdown_only, monkeypatch, fail_s
         calls.append(len(indices))
         return result
 
-    monkeypatch.setattr(
-        chunked_tensor_take.PreparedChunkedTensorTake, "take", record_take
-    )
+    monkeypatch.setattr(plan_type, "take", record_take)
     preparation_calls = []
     if fail_stage == "prepare":
 

@@ -12,7 +12,7 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    PreparedChunkedTensorTake,
+    PreparedTensorTake,
     try_prepare_chunked_tensor_take,
 )
 from ray.data._internal.util import get_total_obj_store_mem_on_node
@@ -38,7 +38,7 @@ SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
 
 def _prepare_local_shuffle_arrow_table(
     table: pa.Table,
-) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTake]]:
+) -> Tuple[pa.Table, Dict[int, PreparedTensorTake]]:
     """Prepare an Arrow table for repeated local-shuffle row takes.
 
     Args:
@@ -88,7 +88,7 @@ class _ShuffleBufferState:
 
     block: Block
     shuffled_indices: np.ndarray
-    prepared_tensor_takes: Dict[int, PreparedChunkedTensorTake]
+    prepared_tensor_takes: Dict[int, PreparedTensorTake]
     batch_head: int = 0
     # A failed plan stays disabled even if combining its source column raises.
     failed_tensor_columns: Set[int] = field(default_factory=set)
