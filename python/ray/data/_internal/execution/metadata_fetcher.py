@@ -338,6 +338,14 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                     break
                 fifo.popleft()
                 d.task.mark_emitted()
+                if d.task.has_finished:
+                    # The task was aborted while this pair was in flight: its
+                    # output was lost and a fresh attempt is reconstructing it
+                    # under the same logical id. The done-callback has already
+                    # fired and the operator has released the task, so emitting
+                    # now would duplicate the reconstructed block and touch
+                    # per-task accounting that no longer exists.
+                    continue
                 if isinstance(result, BaseException):
                     failures.append((d.task.operator_name, result))
                     continue
@@ -358,7 +366,16 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         if not self._drained_tasks:
             return []
         failures: List[Tuple[str, BaseException]] = []
-        to_mark_done = [t for t in self._drained_tasks if not t.has_pending_emits()]
+        # A task aborted after draining has already fired its done-callback;
+        # `mark_done` here would fire it twice and double-release its resources.
+        to_mark_done = [
+            t
+            for t in self._drained_tasks
+            if not t.has_pending_emits() and not t.has_finished
+        ]
+        self._drained_tasks.difference_update(
+            {t for t in self._drained_tasks if t.has_finished}
+        )
         for task in to_mark_done:
             if task.task_error is not None:
                 failures.append((task.operator_name, task.task_error))
