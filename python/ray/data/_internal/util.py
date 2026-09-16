@@ -1544,7 +1544,8 @@ def _annotate_exception_with_retry_context(
     suffix += (
         "\nTo change retry attempts, backoff, or which errors are retried, "
         "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
-        "for I/O; `retried_map_errors` and `max_map_retries` for any task)."
+        "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
+        "if you believe this to be transient."
     )
     try:
         if exc.args and isinstance(exc.args[0], str):

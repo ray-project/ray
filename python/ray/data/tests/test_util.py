@@ -423,7 +423,8 @@ def test_iterate_with_retry_annotates_s3_permissions(monkeypatch, retryable):
         "`filesystem=s3fs.S3FileSystem()` to the read/write API).\n"
         "To change retry attempts, backoff, or which errors are retried, "
         "configure `ray.data.DataContext.get_current()` (`retried_io_errors` "
-        "for I/O; `retried_map_errors` and `max_map_retries` for any task)."
+        "for I/O; `retried_map_errors` and `max_map_retries` for any task) "
+        "if you believe this to be transient."
     )
 
 
