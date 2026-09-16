@@ -49,7 +49,7 @@ MODEL_B = "meta-llama/model-b"
 
 DEPLOYMENT_NAMES = {
     MODEL_A: "LLMServer:model-a",
-    MODEL_B: "LLMServer:meta--model-b",
+    MODEL_B: "LLMServer:meta-llama--model-b",
 }
 
 requires_body_forwarding = pytest.mark.skipif(
