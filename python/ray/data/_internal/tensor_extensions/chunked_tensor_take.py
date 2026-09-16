@@ -21,21 +21,21 @@ ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
     True,
 )
 
-# Soft cap for temporary tensor payload produced by each gather subbatch. The
+# Soft cap for temporary payload in each fixed-shape gather subbatch. The
 # final output and index, offset, and zero-copy view metadata are excluded. A
 # source row is irreducible, so an oversized row uses a one-row subbatch and may
 # exceed the cap.
-TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
+FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
 # Narrow rows do not copy enough payload per grouped NumPy operation, while a
 # small source column does not amortize preparation even when its rows are wide.
 # Keep these operational gates independent of the scratch limit: an eligible
 # source row may be larger than the soft scratch cap.
-_MIN_FAST_ROW_BYTES = 1024
-_MIN_FAST_PAYLOAD_BYTES = 1024 * 1024
+_MIN_FIXED_ROW_BYTES = 1024
+_MIN_FIXED_PAYLOAD_BYTES = 1024 * 1024
 # Preparation also has fixed work per physical source chunk, including the
 # empty chunks it must inspect. Require enough source payload per chunk unless
 # the requested output itself is large enough to amortize that work.
-_MIN_FAST_BYTES_PER_CHUNK = 128 * 1024
+_MIN_FIXED_SOURCE_BYTES_PER_CHUNK = 128 * 1024
 # Variable-shaped rows need a Python slice copy per selected row. Require more
 # payload per source row than the vectorized fixed-shape gather to amortize it.
 # This is a source average, including zero-length rows, not a minimum row size.
@@ -129,7 +129,7 @@ def try_prepare_chunked_tensor_take(
         )
     values_per_row, row_bytes, value_dtype = layout
 
-    if not _passes_size_gates(
+    if not _passes_fixed_size_gates(
         source_rows=len(column),
         row_bytes=row_bytes,
         source_chunks=column.num_chunks,
@@ -154,7 +154,7 @@ def try_prepare_chunked_tensor_take(
 
     subbatch_rows = max(
         1,
-        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
+        FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
 
     chunk_views = []
@@ -219,21 +219,21 @@ def _log_take_fallback(
     return None
 
 
-def _passes_size_gates(
+def _passes_fixed_size_gates(
     source_rows: int,
     row_bytes: int,
     source_chunks: int,
     max_output_rows: int,
 ) -> bool:
-    """Return whether the source or requested output can amortize setup."""
+    """Return whether a fixed-shape source or output can amortize setup."""
     source_bytes = source_rows * row_bytes
     output_bytes = max_output_rows * row_bytes
     return (
-        row_bytes >= _MIN_FAST_ROW_BYTES
-        and source_bytes >= _MIN_FAST_PAYLOAD_BYTES
+        row_bytes >= _MIN_FIXED_ROW_BYTES
+        and source_bytes >= _MIN_FIXED_PAYLOAD_BYTES
         and (
-            source_bytes >= source_chunks * _MIN_FAST_BYTES_PER_CHUNK
-            or output_bytes >= _MIN_FAST_PAYLOAD_BYTES
+            source_bytes >= source_chunks * _MIN_FIXED_SOURCE_BYTES_PER_CHUNK
+            or output_bytes >= _MIN_FIXED_PAYLOAD_BYTES
         )
     )
 

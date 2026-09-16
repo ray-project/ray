@@ -25,7 +25,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    TENSOR_TAKE_SCRATCH_CAP_BYTES,
+    FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES,
     _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
 )
@@ -236,7 +236,7 @@ def test_chunked_tensor_take(tensor_cls, chunks):
     row_bytes = math.prod(column.type.shape) * np.dtype(np.float32).itemsize
     assert plan.subbatch_rows == max(
         1,
-        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
+        FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
     output = plan.take(indices)
     np.testing.assert_array_equal(output.to_numpy(), values[indices])
@@ -346,7 +346,8 @@ def test_chunked_tensor_take_allows_one_row_to_exceed_scratch_cap():
     assert plan is not None
     assert plan.subbatch_rows == 1
     assert (
-        plan.values_per_row * plan.value_dtype.itemsize > TENSOR_TAKE_SCRATCH_CAP_BYTES
+        plan.values_per_row * plan.value_dtype.itemsize
+        > FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES
     )
     output = plan.take(np.array([1], dtype=np.int64))
     assert output.storage.values[0].as_py() == pytest.approx(math.prod(shape))
@@ -641,7 +642,7 @@ def test_chunked_tensor_take_respects_nonzero_logical_offsets(monkeypatch):
 
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_passes_size_gates",
+        "_passes_fixed_size_gates",
         lambda *args, **kwargs: True,
     )
     plan = try_prepare_chunked_tensor_take(column, max_output_rows=2)
@@ -659,7 +660,7 @@ def test_chunked_tensor_take_rejects_invalid_logical_offsets(monkeypatch):
     )
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_passes_size_gates",
+        "_passes_fixed_size_gates",
         lambda *args, **kwargs: True,
     )
     assert try_prepare_chunked_tensor_take(irregular, max_output_rows=2) is None
@@ -906,7 +907,7 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
     )
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_passes_size_gates",
+        "_passes_fixed_size_gates",
         lambda *args, **kwargs: True,
     )
 
