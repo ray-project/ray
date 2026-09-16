@@ -57,6 +57,16 @@ class _StubServingResponses:
         return _gen()
 
 
+class _StubNonStreamingServingResponses:
+    """Stand-in for vLLM's OpenAIServingResponses: returns one response."""
+
+    def __init__(self, response):
+        self._response = response
+
+    async def create_responses(self, request, raw_request=None):
+        return self._response
+
+
 def test_responses_request_has_request_id():
     req = ResponsesRequest(model="m", input="hello")
     assert isinstance(req.request_id, str)
@@ -153,6 +163,55 @@ async def test_vllm_engine_responses_streaming_sse_encoding():
     # by_alias=True must emit the alias, not the Python field name.
     assert '"sequence_number":7' in chunk
     assert '"seq"' not in chunk
+
+
+@pytest.mark.asyncio
+async def test_engine_preserves_structured_output_schema():
+    """A structured-output response must keep its JSON schema through the engine.
+
+    The engine rebuilds vLLM's response from a dump. A default dump emits
+    ``schema_``, which the nested OpenAI config rejects for the ``schema`` alias.
+    """
+    engine = VLLMEngine.__new__(VLLMEngine)
+    engine._oai_serving_responses = _StubNonStreamingServingResponses(
+        ResponsesResponse(
+            model="m",
+            output=[],
+            status="completed",
+            parallel_tool_calls=False,
+            temperature=1.0,
+            tool_choice="auto",
+            tools=[],
+            top_p=1.0,
+            background=False,
+            max_output_tokens=16,
+            service_tier="auto",
+            truncation="disabled",
+            text={
+                "format": {
+                    "type": "json_schema",
+                    "name": "answer",
+                    "schema": {
+                        "type": "object",
+                        "properties": {"a": {"type": "string"}},
+                    },
+                }
+            },
+        )
+    )
+
+    request = ResponsesRequest(model="m", input="hello", stream=False)
+    chunks = [c async for c in engine.responses(request)]
+
+    assert len(chunks) == 1
+    assert chunks[0].text.format.schema_ == {
+        "type": "object",
+        "properties": {"a": {"type": "string"}},
+    }
+    assert chunks[0].model_dump()["text"]["format"]["schema"] == {
+        "type": "object",
+        "properties": {"a": {"type": "string"}},
+    }
 
 
 def test_responses_route_is_registered():

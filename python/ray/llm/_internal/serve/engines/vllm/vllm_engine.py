@@ -869,7 +869,9 @@ class VLLMEngine(LLMEngine):
                     error=ErrorInfo(**responses_response.error.model_dump())
                 )
             else:
-                yield ResponsesResponse(**responses_response.model_dump())
+                # Nested OpenAI types accept only their aliases, so a
+                # default dump loses `schema` and fails validation.
+                yield ResponsesResponse(**responses_response.model_dump(by_alias=True))
 
     async def score(
         self,
