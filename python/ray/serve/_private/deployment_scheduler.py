@@ -84,6 +84,9 @@ class Resources(dict):
         keys = set(self.keys()) | set(other.keys())
         return all([self.get(k) == other.get(k) for k in keys])
 
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
     def __add__(self, other):
         keys = set(self.keys()) | set(other.keys())
 

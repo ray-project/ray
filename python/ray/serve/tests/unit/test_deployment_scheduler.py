@@ -105,6 +105,13 @@ class TestResources:
         a = RequestedResources({resource_type: 1})
         assert not b.can_fit(a)
 
+    def test_equal_maps_with_different_keys_are_not_unequal(self):
+        """dict.__ne__ would report these as unequal and hide a tie."""
+        a = AvailableNodeResources({"CPU": 3, "GPU": 0})
+        b = AvailableNodeResources({"CPU": 3})
+        assert a == b
+        assert not (a != b)
+
     def test_neither_bigger(self):
         a = AvailableNodeResources({"CPU": 1, "GPU": 0})
         b = RequestedResources({"CPU": 0, "GPU": 1})
