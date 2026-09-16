@@ -51,7 +51,7 @@ class ChildBlockDependency:
     output_index: OutputIndex
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParentBlockOutput:
     """
     A tuple to associate a parent task to
