@@ -95,17 +95,22 @@ py_test_module_list(
     ],
 )
 
-# Direct-streaming session-affinity tests
+# Direct-streaming end-to-end tests (session affinity, multi-model routing)
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
     env = {
         "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
         "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        # Multi-model routing selects the model deployment from the request's
+        # `model` field, which HAProxy only forwards to the ingress request
+        # router when this is set.
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY": "1",
     },
     files = [
         "serve/cpu/deployments/data_parallel/test_dp_direct_streaming.py",
         "serve/cpu/deployments/prefill_decode_disagg/test_pd_direct_streaming.py",
+        "serve/cpu/deployments/routers/test_multi_model_direct_streaming.py",
         "serve/cpu/deployments/routers/test_router_direct_streaming.py",
     ],
     tags = [
