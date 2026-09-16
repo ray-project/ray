@@ -1,3 +1,4 @@
+import logging
 import random
 import sys
 from collections import Counter, defaultdict
@@ -2431,6 +2432,85 @@ class TestSpreadNodeScorer:
         assert (
             on_scheduled.call_args.args[0]._options["scheduling_strategy"] == "SPREAD"
         )
+
+
+def test_spread_pg_still_carries_the_floor_selector():
+    """Ray places the bundles, but the rule's selector rides along on them."""
+    d_id = DeploymentID(name="pg")
+    node_1 = NodeID.from_random().hex()
+    cache = MockClusterNodeInfoCache()
+    cache.add_node(node_1, {"CPU": 4})
+    create_pg_fn = Mock(side_effect=MockPlacementGroup)
+    scheduler = make_scheduler(
+        cache,
+        PackNodeScorer(),
+        min_replica_nodes=2,
+        create_placement_group_fn=create_pg_fn,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        rconfig(
+            placement_group_bundles=[{"CPU": 1}], placement_group_strategy="SPREAD"
+        ),
+    )
+    scheduler.on_replica_running(ReplicaID(unique_id="r0", deployment_id=d_id), node_1)
+
+    scheduler.schedule(
+        upscales={
+            d_id: [
+                make_request(
+                    d_id,
+                    "r1",
+                    1,
+                    Mock(),
+                    actor_options={"name": "r1"},
+                    placement_group_bundles=[{"CPU": 1}],
+                    placement_group_strategy="SPREAD",
+                )
+            ]
+        },
+        downscales={},
+    )
+
+    request = create_pg_fn.call_args.args[0]
+    assert request.target_node_id is None
+    assert request.bundle_label_selector == [{RAY_NODE_ID_LABEL: f"!in({node_1})"}]
+
+
+def test_floor_does_not_apply_to_gang_replicas(caplog):
+    d_id = DeploymentID(name="gang")
+    node_1 = NodeID.from_random().hex()
+    cache = MockClusterNodeInfoCache()
+    cache.add_node(node_1, {"CPU": 4})
+    scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_replica_running(ReplicaID(unique_id="r0", deployment_id=d_id), node_1)
+
+    on_scheduled = Mock()
+    with caplog.at_level(logging.INFO, logger="ray.serve"):
+        scheduler.schedule(
+            upscales={
+                d_id: [
+                    make_request(
+                        d_id,
+                        "r1",
+                        1,
+                        on_scheduled,
+                        gang_placement_group=MockPlacementGroup(
+                            CreatePlacementGroupRequest(
+                                [{"CPU": 1}], "STRICT_PACK", None, "g"
+                            )
+                        ),
+                        gang_pg_index=0,
+                    )
+                ]
+            },
+            downscales={},
+        )
+
+    assert "label_selector" not in on_scheduled.call_args.args[0]._options
+    assert "MinReplicaNodesConstraint does not apply" in caplog.text
 
 
 def test_non_strict_pack_pg_is_placed_by_ray_core():

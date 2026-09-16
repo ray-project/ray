@@ -454,6 +454,9 @@ class SchedulingConstraint:
     is a no-op, so a constraint overrides only the points it cares about.
     """
 
+    def applies_to(self, scheduling_request: ReplicaSchedulingRequest) -> bool:
+        return True
+
     def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
         return set()
 
@@ -476,6 +479,11 @@ class MinReplicaNodesConstraint(SchedulingConstraint):
 
     def __init__(self, min_replica_nodes: int):
         self._min_replica_nodes = min_replica_nodes
+
+    def applies_to(self, scheduling_request: ReplicaSchedulingRequest) -> bool:
+        """A gang's placement group is reserved before the replica exists, so
+        no label can be attached to it and the floor cannot be enforced."""
+        return scheduling_request.gang_placement_group is None
 
     def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
         floor = min(self._min_replica_nodes, ctx.num_replicas)
@@ -658,6 +666,7 @@ class DeploymentScheduler(ABC):
         ] = defaultdict(dict)
         self._last_schedule_order_log_key: Optional[tuple] = None
         self._logged_placement_failures: Set[ReplicaID] = set()
+        self._logged_skipped_rules: Set[Tuple[DeploymentID, str]] = set()
 
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
@@ -717,6 +726,9 @@ class DeploymentScheduler(ABC):
         assert not self._running_replicas[deployment_id]
         self._running_replicas.pop(deployment_id, None)
 
+        self._logged_skipped_rules = {
+            key for key in self._logged_skipped_rules if key[0] != deployment_id
+        }
         del self._deployments[deployment_id]
 
     def on_replica_stopping(self, replica_id: ReplicaID) -> None:
@@ -1263,13 +1275,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
         for scheduling_request in scheduling_requests:
             deployment_id = scheduling_request.replica_id.deployment_id
-            if scheduling_request.is_non_strict_pack_pg():
-                self._schedule_replica(
-                    scheduling_request,
-                    default_scheduling_strategy=self._profile.scorer.fallback_scheduling_strategy,
-                )
-                continue
-
             hosting_nodes = nodes_by_deployment[deployment_id]
             ctx = SchedulingContext(
                 deployment_id=deployment_id,
@@ -1277,13 +1282,20 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 nodes_occupied_by_deployment=hosting_nodes,
                 node_labels=node_labels,
             )
-            target_node, required_labels = self._select_node(
-                scheduling_request,
-                available_resources_per_node,
-                node_to_assigned_replicas,
-                ctx,
-                constraints,
-            )
+            active = self._applicable_constraints(constraints, scheduling_request)
+            if scheduling_request.is_non_strict_pack_pg():
+                # Ray places these bundles, so Serve cannot choose the node, but
+                # the selector half of each rule still travels with the group.
+                target_node = None
+                _, required_labels = self._collect_rules(active, ctx)
+            else:
+                target_node, required_labels = self._select_node(
+                    scheduling_request,
+                    available_resources_per_node,
+                    node_to_assigned_replicas,
+                    ctx,
+                    active,
+                )
             succeeded = self._bind_replica(
                 scheduling_request, target_node, required_labels
             )
@@ -1350,6 +1362,28 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             + len(self._recovering_replicas[deployment_id])
             + len(self._running_replicas[deployment_id])
         )
+
+    def _applicable_constraints(
+        self,
+        constraints: List[SchedulingConstraint],
+        scheduling_request: ReplicaSchedulingRequest,
+    ) -> List[SchedulingConstraint]:
+        active = []
+        for constraint in constraints:
+            if constraint.applies_to(scheduling_request):
+                active.append(constraint)
+                continue
+            key = (
+                scheduling_request.replica_id.deployment_id,
+                type(constraint).__name__,
+            )
+            if key not in self._logged_skipped_rules:
+                self._logged_skipped_rules.add(key)
+                logger.info(
+                    f"{key[1]} does not apply to replicas of {key[0]} and is "
+                    "skipped for them."
+                )
+        return active
 
     @staticmethod
     def _collect_rules(
@@ -1430,7 +1464,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         resources_desc = _format_resources_for_scheduling_log(
             scheduling_request.requested_resources
         )
-        if target_node is None and replica_id not in self._logged_placement_failures:
+        if (
+            target_node is None
+            and not scheduling_request.is_non_strict_pack_pg()
+            and replica_id not in self._logged_placement_failures
+        ):
             self._logged_placement_failures.add(replica_id)
             labels_desc = f" satisfying {required_labels}" if required_labels else ""
             logger.info(
