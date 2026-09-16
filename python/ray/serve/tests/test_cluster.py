@@ -2,6 +2,8 @@ import os
 import sys
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List, Tuple
 
 import httpx
 import pytest
@@ -588,6 +590,177 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
 
     if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
         del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
+
+
+def _replica_id() -> str:
+    return (
+        f"{ray.get_runtime_context().get_node_id()}:"
+        f"{serve.get_replica_context().replica_tag}"
+    )
+
+
+@serve.deployment
+class LocalityDownstream:
+    async def __call__(self) -> str:
+        return _replica_id()
+
+
+@serve.deployment
+class LocalityUpstream:
+    def __init__(self, downstream: DeploymentHandle):
+        self._downstream = downstream
+
+    async def __call__(self, request) -> str:
+        return f"{_replica_id()}|{await self._downstream.remote()}"
+
+
+locality_app = LocalityUpstream.bind(LocalityDownstream.bind())
+
+
+def _locality_app_config(node_local_routing: bool) -> dict:
+    return {
+        "name": SERVE_DEFAULT_APP_NAME,
+        "import_path": "ray.serve.tests.test_cluster.locality_app",
+        "deployments": [
+            {
+                "name": "LocalityUpstream",
+                "num_replicas": 2,
+                "max_replicas_per_node": 1,
+                "max_ongoing_requests": 1000,
+                # Off so the single head-node proxy spreads the burst across
+                # both upstream replicas instead of pinning it to its own node.
+                "prefer_local_node_routing": False,
+                "prefer_local_az_routing": False,
+            },
+            {
+                "name": "LocalityDownstream",
+                "num_replicas": 2,
+                "max_replicas_per_node": 1,
+                "max_ongoing_requests": 1000,
+                "prefer_local_node_routing": node_local_routing,
+                "prefer_local_az_routing": False,
+            },
+        ],
+    }
+
+
+def _send_locality_burst(url: str, num_requests: int = 100) -> List[Tuple[str, str]]:
+    """Send `num_requests` concurrently; return (upstream, downstream) id pairs."""
+    with ThreadPoolExecutor(max_workers=num_requests) as pool:
+        futures = [
+            pool.submit(httpx.get, url, timeout=WAIT_TIMEOUT_S)
+            for _ in range(num_requests)
+        ]
+        pairs = []
+        for fut in futures:
+            response = fut.result()
+            assert response.status_code == 200, response.text
+            upstream, downstream = response.text.split("|")
+            pairs.append((upstream, downstream))
+    return pairs
+
+
+def _assert_node_local_routing(pairs: List[Tuple[str, str]]) -> None:
+    """Every request stayed on-node, and each d1 replica mapped to a unique d2 replica."""
+    mapping: Dict[str, set] = defaultdict(set)
+    for upstream, downstream in pairs:
+        assert (
+            upstream.split(":", 1)[0] == downstream.split(":", 1)[0]
+        ), f"Cross-node hop with node-local routing enabled: {upstream} -> {downstream}"
+        mapping[upstream].add(downstream)
+
+    assert len(mapping) == 2, f"Expected both upstream replicas, got {mapping.keys()}"
+    assert all(
+        len(downstreams) == 1 for downstreams in mapping.values()
+    ), f"An upstream replica reached multiple downstream replicas: {dict(mapping)}"
+    downstreams_reached = {next(iter(ds)) for ds in mapping.values()}
+    assert (
+        len(downstreams_reached) == 2
+    ), f"Both upstream replicas reached the same downstream replica: {dict(mapping)}"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+@skip_if_haproxy("balances across replicas without node-local preference")
+def test_node_local_routing_between_deployments(ray_cluster: Cluster):
+    """Replica-to-replica traffic stays on-node when prefer_local_node_routing is on.
+
+    Two nodes, two deployments (d1 -> d2), two replicas each, pinned one-per-node:
+    n1 hosts d1r1 and d2r1; n2 hosts d1r2 and d2r2. max_ongoing_requests=1000 so
+    nothing spills for capacity. d1's flag is off so the head-node proxy spreads
+    across both d1 replicas; d2's flag is the one under test.
+    """
+    cluster = ray_cluster
+    # Start Serve on the head node before adding the worker so the controller
+    # and the single HeadOnly proxy land on n1.
+    cluster.add_node(num_cpus=2)
+    cluster.connect(namespace=SERVE_NAMESPACE)
+    serve.start(http_options={"location": "HeadOnly"})
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    client = serve.context._connect()
+    client.deploy_apps(
+        ServeDeploySchema(**{"applications": [_locality_app_config(True)]})
+    )
+    client._wait_for_application_running(
+        SERVE_DEFAULT_APP_NAME, timeout_s=WAIT_TIMEOUT_S
+    )
+
+    def replicas_spread_across_nodes() -> bool:
+        details = client.get_serve_details()
+        deployments = details["applications"][SERVE_DEFAULT_APP_NAME]["deployments"]
+        for name in ("LocalityUpstream", "LocalityDownstream"):
+            replicas = deployments[name]["replicas"]
+            nodes = {replica["node_id"] for replica in replicas}
+            assert len(replicas) == 2, replicas
+            assert len(nodes) == 2, nodes
+        return True
+
+    wait_for_condition(replicas_spread_across_nodes, timeout=WAIT_TIMEOUT_S)
+
+    url = "http://localhost:8000"
+    warmed_up: List[Tuple[str, str]] = []
+
+    def both_upstream_replicas_warmed_up() -> bool:
+        # Sequential warmup so each replica's router is initialized before
+        # the burst. A cold concurrent burst can time out queue-length probes
+        # and spill off-node even with locality routing enabled.
+        response = httpx.get(url, timeout=WAIT_TIMEOUT_S)
+        assert response.status_code == 200, response.text
+        upstream, downstream = response.text.split("|")
+        warmed_up.append((upstream, downstream))
+        return len({u for u, _ in warmed_up}) == 2
+
+    wait_for_condition(
+        both_upstream_replicas_warmed_up,
+        timeout=WAIT_TIMEOUT_S,
+        retry_interval_ms=100,
+    )
+
+    _assert_node_local_routing(_send_locality_burst(url))
+
+    # Lightweight config update: replicas stay up, routers pick up the new
+    # flag over long poll. There is no status signal for that, so retry the
+    # burst until cross-node hops appear.
+    client.deploy_apps(
+        ServeDeploySchema(**{"applications": [_locality_app_config(False)]})
+    )
+
+    def routing_is_spread() -> bool:
+        pairs = _send_locality_burst(url)
+        crossed = sum(
+            1
+            for upstream, downstream in pairs
+            if upstream.split(":", 1)[0] != downstream.split(":", 1)[0]
+        )
+        downstreams = {downstream for _, downstream in pairs}
+        return crossed > 10 and len(downstreams) == 2
+
+    wait_for_condition(
+        routing_is_spread,
+        timeout=WAIT_TIMEOUT_S,
+        retry_interval_ms=1000,
+    )
 
 
 class TestHealthzAndRoutes:
