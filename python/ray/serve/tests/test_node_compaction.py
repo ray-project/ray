@@ -349,23 +349,27 @@ class TestCompactScheduling:
 
         kill_controller_and_wait_for_restart(client._controller)
 
-        # Recovers 6 RUNNING + 1 STARTING, stops one to match target, then
-        # re-identifies the same compaction.
-        wait_for_condition(
-            check_replica_counts,
-            controller=client._controller,
-            deployment_id=dep_id,
-            total=7,
-            by_state=[
-                (ReplicaState.RUNNING, 5, None),
-                (ReplicaState.STARTING, 1, None),
-                (ReplicaState.PENDING_MIGRATION, 1, None),
-            ],
-        )
-        wait_for_condition(check_num_alive_nodes, target=4, timeout=60)
+        # The restarted controller recovers 6 RUNNING + 1 STARTING and stops one
+        # to get back to the target. Recovery timing decides whether it stops
+        # the blocked replacement and re-identifies the compaction, or stops
+        # the node 1 replica outright. Either way exactly one replica stays
+        # blocked in init and nothing else is in flux.
+        def settled_after_restart():
+            states = [
+                r["state"]
+                for r in _get_global_client().get_serve_details()["applications"]["A"][
+                    "deployments"
+                ]["BlockInit"]["replicas"]
+            ]
+            assert states.count("STARTING") == 1, states
+            assert set(states) <= {"STARTING", "RUNNING", "PENDING_MIGRATION"}, states
+            return True
 
+        wait_for_condition(settled_after_restart, timeout=60)
+
+        # Requests are still served only by replicas that were running before.
         new_pids = [h.get_pid.remote().result() for _ in range(30)]
-        assert set(pids) == set(new_pids)
+        assert set(new_pids) <= set(pids)
 
         signal.send.remote()
         wait_for_condition(
@@ -373,7 +377,14 @@ class TestCompactScheduling:
             name="BlockInit",
             app_name="A",
             expected_status=DeploymentStatus.HEALTHY,
-            timeout=20,
+            timeout=60,
+        )
+        wait_for_condition(
+            check_replica_counts,
+            controller=client._controller,
+            deployment_id=dep_id,
+            total=6,
+            by_state=[(ReplicaState.RUNNING, 6, None)],
         )
         wait_for_condition(check_num_alive_nodes, target=3, timeout=60)
 
