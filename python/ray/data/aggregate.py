@@ -41,7 +41,7 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 
 class _SupportsRichComparison(Protocol):
@@ -404,6 +404,7 @@ def _agg_output_field(
     return pa.field(name, out_type, nullable=True)
 
 
+@DeveloperAPI(stability="alpha")
 class VectorizedAggregateFnV2(AggregateFnV2[AccumulatorType, AggOutputType], abc.ABC):
     """Base class for fully vectorized aggregations"""
 
