@@ -5531,11 +5531,15 @@ class DeploymentState:
         draining_nodes: Mapping[str, float],
         compacting_node_id: Optional[str] = None,
     ):
-        # Compaction only moves RUNNING replicas of non gang deployments. The
+        # Compaction only moves RUNNING replicas of ordinary deployments. The
         # scheduler never compacts a node that runs a gang, and a gang that lands
         # on the compacting node while starting cancels the compaction once it's
-        # RUNNING, so a gang never migrates for compaction.
-        if self._is_gang_deployment and compacting_node_id is not None:
+        # RUNNING. Ingress request router replicas are pinned to proxy nodes and
+        # leave with the proxy once the other replicas are gone, so migrating one
+        # would only pin a replacement back onto the target.
+        if compacting_node_id is not None and (
+            self._is_gang_deployment or self.is_ingress_request_router()
+        ):
             draining_nodes = {
                 node: deadline
                 for node, deadline in draining_nodes.items()
@@ -5544,8 +5548,14 @@ class DeploymentState:
 
         # Fast path: no draining nodes and deployment is in steady state —
         # no PENDING_MIGRATION replicas to move back and no replicas to
-        # migrate, so skip the O(N) pop-and-readd.
-        if not draining_nodes and not self._in_transition:
+        # migrate, so skip the O(N) pop-and-readd. A compaction cancelled after
+        # its replacements are RUNNING leaves PENDING_MIGRATION replicas behind
+        # with _in_transition already False, so check for them explicitly.
+        if (
+            not draining_nodes
+            and not self._in_transition
+            and self._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 0
+        ):
             return
 
         # Move replicas back to RUNNING if they are no longer on a draining node.

@@ -35,6 +35,7 @@ from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_COMPACTION_TIMEOUT_S,
     RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
@@ -10997,6 +10998,90 @@ def test_compaction_keeps_external_draining_nodes(mock_deployment_state_manager)
     assert {
         r.actor_node_id for r in ds._replicas.get([ReplicaState.PENDING_MIGRATION])
     } == {compacting_node, other_node}
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_cancelled_after_replacement_running(
+    mock_deployment_state_manager,
+):
+    """A cancel that lands once replacements are RUNNING must still release the
+    PENDING_MIGRATION replica instead of leaving it stranded."""
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # node1: 2/3, node2: 1/3 -> compact node2.
+    dsm.update()
+    for replica, node in zip(ds._replicas.get(), [node1, node1, node2]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+    dsm.update()
+    timer.advance(305)
+    dsm.update()
+    check_counts(
+        ds,
+        total=4,
+        by_state=[
+            (ReplicaState.RUNNING, 2, None),
+            (ReplicaState.PENDING_MIGRATION, 1, None),
+            (ReplicaState.STARTING, 1, None),
+        ],
+    )
+
+    # The replacement becomes RUNNING in the same update the compaction times
+    # out, so the deployment looks steady while a replica is still
+    # PENDING_MIGRATION.
+    timer.advance(RAY_SERVE_COMPACTION_TIMEOUT_S)
+    replacement = ds._replicas.get([ReplicaState.STARTING])[0]
+    replacement._actor.set_node_id(node1)
+    replacement._actor.set_ready()
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node is None
+    assert ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 0
+    check_counts(
+        ds,
+        total=4,
+        by_state=[(ReplicaState.RUNNING, 3, None), (ReplicaState.STOPPING, 1, None)],
+    )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_ingress_request_router_ignores_compaction_drain(
+    mock_deployment_state_manager,
+):
+    """Pinned router replicas leave with their proxy, so compaction skips them."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    timer.reset(0)
+    dsm: DeploymentStateManager = create_dsm()
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(ingress_request_router=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update(proxy_nodes={n1, n2})
+    for replica in ds._replicas.get():
+        replica._actor.set_node_id(replica.target_node_id)
+        replica._actor.set_ready()
+    dsm.update(proxy_nodes={n1, n2})
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+
+    ds.migrate_replicas_on_draining_nodes({n1: float("inf")}, compacting_node_id=n1)
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+
+    # A real drain of the same node still migrates.
+    ds.migrate_replicas_on_draining_nodes({n1: 10**12})
+    assert ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 1
 
 
 @pytest.mark.skipif(
