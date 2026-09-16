@@ -51,6 +51,18 @@ To install `nvidia-container-toolkit-base`, see the [NVIDIA Container Toolkit in
 * MIG isn't supported, since gVisor itself doesn't support it.
 :::
 
+`nvidia-container-toolkit-base` installs a file at `/etc/nvidia-container-toolkit/nvidia-cdi-refresh.env` to customize the environment variables `nvidia-ctk cdi generate` uses to generate its CDI spec. This file uses the [systemd `EnvironmentFile=` format](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#EnvironmentFile=). Each line is a plain `KEY=value` pair, and a line starting with `#` or `;` is a comment. For example, GKE nodes need `NVIDIA_CTK_DRIVER_ROOT` set there because their NVIDIA driver installer DaemonSet places driver libraries under `/usr/local/nvidia` instead of `/`. They also need `NVIDIA_CTK_DEV_ROOT` set to `/`, because `nvidia-ctk cdi generate` otherwise assumes device nodes live under the driver root too. Ray parses this file before every `nvidia-ctk` invocation if it exists. Set `NVIDIA_CTK_ENV_PATH` in the worker's environment before creating a sandbox to use a different file:
+
+```bash
+# /etc/nvidia-container-toolkit/nvidia-cdi-refresh.env
+NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia
+NVIDIA_CTK_DEV_ROOT=/
+```
+
+:::{note}
+Ray always parses `nvidia-ctk cdi generate`'s stdout, so it clears `NVIDIA_CTK_CDI_OUTPUT_FILE_PATH` after reading this file even if you set it there.
+:::
+
 See [GPU access](#gpu-access).
 
 ## Usage patterns and examples

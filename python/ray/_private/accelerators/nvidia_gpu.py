@@ -24,6 +24,12 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 # fall back to a hyphen-joined product name in _gpu_name_to_accelerator_type.
 NVIDIA_GPU_NAME_PATTERN = re.compile(r"\w+\s+((?:[A-Z]+\s+)*[A-Z0-9]*\d[A-Z0-9]*)")
 
+# Overridable via NVIDIA_CTK_ENV_PATH. Sourced (if present) before every
+# nvidia-ctk invocation, letting NVIDIA_DRIVER_ROOT and other
+# nvidia-ctk-recognized env vars be overridden per-node without Ray needing
+# to know about any of them.
+_DEFAULT_NVIDIA_CTK_ENV_PATH = "/etc/nvidia-container-toolkit/nvidia-cdi-refresh.env"
+
 # Timeout for shelling out to `nvidia-ctk` during CDI spec generation
 # (generate_cdi_spec below). Multi-GPU nodes can see driver/device
 # probing overhead push past several seconds, but 60s doesn't cost much
@@ -179,6 +185,39 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         return "nvidia.com/gpu"
 
     @staticmethod
+    def _build_nvidia_ctk_env() -> Dict[str, str]:
+        """The environment to run nvidia-ctk in: this process's own
+        environment, overlaid with any variables set in NVIDIA_CTK_ENV_PATH
+        (default _DEFAULT_NVIDIA_CTK_ENV_PATH), if that file exists.
+
+        That file follows the systemd EnvironmentFile format (see
+        systemd.exec(5)'s EnvironmentFile= directive): plain KEY=value
+        lines, with "#" or ";" starting a comment line, and an optional
+        matching pair of leading and trailing quotes around the value.
+
+        Drops NVIDIA_CTK_CDI_OUTPUT_FILE_PATH unconditionally afterward,
+        since it redirects `cdi generate`'s output to a file instead of
+        stdout, and generate_cdi_spec always parses stdout.
+        """
+        env = dict(os.environ)
+        env_path = env.get("NVIDIA_CTK_ENV_PATH", _DEFAULT_NVIDIA_CTK_ENV_PATH)
+        if os.path.isfile(env_path):
+            with open(env_path, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line[0] in "#;":
+                        continue
+                    key, sep, value = line.partition("=")
+                    if not sep:
+                        continue
+                    key, value = key.strip(), value.strip()
+                    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                        value = value[1:-1]
+                    env[key] = value
+        env.pop("NVIDIA_CTK_CDI_OUTPUT_FILE_PATH", None)
+        return env
+
+    @staticmethod
     def generate_cdi_spec() -> Optional[Dict]:
         """Generate and return a CDI (Container Device Interface) spec
         describing the node's NVIDIA GPUs, via the `nvidia-ctk` CLI (part
@@ -253,6 +292,7 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
                 timeout=_NVIDIA_CTK_TIMEOUT_SECONDS,
                 check=True,
                 text=True,
+                env=NvidiaGPUAcceleratorManager._build_nvidia_ctk_env(),
             )
         except (
             subprocess.CalledProcessError,

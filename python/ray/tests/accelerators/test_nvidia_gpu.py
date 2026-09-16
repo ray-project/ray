@@ -141,6 +141,7 @@ def test_generate_cdi_spec_success():
         assert kwargs["timeout"] == nvidia_gpu._NVIDIA_CTK_TIMEOUT_SECONDS
         assert kwargs["check"] is True
         assert kwargs["capture_output"] is True
+        assert "NVIDIA_CTK_CDI_OUTPUT_FILE_PATH" not in kwargs["env"]
 
 
 def test_generate_cdi_spec_decodes_only_first_of_multiple_documents():
@@ -218,6 +219,60 @@ def test_generate_cdi_spec_subprocess_error(side_effect):
         "subprocess.run", side_effect=side_effect
     ):
         assert NvidiaGPUAcceleratorManager.generate_cdi_spec() is None
+
+
+def test_build_nvidia_ctk_env_parses_comments_and_quotes(tmp_path):
+    """Comments, blank lines, and quoted values, matching the systemd
+    EnvironmentFile format nvidia-cdi-refresh.env ships in -- bare
+    KEY=VALUE, no `export` keyword."""
+    env_file = tmp_path / "test.env"
+    env_file.write_text(
+        "# a comment\n"
+        "; also a comment\n"
+        "\n"
+        "NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia\n"
+        '  NVIDIA_CTK_DEV_ROOT = "/quoted/path" \n'
+        "SINGLE_QUOTED='/other/path'\n"
+    )
+    with patch.dict("os.environ", {"NVIDIA_CTK_ENV_PATH": str(env_file)}, clear=True):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert env["NVIDIA_CTK_DRIVER_ROOT"] == "/usr/local/nvidia"
+    assert env["NVIDIA_CTK_DEV_ROOT"] == "/quoted/path"
+    assert env["SINGLE_QUOTED"] == "/other/path"
+
+
+def test_build_nvidia_ctk_env_no_file():
+    """No env file at the default or overridden path: nvidia-ctk just gets
+    this process's own environment, minus NVIDIA_CTK_CDI_OUTPUT_FILE_PATH."""
+    with patch.dict(
+        "os.environ", {"SOME_VAR": "1", "NVIDIA_CTK_ENV_PATH": "/no/such/file"}
+    ):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert env["SOME_VAR"] == "1"
+    assert "NVIDIA_CTK_CDI_OUTPUT_FILE_PATH" not in env
+
+
+def test_build_nvidia_ctk_env_overlays_file(tmp_path):
+    env_file = tmp_path / "test.env"
+    env_file.write_text("NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia\n")
+    with patch.dict(
+        "os.environ", {"NVIDIA_CTK_ENV_PATH": str(env_file), "SOME_VAR": "1"}
+    ):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert env["NVIDIA_CTK_DRIVER_ROOT"] == "/usr/local/nvidia"
+    assert env["SOME_VAR"] == "1"
+
+
+def test_build_nvidia_ctk_env_drops_cdi_output_file_path(tmp_path):
+    """nvidia-cdi-refresh.env documents NVIDIA_CTK_CDI_OUTPUT_FILE_PATH as
+    an option, which nvidia-ctk cdi generate treats as --output, but
+    generate_cdi_spec always parses nvidia-ctk's stdout. If a sourced env
+    file sets this, it must not survive into nvidia-ctk's environment."""
+    env_file = tmp_path / "test.env"
+    env_file.write_text("NVIDIA_CTK_CDI_OUTPUT_FILE_PATH=/var/run/cdi/nvidia.yaml\n")
+    with patch.dict("os.environ", {"NVIDIA_CTK_ENV_PATH": str(env_file)}):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert "NVIDIA_CTK_CDI_OUTPUT_FILE_PATH" not in env
 
 
 if __name__ == "__main__":
