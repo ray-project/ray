@@ -503,7 +503,8 @@ class NodeManagerTest : public ::testing::Test {
         .Times(::testing::AnyNumber())
         .WillRepeatedly(Return(1));
 
-    auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+    std::shared_ptr<MockWorker> worker =
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
     PopWorkerCallback pop_cb;
     EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
         .Times(1)
@@ -514,7 +515,8 @@ class NodeManagerTest : public ::testing::Test {
         request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
           ASSERT_TRUE(s.ok());
         });
-    auto ready = lease_dependency_manager_->HandleObjectLocal(object_dep);
+    std::vector<LeaseID> ready =
+        lease_dependency_manager_->HandleObjectLocal(object_dep);
     local_lease_manager_->LeasesUnblocked(ready);
     RAY_CHECK(pop_cb);
     pop_cb(worker, PopWorkerStatus::OK, "");
