@@ -286,46 +286,25 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
-        # Input bundles of this op's seed tasks, retained so object-loss recovery can
-        # re-inject them. `register_task_failed` hands back seed *ids*, and the tracker
-        # holds no `RefBundle`s by design, so something has to turn an id back into a
-        # resubmittable bundle. Costs no memory: `InputDataBuffer` indexes rather than
-        # pops, keeping these refs alive for the whole run anyway. Empty unless
-        # recovery is enabled and this op reads straight from an `InputDataBuffer`
-        # (see `_is_seed_operator`).
+        # Seed tasks' input bundles, kept so recovery can re-inject them: the
+        # tracker stores ids, not bundles. No extra memory -- the source operator
+        # holds these same bundles for the whole run anyway.
         self._seed_task_inputs: Dict[DataTaskId, RefBundle] = {}
-        # block hex -> queue of (seed task id, plan id) for a seed input queued for
-        # re-injection. A seed's input comes from the source, not from a task, so no
-        # producer recorded it and `_lineage_for_submission` cannot look it up.
-        # `_recover_lost_object` stamps the identity here; submission pops it.
-        #
-        # A queue, not a single value: a second plan tracing back to the same seed
-        # re-injects the same bundle behind the one already queued.
+        # block hex -> the task id a re-injected seed must be submitted under.
+        # `_recover_lost_object` writes it, submission reads and removes it.
+        # A queue: re-injection reuses the *same* bundle, so two losses tracing
+        # back to one seed submit both as pending.
         self._pending_seed_ids: Dict[BlockId, Deque[ReconstructionStamp]] = {}
-        # block hex -> (child task id, plan id) for an input set owed to a
-        # reconstruction child. The producer's plan bucket records this, but
-        # `register_task_complete` discharges it in the producer's done callback,
-        # before the consumer's turn to submit. So the producer stamps it here at
-        # release; submission pops it. A single value: a child is released once per
-        # plan, and the join rule keeps plans from sharing a child.
+        # block hex -> the task id a reconstruction child must be submitted under.
+        # The producing operator writes it when it releases the child's inputs;
+        # submission reads and removes it. Also tells `_add_input_inner` to skip
+        # the bundler for these blocks. A single value: each release stamps
+        # freshly produced blocks, so two releases never collide on a key.
         self._pending_child_ids: Dict[BlockId, ReconstructionStamp] = {}
-        # plan id -> {(producing data task id, output index): held bundle}, for
-        # re-produced outputs withheld from `_output_queue` until every parent of the
-        # consumer has delivered its share. A reconstruction child must run against
-        # exactly the input set its first attempt consumed, and those inputs arrive one
-        # completing parent at a time -- so they are collected here and released as one
-        # bundle by whichever parent completes last (see
-        # `_release_reconstruction_children`).
-        #
-        # Collecting them *here*, on the producer, rather than downstream is what keeps
-        # this race-free: every parent of a child is a task of this same operator (a
-        # `MapOperator` has exactly one input dependency, and only `MapOperator`
-        # registers outputs), so the whole set is in hand synchronously, in the very
-        # callback that discovers the child is ready.
-        #
-        # Keyed by plan rather than by child: a block is dispatched to exactly one
-        # consumer, so which child is owed a slot only needs resolving at release.
-        # Empty unless recovery is enabled and a plan is in flight.
+        # Re-produced blocks held back until every parent of a reconstruction
+        # child has produced its share, then handed over as one bundle by
+        # whichever parent finishes last. Collected on the producer, so the whole
+        # set is in hand synchronously -- see `_release_reconstruction_children`.
         self._reconstruction_outputs: Dict[
             PlanId, Dict[ParentBlockOutput, RefBundle]
         ] = {}
@@ -806,17 +785,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         completes last holds the child's full input set and can hand it downstream as a
         single bundle.
 
-        Readiness is decided here rather than in the tracker: the withheld blocks are
-        this operator's, so "is the child's whole input set in hand" is a local
-        question. A child is released exactly once because the release pops its slots
-        out of ``held`` -- a parent completing later finds them gone and skips it.
-
         The assembled bundle is stamped with the child's identity, because a
-        reconstruction child must be submitted under its *original* id: minting a fresh
-        one abandons the plan and grows a second node for the same logical task, after
-        which the parent lists two consumers for one output and pruning is computed
-        against a doubled map. Stamping before the bundle enters ``_output_queue`` means
-        the mark is always in place by the time the consumer's ``add_input`` runs.
+        reconstruction child must be submitted under its *original* id.
         """
         held = self._reconstruction_outputs.get(plan_id, {})
         for child_task_id, requirements in self._lineage_tracker.get_pending_children(
