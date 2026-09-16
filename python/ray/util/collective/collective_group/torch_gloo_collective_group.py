@@ -269,7 +269,7 @@ class TorchGLOOGroup(BaseGroup):
         output_tensor = self._check_tensor_input(output_tensor)
         if output_tensor.shape != tensor_list[self._rank].shape:
             raise ValueError(
-                "Output tensor has wrong shape {output_tensor.shape}, expected {tensor_list[self._rank].shape}"
+                f"Output tensor has wrong shape {output_tensor.shape}, expected {tensor_list[self._rank].shape}"
             )
         torch_reduce_op = TORCH_REDUCE_OP_MAP[reducescatter_options.reduceOp]
 
