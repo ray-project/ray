@@ -529,6 +529,100 @@ def test_generate_stats_payload_normalizes_none_process_cmdline(tmp_path):
     assert stats_payload["cmdline"] == []
 
 
+def test_generate_stats_payload_preserves_platform_specific_process_stats(tmp_path):
+    """psutil's per-process namedtuples are platform-specific.
+
+    ``Process.memory_info()`` returns ``pmem(rss, vms, pfaults, pageins)`` on
+    macOS, ``pmem(rss, vms, shared, text, lib, data, dirty)`` on Linux and a
+    twelve-field tuple on Windows; only ``rss`` and ``vms`` are common to all
+    three. ``Process.cpu_times()`` likewise carries an extra ``iowait`` on
+    Linux. The payload schema must not declare one platform's fields for every
+    platform: that serializes them as ``null`` elsewhere -- which crashes the
+    dashboard's Worker view, since it formats every value of ``memoryInfo``
+    with ``memoryConverter()`` -- and drops the fields the running platform
+    does report. STATS_TEMPLATE is macOS-shaped, so cover the others here.
+    """
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED
+
+    if not PYDANTIC_INSTALLED:
+        pytest.skip("Pydantic is not installed")
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+
+    linux_stats = copy.deepcopy(STATS_TEMPLATE)
+    worker = linux_stats["workers"][0]
+    worker["memory_info"] = Bunch(
+        rss=55934976, vms=7026937856, shared=1024, text=2048, lib=0, data=4096, dirty=0
+    )
+    # memory_full_info is only collected on macOS.
+    worker.pop("memory_full_info", None)
+    worker["cpu_times"] = Bunch(
+        user=0.6,
+        system=0.2,
+        children_user=0.0,
+        children_system=0.0,
+        iowait=0.125,
+    )
+
+    linux_worker = json.loads(agent._generate_stats_payload(linux_stats))["workers"][0]
+
+    assert linux_worker["memoryInfo"] == {
+        "rss": 55934976,
+        "vms": 7026937856,
+        "shared": 1024,
+        "text": 2048,
+        "lib": 0,
+        "data": 4096,
+        "dirty": 0,
+    }
+    assert linux_worker["cpuTimes"]["iowait"] == 0.125
+
+    windows_stats = copy.deepcopy(STATS_TEMPLATE)
+    windows_worker_stats = windows_stats["workers"][0]
+    windows_worker_stats["memory_info"] = Bunch(
+        rss=55934976,
+        vms=7026937856,
+        num_page_faults=15354,
+        peak_wset=1,
+        wset=2,
+        peak_paged_pool=3,
+        paged_pool=4,
+        peak_nonpaged_pool=5,
+        nonpaged_pool=6,
+        pagefile=7,
+        peak_pagefile=8,
+        private=9,
+    )
+    windows_worker_stats.pop("memory_full_info", None)
+
+    windows_worker = json.loads(agent._generate_stats_payload(windows_stats))[
+        "workers"
+    ][0]
+
+    assert windows_worker["memoryInfo"]["numPageFaults"] == 15354
+    assert windows_worker["memoryInfo"]["private"] == 9
+    # No platform may have another platform's fields invented as nulls.
+    for key in ("pfaults", "pageins"):
+        assert key not in linux_worker["memoryInfo"]
+        assert key not in windows_worker["memoryInfo"]
+
+    # macOS, which the rest of the fixtures model, is unchanged.
+    macos_worker = json.loads(
+        agent._generate_stats_payload(copy.deepcopy(STATS_TEMPLATE))
+    )["workers"][0]
+    assert macos_worker["memoryInfo"] == {
+        "rss": 55934976,
+        "vms": 7026937856,
+        "pfaults": 15354,
+        "pageins": 0,
+    }
+
+
 def test_report_stats_gpu(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
