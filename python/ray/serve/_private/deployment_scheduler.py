@@ -22,6 +22,7 @@ from typing import (
 import ray
 from ray._raylet import (  # type: ignore[attr-defined]
     IMPLICIT_RESOURCE_PREFIX,
+    RAY_NODE_ID_KEY,
     node_labels_match_selector,
 )
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
@@ -51,7 +52,7 @@ from ray.util.scheduling_strategies import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-RAY_NODE_ID_LABEL = "ray.io/node-id"
+RAY_NODE_ID_LABEL = RAY_NODE_ID_KEY
 
 
 class SpreadDeploymentSchedulingPolicy:
