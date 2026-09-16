@@ -1122,7 +1122,7 @@ def test_filter_nodes_by_label_selector():
     """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
     when bin-packing, such that label constraints are enforced for the preferred node."""
 
-    class MockScheduler(default_impl.DefaultDeploymentScheduler):
+    class MockScheduler(default_impl.DeploymentScheduler):
         def __init__(self):
             pass
 
@@ -1177,7 +1177,7 @@ def test_filter_nodes_by_label_selector():
 
 
 def test_build_pack_placement_candidates():
-    """Test strategy generation logic in DefaultDeploymentScheduler._build_pack_placement_candidates,
+    """Test strategy generation logic in DeploymentScheduler._build_pack_placement_candidates,
     verifying that the scheduler correctly generates a list of (resources, labels) tuples to
     attempt for scheduling."""
 

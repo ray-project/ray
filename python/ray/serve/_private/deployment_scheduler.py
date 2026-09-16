@@ -3,7 +3,6 @@ import logging
 import time
 import uuid
 import warnings
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
@@ -392,7 +391,7 @@ def _flatten(
     }
 
 
-class DeploymentScheduler(ABC):
+class DeploymentScheduler:
     """A centralized scheduler for all Serve deployments.
 
     It makes a batch of scheduling decisions in each update cycle.
@@ -437,6 +436,19 @@ class DeploymentScheduler(ABC):
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
         self._create_placement_group_fn = create_placement_group_fn
+
+        # Not checkpointed: a restarted controller reconciles first, then
+        # re-detects compaction opportunities.
+        self._compacting_node: Optional[CompactingNodeInfo] = None
+        # Set after a scan finds nothing, cleared as soon as the cluster changes.
+        self._next_compaction_scan_timestamp_s: float = 0
+        self._num_consecutive_failed_compactions: int = 0
+        self._next_allowed_compaction_timestamp_s: float = 0
+        self._num_succeeded_compactions: int = 0
+        self._num_compacted_nodes_counter = ray_metrics.Counter(
+            "serve_num_compacted_nodes",
+            description="The number of nodes that have been compacted.",
+        )
 
     def on_deployment_created(
         self,
@@ -660,23 +672,6 @@ class DeploymentScheduler(ABC):
 
         return chosen_node
 
-    @abstractmethod
-    def schedule(
-        self,
-        upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]],
-        downscales: Dict[DeploymentID, DeploymentDownscaleRequest],
-    ) -> Dict[DeploymentID, Set[ReplicaID]]:
-        """Called for each update cycle to do batch scheduling.
-
-        Args:
-            upscales: a dict of deployment name to a list of replicas to schedule.
-            downscales: a dict of deployment name to a downscale request.
-
-        Returns:
-            The name of replicas to stop for each deployment.
-        """
-        raise NotImplementedError
-
     def _schedule_replica(
         self,
         scheduling_request: ReplicaSchedulingRequest,
@@ -826,13 +821,6 @@ class DeploymentScheduler(ABC):
         scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
         return True
-
-    @abstractmethod
-    def get_node_to_compact(
-        self, allow_new_compaction: bool
-    ) -> Optional[Tuple[str, float]]:
-        """Returns a node ID to be compacted and a compaction deadlne."""
-        raise NotImplementedError
 
     def schedule_gang_placement_groups(
         self,
@@ -994,30 +982,6 @@ class DeploymentScheduler(ABC):
             gang_pgs=gang_pgs,
             gang_ids=gang_ids,
             gang_pg_names=gang_pg_names,
-        )
-
-
-class DefaultDeploymentScheduler(DeploymentScheduler):
-    def __init__(
-        self,
-        cluster_node_info_cache: ClusterNodeInfoCache,
-        head_node_id: str,
-        create_placement_group_fn: Callable,
-    ):
-        super().__init__(
-            cluster_node_info_cache, head_node_id, create_placement_group_fn
-        )
-        # Not checkpointed: a restarted controller reconciles first, then
-        # re-detects compaction opportunities.
-        self._compacting_node: Optional[CompactingNodeInfo] = None
-        # Set after a scan finds nothing, cleared as soon as the cluster changes.
-        self._next_compaction_scan_timestamp_s: float = 0
-        self._num_consecutive_failed_compactions: int = 0
-        self._next_allowed_compaction_timestamp_s: float = 0
-        self._num_succeeded_compactions: int = 0
-        self._num_compacted_nodes_counter = ray_metrics.Counter(
-            "serve_num_compacted_nodes",
-            description="The number of nodes that have been compacted.",
         )
 
     def schedule(
