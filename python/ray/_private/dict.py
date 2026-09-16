@@ -139,10 +139,8 @@ def flatten_dict(
                 remove.append(key)
             elif flatten_list and isinstance(value, list):
                 for i, v in enumerate(value):
-                    if prevent_delimiter and delimiter in subkey:
-                        # Raise if delimiter is in any of the subkeys
-                        _raise_delimiter_exception()
-
+                    # No delimiter check: `i` comes from enumerate(), so the
+                    # index string is always digits and can never contain it.
                     add[delimiter.join([key, str(i)])] = v
                 remove.append(key)
 

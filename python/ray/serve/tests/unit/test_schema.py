@@ -66,6 +66,11 @@ def get_valid_runtime_envs() -> List[Dict]:
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
         },
+        # Runtime_env pointing at directories already present on every node.
+        {
+            "working_dir": "local:///app",
+            "py_modules": ["local:///app/lib"],
+        },
     ]
 
 
@@ -80,7 +85,9 @@ def get_invalid_runtime_envs() -> List[Dict]:
                 "/Desktop/my_project",
                 TEST_DEPLOY_GROUP_PINNED_URI,
             ],
-        }
+        },
+        # A "local://" URI must carry an absolute path
+        {"working_dir": "local://relative/path"},
     ]
 
 

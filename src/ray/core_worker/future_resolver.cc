@@ -112,6 +112,16 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     in_memory_store_->Put(RayObject(data_buffer, metadata_buffer, inlined_refs),
                           object_id,
                           reference_counter_->HasReference(object_id));
+  } else {
+    // Without this branch nothing fills the store and a get on the object blocks
+    // forever. It has to stay even once every named status has a branch: proto3 enums
+    // are open, so a reply can carry a value this build has no name for.
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Owner replied with an object status this worker does not handle: "
+        << static_cast<int>(reply.status());
+    in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_LOST),
+                          object_id,
+                          reference_counter_->HasReference(object_id));
   }
 }
 

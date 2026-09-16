@@ -43,7 +43,7 @@ _rayci_bazel_downloader_add_rc() {
 # mirror has been probed and answered: the config file's existence is what
 # rayci_bazel_downloader_restore later reads as "this job has a reachable mirror".
 rayci_bazel_downloader_config() {
-  local mirror="${1:-${RAYCI_PYPI_MIRROR_URL:-https://mirror.ci.ray.io}}"
+  local mirror="$1"
   local cfg
   cfg="$(_rayci_bazel_downloader_cfg_path)"
   local host="${mirror#*://}"

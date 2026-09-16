@@ -7,6 +7,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray._private.test_utils import get_gpu_visible_devices_env_var
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -659,23 +660,29 @@ def test_creating_more_actors_than_resources(shutdown_only):
     ray.get(results)
 
 
-def test_actor_cuda_visible_devices(shutdown_only):
-    """Test user can overwrite CUDA_VISIBLE_DEVICES
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",
+)
+def test_actor_visible_devices(shutdown_only):
+    """Test user can overwrite the visible devices env var
     after the actor is created."""
+    gpu_env_var = get_gpu_visible_devices_env_var()
+
     ray.init(num_gpus=1)
 
     @ray.remote(num_gpus=1)
     class Actor:
-        def set_cuda_visible_devices(self, cuda_visible_devices):
-            os.environ["CUDA_VISIBLE_DEVICES"] = cuda_visible_devices
+        def set_visible_devices(self, visible_devices):
+            os.environ[gpu_env_var] = visible_devices
 
-        def get_cuda_visible_devices(self):
-            return os.environ["CUDA_VISIBLE_DEVICES"]
+        def get_visible_devices(self):
+            return os.environ[gpu_env_var]
 
     actor = Actor.remote()
-    assert ray.get(actor.get_cuda_visible_devices.remote()) == "0"
-    ray.get(actor.set_cuda_visible_devices.remote("0,1"))
-    assert ray.get(actor.get_cuda_visible_devices.remote()) == "0,1"
+    assert ray.get(actor.get_visible_devices.remote()) == "0"
+    ray.get(actor.set_visible_devices.remote("0,1"))
+    assert ray.get(actor.get_visible_devices.remote()) == "0,1"
 
 
 if __name__ == "__main__":
