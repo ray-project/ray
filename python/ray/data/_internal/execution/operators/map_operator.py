@@ -859,16 +859,21 @@ def _map_task(
                 clock=clock,
             )
 
-        if retry_on:
-            block_iter = iterate_with_retry(
-                transform_iter_factory,
-                description="apply UDF transform",
-                match=None if retry_on is True else retry_on,
-                max_attempts=data_context.max_map_retries + 1,
-                unwrap_cause=True,
-            )
-        else:
-            block_iter = transform_iter_factory()
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+
+        block_iter = iterate_with_retry(
+            transform_iter_factory,
+            description="apply UDF transform",
+            match=to_match,
+            max_attempts=data_context.max_map_retries + 1,
+            unwrap_cause=True,
+        )
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
