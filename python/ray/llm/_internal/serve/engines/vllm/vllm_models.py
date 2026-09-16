@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.openai.cli_args import FrontendArgs
+from vllm.entrypoints.launchers.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
