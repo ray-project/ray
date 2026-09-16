@@ -133,14 +133,13 @@ def run_ncclras(
     if proc.returncode != 0:
         stderr = proc.stderr or ""
         if "invalid option -- 'f'" in stderr:
-            return {
-                "ok": False,
-                "reason": "unsupported_f_option",
-                "stderr": stderr[:500],
-            }
+            reason = "unsupported_f_option"
+        else:
+            reason = f"exit_{proc.returncode}"
+
         return {
             "ok": False,
-            "reason": f"exit_{proc.returncode}",
+            "reason": reason,
             "stderr": stderr[:500],
         }
 
@@ -534,9 +533,7 @@ def fan_out_to_workers(
         timeout_s: Budget for the whole fan-out, shared by every worker.
 
     Returns:
-        One :class:`WorkerDump` per worker, ordered by world rank. A rank whose
-        call could not be launched, didn't finish in time, or raised gets
-        ``error`` set, so a missing diagnostic is visible rather than absent.
+        The worker dumps collected, not necessarily in order.
     """
     dumps: Dict[int, WorkerDump] = {}
     refs: Dict[ray.ObjectRef, int] = {}
@@ -638,15 +635,7 @@ def dump_flight_recorder() -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "reason": f"exception: {e}"}
 
-    if isinstance(trace_json, bytes):
-        trace_json = trace_json.decode("utf-8", errors="replace")
-
-    try:
-        entry_count = len(json.loads(trace_json).get("entries") or [])
-    except (json.JSONDecodeError, TypeError, AttributeError):
-        entry_count = None
-
-    return {"ok": True, "trace_json": trace_json, "entry_count": entry_count}
+    return {"ok": True, "trace_json": trace_json}
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
@@ -863,11 +852,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
-        # Record the Flight Recorder first: its buffer keeps being overwritten
-        # on any rank still issuing collectives
-        flight_recorder_dir = self.capture_diagnostic(
-            "Flight Recorder dumps", self.dump_workers_flight_recorder
-        )
+        if TORCH_FR_BUFFER_SIZE_ENV_VAR in os.environ:
+            # Record first to prevent buffer being overwritten by other ranks
+            flight_recorder_dir = self.capture_diagnostic(
+                "Flight Recorder dumps", self.dump_workers_flight_recorder
+            )
         stack_trace_dir = self.capture_diagnostic(
             "worker stack traces", self.dump_workers_stack_traces
         )
@@ -1002,8 +991,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
         Every rank gets a ``rank_<world_rank>.log`` in the uploaded folder. A rank
         whose dump could not be launched, timed out, or failed to collect gets a
-        one-line placeholder saying so, so a missing trace is visible rather than
-        silently absent.
+        one-line placeholder saying so users know why it failed.
 
         Returns:
             The path to the folder with the stack traces.
@@ -1029,10 +1017,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
         Every rank gets a ``rank_<world_rank>.json`` holding that rank's buffer:
         the collectives still in the ring with their process group, sequence id,
-        state, input/output shapes and dtypes, and issuing call stack. It is the
-        one diagnostic that sees a shape or call-order mismatch, which RAS's
-        op counts cannot. A rank with no dump gets a file holding the reason
-        instead, so the set is always complete.
+        state, input/output shapes and dtypes, and issuing call stack.
 
         Returns:
             The path to the folder with the dumps.
@@ -1046,7 +1031,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         )
 
         files: Dict[str, str] = {}
-        empty_ranks: List[int] = []
         for dump in dumps:
             error = dump.error
             if error is None and not dump.value["ok"]:
@@ -1062,19 +1046,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 continue
 
             files[f"rank_{dump.rank}.json"] = dump.value["trace_json"]
-            if not dump.value["entry_count"]:
-                empty_ranks.append(dump.rank)
-
-        if len(empty_ranks) == len(dumps):
-            # The recorder is armed when the process group is built, so this can
-            # only be fixed on the next run, not here.
-            logger.warning(
-                "The PyTorch Flight Recorder buffer was empty on every rank, so the "
-                "dumps hold no collectives. Set %s to a positive ring size (recent "
-                "torch versions default it to 2000, older ones to 0) before the run "
-                "starts; the recorder cannot be armed once a process group exists.",
-                TORCH_FR_BUFFER_SIZE_ENV_VAR,
-            )
 
         return self.upload_diagnostics(_FLIGHT_RECORDER_TOOL, files)
 
