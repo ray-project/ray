@@ -196,8 +196,7 @@ class DataOpTask(OpTask):
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
             data_task_id: Logical (lineage) id of this task, stable across
-                re-executions -- unlike ``task_index``, which is fresh per Ray
-                attempt. ``None`` when object-loss recovery is disabled.
+                reconstruction attempts.
             plan_id: The reconstruction plan this attempt serves; ``None`` for a
                 fresh attempt. Carried here because the output and completion
                 callbacks need it after submission.
@@ -359,25 +358,13 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except ObjectLostError as ex:
-                        # Propagate the original loss *untorn-down* so the executor
-                        # can attempt seed-input-lineage recovery, which needs the
-                        # task still live to abort it deliberately (see
-                        # `_recover_lost_object`).
-                        #
-                        # Only when this task is actually tracked. `_data_task_id` is
-                        # None whenever there is no lineage tracker, and on that path
-                        # nothing will ever recover the task -- skipping the teardown
-                        # would leave it in `_data_tasks` re-raising every tick, so
-                        # the dataset hangs or aborts where it used to make progress.
-                        # This runs for every user, not just those opted in.
+                        # Propagate the original loss so the executor
+                        # can attempt lineage recovery, which needs the
+                        # task still live to abort it deliberately.
+                        #  `_data_task_id` is None whenever there is no lineage tracker.
                         if self._data_task_id is not None:
                             raise
-                        self._task_done_callback(
-                            ex,
-                            None,  # TaskExecStats
-                            None,  # TaskExecDriverStats
-                        )
-                        self._state = TaskGeneratorState.FINISHED
+                        self.mark_aborted(ex)
                         raise ex from None
                     except Exception as ex:
                         self._task_error = ex
@@ -437,7 +424,7 @@ class DataOpTask(OpTask):
 
     @property
     def data_task_id(self) -> Optional[str]:
-        """Logical lineage id, stable across re-executions. None if untracked."""
+        """Logical lineage id, stable across reconstruction attempts. None if untracked."""
         return self._data_task_id
 
     @property
@@ -532,13 +519,14 @@ class DataOpTask(OpTask):
     def mark_aborted(self, exception: Exception) -> None:
         """Tear down a task whose output was lost, without reading its stream.
 
-        Runs the normal done-callback with ``exception`` set (the same path
-        ``on_data_ready`` takes on a task error) so the owning operator releases
-        every resource the task reserved -- running-task metrics, logical
-        CPU/GPU/memory usage, actor-pool slot, and pending input refs -- and
-        pops it from ``_data_tasks``. Callers must use this instead of dropping
-        the task from ``_data_tasks`` directly, which would leave those
-        separately-tracked reservations leaked for the rest of the run.
+        Transitions the task to FINISHED and runs the normal done-callback with
+        ``exception`` set (the same path ``on_data_ready`` takes on a task error)
+        so the owning operator releases every resource the task reserved --
+        running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
+        pending input refs -- and pops it from ``_data_tasks``. Callers must use
+        this instead of dropping the task from ``_data_tasks`` directly, which
+        would leave those separately-tracked reservations leaked for the rest of
+        the run.
         """
         if self._state is TaskGeneratorState.FINISHED:
             # `task_done_callback` already fired (normal completion or an
