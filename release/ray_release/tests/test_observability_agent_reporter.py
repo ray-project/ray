@@ -1022,6 +1022,65 @@ def test_a_permanent_failure_keeps_the_claim(status):
     assert second.comments == []
 
 
+class RacingAgent(FakeAgent):
+    """A FakeAgent where another job's `set` lands right after ours.
+
+    Models the interleaving the read-back exists for: both jobs found the key
+    unset, both wrote, and the other job's write was the one that stuck.
+    """
+
+    def __init__(self, other_job: str):
+        super().__init__()
+        self.other_job = other_job
+        self.raced = False
+
+    def run(self, command, **kwargs):
+        completed = super().run(command, **kwargs)
+        if command[:3] == ["buildkite-agent", "meta-data", "set"] and not self.raced:
+            self.raced = True
+            self.meta_data[command[3]] = self.other_job
+        return completed
+
+
+def test_the_loser_of_a_simultaneous_claim_does_not_comment():
+    """Both jobs found the key unset; last write wins, the other stands down."""
+    issue = FakeIssue(state="open")
+    agent = RacingAgent(other_job="job-2")
+
+    _report_on_buildkite(FakeRepo(issue=issue), agent, job_id="job-1")
+
+    assert issue.comments == []
+    assert agent.meta_data[CLAIM_KEY] == "job-2"
+
+
+def test_an_unverifiable_claim_still_comments():
+    """A failed read-back is not evidence that somebody else won."""
+    issue = FakeIssue(state="open")
+
+    class BlindAgent(FakeAgent):
+        def run(self, command, **kwargs):
+            completed = super().run(command, **kwargs)
+            if command[:3] == ["buildkite-agent", "meta-data", "get"]:
+                # Every get fails, so the read-back cannot confirm the claim.
+                return FakeCompleted(returncode=1)
+            return completed
+
+    _report_on_buildkite(FakeRepo(issue=issue), BlindAgent(), job_id="job-1")
+
+    assert len(issue.comments) == 1
+
+
+def test_no_claim_without_a_job_id_to_claim_with():
+    """Nothing to identify the holder by, so the protocol cannot be run."""
+    issue = FakeIssue(state="open")
+    agent = FakeAgent()
+
+    _report_on_buildkite(FakeRepo(issue=issue), agent, job_id="")
+
+    assert len(issue.comments) == 1
+    assert CLAIM_KEY not in agent.meta_data
+
+
 def test_the_annotation_is_not_deduped_by_build():
     """One agent report per test job is the point of the annotation."""
     agent = FakeAgent()

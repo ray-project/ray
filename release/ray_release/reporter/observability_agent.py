@@ -334,13 +334,28 @@ class ObservabilityAgentReporter(Reporter):
         """Take responsibility for this build's comment, if nobody else has.
 
         Claimed *before* the comment is posted rather than after, so that the
-        window this exists to close stays shut. `exists`-then-`set` is not
-        atomic -- the agent has no compare-and-set -- so two jobs can still both
-        claim; the window is two fast local calls, against repeats that reach
-        this point after their own minute-long agent queries. Worst case is a
-        second comment, not a fifth.
+        window this exists to close stays shut.
+
+        The agent has no compare-and-set, so the claim is written and then read
+        back. `set` is last-writer-wins, which is what makes that work: when two
+        jobs both find the key unset and both write, the one whose write landed
+        last reads its own id back and owns the claim, and the other reads a
+        stranger's and stands down. Without the read-back both would post.
+
+        It narrows the race rather than closing it: two jobs still both post if
+        one of them reads back before the other writes at all. That needs the
+        second write to fall in the gap between the first job's write and its
+        read-back -- two consecutive local calls -- against repeats that arrive
+        here after their own minute-long agent queries.
         """
         if not os.environ.get("BUILDKITE"):
+            return True
+
+        # The claim is identified by the job holding it, so a job that cannot
+        # name itself cannot run this protocol. Fall open: a duplicate comment
+        # is a smaller failure than silently dropping the analysis.
+        claimant = os.environ.get("BUILDKITE_JOB_ID")
+        if not claimant:
             return True
 
         key = f"{COMMENT_CLAIM_PREFIX}{test.get_name()}"
@@ -355,7 +370,19 @@ class ObservabilityAgentReporter(Reporter):
             )
             return False
 
-        self._meta_data("set", key, os.environ.get("BUILDKITE_JOB_ID", "claimed"))
+        self._meta_data("set", key, claimant)
+
+        # None means the read-back itself failed, not that somebody else won:
+        # the key was just written, so it is set. Stand down only on positively
+        # reading another job's id.
+        winner = self._meta_data("get", key)
+        if winner is not None and winner != claimant:
+            logger.info(
+                f"Skip commenting the observability agent analysis for test "
+                f"{test.get_name()}; job {winner} claimed this build's comment "
+                f"at the same time and won"
+            )
+            return False
         return True
 
     def _release_the_builds_comment(self, test: Test) -> None:
