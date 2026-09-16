@@ -83,7 +83,7 @@ class MetricSamples(NamedTuple):
 
     `timestamps` and `values` are flat and parallel. `source_offsets` is CSR: source i
     is timestamps[source_offsets[i]:source_offsets[i + 1]]. None means these samples are
-    a single source, which is cheaper than materialising a two-element array per replica
+    a single source, which is cheaper than materializing a two-element array per replica
     per tick.
     """
 
@@ -93,7 +93,8 @@ class MetricSamples(NamedTuple):
 
     @classmethod
     def from_timeseries(cls, series: TimeSeries) -> "MetricSamples":
-        """One object timeseries as a single source."""
+        """One object timeseries as flat timestamp/value arrays, a single source.
+        Object series carry few points each, so this stays off the critical path."""
         n = len(series)
         return cls(
             np.fromiter((p.timestamp for p in series), dtype=np.float64, count=n),
@@ -149,10 +150,9 @@ class ColumnarHandleReport:
 
 
 def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str]]:
-    """The report's running points as one per-source-offset sample set plus the replica
-    key of each source. The
-    encoder lays a metric's points out contiguously, so this is normally a view; a frame
-    that is not pays one copy here rather than one per tick."""
+    """The report's running points as one per-source sample set, plus each source's
+    replica key. The encoder lays a metric's points out contiguously, so this is
+    normally a view; a frame that is not pays one copy here rather than one per tick."""
     entries = payload["entries"]
     rows = entries[entries[:, 0] == payload["mi"]]
     timestamps, values = payload["ts"], payload["val"]
@@ -181,7 +181,11 @@ def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str
     )
 
 
-def _log_dropped_handle(report, timeout_s: float, dead_actor: bool) -> None:
+def _log_dropped_handle(
+    report: Union[HandleMetricReport, ColumnarHandleReport],
+    timeout_s: float,
+    dead_actor: bool,
+) -> None:
     """One copy of the operator-facing drop text, shared by both report types.
     total_requests gates it so handles that never took traffic stay quiet."""
     peak_requests = report.total_requests
@@ -441,7 +445,9 @@ class DeploymentAutoscalingState:
             report.queued for report in self._handle_arrays.values() if report.queued
         ]
 
-    def _handle_running_columnar_samples(self, running) -> List[MetricSamples]:
+    def _handle_running_columnar_samples(
+        self, running: Set[str]
+    ) -> List[MetricSamples]:
         """Each columnar handle's running samples, masked to replicas still in `running`
         (mirrors _collect_handle_running_requests). Passed through whole while every
         replica is still running; only a changed membership pays a per-source slice."""
@@ -878,11 +884,11 @@ class DeploymentAutoscalingState:
         """Total over every source as one fused ARRAY merge.
 
         Wide columnar sources are sliced as array views (never re-materialized into
-        per-point objects -- mixing is a steady state, e.g. a thin driver handle
-        alongside wide proxy handles, so this runs every tick); thin object sources
-        are converted to small arrays. Empty object series are dropped so they
-        cannot flip metrics_collected_on_replicas and suppress handle-side running
-        (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""
+        per-point objects -- replica reports stay object while handle reports go
+        columnar, so a mixed fleet is steady state and this runs every tick); thin
+        object sources are converted to small arrays. Empty object series are dropped
+        so they cannot flip metrics_collected_on_replicas and suppress handle-side
+        running (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""
         samples = self._replica_running_samples()
         metrics_collected_on_replicas = bool(samples)
         if not metrics_collected_on_replicas:
