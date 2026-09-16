@@ -922,9 +922,10 @@ def _map_task(
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
-    mixed resources avoids potential starvation and deadlock issues during scheduling,
-    and should not be a serious limitation for users.
+    Map tasks default to 1 CPU. GPU map tasks that don't specify ``num_cpus`` also
+    reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+    doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+    explicitly passing ``num_cpus=0``.
     """
     ray_remote_args = ray_remote_args.copy()
 
@@ -938,7 +939,11 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
             "https://github.com/ray-project/ray/issues/new/choose"
         )
 
-    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+    if "num_cpus" not in ray_remote_args:
+        # Map tasks default to 1 CPU. GPU map tasks that don't specify num_cpus also
+        # reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+        # doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+        # explicitly passing num_cpus=0.
         ray_remote_args["num_cpus"] = 1
 
     return ray_remote_args
