@@ -4,10 +4,12 @@ Each test deliberately induces one class of NCCL desync inside a real
 ``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the
 :class:`NCCLRASCallback` registered, and asserts the callback's whole-job
 behavior: query RAS on a worker -> parse -> classify per communicator -> capture
-stacks + raise :class:`NCCLHangError`.
+diagnostics (per-rank stack traces and PyTorch Flight Recorder dumps) -> raise
+:class:`NCCLHangError`.
 """
 import os
 import shutil
+from pathlib import Path
 from typing import Any, Dict, Iterator
 
 import pytest
@@ -16,7 +18,7 @@ import torch.distributed as dist
 
 import ray
 import ray.train
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig, TorchTrainer, get_device
 from ray.train.v2.api.exceptions import NCCLHangError, WorkerGroupError
 
@@ -39,6 +41,7 @@ RAS_ENV = {
     "RAY_TRAIN_NCCL_RAS_ACTION": "fail",
     "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S": "2",
     "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S": "4",
+    "TORCH_FR_BUFFER_SIZE": "2000",
 }
 
 
@@ -53,6 +56,7 @@ SYSTEM_LIBNCCL_PATH = "/usr/lib/x86_64-linux-gnu/libnccl.so.2"
 HANG_STEP = 3
 STEPS = 16
 STEP_SLEEP_S = 1.0
+EXPERIMENT_NAME = "nccl_ras_hang_detector_e2e"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -242,13 +246,25 @@ def multicomm_subset_train_fn(config):
         time.sleep(STEP_SLEEP_S)
 
 
-def run_train_fn(train_func, num_workers, tensor_shape=64 * 1024 * 1024):
-    """Run ``train_func`` with the RAS callback; return the raised error or None."""
+def run_train_fn(
+    train_func, num_workers, tensor_shape=64 * 1024 * 1024, storage_path=None
+):
+    """Run ``train_func`` with the RAS callback; return the raised error or None.
+
+    Passing ``storage_path`` pins the run's experiment directory, so a test can
+    read the hang diagnostics the callback uploaded under it.
+    """
+    run_config = (
+        RunConfig(storage_path=str(storage_path), name=EXPERIMENT_NAME)
+        if storage_path is not None
+        else None
+    )
     trainer = TorchTrainer(
         train_func,
         train_loop_config={"tensor_shape": tensor_shape},
         torch_config=TorchConfig(backend="nccl"),
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+        run_config=run_config,
     )
     try:
         trainer.fit()
@@ -271,9 +287,11 @@ def ray_start_4_cpus_4_gpus(nccl_ras_env):
     ray.shutdown()
 
 
-def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus):
-    err = run_train_fn(healthy_train_fn, num_workers=2)
+def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus, tmp_path):
+    err = run_train_fn(healthy_train_fn, num_workers=2, storage_path=tmp_path)
     assert err is None, f"healthy run must not fail, got {err!r}"
+    # Nothing was ever suspected, so no diagnostics were captured either.
+    assert not (Path(tmp_path) / EXPERIMENT_NAME / "hang_detector").exists()
 
 
 HANG, FAIL, MAYBE = "hang", "fail", "maybe"
@@ -304,19 +322,46 @@ def _assert_outcome(err, expectation):
         assert err is None or isinstance(err, NCCLHangError), f"unexpected: {err!r}"
 
 
+def diagnostics_dir(storage_path, tool) -> Path:
+    """Where the callback uploads one tool's per-rank files for a run."""
+    return Path(storage_path) / EXPERIMENT_NAME / "hang_detector" / tool
+
+
 @pytest.mark.parametrize("train_func, expectation", TWO_WORKER_SCENARIOS)
-def test_hang_scenarios(train_func, expectation, ray_start_4_cpus_2_gpus):
-    err = run_train_fn(train_func, num_workers=2)
+def test_hang_scenarios(train_func, expectation, ray_start_4_cpus_2_gpus, tmp_path):
+    err = run_train_fn(train_func, num_workers=2, storage_path=tmp_path)
     _assert_outcome(err, expectation)
+
+    if isinstance(err, NCCLHangError):
+        assert "hang_detector/stack_traces" in str(err)
+        assert "hang_detector/flight_recorder" in str(err)
+        flight_recorder_dir = diagnostics_dir(tmp_path, "flight_recorder")
+        stack_traces_dir = diagnostics_dir(tmp_path, "stack_traces")
+
+        # Every rank is accounted for, whatever it was doing at the time.
+        assert set(os.listdir(flight_recorder_dir)) == {"rank_0.json", "rank_1.json"}
+        assert set(os.listdir(stack_traces_dir)) == {"rank_0.log", "rank_1.log"}
 
 
 @pytest.mark.skipif(
     torch.cuda.device_count() < 4, reason="multi-communicator case needs >= 4 GPUs"
 )
-def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus):
+def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus, tmp_path):
     # Two communicators, in which only one hangs
-    err = run_train_fn(multicomm_subset_train_fn, num_workers=4)
+    err = run_train_fn(multicomm_subset_train_fn, num_workers=4, storage_path=tmp_path)
     _assert_outcome(err, HANG)
+
+    if isinstance(err, NCCLHangError):
+        assert "hang_detector/stack_traces" in str(err)
+        assert "hang_detector/flight_recorder" in str(err)
+        flight_recorder_dir = diagnostics_dir(tmp_path, "flight_recorder")
+        stack_traces_dir = diagnostics_dir(tmp_path, "stack_traces")
+
+        # Every rank is accounted for, whatever it was doing at the time.
+        assert set(os.listdir(flight_recorder_dir)) == {
+            f"rank_{i}.json" for i in range(4)
+        }
+        assert set(os.listdir(stack_traces_dir)) == {f"rank_{i}.log" for i in range(4)}
 
 
 if __name__ == "__main__":

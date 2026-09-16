@@ -620,9 +620,8 @@ def dump_flight_recorder() -> Dict[str, Any]:
 
     Returns:
         A dict ``{"ok": bool, ...}``. On success ``trace_json`` holds the dump
-        and ``entry_count`` how many collectives it contains (``None`` when the
-        dump could not be parsed). On failure ``reason`` says why there is no
-        dump, which is written into the rank's file so a gap is never silent.
+        as a JSON string. On failure ``reason`` says why there is no dump, which
+        is written into the rank's file so a gap is never silent.
     """
     try:
         from torch._C import _distributed_c10d as c10d
@@ -631,7 +630,8 @@ def dump_flight_recorder() -> Dict[str, Any]:
 
     try:
         # The default dumps every collective on this rank
-        trace_json = c10d._dump_fr_trace_json()
+        trace_bytes = c10d._dump_fr_trace_json()
+        trace_json = trace_bytes.decode("utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "reason": f"exception: {e}"}
 
@@ -852,11 +852,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
-        if TORCH_FR_BUFFER_SIZE_ENV_VAR in os.environ:
-            # Record first to prevent buffer being overwritten by other ranks
-            flight_recorder_dir = self.capture_diagnostic(
-                "Flight Recorder dumps", self.dump_workers_flight_recorder
-            )
+        # Record first to prevent buffer being overwritten by other ranks
+        flight_recorder_dir = self.capture_diagnostic(
+            "Flight Recorder dumps", self.dump_workers_flight_recorder
+        )
         stack_trace_dir = self.capture_diagnostic(
             "worker stack traces", self.dump_workers_stack_traces
         )
@@ -1022,6 +1021,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         Returns:
             The path to the folder with the dumps.
         """
+        if TORCH_FR_BUFFER_SIZE_ENV_VAR not in os.environ:
+            return None
+
         workers = list(self._worker_group.get_workers())
         if not workers:
             return None

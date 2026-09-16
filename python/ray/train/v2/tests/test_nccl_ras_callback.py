@@ -3,6 +3,8 @@ import json
 import logging
 import sys
 import time
+import types
+from pathlib import Path
 from typing import Dict, Optional, Union
 from unittest.mock import MagicMock
 
@@ -14,6 +16,10 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     RASPoller,
     RASQueryError,
     RASReport,
+    WorkerDump,
+    dump_flight_recorder,
+    dump_stack_trace,
+    fan_out_to_workers,
     parse_ras_addr,
     parse_ras_schema,
 )
@@ -23,6 +29,7 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_ACTION_OBSERVE,
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
+    TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
 from ray.train.v2.api.exceptions import NCCLHangError
 
@@ -466,6 +473,7 @@ def make_nccl_ras_callback(
     reports,
     first_suspicion_polls=1,
     periodic_warn_every_polls=2,
+    flight_recorder=False,
 ):
     """Build a callback whose poller yields the given sequence of poll results.
 
@@ -475,8 +483,15 @@ def make_nccl_ras_callback(
     at 60s/120s, i.e. 4 and 8 polls) shrunk to values the small
     ``confirm_count``s here actually reach.
 
+    ``flight_recorder`` arms ``TORCH_FR_BUFFER_SIZE``, which is what decides
+    whether the Flight Recorder dump yields anything: unarmed, its ring buffer
+    holds no collectives, so the capture returns no directory.
+
     No poller thread is started: a :class:`FakePoller` returns one scripted
     result per controller tick, so the tests stay deterministic.
+
+    Returns the callback and the list its diagnostic captures record themselves
+    in (the tool names that produced a directory, in capture order).
     """
     monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, action)
     monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, str(confirm_count))
@@ -487,6 +502,10 @@ def make_nccl_ras_callback(
     monkeypatch.setattr(
         nccl_ras, "_PERIODIC_WARN_EVERY_S", float(periodic_warn_every_polls)
     )
+    if flight_recorder:
+        monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+    else:
+        monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
 
     callback = NCCLRASCallback()
     assert callback._confirm_poll_counts == confirm_count
@@ -494,7 +513,17 @@ def make_nccl_ras_callback(
     callback._ras_poller = FakePoller(reports)
 
     captured = []
-    callback.dump_workers_stack_traces = lambda: captured.append(True) or "/tmp/dump"
+
+    def capture(tool, produces_dir=True):
+        if not produces_dir:
+            return None
+        captured.append(tool)
+        return f"/exp/hang_detector/{tool}"
+
+    callback.dump_workers_stack_traces = lambda: capture(nccl_ras._STACK_TRACES_TOOL)
+    callback.dump_workers_flight_recorder = lambda: capture(
+        nccl_ras._FLIGHT_RECORDER_TOOL, produces_dir=flight_recorder
+    )
 
     return callback, captured
 
@@ -567,6 +596,44 @@ def test_fail_mode_raises_after_confirm(monkeypatch):
     # The error reports how many communicators were confirmed stalled.
     assert "1 of 1 communicators" in str(exc_info.value)
     assert len(captured_stack_traces) == 1
+
+
+@pytest.mark.parametrize("flight_recorder", [False, True], ids=["fr_off", "fr_on"])
+def test_confirmed_hang_captures_diagnostics(monkeypatch, flight_recorder):
+    # Which diagnostics a confirmed hang collects, and what the error points the
+    # user at. Flight Recorder is only collected when its ring buffer was armed;
+    # with it off the hang must still fail the run and report the stack traces.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
+    callback, captured = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=2,
+        reports=reports,
+        flight_recorder=flight_recorder,
+    )
+
+    callback.after_worker_group_poll_status(MagicMock())  # baseline
+    callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
+    with pytest.raises(NCCLHangError) as exc_info:
+        callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2
+
+    message = str(exc_info.value)
+    assert "per-rank stack traces" in message
+    assert "/exp/hang_detector/stack_traces" in message
+    if flight_recorder:
+        # Dumped before the stack traces, so a rank that is still running cannot
+        # overwrite the ring buffer while we are collecting.
+        assert captured == [
+            nccl_ras._FLIGHT_RECORDER_TOOL,
+            nccl_ras._STACK_TRACES_TOOL,
+        ]
+        assert "Flight Recorder" in message
+        assert "/exp/hang_detector/flight_recorder" in message
+    else:
+        assert captured == [nccl_ras._STACK_TRACES_TOOL]
+        assert "Flight Recorder" not in message
+    # The hang is the expected outcome, not a detector bug.
+    assert callback._is_ras_degraded is False
 
 
 @pytest.mark.parametrize(
@@ -968,23 +1035,42 @@ def test_unexpected_error_disables_detection(monkeypatch):
     assert callback.prev_report is None
 
 
-def test_hang_error_propagates_when_diagnostics_fail(monkeypatch):
-    # Collecting hang diagnostics (stack dump) must not suppress the hang
-    # failure, and a real hang must not be misread as a detector bug.
+@pytest.mark.parametrize(
+    "fail_stack_traces,fail_flight_recorder",
+    [(True, False), (False, True), (True, True)],
+    ids=["stack_traces_fail", "flight_recorder_fails", "both_fail"],
+)
+def test_hang_error_propagates_when_diagnostics_fail(
+    monkeypatch, fail_stack_traces, fail_flight_recorder
+):
+    # Collecting hang diagnostics must not suppress the hang failure, and a real
+    # hang must not be misread as a detector bug. Each diagnostic fails on its
+    # own, so the one that worked is still reported to the user.
     reports = [create_single_comm_report({2: 5, 3: 4})] * 3
     callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=2,
+        reports=reports,
+        flight_recorder=True,
     )
 
     def boom(*_args, **_kwargs):
-        raise RuntimeError("stack dump failed")
+        raise RuntimeError("diagnostic failed")
 
-    callback.dump_workers_stack_traces = boom
+    if fail_stack_traces:
+        callback.dump_workers_stack_traces = boom
+    if fail_flight_recorder:
+        callback.dump_workers_flight_recorder = boom
 
     callback.after_worker_group_poll_status(MagicMock())  # baseline
     callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-    with pytest.raises(NCCLHangError):
+    with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> still raises
+
+    message = str(exc_info.value)
+    assert ("per-rank stack traces" in message) is not fail_stack_traces
+    assert ("Flight Recorder" in message) is not fail_flight_recorder
     assert callback._is_ras_degraded is False
 
 
@@ -1077,6 +1163,298 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     assert "Possible NCCL hang detected!" in text
     assert "NCCL hang still suspected!" in text
     assert "NCCLHangError will be raised" not in text
+
+
+def make_worker(rank):
+    """A train worker stand-in; the diagnostics only need its world rank."""
+    return MagicMock(distributed_context=MagicMock(world_rank=rank))
+
+
+@pytest.fixture
+def fan_out(monkeypatch):
+    """Script what each worker does when a diagnostic fans out to it.
+
+    Returns a namespace holding a ``worker(rank, ...)`` factory and the
+    ``ray.wait`` mock the fan-out used. A worker returns ``value``, or instead
+    fails its launch (``launch_error``), never finishes so the fan-out times out
+    (``ready=False``), or fails when its finished call is collected
+    (``get_error``).
+    """
+    pending, values, get_errors = set(), {}, {}
+
+    def worker(rank, value=None, launch_error=None, get_error=None, ready=True):
+        worker = make_worker(rank)
+        if launch_error is not None:
+            worker.execute_async.side_effect = launch_error
+            return worker
+        # The mock's return value stands in for the call's ObjectRef.
+        ref = worker.execute_async.return_value
+        values[ref] = value
+        if not ready:
+            pending.add(ref)
+        if get_error is not None:
+            get_errors[ref] = get_error
+        return worker
+
+    def wait(refs, num_returns, timeout):
+        assert num_returns == len(refs)
+        return (
+            [ref for ref in refs if ref not in pending],
+            [ref for ref in refs if ref in pending],
+        )
+
+    def get(ref, timeout=None):
+        if ref in get_errors:
+            raise get_errors[ref]
+        return values[ref]
+
+    wait_mock = MagicMock(side_effect=wait)
+    monkeypatch.setattr(nccl_ras.ray, "wait", wait_mock)
+    monkeypatch.setattr(nccl_ras.ray, "get", get)
+    return types.SimpleNamespace(worker=worker, wait=wait_mock)
+
+
+def test_fan_out_collects_every_worker(fan_out):
+    workers = [fan_out.worker(7, value="stack-7"), fan_out.worker(4, value="stack-4")]
+
+    dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
+
+    # A dump is keyed by the worker's world rank, not its position in the list.
+    assert {dump.rank: dump.value for dump in dumps} == {7: "stack-7", 4: "stack-4"}
+    assert all(dump.error is None for dump in dumps)
+    workers[0].execute_async.assert_called_once_with(dump_stack_trace, 25.0)
+    # One wait for the whole fan-out, sharing the budget between the workers.
+    assert fan_out.wait.call_args.kwargs["timeout"] == 30.0
+
+
+@pytest.mark.parametrize(
+    "broken,expected_error",
+    [
+        ({"launch_error": RuntimeError("actor is dead")}, "failed to launch"),
+        ({"ready": False}, "timed out after 30s"),
+        ({"get_error": RuntimeError("worker exited")}, "failed to collect"),
+    ],
+    ids=["launch_failed", "timed_out", "collect_failed"],
+)
+def test_fan_out_records_per_rank_failures(fan_out, broken, expected_error):
+    # One unreachable rank must not cost us the ranks that did answer: it gets an
+    # error saying why, which is what ends up in that rank's file.
+    workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
+
+    dumps = {
+        dump.rank: dump
+        for dump in fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
+    }
+
+    assert dumps[0].value is None
+    assert expected_error in dumps[0].error
+    assert dumps[1].value == "stack-1" and dumps[1].error is None
+
+
+@pytest.fixture
+def fake_c10d(monkeypatch):
+    """Put a fake ``torch._C._distributed_c10d`` in front of the real torch.
+
+    ``dump_flight_recorder`` imports it when it runs, so these tests exercise
+    the worker-side dump whether or not torch is installed.
+    """
+    c10d = types.ModuleType("torch._C._distributed_c10d")
+    torch_c = types.ModuleType("torch._C")
+    torch_c._distributed_c10d = c10d
+    monkeypatch.setitem(
+        sys.modules, "torch", sys.modules.get("torch") or types.ModuleType("torch")
+    )
+    monkeypatch.setitem(sys.modules, "torch._C", torch_c)
+    monkeypatch.setitem(sys.modules, "torch._C._distributed_c10d", c10d)
+    return c10d
+
+
+def test_flight_recorder_dump_decodes_bytes(fake_c10d):
+    # torch returns the trace as utf-8 bytes, but the dumps are uploaded as text
+    # files, so the bytes have to be decoded before they get there.
+    fake_c10d._dump_fr_trace_json = lambda *args, **kwargs: b'{"entries": []}'
+
+    assert dump_flight_recorder() == {"ok": True, "trace_json": '{"entries": []}'}
+
+
+def test_flight_recorder_dump_without_torch(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch._C", None)  # makes the import fail
+
+    result = dump_flight_recorder()
+
+    assert result["ok"] is False and "c10d" in result["reason"]
+
+
+def test_flight_recorder_dump_error(fake_c10d):
+    def boom(*args, **kwargs):
+        raise RuntimeError("dump failed")
+
+    fake_c10d._dump_fr_trace_json = boom
+
+    result = dump_flight_recorder()
+
+    assert result["ok"] is False and "dump failed" in result["reason"]
+
+
+@pytest.fixture
+def armed_flight_recorder(monkeypatch):
+    """Arm the Flight Recorder ring buffer, which the dump refuses to run without."""
+    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+
+
+@pytest.fixture
+def uploads(monkeypatch):
+    """Capture each upload as ``(fs_path, {filename: contents})``."""
+    calls = []
+
+    def fake_upload(local_dir, filesystem, fs_path):
+        calls.append(
+            (fs_path, {p.name: p.read_text() for p in Path(local_dir).iterdir()})
+        )
+
+    monkeypatch.setattr(nccl_ras, "_upload_to_fs_path", fake_upload)
+    return calls
+
+
+def make_diagnostics_callback(ranks=(0, 1), experiment_fs_path="/exp"):
+    """A callback wired to a worker group, to exercise the real dump methods."""
+    callback = NCCLRASCallback()
+    worker_group = MagicMock()
+    worker_group.get_workers.return_value = [make_worker(rank) for rank in ranks]
+    worker_group._storage_context.experiment_fs_path = experiment_fs_path
+    callback._worker_group = worker_group
+    return callback
+
+
+def scripted_fan_out(monkeypatch, dumps):
+    """Replace the worker fan-out with fixed dumps, recording how it was called."""
+    calls = []
+
+    def fake_fan_out(workers, fn, *fn_args, timeout_s):
+        calls.append((fn, fn_args, timeout_s))
+        return dumps
+
+    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", fake_fan_out)
+    return calls
+
+
+def test_flight_recorder_dumps_upload_per_rank(
+    monkeypatch, uploads, armed_flight_recorder
+):
+    callback = make_diagnostics_callback()
+    calls = scripted_fan_out(
+        monkeypatch,
+        [
+            WorkerDump(0, value={"ok": True, "trace_json": '{"entries": [0]}'}),
+            WorkerDump(1, value={"ok": True, "trace_json": '{"entries": [1]}'}),
+        ],
+    )
+
+    fs_path = callback.dump_workers_flight_recorder()
+
+    assert fs_path == "/exp/hang_detector/flight_recorder"
+    assert uploads == [
+        (
+            fs_path,
+            {"rank_0.json": '{"entries": [0]}', "rank_1.json": '{"entries": [1]}'},
+        )
+    ]
+    assert calls == [
+        (nccl_ras.dump_flight_recorder, (), nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S)
+    ]
+
+
+@pytest.mark.parametrize(
+    "bad_dump,expected_error",
+    [
+        (WorkerDump(0, error="timed out after 30s"), "timed out after 30s"),
+        (
+            WorkerDump(0, value={"ok": False, "reason": "torch c10d is unavailable"}),
+            "torch c10d is unavailable",
+        ),
+    ],
+    ids=["fan_out_failed", "dump_failed"],
+)
+def test_flight_recorder_failed_rank_gets_placeholder(
+    monkeypatch, uploads, armed_flight_recorder, bad_dump, expected_error
+):
+    # A rank with no dump is written as an explicit error, so the gap is never
+    # silent -- and the ranks that did answer are still uploaded.
+    callback = make_diagnostics_callback()
+    scripted_fan_out(
+        monkeypatch, [bad_dump, WorkerDump(1, value={"ok": True, "trace_json": "{}"})]
+    )
+
+    callback.dump_workers_flight_recorder()
+
+    ((_, files),) = uploads
+    assert json.loads(files["rank_0.json"]) == {"ray_train_dump_error": expected_error}
+    assert files["rank_1.json"] == "{}"
+
+
+def test_flight_recorder_dump_reaches_the_uploaded_file(
+    monkeypatch, uploads, fake_c10d, armed_flight_recorder
+):
+    # The whole worker-side path: what torch hands back has to arrive in the
+    # rank's file as readable JSON.
+    fake_c10d._dump_fr_trace_json = lambda *a, **kw: b'{"entries": [{"seq_id": 3}]}'
+    callback = make_diagnostics_callback(ranks=(0,))
+
+    def local_fan_out(workers, fn, *fn_args, timeout_s):
+        return [
+            WorkerDump(worker.distributed_context.world_rank, value=fn(*fn_args))
+            for worker in workers
+        ]
+
+    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
+
+    callback.dump_workers_flight_recorder()
+
+    ((_, files),) = uploads
+    assert json.loads(files["rank_0.json"]) == {"entries": [{"seq_id": 3}]}
+
+
+def test_flight_recorder_skipped_when_buffer_is_not_armed(monkeypatch, uploads):
+    # The ring buffer has to be armed before the process group is created, so
+    # without TORCH_FR_BUFFER_SIZE there is nothing for the workers to dump and
+    # the fan-out is not worth the hung job's time.
+    monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
+    callback = make_diagnostics_callback()
+    calls = scripted_fan_out(monkeypatch, [WorkerDump(0, value={"ok": True})])
+
+    assert callback.dump_workers_flight_recorder() is None
+    assert calls == [] and uploads == []
+
+
+def test_stack_traces_upload_per_rank(monkeypatch, uploads):
+    callback = make_diagnostics_callback()
+    calls = scripted_fan_out(
+        monkeypatch,
+        [WorkerDump(0, value="stack 0"), WorkerDump(1, error="timed out after 30s")],
+    )
+
+    fs_path = callback.dump_workers_stack_traces()
+
+    assert fs_path == "/exp/hang_detector/stack_traces"
+    assert uploads == [
+        (fs_path, {"rank_0.log": "stack 0", "rank_1.log": "timed out after 30s"})
+    ]
+    assert calls == [
+        (
+            nccl_ras.dump_stack_trace,
+            (nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
+            nccl_ras._STACK_DUMP_TIMEOUT_S,
+        )
+    ]
+
+
+def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
+    def boom():
+        raise RuntimeError("upload failed")
+
+    with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
+        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
+    assert "worker stack traces" in caplog.text
 
 
 if __name__ == "__main__":
