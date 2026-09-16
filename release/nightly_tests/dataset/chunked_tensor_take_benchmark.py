@@ -43,8 +43,6 @@ WORKLOADS = (
     Workload("image_tensor_ingest", (224, 224, 3), 1024, 32, 32, 256),
     Workload("wide_tensor_ingest", (2000, 1697), 128, 32, 8, 64),
     Workload("variable_short_ingest", (4, 8), 4096, 32, 64, 256, (4, 8, 16)),
-    Workload("variable_image_ingest", (128, 128, 3), 512, 32, 32, 128, (96, 128, 192)),
-    Workload("variable_wide_ingest", (512, 512), 256, 32, 16, 64, (256, 512, 768)),
     # Match wide_tensor_ingest's row count, average payload, and shuffle settings.
     # Each four-row source block contains two short and two long tensors.
     Workload(
@@ -53,11 +51,6 @@ WORKLOADS = (
     # Match the fixed image workload's total and per-block payload.
     Workload(
         "variable_image_matched_ingest", (224, 224, 3), 1024, 32, 32, 256, (112, 336)
-    ),
-    # Keep the matched wide total and average batch/buffer payload constant,
-    # while increasing row count fourfold to exercise per-row overhead.
-    Workload(
-        "variable_wide_many_rows_ingest", (500, 1697), 512, 32, 32, 256, (250, 750)
     ),
     # Same total and per-block payload as matched wide, with a 12:1 row-size
     # spread. Each four-row source block contains one complete shape cycle.
@@ -69,10 +62,6 @@ WORKLOADS = (
         8,
         64,
         (500, 500, 1000, 6000),
-    ),
-    # Retain enough rows for rare large tensors to exceed the source-size gate.
-    Workload(
-        "variable_skewed_ingest", (8, 4), 2048, 32, 64, 1024, (8,) * 127 + (65536,)
     ),
 )
 

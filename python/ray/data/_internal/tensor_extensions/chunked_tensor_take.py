@@ -1,3 +1,12 @@
+"""Prepare and execute chunked takes for fixed- and variable-shaped tensors.
+
+The shared entry point checks column eligibility and dispatches to two peer
+implementations. Each validates its storage and cost/capacity bounds, retains
+source views, and returns a plan with the same normalized-index take contract.
+Fixed rows use bounded, grouped gathers; variable rows compute output offsets
+and copy source slices directly into the final payload.
+"""
+
 import logging
 import math
 from enum import Enum
@@ -122,6 +131,42 @@ def try_prepare_chunked_tensor_take(
     tensor_type = column.type
     if isinstance(tensor_type, ArrowVariableShapedTensorType):
         return _try_prepare_variable_tensor_take(column, max_output_rows)
+    if isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
+        return _try_prepare_fixed_tensor_take(column, max_output_rows)
+    return _log_take_fallback(
+        _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
+    )
+
+
+def _log_take_fallback(
+    reason: _TakeFallbackReason, *, column: Optional[pa.ChunkedArray] = None
+) -> None:
+    """Debug-log a column or request rejection and return the fallback value.
+
+    Args:
+        reason: Why the fast path declined the column or request.
+        column: Rejected source column, when the reason is column-specific.
+            Omit for request-level failures such as unsupported indices.
+    """
+    if column is None:
+        logger.debug("Chunked tensor take fast path not used: reason=%s", reason.value)
+    else:
+        logger.debug(
+            "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
+            "chunks=%s, type=%s",
+            reason.value,
+            len(column),
+            column.num_chunks,
+            column.type,
+        )
+    return None
+
+
+def _try_prepare_fixed_tensor_take(
+    column: pa.ChunkedArray, max_output_rows: int
+) -> Optional["PreparedFixedShapedTensorTake"]:
+    """Prepare a fixed-shape plan after the common column checks."""
+    tensor_type = column.type
     layout = _prepare_fixed_tensor_layout(tensor_type)
     if layout is None:
         return _log_take_fallback(
@@ -193,30 +238,6 @@ def try_prepare_chunked_tensor_take(
         subbatch_rows,
     )
     return plan
-
-
-def _log_take_fallback(
-    reason: _TakeFallbackReason, *, column: Optional[pa.ChunkedArray] = None
-) -> None:
-    """Debug-log a column or request rejection and return the fallback value.
-
-    Args:
-        reason: Why the fast path declined the column or request.
-        column: Rejected source column, when the reason is column-specific.
-            Omit for request-level failures such as unsupported indices.
-    """
-    if column is None:
-        logger.debug("Chunked tensor take fast path not used: reason=%s", reason.value)
-    else:
-        logger.debug(
-            "Chunked tensor take fast path not prepared: reason=%s, rows=%s, "
-            "chunks=%s, type=%s",
-            reason.value,
-            len(column),
-            column.num_chunks,
-            column.type,
-        )
-    return None
 
 
 def _passes_fixed_size_gates(
@@ -428,6 +449,78 @@ class PreparedFixedShapedTensorTake(NamedTuple):
         return self.tensor_type.wrap_array(storage)
 
 
+def _gather_monotonic_chunk_ids(
+    output: np.ndarray,
+    local_indices: np.ndarray,
+    chunks: tuple[np.ndarray, ...],
+    chunk_ids: np.ndarray,
+) -> None:
+    """Gather chunk groups that already occur in nondecreasing chunk order.
+
+    A change in ``chunk_ids`` marks a group boundary. Because every group
+    occupies a contiguous output range, it can be written without sorting or
+    scattering. Consecutive local row indices use a source slice; other rows
+    use NumPy advanced indexing.
+
+    Args:
+        output: Destination for this subbatch.
+        local_indices: Source-row indices relative to their chunks.
+        chunks: Zero-copy NumPy views of the source tensor chunks.
+        chunk_ids: Nondecreasing source chunk IDs for each output position.
+    """
+    boundaries = np.flatnonzero(chunk_ids[1:] != chunk_ids[:-1]) + 1
+    group_start = 0
+    # Add the final sentinel lazily instead of materializing a Python tuple
+    # proportional to the number of chunk groups.
+    for group_stop in chain(boundaries, (len(chunk_ids),)):
+        chunk_id = chunk_ids[group_start]
+        group_indices = local_indices[group_start:group_stop]
+        if len(group_indices) <= 1 or np.all(
+            group_indices[1:] == group_indices[:-1] + 1
+        ):
+            source_start = int(group_indices[0])
+            source_stop = source_start + len(group_indices)
+            output[group_start:group_stop] = chunks[chunk_id][source_start:source_stop]
+        else:
+            output[group_start:group_stop] = chunks[chunk_id][group_indices]
+        group_start = group_stop
+
+
+def _gather_by_sorted_chunk_ids(
+    output: np.ndarray,
+    local_indices: np.ndarray,
+    chunks: tuple[np.ndarray, ...],
+    chunk_ids: np.ndarray,
+) -> None:
+    """Gather unordered rows after sorting positions into chunk groups.
+
+    ``argsort`` returns output positions ordered by source chunk. Equal chunk
+    IDs then form contiguous processing groups, so each source chunk is gathered
+    once. Results are scattered through the saved original positions, preserving
+    the caller-visible row order. A stable sort is unnecessary because every
+    gathered row is written to its own original position.
+
+    Sorting costs ``O(K log K)`` for ``K`` subbatch rows, but avoids one full
+    ``chunk_ids`` scan per chunk and therefore scales better for many chunks.
+
+    Args:
+        output: Destination for this subbatch.
+        local_indices: Source-row indices relative to their chunks.
+        chunks: Zero-copy NumPy views of the source tensor chunks.
+        chunk_ids: Potentially unordered source chunk IDs for each output
+            position.
+    """
+    order = np.argsort(chunk_ids, kind="quicksort")
+    sorted_chunk_ids = chunk_ids[order]
+    boundaries = np.flatnonzero(sorted_chunk_ids[1:] != sorted_chunk_ids[:-1]) + 1
+    group_start = 0
+    for group_stop in chain(boundaries, (len(order),)):
+        positions = order[group_start:group_stop]
+        chunk_id = chunk_ids[positions[0]]
+        output[positions] = chunks[chunk_id][local_indices[positions]]
+        group_start = group_stop
+
+
 class _VariableTensorChunk(NamedTuple):
     """Zero-copy payload and validated row metadata from one physical chunk."""
 
@@ -439,15 +532,23 @@ class _VariableTensorChunk(NamedTuple):
 def _try_prepare_variable_tensor_take(
     column: pa.ChunkedArray, max_output_rows: int
 ) -> Optional["PreparedVariableShapedTensorTake"]:
-    """Prepare non-null numeric variable-shaped tensors after the common gates.
+    """Prepare a variable-shape plan after the common column checks.
 
-    Size gates use logical payload, not the size of retained parent buffers.
-    The row-size gate is an average; the per-chunk gate includes empty chunks.
-    Requested output is estimated from that average only for the cost gate.
-    Oversampling must amortize per-row work through the source payload or the
-    smallest source row, since repeated indices may select only tiny rows.
-    Capacity checks instead use the largest row, covering repeated indices and
-    every batch/carry-over take up to the declared maximum output row count.
+    Decline the fast path unless all variable-specific conditions hold:
+
+    * Integer or floating-point scalars, a nonnegative consistent rank, and at
+      least two nonempty chunks. Zero-length rows are allowed.
+    * Enough logical source payload in total and per row on average, plus
+      enough source or estimated output payload per physical chunk. Empty
+      chunks count toward preparation cost; retained parent bytes do not.
+    * Safe data/shape storage, as validated by ``_prepare_variable_chunk``.
+    * Shape offsets fit int32, and even repeating the largest row up to
+      ``max_output_rows`` fits payload offsets and NumPy allocation bounds.
+    * Oversampling is covered by source bytes per requested row or by the
+      smallest source row. A large average alone cannot justify tiny repeats.
+
+    Average row size estimates cost only; the largest row bounds capacity for
+    every request, including shuffle batches and carry-over takes.
     """
     tensor_type = column.type
     scalar_type = tensor_type.value_type
@@ -545,6 +646,14 @@ def _prepare_variable_chunk(
 ) -> Optional[_VariableTensorChunk]:
     """Validate logical data/shape offsets and expose numeric child views.
 
+    Accept sliced parents and children, nonzero logical offsets, and empty
+    rows (including an empty numeric child with no data buffer). Reject:
+
+    * Nulls in the struct, either list, or either list's child values.
+    * Descending or out-of-bounds data offsets, shape offsets that do not
+      advance by the declared rank, or a truncated numeric child buffer.
+    * Negative dimensions or a shape product unequal to the row's data length.
+
     Division checks shape products without multiplying dimensions in a fixed
     width dtype. This accepts zero-sized dimensions without overflow and rejects
     shapes whose product differs from their row's actual data length.
@@ -611,6 +720,14 @@ class PreparedVariableShapedTensorTake(NamedTuple):
         Callers establish the same index contract as fixed-shape prepared takes.
         Preparation proves the largest possible output fits the buffer/offset
         dtypes, so even repeated long rows can safely use a cumulative sum here.
+
+        Sort positions by chunk to gather row lengths, source offsets, and
+        shapes once per selected chunk, then restore their requested order.
+        Unlike fixed rows, variable rows need output offsets before copying:
+        a prefix sum sizes the final payload and locates each destination slice.
+        Copies preserve arbitrary order and duplicates without payload sorting.
+        Empty requests and requests selecting only zero-length rows still
+        produce offsets/shapes, but skip payload copying entirely.
         """
         chunk_ids = np.searchsorted(self.chunk_starts, indices, side="right") - 1
         local = indices - self.chunk_starts[chunk_ids]
@@ -663,75 +780,3 @@ class PreparedVariableShapedTensorTake(NamedTuple):
 PreparedTensorTake = Union[
     PreparedFixedShapedTensorTake, PreparedVariableShapedTensorTake
 ]
-
-
-def _gather_monotonic_chunk_ids(
-    output: np.ndarray,
-    local_indices: np.ndarray,
-    chunks: tuple[np.ndarray, ...],
-    chunk_ids: np.ndarray,
-) -> None:
-    """Gather chunk groups that already occur in nondecreasing chunk order.
-
-    A change in ``chunk_ids`` marks a group boundary. Because every group
-    occupies a contiguous output range, it can be written without sorting or
-    scattering. Consecutive local row indices use a source slice; other rows
-    use NumPy advanced indexing.
-
-    Args:
-        output: Destination for this subbatch.
-        local_indices: Source-row indices relative to their chunks.
-        chunks: Zero-copy NumPy views of the source tensor chunks.
-        chunk_ids: Nondecreasing source chunk IDs for each output position.
-    """
-    boundaries = np.flatnonzero(chunk_ids[1:] != chunk_ids[:-1]) + 1
-    group_start = 0
-    # Add the final sentinel lazily instead of materializing a Python tuple
-    # proportional to the number of chunk groups.
-    for group_stop in chain(boundaries, (len(chunk_ids),)):
-        chunk_id = chunk_ids[group_start]
-        group_indices = local_indices[group_start:group_stop]
-        if len(group_indices) <= 1 or np.all(
-            group_indices[1:] == group_indices[:-1] + 1
-        ):
-            source_start = int(group_indices[0])
-            source_stop = source_start + len(group_indices)
-            output[group_start:group_stop] = chunks[chunk_id][source_start:source_stop]
-        else:
-            output[group_start:group_stop] = chunks[chunk_id][group_indices]
-        group_start = group_stop
-
-
-def _gather_by_sorted_chunk_ids(
-    output: np.ndarray,
-    local_indices: np.ndarray,
-    chunks: tuple[np.ndarray, ...],
-    chunk_ids: np.ndarray,
-) -> None:
-    """Gather unordered rows after sorting positions into chunk groups.
-
-    ``argsort`` returns output positions ordered by source chunk. Equal chunk
-    IDs then form contiguous processing groups, so each source chunk is gathered
-    once. Results are scattered through the saved original positions, preserving
-    the caller-visible row order. A stable sort is unnecessary because every
-    gathered row is written to its own original position.
-
-    Sorting costs ``O(K log K)`` for ``K`` subbatch rows, but avoids one full
-    ``chunk_ids`` scan per chunk and therefore scales better for many chunks.
-
-    Args:
-        output: Destination for this subbatch.
-        local_indices: Source-row indices relative to their chunks.
-        chunks: Zero-copy NumPy views of the source tensor chunks.
-        chunk_ids: Potentially unordered source chunk IDs for each output
-            position.
-    """
-    order = np.argsort(chunk_ids, kind="quicksort")
-    sorted_chunk_ids = chunk_ids[order]
-    boundaries = np.flatnonzero(sorted_chunk_ids[1:] != sorted_chunk_ids[:-1]) + 1
-    group_start = 0
-    for group_stop in chain(boundaries, (len(order),)):
-        positions = order[group_start:group_stop]
-        chunk_id = chunk_ids[positions[0]]
-        output[positions] = chunks[chunk_id][local_indices[positions]]
-        group_start = group_stop
