@@ -1048,8 +1048,15 @@ TEST_P(NodeManagerReturnWorkerLeaseIdempotentTest, TestDifferentRequestArgs) {
   bool worker_exiting = std::get<1>(params);
 
   LeaseID lease_id = LeaseID::FromRandom();
-  leased_workers_[lease_id] =
+  std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  // A worker in leased_workers_ always carries its granted lease (see
+  // LocalLeaseManager::Grant), and HandleReturnWorkerLease checks for it.
+  rpc::LeaseSpec lease_spec_msg;
+  lease_spec_msg.set_lease_id(lease_id.Binary());
+  lease_spec_msg.set_type(rpc::TaskType::NORMAL_TASK);
+  worker->GrantLease(RayLease(std::move(lease_spec_msg)));
+  leased_workers_[lease_id] = worker;
   rpc::ReturnWorkerLeaseRequest request;
   rpc::ReturnWorkerLeaseReply reply1;
   rpc::ReturnWorkerLeaseReply reply2;
