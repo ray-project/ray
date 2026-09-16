@@ -444,6 +444,41 @@ def test_force_flush_rejects_negative_timeout():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
 @pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
+def test_metrics_survive_force_kill_without_explicit_flush(shutdown_only):
+    """The shutdown hook flushes, so a caller does not have to flush to survive a kill.
+
+    The report interval outlasts the test, so the periodic push cannot deliver the
+    sample and only the flush in DisconnectServices can.
+    """
+    addr = ray.init(_system_config={"metrics_report_interval_ms": 60000})
+
+    @ray.remote(num_cpus=0)
+    class Recorder:
+        def record(self):
+            from ray.util.metrics import Histogram
+
+            Histogram(
+                "test_exit_flush_ms", description="", boundaries=[1.0, 10.0]
+            ).observe(5.0)
+
+    recorder = Recorder.remote()
+    ray.get(recorder.record.remote())
+    ray.kill(recorder, no_restart=True)
+
+    timeseries = PrometheusTimeseries()
+
+    def exit_flushed_metric_is_exported():
+        metrics = raw_metric_timeseries(addr, timeseries)
+        assert "ray_test_exit_flush_ms_sum" in metrics
+        return True
+
+    wait_for_condition(
+        exit_flushed_metric_is_exported, timeout=30, retry_interval_ms=1000
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not working in Windows.")
+@pytest.mark.skipif(prometheus_client is None, reason="Prometheus not installed")
 def test_force_flush_delivers_before_force_kill(shutdown_only):
     """A sample recorded just before a force kill reaches the agent only if flushed.
 
