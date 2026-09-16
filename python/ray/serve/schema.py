@@ -280,7 +280,7 @@ class RayActorOptionsSchema(BaseModel):
         default={},
         description=(
             "This deployment's runtime_env. working_dir and "
-            "py_modules may contain only remote URIs."
+            "py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     num_cpus: Optional[float] = Field(
@@ -359,8 +359,9 @@ class RayActorOptionsSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -816,7 +817,7 @@ class ServeApplicationSchema(BaseModel):
         description=(
             "The runtime_env that the deployment graph will be run in. "
             "Per-deployment runtime_envs will inherit from this. working_dir "
-            "and py_modules may contain only remote URIs."
+            "and py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     host: str = Field(
@@ -897,8 +898,9 @@ class ServeApplicationSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -1751,6 +1753,47 @@ class ControllerHealthMetrics(BaseModel):
     # Event loop health
     num_asyncio_tasks: int = Field(
         default=0, description="Number of pending asyncio tasks."
+    )
+
+    # Ingestion-path metrics (autoscaling metrics fan-in)
+    handle_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_handle (rolling window, ms)."
+        ),
+    )
+    replica_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_replica (rolling window, ms)."
+        ),
+    )
+    metrics_decompress_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decompress time for cloudpickle metric reports "
+            "(rolling window, ms)."
+        ),
+    )
+    handle_reports_received: int = Field(
+        default=0, description="Total handle metric reports ingested since start."
+    )
+    replica_reports_received: int = Field(
+        default=0, description="Total replica metric reports ingested since start."
+    )
+    ingest_reports_received: int = Field(
+        default=0,
+        description="Total autoscaling metric reports ingested since start.",
+    )
+    ingest_cpu_fraction: float = Field(
+        default=0.0,
+        description=(
+            "Fraction of one event-loop core consumed by the metrics ingestion "
+            "path over the recent sampling window. Approaches 1.0 as ingestion "
+            "monopolizes the single control-loop thread."
+        ),
     )
 
     # Component update durations (rolling window stats)
