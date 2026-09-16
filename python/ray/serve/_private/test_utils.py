@@ -516,6 +516,7 @@ class MockReplicaActorWrapper:
         self.done_stopping = False
         # Will be set when `force_stop()` is called.
         self.force_stopped_counter = 0
+        self.remove_placement_group_counter = 0
         # Will be set when `check_health()` is called.
         self.health_check_called = False
         # Returned by the health check.
@@ -783,6 +784,9 @@ class MockReplicaActorWrapper:
 
     def check_stopped(self) -> bool:
         return self.done_stopping
+
+    def remove_placement_group(self):
+        self.remove_placement_group_counter += 1
 
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1

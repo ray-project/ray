@@ -9343,6 +9343,32 @@ class TestGangRollingUpdate:
         dsm.update()
         self._finish_starting(ds)
 
+    def test_gang_pg_removed_only_after_last_member_stops(
+        self, mock_deployment_state_manager
+    ):
+        """One gang shares one PG, so only the last member out may remove it."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        first, last = stopping[0], stopping[1]
+
+        # First member finishes while its sibling is still draining: removing the
+        # shared PG here would destroy the sibling mid-request.
+        first._actor.set_done_stopping()
+        dsm.update()
+        assert first._actor.remove_placement_group_counter == 0
+
+        last._actor.set_done_stopping()
+        dsm.update()
+        assert last._actor.remove_placement_group_counter == 1
+        assert first._actor.remove_placement_group_counter == 0
+
     def test_stop_gang_atomically(self, mock_deployment_state_manager):
         """Stops one complete gang per wave, never partially tearing down a gang."""
         gang_size, num_replicas = 2, 4

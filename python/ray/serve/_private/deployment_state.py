@@ -1614,18 +1614,24 @@ class ActorReplicaWrapper:
             stopped = True
         finally:
             # Remove the placement group both if the actor has already been deleted or
-            # it was just killed above.
-            if stopped and self._placement_group is not None:
-                try:
-                    ray.util.remove_placement_group(self._placement_group)
-                except ValueError:
-                    # ValueError thrown from ray.util.remove_placement_group means the
-                    # placement group has already been removed.
-                    logger.debug(
-                        f"Placement group for {self._replica_id} was already removed."
-                    )
+            # it was just killed above. A gang shares one PG across all its members, so
+            # the first member to stop must not tear it out from under siblings that are
+            # still draining; DeploymentState removes it once the last member is gone.
+            if stopped and self._gang_context is None:
+                self.remove_placement_group()
 
         return stopped
+
+    def remove_placement_group(self) -> None:
+        """Remove this replica's placement group, if it still holds one."""
+        if self._placement_group is None:
+            return
+        try:
+            ray.util.remove_placement_group(self._placement_group)
+        except ValueError:
+            # ValueError thrown from ray.util.remove_placement_group means the
+            # placement group has already been removed.
+            logger.debug(f"Placement group for {self._replica_id} was already removed.")
 
     def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
         """Check the active health check (if any).
@@ -2157,6 +2163,10 @@ class DeploymentReplica:
             # load balancers (e.g., ALB) time to deregister the replica.
             timeout_s = max(timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
         self._shutdown_deadline = time.time() + timeout_s
+
+    def remove_placement_group(self) -> None:
+        """Remove this replica's placement group, if it still holds one."""
+        self._actor.remove_placement_group()
 
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
@@ -4763,7 +4773,9 @@ class DeploymentState:
         self._gang_id_by_replica[replica_id] = gang_id
         self._replicas_by_gang_id[gang_id].add(replica_id)
 
-    def _unregister_gang_replica(self, replica_id: ReplicaID) -> None:
+    def _unregister_gang_replica(
+        self, replica_id: ReplicaID, replica: Optional["DeploymentReplica"] = None
+    ) -> None:
         """Remove a replica from the gang membership bookkeeping."""
         gang_id = self._gang_id_by_replica.pop(replica_id, None)
         if gang_id is not None:
@@ -4772,6 +4784,9 @@ class DeploymentState:
                 members.discard(replica_id)
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
+                    # Safe only now: the PG is shared by the whole gang.
+                    if replica is not None:
+                        replica.remove_placement_group()
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
@@ -5357,7 +5372,7 @@ class DeploymentState:
                         f"Released rank from replica {replica_id} in deployment {self._id}"
                     )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
-                self._unregister_gang_replica(replica.replica_id)
+                self._unregister_gang_replica(replica.replica_id, replica)
 
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
