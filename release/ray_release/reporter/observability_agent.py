@@ -478,10 +478,13 @@ class ObservabilityAgentReporter(Reporter):
         announcing that there is nothing to read. _comment_on_github_issue does
         not get this far when there is neither.
         """
-        lines = [
-            "The observability agent looked at the latest failure of "
-            f"`{test.get_name()}`.",
-        ]
+        # The failing build named up front rather than below the analysis: it
+        # is the first thing a reader of the issue needs in order to go look,
+        # and with no summary it would otherwise trail the slack link.
+        failure = f"`{test.get_name()}`"
+        if result.buildkite_url:
+            failure += f" at {result.buildkite_url}"
+        lines = [f"The observability agent looked at the latest failure of {failure}."]
         if summary:
             lines += ["", self._sanitize_summary(summary)]
         else:
@@ -491,8 +494,6 @@ class ObservabilityAgentReporter(Reporter):
                 if self._is_plain_url(slack_thread)
                 else f"`{slack_thread.replace('`', '')}`",
             ]
-        if result.buildkite_url:
-            lines += ["", f"Failing build: {result.buildkite_url}"]
         if summary and slack_thread:
             lines += [
                 "",

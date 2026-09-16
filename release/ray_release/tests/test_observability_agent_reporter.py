@@ -757,8 +757,9 @@ def test_comments_on_an_open_issue():
     body = issue.comments[0]
     assert SUMMARY in body
     assert SLACK_THREAD in body
-    assert result.buildkite_url in body
     assert "test_name" in body
+    # The failing build is named in the opening line, not below the analysis.
+    assert result.buildkite_url in body.splitlines()[0]
 
 
 def test_does_not_comment_on_a_closed_issue():
@@ -929,7 +930,9 @@ class FakeAgent:
 CLAIM_KEY = f"{COMMENT_CLAIM_PREFIX}test_name"
 
 
-def _report_on_buildkite(repo, agent, job_id="01a0691c-job", summary=SUMMARY):
+def _report_on_buildkite(
+    repo, agent, job_id="01a0691c-job", summary=SUMMARY, result=None
+):
     """Run the reporter as one job of a build, against a shared fake agent."""
     query_response = {
         "result": {
@@ -959,7 +962,7 @@ def _report_on_buildkite(repo, agent, job_id="01a0691c-job", summary=SUMMARY):
         ),
     ):
         ObservabilityAgentReporter().report_result(
-            _test_with_issue(), _result(ResultStatus.ERROR.value)
+            _test_with_issue(), result or _result(ResultStatus.ERROR.value)
         )
 
 
@@ -1115,6 +1118,21 @@ def test_the_comment_pastes_the_slack_thread_when_there_is_no_summary():
     body = issue.comments[0]
     assert SLACK_THREAD in body
     assert "returned no summary" not in body
+
+
+def test_the_comment_names_the_build_even_with_nothing_else_to_say():
+    """With no summary the build url must not end up trailing the slack link."""
+    issue = FakeIssue(state="open")
+    result = _result(ResultStatus.ERROR.value)
+    result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1"
+
+    _report_on_buildkite(
+        FakeRepo(issue=issue), FakeAgent(), summary=None, result=result
+    )
+
+    first, _, thread = issue.comments[0].splitlines()
+    assert result.buildkite_url in first
+    assert thread == SLACK_THREAD
 
 
 def test_no_comment_when_the_agent_returned_nothing():
