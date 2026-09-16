@@ -39,6 +39,8 @@ _MIN_FAST_BYTES_PER_CHUNK = 128 * 1024
 # Variable-shaped rows need a Python slice copy per selected row. Require more
 # payload per source row than the vectorized fixed-shape gather to amortize it.
 # This is a source average, including zero-length rows, not a minimum row size.
+# Oversampling also uses this budget per output row, unless every source row
+# meets it independently of which indices the request selects.
 _MIN_VARIABLE_ROW_BYTES = 8 * 1024
 # Variable preparation also validates shapes and two sets of offsets per chunk.
 # Keep small sources on Arrow: avoiding their copy does not repay that setup.
@@ -442,6 +444,8 @@ def _try_prepare_variable_tensor_take(
     Size gates use logical payload, not the size of retained parent buffers.
     The row-size gate is an average; the per-chunk gate includes empty chunks.
     Requested output is estimated from that average only for the cost gate.
+    Oversampling must amortize per-row work through the source payload or the
+    smallest source row, since repeated indices may select only tiny rows.
     Capacity checks instead use the largest row, covering repeated indices and
     every batch/carry-over take up to the declared maximum output row count.
     """
@@ -511,6 +515,18 @@ def _try_prepare_variable_tensor_take(
         return _log_take_fallback(
             _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
         )
+    # Repeated indices can select only tiny rows despite a large source average.
+    # Cover the per-output-row cost with either avoided source-copy bytes or a
+    # lower bound on every selected row. Shuffle generations already satisfy
+    # the source bound because max_output_rows never exceeds the source rows.
+    if source_bytes < max_output_rows * _MIN_VARIABLE_ROW_BYTES and any(
+        int(np.min(np.diff(chunk.offsets))) * value_dtype.itemsize
+        < _MIN_VARIABLE_ROW_BYTES
+        for chunk in chunks
+    ):
+        return _log_take_fallback(
+            _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
+        )
     logger.debug(
         "Variable tensor take fast path prepared: rows=%s, chunks=%s, "
         "source_bytes=%s, max_output_rows=%s",
@@ -547,13 +563,14 @@ def _prepare_variable_chunk(
         or np.any(np.diff(shape_offsets.astype(np.int64, copy=False)) != ndim)
     ):
         return None
-    buffers = data.values.buffers()
-    if (
-        len(buffers) < 2
-        or buffers[1] is None
-        or (data.values.offset + len(data.values)) * value_dtype.itemsize
-        > buffers[1].size
-    ):
+    data_buffer = data.values.buffers()[1]
+    if data_buffer is None:
+        # A zero-length numeric child need not have a data buffer.
+        if len(data.values):
+            return None
+    elif (
+        data.values.offset + len(data.values)
+    ) * value_dtype.itemsize > data_buffer.size:
         return None
     flat_shapes = shape.values.to_numpy(zero_copy_only=True)
     shapes = flat_shapes[int(shape_offsets[0]) : int(shape_offsets[-1])].reshape(
@@ -619,12 +636,13 @@ class PreparedVariableShapedTensorTake(NamedTuple):
         offsets[0] = 0
         np.cumsum(lengths, out=offsets[1:])
         output = np.empty(int(offsets[-1]), dtype=self.value_dtype)
-        for position, chunk_id in enumerate(chunk_ids):
-            source_start = int(source_offsets[position])
-            source_stop = source_start + int(lengths[position])
-            output[offsets[position] : offsets[position + 1]] = self.chunks[
-                int(chunk_id)
-            ].values[source_start:source_stop]
+        if output.size:
+            for position, chunk_id in enumerate(chunk_ids):
+                source_start = int(source_offsets[position])
+                source_stop = source_start + int(lengths[position])
+                output[offsets[position] : offsets[position + 1]] = self.chunks[
+                    int(chunk_id)
+                ].values[source_start:source_stop]
         data = pa.LargeListArray.from_arrays(
             pa.array(offsets),
             pa.Array.from_buffers(

@@ -358,18 +358,119 @@ def test_variable_take_counts_empty_chunks_in_cost_gate():
     )
 
 
-def test_variable_take_large_repeated_row_and_zero_chunk(take_calls):
+@pytest.mark.parametrize("small_row_values", [0, 1, 2048])
+def test_variable_take_oversampling_cost_gate(small_row_values, take_calls):
+    rows = [np.ones(small_row_values, dtype=np.float32)] * 511 + [
+        np.ones(4 * 1024**2, dtype=np.float32)
+    ]
+    array = ArrowVariableShapedTensorArray.from_numpy(rows)
+    column = pa.chunked_array([array.slice(i, 128) for i in range(0, 512, 128)])
+    # Above this count, the avoided source copy cannot cover 8 KiB per output
+    # row. The request could repeat only the tiny rows despite a large average.
+    source_budget_rows = sum(row.nbytes for row in rows) // (8 * 1024)
+    assert (
+        take_module.try_prepare_chunked_tensor_take(
+            column, max_output_rows=source_budget_rows
+        )
+        is not None
+    )
+    indices = np.zeros(source_budget_rows + 1, dtype=np.int64)
+    plan = take_module.try_prepare_chunked_tensor_take(
+        column, max_output_rows=len(indices)
+    )
+    # Oversampling still uses the fast path when even the smallest possible
+    # selected row meets the row-size gate.
+    assert (plan is not None) == (small_row_values == 2048)
+    result = transform_pyarrow.take_table(pa.table({"tensor": column}), indices)
+    assert take_calls == ([len(indices)] if small_row_values == 2048 else [])
+    assert result.column(0).chunk(0).storage.equals(_expected(column, indices).storage)
+
+
+@pytest.mark.parametrize("null_data_buffer", [False, True])
+@pytest.mark.parametrize("indices", [[2, 0, 2], [0, 1, 0]])
+def test_variable_take_large_repeated_row_and_zero_chunk(
+    null_data_buffer, indices, take_calls
+):
     long = np.arange(3 * 1024**2, dtype=np.float32)
     empty = np.empty(0, dtype=np.float32)
     a = ArrowVariableShapedTensorArray.from_numpy([empty, empty])
+    if null_data_buffer:
+        # A zero-length numeric child may legally omit its data buffer.
+        data = pa.LargeListArray.from_arrays(
+            a.storage.field("data").offsets,
+            pa.Array.from_buffers(pa.float32(), 0, [None, None]),
+        )
+        a = a.type.wrap_array(
+            pa.StructArray.from_arrays(
+                [data, a.storage.field("shape")], names=["data", "shape"]
+            )
+        )
     b = ArrowVariableShapedTensorArray.from_numpy([long, long[:1024]])
     column = pa.chunked_array([a, b])
+    column.validate(full=True)
     # Each selected long row exceeds the fixed-shape 8 MiB scratch cap. Copies
     # go directly to the final output, with no per-value gather index array.
-    result = transform_pyarrow.take_table(pa.table({"tensor": column}), [2, 0, 2])
+    result = transform_pyarrow.take_table(pa.table({"tensor": column}), indices)
     assert take_calls == [3]
+    assert result.column(0).chunk(0).storage.equals(_expected(column, indices).storage)
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64, np.uint64])
+def test_variable_take_preserves_bits_with_multiaxis_shapes_and_child_offsets(
+    dtype, take_calls
+):
+    # Include signed zero, infinities, NaN payloads, and integers that cannot be
+    # represented exactly in float64. Compare bytes rather than NaN equality.
+    if dtype == np.float32:
+        bits = np.array(
+            [0, 0x80000000, 0x7F800000, 0xFF800000, 0x7FC00001, 0x7F800001],
+            dtype=np.uint32,
+        )
+    else:
+        bits = np.array(
+            [0, 2**63, 0x7FF0000000000000, 0x7FF8000000000001, 2**64 - 1],
+            dtype=np.uint64,
+        )
+    values = bits.view(dtype)
+    shapes = [(32, 32, 64), (16, 128, 64), (64, 32, 32), (32, 0, 64)]
+    tensors = [np.resize(values, shapes[i % 4]) for i in range(48)]
+    array = ArrowVariableShapedTensorArray.from_numpy(tensors)
+    chunks = []
+    for start in range(0, 48, 12):
+        storage = array.slice(start, 12).storage
+        data, shape = storage.field("data"), storage.field("shape")
+        # Both list children have a nonzero array offset, independently of the
+        # logical offsets retained by the parent slice.
+        data_values = pa.array(
+            np.concatenate([values[:3], data.values.to_numpy()]),
+            from_pandas=False,
+        ).slice(3)
+        shape_values = pa.array(
+            np.concatenate([np.full(3, -1, dtype=np.int64), shape.values.to_numpy()])
+        ).slice(3)
+        chunks.append(
+            array.type.wrap_array(
+                pa.StructArray.from_arrays(
+                    [
+                        pa.LargeListArray.from_arrays(data.offsets, data_values),
+                        pa.ListArray.from_arrays(shape.offsets, shape_values),
+                    ],
+                    names=["data", "shape"],
+                )
+            )
+        )
+    column = pa.chunked_array(chunks)
+    indices = [47, 0, 1, 2, 3, 11, 1]
+    result = transform_pyarrow.take_table(pa.table({"tensor": column}), indices)
+    assert take_calls == [len(indices)]
+    actual = result.column(0).chunk(0)
+    actual.validate(full=True)
+    expected = _expected(column, indices)
+    assert actual.type.ndim == 3
+    assert actual.storage.field("shape").equals(expected.storage.field("shape"))
     assert (
-        result.column(0).chunk(0).storage.equals(_expected(column, [2, 0, 2]).storage)
+        actual.storage.field("data").values.to_numpy().tobytes()
+        == expected.storage.field("data").values.to_numpy().tobytes()
     )
 
 
