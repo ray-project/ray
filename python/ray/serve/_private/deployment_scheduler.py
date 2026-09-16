@@ -718,6 +718,7 @@ class DeploymentScheduler(ABC):
         self._logged_placement_failures: Set[ReplicaID] = set()
         self._logged_skipped_rules: Set[Tuple[DeploymentID, str]] = set()
         self._logged_short_downscales: Set[DeploymentID] = set()
+        self._logged_ignored_pg_fallbacks: Set[DeploymentID] = set()
 
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
@@ -781,6 +782,7 @@ class DeploymentScheduler(ABC):
             key for key in self._logged_skipped_rules if key[0] != deployment_id
         }
         self._logged_short_downscales.discard(deployment_id)
+        self._logged_ignored_pg_fallbacks.discard(deployment_id)
         del self._deployments[deployment_id]
 
     def on_replica_stopping(self, replica_id: ReplicaID) -> None:
@@ -1609,9 +1611,15 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ]
 
         if scheduling_request.placement_group_fallback_strategy:
-            raise NotImplementedError(
-                "Placement Group fallback strategies are not yet supported in the Serve scheduler."
-            )
+            # Raising here would abort the whole batch and skip every downscale.
+            deployment_id = scheduling_request.replica_id.deployment_id
+            if deployment_id not in self._logged_ignored_pg_fallbacks:
+                self._logged_ignored_pg_fallbacks.add(deployment_id)
+                logger.warning(
+                    f"{deployment_id} sets placement_group_fallback_strategy, which "
+                    "the Serve scheduler does not support yet. Only the primary "
+                    "bundles are considered when choosing a node."
+                )
         for fallback in scheduling_request.actor_options.get("fallback_strategy") or []:
             placement_candidates.append(
                 (

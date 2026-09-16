@@ -1261,7 +1261,7 @@ def test_build_placement_candidates():
     assert strategies[0][1] == [{"accelerator-type": "A100"}]
 
 
-def test_build_placement_candidates_pg_fallback_error():
+def test_build_placement_candidates_pg_fallback_is_ignored(caplog):
     """
     Test that providing placement_group_fallback_strategy raises NotImplementedError.
     """
@@ -1282,13 +1282,16 @@ def test_build_placement_candidates_pg_fallback_error():
         on_scheduled=Mock(),
         placement_group_bundles=[{"CPU": 1}],
         placement_group_strategy="STRICT_PACK",
-        # Raises NotImplementedError since not added to placement group options yet.
         placement_group_fallback_strategy=[{"label_selector": {"zone": "us-east-1a"}}],
     )
 
-    # Verify the scheduler raises the expected error
-    with pytest.raises(NotImplementedError, match="not yet supported"):
+    # Ray has no placement group fallbacks yet, so Serve warns once and
+    # schedules on the primary bundles rather than aborting the batch.
+    with caplog.at_level(logging.WARNING, logger="ray.serve"):
+        candidates = scheduler._build_placement_candidates(req)
         scheduler._build_placement_candidates(req)
+    assert len(candidates) == 1
+    assert caplog.text.count("does not support yet") == 1
 
 
 @pytest.mark.skipif(
