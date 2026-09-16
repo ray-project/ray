@@ -444,13 +444,18 @@ class DownscaleContext:
 class SchedulingConstraint:
     """One placement rule, applied at every point where it has an opinion.
 
-    `eligible` applies the rule to cached node state, so the scheduler can
-    choose a node itself. `required_labels` states the same rule as a label
-    selector for Ray Core, which is where a replica waits and what the
-    autoscaler reads when no current node satisfies the rule. `may_stop` vetoes
-    a downscale that would break the rule. Each default is a no-op, so a
-    constraint overrides only the points it cares about.
+    `nodes_to_avoid` names nodes the replica must not use. The scheduler both
+    drops them from the candidates and unions them with every other rule's
+    set into one `ray.io/node-id` selector for Ray Core, so two rules that
+    each forbid a node compose. `eligible` narrows the candidates by any
+    other test against cached node state. `required_labels` adds a selector
+    on any other label key; the scheduler raises if two rules set the same
+    key. `may_stop` vetoes a downscale that would break the rule. Each default
+    is a no-op, so a constraint overrides only the points it cares about.
     """
+
+    def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
+        return set()
 
     def eligible(
         self,
@@ -472,28 +477,10 @@ class MinReplicaNodesConstraint(SchedulingConstraint):
     def __init__(self, min_replica_nodes: int):
         self._min_replica_nodes = min_replica_nodes
 
-    def _nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
+    def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
         floor = min(self._min_replica_nodes, ctx.num_replicas)
         occupied = ctx.nodes_occupied_by_deployment
         return set(occupied) if len(occupied) < floor else set()
-
-    def eligible(
-        self,
-        candidates: Dict[str, AvailableNodeResources],
-        ctx: SchedulingContext,
-    ) -> Dict[str, AvailableNodeResources]:
-        avoid = self._nodes_to_avoid(ctx)
-        return {
-            node_id: resources
-            for node_id, resources in candidates.items()
-            if node_id not in avoid
-        }
-
-    def required_labels(self, ctx: SchedulingContext) -> Dict[str, str]:
-        avoid = self._nodes_to_avoid(ctx)
-        if not avoid:
-            return {}
-        return {RAY_NODE_ID_LABEL: f"!in({','.join(sorted(avoid))})"}
 
     def may_stop(self, replica_id: ReplicaID, ctx: DownscaleContext) -> bool:
         node_id = ctx.node_by_replica.get(replica_id)
@@ -1290,16 +1277,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 nodes_occupied_by_deployment=hosting_nodes,
                 node_labels=node_labels,
             )
-            required_labels: Dict[str, str] = {}
-            for constraint in constraints:
-                required_labels.update(constraint.required_labels(ctx))
-
+            nodes_to_avoid, required_labels = self._collect_rules(constraints, ctx)
             target_node = self._select_node(
                 scheduling_request,
                 available_resources_per_node,
                 node_to_assigned_replicas,
                 ctx,
                 constraints,
+                nodes_to_avoid,
             )
             succeeded = self._bind_replica(
                 scheduling_request, target_node, required_labels
@@ -1368,6 +1353,29 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             + len(self._running_replicas[deployment_id])
         )
 
+    @staticmethod
+    def _collect_rules(
+        constraints: List[SchedulingConstraint], ctx: SchedulingContext
+    ) -> Tuple[Set[str], Dict[str, str]]:
+        """Unions every node exclusion and merges every other label selector."""
+        nodes_to_avoid: Set[str] = set()
+        required_labels: Dict[str, str] = {}
+        for constraint in constraints:
+            nodes_to_avoid |= constraint.nodes_to_avoid(ctx)
+            for key, value in constraint.required_labels(ctx).items():
+                if key == RAY_NODE_ID_LABEL or key in required_labels:
+                    raise ValueError(
+                        f"{type(constraint).__name__} sets label {key!r}, which "
+                        "another rule in the same profile already sets. Use "
+                        "nodes_to_avoid for node exclusions."
+                    )
+                required_labels[key] = value
+        if nodes_to_avoid:
+            required_labels[
+                RAY_NODE_ID_LABEL
+            ] = f"!in({','.join(sorted(nodes_to_avoid))})"
+        return nodes_to_avoid, required_labels
+
     def _select_node(
         self,
         scheduling_request: ReplicaSchedulingRequest,
@@ -1375,12 +1383,17 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         ctx: SchedulingContext,
         constraints: List[SchedulingConstraint],
+        nodes_to_avoid: Set[str],
     ) -> Optional[str]:
         tie_break_key = self._node_tie_break_key(ctx.deployment_id)
         for required_resources, label_selectors in self._build_placement_candidates(
             scheduling_request
         ):
-            candidates = available_resources_per_node
+            candidates = {
+                node_id: resources
+                for node_id, resources in available_resources_per_node.items()
+                if node_id not in nodes_to_avoid
+            }
             for constraint in constraints + [
                 LabelSelectorConstraint(selector) for selector in label_selectors
             ]:

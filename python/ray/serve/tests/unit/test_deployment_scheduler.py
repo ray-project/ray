@@ -2023,24 +2023,49 @@ class TestSchedulingConstraints:
             node_labels=node_labels or {},
         )
 
-    def test_min_replica_nodes_filter_owns_both_forms_of_its_rule(self):
-        nodes = {"n1": AvailableNodeResources(), "n2": AvailableNodeResources()}
-        node_filter = MinReplicaNodesConstraint(2)
+    def test_min_replica_nodes_constraint_names_nodes_to_avoid(self):
+        constraint = MinReplicaNodesConstraint(2)
+        assert constraint.nodes_to_avoid(self._ctx(occupied=["n1"])) == {"n1"}
+        assert constraint.nodes_to_avoid(self._ctx(occupied=["n1", "n2"])) == set()
+        assert constraint.required_labels(self._ctx(occupied=["n1"])) == {}
 
-        unmet = self._ctx(occupied=["n1"])
-        assert set(node_filter.eligible(nodes, unmet)) == {"n2"}
-        assert node_filter.required_labels(unmet) == {RAY_NODE_ID_LABEL: "!in(n1)"}
-
-        met = self._ctx(occupied=["n1", "n2"])
-        assert set(node_filter.eligible(nodes, met)) == {"n1", "n2"}
-        assert node_filter.required_labels(met) == {}
-
-    def test_min_replica_nodes_filter_capped_by_replica_count(self):
-        nodes = {"n1": AvailableNodeResources()}
-        node_filter = MinReplicaNodesConstraint(2)
+    def test_min_replica_nodes_constraint_capped_by_replica_count(self):
+        constraint = MinReplicaNodesConstraint(2)
         single = self._ctx(occupied=["n1"], num_replicas=1)
-        assert set(node_filter.eligible(nodes, single)) == {"n1"}
-        assert node_filter.required_labels(single) == {}
+        assert constraint.nodes_to_avoid(single) == set()
+
+    def test_node_exclusions_from_two_rules_compose(self):
+        class AvoidN2(SchedulingConstraint):
+            def nodes_to_avoid(self, ctx):
+                return {"n2"}
+
+        avoid, labels = DefaultDeploymentScheduler._collect_rules(
+            [MinReplicaNodesConstraint(2), AvoidN2()], self._ctx(occupied=["n1"])
+        )
+        assert avoid == {"n1", "n2"}
+        assert labels == {RAY_NODE_ID_LABEL: "!in(n1,n2)"}
+
+    def test_two_rules_on_one_label_key_is_an_error(self):
+        class WantsZoneA(SchedulingConstraint):
+            def required_labels(self, ctx):
+                return {"zone": "a"}
+
+        class WantsZoneB(SchedulingConstraint):
+            def required_labels(self, ctx):
+                return {"zone": "b"}
+
+        with pytest.raises(ValueError, match="already sets"):
+            DefaultDeploymentScheduler._collect_rules(
+                [WantsZoneA(), WantsZoneB()], self._ctx(occupied=[])
+            )
+
+    def test_a_rule_may_not_write_the_node_id_label_directly(self):
+        class RawNodeId(SchedulingConstraint):
+            def required_labels(self, ctx):
+                return {RAY_NODE_ID_LABEL: "!in(n9)"}
+
+        with pytest.raises(ValueError, match="nodes_to_avoid"):
+            DefaultDeploymentScheduler._collect_rules([RawNodeId()], self._ctx([]))
 
     def test_label_selector_filter_leaves_binding_to_ray(self):
         nodes = {"n1": AvailableNodeResources(), "n2": AvailableNodeResources()}
