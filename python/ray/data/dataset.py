@@ -3427,7 +3427,10 @@ class Dataset:
             def key_to_bucket(key: Any) -> int:
                 # 64-bit integer in [0, 2^64)
                 h = int.from_bytes(
-                    hashlib.blake2b(str(key).encode(), digest_size=8).digest(), "big"
+                    hashlib.blake2b(
+                        str(key).encode(), digest_size=8, usedforsecurity=False
+                    ).digest(),
+                    "big",
                 )
                 return True if h < (1 - test_size) * (1 << 64) else False
 
