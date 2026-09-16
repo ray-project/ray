@@ -200,7 +200,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 ## Verification
 
-1. **Static checks** on each new `.md` — frontmatter parses (skip this for include-only partials, which have none), backtick **and** `:::` colon fences balance, no residual RST leaked outside fences, every label present, executed-directive counts match. Sketch:
+1. **Static checks** on each new `.md` — frontmatter parses (skip this for include-only partials, which have none), backtick **and** `:::` colon fences balance, no residual RST leaked outside fences, **no tool-call scaffolding leaked from the conversion agent itself**, every label present, executed-directive counts match. Sketch:
 
    ```python
    import re, yaml
@@ -211,6 +211,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
        L = t.splitlines()
        assert sum(ln.lstrip().startswith('```') for ln in L) % 2 == 0, f"unbalanced ``` {f}"
        assert sum(bool(re.match(r'^:{3,}\{', ln)) for ln in L) == sum(bool(re.match(r'^:{3,}\s*$', ln)) for ln in L), f"unbalanced colon fences {f}"
+       assert not re.search(r'</?(?:invoke|function_calls|parameter|content)\b|antml:', t), f"leaked agent tool-call scaffolding {f}"
        infence = False                       # residual RST outside ``` fences
        for i, ln in enumerate(L, 1):
            if ln.lstrip().startswith('```'): infence = not infence; continue
@@ -220,6 +221,8 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
    ```
 
    Also `grep -c '^```{testcode}'` (etc.) and confirm the count equals the original's real blocks; grep for every label you noted in pre-flight; and `grep -n '\.html#\|](.*\.rst)'` to catch any link form Hard rule 2 forbids.
+
+   **Grep for your own scaffolding, not just the source's.** When *you* — an agent — do the conversion, your tool-call framing can leak into the output: closing tags like `</content>` and `</invoke>` trail at the end of a page (or `<function_calls>`, `<parameter …>`, an `antml:`-prefixed tag mid-file). These build green and render as literal visible text, and because they sit at EOF the render diff can miss them if the page's tail is below the fold. Run `grep -rnE '</?(invoke|function_calls|parameter|content)>|antml:' <the new .md files>` and expect zero hits. Seen for real: seven of the RLlib guide pages shipped with trailing `</content>`/`</invoke>` tags from the conversion agent (ray-project/ray#66213).
 
 2. **Build (decisive parse check)** — `pre-commit run --files <changed>` is effectively a no-op for most `doc/source/**/*.md` (vale is scoped to `doc/source/data/`, prettier to js/ts/html/css), so the real check is Sphinx. A full local build is heavy; the practical signal is the **Read the Docs PR preview** (`docs/readthedocs.com:anyscale-ray`). With `fail_on_warning`, a green RtD build proves every label, `{ref}`, link, toctree entry, `{literalinclude}`, `{eval-rst}`, `{list-table}`, and sphinx-design directive resolved. **Read the raw RtD log on failure**: the build page lazy-loads, so fetch `https://app.readthedocs.com/api/v2/build/<BUILD_ID>.txt` and grep for `WARNING:`/`ERROR:`. `-W --keep-going` lists all warnings of a build that *completes* — but a hard-broken build (a `conf.py`/extension error, a traceback, or `SEVERE:`) aborts before producing that list, and a parse error or broken `toctree` masks the xref/orphan warnings beneath it. So if a failed build's log is empty or short, or fixing one error reveals new ones, fix the highest-severity error first and **re-run** — don't trust a single pass to be complete.
 
