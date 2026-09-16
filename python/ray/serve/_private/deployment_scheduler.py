@@ -1277,14 +1277,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 nodes_occupied_by_deployment=hosting_nodes,
                 node_labels=node_labels,
             )
-            nodes_to_avoid, required_labels = self._collect_rules(constraints, ctx)
-            target_node = self._select_node(
+            target_node, required_labels = self._select_node(
                 scheduling_request,
                 available_resources_per_node,
                 node_to_assigned_replicas,
                 ctx,
                 constraints,
-                nodes_to_avoid,
             )
             succeeded = self._bind_replica(
                 scheduling_request, target_node, required_labels
@@ -1383,23 +1381,29 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         ctx: SchedulingContext,
         constraints: List[SchedulingConstraint],
-        nodes_to_avoid: Set[str],
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Dict[str, str]]:
+        """Returns the chosen node, if any, and the labels the bind must carry.
+
+        Every constraint runs both halves of its rule here, so the candidates
+        the scorer sees and the selector Ray receives agree on which rules
+        applied. Candidate narrowing never stops early for that reason.
+        """
+        nodes_to_avoid, required_labels = self._collect_rules(constraints, ctx)
+        eligible = {
+            node_id: resources
+            for node_id, resources in available_resources_per_node.items()
+            if node_id not in nodes_to_avoid
+        }
+        for constraint in constraints:
+            eligible = constraint.eligible(eligible, ctx)
+
         tie_break_key = self._node_tie_break_key(ctx.deployment_id)
         for required_resources, label_selectors in self._build_placement_candidates(
             scheduling_request
         ):
-            candidates = {
-                node_id: resources
-                for node_id, resources in available_resources_per_node.items()
-                if node_id not in nodes_to_avoid
-            }
-            for constraint in constraints + [
-                LabelSelectorConstraint(selector) for selector in label_selectors
-            ]:
-                candidates = constraint.eligible(candidates, ctx)
-                if not candidates:
-                    break
+            candidates = eligible
+            for selector in label_selectors:
+                candidates = LabelSelectorConstraint(selector).eligible(candidates, ctx)
             target_node = self._profile.scorer.choose(
                 ctx.deployment_id,
                 required_resources,
@@ -1408,8 +1412,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 tie_break_key,
             )
             if target_node:
-                return target_node
-        return None
+                return target_node, required_labels
+        return None, required_labels
 
     def _node_tie_break_key(
         self, deployment_id: DeploymentID
