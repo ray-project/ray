@@ -989,6 +989,89 @@ def test_append_nested_fields_evolves_schema(temp_delta_path):
     ]
 
 
+@pytest.mark.parametrize("side", ["key", "value", "both"])
+@pytest.mark.parametrize("schema_mode", ["merge", "error"])
+def test_append_map_nested_fields(temp_delta_path, side, schema_mode):
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    base_type = pa.struct([pa.field("x", pa.int64(), nullable=False)])
+    extended_type = pa.struct(
+        [
+            pa.field("x", pa.int64(), nullable=False),
+            pa.field("y", pa.string(), nullable=False),
+        ]
+    )
+    key_added = side in ("key", "both")
+    value_added = side in ("value", "both")
+    base_map = pa.map_(base_type, base_type)
+    # Value-only evolution must not relax the existing key's child nullability.
+    incoming_map = pa.map_(
+        extended_type if key_added else pa.struct([pa.field("x", pa.int64())]),
+        extended_type if value_added else base_type,
+    )
+    base = pa.table({"m": pa.array([[({"x": 1}, {"x": 10})]], type=base_map)})
+    key = {"x": 2, **({"y": "key"} if key_added else {})}
+    value = {"x": 20, **({"y": "value"} if value_added else {})}
+    incoming = pa.table({"m": pa.array([[(key, value)]], type=incoming_map)})
+    ray.data.from_arrow(base).write_delta(temp_delta_path)
+    before = DeltaTable(temp_delta_path)
+    version = before.version()
+    schema = pa.schema(before.schema().to_arrow())
+
+    if schema_mode == "error":
+        path = r"m\{key\}\.y" if key_added else r"m\{value\}\.y"
+        with pytest.raises(ValueError, match=path):
+            ray.data.from_arrow(incoming).write_delta(
+                temp_delta_path, schema_mode=schema_mode
+            )
+        after = DeltaTable(temp_delta_path)
+        assert after.version() == version
+        assert pa.schema(after.schema().to_arrow()) == schema
+        assert _read_all(temp_delta_path) == base.to_pylist()
+        return
+
+    ray.data.from_arrow(incoming).write_delta(temp_delta_path, schema_mode=schema_mode)
+    evolved = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow()).field("m").type
+    assert not evolved.key_type.field("x").nullable
+    assert not evolved.item_type.field("x").nullable
+    if key_added:
+        assert evolved.key_type.field("y").nullable
+    if value_added:
+        assert evolved.item_type.field("y").nullable
+    old_key = {"x": 1, **({"y": None} if key_added else {})}
+    old_value = {"x": 10, **({"y": None} if value_added else {})}
+    out = sorted(_read_all(temp_delta_path), key=lambda row: row["m"][0][0]["x"])
+    assert out == [{"m": [(old_key, old_value)]}, {"m": [(key, value)]}]
+
+
+def test_map_value_evolution_preserves_key_field():
+    import pyarrow as pa
+
+    from ray.data._internal.datasource.delta_datasink import _nested_schema_additions
+
+    existing_key = pa.field(
+        "key",
+        pa.struct([pa.field("x", pa.int64(), nullable=False)]),
+        nullable=False,
+        metadata={b"description": b"existing key"},
+    )
+    incoming_key = pa.field(
+        "key", pa.struct([pa.field("x", pa.int64())]), nullable=False
+    )
+    existing = pa.field(
+        "m", pa.map_(existing_key, pa.struct([("a", pa.int64())]), keys_sorted=True)
+    )
+    incoming = pa.field(
+        "m",
+        pa.map_(incoming_key, pa.struct([("a", pa.int64()), ("b", pa.string())])),
+    )
+    patch, paths = _nested_schema_additions(existing, incoming)
+    assert paths == ["m{value}.b"]
+    assert patch.type.key_field.equals(existing_key, check_metadata=True)
+    assert patch.type.keys_sorted
+
+
 def test_append_nested_field_rejected_with_schema_mode_error(temp_delta_path):
     _write_append([{"id": 1, "payload": {"x": 10}}], temp_delta_path)
 

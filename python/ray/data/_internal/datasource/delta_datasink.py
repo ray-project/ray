@@ -100,18 +100,24 @@ def _nested_schema_additions(
             return None, []
         patch_type = pa.list_(value_patch)
     elif pa.types.is_map(existing_type) and pa.types.is_map(incoming_type):
-        item_patch, added_paths = _nested_schema_additions(
+        key_patch, key_paths = _nested_schema_additions(
+            existing_type.key_field,
+            incoming_type.key_field,
+            path=f"{path}{{key}}",
+        )
+        item_patch, item_paths = _nested_schema_additions(
             existing_type.item_field,
             incoming_type.item_field,
-            path=f"{path}{{}}",
+            path=f"{path}{{value}}",
         )
-        if item_patch is None:
+        if key_patch is None and item_patch is None:
             return None, []
         patch_type = pa.map_(
-            incoming_type.key_type,
-            item_patch,
-            keys_sorted=incoming_type.keys_sorted,
+            key_patch or existing_type.key_field,
+            item_patch or existing_type.item_field,
+            keys_sorted=existing_type.keys_sorted,
         )
+        added_paths = key_paths + item_paths
     else:
         return None, []
 
