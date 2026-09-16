@@ -575,7 +575,9 @@ def _generate_arm_guid(*values: Any) -> str:
     """Replicates ARM template guid() function for creating deterministic IDs."""
 
     concatenated = "".join(str(v) for v in values)
-    return str(UUID(md5(concatenated.encode("utf-8")).hexdigest()))
+    return str(
+        UUID(md5(concatenated.encode("utf-8"), usedforsecurity=False).hexdigest())
+    )
 
 
 def _is_shared_msi(provider_config: dict) -> bool:
