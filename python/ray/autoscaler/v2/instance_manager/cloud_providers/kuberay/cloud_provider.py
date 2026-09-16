@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 IDLE_TERMINATION_OPTIONS_KEY = "idleTerminationOptions"
 IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY = "timeoutSeconds"
 IDLE_TERMINATION_OPTIONS_POLICY_KEY = "policy"
-NO_DRIVER_TIMEOUT_FINALIZER = "ray.io/no-driver-idle-termination"
+IDLE_TERMINATION_CLEANUP_FINALIZER = "ray.io/idle-termination-cleanup-finalizer"
 IDLE_SUSPEND_KEY = "idleSuspend"
 
 
@@ -97,6 +97,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._last_seen_job_end_time = 0
         # No-driver timeout (seconds) from the CR; None disables the feature.
         self._no_driver_timeout_seconds: Optional[float] = None
+        self._no_driver_policy: Optional[str] = None
 
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
