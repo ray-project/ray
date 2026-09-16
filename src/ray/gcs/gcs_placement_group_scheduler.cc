@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "ray/asio/asio_util.h"
-#include "ray/common/bundle_spec.h"
 
 namespace ray {
 namespace gcs {
@@ -127,6 +126,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
 
+  // Acquire resources from gcs resources manager to reserve bundle resources.
   const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
   AcquireBundleResources(bundle_locations);
 
@@ -710,6 +710,7 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
 
 void GcsPlacementGroupScheduler::AcquireBundleResources(
     const std::shared_ptr<BundleLocations> &bundle_locations) {
+  // Acquire bundle resources from gcs resources manager.
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
   for (auto &bundle : *bundle_locations) {
@@ -806,6 +807,7 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
     const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   commit_request_returned_count_ += 1;
+  // If the request succeeds, record it.
   const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
     uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));

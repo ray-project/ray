@@ -435,9 +435,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Acquire the bundle resources from the cluster resources. The matching
   /// release is no longer mirrored here -- when bundles are cancelled or a
   /// scheduling attempt fails, GCS waits for the raylet's next ray-syncer
-  /// broadcast to reconcile its view. Per-instance allocation is saved in
-  /// the tracker so CommitBundleResources can create PG resources with the
-  /// correct GPU topology.
+  /// broadcast to reconcile its view of the affected nodes' resources.
   void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
 
   /// Create scheduling context.
