@@ -189,7 +189,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_stopped_(false),
       // Leader election disabled => always the leader (legacy single-GCS behavior).
       // Enabled => start passive; promotion to leader is wired up in a later PR.
-      is_leader_(!config.ray_leader_elect_enabled) {
+      is_leader_(!config.enable_gcs_leader_election) {
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
@@ -294,7 +294,7 @@ void GcsServer::Start() {
   // it can be used to retrieve the cluster ID.
   InitKVManager();
 
-  if (!config_.ray_leader_elect_enabled) {
+  if (!config_.enable_gcs_leader_election) {
     // Load gcs tables data asynchronously.
     auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
     gcs_init_data->AsyncLoad({[this, gcs_init_data] {
@@ -359,7 +359,7 @@ void GcsServer::GetOrGenerateClusterId(
 
          // 2. No Cluster ID yet and this GCS is passive: wait
          // for the active leader to write it. Retry every second.
-         if (config_.ray_leader_elect_enabled && !IsLeader()) {
+         if (config_.enable_gcs_leader_election && !IsLeader()) {
            // A passive GCS must not write the cluster ID; wait for the active leader
            // to write it. Rate-limit the log since this retries every second.
            RAY_LOG_EVERY_MS(INFO, 30000)
@@ -1023,7 +1023,7 @@ void GcsServer::InitKVManager() {
       io_context);
 
   // A passive GCS must not write to shared storage; it defers this to promotion.
-  if (!config_.ray_leader_elect_enabled) {
+  if (!config_.enable_gcs_leader_election) {
     WriteGcsPid();
   }
 }
@@ -1151,7 +1151,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
 
   // A passive GCS must not write to shared storage; it defers this to promotion.
-  if (!config_.ray_leader_elect_enabled) {
+  if (!config_.enable_gcs_leader_election) {
     WriteAutoscalerV2Flag();
   }
 
