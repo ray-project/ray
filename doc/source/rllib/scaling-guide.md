@@ -190,4 +190,3 @@ The Ray team is working on closing these gaps. In particular, future areas of im
   and {py:class}`~ray.rllib.core.learner.learner.Learner` actors.
 
 - Enabling **vector envs for multi-agent**.
-</content>

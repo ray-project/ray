@@ -511,5 +511,3 @@ The Ray team is working on a solution for this restriction by utilizing
 RLlib supports variable-sharing across policies.
 
 See the [PettingZoo parameter sharing example](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py) for details.
-</content>
-</invoke>

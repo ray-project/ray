@@ -53,5 +53,3 @@ The environment class is also responsible for routing between agents, for exampl
 agents to lower-level agents as part of the lower-level agent observation.
 
 See [this runnable example of a hierarchical env](https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py).
-</content>
-</invoke>

@@ -575,4 +575,3 @@ in the train batch, you would also need to add the same custom connector piece t
 {py:class}`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`.
 
 See {ref}`the Learner connector pipeline documentation <learner-pipeline-docs>` for more details on how to customize it.
-</content>
