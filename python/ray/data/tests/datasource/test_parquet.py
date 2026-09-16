@@ -3427,6 +3427,7 @@ def test_parquet_sampling_fails_on_permanent_error(
             ray.data.read_parquet(str(tmp_path)).materialize()
 
 
+# The test should only take a handful of seconds on a laptop.
 @pytest.mark.timeout(30)
 def test_count_parquet_is_fast(ray_start_regular_shared):
     """This is an E2E test that verifies that we pushdown counts. If Ray Data reads the
