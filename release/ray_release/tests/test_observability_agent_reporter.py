@@ -18,6 +18,7 @@ from ray_release.reporter.observability_agent import (
     COMMENT_CLAIM_PREFIX,
     DEBUG_SESSION_QUERY,
     FEEDBACK_REMINDER,
+    GITHUB_COMMENT_LIMIT,
     ObservabilityAgentReporter,
 )
 from ray_release.result import Result, ResultStatus
@@ -1082,6 +1083,46 @@ def test_no_claim_without_a_job_id_to_claim_with():
 
     assert len(issue.comments) == 1
     assert CLAIM_KEY not in agent.meta_data
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "x" * 200_000,
+        "@" * 200_000,  # sanitizing expands each of these eightfold
+        "<" * 200_000,  # ... and each of these fourfold
+        "The actor <Worker> owned by @team died. " * 5_000,
+        "y" * GITHUB_COMMENT_LIMIT,
+    ],
+    ids=["plain", "all_mentions", "all_tags", "mixed_prose", "exactly_at_limit"],
+)
+def test_an_oversized_summary_is_trimmed_to_fit(summary):
+    """Github rejects a body over the limit, and the 422 loses the comment."""
+    issue = FakeIssue(state="open")
+    result = _result(ResultStatus.ERROR.value)
+    result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1"
+
+    _report_on_buildkite(
+        FakeRepo(issue=issue), FakeAgent(), summary=summary, result=result
+    )
+
+    body = issue.comments[0]
+    assert len(body) <= GITHUB_COMMENT_LIMIT
+    # The parts worth keeping survive the trim: where to look, and the thread
+    # holding the analysis that was cut.
+    assert result.buildkite_url in body.splitlines()[0]
+    assert SLACK_THREAD in body
+    assert "truncated" in body
+    # And the trim spends the budget rather than discarding the analysis.
+    assert len(body) > GITHUB_COMMENT_LIMIT * 0.9
+
+
+def test_a_summary_that_fits_is_not_trimmed():
+    issue = FakeIssue(state="open")
+
+    _report_on_buildkite(FakeRepo(issue=issue), FakeAgent())
+
+    assert "truncated" not in issue.comments[0]
 
 
 def test_the_annotation_is_not_deduped_by_build():

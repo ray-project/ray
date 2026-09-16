@@ -79,6 +79,15 @@ ANNOTATION_STYLE = "info"
 # build page rather than the job it is about.
 ANNOTATION_SCOPE = "job"
 
+# Github rejects an issue comment whose body is longer than this. The summary
+# is the only part of the body this reporter does not control the length of, so
+# it is what gets trimmed to fit.
+GITHUB_COMMENT_LIMIT = 65536
+
+# Replaces what was trimmed. Kept short and free of markdown that could be left
+# dangling by the cut above it.
+TRUNCATION_NOTE = "\n\n... truncated to fit github's comment limit."
+
 # Build-scoped agent meta-data key, one per test, holding the id of the job
 # that took responsibility for this build's github comment. A test with
 # `repeated_run` gets one job per repeat and a manual retry adds another, all in
@@ -485,7 +494,9 @@ class ObservabilityAgentReporter(Reporter):
         if result.buildkite_url:
             failure += f" at {result.buildkite_url}"
         lines = [f"The observability agent looked at the latest failure of {failure}."]
+        summary_index = None
         if summary:
+            summary_index = len(lines) + 1
             lines += ["", self._sanitize_summary(summary)]
         else:
             lines += [
@@ -503,7 +514,52 @@ class ObservabilityAgentReporter(Reporter):
                 "agent is under active development; please rate the report there "
                 "with the 'All good' or 'Needs correction' buttons.",
             ]
+
+        body = "\n".join(lines)
+        if len(body) <= GITHUB_COMMENT_LIMIT or summary_index is None:
+            return body
+
+        # Everything but the summary is this reporter's own text, so the space
+        # it takes is what the summary has to fit inside -- including the slack
+        # link, which is the one thing worth keeping when the analysis is cut.
+        overhead = len(body) - len(lines[summary_index])
+        lines[summary_index] = self._fit_summary(
+            summary, GITHUB_COMMENT_LIMIT - overhead
+        )
         return "\n".join(lines)
+
+    @classmethod
+    def _fit_summary(cls, summary: str, budget: int) -> str:
+        """Sanitize the summary, trimmed to at most `budget` characters.
+
+        The trim is on the raw summary and the result re-sanitized, because
+        sanitizing expands -- `<` becomes four characters and `@` eight -- so a
+        budget spent on raw characters would still overflow, and cutting the
+        sanitized text would cut through a half-written entity.
+
+        Each pass shortens the raw text in proportion to how far the last one
+        overshot, and by at least one character so the loop ends. Proportion
+        rather than subtracting the overshoot outright: sanitizing can multiply
+        length several-fold, and a summary full of `@` or `<` would otherwise
+        lose the whole analysis instead of the tail of it.
+        """
+        rendered = cls._sanitize_summary(summary)
+        if len(rendered) <= budget:
+            return rendered
+
+        room = budget - len(TRUNCATION_NOTE)
+        if room <= 0:
+            # No room for any of the analysis; the rest of the comment still
+            # carries the build and the slack thread.
+            return ""
+
+        cut = room
+        while cut > 0:
+            rendered = cls._sanitize_summary(summary[:cut])
+            if len(rendered) <= room:
+                return rendered + TRUNCATION_NOTE
+            cut = min(cut - 1, room * cut // len(rendered))
+        return TRUNCATION_NOTE.strip()
 
     def _annotate(
         self,
