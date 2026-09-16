@@ -55,6 +55,13 @@ def recovery_enabled(restore_data_context):  # noqa: F405
     return ctx
 
 
+def _slot(data_task_id, output_index=0):
+    """A key into ``_reconstruction_outputs``: one output of one producing task."""
+    return ParentBlockOutput(
+        parent_data_task_id=data_task_id, output_index=output_index
+    )
+
+
 def _nodes(tracker):
     return tracker._data_task_id_to_task_node
 
@@ -669,7 +676,7 @@ def test_release_hands_over_the_whole_input_set_once(
 
     # Only the first parent has re-produced its block so far, so the child's input
     # set is incomplete and nothing may be released.
-    producer._reconstruction_outputs[plan_id] = {(parent_ids[0], 0): bundles[0]}
+    producer._reconstruction_outputs[plan_id] = {_slot(parent_ids[0]): bundles[0]}
     producer._release_reconstruction_children(parent_ids[0], plan_id, task_index=0)
     assert not producer.has_next(), "a child was released against a partial input set"
     tracker.register_task_complete(parent_ids[0], plan_id)
@@ -677,7 +684,7 @@ def test_release_hands_over_the_whole_input_set_once(
     # The second parent re-produces its block, completing the set. Inserted after the
     # first so that iterating the held blocks instead of the child's requirement map
     # would hand the child its inputs backwards.
-    producer._reconstruction_outputs[plan_id][(parent_ids[1], 0)] = bundles[1]
+    producer._reconstruction_outputs[plan_id][_slot(parent_ids[1])] = bundles[1]
     producer._release_reconstruction_children(parent_ids[1], plan_id, task_index=1)
     assert producer.has_next()
 
@@ -724,14 +731,16 @@ def test_release_waits_when_a_re_produced_block_is_missing(
     producer.start(ExecutionOptions(), noop_counter())  # noqa: F405
 
     # The first parent re-produced its block; the second completes without one.
-    producer._reconstruction_outputs[plan_id] = {(parent_ids[0], 0): bundles[0]}
+    producer._reconstruction_outputs[plan_id] = {_slot(parent_ids[0]): bundles[0]}
     tracker.register_task_complete(parent_ids[0], plan_id)
     producer._release_reconstruction_children(parent_ids[1], plan_id, task_index=1)
 
     assert not producer.has_next(), "a child was submitted against a partial input set"
     # The block that did arrive stays held, so a later re-production can complete
     # the set rather than finding half of it already consumed.
-    assert producer._reconstruction_outputs[plan_id] == {(parent_ids[0], 0): bundles[0]}
+    assert producer._reconstruction_outputs[plan_id] == {
+        _slot(parent_ids[0]): bundles[0]
+    }
 
 
 def test_reconstruction_input_bypasses_the_bundler(
@@ -806,7 +815,7 @@ def test_held_reconstruction_outputs_keep_the_operator_from_completing(
     assert op.has_execution_finished()
     assert op.has_completed()
 
-    op._reconstruction_outputs["plan_a"] = {("seed:0", 0): held}
+    op._reconstruction_outputs["plan_a"] = {_slot("seed:0"): held}
     assert op.internal_output_queue_num_blocks() == 1
     assert op.internal_output_queue_num_bytes() == held.size_bytes()
     assert not op.has_completed(), "reported complete while owing a child its inputs"

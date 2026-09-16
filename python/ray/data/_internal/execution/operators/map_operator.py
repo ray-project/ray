@@ -70,8 +70,11 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
     _iter_sliced_blocks,
 )
 from ray.data._internal.execution.lineage_tracker import (
+    BlockId,
+    DataTaskId,
     ObjectReuseStatus,
     ParentBlockOutput,
+    PlanId,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -102,6 +105,10 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
+
+# The identity stamped onto a bundle: the data task id its consumer must be
+# submitted under, and the reconstruction plan that submission serves.
+ReconstructionStamp = Tuple[DataTaskId, PlanId]
 
 SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
     4
@@ -286,7 +293,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # pops, keeping these refs alive for the whole run anyway. Empty unless
         # recovery is enabled and this op reads straight from an `InputDataBuffer`
         # (see `_is_seed_operator`).
-        self._seed_task_inputs: Dict[str, RefBundle] = {}
+        self._seed_task_inputs: Dict[DataTaskId, RefBundle] = {}
         # block hex -> queue of (seed task id, plan id) for a seed input queued for
         # re-injection. A seed's input comes from the source, not from a task, so no
         # producer recorded it and `_lineage_for_submission` cannot look it up.
@@ -294,14 +301,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         #
         # A queue, not a single value: a second plan tracing back to the same seed
         # re-injects the same bundle behind the one already queued.
-        self._pending_seed_ids: Dict[str, Deque[Tuple[str, str]]] = {}
+        self._pending_seed_ids: Dict[BlockId, Deque[ReconstructionStamp]] = {}
         # block hex -> (child task id, plan id) for an input set owed to a
         # reconstruction child. The producer's plan bucket records this, but
         # `register_task_complete` discharges it in the producer's done callback,
         # before the consumer's turn to submit. So the producer stamps it here at
         # release; submission pops it. A single value: a child is released once per
         # plan, and the join rule keeps plans from sharing a child.
-        self._pending_child_ids: Dict[str, Tuple[str, str]] = {}
+        self._pending_child_ids: Dict[BlockId, ReconstructionStamp] = {}
         # plan id -> {(producing data task id, output index): held bundle}, for
         # re-produced outputs withheld from `_output_queue` until every parent of the
         # consumer has delivered its share. A reconstruction child must run against
@@ -319,7 +326,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Keyed by plan rather than by child: a block is dispatched to exactly one
         # consumer, so which child is owed a slot only needs resolving at release.
         # Empty unless recovery is enabled and a plan is in flight.
-        self._reconstruction_outputs: Dict[str, Dict[Tuple[str, int], RefBundle]] = {}
+        self._reconstruction_outputs: Dict[PlanId, Dict[ParentBlockOutput, RefBundle]] = {}
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size_override)
 
@@ -817,7 +824,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # from `parent_tasks` / `child_task_block_dependencies` insertion order,
             # which is the order the first attempt's dependencies were registered in.
             slots = [
-                (parent_task_id, output_index)
+                ParentBlockOutput(
+                    parent_data_task_id=parent_task_id, output_index=output_index
+                )
                 for parent_task_id, output_indices in requirements.items()
                 for output_index in output_indices
             ]
@@ -835,7 +844,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     plan_id,
                     len(missing),
                     missing,
-                    sorted(held),
+                    sorted(
+                        held,
+                        key=lambda slot: (slot.parent_data_task_id, slot.output_index),
+                    ),
                 )
                 continue
 
@@ -940,7 +952,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     # child against part of its input.
                     if status is ObjectReuseStatus.OBJECT_REUSED:
                         self._reconstruction_outputs.setdefault(plan_id, {})[
-                            (data_task_id, output_index)
+                            ParentBlockOutput(
+                                parent_data_task_id=data_task_id,
+                                output_index=output_index,
+                            )
                         ] = output
                         return
                     # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
