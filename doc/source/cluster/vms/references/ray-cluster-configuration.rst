@@ -105,6 +105,13 @@ Auth
 
             :ref:`ssh_user <cluster-configuration-ssh-user>`: str
 
+    .. tab-item:: Local
+
+        .. parsed-literal::
+
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+            :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+
 .. _cluster-configuration-provider-type:
 
 Provider
@@ -157,6 +164,17 @@ Provider
             :ref:`type <cluster-configuration-type>`: str
             :ref:`vsphere_config <cluster-configuration-vsphere-config>`:
                 :ref:`vSphere Config <cluster-configuration-vsphere-config-type>`
+
+    .. tab-item:: Local
+
+        .. parsed-literal::
+
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`head_ip <cluster-configuration-head-ip>`: str
+            :ref:`external_head_ip <cluster-configuration-external-head-ip>`: str
+            :ref:`worker_ips <cluster-configuration-worker-ips>`:
+                - str
+            :ref:`coordinator_address <cluster-configuration-coordinator-address>`: str
 
 .. _cluster-configuration-security-group-type:
 
@@ -369,6 +387,10 @@ The maximum number of workers the cluster will have at any given time.
 * **Minimum:** ``0``
 * **Maximum:** Unbounded
 
+For a manually managed Local cluster, ``max_workers`` defaults to the number of
+entries in ``provider.worker_ips`` and is capped at that number. For a
+coordinator-managed Local cluster, ``max_workers`` is required.
+
 .. _cluster-configuration-upscaling-speed:
 
 ``upscaling_speed``
@@ -424,7 +446,7 @@ In rare cases when Docker is not available on the system by default (e.g., bad A
 ``provider``
 ~~~~~~~~~~~~
 
-The cloud provider-specific configuration properties.
+The node-provider-specific configuration properties.
 
 * **Required:** Yes
 * **Importance:** High
@@ -448,6 +470,9 @@ Authentication credentials that Ray will use to launch nodes.
 
 Tells the autoscaler the allowed node types and the resources they provide.
 Each node type is identified by a user-specified key.
+
+For Local clusters, omit this field. The Local provider creates and manages a
+single internal node type.
 
 * **Required:** No
 * **Importance:** High
@@ -490,10 +515,13 @@ head node. Changing the :ref:`node_config<cluster-configuration-node-config>` of
 
 
 
-* **Required:** Yes
+* **Required:** Yes, except for Local clusters
 * **Importance:** High
 * **Type:** String
 * **Pattern:** ``[a-zA-Z0-9_]+``
+
+For Local clusters, omit this field. The Local provider sets it to the internal
+``local.cluster.node`` node type.
 
 .. _cluster-configuration-file-mounts:
 
@@ -840,6 +868,15 @@ The user that Ray will authenticate with when launching new nodes.
 
         Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem``.
 
+    .. tab-item:: Local
+
+        The path to an existing private key for Ray to use. If this field is
+        omitted, Ray uses the default SSH authentication settings.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+
 .. _cluster-configuration-ssh-public-key:
 
 ``auth.ssh_public_key``
@@ -866,6 +903,11 @@ The user that Ray will authenticate with when launching new nodes.
     .. tab-item:: vSphere
 
         Not available.
+
+    .. tab-item:: Local
+
+        Not available. Configure SSH access on the local nodes before you run
+        ``ray up``.
 
 .. _cluster-configuration-type:
 
@@ -903,6 +945,179 @@ The user that Ray will authenticate with when launching new nodes.
         The cloud service provider. For vSphere and VCF, this must be set to ``vsphere``.
 
         * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
+    .. tab-item:: Local
+
+        The on-premises node provider. For local clusters, this must be set to
+        ``local``.
+
+        The Local provider manages ``available_node_types`` and
+        ``head_node_type`` internally. It doesn't support the top-level
+        ``head_node`` or ``worker_nodes`` fields.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
+.. _cluster-configuration-head-ip:
+
+``provider.head_ip``
+~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available. The AWS provider obtains the head node IP address from EC2.
+
+    .. tab-item:: Azure
+
+        Not available. The Azure provider obtains the head node IP address from
+        Azure APIs.
+
+    .. tab-item:: GCP
+
+        Not available. The GCP provider obtains the head node IP address from
+        Compute Engine.
+
+    .. tab-item:: vSphere
+
+        Not available. The vSphere provider obtains the head node IP address from
+        the managed VM.
+
+    .. tab-item:: Local
+
+        The hostname or IP address of the head node in a manually managed local
+        cluster. If ``provider.coordinator_address`` is set, Ray uses
+        coordinator-managed mode and ignores this field.
+
+        * **Required:** Yes, unless ``provider.coordinator_address`` is set
+        * **Importance:** High
+        * **Type:** String
+
+.. _cluster-configuration-external-head-ip:
+
+``provider.external_head_ip``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available. The AWS provider obtains node IP addresses from EC2. Use
+        :ref:`provider.use_internal_ips <cluster-configuration-use-internal-ips>`
+        to choose whether Ray uses private addresses.
+
+    .. tab-item:: Azure
+
+        Not available. Use
+        :ref:`provider.use_external_head_ip <cluster-configuration-use-external-head-ip>`
+        to provision and use a public address for the head node.
+
+    .. tab-item:: GCP
+
+        Not available. The GCP provider obtains node IP addresses from Compute
+        Engine. Use
+        :ref:`provider.use_internal_ips <cluster-configuration-use-internal-ips>`
+        to choose whether Ray uses private addresses.
+
+    .. tab-item:: vSphere
+
+        Not available. The vSphere provider obtains the head node IP address from
+        the managed VM instead of accepting a static external address in this field.
+
+    .. tab-item:: Local
+
+        The public hostname or IP address used to connect to the head node over
+        SSH in a manually managed local cluster. Set this field when you run
+        ``ray up`` from outside the cluster's private network. If
+        ``provider.coordinator_address`` is set, Ray ignores this field.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+
+.. _cluster-configuration-worker-ips:
+
+``provider.worker_ips``
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available. The AWS provider creates and discovers worker nodes through
+        EC2 instead of accepting a static list of addresses.
+
+    .. tab-item:: Azure
+
+        Not available. The Azure provider creates and discovers worker nodes
+        through Azure APIs instead of accepting a static list of addresses.
+
+    .. tab-item:: GCP
+
+        Not available. The GCP provider creates and discovers worker nodes through
+        Compute Engine instead of accepting a static list of addresses.
+
+    .. tab-item:: vSphere
+
+        Not available. The vSphere provider creates and discovers worker nodes
+        through its VM service instead of accepting a static list of addresses.
+
+    .. tab-item:: Local
+
+        A list of hostnames or IP addresses for worker nodes in a manually managed
+        local cluster. An empty list creates a head-only cluster. If
+        ``provider.coordinator_address`` is set, Ray uses coordinator-managed mode
+        and ignores this field.
+
+        In manually managed mode, the top-level ``min_workers`` and
+        ``max_workers`` fields default to the number of entries in this list.
+        Values greater than the number of entries are capped at that number.
+
+        * **Required:** Yes, unless ``provider.coordinator_address`` is set
+        * **Importance:** High
+        * **Type:** List of String
+
+.. _cluster-configuration-coordinator-address:
+
+``provider.coordinator_address``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available. The AWS provider manages cluster capacity through EC2 and
+        doesn't use the Local provider's coordinator server.
+
+    .. tab-item:: Azure
+
+        Not available. The Azure provider manages cluster capacity through Azure
+        APIs and doesn't use the Local provider's coordinator server.
+
+    .. tab-item:: GCP
+
+        Not available. The GCP provider manages cluster capacity through Compute
+        Engine and doesn't use the Local provider's coordinator server.
+
+    .. tab-item:: vSphere
+
+        Not available. The vSphere provider manages cluster capacity through its
+        VM service and doesn't use the Local provider's coordinator server.
+
+    .. tab-item:: Local
+
+        The ``host:port`` address of the coordinator server for an automatically
+        managed local cluster. Setting this field selects coordinator-managed
+        mode; Ray ignores ``provider.head_ip``, ``provider.worker_ips``, and
+        ``provider.external_head_ip`` if they are also present. The top-level
+        ``max_workers`` field is required, and ``min_workers`` defaults to ``0``.
+
+        * **Required:** Yes, unless both ``provider.head_ip`` and
+          ``provider.worker_ips`` are set
         * **Importance:** High
         * **Type:** String
 
@@ -1756,6 +1971,18 @@ Minimal configuration
         .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-minimal.yaml
             :language: yaml
 
+    .. tab-item:: Local
+
+        **Manually managed cluster**
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/local/example-minimal-manual.yaml
+            :language: yaml
+
+        **Coordinator-managed cluster**
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/local/example-minimal-automatic.yaml
+            :language: yaml
+
 Full configuration
 ~~~~~~~~~~~~~~~~~~
 
@@ -1779,6 +2006,11 @@ Full configuration
     .. tab-item:: vSphere
 
         .. literalinclude:: ../../../../../python/ray/autoscaler/vsphere/example-full.yaml
+            :language: yaml
+
+    .. tab-item:: Local
+
+        .. literalinclude:: ../../../../../python/ray/autoscaler/local/example-full.yaml
             :language: yaml
 
 TPU Configuration

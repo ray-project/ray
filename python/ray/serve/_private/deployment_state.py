@@ -6124,7 +6124,16 @@ class DeploymentStateManager:
                 if name.startswith(GANG_PG_NAME_PREFIX):
                     gang_pg_name_to_id[name] = pg_id_hex
 
-            occupied_pg_ids = get_active_placement_group_ids()
+            try:
+                occupied_pg_ids = get_active_placement_group_ids()
+            except Exception:
+                # The state API is optional infrastructure the controller otherwise
+                # does not need, so keep every gang PG rather than die on recovery.
+                logger.exception(
+                    "Failed to list active actors; skipping gang placement group "
+                    "leak detection for this recovery."
+                )
+                occupied_pg_ids = set(gang_pg_name_to_id.values())
             for gang_pg_name in gang_pg_names_in_cluster:
                 pg_id = gang_pg_name_to_id.get(gang_pg_name)
                 if pg_id is not None and pg_id not in occupied_pg_ids:
