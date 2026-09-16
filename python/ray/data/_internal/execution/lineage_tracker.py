@@ -106,13 +106,10 @@ class TaskNode:
 class LineageTracker:
     def __init__(self):
         self._data_task_id_to_task_node: Dict[DataTaskId, TaskNode] = {}
-        # Block ID -> the task output that produced it. This is what lets a
-        # consumer name its dependencies: a block ID on its own says nothing
-        # about where it came from, so the producing task records the answer and
-        # the consumer reads it back.
+        # Mapping of block ID -> the parent task output (task ID, output index) that produced it.
         self._block_id_to_parent_output: Dict[BlockId, ParentBlockOutput] = {}
 
-    def register_output(
+    def register_block_output(
         self,
         data_task_id: DataTaskId,
         block_id: BlockId,

@@ -338,7 +338,7 @@ def test_merged_bundle_still_resolves():
     """
     tracker = LineageTracker()
     tracker.register_task_submission("seed:0", [])
-    tracker.register_output("seed:0", "real_block", 0)
+    tracker.register_block_output("seed:0", "real_block", 0)
 
     dependencies = tracker.resolve_dependencies(["empty_block", "real_block"])
     assert dependencies == [
@@ -350,7 +350,7 @@ def test_resolved_dependencies_are_consumed_once():
     """Entries are popped, so the map tracks in-flight blocks, not the whole run."""
     tracker = LineageTracker()
     tracker.register_task_submission("seed:0", [])
-    tracker.register_output("seed:0", "block_a", 0)
+    tracker.register_block_output("seed:0", "block_a", 0)
 
     assert tracker.resolve_dependencies(["block_a"]) == [
         ParentBlockOutput(parent_data_task_id="seed:0", output_index=0)
@@ -625,7 +625,7 @@ def _fan_in_op_under_reconstruction(ctx, num_parents=2):
     parent_ids = [f"{producer.id}:{index}" for index in range(num_parents)]
     for parent_id, bundle in zip(parent_ids, bundles):
         tracker.register_task_submission(parent_id, [])
-        tracker.register_output(parent_id, bundle.block_refs[0].hex(), 0)
+        tracker.register_block_output(parent_id, bundle.block_refs[0].hex(), 0)
 
     # The child fans in over one output block from each parent.
     child_task_id = f"{consumer.id}:0"
