@@ -320,12 +320,13 @@ class TestNvidiaGpuProvider(unittest.TestCase):
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_ppu_detection_matches_ppu_device_name_patterns(self, mock_pynvml):
-        """Test PPU model suffixes while preserving standalone-name matching."""
+        """Test PPU model suffixes without matching embedded PPU strings."""
         handles = self._configure_nvidia_collection(
             mock_pynvml,
             [
                 "XPPU Accelerator",
                 "PPU2 Accelerator",
+                "PPU_2 Accelerator",
                 "PPU-ZW810",
                 "PPU810",
                 "PPUZW910",
@@ -334,10 +335,10 @@ class TestNvidiaGpuProvider(unittest.TestCase):
 
         self.provider.get_gpu_utilization()
 
-        self.assertEqual(self.provider._skip_process_util_gpu_indices, {2, 3, 4})
+        self.assertEqual(self.provider._skip_process_util_gpu_indices, {1, 2, 3, 4, 5})
         self.assertEqual(
             mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.call_args_list,
-            [call(handles[0], 0), call(handles[1], 0)],
+            [call(handles[0], 0)],
         )
 
     @patch("ray._private.thirdparty.pynvml", create=True)

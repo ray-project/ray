@@ -29,11 +29,8 @@ RAY_SKIP_PROCESS_UTIL_API = "RAY_SKIP_PROCESS_UTIL_API"
 RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES = "RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES"
 # PPU-compatible devices may append a model identifier directly to the prefix
 # (for example, PPU-ZW810, PPU810, or PPUZW910). Keep the leading boundary so
-# unrelated names such as XPPU are not classified as unsafe, and require at
-# least two suffix characters to preserve the standalone-name guard for PPU2.
-_UNSAFE_PROCESS_UTIL_NAME_PATTERNS = (
-    re.compile(r"(?<!\w)PPU(?:\b|[-_]?[A-Za-z0-9][A-Za-z0-9_-]+)", re.IGNORECASE),
-)
+# unrelated names such as XPPU are not classified as unsafe.
+_UNSAFE_PROCESS_UTIL_NAME_PATTERNS = (re.compile(r"(?<!\w)PPU", re.IGNORECASE),)
 _PROCESS_UTIL_DETECTION_LOG_INTERVAL_S = 60.0
 
 # Types
