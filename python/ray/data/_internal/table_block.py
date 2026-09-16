@@ -7,6 +7,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     TypeVar,
     Union,
@@ -319,12 +320,18 @@ class TableBlockAccessor(BlockAccessor):
             If key is None then the k column is omitted.
         """
 
-        if self.num_rows() == 0:
-            return self._empty_table()
-
         # Resolve target aggregation column names (to avoid conflicts)
-        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(aggs)
+        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(
+            [agg.name for agg in aggs]
+        )
         keys: List[str] = sort_key.get_columns()
+
+        # An empty block holds no groups, so a keyed aggregation has nothing to
+        # emit. A global aggregation still has exactly one group -- the whole
+        # block -- and must emit its identity row (``count()`` of an empty
+        # dataset is 0, not "no answer").
+        if self.num_rows() == 0 and keys:
+            return self._empty_table()
 
         builder = self.builder()
 
@@ -344,8 +351,15 @@ class TableBlockAccessor(BlockAccessor):
             ]
 
             # Step 2: Apply aggregations to provided group's block
-            for i in range(len(aggs)):
-                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_block)
+            #
+            # NOTE: An empty group block leaves the accumulators at their identity
+            #       values. Skip it, since not every ``AggregateFn`` handles a
+            #       zero-row block.
+            if BlockAccessor.for_block(group_block).num_rows() > 0:
+                for i in range(len(aggs)):
+                    accumulators[i] = aggs[i].accumulate_block(
+                        accumulators[i], group_block
+                    )
 
             # Step 3: Compose resulting row from
             #   - Grouped by column's values
@@ -424,7 +438,9 @@ class TableBlockAccessor(BlockAccessor):
         builder = block_accessor.builder()
 
         # Resolve aggregation names as resulting column names (collisions)
-        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(aggs)
+        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(
+            [agg.name for agg in aggs]
+        )
 
         keys: List[str] = sort_key.get_columns()
 
@@ -573,21 +589,26 @@ class TableBlockAccessor(BlockAccessor):
         raise NotImplementedError
 
 
-def _resolve_aggregated_column_names(aggs: Sequence["AggregateFn"]) -> List[str]:
+def _resolve_aggregated_column_names(agg_names: Sequence[str]) -> List[str]:
     """Resolves aggregation column names to be unique (in case of collisions)"""
 
+    # Occurrences of each *original* name. Counting the original rather than the
+    # suffixed name is what gives successive duplicates successive suffixes.
     name_counts: Dict[str, int] = collections.defaultdict(int)
+    taken: Set[str] = set()
 
     resolved_agg_names: List[str] = []
 
-    for agg in aggs:
-        name = agg.name
-        # Check for conflicts with existing aggregation
-        # name.
-        if name in name_counts:
-            name = TableBlockAccessor._munge_conflict(name, name_counts[name])
+    for agg_name in agg_names:
+        name = agg_name
+        # Suffix until the name is free. Looping (rather than suffixing once)
+        # also covers a suffixed name colliding with an aggregation that is
+        # explicitly called that, as in ``["a", "a_2", "a"]``.
+        while name in taken:
+            name_counts[agg_name] += 1
+            name = TableBlockAccessor._munge_conflict(agg_name, name_counts[agg_name])
 
-        name_counts[name] += 1
+        taken.add(name)
         resolved_agg_names.append(name)
 
     return resolved_agg_names

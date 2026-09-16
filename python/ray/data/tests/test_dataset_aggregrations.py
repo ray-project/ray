@@ -230,5 +230,55 @@ def test_global_tabular_std(ray_start_regular_shared_2_cpus, ds_format, num_part
     assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
 
 
+def test_global_aggregation_over_empty_dataset(ray_start_regular):
+    """A global aggregation over zero rows still has exactly one group.
+
+    Unlike a keyed aggregation, which has no groups to report, a global one must
+    emit its identity row -- ``count()`` of an empty dataset is 0, not "no answer".
+    """
+    from ray.data.aggregate import Count, Sum
+
+    empty = ray.data.range(10).filter(lambda row: False)
+
+    assert empty.aggregate(Count()) == {"count()": 0}
+    assert empty.aggregate(Count(), Sum("id")) == {"count()": 0, "sum(id)": None}
+
+    # A keyed aggregation over the same dataset has no groups, so it emits nothing.
+    assert empty.groupby("id").count().take_all() == []
+
+
+@pytest.mark.parametrize(
+    "names,expected",
+    [
+        (["sum(a)", "min(a)", "max(b)"], ["sum(a)", "min(a)", "max(b)"]),
+        (["a", "a", "a"], ["a", "a_2", "a_3"]),
+        (["a", "b", "a", "b", "a"], ["a", "b", "a_2", "b_2", "a_3"]),
+        # A suffixed name must not collide with one that is explicitly called that.
+        (["a", "a_2", "a"], ["a", "a_2", "a_3"]),
+    ],
+)
+def test_resolve_aggregated_column_names(names, expected):
+    """Colliding aggregation names must each resolve to a distinct column."""
+    from ray.data._internal.table_block import _resolve_aggregated_column_names
+
+    resolved = _resolve_aggregated_column_names(names)
+
+    assert resolved == expected
+    assert len(set(resolved)) == len(resolved)
+
+
+def test_repeated_aggregations_keep_every_result(ray_start_regular):
+    """Repeating an aggregation must not drop results to a name collision."""
+    from ray.data.aggregate import Sum
+
+    ds = ray.data.range(4)
+
+    assert ds.aggregate(Sum("id"), Sum("id"), Sum("id")) == {
+        "sum(id)": 6,
+        "sum(id)_2": 6,
+        "sum(id)_3": 6,
+    }
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
