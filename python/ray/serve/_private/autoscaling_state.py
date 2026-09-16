@@ -4,7 +4,18 @@ import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 
@@ -67,90 +78,125 @@ def _resolve_policy_callable(policy: AutoscalingPolicy) -> Callable:
     return raw
 
 
-@dataclass
-class _ColumnarHandle:
-    """One handle's decoded columnar report. Written once at ingest and read by the
-    decision tick; `run_*` are CSR (offsets into the flat arrays, one key per source)."""
+class MetricSamples(NamedTuple):
+    """Samples from one or more sources, in the layout the merge kernel takes.
 
+    `timestamps` and `values` are flat and parallel. `source_offsets` is CSR: source i
+    is timestamps[source_offsets[i]:source_offsets[i + 1]]. None means these samples are
+    a single source, which is cheaper than materialising a two-element array per replica
+    per tick.
+    """
+
+    timestamps: np.ndarray
+    values: np.ndarray
+    source_offsets: Optional[np.ndarray] = None
+
+    @classmethod
+    def from_timeseries(cls, series: TimeSeries) -> "MetricSamples":
+        """One object timeseries as a single source."""
+        n = len(series)
+        return cls(
+            np.fromiter((p.timestamp for p in series), dtype=np.float64, count=n),
+            np.fromiter((p.value for p in series), dtype=np.float64, count=n),
+        )
+
+    @classmethod
+    def per_series(cls, series_list: List[TimeSeries]) -> List["MetricSamples"]:
+        """One single-source sample set per non-empty timeseries."""
+        return [cls.from_timeseries(s) for s in series_list if s]
+
+    def source(self, i: int) -> "MetricSamples":
+        """Source i on its own."""
+        if self.source_offsets is None:
+            return self
+        a, b = int(self.source_offsets[i]), int(self.source_offsets[i + 1])
+        return MetricSamples(self.timestamps[a:b], self.values[a:b])
+
+    def source_peaks(self) -> List[float]:
+        """Peak value of each source, skipping sources with no samples."""
+        if not self:
+            return []
+        if self.source_offsets is None:
+            return [float(self.values.max())]
+        return [
+            float(self.values[a:b].max())
+            for a, b in zip(self.source_offsets[:-1], self.source_offsets[1:])
+            if b > a
+        ]
+
+    def __bool__(self) -> bool:
+        return bool(self.timestamps.size)
+
+
+@dataclass(frozen=True)
+class ColumnarHandleReport:
+    """A handle's decoded columnar report, written once at ingest and read by the
+    decision tick. Carries the same fields the drop path reads off HandleMetricReport,
+    so both formats share that code."""
+
+    handle_id: str
     actor_id: Optional[str]
-    is_component: bool
+    is_serve_component_source: bool
     timestamp: float
-    q_ts: np.ndarray
-    q_val: np.ndarray
-    run_ts: np.ndarray
-    run_val: np.ndarray
-    run_offsets: np.ndarray
-    run_keys: List[str]
+    queued: MetricSamples
+    running: MetricSamples
+    running_keys: List[str]
+
+    @property
+    def total_requests(self) -> float:
+        """Peak per series, summed, as HandleMetricReport.total_requests defines it."""
+        return sum(self.queued.source_peaks() + self.running.source_peaks())
 
 
-def _series_to_arrays(series):
-    """Object timeseries -> (ts, val) float64 arrays (the cheap direction: object
-    sources in a mixed fleet are the THIN ones, few points each)."""
-    n = len(series)
-    return (
-        np.fromiter((p.timestamp for p in series), dtype=np.float64, count=n),
-        np.fromiter((p.value for p in series), dtype=np.float64, count=n),
-    )
-
-
-def _series_blocks(series_list):
-    """Thin object timeseries -> one-source blocks (empties dropped)."""
-    return [_single_source_block(*_series_to_arrays(s)) for s in series_list if s]
-
-
-def _single_source_block(ts, val):
-    """(ts, val) arrays as a one-source block. `None` offsets say "one source", which
-    keeps the mixed route from allocating a two-element array per replica per tick."""
-    return (ts, val, None)
-
-
-def _running_csr(payload: FlatHandleReport):
-    """The report's running points as one CSR block: arrays, per-replica offsets, and
-    the replica key per source. The encoder lays a metric's points out contiguously, so
-    this is normally a view; a frame that is not pays one copy here, not per tick."""
+def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str]]:
+    """The report's running points as one per-source-offset sample set plus the replica
+    key of each source. The
+    encoder lays a metric's points out contiguously, so this is normally a view; a frame
+    that is not pays one copy here rather than one per tick."""
     entries = payload["entries"]
     rows = entries[entries[:, 0] == payload["mi"]]
-    ts, val = payload["ts"], payload["val"]
+    timestamps, values = payload["ts"], payload["val"]
     if not rows.size:
-        return ts[:0], val[:0], np.zeros(1, dtype=np.int64), []
+        empty = np.zeros(1, dtype=np.int64)
+        return MetricSamples(timestamps[:0], values[:0], empty), []
     keys = [payload["replica_keys"][i] for i in rows[:, 1].tolist()]
-    offs, lens = rows[:, 2], rows[:, 3]
-    csr = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lens)))
-    if np.array_equal(offs[1:], offs[:-1] + lens[:-1]):
-        base, end = int(offs[0]), int(offs[-1] + lens[-1])
-        return ts[base:end], val[base:end], csr, keys
-    spans = [(int(o), int(o) + int(n)) for o, n in zip(offs.tolist(), lens.tolist())]
+    starts, lengths = rows[:, 2], rows[:, 3]
+    source_offsets = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lengths)))
+    if np.array_equal(starts[1:], starts[:-1] + lengths[:-1]):
+        base, end = int(starts[0]), int(starts[-1] + lengths[-1])
+        return (
+            MetricSamples(timestamps[base:end], values[base:end], source_offsets),
+            keys,
+        )
+    spans = [
+        (int(o), int(o) + int(n)) for o, n in zip(starts.tolist(), lengths.tolist())
+    ]
     return (
-        np.concatenate([ts[a:b] for a, b in spans]),
-        np.concatenate([val[a:b] for a, b in spans]),
-        csr,
+        MetricSamples(
+            np.concatenate([timestamps[a:b] for a, b in spans]),
+            np.concatenate([values[a:b] for a, b in spans]),
+            source_offsets,
+        ),
         keys,
     )
 
 
-def _columnar_peak_requests(entry: _ColumnarHandle) -> float:
-    """Columnar form of HandleMetricReport.total_requests: peak per series, summed."""
-    val, offs = entry.run_val, entry.run_offsets
-    peaks = [float(entry.q_val.max())] if entry.q_val.size else []
-    peaks += [float(val[a:b].max()) for a, b in zip(offs[:-1], offs[1:]) if b > a]
-    return sum(peaks)
-
-
-def _log_dropped_handle(handle_id, actor_id, peak_requests, timeout_s, dead_actor):
-    """One copy of the operator-facing drop text, shared by the array and object stores.
-    peak_requests gates it so handles that never took traffic stay quiet."""
+def _log_dropped_handle(report, timeout_s: float, dead_actor: bool) -> None:
+    """One copy of the operator-facing drop text, shared by both report types.
+    total_requests gates it so handles that never took traffic stay quiet."""
+    peak_requests = report.total_requests
     if peak_requests <= 0:
         return
     if dead_actor:
         logger.debug(
-            f"Dropping metrics for handle '{handle_id}' because the Serve "
-            f"actor it was on ({actor_id}) is no longer "
+            f"Dropping metrics for handle '{report.handle_id}' because the Serve "
+            f"actor it was on ({report.actor_id}) is no longer "
             f"alive. Its peak ongoing requests was {peak_requests}."
         )
     else:
-        actor_info = f"on actor '{actor_id}' " if actor_id else ""
+        actor_info = f"on actor '{report.actor_id}' " if report.actor_id else ""
         logger.info(
-            f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
+            f"Dropping stale metrics for handle '{report.handle_id}' {actor_info}"
             f"because no update was received for {timeout_s:.1f}s. "
             f"Peak ongoing requests was: {peak_requests}."
         )
@@ -170,12 +216,14 @@ class DeploymentAutoscalingState:
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
         self._replica_metrics: Dict[ReplicaID, ReplicaMetricReport] = dict()
-        # (report timestamp, array block) memo of each replica's running series, so the
+        # (report timestamp, samples) memo of each replica's running series, so the
         # object->array conversion runs once per report, not once per decision tick.
-        self._replica_running_arrays: Dict[ReplicaID, tuple] = dict()
+        self._replica_running_arrays: Dict[
+            ReplicaID, Tuple[float, MetricSamples]
+        ] = dict()
         # Columnar per-handle arrays: metadata + per-replica running + queued
         # (filled whenever a columnar frame arrives).
-        self._handle_arrays: Dict[str, _ColumnarHandle] = dict()
+        self._handle_arrays: Dict[str, ColumnarHandleReport] = dict()
         # Last accepted report timestamp per handle, across BOTH wire formats, so a
         # delayed report in either cannot overwrite fresher data the other wrote.
         # Pruned in drop_stale_handle_metrics.
@@ -368,21 +416,11 @@ class DeploymentAutoscalingState:
         ):
             self._replica_metrics[replica_id] = replica_metric_report
 
-    def _columnar_aggregate_total_requests(self) -> float:
-        """Total over the pure-columnar stores: handle running arrays plus queued, in
-        one fused numpy merge (no per-point Python objects)."""
-        if not self._handle_arrays:
-            return 0.0
-        return self._aggregate_blocks(
-            self._handle_running_columnar_blocks(self._cached_running_replica_strs)
-            + self._queued_columnar_blocks()
-        )
-
-    def _replica_running_blocks(self):
-        """Running blocks of the replicas still running. Memoized against the stored
+    def _replica_running_samples(self) -> List[MetricSamples]:
+        """Running samples of the replicas still running. Memoized against the stored
         report's timestamp, so a series is converted once per report rather than on
         every decision tick; _replica_metrics stays the only source of truth."""
-        blocks = []
+        samples = []
         for replica_id in self._running_replicas:
             report = self._replica_metrics.get(replica_id)
             if report is None:
@@ -392,61 +430,61 @@ class DeploymentAutoscalingState:
                 continue
             cached = self._replica_running_arrays.get(replica_id)
             if cached is None or cached[0] != report.timestamp:
-                block = _single_source_block(*_series_to_arrays(series))
-                cached = (report.timestamp, block)
+                cached = (report.timestamp, MetricSamples.from_timeseries(series))
                 self._replica_running_arrays[replica_id] = cached
-            blocks.append(cached[1])
-        return blocks
+            samples.append(cached[1])
+        return samples
 
-    def _queued_columnar_blocks(self):
-        """Columnar per-handle queued arrays as one-source blocks."""
+    def _queued_columnar_samples(self) -> List[MetricSamples]:
+        """Each columnar handle's queued samples, one source apiece."""
         return [
-            (hm.q_ts, hm.q_val, None)
-            for hm in self._handle_arrays.values()
-            if hm.q_ts.size
+            report.queued for report in self._handle_arrays.values() if report.queued
         ]
 
-    def _handle_running_columnar_blocks(self, running):
-        """CSR blocks of each columnar handle's running series, masked to replicas still
-        in `running` (mirrors _collect_handle_running_requests). Passed through whole
-        while every replica is still running; only a changed membership pays a slice."""
-        blocks = []
-        for hm in self._handle_arrays.values():
-            keys, offs = hm.run_keys, hm.run_offsets
+    def _handle_running_columnar_samples(self, running) -> List[MetricSamples]:
+        """Each columnar handle's running samples, masked to replicas still in `running`
+        (mirrors _collect_handle_running_requests). Passed through whole while every
+        replica is still running; only a changed membership pays a per-source slice."""
+        samples = []
+        for report in self._handle_arrays.values():
+            keys = report.running_keys
             if not keys:
                 continue
             if running.issuperset(keys):
-                blocks.append((hm.run_ts, hm.run_val, offs))
+                samples.append(report.running)
                 continue
-            ts, val = hm.run_ts, hm.run_val
-            blocks += [
-                _single_source_block(ts[a:b], val[a:b])
-                for key, a, b in zip(keys, offs[:-1], offs[1:])
-                if key in running
+            samples += [
+                report.running.source(i) for i, key in enumerate(keys) if key in running
             ]
-        return blocks
+        return samples
 
-    def _aggregate_blocks(self, blocks) -> float:
-        """One fused numpy merge over (ts, val, offsets) blocks. 0.0 when empty."""
-        blocks = [b for b in blocks if b[0].size]
-        if not blocks:
+    def _aggregate_samples(self, samples: List[MetricSamples]) -> float:
+        """One fused numpy merge over every source in `samples`. 0.0 when empty."""
+        samples = [s for s in samples if s]
+        if not samples:
             return 0.0
-        if len(blocks) == 1 and blocks[0][2] is not None:
-            ts, val, offsets = blocks[0]
+        if len(samples) == 1 and samples[0].source_offsets is not None:
+            merged = samples[0]
         else:
             starts, base = [], 0
-            for bts, _, boffs in blocks:
-                if boffs is None:
+            for s in samples:
+                if s.source_offsets is None:
                     starts.append(base)
                 else:
-                    starts.extend((boffs[:-1] + base).tolist())
-                base += bts.size
+                    starts.extend((s.source_offsets[:-1] + base).tolist())
+                base += s.timestamps.size
             starts.append(base)
-            ts = np.concatenate([b[0] for b in blocks])
-            val = np.concatenate([b[1] for b in blocks])
-            offsets = np.array(starts, dtype=np.int64)
+            merged = MetricSamples(
+                np.concatenate([s.timestamps for s in samples]),
+                np.concatenate([s.values for s in samples]),
+                np.array(starts, dtype=np.int64),
+            )
         return autoscaling_metrics_merge.merge_and_aggregate_arrays(
-            ts, val, offsets, time.time(), self._config.aggregation_function
+            merged.timestamps,
+            merged.values,
+            merged.source_offsets,
+            time.time(),
+            self._config.aggregation_function,
         )
 
     def record_request_metrics_for_handle(
@@ -474,23 +512,21 @@ class DeploymentAutoscalingState:
         last_ts = self._handle_report_ts.get(hid)
         if last_ts is None or payload["timestamp"] > last_ts:
             self._handle_report_ts[hid] = payload["timestamp"]
-            # Resolve the running block once here rather than rebuilding it on every
+            # Resolve the running samples once here rather than rebuilding them every
             # 0.1s decision tick: the frame is frozen for as long as it is stored.
-            run_ts, run_val, run_offsets, run_keys = _running_csr(payload)
-            self._handle_arrays[hid] = _ColumnarHandle(
+            running, running_keys = _running_samples(payload)
+            self._handle_arrays[hid] = ColumnarHandleReport(
+                handle_id=hid,
                 actor_id=payload["actor_id"],
-                is_component=payload["handle_source"]
+                is_serve_component_source=payload["handle_source"]
                 in (
                     DeploymentHandleSource.PROXY.value,
                     DeploymentHandleSource.REPLICA.value,
                 ),
                 timestamp=payload["timestamp"],
-                q_ts=payload["q_ts"],
-                q_val=payload["q_val"],
-                run_ts=run_ts,
-                run_val=run_val,
-                run_offsets=run_offsets,
-                run_keys=run_keys,
+                queued=MetricSamples(payload["q_ts"], payload["q_val"]),
+                running=running,
+                running_keys=running_keys,
             )
             self._handle_requests.pop(hid, None)
 
@@ -513,49 +549,23 @@ class DeploymentAutoscalingState:
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
         now = time.time()
-        for hid, hm in list(self._handle_arrays.items()):
+        # Both stores hold reports with the same drop-relevant shape, so one loop. A
+        # handle on a dead proxy/replica actor goes immediately; otherwise it goes when
+        # it has not reported for timeout_s, which is expected after a shutdown.
+        stored = list(self._handle_arrays.values()) + list(
+            self._handle_requests.values()
+        )
+        for report in stored:
             dead_actor = (
-                hm.is_component
-                and hm.actor_id is not None
-                and hm.actor_id not in alive_serve_actor_ids
+                report.is_serve_component_source
+                and report.actor_id is not None
+                and report.actor_id not in alive_serve_actor_ids
             )
-            if dead_actor or now - hm.timestamp >= timeout_s:
-                del self._handle_arrays[hid]
-                _log_dropped_handle(
-                    hid,
-                    hm.actor_id,
-                    _columnar_peak_requests(hm),
-                    timeout_s,
-                    dead_actor,
-                )
-        for handle_id, handle_metric in list(self._handle_requests.items()):
-            # Drop metrics for handles that are on Serve proxy/replica
-            # actors that have died
-            if (
-                handle_metric.is_serve_component_source
-                and handle_metric.actor_id is not None
-                and handle_metric.actor_id not in alive_serve_actor_ids
-            ):
-                del self._handle_requests[handle_id]
-                _log_dropped_handle(
-                    handle_id,
-                    handle_metric.actor_id,
-                    handle_metric.total_requests,
-                    timeout_s,
-                    True,
-                )
-            # Drop metrics for handles that haven't sent an update in a while.
-            # This is expected behavior for handles that were on replicas or
-            # proxies that have been shut down.
-            elif now - handle_metric.timestamp >= timeout_s:
-                del self._handle_requests[handle_id]
-                _log_dropped_handle(
-                    handle_id,
-                    handle_metric.actor_id,
-                    handle_metric.total_requests,
-                    timeout_s,
-                    False,
-                )
+            if not (dead_actor or now - report.timestamp >= timeout_s):
+                continue
+            self._handle_arrays.pop(report.handle_id, None)
+            self._handle_requests.pop(report.handle_id, None)
+            _log_dropped_handle(report, timeout_s, dead_actor)
 
         # Prune the unified per-handle timestamp gate to handles still tracked in either
         # store (any dropped above no longer appear in _handle_arrays/_handle_requests).
@@ -829,23 +839,16 @@ class DeploymentAutoscalingState:
         Returns:
             The aggregated total of running and queued requests.
         """
-        has_columnar = bool(self._handle_arrays)
-        has_object = bool(self._replica_metrics or self._handle_requests)
-        # Homogeneous fleets keep their native fast path. Columnar arrays are used
-        # whenever present -- the controller wire-detects the format from the frame
-        # magic, so it counts columnar reports regardless of how they were produced.
-        if has_columnar and not has_object:
-            return self._columnar_aggregate_total_requests()
-        if has_object and not has_columnar:
+        if not self._handle_arrays:
+            # Pure-object fleet, which is every fleet until routers emit SCR1. Keeps
+            # the object kernel and numpy off the hot path.
             return self._object_aggregate_total_requests()
-        if not has_columnar and not has_object:
-            return 0.0
-        # Both stores hold sources. Replica reports are never columnar, and a
-        # direct-ingress deployment reports from its replicas even with handle
-        # collection on, so this is steady state rather than only mid-rollout.
-        # Merged in one pass because summing two aggregations is exact for MEAN
-        # but not MAX/MIN.
-        return self._mixed_aggregate_total_requests()
+        # Any columnar source sends everything through the array merge, which also
+        # absorbs the object sources. Both stores can be live at once: replica reports
+        # are never columnar, and a direct-ingress deployment reports from its replicas
+        # even with handle collection on. One pass because summing two aggregations is
+        # exact for MEAN but not MAX/MIN.
+        return self._array_aggregate_total_requests()
 
     def _object_aggregate_total_requests(self) -> float:
         """Total over the cloudpickle/object stores (_replica_metrics /
@@ -854,7 +857,7 @@ class DeploymentAutoscalingState:
         # on replicas"; an empty running series (no samples) must not suppress
         # handle-side running. Matches the columnar/mixed paths (equivalence).
         replica_timeseries = [
-            ts for ts in self._collect_replica_running_requests() if ts
+            series for series in self._collect_replica_running_requests() if series
         ]
         metrics_collected_on_replicas = len(replica_timeseries) > 0
         queued_timeseries = self._collect_handle_queued_requests()
@@ -871,8 +874,8 @@ class DeploymentAutoscalingState:
             return 0.0
         return self._merge_and_aggregate_timeseries(ongoing_requests_timeseries)
 
-    def _mixed_aggregate_total_requests(self) -> float:
-        """Mixed columnar+object total: one fused ARRAY merge over all sources.
+    def _array_aggregate_total_requests(self) -> float:
+        """Total over every source as one fused ARRAY merge.
 
         Wide columnar sources are sliced as array views (never re-materialized into
         per-point objects -- mixing is a steady state, e.g. a thin driver handle
@@ -880,16 +883,16 @@ class DeploymentAutoscalingState:
         are converted to small arrays. Empty object series are dropped so they
         cannot flip metrics_collected_on_replicas and suppress handle-side running
         (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""
-        blocks = self._replica_running_blocks()
-        metrics_collected_on_replicas = bool(blocks)
+        samples = self._replica_running_samples()
+        metrics_collected_on_replicas = bool(samples)
         if not metrics_collected_on_replicas:
-            blocks += self._handle_running_columnar_blocks(
+            samples += self._handle_running_columnar_samples(
                 self._cached_running_replica_strs
             )
-            blocks += _series_blocks(self._collect_handle_running_requests())
-        blocks += self._queued_columnar_blocks()
-        blocks += _series_blocks(self._collect_handle_queued_requests())
-        return self._aggregate_blocks(blocks)
+            samples += MetricSamples.per_series(self._collect_handle_running_requests())
+        samples += self._queued_columnar_samples()
+        samples += MetricSamples.per_series(self._collect_handle_queued_requests())
+        return self._aggregate_samples(samples)
 
     def get_last_decision_total_num_requests(self) -> float:
         """Aggregate from the most recent autoscaling decision, not recomputed.
@@ -922,8 +925,8 @@ class DeploymentAutoscalingState:
             return self._merge_and_aggregate_timeseries(queued_obj)
         # Columnar present: one fused array merge over both queued sources
         # (disjoint by dedup-at-write) -- exact aggregation.
-        return self._aggregate_blocks(
-            self._queued_columnar_blocks() + _series_blocks(queued_obj)
+        return self._aggregate_samples(
+            self._queued_columnar_samples() + MetricSamples.per_series(queued_obj)
         )
 
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:

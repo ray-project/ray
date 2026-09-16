@@ -426,7 +426,7 @@ def test_columnar_handle_drops_are_logged(monkeypatch):
         rep = _random_handle_report("h1", random.Random(1), 2)
         st = _recorded_state(rep, monkeypatch)
         # Guard against a vacuous pass: the log is gated on peak requests.
-        assert A._columnar_peak_requests(st._handle_arrays["h1"]) > 0
+        assert st._handle_arrays["h1"].total_requests > 0
         log = mock.Mock()
         monkeypatch.setattr(A.logger, level, log)
         if dead_actor:
@@ -499,7 +499,7 @@ def test_handle_cross_format_staleness_guard():
     st = _state()
     hid = "h0"
 
-    def _rep(ts):
+    def _rep(timestamp):
         return HandleMetricReport(
             deployment_id=DEP,
             handle_id=hid,
@@ -507,7 +507,7 @@ def test_handle_cross_format_staleness_guard():
             handle_source=DeploymentHandleSource.PROXY,
             queued_requests=[TimeStampedValue(NOW, 1.0)],
             metrics={RUNNING_REQUESTS_KEY: {}},
-            timestamp=ts,
+            timestamp=timestamp,
         )
 
     # Fresh columnar report @ NOW+10 -> lands in the array store.
@@ -652,7 +652,7 @@ def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
     """A handle lags the running set on every scale-down, so its frame still names a
     stopped replica. That replica's points must be dropped, and the survivors must total
     exactly what the object path totals. Covers the gather branch of
-    _handle_running_columnar_blocks, which the whole-block fast path skips."""
+    _handle_running_columnar_samples, which the whole-frame fast path skips."""
     monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
     live = [ReplicaID(f"r{i}", DEP) for i in range(4)]
     gone = ReplicaID("r_gone", DEP)
