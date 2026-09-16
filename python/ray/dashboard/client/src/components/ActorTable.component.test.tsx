@@ -417,4 +417,17 @@ describe("ActorTable", () => {
 
     expect(await screen.findByText("ACTOR_1")).toBeInTheDocument();
   });
+
+  it("renders no NaN when the node has not reported memory yet", async () => {
+    // datacenter.py defaults actor["mem"] to [], which is truthy, so mem[0] is
+    // undefined until the node's physical stats arrive.
+    const ACTORS = {
+      ACTOR_1: { ...MOCK_ACTORS.ACTOR_1, mem: [] },
+    } as unknown as { [actorId: string]: ActorDetail };
+
+    render(<ActorTable actors={ACTORS} />, { wrapper: TEST_APP_WRAPPER });
+
+    expect(await screen.findByText("ACTOR_1")).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+  });
 });

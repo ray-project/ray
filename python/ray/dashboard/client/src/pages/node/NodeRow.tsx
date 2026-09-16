@@ -314,7 +314,7 @@ export const WorkerRow = ({
         </PercentageBar>
       </TableCell>
       <TableCell>
-        {mem && memoryInfo ? (
+        {mem && mem[0] > 0 && memoryInfo ? (
           <PercentageBar num={memoryInfo.rss} total={mem[0]}>
             {memoryConverter(memoryInfo.rss)}/{memoryConverter(mem[0])}(
             {((memoryInfo.rss / mem[0]) * 100).toFixed(1)}

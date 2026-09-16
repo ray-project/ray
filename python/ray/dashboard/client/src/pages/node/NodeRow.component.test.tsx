@@ -141,6 +141,15 @@ describe("WorkerRow", () => {
     expect(screen.queryByText(/75\.0000B/)).not.toBeInTheDocument();
   });
 
+  it("renders no NaN when the node has not reported memory yet", async () => {
+    render(<WorkerRow node={{ ...NODE, mem: [] }} worker={WORKER} />, {
+      wrapper: TEST_APP_WRAPPER,
+    });
+
+    await screen.findByText("echo hi");
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+  });
+
   it("renders a link to the Actor Detail page if the worker is an actor", async () => {
     render(<WorkerRow node={NODE} worker={ACTOR_WORKER} />, {
       wrapper: TEST_APP_WRAPPER,

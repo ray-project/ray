@@ -760,7 +760,7 @@ const ActorTable = ({
                     </PercentageBar>
                   </TableCell>
                   <TableCell>
-                    {mem && processStats?.memoryInfo ? (
+                    {mem && mem[0] > 0 && processStats?.memoryInfo ? (
                       <PercentageBar
                         num={processStats.memoryInfo.rss}
                         total={mem[0]}
