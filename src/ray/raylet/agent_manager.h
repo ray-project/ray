@@ -82,6 +82,9 @@ class AgentManager {
 
   pid_t GetPid();
 
+  /// Reports on the process only, not on whether it can serve requests.
+  bool IsAlive() const;
+
  private:
   void StartAgent(AddProcessToCgroupHook add_to_cgroup);
 

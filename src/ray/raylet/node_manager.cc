@@ -332,7 +332,14 @@ NodeManager::NodeManager(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
       shutdown_raylet_gracefully_,
-      clock_);
+      clock_,
+      RayConfig::instance().agent_register_timeout_ms(),
+      RayConfig::instance().agent_manager_retry_interval_ms(),
+      /*agent_is_alive=*/
+      [this]() {
+        return runtime_env_agent_manager_ != nullptr &&
+               runtime_env_agent_manager_->IsAlive();
+      });
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
