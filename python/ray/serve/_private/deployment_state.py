@@ -1623,15 +1623,28 @@ class ActorReplicaWrapper:
         return stopped
 
     def remove_placement_group(self) -> None:
-        """Remove this replica's placement group, if it still holds one."""
-        if self._placement_group is None:
+        """Remove this replica's placement group, if there is one.
+
+        A gang's shared PG is resolved by name: a member that never reached
+        `on_scheduled`, or that was recovered, holds no handle to it.
+        """
+        pg = self._placement_group
+        if self._gang_context is not None and self._gang_context.pg_name:
+            try:
+                pg = ray.util.get_placement_group(self._gang_context.pg_name)
+            except ValueError:
+                pg = None
+        if pg is None:
             return
         try:
-            ray.util.remove_placement_group(self._placement_group)
+            ray.util.remove_placement_group(pg)
         except ValueError:
             # ValueError thrown from ray.util.remove_placement_group means the
             # placement group has already been removed.
             logger.debug(f"Placement group for {self._replica_id} was already removed.")
+        # Dropped only once the PG is actually gone, so an unexpected error still
+        # leaves the handle in place to retry with.
+        self._placement_group = None
 
     def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
         """Check the active health check (if any).
@@ -4774,7 +4787,7 @@ class DeploymentState:
         self._replicas_by_gang_id[gang_id].add(replica_id)
 
     def _unregister_gang_replica(
-        self, replica_id: ReplicaID, replica: Optional["DeploymentReplica"] = None
+        self, replica_id: ReplicaID, replica: "DeploymentReplica"
     ) -> None:
         """Remove a replica from the gang membership bookkeeping."""
         gang_id = self._gang_id_by_replica.pop(replica_id, None)
@@ -4785,8 +4798,7 @@ class DeploymentState:
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
                     # Safe only now: the PG is shared by the whole gang.
-                    if replica is not None:
-                        replica.remove_placement_group()
+                    replica.remove_placement_group()
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
