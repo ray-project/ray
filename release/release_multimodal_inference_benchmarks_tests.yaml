@@ -9,8 +9,9 @@
   cluster:
     byod:
       runtime_env:
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # Ray Data attempts to limit cluster-wide object store usage of primary copies
