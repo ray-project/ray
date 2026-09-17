@@ -23,10 +23,10 @@
 #include <future>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <utility>
 
 #ifndef _WIN32
+#include <fcntl.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -164,14 +164,25 @@ TEST(PipeLoggerTest, RedirectionWithLeakedChild) {
   const pid_t child = fork();
   ASSERT_GE(child, 0);
   if (child == 0) {
-    // Inherits the pipe's write end and keeps it open past the parent's close.
-    std::this_thread::sleep_for(std::chrono::seconds(60));
-    _exit(0);
+    const int write_fd = stream_redirection_handle.GetWriteFd();
+
+    // Model an application child that inherits redirected stdout across exec.
+    if (dup2(write_fd, STDOUT_FILENO) == -1) {
+      _exit(127);
+    }
+    if (write_fd != STDOUT_FILENO && fcntl(write_fd, F_SETFD, FD_CLOEXEC) == -1) {
+      _exit(127);
+    }
+
+    char sleep_path[] = "/bin/sleep";
+    char sleep_arg[] = "60";
+    char *const argv[] = {sleep_path, sleep_arg, nullptr};
+    execv(sleep_path, argv);
+    _exit(127);
   }
 
-  // Move the handle into the async task: on the pre-fix failure path the
-  // ASSERT below returns from the test body, and the handle must not be
-  // destroyed while the task is still inside Close().
+  // Move the handle into the async task so the main test thread can enforce
+  // an upper bound on Close() and clean up the child if the check fails.
   auto close_result = std::async(
       std::launch::async,
       [handle = std::move(stream_redirection_handle)]() mutable { handle.Close(); });
