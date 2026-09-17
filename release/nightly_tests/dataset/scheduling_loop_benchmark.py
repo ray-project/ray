@@ -13,6 +13,17 @@ Workload profile (defaults mirror production):
   - ``map_batches(batch_size=1000, concurrency=400, num_cpus=1,
     batch_format="pyarrow", zero_copy_batch=True)``
 
+Two knobs make the map side dominate the read side and stretch the run so the
+scheduling loop, not the ramp-up, is what's measured:
+
+  - ``--num-map-ops``: chain N identical map_batches operators (operator
+    fusion is disabled so they stay N separate physical operators, each with
+    its own task pool). Per-iteration scheduling work (update_usages, budget
+    allocation, task completion handling) scales with the operator count.
+  - ``--map-work-passes``: each map task runs this many compute passes over
+    every column (scalar and list values) so a map task costs real CPU time
+    instead of ~60 ms.
+
 The input parquet files are generated (untimed) into a per-run S3 prefix so
 every node in the cluster can read them; only the read + map pipeline is
 timed. Key metric to compare across wheels is the map operator's
@@ -29,6 +40,7 @@ the coordinator is a no-op aside from printing its configuration.
 """
 
 import argparse
+import functools
 import os
 import uuid
 from typing import Any, Dict, List, Optional
@@ -102,6 +114,24 @@ def parse_args() -> argparse.Namespace:
         help="num_cpus per map_batches task.",
     )
     parser.add_argument(
+        "--num-map-ops",
+        type=int,
+        default=1,
+        help=(
+            "Number of chained map_batches operators. Each gets its own "
+            "--concurrency task cap; fusion is disabled when > 1."
+        ),
+    )
+    parser.add_argument(
+        "--map-work-passes",
+        type=int,
+        default=1,
+        help=(
+            "Compute passes each map task runs over all columns (scalar and "
+            "list values). Raise it so map work dominates read work."
+        ),
+    )
+    parser.add_argument(
         "--memory-per-read-task",
         type=int,
         default=0,
@@ -123,6 +153,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("--rows-per-file must be >= 1.")
     if args.concurrency < 1:
         parser.error("--concurrency must be >= 1.")
+    if args.num_map_ops < 1:
+        parser.error("--num-map-ops must be >= 1.")
+    if args.map_work_passes < 1:
+        parser.error("--map-work-passes must be >= 1.")
     return args
 
 
@@ -181,21 +215,57 @@ def generate_input(args: argparse.Namespace, schema: pa.Schema) -> None:
     )
 
 
-def identity_transform(batch: pa.Table) -> pa.Table:
+def _add_one(arr: pa.Array) -> pa.Array:
+    """``arr + 1`` preserving the exact Arrow type (scalar or list<float>)."""
+    if pa.types.is_list(arr.type):
+        # ``flatten()`` returns only the values this (possibly sliced) array
+        # references, while ``offsets`` stay relative to the parent's values
+        # buffer. Rebase the offsets to 0 so they index the flattened values.
+        offsets = arr.offsets
+        offsets = pc.subtract(offsets, offsets[0])
+        values = _add_one(arr.flatten())
+        return pa.ListArray.from_arrays(offsets, values, type=arr.type)
+    return pc.add(arr, pa.scalar(1, type=arr.type))
+
+
+def transform(batch: pa.Table, passes: int = 1) -> pa.Table:
     """Stand-in for the production transform.
 
-    Reads every column (forcing schema deserialization) and applies a trivial
-    float op on the scalar float columns so the work can't be elided. List
-    columns pass through untouched; the scheduling-loop bottleneck is schema
-    overhead, not compute.
+    Reads every column (forcing schema deserialization) and runs ``passes``
+    element-wise passes over the scalar and list values, preserving the schema
+    exactly. One pass is ~free (the production bottleneck was scheduling, not
+    compute); more passes turn each map task into real CPU work so the map
+    operators, not the parquet reads, dominate the pipeline.
     """
-    for i, name in enumerate(batch.column_names):
-        col = batch.column(i)
-        if pa.types.is_floating(col.type):
+    for _ in range(passes):
+        for i, name in enumerate(batch.column_names):
+            chunked = batch.column(i)
             batch = batch.set_column(
-                i, name, pc.add(col, pa.scalar(0.0, type=col.type))
+                i,
+                name,
+                pa.chunked_array(
+                    [_add_one(c) for c in chunked.chunks], type=chunked.type
+                ),
             )
     return batch
+
+
+def _disable_operator_fusion() -> None:
+    """Stop Ray Data from fusing the chained map_batches into one operator.
+
+    Identical map_batches in a row get fused into a single physical operator,
+    which would collapse the --num-map-ops chain back to one operator. There's
+    no public toggle, so remove the rule from the DeveloperAPI physical ruleset
+    (same approach as worker_scaling_benchmark.py).
+    """
+    from ray.data._internal.logical.optimizers import get_physical_ruleset
+    from ray.data._internal.logical.rules import FuseOperators
+
+    ruleset = get_physical_ruleset()
+    try:
+        ruleset.remove(FuseOperators)
+    except ValueError:
+        pass  # Already removed.
 
 
 def _collect_operator_task_metrics(ds: "ray.data.Dataset") -> List[Dict[str, Any]]:
@@ -217,16 +287,24 @@ def _collect_operator_task_metrics(ds: "ray.data.Dataset") -> List[Dict[str, Any
     return chain
 
 
-def _find_operator_metric(
-    op_metrics: List[Dict[str, Any]], name_substr: str, key: str
+def _map_ops_average_task_scheduling_time_s(
+    op_metrics: List[Dict[str, Any]],
 ) -> Optional[float]:
+    """Task-weighted average scheduling time across all MapBatches operators."""
+    total_s = 0.0
+    total_tasks = 0
     for entry in op_metrics:
-        if name_substr in (entry["operator_name"] or ""):
-            return entry.get(key)
-    return None
+        if "MapBatches(" not in (entry["operator_name"] or ""):
+            continue
+        total_s += entry.get("task_scheduling_time_s") or 0.0
+        total_tasks += entry.get("num_tasks_finished") or 0
+    return total_s / total_tasks if total_tasks else None
 
 
 def main(args: argparse.Namespace) -> None:
+    if args.num_map_ops > 1:
+        _disable_operator_fusion()
+
     benchmark = Benchmark()
     schema = make_schema()
     print(
@@ -245,6 +323,11 @@ def main(args: argparse.Namespace) -> None:
     if args.memory_per_read_task > 0:
         read_remote_args["memory"] = args.memory_per_read_task
 
+    map_fn = functools.partial(transform, passes=args.map_work_passes)
+    # Keep the operator name readable ("MapBatches(transform)" rather than
+    # "MapBatches(partial)"); the headline metric matches on "MapBatches(".
+    map_fn.__name__ = transform.__name__
+
     ds_holder = {}
 
     def benchmark_fn():
@@ -253,14 +336,15 @@ def main(args: argparse.Namespace) -> None:
             override_num_blocks=args.num_files,
             ray_remote_args=read_remote_args,
         )
-        ds = ds.map_batches(
-            identity_transform,
-            batch_size=args.batch_size,
-            zero_copy_batch=True,
-            batch_format="pyarrow",
-            concurrency=args.concurrency,
-            num_cpus=args.num_cpus,
-        )
+        for _ in range(args.num_map_ops):
+            ds = ds.map_batches(
+                map_fn,
+                batch_size=args.batch_size,
+                zero_copy_batch=True,
+                batch_format="pyarrow",
+                concurrency=args.concurrency,
+                num_cpus=args.num_cpus,
+            )
         ds_holder["ds"] = ds.materialize()
 
     benchmark.run_fn("scheduling_loop", benchmark_fn)
@@ -269,10 +353,11 @@ def main(args: argparse.Namespace) -> None:
     metrics = collect_dataset_stats(ds)
     op_metrics = _collect_operator_task_metrics(ds)
     metrics["operator_task_metrics"] = op_metrics
-    # Headline number: how long map tasks sit between submission and start.
-    metrics["map_average_task_scheduling_time_s"] = _find_operator_metric(
-        op_metrics, "MapBatches(", "average_task_scheduling_time_s"
-    )
+    # Headline number: how long map tasks sit between submission and start,
+    # task-weighted across all chained map operators.
+    metrics[
+        "map_average_task_scheduling_time_s"
+    ] = _map_ops_average_task_scheduling_time_s(op_metrics)
     metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
     metrics["num_files"] = args.num_files
     metrics["rows_per_file"] = args.rows_per_file
@@ -281,6 +366,8 @@ def main(args: argparse.Namespace) -> None:
     metrics["batch_size"] = args.batch_size
     metrics["concurrency"] = args.concurrency
     metrics["num_cpus"] = args.num_cpus
+    metrics["num_map_ops"] = args.num_map_ops
+    metrics["map_work_passes"] = args.map_work_passes
     benchmark.result["scheduling_loop"].update(metrics)
 
     print("Per-operator task metrics:")
@@ -309,6 +396,8 @@ if __name__ == "__main__":
             "BATCH_SIZE": args.batch_size,
             "CONCURRENCY": args.concurrency,
             "NUM_CPUS": args.num_cpus,
+            "NUM_MAP_OPS": args.num_map_ops,
+            "MAP_WORK_PASSES": args.map_work_passes,
         }
     )
     try:

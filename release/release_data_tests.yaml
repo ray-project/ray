@@ -1257,10 +1257,16 @@
       --blocks-per-worker 4
 
 # Production-shape read_parquet -> map_batches pipeline: 140-column mixed
-# schema (scalar float32/int64 + list<float32>), 2000 input files, and a
-# 400-task concurrency cap with batch_format="pyarrow". Reproduces the
-# scheduling-loop bottleneck seen in an ML feature transform workload; the
-# headline metric is the map operator's average_task_scheduling_time_s.
+# schema (scalar float32/int64 + list<float32>), one read task per input
+# file, batch_format="pyarrow". Reproduces the scheduling-loop bottleneck
+# seen in an ML feature transform workload; the headline metric is the map
+# operators' task-weighted average_task_scheduling_time_s.
+#
+# Sized so the scheduling loop, not the read ramp-up, is what's measured:
+# 8 chained map operators (fusion disabled) x 200 compute passes make a map
+# task ~3s vs ~2s for a read, so >90% of CPU time is in the maps, and 6000
+# files keep the 800-CPU cluster busy for several minutes. Per-op
+# concurrency 100 x 8 ops = the cluster's 800 CPUs.
 - name: scheduling_loop_wide_schema
   python: "3.10"
   frequency: weekly
@@ -1291,11 +1297,13 @@
     script: >
       PYSPY_ENABLED=1
       python scheduling_loop_benchmark.py
-      --num-files 2000
+      --num-files 6000
       --rows-per-file 1200
       --batch-size 1000
-      --concurrency 400
+      --concurrency 100
       --num-cpus 1
+      --num-map-ops 8
+      --map-work-passes 200
 
 
 ######################
