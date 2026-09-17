@@ -44,12 +44,16 @@ def partition_files(
 def _build_pruners(
     file_extensions: Optional[List[str]],
     partition_filter: Optional["PathPartitionFilter"],
+    partition_pruner: Optional[FilePruner] = None,
 ) -> List[FilePruner]:
     pruners: List[FilePruner] = []
     if file_extensions is not None:
         pruners.append(FileExtensionPruner(file_extensions))
     if partition_filter is not None:
         pruners.append(PartitionPruner(partition_filter))
+    if partition_pruner is not None:
+        # Stacks with, rather than replaces, any user ``partition_filter``.
+        pruners.append(partition_pruner)
     return pruners
 
 
@@ -61,6 +65,7 @@ def list_files_for_each_block(
     filesystem: "FileSystem",
     file_extensions: Optional[List[str]] = None,
     partition_filter: Optional["PathPartitionFilter"] = None,
+    partition_pruner: Optional[FilePruner] = None,
     preserve_order: bool = False,
     predicate: Optional["Expr"] = None,
     limit: Optional[int] = None,
@@ -87,7 +92,7 @@ def list_files_for_each_block(
     single task when shuffle is requested so the indexer sees the full file
     set.
     """
-    pruners = _build_pruners(file_extensions, partition_filter)
+    pruners = _build_pruners(file_extensions, partition_filter, partition_pruner)
     for block in blocks:
         for manifest in indexer.list_files(
             block[PATH_COLUMN_NAME],

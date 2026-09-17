@@ -1,10 +1,13 @@
+import asyncio
 import copy
 import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +16,7 @@ import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
+from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
 from opentelemetry.proto.common.v1.common_pb2 import AnyValue, KeyValue
 from opentelemetry.proto.metrics.v1.metrics_pb2 import Metric as OTelMetric
 
@@ -257,6 +261,100 @@ def test_export_histogram_data_normalizes_mixed_attribute_sets():
             "bucket_counts": [1, 0, 0],
         },
     ]
+
+
+def _histogram_metric(name, bounds, bucket_counts, model_name):
+    metric = OTelMetric(name=name, description="Test Histogram")
+    data_point = metric.histogram.data_points.add()
+    data_point.count = sum(bucket_counts)
+    data_point.explicit_bounds.extend(bounds)
+    data_point.bucket_counts.extend(bucket_counts)
+    data_point.attributes.append(
+        KeyValue(key="model_name", value=AnyValue(string_value=model_name))
+    )
+    return metric
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_export_histogram_data_skips_emitter_with_different_bounds(
+    mock_get_meter, mock_set_meter_provider
+):
+    """Two co-located emitters (e.g. vLLM engines with different max_model_len) send
+    the same metric name with different bucket bounds. A metric name is only
+    registered once per node, so the second emitter's data point cannot be
+    reconstructed. It must be skipped without raising, leaving the first emitter's
+    data intact."""
+    from opentelemetry.metrics import NoOpHistogram
+
+    from ray._private.telemetry.open_telemetry_metric_recorder import (
+        OpenTelemetryMetricRecorder,
+    )
+
+    real_histogram = NoOpHistogram(name="vllm_request_prompt_tokens")
+    mock_histogram = MagicMock(wraps=real_histogram, spec=real_histogram)
+    mock_meter = MagicMock()
+    mock_meter.create_histogram.return_value = mock_histogram
+    mock_get_meter.return_value = mock_meter
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = OpenTelemetryMetricRecorder()
+
+    # First emitter registers the metric with max_model_len=8192 derived bounds.
+    ReporterAgent._export_histogram_data(
+        agent,
+        _histogram_metric(
+            "vllm_request_prompt_tokens", [1.0, 2.0, 5.0], [0, 1, 0, 0], "len8k-qwen"
+        ),
+    )
+    # Second emitter reports the same name with max_model_len=32768 derived bounds.
+    # This must not raise.
+    ReporterAgent._export_histogram_data(
+        agent,
+        _histogram_metric(
+            "vllm_request_prompt_tokens",
+            [1.0, 2.0, 5.0, 10.0, 20.0],
+            [0, 0, 2, 0, 0, 0],
+            "len32k-qwen",
+        ),
+    )
+
+    recorded_models = [
+        call.kwargs["attributes"]["model_name"]
+        for call in mock_histogram.record.call_args_list
+    ]
+    assert recorded_models == ["len8k-qwen"]
+
+
+def test_ingest_keeps_remaining_metrics_after_a_mismatching_histogram():
+    """A histogram whose bounds disagree with the registered ones must not discard
+    the rest of the reporting component's batch."""
+    from opentelemetry.proto.collector.metrics.v1 import metrics_service_pb2
+
+    request = metrics_service_pb2.ExportMetricsServiceRequest()
+    scope_metrics = request.resource_metrics.add().scope_metrics.add()
+
+    bad = scope_metrics.metrics.add()
+    bad.CopyFrom(
+        _histogram_metric("some_histogram", [1.0, 2.0], [0, 1, 0], "len8k-qwen")
+    )
+
+    good = scope_metrics.metrics.add()
+    good.name = "some_gauge"
+    good.gauge.data_points.add().as_double = 1.0
+
+    agent = object.__new__(ReporterAgent)
+    agent._open_telemetry_metric_recorder = MagicMock()
+    agent._export_failure_warned = set()
+    agent._open_telemetry_metric_recorder.record_histogram_aggregated_batch.side_effect = RuntimeError(
+        "boom"
+    )
+
+    ReporterAgent._ingest_exported_metrics(agent, request)
+
+    agent._open_telemetry_metric_recorder.set_metric_value.assert_called_once_with(
+        "some_gauge", {}, 1.0
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -1908,6 +2006,40 @@ def test_profiling_enabled_endpoint_returns_defaults(shutdown_only):
         return True
 
     wait_for_condition(verify, timeout=20)
+
+
+def test_export_processes_metrics_off_event_loop() -> None:
+    request = metrics_service_pb2.ExportMetricsServiceRequest()
+    scope_metrics = request.resource_metrics.add().scope_metrics.add()
+    histogram = scope_metrics.metrics.add()
+    histogram.histogram.data_points.add().count = 1
+    gauge = scope_metrics.metrics.add()
+    gauge.gauge.data_points.add().as_double = 1.0
+
+    agent = object.__new__(ReporterAgent)
+    metric_calls: list[tuple[str, int]] = []
+
+    def record_histogram(_: object) -> None:
+        metric_calls.append(("histogram", threading.get_ident()))
+
+    def record_number(_: object) -> None:
+        metric_calls.append(("number", threading.get_ident()))
+
+    agent._export_histogram_data = record_histogram
+    agent._export_number_data = record_number
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        agent._otlp_ingest_executor = executor
+        asyncio.run(
+            ReporterAgent.Export(
+                agent,
+                request=request,
+                context=MagicMock(),
+            )
+        )
+
+    assert [kind for kind, _ in metric_calls] == ["histogram", "number"]
+    assert all(thread_id != threading.get_ident() for _, thread_id in metric_calls)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 import math
-from typing import Dict, Optional, Union
+from typing import Optional, TypedDict
 
 try:
     from datasketches import kll_doubles_sketch
@@ -7,6 +7,22 @@ try:
     _DATASKETCHES_AVAILABLE = True
 except ImportError:
     _DATASKETCHES_AVAILABLE = False
+
+
+class DistributionStats(TypedDict):
+    """Statistics calculated by a ``DistributionTracker``."""
+
+    num_samples: int
+    mean: float
+    variance: float
+    min: Optional[float]
+    max: Optional[float]
+    p25: Optional[float]
+    p50: Optional[float]
+    p75: Optional[float]
+    p90: Optional[float]
+    p95: Optional[float]
+    p99: Optional[float]
 
 
 class DistributionTracker:
@@ -137,7 +153,7 @@ class DistributionTracker:
     def p99(self) -> Optional[float]:
         return self._quantile(0.99)
 
-    def as_dict(self) -> Dict[str, Optional[Union[int, float]]]:
+    def as_dict(self) -> DistributionStats:
         return {
             "num_samples": self.num_samples,
             "mean": self.mean,

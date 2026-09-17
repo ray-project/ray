@@ -17,13 +17,25 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture(
     autouse=True,
-    params=[ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.SHUFFLE_V2],
-    ids=["shufflev1", "shufflev2"],
+    params=[
+        (ShuffleStrategy.HASH_SHUFFLE, False),
+        (ShuffleStrategy.SHUFFLE_V2, False),
+        (ShuffleStrategy.SHUFFLE_V2, True),
+    ],
+    ids=["shufflev1", "shufflev2", "shufflev2external"],
 )
 def hash_shuffle_version(request, restore_data_context):
-    """Run every join test on both v1 (old actor-based) & v2 shuffle."""
-    DataContext.get_current().shuffle_strategy = request.param
-    return request.param
+    """Run every join test on v1 (old actor-based), v2 (object-store), and v2
+    external (on-disk, file-transport) shuffle."""
+    strategy, use_external = request.param
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = strategy
+    ctx.use_external_hash_shuffle = use_external
+    if strategy == ShuffleStrategy.SHUFFLE_V2:
+        # One map task per input bundle, so reducers see multiple shards per
+        # partition (the default batching folds small test data into one mapper).
+        ctx.shuffle_input_batch_bytes = 0
+    return strategy
 
 
 @pytest.mark.parametrize(
@@ -410,6 +422,59 @@ def test_anti_join_no_matches(
     expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+@pytest.mark.parametrize("empty_side", ["left", "right"])
+def test_join_with_unknown_schema_empty_side(
+    ray_start_regular_shared_2_cpus,
+    hash_shuffle_version,
+    join_type,
+    empty_side,
+):
+    if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2:
+        pytest.skip("Unknown-schema empty-side handling is specific to shuffle V2")
+
+    non_empty = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+    unknown_schema_empty = ray.data.range(0).map_batches(lambda batch: batch)
+
+    if empty_side == "left":
+        left, right = unknown_schema_empty, non_empty
+    else:
+        left, right = non_empty, unknown_schema_empty
+
+    result = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+    ).take_all()
+
+    preserves_non_empty_side = (
+        join_type == "full_outer"
+        or join_type in ("left_outer", "left_anti")
+        and empty_side == "right"
+        or join_type in ("right_outer", "right_anti")
+        and empty_side == "left"
+    )
+    expected = (
+        [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
+        if preserves_non_empty_side
+        else []
+    )
+    assert sorted(result, key=lambda row: row["id"]) == expected
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
@@ -1012,6 +1077,469 @@ def test_overlapping_non_key_columns_without_suffixes(
         assert "Left and right columns suffixes cannot be both None" in str(
             exc_info.value.cause
         )
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_join_tables_suffix_colliding_with_existing_column(side):
+    """A suffix that renames a column onto a name already used on the same side
+    must raise a clear ValueError naming it, not a Polars DuplicateError."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    # The side carrying the suffix also already holds the suffixed name, and
+    # that name is not shared with the other side, so nothing renames it out
+    # of the way and renaming ``value`` would duplicate it.
+    if side == "left":
+        left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [0, 0]})
+        right = pa.table({"id": [1], "value": [99]})
+        suffixes = {"left_columns_suffix": "_l"}
+        expected = "Left columns suffix '_l' collides with existing left columns"
+    else:
+        left = pa.table({"id": [1, 2], "value": [10, 20]})
+        right = pa.table({"id": [1], "value": [99], "value_r": [0]})
+        suffixes = {"right_columns_suffix": "_r"}
+        expected = "Right columns suffix '_r' collides with existing right columns"
+
+    with pytest.raises(ValueError) as exc_info:
+        join_tables(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("id",),
+            right_key_col_names=("id",),
+            **suffixes,
+        )
+
+    assert expected in str(exc_info.value)
+    assert f"value_{side[0]}" in str(exc_info.value)
+
+
+def test_join_tables_suffix_not_flagged_when_name_is_free():
+    """The check must not fire when the suffixed name is unused: a left key
+    sharing a name with a right payload column is renamed on the right only."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1, 2], "value": [10, 20]})
+    right = pa.table({"id": [1], "value": [99]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+    )
+    assert joined.column_names == ["id", "value_l", "value"]
+
+
+def test_join_tables_suffix_when_occupant_is_also_renamed():
+    """An already-suffixed column is not a conflict when the same mapping
+    renames it too, since Polars applies the mapping in one step. This is the
+    shape a self-join or a chained join hits once an earlier join has left
+    suffixed columns behind."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    # Both ``value`` and ``value_l`` are shared non-key columns, so both sides
+    # rename both: the left mapping is {value: value_l, value_l: value_l_l}.
+    left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [1, 2]})
+    right = pa.table({"id": [1], "value": [99], "value_l": [9]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+        right_columns_suffix="_r",
+    )
+    assert joined.column_names == [
+        "id",
+        "value_l",
+        "value_l_l",
+        "value_r",
+        "value_l_r",
+    ]
+    assert joined.to_pylist() == [
+        {"id": 1, "value_l": 10, "value_l_l": 1, "value_r": 99, "value_l_r": 9}
+    ]
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [JoinType.LEFT_SEMI, JoinType.LEFT_ANTI, JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI],
+)
+def test_join_tables_semi_anti_suffixes_do_not_rename_kept_side(join_type):
+    """Semi/anti results contain one side only; suffixes must not rewrite names."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1, 2], "value": [10, 20]})
+    right = pa.table({"id": [1], "value": [99]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+        right_columns_suffix="_r",
+    )
+    assert "value" in joined.column_names
+    assert "value_l" not in joined.column_names
+    assert "value_r" not in joined.column_names
+
+    rows = joined.to_pylist()
+    if join_type is JoinType.LEFT_SEMI:
+        assert rows == [{"id": 1, "value": 10}]
+    elif join_type is JoinType.LEFT_ANTI:
+        assert rows == [{"id": 2, "value": 20}]
+    elif join_type is JoinType.RIGHT_SEMI:
+        assert rows == [{"id": 1, "value": 99}]
+    else:
+        assert rows == []
+
+
+@pytest.mark.parametrize(
+    "join_type", ["left_semi", "left_anti", "right_semi", "right_anti"]
+)
+def test_semi_anti_overlapping_columns_ignore_suffixes(
+    ray_start_regular_shared_2_cpus, join_type
+):
+    """Dataset.join semi/anti must keep original column names when suffixes are set."""
+    left = ray.data.from_items([{"id": 1, "value": 10}, {"id": 2, "value": 20}])
+    right = ray.data.from_items([{"id": 1, "value": 99}])
+    joined = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+        left_suffix="_l",
+        right_suffix="_r",
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["id"])
+    assert all("value" in row and "value_l" not in row for row in result)
+
+    if join_type == "left_semi":
+        assert result == [{"id": 1, "value": 10}]
+    elif join_type == "left_anti":
+        assert result == [{"id": 2, "value": 20}]
+    elif join_type == "right_semi":
+        assert result == [{"id": 1, "value": 99}]
+    else:
+        assert result == []
+
+
+@pytest.mark.parametrize("join_type", ["right_semi", "right_anti"])
+def test_right_semi_anti_asymmetric_keys(ray_start_regular_shared_2_cpus, join_type):
+    """Right semi/anti must swap join keys when Polars rewrites them as left joins."""
+    left = ray.data.from_items(
+        [{"id": 0, "lval": 10}, {"id": 1, "lval": 20}, {"id": 2, "lval": 30}]
+    )
+    right = ray.data.from_items(
+        [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+            {"user_id": 3, "rval": 300},
+        ]
+    )
+
+    joined = left.join(
+        right,
+        join_type=join_type,
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["user_id"])
+
+    if join_type == "right_semi":
+        assert result == [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+        ]
+    else:
+        assert result == [{"user_id": 3, "rval": 300}]
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [JoinType.INNER, JoinType.LEFT_OUTER, JoinType.FULL_OUTER],
+)
+def test_join_tables_asymmetric_keys_coalesce_into_left(join_type):
+    """Inner/left/full joins coalesce the key into the left name.
+
+    Matches the Arrow kernel, which drops the right key column.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [0, 1, 2], "lval": [10, 20, 30]})
+    right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    assert "id" in joined.column_names
+    assert "user_id" not in joined.column_names
+
+    # Plan-time schema inference joins empty tables; it must agree.
+    empty_joined = join_tables(
+        left.schema.empty_table(),
+        right.schema.empty_table(),
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    assert empty_joined.column_names == joined.column_names
+
+    rows = {row["id"]: row for row in joined.to_pylist()}
+    if join_type is JoinType.INNER:
+        assert set(rows) == {0, 1}
+    elif join_type is JoinType.LEFT_OUTER:
+        assert set(rows) == {0, 1, 2}
+        assert rows[2]["rval"] is None
+    else:
+        assert set(rows) == {0, 1, 2, 3}
+        assert rows[2]["rval"] is None
+        assert rows[3]["lval"] is None
+
+
+def test_join_tables_right_outer_asymmetric_keys_coalesce_into_right():
+    """A right outer join coalesces the key into the *right* name.
+
+    The preserved side owns the coalesced key, so ``right_on`` survives and
+    ``on`` does not. This matches the Arrow kernel.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [0, 1, 2], "lval": [10, 20, 30]})
+    right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.RIGHT_OUTER,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    assert "user_id" in joined.column_names
+    assert "id" not in joined.column_names
+
+    rows = {row["user_id"]: row for row in joined.to_pylist()}
+    assert set(rows) == {0, 1, 3}
+    assert rows[3]["lval"] is None
+    assert rows[3]["rval"] == 300
+
+
+def test_join_tables_right_outer_keeps_coalesced_key_when_left_shares_name():
+    """If the left has a non-key named like the right key, Polars suffixes
+    the coalesced key. That suffixed column is the key and must survive.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [0, 1, 2], "user_id": [9, 8, 7], "lval": [10, 20, 30]})
+    right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.RIGHT_OUTER,
+        left_key_col_names=("id",),
+        right_key_col_names=("user_id",),
+    )
+    # "user_id" is the left payload; "user_id_right" is the coalesced key.
+    assert "user_id" in joined.column_names
+    assert "user_id_right" in joined.column_names
+
+    rows = {row["user_id_right"]: row for row in joined.to_pylist()}
+    assert set(rows) == {0, 1, 3}
+    assert rows[0]["user_id"] == 9
+    assert rows[3]["user_id"] is None
+    assert rows[3]["rval"] == 300
+
+
+@pytest.mark.parametrize("join_type", [JoinType.INNER, JoinType.LEFT_OUTER])
+@pytest.mark.parametrize("id_right_side", ["left", "right"])
+def test_join_tables_keeps_payload_column_named_like_suffixed_key(
+    join_type, id_right_side
+):
+    """A payload column named ``{right_key}_right`` must survive the join.
+
+    Post-join cleanup drops Polars-generated suffixed right keys. The
+    Polars suffix defaults to ``_right`` even when the caller passed none,
+    so a real ``id_right`` column on an ``id`` join must not be treated as
+    a duplicate key.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    if id_right_side == "left":
+        left = pa.table({"id": [1, 2], "id_right": [10, 20], "lval": [100, 200]})
+        right = pa.table({"id": [1], "rval": [99]})
+    else:
+        left = pa.table({"id": [1, 2], "lval": [100, 200]})
+        right = pa.table({"id": [1], "id_right": [10], "rval": [99]})
+
+    joined = join_tables(
+        left,
+        right,
+        join_type=join_type,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+    )
+    assert "id_right" in joined.column_names
+    rows = {row["id"]: row for row in joined.to_pylist()}
+    assert rows[1]["id_right"] == 10
+    if join_type is JoinType.LEFT_OUTER:
+        assert 2 in rows
+        if id_right_side == "left":
+            assert rows[2]["id_right"] == 20
+        else:
+            assert rows[2]["id_right"] is None
+
+
+def test_right_outer_asymmetric_keys(ray_start_regular_shared_2_cpus):
+    """Dataset.join right_outer keeps `right_on` as the coalesced key name.
+
+    The preserved (right) side owns the key, so unmatched right rows carry
+    their own key value and `on` is not part of the output.
+    """
+    left = ray.data.from_items(
+        [{"id": 0, "lval": 10}, {"id": 1, "lval": 20}, {"id": 2, "lval": 30}]
+    )
+    right = ray.data.from_items(
+        [
+            {"user_id": 0, "rval": 100},
+            {"user_id": 1, "rval": 200},
+            {"user_id": 3, "rval": 300},
+        ]
+    )
+
+    joined = left.join(
+        right,
+        join_type="right_outer",
+        num_partitions=2,
+        on=("id",),
+        right_on=("user_id",),
+    )
+    result = sorted(joined.take_all(), key=lambda row: row["user_id"])
+    assert result == [
+        {"user_id": 0, "lval": 10, "rval": 100},
+        {"user_id": 1, "lval": 20, "rval": 200},
+        {"user_id": 3, "lval": None, "rval": 300},
+    ]
+
+
+def test_join_tables_empty_yields_schema():
+    """A 0-row Polars streaming join must still yield a schema-carrying table."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import (
+        _join_tables_iter,
+        join_tables,
+    )
+
+    left = pa.schema(
+        [pa.field("k", pa.string()), pa.field("lval", pa.int32())]
+    ).empty_table()
+    right = pa.schema(
+        [pa.field("k", pa.string()), pa.field("rval", pa.float32())]
+    ).empty_table()
+
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("k",),
+        right_key_col_names=("k",),
+    )
+    # Polars exports String as large_string.
+    assert joined.schema == pa.schema(
+        [
+            pa.field("k", pa.large_string()),
+            pa.field("lval", pa.int32()),
+            pa.field("rval", pa.float32()),
+        ]
+    )
+
+    batches = list(
+        _join_tables_iter(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("k",),
+            right_key_col_names=("k",),
+        )
+    )
+    assert len(batches) == 1
+    assert batches[0].num_rows == 0
+    assert batches[0].schema == joined.schema
+
+
+def test_chained_join_with_empty_partitions(ray_start_regular_shared_2_cpus):
+    """A 0-row Polars streaming join must still yield a schema-carrying table.
+
+    Mimics a TPCH-style chain (nation ⋈ region ⋈ supplier) where the first
+    join uses more partitions than distinct keys, so many partitions have
+    0 matching rows. If those partitions yield nothing, BlockOutputBuffer
+    manufactures a 0-column sentinel that poisons the second join.
+    """
+    import pyarrow as pa
+
+    nation = ray.data.from_arrow(
+        pa.table(
+            {
+                "n_nationkey": pa.array(range(5), type=pa.int64()),
+                "n_regionkey": pa.array([10, 11, 12, 13, 14], type=pa.int64()),
+            }
+        )
+    )
+    region = ray.data.from_arrow(
+        pa.table(
+            {
+                "r_regionkey": pa.array(range(3), type=pa.int64()),
+                "r_name": ["X", "Y", "Z"],
+            }
+        )
+    )
+    supplier = ray.data.from_arrow(
+        pa.table(
+            {
+                "s_suppkey": pa.array(range(20), type=pa.int64()),
+                "s_nationkey": pa.array([i % 5 for i in range(20)], type=pa.int64()),
+            }
+        )
+    )
+
+    nation_region = nation.join(
+        region,
+        join_type="inner",
+        on=("n_regionkey",),
+        right_on=("r_regionkey",),
+        num_partitions=16,
+    )
+    result = nation_region.join(
+        supplier,
+        join_type="inner",
+        on=("n_nationkey",),
+        right_on=("s_nationkey",),
+        num_partitions=16,
+    )
+
+    assert len(result.take_all()) == 0
 
 
 if __name__ == "__main__":

@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -161,6 +162,64 @@ def test_submit_job_does_not_mutate_runtime_env():
         == "test_job"
     )
     assert runtime_env == original_runtime_env
+
+
+@pytest.mark.parametrize(
+    "extension,archive_format",
+    [
+        (".tar.gz", "gztar"),
+        (".tgz", "gztar"),
+        (".tar.xz", "xztar"),
+    ],
+)
+def test_submit_job_with_local_working_dir_tar_archive(
+    tmp_path, extension, archive_format
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    (source_dir / "test.py").write_text("print('hello')")
+    archive = Path(
+        shutil.make_archive(str(tmp_path / "package"), archive_format, source_dir)
+    )
+    if extension == ".tgz":
+        tgz_archive = archive.with_name("package.tgz")
+        archive.rename(tgz_archive)
+        archive = tgz_archive
+
+    class TestClient(JobSubmissionClient):
+        def __init__(self):
+            self._default_metadata = {}
+            self.requests = []
+
+        def _do_request(self, method, endpoint, **kwargs):
+            self.requests.append((method, endpoint, kwargs))
+            if method == "GET":
+                return MagicMock(status_code=404)
+            if method == "PUT":
+                return MagicMock(status_code=200)
+            return MagicMock(
+                status_code=200,
+                json=lambda: {"job_id": "test_job", "submission_id": "test_job"},
+            )
+
+    client = TestClient()
+    assert (
+        client.submit_job(
+            entrypoint="python test.py",
+            runtime_env={"working_dir": str(archive)},
+        )
+        == "test_job"
+    )
+
+    get_request, put_request, submit_request = client.requests
+    assert get_request[:2] == ("GET", put_request[1])
+    assert put_request[0] == "PUT"
+    assert put_request[2]["data"] == archive.read_bytes()
+    assert submit_request[:2] == ("POST", "/api/jobs/")
+    package_uri = submit_request[2]["json_data"]["runtime_env"]["working_dir"]
+    assert package_uri.startswith("gcs://")
+    expected_extension = ".tar.gz" if extension == ".tgz" else extension
+    assert package_uri.endswith(expected_extension)
 
 
 @pytest.mark.parametrize("expiration_s", [0, 10])

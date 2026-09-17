@@ -589,6 +589,53 @@ def test_extract_tar_layer_preserves_mtimes(tmp_path):
     assert int(os.path.getmtime(dest / "etc")) == archived_mtime
 
 
+def test_image_cache_eviction(tmp_path):
+    """LRU eviction under a size cap skips in-use, kept, and unextracted images."""
+    import os
+    import time
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        _mark_image_in_use,
+        evict_least_recently_used_images,
+    )
+
+    def make_image(name, size, extracted=True, age=0):
+        d = tmp_path / name
+        d.mkdir()
+        (d / "blob").write_bytes(b"x" * size)
+        if extracted:
+            marker = d / ".extracted"
+            marker.write_text("ok")
+            past = time.time() - age
+            os.utime(marker, (past, past))
+        return d
+
+    oldest = make_image("old", 1000, age=5000)
+    busy = make_image("busy", 1000, age=4000)
+    kept = make_image("kept", 1000, age=3000)
+    newer = make_image("new", 1000, age=2000)
+    newest = make_image("newest", 1000, age=1000)
+    partial = make_image("partial", 1000, extracted=False)
+    # An archive without an image directory (left by the old tarball default)
+    # counts toward the cap and is evictable on its own.
+    orphan_tar = tmp_path / "orphan.tar"
+    orphan_tar.write_bytes(b"t" * 1000)
+    os.utime(orphan_tar, (time.time() - 6000, time.time() - 6000))
+    _mark_image_in_use(str(busy), "sb-live")
+
+    # ~6000 bytes counted (partial has no marker): three evictions, oldest
+    # first, bring the cache under the cap.
+    evict_least_recently_used_images(str(tmp_path), max_bytes=3100, keep="kept")
+
+    assert not orphan_tar.exists()  # oldest evictable goes first
+    assert not oldest.exists()
+    assert busy.exists()  # in use: protected
+    assert kept.exists()  # the image being pulled: protected
+    assert not newer.exists()  # third eviction reaches the cap
+    assert newest.exists()
+    assert partial.exists()  # mid-pull (no marker): protected
+
+
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
     """/etc/hosts is a per-sandbox read-write bind (localhost must resolve),
     and /tmp stays on the rootfs (readonly sandboxes get an explicit tmpfs
