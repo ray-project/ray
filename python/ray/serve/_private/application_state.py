@@ -433,11 +433,6 @@ class ApplicationState:
                 if info.direct_http:
                     direct_http_deployment_names.append(name)
 
-        # Sorted so the target groups the controller builds from these names are
-        # stable across ticks. Broadcasts are deduped by whole-object equality, so
-        # an unstable order would churn HAProxy reloads.
-        direct_http_deployment_names.sort()
-
         target_state = ApplicationTargetState(
             deployment_infos,
             code_version,
@@ -1474,7 +1469,7 @@ class ApplicationStateManager:
         """Names of the app's deployments that opted in with `_direct_http`.
 
         These are non-ingress deployments whose replicas own their own HTTP port.
-        Returned sorted; empty for an unknown app or one with no such deployments.
+        Empty for an unknown app or one with no such deployments.
         """
         if name not in self._application_states:
             return []

@@ -82,7 +82,7 @@ class FakeApplicationStateManager:
         return self.ingress_request_router_deployments.get(app_name)
 
     def get_direct_http_deployment_names(self, app_name):
-        return sorted(self.direct_http_deployments.get(app_name, []))
+        return list(self.direct_http_deployments.get(app_name, []))
 
 
 class FakeProxyState:

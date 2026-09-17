@@ -489,7 +489,7 @@ def test_application_state_clears_stale_ingress_request_router(
 def test_application_state_tracks_direct_http_deployments(
     mocked_application_state,
 ):
-    """`_direct_http` deployments are discovered and reported sorted by name."""
+    """Only deployments marked `_direct_http` are discovered and reported."""
     application_state, _ = mocked_application_state
 
     application_state._set_target_state(
@@ -504,9 +504,7 @@ def test_application_state_tracks_direct_http_deployments(
         target_config=None,
     )
 
-    # Sorted, so the target groups built from these names don't churn between
-    # ticks and cause spurious HAProxy reloads.
-    assert application_state.direct_http_deployments == ["ServerA", "ServerB"]
+    assert set(application_state.direct_http_deployments) == {"ServerA", "ServerB"}
 
 
 def test_application_state_clears_stale_direct_http_deployments(
