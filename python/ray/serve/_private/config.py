@@ -163,6 +163,12 @@ class DeploymentConfig(BaseModel):
         rolling_update_percentage: The fraction of replicas (of
             ``target_num_replicas``) to update at a time during a rolling
             update. Must be in ``(0.0, 1.0]``. Defaults to 0.2 (20%).
+        max_surge_percent: Extra replicas allowed during a rolling restart,
+            as a percentage of the target count, rounded up to whole replicas
+            or gangs. Must be in ``[0, 100]``. When positive, replacements start
+            before old replicas stop. If capacity is unavailable, old replicas
+            keep serving while replacements wait. Defaults to ``0``, which
+            stops old replicas before starting replacements.
     """
 
     num_replicas: Optional[NonNegativeInt] = Field(
@@ -250,6 +256,13 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_ROLLING_UPDATE_PERCENTAGE,
         gt=0.0,
         le=1.0,
+        update_type=DeploymentOptionUpdateType.LightWeight,
+    )
+
+    max_surge_percent: int = Field(
+        default=0,
+        ge=0,
+        le=100,
         update_type=DeploymentOptionUpdateType.LightWeight,
     )
 
