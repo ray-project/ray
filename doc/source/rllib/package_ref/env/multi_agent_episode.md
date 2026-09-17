@@ -1,28 +1,33 @@
-.. _multi-agent-episode-reference-docs:
+---
+myst:
+  html_meta:
+    description: "API reference for RLlib's MultiAgentEpisode class, covering construction, information access, environment data, and episode chunking."
+---
 
-MultiAgentEpisode API
-=====================
+(multi-agent-episode-reference-docs)=
 
-.. include:: /_includes/rllib/new_api_stack.rst
+# MultiAgentEpisode API
 
-rllib.env.multi_agent_episode.MultiAgentEpisode
------------------------------------------------
+## rllib.env.multi_agent_episode.MultiAgentEpisode
 
+```{eval-rst}
 .. currentmodule:: ray.rllib.env.multi_agent_episode
+```
 
-Constructor
-~~~~~~~~~~~
+### Constructor
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: env/
 
     ~MultiAgentEpisode
     ~MultiAgentEpisode.validate
+```
 
-Getting basic information
-~~~~~~~~~~~~~~~~~~~~~~~~~
+### Getting basic information
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: env/
@@ -33,9 +38,11 @@ Getting basic information
     ~MultiAgentEpisode.is_numpy
     ~MultiAgentEpisode.env_steps
     ~MultiAgentEpisode.agent_steps
+```
 
-Multi-agent information
-~~~~~~~~~~~~~~~~~~~~~~~
+### Multi-agent information
+
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: env/
@@ -43,9 +50,11 @@ Multi-agent information
     ~MultiAgentEpisode.module_for
     ~MultiAgentEpisode.get_agents_to_act
     ~MultiAgentEpisode.get_agents_that_stepped
+```
 
-Getting environment data
-~~~~~~~~~~~~~~~~~~~~~~~~
+### Getting environment data
+
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: env/
@@ -57,18 +66,22 @@ Getting environment data
     ~MultiAgentEpisode.get_extra_model_outputs
     ~MultiAgentEpisode.get_terminateds
     ~MultiAgentEpisode.get_truncateds
+```
 
-Adding data
-~~~~~~~~~~~
+### Adding data
+
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: env/
 
     ~MultiAgentEpisode.add_env_reset
     ~MultiAgentEpisode.add_env_step
+```
 
-Creating and handling episode chunks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Creating and handling episode chunks
+
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: env/
@@ -77,3 +90,4 @@ Creating and handling episode chunks
     ~MultiAgentEpisode.slice
     ~MultiAgentEpisode.concat_episode
     ~MultiAgentEpisode.to_numpy
+```

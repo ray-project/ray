@@ -1,13 +1,16 @@
-.. _multi-agent-env-runner-reference-docs:
+---
+myst:
+  html_meta:
+    description: "API reference for RLlib's MultiAgentEnvRunner class."
+---
 
-MultiAgentEnvRunner API
-=======================
+(multi-agent-env-runner-reference-docs)=
 
-.. include:: /_includes/rllib/new_api_stack.rst
+# MultiAgentEnvRunner API
 
-rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
-----------------------------------------------------
+## rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
 
+```{eval-rst}
 .. autoclass:: ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
 
     .. automethod:: __init__
@@ -16,3 +19,4 @@ rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
     .. automethod:: get_spaces
     .. automethod:: make_env
     .. automethod:: make_module
+```

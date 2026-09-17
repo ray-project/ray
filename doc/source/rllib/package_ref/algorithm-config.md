@@ -1,24 +1,30 @@
-.. _algorithm-config-reference-docs:
+---
+myst:
+  html_meta:
+    description: "API reference for RLlib's AlgorithmConfig, covering constructor, builder, getter, and configuration methods for environments, training, learners, callbacks, and more."
+---
 
-Algorithm Configuration API
-===========================
+(algorithm-config-reference-docs)=
 
-.. include:: /_includes/rllib/new_api_stack.rst
+# Algorithm Configuration API
 
+```{eval-rst}
 .. currentmodule:: ray.rllib.algorithms.algorithm_config
+```
 
-Constructor
------------
+## Constructor
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     ~AlgorithmConfig
+```
 
+## Builder methods
 
-Builder methods
----------------
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -26,10 +32,11 @@ Builder methods
     ~AlgorithmConfig.build_algo
     ~AlgorithmConfig.build_learner_group
     ~AlgorithmConfig.build_learner
+```
 
+## Properties
 
-Properties
-----------
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -40,9 +47,11 @@ Properties
     ~AlgorithmConfig.model_config
     ~AlgorithmConfig.rl_module_spec
     ~AlgorithmConfig.total_train_batch_size
+```
 
-Getter methods
---------------
+## Getter methods
+
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -53,10 +62,11 @@ Getter methods
     ~AlgorithmConfig.get_multi_rl_module_spec
     ~AlgorithmConfig.get_multi_agent_setup
     ~AlgorithmConfig.get_rollout_fragment_length
+```
 
+## Public methods
 
-Public methods
---------------
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -64,115 +74,125 @@ Public methods
     ~AlgorithmConfig.copy
     ~AlgorithmConfig.validate
     ~AlgorithmConfig.freeze
+```
 
+(rllib-algorithm-config-methods)=
 
-.. _rllib-algorithm-config-methods:
+## Configuration methods
 
-Configuration methods
----------------------
+(rllib-config-env)=
 
-.. _rllib-config-env:
+### Configuring the RL Environment
 
-Configuring the RL Environment
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment
     :noindex:
+```
 
+(rllib-config-training)=
 
-.. _rllib-config-training:
+### Configuring training behavior
 
-Configuring training behavior
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training
     :noindex:
+```
 
+(rllib-config-env-runners)=
 
-.. _rllib-config-env-runners:
+### Configuring `EnvRunnerGroup` and `EnvRunner` actors
 
-Configuring `EnvRunnerGroup` and `EnvRunner` actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners
     :noindex:
+```
 
-.. _rllib-config-learners:
+(rllib-config-learners)=
 
-Configuring `LearnerGroup` and `Learner` actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring `LearnerGroup` and `Learner` actors
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners
     :noindex:
+```
 
-.. _rllib-config-callbacks:
+(rllib-config-callbacks)=
 
-Configuring custom callbacks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring custom callbacks
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.callbacks
     :noindex:
+```
 
-.. _rllib-config-multi_agent:
+(rllib-config-multi_agent)=
 
-Configuring multi-agent specific settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring multi-agent specific settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.multi_agent
     :noindex:
+```
 
-.. _rllib-config-offline_data:
+(rllib-config-offline_data)=
 
-Configuring offline RL specific settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring offline RL specific settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.offline_data
     :noindex:
+```
 
-.. _rllib-config-evaluation:
+(rllib-config-evaluation)=
 
-Configuring evaluation settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring evaluation settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation
     :noindex:
+```
 
-.. _rllib-config-framework:
+(rllib-config-framework)=
 
-Configuring deep learning framework settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring deep learning framework settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.framework
     :noindex:
+```
 
-.. _rllib-config-reporting:
+(rllib-config-reporting)=
 
-Configuring reporting settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring reporting settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.reporting
     :noindex:
+```
 
-.. _rllib-config-checkpointing:
+(rllib-config-checkpointing)=
 
-Configuring checkpointing settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring checkpointing settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.checkpointing
     :noindex:
+```
 
-.. _rllib-config-debugging:
+(rllib-config-debugging)=
 
-Configuring debugging settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring debugging settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.debugging
     :noindex:
+```
 
-.. _rllib-config-experimental:
+(rllib-config-experimental)=
 
-Configuring experimental settings
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+### Configuring experimental settings
 
+```{eval-rst}
 .. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.experimental
     :noindex:
+```

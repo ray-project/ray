@@ -1,13 +1,16 @@
-.. _single-agent-env-runner-reference-docs:
+---
+myst:
+  html_meta:
+    description: "API reference for RLlib's SingleAgentEnvRunner class."
+---
 
-SingleAgentEnvRunner API
-========================
+(single-agent-env-runner-reference-docs)=
 
-.. include:: /_includes/rllib/new_api_stack.rst
+# SingleAgentEnvRunner API
 
-rllib.env.single_agent_env_runner.SingleAgentEnvRunner
-------------------------------------------------------
+## rllib.env.single_agent_env_runner.SingleAgentEnvRunner
 
+```{eval-rst}
 .. autoclass:: ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner
 
     .. automethod:: __init__
@@ -16,3 +19,4 @@ rllib.env.single_agent_env_runner.SingleAgentEnvRunner
     .. automethod:: get_spaces
     .. automethod:: make_env
     .. automethod:: make_module
+```

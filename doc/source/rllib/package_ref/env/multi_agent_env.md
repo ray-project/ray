@@ -1,13 +1,16 @@
-.. _multi-agent-env-reference-docs:
+---
+myst:
+  html_meta:
+    description: "API reference for RLlib's MultiAgentEnv class and the make_multi_agent helper."
+---
 
-MultiAgentEnv API
-=================
+(multi-agent-env-reference-docs)=
 
-.. include:: /_includes/rllib/new_api_stack.rst
+# MultiAgentEnv API
 
-rllib.env.multi_agent_env.MultiAgentEnv
----------------------------------------
+## rllib.env.multi_agent_env.MultiAgentEnv
 
+```{eval-rst}
 .. autoclass:: ray.rllib.env.multi_agent_env.MultiAgentEnv
 
     .. automethod:: __init__
@@ -17,10 +20,11 @@ rllib.env.multi_agent_env.MultiAgentEnv
     .. automethod:: get_action_space
     .. automethod:: with_agent_groups
     .. automethod:: render
+```
 
+## Convert gymnasium.Env into MultiAgentEnv
 
-Convert gymnasium.Env into MultiAgentEnv
-----------------------------------------
-
+```{eval-rst}
 .. automodule:: ray.rllib.env.multi_agent_env
     :members: make_multi_agent
+```

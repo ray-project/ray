@@ -1,36 +1,40 @@
-.. _utils-reference-docs:
+---
+myst:
+  html_meta:
+    description: "API reference for RLlib utilities, covering the MetricsLogger and Scheduler APIs and the framework, Torch, NumPy, and checkpoint utility functions."
+---
 
-RLlib Utilities
-===============
+(utils-reference-docs)=
 
-.. include:: /_includes/rllib/new_api_stack.rst
+# RLlib Utilities
 
 Here is a list of all the utilities available in RLlib.
 
-MetricsLogger API
------------------
+## MetricsLogger API
 
 RLlib uses the MetricsLogger API to log stats and metrics for the various components. Users can also
 
 For example:
 
-.. testcode::
+```{testcode}
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
-    from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+logger = MetricsLogger()
 
-    logger = MetricsLogger()
+# Log a scalar float value under the `loss` key. By default, all logged
+# values under that key are averaged, once `reduce()` is called.
+logger.log_value("loss", 0.05, reduce="mean", window=2)
+logger.log_value("loss", 0.1)
+logger.log_value("loss", 0.2)
 
-    # Log a scalar float value under the `loss` key. By default, all logged
-    # values under that key are averaged, once `reduce()` is called.
-    logger.log_value("loss", 0.05, reduce="mean", window=2)
-    logger.log_value("loss", 0.1)
-    logger.log_value("loss", 0.2)
+logger.peek("loss")  # expect: 0.15 (mean of last 2 values: 0.1 and 0.2)
+```
 
-    logger.peek("loss")  # expect: 0.15 (mean of last 2 values: 0.1 and 0.2)
-
-
+```{eval-rst}
 .. currentmodule:: ray.rllib.utils.metrics.metrics_logger
+```
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -41,37 +45,38 @@ For example:
     MetricsLogger.log_dict
     MetricsLogger.aggregate
     MetricsLogger.log_time
+```
 
-
-Scheduler API
--------------
+## Scheduler API
 
 RLlib uses the Scheduler API to set scheduled values for variables, in Python or PyTorch,
-dependent on an int timestep input. The type of the schedule is always a ``PiecewiseSchedule``, which defines a list
+dependent on an int timestep input. The type of the schedule is always a `PiecewiseSchedule`, which defines a list
 of increasing time steps, starting at 0, associated with values to be reached at these particular timesteps.
-``PiecewiseSchedule`` interpolates values for all intermittent timesteps.
+`PiecewiseSchedule` interpolates values for all intermittent timesteps.
 The computed values are usually float32 types.
 
 For example:
 
-.. testcode::
+```{testcode}
+from ray.rllib.utils.schedules.scheduler import Scheduler
 
-    from ray.rllib.utils.schedules.scheduler import Scheduler
+scheduler = Scheduler([[0, 0.1], [50, 0.05], [60, 0.001]])
+print(scheduler.get_current_value())  # <- expect 0.1
 
-    scheduler = Scheduler([[0, 0.1], [50, 0.05], [60, 0.001]])
-    print(scheduler.get_current_value())  # <- expect 0.1
+# Up the timestep.
+scheduler.update(timestep=45)
+print(scheduler.get_current_value())  # <- expect 0.055
 
-    # Up the timestep.
-    scheduler.update(timestep=45)
-    print(scheduler.get_current_value())  # <- expect 0.055
+# Up the timestep.
+scheduler.update(timestep=100)
+print(scheduler.get_current_value())  # <- expect 0.001 (keep final value)
+```
 
-    # Up the timestep.
-    scheduler.update(timestep=100)
-    print(scheduler.get_current_value())  # <- expect 0.001 (keep final value)
-
-
+```{eval-rst}
 .. currentmodule:: ray.rllib.utils.schedules.scheduler
+```
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -80,27 +85,31 @@ For example:
     Scheduler.validate
     Scheduler.get_current_value
     Scheduler.update
+```
 
+## Framework Utilities
 
-Framework Utilities
--------------------
+### Import utilities
 
-Import utilities
-~~~~~~~~~~~~~~~~
-
+```{eval-rst}
 .. currentmodule:: ray.rllib.utils.framework
+```
 
+```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
    ~try_import_torch
+```
 
-Torch utilities
-~~~~~~~~~~~~~~~
+### Torch utilities
 
+```{eval-rst}
 .. currentmodule:: ray.rllib.utils.torch_utils
+```
 
+```{eval-rst}
 .. autosummary::
     :nosignatures:
     :toctree: doc/
@@ -117,12 +126,15 @@ Torch utilities
     ~set_torch_seed
     ~softmax_cross_entropy_with_logits
     ~update_target_network
+```
 
-Numpy utilities
-~~~~~~~~~~~~~~~
+### Numpy utilities
 
+```{eval-rst}
 .. currentmodule:: ray.rllib.utils.numpy
+```
 
+```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
@@ -140,16 +152,19 @@ Numpy utilities
    ~relu
    ~sigmoid
    ~softmax
+```
 
+## Checkpoint utilities
 
-Checkpoint utilities
---------------------
-
+```{eval-rst}
 .. currentmodule:: ray.rllib.utils.checkpoints
+```
 
+```{eval-rst}
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
    try_import_msgpack
    Checkpointable
+```
