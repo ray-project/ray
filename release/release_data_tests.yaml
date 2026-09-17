@@ -10,8 +10,9 @@
       runtime_env:
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # Ray Data attempts to limit cluster-wide object store usage of primary copies
@@ -39,7 +40,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -64,7 +66,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -106,7 +109,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -143,7 +147,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -237,7 +242,8 @@
       post_build_script: byod_install_pyiceberg.sh
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning: hold the pre-existing 64 MiB behaviour.
@@ -308,7 +314,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
@@ -347,7 +354,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         # Footer read tuning.
@@ -384,7 +392,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
@@ -412,7 +421,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
@@ -437,7 +447,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         # Footer read tuning.
@@ -464,7 +475,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         # Footer read tuning.
@@ -494,7 +506,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
@@ -519,7 +532,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
         - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
@@ -561,7 +575,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
@@ -590,7 +605,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
         - RAY_max_direct_call_object_size=8192
@@ -621,7 +637,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2
         - RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1
@@ -659,7 +676,8 @@
       runtime_env:
         # Preserve the default verbose stats for resource manager.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
@@ -687,7 +705,8 @@
       runtime_env:
         # Preserve the default verbose stats for resource manager.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
@@ -715,7 +734,8 @@
       runtime_env:
         # Preserve the default verbose stats for resource manager.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
@@ -743,7 +763,8 @@
       runtime_env:
         # Preserve the default verbose stats for resource manager.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # S3 tensor data was written by Ray 2.49-2.54 using cloudpickle.
@@ -777,7 +798,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -822,7 +844,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -878,7 +901,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -907,7 +931,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -987,7 +1012,8 @@
         # Preserve DEFAULTS' runtime_env (setting runtime_env here replaces,
         # doesn't merge).
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
     cluster_compute: training_ingest_regression_test/compute.yaml
@@ -1075,7 +1101,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning: hold the pre-existing 64 MiB behaviour.
@@ -1098,7 +1125,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -1121,7 +1149,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -1150,7 +1179,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -1170,7 +1200,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -1203,7 +1234,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -1320,7 +1352,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
     cluster_compute: heterogeneous_memory_compute.yaml
@@ -1343,7 +1376,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         # Footer read tuning.
         - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
@@ -1362,7 +1396,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
@@ -1389,7 +1424,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        # Only Ray OOM kills fail this test; workers are killed intentionally.
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         - RAY_MAX_LIMIT_FROM_API_SERVER=20000
@@ -1471,7 +1507,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT={{max_obj_store_util_percent}}
   run:
@@ -1514,7 +1551,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT={{max_obj_store_util_percent}}
 
@@ -1546,7 +1584,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
       type: cu123
@@ -1601,7 +1640,8 @@
         # Dropping them silently stops the test failing on OOM / dead nodes / object
         # store blowup.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         # Footer read tuning.
@@ -1626,7 +1666,8 @@
         # DEFAULTS restated (runtime_env lists replace, not merge) plus the
         # v2 inlining threshold.
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
         - RAY_max_direct_call_object_size=8192
@@ -1669,7 +1710,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
@@ -1690,7 +1732,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
     cluster_compute: fixed_size_all_to_all_compute.yaml
@@ -1728,7 +1771,8 @@
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         - RAYTEST_FAIL_ON_DEAD_NODES=1
         - RAY_max_direct_call_object_size=8192
     cluster_compute: fixed_size_all_to_all_compute.yaml
