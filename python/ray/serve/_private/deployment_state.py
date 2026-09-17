@@ -4797,7 +4797,8 @@ class DeploymentState:
                 members.discard(replica_id)
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
-                    # Safe only now: the PG is shared by the whole gang.
+                    # Don't clean up the associated gang PG until we're the
+                    # last replica in the gang.
                     replica.remove_placement_group()
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
