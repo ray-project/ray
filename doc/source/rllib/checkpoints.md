@@ -182,7 +182,7 @@ See {ref}`RLlib component tree <rllib-checkpoints-component-tree>` for details.
 The `metadata.json` file exists for your convenience only and RLlib doesn't need it.
 
 :::{note}
-The `metadata.json` file contains information about the Ray version used to create the checkpoint, the Ray commit, the RLlib checkpoint version, and the names of the state- and constructor-information files in the same directory.
+The `metadata.json` file contains information about the Ray version used to create the checkpoint, the Ray commit, the RLlib checkpoint version, and the names of the state and constructor information files in the same directory.
 
 ```shell
 $ more metadata.json
@@ -201,7 +201,7 @@ The `class_and_ctor_args.pkl` file stores the metadata needed to construct a "fr
 Finally, the `.._state.[pkl|msgpack]` file contains the pickled or msgpacked state dict of the saved object. RLlib obtains this state dict by calling the object's {py:meth}`~ray.rllib.utils.checkpoints.Checkpointable.get_state` method when saving a checkpoint.
 
 :::{note}
-Support for `msgpack`-based checkpoints is experimental but might become the default. Unlike `pickle`, `msgpack` doesn't depend on the Python version, so you can recover experiment and model states from old checkpoints that you generated with older Python versions.
+Support for `msgpack`-based checkpoints is experimental but might become the default. Unlike `pickle`, `msgpack` doesn't depend on the Python version, so you can recover experiment and model states from checkpoints that you generated with older Python versions.
 
 The Ray team is working on completely separating state from architecture within checkpoints. All state information should go into the `state.msgpack` file, which is Python-version independent, whereas all architecture information should go into the `class_and_ctor_args.pkl` file, which still depends on the Python version. When loading from a checkpoint, you provide the architecture part.
 

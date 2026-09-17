@@ -725,10 +725,10 @@ In RLlib's offline RL API, distinct modules and configurations manage the key la
 ### How to tune reading operations
 {ref}`Ray Data <data>` handles and optimizes the **Reading Operations** layer automatically. Avoid modifying this process. A few parameters can improve performance on this layer somewhat:
 
-1. Available resources dedicated to the job.
-1. Data locality.
-1. Data sharding.
-1. Data pruning.
+1. Available resources dedicated to the job
+1. Data locality
+1. Data sharding
+1. Data pruning
 
 #### Available resources
 {ref}`Ray Data <data>`'s scheduling strategy operates independently of any existing placement group and schedules tasks and actors separately. Reserve adequate resources for the other tasks and actors in your job. To improve read performance and {ref}`Ray Data <data>`'s scalability for read operations, increase the available resources in your cluster while preserving the resource allocation for existing tasks and actors. Monitor and provision two key resources: CPUs and object store memory. Insufficient object store memory, especially under heavy backpressure, can spill objects to disk and severely degrade application performance.
@@ -1141,7 +1141,7 @@ The default value of {py:class}`~ray.rllib.algorithms.algorithm_config.Algorithm
 
 ## Customization
 
-Customizing the Offline RL components in RLlib, such as the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`, {py:class}`~ray.rllib.core.learner.learner.Learner`, or {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, follows a similar process to their Online RL counterparts. For detailed guidance, see the documentation on {ref}`Algorithms <rllib-algorithms-doc>`, {ref}`Learners <learner-guide>`, and RLlib's {ref}`RLModule <rlmodule-guide>`. The Offline RL streaming pipeline in RLlib supports customization at various levels and locations in the dataflow, so you can tailor it to the requirements of your offline RL algorithm.
+Customizing the Offline RL components in RLlib, such as the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`, {py:class}`~ray.rllib.core.learner.learner.Learner`, or {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, follows a similar process to their Online RL counterparts. For detailed guidance, see the documentation on {ref}`Algorithms <rllib-algorithms-doc>`, {ref}`Learners <learner-guide>`, and RLlib's {ref}`RLModule <rlmodule-guide>`. RLlib's Offline RL streaming pipeline supports customization at three levels, so you can tailor it to your offline RL algorithm:
 
 - Connector level
 - PreLearner level

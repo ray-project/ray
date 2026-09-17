@@ -29,10 +29,10 @@ The new API stack rewrites the core RLlib APIs from scratch and reduces user-fac
 
 Applying the preceding principles, the Ray team reduced the must-know classes from eight on the old stack to only five on the new stack. The core new API stack classes are:
 
-* {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, which replaces `ModelV2` and `PolicyMap` APIs
-* {py:class}`~ray.rllib.core.learner.learner.Learner`, which replaces `RolloutWorker` and some of `Policy`
-* {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and {py:class}`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode`, which replace `ViewRequirement`, `SampleCollector`, `Episode`, and `EpisodeV2`
-* {py:class}`~ray.rllib.connector.connector_v2.ConnectorV2`, which replaces `Connector` and some of `RolloutWorker` and `Policy`
+* {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, which replaces `ModelV2` and `PolicyMap` APIs.
+* {py:class}`~ray.rllib.core.learner.learner.Learner`, which replaces `RolloutWorker` and some of `Policy`.
+* {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and {py:class}`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode`, which replace `ViewRequirement`, `SampleCollector`, `Episode`, and `EpisodeV2`.
+* {py:class}`~ray.rllib.connector.connector_v2.ConnectorV2`, which replaces `Connector` and some of `RolloutWorker` and `Policy`.
 
 The {py:class}`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` and {py:class}`~ray.rllib.algorithm.algorithm.Algorithm` APIs remain as-is. These classes are already established APIs on the old stack.
 
@@ -144,7 +144,7 @@ See {ref}`RLModules API <rlmodule-guide>`, a general guide that also explains th
 If you have an old stack `ModelV2` and want to migrate the entire NN logic to the new stack, see {ref}`ModelV2 to RLModule <rllib-modelv2-to-rlmodule>` for migration instructions.
 
 
-#### Learning rate- and coefficient schedules
+#### Learning rate and coefficient schedules
 
 If you're using schedules for learning rate or other coefficients, such as the `entropy_coeff` setting in PPO, provide the scheduling information directly in the respective setting. Scheduling behavior no longer requires a specific, separate setting.
 
@@ -215,7 +215,7 @@ config.env_runners(
 ```
 
 :::{hint}
-If you want to IDE-debug what's happening inside your `EnvRunners`, set `num_env_runners=0` and run your experiment locally instead of through Ray Tune. To do this with any of RLlib's [example](https://github.com/ray-project/ray/tree/master/rllib/examples) or [tuned_example](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) scripts, set the command-line args `--no-tune --num-env-runners=0`.
+If you want to IDE-debug what's happening inside your `EnvRunners`, set `num_env_runners=0` and run your experiment locally instead of through Ray Tune. To do this with any of RLlib's [example](https://github.com/ray-project/ray/tree/master/rllib/examples) or [tuned_example](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) scripts, set the command-line arguments `--no-tune --num-env-runners=0`.
 :::
 
 If you use the `observation_filter` setting, perform the following translations:

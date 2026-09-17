@@ -14,11 +14,11 @@ RLlib stores and transports all trajectory data in the form of `Episodes`, in pa
 :width: 750
 :align: left
 
-**Episodes** are the main vehicle for storing and transporting trajectory data across the different components
+**Episodes** are the main vehicle for storing and transporting trajectory data across the components
 of RLlib, for example from `EnvRunner` to `Learner` or from `ReplayBuffer` to `Learner`.
 One of the main design principles of RLlib's new API stack is to keep all trajectory data in such episodic form
 for as long as possible. Only immediately before the neural network passes, {ref}`connector pipelines <connector-v2-docs>`
-translate lists of Episodes into tensor batches. See the section on {ref}`Connectors and Connector pipelines <connector-v2-docs>`
+translate lists of Episodes into tensor batches. See {ref}`Connectors and Connector pipelines <connector-v2-docs>`
 for more details.
 ```
 
@@ -107,7 +107,7 @@ To illustrate the difference between data stored in a non-numpy'ized episode and
 :width: 800
 :align: left
 
-**Complex observations in a non-numpy'ized episode**: Each individual observation is a complex dict matching the
+**Complex observations in a non-numpy'ized episode**: Each observation is a complex dict matching the
 gymnasium environment's observation space. The episode stores three such observation items so far.
 ```
 

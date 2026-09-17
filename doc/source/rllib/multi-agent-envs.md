@@ -19,7 +19,7 @@ You can use several policy networks to control the agents. Each agent in the env
 :align: left
 
 **Multi-agent setup:** `N` agents live in the environment and take actions computed by `M` policy networks.
-A user-provided mapping function determines this flexible agent-to-policy mapping. Here, `agent_1`
+A user-provided mapping function determines this agent-to-policy mapping. Here, `agent_1`
 and `agent_3` both map to `policy_1`, whereas `agent_2` maps to `policy_2`.
 ```
 

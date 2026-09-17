@@ -46,7 +46,7 @@ Most scripts share a common subset of command-line arguments. For example, use `
 
 - [Custom action distribution class](https://github.com/ray-project/ray/blob/master/rllib/examples/actions/custom_action_distribution.py): Demonstrates how to write a custom action distribution class, taking an additional temperature parameter on top of a Categorical distribution, and how to configure this class inside your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` implementation. Further explains how to define different such classes for the different forward methods of your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` in case you need more granularity.
 
-- [Nested Action Spaces](https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py): Sets up an environment with nested action spaces using custom single- or multi-agent configurations. This example demonstrates how RLlib manages complex action structures, such as multi-dimensional or hierarchical action spaces.
+- [Nested action spaces](https://github.com/ray-project/ray/blob/master/rllib/examples/actions/nested_action_spaces.py): Sets up an environment with nested action spaces using custom single- or multi-agent configurations. This example demonstrates how RLlib manages complex action structures, such as multi-dimensional or hierarchical action spaces.
 
 ### Algorithms
 
@@ -88,7 +88,7 @@ RLlib rewrote the Connector API from scratch for the new API stack. It calls con
 
 - [Euclidean distance-based curiosity](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/euclidian_distance_based_curiosity.py): Uses Euclidean distance between states and the initial state to measure novelty, encouraging exploration by rewarding the agent for reaching "far away" regions of the environment. Suitable for sparse-reward tasks, where diverse exploration is key to success.
 
-- [Intrinsic-curiosity-model (ICM) Based Curiosity](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py): Adds an [Intrinsic Curiosity Model (ICM)](https://arxiv.org/pdf/1705.05363.pdf) that learns to predict the next state as well as the action in between two states to measure novelty. The higher the loss of the ICM, the higher the "novelty" and thus the intrinsic reward. Ideal for complex environments with large observation spaces where reward signals are sparse.
+- [Intrinsic-curiosity-model (ICM) based curiosity](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py): Adds an [Intrinsic Curiosity Model (ICM)](https://arxiv.org/pdf/1705.05363.pdf) that learns to predict the next state as well as the action in between two states to measure novelty. The higher the loss of the ICM, the higher the "novelty" and thus the intrinsic reward. Ideal for complex environments with large observation spaces where reward signals are sparse.
 
 ### Curriculum learning
 
@@ -162,7 +162,7 @@ RLlib rewrote the Connector API from scratch for the new API stack. It calls con
 
 - [Custom heuristic policy](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py): Demonstrates running a hybrid policy setup within the `MultiAgentCartPole` environment, where one agent follows a hand-coded random policy while another agent trains with PPO. This example highlights integrating static and dynamic policies, suitable for environments with a mix of fixed-strategy and adaptive agents.
 
-- [Different observation- and action spaces for different agents](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py): Configures agents with differing observation and action spaces within the same environment, demonstrating RLlib's support for heterogeneous agents with varying space requirements in a single multi-agent environment. For another example that uses connectors and covers the same topic of agents having different spaces, see the [multi-agent observation preprocessor example](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py).
+- [Different observation and action spaces for different agents](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/different_spaces_for_agents.py): Configures agents with differing observation and action spaces within the same environment, demonstrating RLlib's support for heterogeneous agents with varying space requirements in a single multi-agent environment. For another example that uses connectors and covers the same topic of agents having different spaces, see the [multi-agent observation preprocessor example](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py).
 
 - [Grouped agents, two-step game](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py): Implements a multi-agent, grouped setup within a two-step game environment from the [QMIX paper](https://arxiv.org/pdf/1803.11485.pdf). N agents form M teams in total, where N is at least M, and agents in each team share rewards and one policy. This example demonstrates RLlib's ability to manage collective objectives and interactions among grouped agents.
 
@@ -186,7 +186,7 @@ RLlib rewrote the Connector API from scratch for the new API stack. It calls con
 
 ### Offline RL
 
-- [Train with behavioral cloning (BC), Finetune with PPO](https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py): Combines behavioral cloning pre-training with PPO fine-tuning, providing a two-phase training strategy. It applies offline imitation learning first, then online reinforcement learning.
+- [Train with behavioral cloning (BC), fine-tune with PPO](https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py): Combines behavioral cloning pre-training with PPO fine-tuning, providing a two-phase training strategy. It applies offline imitation learning first, then online reinforcement learning.
 
 ### Ray Serve and RLlib
 
@@ -212,7 +212,7 @@ RLlib rewrote the Connector API from scratch for the new API stack. It calls con
 
 - [Migrate ModelV2 to RLModule by config](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py): Shows how to migrate a ModelV2-based setup on the old API stack to the new API stack's {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`, using an old API stack {py:class}`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` instance.
 
-- [Migrate ModelV2 to RLModule by Policy Checkpoint](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py): Migrates a ModelV2 on the old API stack to the new API stack's {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` by directly loading a policy checkpoint, for a smooth transition that preserves learned parameters.
+- [Migrate ModelV2 to RLModule by policy checkpoint](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py): Migrates a ModelV2 on the old API stack to the new API stack's {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` by directly loading a policy checkpoint, for a smooth transition that preserves learned parameters.
 
 - [Pretrain single-agent policy, then train in multi-agent Env](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/pretraining_single_agent_training_multi_agent.py): Demonstrates pretraining a single-agent model and transferring it to a multi-agent setting, useful for initializing multi-agent scenarios with pre-trained policies.
 

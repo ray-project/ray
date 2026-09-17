@@ -430,7 +430,7 @@ You also have access to the following attributes anywhere in the class, includin
 1. `self.observation_space`
 1. `self.action_space`
 1. `self.inference_only`
-1. `self.model_config` (a dict with any custom config settings)
+1. `self.model_config`, a dict with any custom config settings
 
 
 ```{testcode}
@@ -717,7 +717,7 @@ The following code snippets create a custom multi-agent RLModule with two "polic
 
 ::::{tab-set}
 
-:::{tab-item} MultiRLModule (w/ two policy nets and one encoder)
+:::{tab-item} MultiRLModule (with two policy nets and one encoder)
 
 ```{literalinclude} ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
 :language: python

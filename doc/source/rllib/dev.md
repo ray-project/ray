@@ -33,12 +33,12 @@ File new RLlib-related PRs through [Ray's GitHub repo](https://github.com/ray-pr
 
 These guidelines cover merging new algorithms into RLlib. RLlib accepts contributions at two levels. The first is an [example script](https://github.com/ray-project/ray/tree/master/rllib/examples), possibly with additional classes in other files. The second is a fully integrated RLlib algorithm in [rllib/algorithms](https://github.com/ray-project/ray/tree/master/rllib/algorithms).
 
-* An example algorithm has the following requirements:
+* An example algorithm has three requirements:
     - It must subclass `Algorithm` and implement the `training_step()` method.
     - It must include the main example script, which demonstrates the algorithm, in a CI test that proves the algorithm learns a task.
     - It should provide capabilities that existing algorithms don't have.
 
-* A fully integrated algorithm has these additional requirements:
+* A fully integrated algorithm has four additional requirements:
     - It must provide substantial new capabilities that you can't add to existing algorithms.
     - It should support custom RLModules.
     - It should use RLlib abstractions and support distributed execution.

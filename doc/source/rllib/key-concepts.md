@@ -153,7 +153,7 @@ RLlib's {ref}`EnvRunners <rllib-key-concepts-env-runners>` use them to compute a
 :align: left
 
 **RLModule overview**: *(left)* A minimal {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
-and defines its forward exploration-, inference- and training logic.
+and defines its forward exploration, inference, and training logic.
 *(right)* In more complex setups, a {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` contains
 many submodules, each itself an {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` instance and
 identified by a `ModuleID`, so you can implement arbitrarily complex multi-model and multi-agent algorithms.

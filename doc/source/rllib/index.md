@@ -57,11 +57,11 @@ new-api-stack-migration-guide
 ```
 
 
-**RLlib** is an open source library for reinforcement learning (**RL**). It supports production-grade, scalable, fault-tolerant RL workloads and keeps simple, unified APIs across a wide range of industry applications.
+RLlib is an open source library for reinforcement learning (RL). It supports production-grade, scalable, fault-tolerant RL workloads and keeps simple, unified APIs across a wide range of industry applications.
 
-Whether you train policies in a **multi-agent** setup, from historic **offline** data, or with **externally connected simulators**, RLlib covers each of these autonomous decision-making cases, so you can start running experiments quickly.
+Whether you train policies in a multi-agent setup, from historic offline data, or with externally connected simulators, RLlib covers each of these autonomous decision-making cases, so you can start running experiments quickly.
 
-Industry leaders use RLlib in production in many different verticals, such as [gaming](https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games), [robotics](https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for), [finance](https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray), [climate- and industrial control](https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases), [manufacturing and logistics](https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial), [automobile](https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution), and [boat design](https://www.youtube.com/watch?v=cLCK13ryTpw).
+Industry leaders use RLlib in production in many different verticals, such as [gaming](https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games), [robotics](https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for), [finance](https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray), [climate and industrial control](https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases), [manufacturing and logistics](https://www.anyscale.com/events/2022/03/29/alphadow-leveraging-rays-ecosystem-to-train-and-deploy-an-rl-industrial), [automobile](https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution), and [boat design](https://www.youtube.com/watch?v=cLCK13ryTpw).
 
 
 ## RLlib in 60 seconds
@@ -135,7 +135,7 @@ You can also change the neural network architecture with RLlib's {py:class}`~ray
 
 To learn more about the RLlib training APIs, see {ref}`the RLlib Python API <rllib-python-api>`. For an example of an action inference loop after training, see [this example script](https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py).
 
-For a quick preview of which **algorithms** and **environments** RLlib supports, expand the dropdowns below.
+For a quick preview of which algorithms and environments RLlib supports, expand the dropdowns below.
 
 :::{dropdown} **RLlib Algorithms**
 :animate: fade-in-slide-down
@@ -299,9 +299,9 @@ For a quick preview of which **algorithms** and **environments** RLlib supports,
 
 RLlib workloads scale along two axes:
 
-- The number of {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors. Set this through `config.env_runners(num_env_runners=...)` to scale the speed of your simulator data collection step. This `EnvRunner` axis is fully **fault tolerant**. You can train against custom environments that are unstable or that frequently stall, and even place all your `EnvRunner` actors on spot machines.
+- The number of {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors. Set this through `config.env_runners(num_env_runners=...)` to scale the speed of your simulator data collection step. This `EnvRunner` axis is fully fault tolerant. You can train against custom environments that are unstable or that frequently stall, and even place all your `EnvRunner` actors on spot machines.
 
-- The number of {py:class}`~ray.rllib.core.learner.Learner` actors for **multi-GPU training**. Set this through `config.learners(num_learners=...)`. Normally you set it to the number of available GPUs, and also set `config.learners(num_gpus_per_learner=1)`. If you don't have GPUs, use this setting for **DDP-style learning on CPUs** instead.
+- The number of {py:class}`~ray.rllib.core.learner.Learner` actors for multi-GPU training. Set this through `config.learners(num_learners=...)`. Normally you set it to the number of available GPUs, and also set `config.learners(num_gpus_per_learner=1)`. If you don't have GPUs, use this setting for DDP-style learning on CPUs instead.
 :::
 
 :::{dropdown} **Multi-Agent Reinforcement Learning (MARL)**
@@ -318,7 +318,7 @@ RLlib natively supports multi-agent reinforcement learning (MARL), so you can ru
 :::{dropdown} **Offline RL and Behavior Cloning**
 :animate: fade-in-slide-down
 
-RLlib integrates **Ray Data** for **large-scale data ingestion** in offline RL and behavior cloning (BC) workloads.
+RLlib integrates Ray Data for large-scale data ingestion in offline RL and behavior cloning (BC) workloads.
 
 See a basic [tuned behavior cloning example](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/bc/cartpole_bc.py), or an example of [pre-training a policy with BC and fine-tuning it with online PPO](https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py).
 :::
