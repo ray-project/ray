@@ -495,6 +495,12 @@ void GcsServer::HydrateManagers(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::PromoteToLeader() {
+  // The leader election callbacks fire on the elector's own threads, so the caller must
+  // post to default io context.
+  RAY_CHECK(
+      io_context_provider_.GetDefaultIOContext().get_executor().running_in_this_thread())
+      << "PromoteToLeader() must run on the default io context.";
+
   // Both conditions are needed. IsLeader() alone leaves a window: it only becomes true
   // once the table load below completes, so a second call arriving in that window would
   // start a second load. promotion_started_ alone misses the GCS that is already active
