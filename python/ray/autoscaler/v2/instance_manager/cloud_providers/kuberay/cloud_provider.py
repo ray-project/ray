@@ -757,6 +757,12 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def _apply_idle_termination_policy(self) -> None:
         """Applies the configured no-driver timeout policy to the RayCluster CR."""
+        if self._ray_cluster.get("metadata", {}).get("deletionTimestamp"):
+            logger.info(
+                f"RayCluster {self._cluster_name} is already being deleted. idleTerminationOptions.policy will not apply"
+            )
+            return
+
         if self._no_driver_policy not in {"Delete", "Suspend"}:
             logger.warning(
                 f"Unknown no driver policy {self._no_driver_policy}. Nothing will apply"
