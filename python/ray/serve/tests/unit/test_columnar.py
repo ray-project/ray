@@ -686,7 +686,8 @@ def test_handle_cross_format_staleness_guard():
 def test_empty_object_running_series_does_not_suppress_columnar_handle(
     agg, monkeypatch
 ):
-    """Regression: in a mixed rollout an object (cloudpickle) replica that
+    """Regression: an object (cloudpickle) replica report, which is every replica
+    report, that
     reports RUNNING_REQUESTS_KEY with an EMPTY series must NOT flip
     metrics_collected_on_replicas and suppress columnar handle-side running (which
     carries the real load). The empty series holds no data; the total must include

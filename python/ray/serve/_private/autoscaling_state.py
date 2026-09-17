@@ -970,7 +970,7 @@ class DeploymentAutoscalingState:
 
         Wide columnar sources are sliced as array views (never re-materialized into
         per-point objects -- replica reports stay object while handle reports go
-        columnar, so a mixed fleet is steady state and this runs every tick); thin
+        columnar, so both stores are live at once and this runs every tick); thin
         object sources are converted to small arrays. Empty object series are dropped
         so they cannot flip metrics_collected_on_replicas and suppress handle-side
         running (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""

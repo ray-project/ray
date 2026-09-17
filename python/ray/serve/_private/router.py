@@ -86,7 +86,6 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     check_obj_ref_ready_nowait,
-    compress_metric_report,
     generate_request_id,
     resolve_deployment_response,
 )
@@ -436,15 +435,9 @@ class RouterMetricsManager:
             if self._pending_metrics_push_ref is not None:
                 if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
                     return  # Previous push still in flight, skip and try again later
-            report = self._get_metrics_report()
-            # Handle reports carry every replica this handle routes to, so they are the
-            # wide ones worth sending columnar. The frame self-identifies, so a mixed
-            # fleet mid-rollout decodes either way.
-            payload = (
-                autoscaling_metrics_codec.encode(report)
-                if autoscaling_metrics_codec.should_encode_columnar(report)
-                else compress_metric_report(report)
-            )
+            # Handle reports carry every replica this handle routes to, so they
+            # are the wide ones worth encoding columnar (see should_encode_columnar).
+            payload = autoscaling_metrics_codec.encode(self._get_metrics_report())
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_handle.remote(
                     payload
