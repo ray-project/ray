@@ -12,12 +12,12 @@ ignorecase: true
 vocab: false
 swap:
   utilize: use
-  utilizes: use
-  utilized: use
+  utilizes: uses
+  utilized: used
   utilizing: using
   leverage: use
-  leverages: use
-  leveraged: use
+  leverages: uses
+  leveraged: used
   leveraging: using
   via: through
   prior to: before
