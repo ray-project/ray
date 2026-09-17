@@ -159,7 +159,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = resource_manager
         if rm is None:
             rm = MagicMock()
-            rm.get_retained_consumer_bytes.return_value = 0
+            rm.get_materialized_consumer_bytes.return_value = 0
         return DownstreamCapacityBackpressurePolicy(
             data_context=context,
             topology=topology,
@@ -177,7 +177,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         internal_usage=100,
         outputs_usage=100,
         external_bytes=100,
-        retained_bytes=0,
+        materialized_bytes=0,
     ):
         """Helper to create a resource manager mock with common settings."""
         # spec= so stubbing a method ResourceManager does not have fails here,
@@ -197,7 +197,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm.get_mem_op_internal.return_value = internal_usage
         rm.get_mem_op_outputs.return_value = outputs_usage
         rm.get_external_consumer_bytes.return_value = external_bytes
-        rm.get_retained_consumer_bytes.return_value = retained_bytes
+        rm.get_materialized_consumer_bytes.return_value = materialized_bytes
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
@@ -508,7 +508,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.can_add_input(op) is expected_can_add_input
 
     @pytest.mark.parametrize(
-        "retained_bytes, live_bytes, expected_pressure, expected_can_add_input",
+        "materialized_bytes, live_bytes, expected_pressure, expected_can_add_input",
         [
             # Capacity is 100 prefetched + 900 held = 1000, and the consumer
             # holds all of the operator's live output: 1000 / 1000 - 1 = 0.
@@ -518,8 +518,8 @@ class TestDownstreamCapacityBackpressurePolicy:
             pytest.param(400, 2000, 3.0, False, id="backlog_beyond_capacity"),
         ],
     )
-    def test_terminal_op_counts_retained_bytes_as_capacity(
-        self, retained_bytes, live_bytes, expected_pressure, expected_can_add_input
+    def test_terminal_op_counts_materialized_bytes_as_capacity(
+        self, materialized_bytes, live_bytes, expected_pressure, expected_can_add_input
     ):
         """Blocks the consumer took and still holds are capacity, not backlog.
 
@@ -532,7 +532,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         topology = {op: op_state}
         context = self._create_context(backpressure_ratio=2.0)
         rm = self._mock_resource_manager(
-            external_bytes=100, retained_bytes=retained_bytes
+            external_bytes=100, materialized_bytes=materialized_bytes
         )
         rm.get_mem_op_outputs.return_value = live_bytes
 
@@ -548,8 +548,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy._get_output_pressure(op) == pytest.approx(expected_pressure)
         assert policy.can_add_input(op) is expected_can_add_input
 
-    def test_retained_bytes_ignored_when_downstream_op_is_eligible(self):
-        """Retained bytes are capacity only for the operator feeding the consumer.
+    def test_materialized_bytes_ignored_when_downstream_op_is_eligible(self):
+        """Materialized bytes are capacity only for the operator feeding the consumer.
 
         An upstream operator paces against its downstream operator's in-flight
         inputs, so counting the consumer's holdings there would stop pacing it.
@@ -562,7 +562,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         downstream.output_dependencies = []
         topology = {op: op_state, downstream: downstream_state}
         context = self._create_context(backpressure_ratio=2.0)
-        rm = self._mock_resource_manager(external_bytes=100, retained_bytes=900)
+        rm = self._mock_resource_manager(external_bytes=100, materialized_bytes=900)
         rm.get_mem_op_outputs.return_value = 1000
 
         threshold = (
@@ -574,7 +574,7 @@ class TestDownstreamCapacityBackpressurePolicy:
             topology, data_context=context, resource_manager=rm
         )
 
-        # 1000 / 100 - 1 = 9, as if the retained bytes were never reported.
+        # 1000 / 100 - 1 = 9, as if the materialized bytes were never reported.
         assert policy._get_output_pressure(op) == pytest.approx(9.0)
         assert policy.can_add_input(op) is False
 

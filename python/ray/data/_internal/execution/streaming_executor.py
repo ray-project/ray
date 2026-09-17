@@ -480,10 +480,10 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._resource_manager is not None:
             self._resource_manager.set_external_consumer_bytes(num_bytes)
 
-    def set_retained_consumer_bytes(self, num_bytes: int) -> None:
+    def set_materialized_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes external consumers have taken and still hold."""
         if self._resource_manager is not None:
-            self._resource_manager.set_retained_consumer_bytes(num_bytes)
+            self._resource_manager.set_materialized_consumer_bytes(num_bytes)
 
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""

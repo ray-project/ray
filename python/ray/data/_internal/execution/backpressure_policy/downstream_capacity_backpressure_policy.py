@@ -128,7 +128,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         if not op.output_dependencies:
             return (
                 self._resource_manager.get_external_consumer_bytes()
-                + self._resource_manager.get_retained_consumer_bytes()
+                + self._resource_manager.get_materialized_consumer_bytes()
             )
 
         total_capacity_size_bytes = 0
