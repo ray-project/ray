@@ -16,6 +16,8 @@ from ray.util.state import list_runtime_envs
 logger = logging.getLogger(__name__)
 
 PROMETHEUS_QUERY_TIMEOUT_S = 30
+BITS_PER_BYTE = 8
+BITS_PER_GIGABIT = 1_000_000_000
 
 
 def _query_prometheus(query: str, timestamp: float):
@@ -39,7 +41,7 @@ def _query_prometheus(query: str, timestamp: float):
             )
         except asyncio.TimeoutError as exc:
             raise RuntimeError(
-                "Prometheus head-node memory query timed out after "
+                "Prometheus query timed out after "
                 f"{PROMETHEUS_QUERY_TIMEOUT_S} seconds."
             ) from exc
         finally:
@@ -96,6 +98,85 @@ def _get_peak_head_node_memory_used_bytes(
     return peak_memory_bytes
 
 
+@dataclasses.dataclass(frozen=True)
+class WorkerNetworkReceiveStats:
+    total_bytes_per_second: float
+    average_bytes_per_second: float
+    node_count: int
+    per_node_bytes_per_second: Dict[str, float] = dataclasses.field(
+        default_factory=dict
+    )
+
+
+def _get_worker_network_receive_stats(
+    start_unix_time: float, end_unix_time: float
+) -> WorkerNetworkReceiveStats:
+    """Return worker network receive throughput averaged over a benchmark case."""
+    assert start_unix_time <= end_unix_time, (start_unix_time, end_unix_time)
+
+    session_name = ray.get_runtime_context().get_session_name()
+    metric_selector = (
+        "ray_node_network_receive_speed{"
+        f'RayNodeType="worker",SessionName={json.dumps(session_name)}'
+        "}"
+    )
+
+    # Prometheus requires a positive range, so use 1 ms for a zero-duration case.
+    duration_ms = max(1, math.ceil((end_unix_time - start_unix_time) * 1000))
+    results = _query_prometheus(
+        f"avg_over_time({metric_selector}[{duration_ms}ms])",
+        end_unix_time,
+    )
+    if results is None:
+        raise RuntimeError(
+            "Failed to query Prometheus for worker network receive throughput."
+        )
+    if not results:
+        raise RuntimeError(
+            "Prometheus returned no worker network receive throughput results."
+        )
+
+    per_node_bytes_per_second = {}
+    for result in results:
+        try:
+            node_ip = result["metric"]["ip"]
+            _, raw_value = result["value"]
+            bytes_per_second = float(raw_value)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "Prometheus returned an invalid worker network receive throughput "
+                "result."
+            ) from exc
+
+        if not isinstance(node_ip, str) or not node_ip:
+            raise RuntimeError(
+                "Prometheus returned an invalid worker IP for network receive "
+                "throughput."
+            )
+        if not math.isfinite(bytes_per_second) or bytes_per_second < 0:
+            raise RuntimeError(
+                "Prometheus returned an invalid worker network receive throughput "
+                "value."
+            )
+        if node_ip in per_node_bytes_per_second:
+            raise RuntimeError(
+                "Prometheus returned multiple worker network receive throughput "
+                f"results for worker {node_ip}."
+            )
+        per_node_bytes_per_second[node_ip] = bytes_per_second
+
+    per_node_bytes_per_second = dict(sorted(per_node_bytes_per_second.items()))
+    total_bytes_per_second = sum(per_node_bytes_per_second.values())
+    return WorkerNetworkReceiveStats(
+        total_bytes_per_second=total_bytes_per_second,
+        average_bytes_per_second=(
+            total_bytes_per_second / len(per_node_bytes_per_second)
+        ),
+        node_count=len(per_node_bytes_per_second),
+        per_node_bytes_per_second=per_node_bytes_per_second,
+    )
+
+
 def _get_spilled_bytes_total(state) -> float:
     """Get the total number of spilled bytes across the cluster."""
     return get_memory_info_reply(state).store_stats.spilled_bytes_total
@@ -103,6 +184,10 @@ def _get_spilled_bytes_total(state) -> float:
 
 def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
+
+
+def _bytes_per_second_to_gbps(bytes_per_second: float) -> float:
+    return bytes_per_second * BITS_PER_BYTE / BITS_PER_GIGABIT
 
 
 class ObjectStoreMemorySampler:
@@ -260,6 +345,10 @@ class BenchmarkMetric(Enum):
     OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
     OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
     HEAD_NODE_MEMORY_USED_PEAK_GB = "head_node_memory_used_peak_gb"
+    WORKER_NETWORK_RECEIVE_TOTAL_GBPS = "worker_network_receive_total_gbps"
+    WORKER_NETWORK_RECEIVE_AVERAGE_GBPS = "worker_network_receive_average_gbps"
+    WORKER_NETWORK_RECEIVE_NODE_COUNT = "worker_network_receive_node_count"
+    WORKER_NETWORK_RECEIVE_GBPS_BY_NODE = "worker_network_receive_gbps_by_node"
 
 
 class Benchmark:
@@ -268,6 +357,9 @@ class Benchmark:
     Args:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
+        min_total_worker_network_receive_gbps: If set, fail if worker network receive
+            bandwidth, averaged over the case and summed across workers, is below this
+            limit.
 
     Here's an example of typical usage:
 
@@ -294,12 +386,27 @@ class Benchmark:
         {"short": {"time": 1.0, "sleep_s": 1}, "long": {"time": 10.0 "sleep_s": 10}}
     """
 
-    def __init__(self, *, max_head_node_memory_bytes: Optional[int] = None):
+    def __init__(
+        self,
+        *,
+        max_head_node_memory_bytes: Optional[int] = None,
+        min_total_worker_network_receive_gbps: Optional[float] = None,
+    ):
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
+        if (
+            min_total_worker_network_receive_gbps is not None
+            and min_total_worker_network_receive_gbps <= 0
+        ):
+            raise ValueError(
+                "min_total_worker_network_receive_gbps must be greater than 0."
+            )
 
         self.result = {}
         self._max_head_node_memory_bytes = max_head_node_memory_bytes
+        self._min_total_worker_network_receive_gbps = (
+            min_total_worker_network_receive_gbps
+        )
 
     def run_fn(
         self,
@@ -326,9 +433,9 @@ class Benchmark:
         state = get_state_from_address(ray.get_runtime_context().gcs_address)
 
         with ObjectStoreMemorySampler(state) as memory_sampler:
+            start_spilled_bytes = _get_spilled_bytes_total(state)
             start_unix_time = time.time()
             start_time = time.perf_counter()
-            start_spilled_bytes = _get_spilled_bytes_total(state)
 
             try:
                 fn_output = fn(*fn_args, **fn_kwargs)
@@ -373,6 +480,48 @@ class Benchmark:
                 BenchmarkMetric.HEAD_NODE_MEMORY_USED_PEAK_GB.value
             ] = _bytes_to_gb(peak_head_node_memory_bytes)
 
+        min_total_worker_network_receive_gbps = (
+            self._min_total_worker_network_receive_gbps
+        )
+        worker_network_receive_stats = None
+        total_worker_network_receive_gbps = None
+        if min_total_worker_network_receive_gbps is not None:
+            worker_network_receive_stats = _get_worker_network_receive_stats(
+                start_unix_time, end_unix_time
+            )
+            total_worker_network_receive_gbps = _bytes_per_second_to_gbps(
+                worker_network_receive_stats.total_bytes_per_second
+            )
+            average_worker_network_receive_gbps = _bytes_per_second_to_gbps(
+                worker_network_receive_stats.average_bytes_per_second
+            )
+            curr_case_metrics[
+                BenchmarkMetric.WORKER_NETWORK_RECEIVE_TOTAL_GBPS.value
+            ] = round(total_worker_network_receive_gbps, 4)
+            curr_case_metrics[
+                BenchmarkMetric.WORKER_NETWORK_RECEIVE_AVERAGE_GBPS.value
+            ] = round(average_worker_network_receive_gbps, 4)
+            curr_case_metrics[
+                BenchmarkMetric.WORKER_NETWORK_RECEIVE_NODE_COUNT.value
+            ] = worker_network_receive_stats.node_count
+            worker_network_receive_gbps_by_node = {
+                node_ip: round(_bytes_per_second_to_gbps(bytes_per_second), 4)
+                for node_ip, bytes_per_second in (
+                    worker_network_receive_stats.per_node_bytes_per_second.items()
+                )
+            }
+            curr_case_metrics[
+                BenchmarkMetric.WORKER_NETWORK_RECEIVE_GBPS_BY_NODE.value
+            ] = worker_network_receive_gbps_by_node
+
+            print("Worker averages during the benchmark:")
+            for node_ip, network_gbps in worker_network_receive_gbps_by_node.items():
+                print(f"  {node_ip}: {network_gbps:.4f} Gbps")
+            print(
+                "Total worker network receive: "
+                f"{total_worker_network_receive_gbps:.4f} Gbps"
+            )
+
         print(f"Result of case {name}: {curr_case_metrics}")
 
         if (
@@ -385,6 +534,22 @@ class Benchmark:
                 f"({_bytes_to_gb(peak_head_node_memory_bytes)} GiB) exceeded the "
                 f"configured limit "
                 f"({_bytes_to_gb(max_head_node_memory_bytes)} GiB)."
+            )
+
+        if (
+            total_worker_network_receive_gbps is not None
+            and min_total_worker_network_receive_gbps is not None
+            and total_worker_network_receive_gbps
+            < min_total_worker_network_receive_gbps
+        ):
+            assert worker_network_receive_stats is not None
+            raise AssertionError(
+                f"Benchmark case {name!r} worker network receive throughput "
+                f"({total_worker_network_receive_gbps:.4f} Gbps total, "
+                f"{average_worker_network_receive_gbps:.4f} "
+                f"Gbps per worker across {worker_network_receive_stats.node_count} "
+                f"workers) was below the configured minimum "
+                f"({min_total_worker_network_receive_gbps:.4f} Gbps total)."
             )
 
     def write_result(self):
