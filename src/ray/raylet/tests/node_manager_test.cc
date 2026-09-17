@@ -859,7 +859,7 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessagesSchedulesOncePerBatch) {
         cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
     EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
               kTestTotalCpuResource);
-    EXPECT_EQ(node_resources.available.Get(scheduling::ResourceID("CPU")).Double(),
+    EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
               kTestTotalCpuResource);
     EXPECT_EQ(node_resources.labels.at("label1"), "value1");
   }
