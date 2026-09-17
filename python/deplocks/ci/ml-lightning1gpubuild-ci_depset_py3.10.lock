@@ -5742,9 +5742,9 @@ smart-open==6.2.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
     #   ray
-soupsieve==2.8.3 \
-    --hash=sha256:3267f1eeea4251fb42728b6dfb746edc9acaffc4a45b27e19450b676586e8349 \
-    --hash=sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95
+soupsieve==2.9 \
+    --hash=sha256:a2b2c76d67df2382d245409fd71e321a571717e58463efa32ace87dcadac2c12 \
+    --hash=sha256:acee8417325c5653e1377dc31eccad59eb82cbc65942afe6174c53b3aaad63fc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
     #   beautifulsoup4
