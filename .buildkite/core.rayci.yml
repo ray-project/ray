@@ -683,11 +683,14 @@ steps:
       - block-core-gpu-tests
       - coregpu-cu130-build-multipy(python=3.10)
 
+  # TODO(#66161): remove the disabled tag below once the CI GPU runners'
+  # NVIDIA driver is bumped to match a driver version that gVisor supports.
   - label: ":ray: core: sandbox gpu tests"
     key: core-sandbox-gpu-tests
     tags:
       - sandbox_tests
       - gpu
+      - disabled
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
@@ -701,11 +704,14 @@ steps:
     depends_on:
       - coregpubuild-multipy(python=3.12)
 
+  # TODO(#66161): remove the disabled tag below once the CI GPU runners'
+  # NVIDIA driver is bumped to match a driver version that gVisor supports.
   - label: ":ray: core: sandbox multi gpu tests"
     key: core-sandbox-multi-gpu-tests
     tags:
       - sandbox_tests
       - gpu
+      - disabled
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/experimental/sandbox/... core
