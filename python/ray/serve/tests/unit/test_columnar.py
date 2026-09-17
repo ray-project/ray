@@ -797,11 +797,16 @@ def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
 @pytest.mark.parametrize(
     "agg", [AggregationFunction.MEAN, AggregationFunction.MAX, AggregationFunction.MIN]
 )
-def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
+@pytest.mark.parametrize("stop_at", [0, 2, 4])
+def test_columnar_handle_masks_replicas_that_stopped(agg, stop_at, monkeypatch):
     """A handle lags the running set on every scale-down, so its frame still names a
     stopped replica. That replica's points must be dropped, and the survivors must total
     exactly what the object path totals. Covers the gather branch of
-    _handle_running_columnar_samples, which the whole-frame fast path skips."""
+    _handle_running_columnar_samples, which the whole-frame fast path skips.
+
+    stop_at moves the stopped replica through the frame: only when it is last are the
+    survivors a contiguous prefix and the gather the identity permutation, so a first or
+    middle stop is what actually exercises the index arithmetic."""
     monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
     live = [ReplicaID(f"r{i}", DEP) for i in range(4)]
     gone = ReplicaID("r_gone", DEP)
@@ -810,7 +815,7 @@ def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
             TimeStampedValue(NOW - 6, float(i + 1)),
             TimeStampedValue(NOW, float(i + 2)),
         ]
-        for i, r in enumerate(live + [gone])
+        for i, r in enumerate(live[:stop_at] + [gone] + live[stop_at:])
     }
     handle = HandleMetricReport(
         deployment_id=DEP,
@@ -840,10 +845,6 @@ def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
     )
     col_all._cached_running_replica_strs = live_strs | {gone.to_full_id_str()}
     assert col_all.get_total_num_requests() > col.get_total_num_requests()
-
-
-if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
 
 
 def test_handle_store_invariant_survives_interleaved_writes(monkeypatch):
@@ -898,3 +899,101 @@ def test_handle_store_invariant_survives_interleaved_writes(monkeypatch):
     _check()
     assert not st._handle_store._report_ts
     assert not st._handle_store._received_at
+
+
+def test_masked_running_samples_follow_the_running_set(monkeypatch):
+    """The masking is memoized against the running-set generation, so a replica coming
+    back must invalidate it. A cache that never expires would keep reporting the
+    scaled-down total forever."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    replicas = [ReplicaID(f"r{i}", DEP) for i in range(3)]
+    rep = HandleMetricReport(
+        deployment_id=DEP,
+        handle_id="h0",
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=[],
+        metrics={
+            RUNNING_REQUESTS_KEY: {
+                # Distinct per replica, so every subset totals differently.
+                r.to_full_id_str(): [TimeStampedValue(NOW, float(1 << i))]
+                for i, r in enumerate(replicas)
+            }
+        },
+        timestamp=NOW,
+    )
+    st = _state()
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
+    # Two different subsets, so both miss the whole-frame fast path and both consult the
+    # memo. A cache that never expires would serve the first answer for the second.
+    st.update_running_replica_ids([replicas[0], replicas[1]])
+    keeps_r1 = st.get_total_num_requests()
+    st.update_running_replica_ids([replicas[0], replicas[2]])
+    keeps_r2 = st.get_total_num_requests()
+    assert abs(keeps_r1 - keeps_r2) > 0.5, (keeps_r1, keeps_r2)
+    st.update_running_replica_ids([replicas[0], replicas[1]])
+    assert abs(st.get_total_num_requests() - keeps_r1) < 1e-9
+
+
+def test_mask_memo_invalidated_by_a_new_report(monkeypatch):
+    """The mask is cached per handle, so a fresher report for the same handle must drop
+    it. The running set has not changed here, only the samples the mask was built from,
+    which the generation counter alone cannot see."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    replicas = [ReplicaID(f"r{i}", DEP) for i in range(3)]
+
+    def _rep(timestamp, scale):
+        return HandleMetricReport(
+            deployment_id=DEP,
+            handle_id="h0",
+            actor_id="a",
+            handle_source=DeploymentHandleSource.PROXY,
+            queued_requests=[],
+            metrics={
+                RUNNING_REQUESTS_KEY: {
+                    r.to_full_id_str(): [TimeStampedValue(NOW, scale * (i + 1))]
+                    for i, r in enumerate(replicas)
+                }
+            },
+            timestamp=timestamp,
+        )
+
+    st = _state()
+    # Exclude one replica so the handle masks rather than taking the fast path.
+    st.update_running_replica_ids(replicas[:2])
+    st.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(_rep(NOW, 1.0)))
+    )
+    first = st.get_total_num_requests()
+    st.record_columnar_metrics_for_handle(
+        codec.decode_handle_flat(codec.encode(_rep(NOW + 1, 10.0)))
+    )
+    assert st.get_total_num_requests() > first * 5
+
+
+def test_empty_running_rows_keep_the_whole_frame_fast_path(monkeypatch):
+    """A replica that reported no running points must not appear in running_keys, or it
+    would drop the handle onto the masking branch for data it does not even carry."""
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 3.0)
+    live, idle = ReplicaID("r0", DEP), ReplicaID("r_idle", DEP)
+    rep = HandleMetricReport(
+        deployment_id=DEP,
+        handle_id="h0",
+        actor_id="a",
+        handle_source=DeploymentHandleSource.PROXY,
+        queued_requests=[TimeStampedValue(NOW, 1.0)],
+        metrics={
+            RUNNING_REQUESTS_KEY: {
+                live.to_full_id_str(): [TimeStampedValue(NOW, 3.0)],
+                idle.to_full_id_str(): [],
+            }
+        },
+        timestamp=NOW,
+    )
+    st = _state()
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
+    assert st._handle_store.columnar["h0"].running_keys == [live.to_full_id_str()]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

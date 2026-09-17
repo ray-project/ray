@@ -21,6 +21,7 @@ from ray.exceptions import (
     RayTaskError,
     TaskCancelledError,
 )
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -53,7 +54,6 @@ from ray.serve._private.router import (
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import (
     Semaphore,
-    decompress_metric_report,
     get_random_string,
 )
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
@@ -2415,18 +2415,23 @@ class TestRouterMetricsManager:
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
 
-            # Check metrics are pushed correctly (compressed)
+            # A handle report goes out columnar, not cloudpickled: the controller
+            # wire-detects the frame, so this asserts which format we chose to send.
             metrics_manager.push_autoscaling_metrics_to_controller()
             mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_once()
             (
-                compressed,
+                payload,
             ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
                 0
             ]
-            assert isinstance(compressed, bytes)
-            handle_metric_report = decompress_metric_report(compressed)
-            assert handle_metric_report.deployment_id == deployment_id
-            assert handle_metric_report.handle_id == handle_id
+            assert isinstance(payload, bytes)
+            assert autoscaling_metrics_codec.is_columnar(payload)
+            report = autoscaling_metrics_codec.decode_handle_flat(payload)
+            assert report["deployment_id"] == deployment_id
+            assert report["handle_id"] == handle_id
+            assert set(report["replica_keys"]) == {
+                r.to_full_id_str() for r in running_requests
+            }
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
