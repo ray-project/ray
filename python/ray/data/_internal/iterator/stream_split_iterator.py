@@ -380,7 +380,7 @@ class SplitCoordinator:
             client_retained_bytes: Bytes the client has taken out of the
                 pipeline and still holds, e.g. from ``materialize()``. The
                 producing operator cannot reclaim these by slowing down, so
-                they are excluded from its backpressure signal.
+                backpressure counts them as consumer capacity.
 
         Returns:
             The next RefBundle for this split, or None if the epoch is done.

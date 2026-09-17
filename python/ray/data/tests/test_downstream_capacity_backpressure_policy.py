@@ -508,24 +508,24 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.can_add_input(op) is expected_can_add_input
 
     @pytest.mark.parametrize(
-        "retained_bytes, expected_pressure, expected_can_add_input",
+        "retained_bytes, live_bytes, expected_pressure, expected_can_add_input",
         [
-            # 900 of the 1000 is held by the consumer, so only 100 is queued:
-            # (1000 - 900) / 100 - 1 = 0.
-            pytest.param(900, 0.0, True, id="retention_is_not_pressure"),
-            # A backlog on top of the retention still backpressures:
-            # (1000 - 400) / 100 - 1 = 5.
-            pytest.param(400, 5.0, False, id="retention_plus_backlog"),
+            # Capacity is 100 prefetched + 900 held = 1000, and the consumer
+            # holds all of the operator's live output: 1000 / 1000 - 1 = 0.
+            pytest.param(900, 1000, 0.0, True, id="retention_is_not_pressure"),
+            # Capacity 500 against 2000 live, so 1500 is queued: 2000 / 500 - 1
+            # = 3, over the 2.0 ratio.
+            pytest.param(400, 2000, 3.0, False, id="backlog_beyond_capacity"),
         ],
     )
-    def test_terminal_op_subtracts_retained_consumer_bytes(
-        self, retained_bytes, expected_pressure, expected_can_add_input
+    def test_terminal_op_counts_retained_bytes_as_capacity(
+        self, retained_bytes, live_bytes, expected_pressure, expected_can_add_input
     ):
-        """Blocks the consumer took and still holds are not queue backlog.
+        """Blocks the consumer took and still holds are capacity, not backlog.
 
-        The ref counter keeps attributing them to the producer, so without the
-        subtraction a train loop that materializes its shard pins the producer
-        to a single task for the rest of the job.
+        The ref counter keeps attributing them to the producer, so counting them
+        as queued output pins a train loop's producer to a single task for the
+        rest of the job.
         """
         op, op_state = self._mock_task_pool_map_operator()
         op.output_dependencies = []  # terminal: consumed by an iterator
@@ -534,7 +534,7 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm = self._mock_resource_manager(
             external_bytes=100, retained_bytes=retained_bytes
         )
-        rm.get_mem_op_outputs.return_value = 1000
+        rm.get_mem_op_outputs.return_value = live_bytes
 
         threshold = (
             DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
@@ -549,10 +549,10 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy.can_add_input(op) is expected_can_add_input
 
     def test_retained_bytes_ignored_when_downstream_op_is_eligible(self):
-        """Only the operator feeding the consumer can hold unreclaimable blocks.
+        """Retained bytes are capacity only for the operator feeding the consumer.
 
-        An upstream operator's blocks are released when the downstream task that
-        read them finishes, so subtracting there would silently stop pacing it.
+        An upstream operator paces against its downstream operator's in-flight
+        inputs, so counting the consumer's holdings there would stop pacing it.
         """
         op, op_state = self._mock_task_pool_map_operator()
         downstream, downstream_state = self._mock_task_pool_map_operator(

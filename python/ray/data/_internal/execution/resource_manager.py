@@ -148,8 +148,7 @@ class ResourceManager:
         self._external_consumer_bytes: int = 0
         # Bytes an external consumer has taken out of the pipeline and still
         # holds, e.g. `DataIterator.materialize()` collecting every bundle.
-        # Unlike the prefetch bytes above these do not drain as the consumer
-        # reads, so they are not pressure on the producer.
+        # Unlike the prefetch bytes above these do not drain as it reads.
         self._retained_consumer_bytes: int = 0
         self._has_external_consumer: bool = False
 

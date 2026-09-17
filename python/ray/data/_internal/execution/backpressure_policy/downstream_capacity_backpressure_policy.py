@@ -121,12 +121,15 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         downstream eligible operators.
 
         If an output dependency is ineligible, skip it and recurse down to find
-        eligible output dependencies. If there are no output dependencies,
-        return external consumer bytes.
+        eligible output dependencies. If there are no output dependencies, the
+        consumer is external and its capacity is what it holds: the prefetch
+        window plus whatever it has taken and kept, e.g. via ``materialize()``.
         """
         if not op.output_dependencies:
-            # No output dependencies, return external consumer bytes.
-            return self._resource_manager.get_external_consumer_bytes()
+            return (
+                self._resource_manager.get_external_consumer_bytes()
+                + self._resource_manager.get_retained_consumer_bytes()
+            )
 
         total_capacity_size_bytes = 0
         for output_dependency in op.output_dependencies:
@@ -188,18 +191,6 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         output_size_bytes = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
-        if (
-            next(iter(self._resource_manager.get_downstream_eligible_ops(op)), None)
-            is None
-        ):
-            # Only the operator feeding the external consumer can have blocks it
-            # cannot reclaim; upstream blocks are released when the downstream
-            # task that read them finishes.
-            output_size_bytes = max(
-                output_size_bytes
-                - self._resource_manager.get_retained_consumer_bytes(),
-                0,
-            )
         # output_size_bytes includes both buffered outputs and downstream
         # in-flight inputs. Subtract 1 to isolate the buffered portion:
         #   output_pressure = op_outqueue_bytes / downstream_in_flight_bytes

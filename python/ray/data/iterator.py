@@ -122,10 +122,9 @@ class DataIterator(abc.ABC):
     ) -> None:
         """Report bytes the caller has taken out of the pipeline and still holds.
 
-        The executor subtracts these from the producing operator's ref-counted
-        output, which would otherwise look like unconsumed blocks piling up and
-        backpressure the producer down to a single task. Subclasses whose
-        executor is not local override this.
+        Backpressure counts these as consumer capacity. Left unreported they
+        look like unconsumed blocks piling up, and the producer is throttled to
+        a single task. Subclasses whose executor is not local override this.
         """
         if executor is not None:
             executor.set_retained_consumer_bytes(num_bytes)

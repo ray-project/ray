@@ -486,8 +486,8 @@ def test_materialize_reports_retained_bytes(ray_start_regular_shared):
     """`materialize()` tells the executor how much the caller is holding.
 
     Those blocks stay alive for the rest of the job, so the ref counter keeps
-    attributing them to the operator that produced them. Reported, the
-    backpressure policy subtracts them instead of reading them as queue backlog.
+    attributing them to the operator that produced them. Reported, backpressure
+    counts them as consumer capacity instead of reading them as queue backlog.
     """
     ds = ray.data.range(200, override_num_blocks=10)
     it = ds.iterator()
