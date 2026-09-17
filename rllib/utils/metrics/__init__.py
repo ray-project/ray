@@ -120,6 +120,13 @@ MODULE_SAMPLE_BATCH_SIZE_MEAN = "module_sample_batch_size_mean"
 MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
 LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_IN = "learner_connector_sum_episodes_length_in"
 LEARNER_CONNECTOR_SUM_EPISODES_LENGTH_OUT = "learner_connector_sum_episodes_length_out"
+LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME = (
+    "learner_update_skipped_empty_batch_lifetime"
+)
+LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME = "learner_update_skipped_for_peer_lifetime"
+LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME = (
+    "learner_env_steps_dropped_on_skip_lifetime"
+)
 
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"

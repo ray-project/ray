@@ -20,7 +20,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import DeviceType, ModuleID, NamedParamDict, TensorType
 
-logger = logging.getLogger("__name__")
+logger = logging.getLogger(__name__)
 
 torch, nn = try_import_torch()
 
@@ -329,7 +329,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         This method is specific to TorchDifferentiableLearner. Before running super() it will
         initialize the device properly based on `self.config`, so that `_make_module()`
         can place the created module on the correct device. After running super() it
-        wraps the module in a TorchDDPRLModule if `config.num_learners > 0`.
+        wraps the module in a TorchDDPRLModule if `config.num_learners > 1`.
         Note, in inherited classes it is advisable to call the parent's `build()`
         after setting up all variables because `configure_optimizer_for_module` is
         called in this `Learner.build()`.
