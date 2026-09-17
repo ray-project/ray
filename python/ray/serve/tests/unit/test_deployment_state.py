@@ -10014,6 +10014,38 @@ def test_ingress_membership_version_bumps_on_add_and_removal(
     assert dsm.get_ingress_membership_version() > v_stopping
 
 
+def test_ingress_membership_version_bumps_after_disabling_direct_http(
+    mock_deployment_state_manager,
+):
+    """A removed replica's ports are reclaimed after `_direct_http` is disabled."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(direct_http=True)[0])
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+
+    replica = ds._replicas.get()[0]
+    replica._actor.set_http_port(8123)
+    replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Simulate applying the new target before the old replica finishes stopping.
+    # Port ownership belongs to the replica, so cleanup cannot rely solely on this
+    # target config, which now says the deployment does not own direct-ingress ports.
+    disabled_info, _ = deployment_info(direct_http=False)
+    ds._set_target_state(disabled_info, target_num_replicas=1)
+    ds._stop_one_running_replica_for_testing()
+    dsm.update()
+    version_before_removal = dsm.get_ingress_membership_version()
+
+    replica._actor.set_done_stopping()
+    dsm.update()
+
+    assert dsm.get_ingress_membership_version() > version_before_removal
+
+
 def test_ingress_membership_version_ignores_non_ingress_deployment(
     mock_deployment_state_manager,
 ):

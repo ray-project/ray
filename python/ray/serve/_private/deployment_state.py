@@ -5325,7 +5325,16 @@ class DeploymentState:
                 # the removal so the ingress port version advances and the
                 # direct-ingress port reconcile/prune runs to reclaim its port
                 # (the running-replica-set comparison won't flag this).
-                if self.owns_direct_ingress_ports():
+                # The deployment's target config may already have changed by the
+                # time an old replica finishes stopping. In particular, after
+                # `_direct_http` is disabled, the target no longer owns ports but
+                # replicas from the previous target can still have allocations
+                # that need to be pruned.
+                if (
+                    self.owns_direct_ingress_ports()
+                    or replica.actor_http_port is not None
+                    or replica.actor_grpc_port is not None
+                ):
                     self._ingress_membership_removed = True
 
                 # Retain replicas that allocated a log file so the dashboard can
@@ -6626,9 +6635,9 @@ class DeploymentStateManager:
             ingress_replica_removed = (
                 deployment_state.consume_ingress_membership_removed()
             )
-            if (
-                running_set_changed or ingress_replica_removed
-            ) and deployment_state.owns_direct_ingress_ports():
+            if ingress_replica_removed or (
+                running_set_changed and deployment_state.owns_direct_ingress_ports()
+            ):
                 self._ingress_membership_version += 1
             deployment_state.broadcast_deployment_config_if_changed()
             if deployment_state.should_autoscale():
