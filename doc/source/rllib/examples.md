@@ -98,7 +98,7 @@ RLlib rewrote the Connector API from scratch for the new API stack. It calls con
 
 ### Debugging
 
-- [Deterministic sampling and training](https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_sampling_and_training.py): Demonstrates how to seed an experiment through the algorithm config. RLlib passes the seed to all components that have a copy of the {ref}`RL environment <rllib-environments-doc>` and the {ref}`RLModule <rlmodule-guide>`, so these components behave deterministically. With a seed, train results become repeatable. Some algorithms, such as {ref}`APPO <appo>`, rely on asynchronous sampling combined with Ray network communication and always behave stochastically, whether or not you set a seed.
+- [Deterministic sampling and training](https://github.com/ray-project/ray/blob/master/rllib/examples/debugging/deterministic_sampling_and_training.py): Demonstrates how to seed an experiment through the algorithm config. RLlib passes the seed to all components that have a copy of the {ref}`RL environment <rllib-environments-doc>` and the {ref}`RLModule <rlmodule-guide>`, so these components behave deterministically. With a seed, train results should become repeatable. Some algorithms, such as {ref}`APPO <appo>`, rely on asynchronous sampling combined with Ray network communication and always behave stochastically, whether or not you set a seed.
 
 ### Environments
 

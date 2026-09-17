@@ -73,7 +73,7 @@ Most of the time, only the first two categories are of interest. The third is an
 
 ### ReplayBuffer base class
 
-The base {py:class}`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class only supports storing and replaying experiences in different {py:class}`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`s. Add data to the buffer's storage with the `add()` method, and replay it with the `sample()` method. Advanced buffer types add features while retaining compatibility through inheritance. The following example shows the most basic scheme of interaction with a {py:class}`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
+The base {py:class}`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class only supports storing and replaying experiences in different {py:class}`~ray.rllib.utils.replay_buffers.replay_buffer.StorageUnit`s. Add data to the buffer's storage with the `add()` method, and replay it with the `sample()` method. Advanced buffer types add features while trying to retain compatibility through inheritance. The following example shows the most basic scheme of interaction with a {py:class}`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer`.
 
 ```{literalinclude} doc_code/replay_buffer_demo.py
 :language: python

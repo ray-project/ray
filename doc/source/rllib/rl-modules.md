@@ -564,7 +564,7 @@ See {ref}`Construction through the class constructor <rllib-constructing-rlmodul
 
 ### Algorithm-specific RLModule APIs
 
-The algorithm you choose to use with your RLModule affects the structure of the final custom module. Each Algorithm class has a fixed set of APIs that all RLModules trained by that algorithm need to implement.
+The algorithm you choose to use with your RLModule affects the structure of the final custom module to some extent. Each Algorithm class has a fixed set of APIs that all RLModules trained by that algorithm need to implement.
 
 To find out what APIs your Algorithms require, do the following:
 

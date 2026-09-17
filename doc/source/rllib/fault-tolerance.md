@@ -18,12 +18,12 @@ RLlib supports fault tolerance in three areas:
 
 RLlib supports self-recovering and elastic {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` for both training and evaluation EnvRunner workers. This provides fault tolerance at the worker level.
 
-If you have n {py:class}`~ray.rllib.env.env_runner.EnvRunner` workers on different machines and Ray preempts one machine, RLlib continues training and evaluation with minimal interruption.
+If you have n {py:class}`~ray.rllib.env.env_runner.EnvRunner` workers on different machines and one machine is preempted, RLlib can continue training and evaluation with minimal interruption.
 
 RLlib supports two properties here, self-recovery and elasticity:
 
 * **Elasticity**: RLlib continues training even when it removes an {py:class}`~ray.rllib.env.env_runner.EnvRunner`. For example, if an RLlib trial uses spot instances, Ray might remove nodes from the cluster and fail to schedule a subset of workers. RLlib then continues at a reduced speed with whatever healthy {py:class}`~ray.rllib.env.env_runner.EnvRunner` instances remain.
-* **Self-recovery**: When possible, RLlib restores any {py:class}`~ray.rllib.env.env_runner.EnvRunner` that it previously removed. During restoration, RLlib syncs the latest state to the restored {py:class}`~ray.rllib.env.env_runner.EnvRunner` before sampling new episodes.
+* **Self-recovery**: When possible, RLlib tries to restore any {py:class}`~ray.rllib.env.env_runner.EnvRunner` that it previously removed. During restoration, RLlib syncs the latest state to the restored {py:class}`~ray.rllib.env.env_runner.EnvRunner` before sampling new episodes.
 
 Turn on worker fault tolerance by setting `config.fault_tolerance(restart_failed_env_runners=True)`.
 
