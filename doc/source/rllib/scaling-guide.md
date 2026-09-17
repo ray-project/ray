@@ -136,8 +136,8 @@ For example, RLlib scales {py:class}`~ray.rllib.core.learner.learner.Learner` ac
 
 The Ray team is working on closing these gaps. Future areas of improvement include:
 
-- Enable **training large models**, such as a "large language model" (LLM). The team is working on a "Reinforcement Learning from Human Feedback" (RLHF) prototype setup. The main problems to solve are the model-parallel and tensor-parallel distribution across multiple GPUs, and a reasonably fast transfer of weights between Ray actors.
+- Enable training large models, such as a "large language model" (LLM). The team is working on a "Reinforcement Learning from Human Feedback" (RLHF) prototype setup. The main problems to solve are the model-parallel and tensor-parallel distribution across multiple GPUs, and a reasonably fast transfer of weights between Ray actors.
 
-- Enable training with **thousands of multi-agent policies**. A possible solution for this scaling problem is to split the {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` into manageable groups of individual policies across the {py:class}`~ray.rllib.env.env_runner.EnvRunner` and {py:class}`~ray.rllib.core.learner.learner.Learner` actors.
+- Enable training with thousands of multi-agent policies. A possible solution for this scaling problem is to split the {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` into manageable groups of individual policies across the {py:class}`~ray.rllib.env.env_runner.EnvRunner` and {py:class}`~ray.rllib.core.learner.learner.Learner` actors.
 
-- Enable **vector envs for multi-agent**.
+- Enable vector envs for multi-agent.

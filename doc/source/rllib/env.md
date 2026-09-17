@@ -121,7 +121,7 @@ algo.stop()
 ```
 
 :::{tip}
-For all supported environment names registered with Farama, see these resources (by env category):
+For all supported environment names registered with Farama, see these resources by environment category:
 
 * [Toy Text](https://gymnasium.farama.org/environments/toy_text/)
 * [Classic Control](https://gymnasium.farama.org/environments/classic_control/)
@@ -252,11 +252,11 @@ can hold more than one vectorized [gymnasium](https://gymnasium.farama.org) envi
 of individual environment copies per EnvRunner through `config.env_runners(num_envs_per_env_runner=..)`.
 ```
 
-There are two methods to scale sample collection with RLlib and [gymnasium](https://gymnasium.farama.org) environments, and you can combine both.
+There are two methods to scale sample collection with RLlib and [gymnasium](https://gymnasium.farama.org) environments, and you can combine both:
 
 1. **Distribute across multiple processes:** RLlib creates multiple {py:class}`~ray.rllib.envs.env_runner.EnvRunner` instances, each a Ray actor, for experience collection, controlled through your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`: `config.env_runners(num_env_runners=..)`.
 
-2. **Vectorization within a single process:** Many environments achieve high frame rates per core, but policy inference latency limits them. To address this limitation, create multiple environments per process to batch the policy forward pass across these vectorized environments. Set `config.env_runners(num_envs_per_env_runner=..)` to create more than one environment copy per {py:class}`~ray.rllib.envs.env_runner.EnvRunner` actor. You can also run the individual sub-environments within a vector as separate processes, using the Python multiprocessing that gymnasium provides. Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes and step them in parallel.
+1. **Vectorization within a single process:** Many environments achieve high frame rates per core, but policy inference latency limits them. To address this limitation, create multiple environments per process to batch the policy forward pass across these vectorized environments. Set `config.env_runners(num_envs_per_env_runner=..)` to create more than one environment copy per {py:class}`~ray.rllib.envs.env_runner.EnvRunner` actor. You can also run the individual sub-environments within a vector as separate processes, using the Python multiprocessing that gymnasium provides. Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes and step them in parallel.
 
 :::{note}
 Multi-agent setups aren't vectorizable yet. The Ray team is working on a solution for this restriction by using the `gymnasium >= 1.x` custom vectorization feature.

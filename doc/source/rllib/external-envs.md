@@ -87,19 +87,19 @@ Here is an example `EPISODES_AND_GET_STATE` message that the client sends to the
 
 - **`PING`**
 
-  - Example: `{"type": "PING"}`
+  - Example: `{"type": "PING"}`.
   - Purpose: Initial handshake to establish communication.
   - Expected response: `{"type": "PONG"}`.
 
 - **`GET_CONFIG`**
 
-  - Example: `{"type": "GET_CONFIG"}`
+  - Example: `{"type": "GET_CONFIG"}`.
   - Purpose: Request the relevant configuration, such as how many timesteps to collect for a single `EPISODES_AND_GET_STATE` message. See below.
   - Expected response: `{"type": "SET_CONFIG", "env_steps_per_sample": 500, "force_on_policy": true}`.
 
 - **`EPISODES_AND_GET_STATE`**
 
-  - Example: {ref}`Example EPISODES_AND_GET_STATE message <example-rllink-episode-and-get-state-msg>`
+  - Example: {ref}`Example EPISODES_AND_GET_STATE message <example-rllink-episode-and-get-state-msg>`.
   - Purpose: Combine `EPISODES` and `GET_STATE` into a single request. This helps workflows that require on-policy, synchronous updates to model weights after data collection.
   - Body:
 
@@ -112,12 +112,12 @@ Here is an example `EPISODES_AND_GET_STATE` message that the client sends to the
 
 - **`PONG`**
 
-  - Example: `{"type": "PONG"}`
+  - Example: `{"type": "PONG"}`.
   - Purpose: Acknowledgment of the `PING` request to confirm connectivity.
 
 - **`SET_STATE`**
 
-  - Example: `{"type": "SET_STATE", "weights_seq_no": 123, "onnx_file": "... [base64 encoded ONNX file] ..."}`
+  - Example: `{"type": "SET_STATE", "weights_seq_no": 123, "onnx_file": "... [base64 encoded ONNX file] ..."}`.
   - Purpose: Provide the client with the current state, such as model weights.
   - Body:
 
@@ -137,17 +137,17 @@ Here is an example `EPISODES_AND_GET_STATE` message that the client sends to the
 **Initial handshake**
 
 1. Client sends `PING`.
-2. Server responds with `PONG`.
+1. Server responds with `PONG`.
 
 **Configuration request**
 
 1. Client sends `GET_CONFIG`.
-2. Server responds with `SET_CONFIG`.
+1. Server responds with `SET_CONFIG`.
 
 **On-policy training**
 
 1. Client collects on-policy data and sends `EPISODES_AND_GET_STATE`.
-2. Server processes the episodes and responds with `SET_STATE`.
+1. Server processes the episodes and responds with `SET_STATE`.
 
 :::{note}
 This protocol is an initial draft toward a widely adopted protocol for communication between an external client and a remote RL service. Expect many changes, enhancements, and upgrades as it matures, including a safety layer and compression. It offers a lightweight, simple interface for integrating external environments with RL frameworks.

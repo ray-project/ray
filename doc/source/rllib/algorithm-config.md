@@ -40,7 +40,7 @@ config.environment(env="CartPole-v1")  # call the proper method
 :::
 
 
-## Algorithm specific config classes
+## Algorithm-specific config classes
 
 You don't use the base `AlgorithmConfig` class directly in practice, but always its algorithm-specific subclasses, such as {py:class}`~ray.rllib.algorithms.ppo.ppo.PPOConfig`. Each subclass comes with its own set of additional arguments to the {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method.
 
@@ -218,7 +218,7 @@ Besides the most common settings described earlier, the {py:class}`~ray.rllib.al
 {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` groups its config settings into the following categories, each represented by its own method:
 
 - {ref}`Config settings for the RL environment <rllib-config-env>`
-- {ref}`Config settings for training behavior (including algo-specific settings) <rllib-config-training>`
+- {ref}`Config settings for training behavior, including algorithm-specific settings <rllib-config-training>`
 - {ref}`Config settings for EnvRunners <rllib-config-env-runners>`
 - {ref}`Config settings for Learners <rllib-config-learners>`
 - {ref}`Config settings for adding callbacks <rllib-config-callbacks>`

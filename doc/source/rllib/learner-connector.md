@@ -50,7 +50,7 @@ Each {py:class}`~ray.rllib.core.learner.learner.Learner` actor holds a single Le
 :width: 1000
 :align: left
 
-**Learner ConnectorV2 Pipelines**: A learner connector pipeline sits between the input training data, a list of episodes,
+**Learner ConnectorV2 pipelines**: A Learner connector pipeline sits between the input training data, a list of episodes,
 and the {py:class}`~ray.rllib.core.learner.learner.Learner` actor's {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`.
 The pipeline transforms this input data into a train batch readable by the
 {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` method of the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`.
@@ -322,7 +322,7 @@ You don't have to concatenate observations into the same original dimension as y
 
 
 :::{tip}
-The preceding code is for demonstration and explanation purposes only. RLlib already includes an off-the-shelf {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece that stacks the last `N` observations in both env-to-module and Learner connector pipelines and supports multi-agent cases. Add these lines to your config to switch on observation frame stacking:
+The preceding code is for demonstration only. RLlib already includes an off-the-shelf {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece that stacks the last `N` observations in both env-to-module and Learner connector pipelines and supports multi-agent cases. Add these lines to your config to switch on observation frame stacking:
 
 ```{testcode}
 from ray.rllib.connectors.common.frame_stacking import FrameStacking

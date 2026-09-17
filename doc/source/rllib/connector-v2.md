@@ -59,7 +59,7 @@ RLlib stores and transports all trajectory data as {py:class}`~ray.rllib.env.sin
 
 **Generic ConnectorV2 Pipeline**: All pipelines consist of one or more {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` pieces.
 When you call the pipeline, you pass in a list of episodes, the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` instance,
-and a batch, which might start as an empty dict.
+and a batch, which might start as an empty dictionary.
 Each {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece takes its predecessor's output,
 starting on the left with the batch, transforms the episodes, the batch, or both, and passes everything
 to the next piece. Each {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece can read from and write to the

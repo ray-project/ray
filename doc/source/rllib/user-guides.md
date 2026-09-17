@@ -90,7 +90,7 @@ How to process trajectories through episodes
 
 ```{button-ref} connector-v2
 
-How to use connectors and connector pipelines?
+How to use connectors and connector pipelines
 ```
 :::
 

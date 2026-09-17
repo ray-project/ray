@@ -215,7 +215,7 @@ Use the `evaluation_config` key to override any config settings for the evaluati
 
 :::{note}
 
-Policy gradient algorithms can find the optimal policy, even if it's stochastic. Setting `explore=False` results in the evaluation workers not using this stochastic policy.
+Policy gradient algorithms can find the optimal policy, even if it's stochastic. Setting `explore=False` prevents the evaluation workers from using this stochastic policy.
 :::
 
 The `evaluation_num_env_runners` setting determines the level of parallelism within the evaluation step. Set it to a larger value to run more evaluation episodes or time-steps in parallel. For example, if `evaluation_duration=10`, `evaluation_duration_unit=episodes`, and `evaluation_num_env_runners=10`, each evaluation `EnvRunner` runs only one episode in each evaluation step.
@@ -296,7 +296,7 @@ Result for PG_SimpleCorridor_0de4e686:
 
 ## Rewriting trajectories
 
-In the `on_postprocess_traj` callback, you have full access to the trajectory batch `post_batch` and other training state. You can use this information to rewrite the trajectory. Rewriting the trajectory has several uses:
+In the `on_postprocess_traj` callback, you have full access to the trajectory batch `post_batch` and other training state. You can use this information to rewrite the trajectory. Rewriting the trajectory has two uses:
 
  * Backdating rewards to previous time steps, for example, based on values in `info`.
  * Adding model-based curiosity bonuses to rewards. You can train the model with a {doc}`custom model supervised loss </rllib/rl-modules>`.

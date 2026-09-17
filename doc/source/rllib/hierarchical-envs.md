@@ -43,4 +43,4 @@ config = (
 
 In this setup, the multi-agent environment implementation should provide the appropriate rewards at any hierarchy level. The environment class is also responsible for routing between agents. For example, it conveys [goals](https://arxiv.org/pdf/1703.01161.pdf) from higher-level agents to lower-level agents as part of the lower-level agent's observation.
 
-See [this runnable example of a hierarchical env](https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py).
+See [this runnable example of a hierarchical environment](https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py).

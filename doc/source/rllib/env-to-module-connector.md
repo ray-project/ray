@@ -341,7 +341,7 @@ print(algo.train())
 
 (observation-preprocessors-adding-rewards-to-obs)=
 
-### Example: Adding recent rewards to the batch
+### Example: Add recent rewards to the batch
 
 Assume you wrote a custom {ref}`RLModule <rlmodule-guide>` that requires the last three received rewards as input in the calls to any of its `forward_..()` methods.
 
@@ -386,11 +386,11 @@ class AddPastThreeRewards(SingleAgentObservationPreprocessor):
 The preceding example should work without any further action on your model, whether it's a custom model or a default one that RLlib provides, as long as the model determines its input layer's size from its own `self.observation_space` attribute. The connector pipeline captures the observation space changes correctly, from the environment's 1D-Box to the larger, reward-enhanced 1D-Box, and passes this new observation space to your RLModule's {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method.
 :::
 
-### Example: Preprocessing observations in multi-agent setups
+### Example: Preprocess observations in multi-agent setups
 
 In multi-agent setups, you have two options for preprocessing your agents' individual observations by customizing your env-to-module pipeline:
 
-1) Agent-by-agent: with the same {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor` API as in the previous examples, you can apply a single preprocessing logic across all agents. If you need one distinct preprocessing logic per `AgentID`, look up the agent information from the provided `episode` argument in the {py:meth}`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor.preprocess` method:
+1. Agent-by-agent: with the same {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor` API as in the previous examples, you can apply a single preprocessing logic across all agents. If you need one distinct preprocessing logic per `AgentID`, look up the agent information from the provided `episode` argument in the {py:meth}`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor.preprocess` method:
 
    ```{testcode}
    :skipif: True
@@ -417,13 +417,13 @@ In multi-agent setups, you have two options for preprocessing your agents' indiv
        ...
    ```
 
-1) Multi-agent preprocessor with access to the entire multi-agent observation dict: Alternatively, you can subclass the {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` API and override the same two methods, `recompute_output_observation_space` and `preprocess`.
+1. Multi-agent preprocessor with access to the entire multi-agent observation dict: Alternatively, you can subclass the {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` API and override the same two methods, `recompute_output_observation_space` and `preprocess`.
 
    See this [2-agent observation preprocessor example](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/multi_agent_observation_preprocessor.py), which shows how to enhance each agent's observations by adding information from the other agent.
 
    Use {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.MultiAgentObservationPreprocessor` whenever you need to preprocess an agent's observations by looking up information from other agents, such as their observations, rewards, and previous actions.
 
-### Example: Adding new columns to the batch
+### Example: Add new columns to the batch
 
 So far, you have altered the observations in the input episodes, either by {ref}`manipulating them directly <observation-preprocessors>` or by {ref}`adding information such as rewards <observation-preprocessors-adding-rewards-to-obs>`.
 
