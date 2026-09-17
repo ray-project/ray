@@ -235,6 +235,207 @@ def test_user_error_with_signal_is_worker_failure(tmp_path):
         trainer.fit()
 
 
+def _run_relax_trainer(tmp_path, preempted_rank, relax):
+    """Run one attempt where `preempted_rank` is reclaimed before it reports.
+
+    Faithful to the watcher: the same ``PreemptionInfo`` is set on every worker.
+    The preempted rank then stalls without ever calling ``report()``, leaving
+    the survivor alone at the barriers a ``report()`` crosses -- the
+    ``get_preemption_info`` broadcast, then the checkpoint-dir-name broadcast
+    and the consolidation gate. The step the run resumes from says whether the
+    survivor's just-in-time checkpoint committed (step 1) or was lost and the
+    run fell back to the earlier one (step 0).
+
+    Defined inline so cloudpickle sends the training function by value; a
+    module-level one is sent by reference and the worker cannot import it.
+    """
+
+    def train_fn(config):
+        import time
+
+        import ray.train
+        from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+        from ray.train.v2._internal.execution.context import get_train_context
+        from ray.train.v2.api.preemption import PreemptionInfo
+
+        ckpt = ray.train.get_checkpoint()
+        if ckpt is not None:
+            # Resumed: report which checkpoint we came back from, then finish.
+            # Reported with a checkpoint because `Result.metrics` carries the
+            # metrics of the latest *checkpointed* report.
+            resumed_from = load_dict_checkpoint(ckpt)["step"]
+            with create_dict_checkpoint({"step": resumed_from}) as checkpoint:
+                ray.train.report({"resumed_from": resumed_from}, checkpoint=checkpoint)
+            return
+
+        rank = ray.train.get_context().get_world_rank()
+        preempted_rank = config["preempted_rank"]
+
+        # A committed checkpoint to fall back to, standing in for the last
+        # periodic one.
+        with create_dict_checkpoint({"step": 0}) as checkpoint:
+            ray.train.report({"step": 0}, checkpoint=checkpoint)
+
+        # Long enough for the controller to notice the preemption (health
+        # checks are 2s apart) and for the survivor to commit, short enough to
+        # keep the test quick.
+        get_train_context().preemption_context.preemption_info = PreemptionInfo(
+            deadline_ms=int((time.time() + 12) * 1000),
+            preempted_node_to_ranks={"mock-node": [preempted_rank]},
+        )
+
+        if rank == preempted_rank:
+            # Reclaimed here, before reaching `report()`. The controller tears
+            # this attempt down once the deadline elapses.
+            time.sleep(60)
+            return
+
+        # Survivor. Both of these block on the preempted rank unless the
+        # barrier has been relaxed.
+        assert ray.train.get_preemption_info() is not None
+        with create_dict_checkpoint({"step": 1}) as checkpoint:
+            ray.train.report({"step": 1}, checkpoint=checkpoint)
+        time.sleep(60)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        train_loop_config={"preempted_rank": preempted_rank},
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            failure_config=FailureConfig(
+                max_failures=0,
+                max_preemption_failures=2,
+                relax_collectives_on_preemption=relax,
+            ),
+        ),
+    )
+    return trainer.fit()
+
+
+def test_report_barrier_strands_survivor_without_relaxation(tmp_path):
+    """Without relaxation the survivor's just-in-time checkpoint is lost.
+
+    The survivor blocks at the barrier waiting on a rank that will never
+    arrive, so the run falls back to the last checkpoint that did commit.
+    """
+    result = _run_relax_trainer(tmp_path, preempted_rank=1, relax=False)
+
+    assert result.error is None
+    assert result.metrics["resumed_from"] == 0
+
+
+def test_relaxed_report_barrier_commits_jit_checkpoint(tmp_path):
+    """With relaxation the survivor commits without the preempted rank.
+
+    ``max_failures=0`` also holds the line that this is still classified as a
+    preemption and charged to ``max_preemption_failures``.
+    """
+    result = _run_relax_trainer(tmp_path, preempted_rank=1, relax=True)
+
+    assert result.error is None
+    assert result.metrics["resumed_from"] == 1
+
+
+def test_report_barrier_not_relaxed_when_rank_0_is_preempted(tmp_path):
+    """Relaxation is skipped when rank 0 is preempted, even when enabled.
+
+    Rank 0 is the sole writer of the broadcast payload and the source of the
+    consolidated report's metrics, so releasing without it would hand every
+    survivor ``None``. Such runs keep the pre-relaxation behavior.
+    """
+    result = _run_relax_trainer(tmp_path, preempted_rank=0, relax=True)
+
+    assert result.error is None
+    assert result.metrics["resumed_from"] == 0
+
+
+def _run_slow_checkpoint_trainer(tmp_path, grace_s):
+    """A survivor whose checkpoint outlasts the drain window.
+
+    The preempted rank stalls without reporting, and the survivor only reaches
+    `report()` well after the deadline has passed. Committing then needs both
+    halves of the feature: `relax_collectives_on_preemption` so the barrier
+    completes without the preempted rank, and `preemption_grace_s`
+    so the controller has not already torn the survivor down.
+    """
+
+    def train_fn(config):
+        import json
+        import os
+        import tempfile
+        import time
+
+        import ray.train
+        from ray.train import Checkpoint
+        from ray.train.v2._internal.execution.context import get_train_context
+        from ray.train.v2.api.preemption import PreemptionInfo
+
+        ckpt = ray.train.get_checkpoint()
+        if ckpt is not None:
+            with ckpt.as_directory() as d:
+                step = json.load(open(os.path.join(d, "s.json")))["step"]
+            with tempfile.TemporaryDirectory() as t:
+                json.dump({"step": step}, open(os.path.join(t, "s.json"), "w"))
+                ray.train.report(
+                    {"resumed_from": step},
+                    checkpoint=Checkpoint.from_directory(t),
+                )
+            return
+
+        rank = ray.train.get_context().get_world_rank()
+        # A deadline only 5s out, far shorter than the checkpoint below.
+        get_train_context().preemption_context.preemption_info = PreemptionInfo(
+            deadline_ms=int((time.time() + 5) * 1000),
+            preempted_node_to_ranks={"mock-node": [1]},
+        )
+
+        if rank == 1:
+            time.sleep(120)  # reclaimed; never reports
+            return
+
+        # Survivor: a checkpoint that takes far longer than the drain window.
+        time.sleep(15)
+        with tempfile.TemporaryDirectory() as t:
+            json.dump({"step": 42}, open(os.path.join(t, "s.json"), "w"))
+            ray.train.report({"step": 42}, checkpoint=Checkpoint.from_directory(t))
+        time.sleep(120)
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            failure_config=FailureConfig(
+                max_failures=0,
+                max_preemption_failures=2,
+                relax_collectives_on_preemption=True,
+                preemption_grace_s=grace_s,
+            ),
+        ),
+    )
+    return trainer.fit()
+
+
+def test_survivor_finishes_checkpoint_past_the_deadline(tmp_path):
+    """With grace, a checkpoint that outlasts the drain window still commits."""
+    result = _run_slow_checkpoint_trainer(tmp_path, grace_s=60.0)
+
+    assert result.error is None
+    assert result.metrics["resumed_from"] == 42
+
+
+def test_survivor_is_torn_down_at_the_deadline_without_grace(tmp_path):
+    """Without grace the same checkpoint is lost -- the default behavior.
+
+    The survivor is torn down mid-checkpoint, so nothing ever commits: every
+    restart repeats the same preemption from scratch until the preemption
+    budget runs out.
+    """
+    with pytest.raises(PreemptionError):
+        _run_slow_checkpoint_trainer(tmp_path, grace_s=0.0)
+
+
 if __name__ == "__main__":
     import sys
 

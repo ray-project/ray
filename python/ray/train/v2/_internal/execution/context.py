@@ -136,6 +136,8 @@ class TrainContext:
     checkpoint: Optional["Checkpoint"] = None
     current_report_index: int = 0
     report_call_index: int = 0
+    # Identifies which collective a call to the `SynchronizationActor` belongs to.
+    collective_seq: int = 0
     report_order_condition: threading.Condition = threading.Condition()
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
@@ -145,6 +147,19 @@ class TrainContext:
         # Ray train initializes worker with current report index
         # report_call_index should start at the current report index
         self.report_call_index = self.current_report_index
+
+    def next_collective_seq(self) -> int:
+        """Sequence number identifying the next collective this worker enters.
+
+        The `SynchronizationActor` uses it to tell one collective from the
+        next, so that a worker that has fallen behind cannot be handed a later
+        collective's payload.
+
+        Returns:
+            The sequence number to pass with the next collective call.
+        """
+        self.collective_seq += 1
+        return self.collective_seq
 
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
@@ -242,6 +257,8 @@ class TrainContext:
                     world_size=self.distributed_context.world_size,
                     data=checkpoint_dir_name,
                     caller_method_name="ray.train.report",
+                    collective_seq=self.next_collective_seq(),
+                    relaxable=True,
                 )
             )
 
@@ -466,6 +483,8 @@ class TrainContext:
                 )
                 # Keep report indexes aligned across workers.
                 self.report_call_index -= 1
+                # Keep collective sequence aligned across workers. The next report will increment it.
+                self.collective_seq -= 1
                 return
 
             # Upload checkpoint, wait for turn, and report.
