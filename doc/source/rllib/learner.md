@@ -280,7 +280,7 @@ rl_module_only_state = learner.get_state(components=COMPONENT_RL_MODULE)
 learner.module.set_state(rl_module_only_state)
 ```
 
-Set and get the entire state of a {py:class}`~ray.rllib.core.learner.learner.Learner` with {py:meth}`~ray.rllib.core.learner.learner.Learner.set_state` and {py:meth}`~ray.rllib.core.learner.learner.Learner.get_state`. To get only the RLModule's weights without the optimizer states, use the `components=COMPONENT_RL_MODULE` argument in {py:meth}`~ray.rllib.core.learner.learner.Learner.get_state`, as the preceding code shows. To set only the RLModule's weights without touching the optimizer states, use {py:meth}`~ray.rllib.core.learner.learner.Learner.get_state` and pass in a dict, `{COMPONENT_RL_MODULE: [RLModule's state]}`, as the preceding code shows.
+Set and get the entire state of a {py:class}`~ray.rllib.core.learner.learner.Learner` with {py:meth}`~ray.rllib.core.learner.learner.Learner.set_state` and {py:meth}`~ray.rllib.core.learner.learner.Learner.get_state`. To get only the RLModule's weights without the optimizer states, use the `components=COMPONENT_RL_MODULE` argument in {py:meth}`~ray.rllib.core.learner.learner.Learner.get_state`, as the preceding code shows. To set only the RLModule's weights without touching the optimizer states, use {py:meth}`~ray.rllib.core.learner.learner.Learner.set_state` and pass in a dict, `{COMPONENT_RL_MODULE: [RLModule's state]}`, as the preceding code shows.
 
 :::
 
