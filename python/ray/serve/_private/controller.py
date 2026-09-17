@@ -1636,7 +1636,6 @@ class ServeController:
 
         Non-ingress deployments marked ``_direct_http`` own their own HTTP port;
         their replicas go into ``direct_http_targets``, keyed by deployment name.
-        TODO (celinaky): better docstring.
         """
         ingress_request_router_deployment_name = (
             self.application_state_manager.get_ingress_request_router_deployment_name(
@@ -1667,10 +1666,6 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
-        # Deployments that opted in with `_direct_http` own their own HTTP port.
-        # They are published per deployment name so HAProxy can give each its own
-        # backend; a deployment whose replicas have no allocated port yet is left
-        # out entirely rather than published with an empty target list.
         direct_http_deployment_names = (
             self.application_state_manager.get_direct_http_deployment_names(app_name)
         )
