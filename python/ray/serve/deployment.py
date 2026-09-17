@@ -121,10 +121,10 @@ class Deployment:
             _internal: Internal flag; ``Deployment`` instances must be created
                 via the ``@serve.deployment`` decorator, which sets this to
                 ``True``.
-            _direct_http: Internal flag; when direct ingress is enabled, give
-                this deployment's replicas their own HTTP server even though
-                the deployment is not the application's ingress. Unstable and
-                not part of the public Serve API. TODO (celinaky): review and write a better docstring
+            _direct_http: Internal flag; when direct ingress is enabled, each
+                replica of this deployment starts its own HTTP server. This
+                deployment should not be the ingress. Unstable and not part of
+                the public Serve API.
         """
         if not _internal:
             raise RuntimeError(
