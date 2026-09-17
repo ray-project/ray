@@ -89,6 +89,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
     is_grpc_enabled,
+    maybe_crash_after_checkpoint,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
@@ -121,10 +122,6 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-
-# Used for testing purposes only. If this is set, the controller will crash
-# after writing each checkpoint with the specified probability.
-_CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
@@ -359,6 +356,7 @@ class ServeController:
         self.kv_store.put(
             LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(global_logging_config)
         )
+        maybe_crash_after_checkpoint()
         self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
@@ -1278,6 +1276,7 @@ class ServeController:
                 )
             ),
         )
+        maybe_crash_after_checkpoint()
 
         # Declaratively apply the new set of applications.
         # This will delete any applications no longer in the config that were
