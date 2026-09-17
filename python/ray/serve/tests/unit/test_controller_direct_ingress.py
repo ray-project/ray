@@ -923,52 +923,19 @@ def _allocate_http_port(controller: FakeDirectIngressController, replica_info):
 def test_get_target_groups_populates_direct_http_targets(
     direct_ingress_controller: FakeDirectIngressController,
 ):
-    """A `_direct_http` deployment is published under its own deployment name.
+    """`_direct_http` deployments are published under their own names.
 
     The app's data-plane `targets` still hold only the ingress replicas -- the
     direct-HTTP replicas are a separate inventory HAProxy will use to build a
     per-deployment backend.
     """
     ingress_replica, direct_http_replicas = _setup_direct_http_app(
-        direct_ingress_controller, "app1", "/app1", ["LLMServer"]
+        direct_ingress_controller,
+        "app1",
+        "/app1",
+        ["LLMServer_a", "LLMServer_b"],
     )
     ingress_port = _allocate_http_port(direct_ingress_controller, ingress_replica)
-    direct_port = _allocate_http_port(
-        direct_ingress_controller, direct_http_replicas["LLMServer"]
-    )
-
-    target_groups = direct_ingress_controller.get_target_groups(app_name="app1")
-
-    assert len(target_groups) == 1
-    target_group = target_groups[0]
-    assert target_group.targets == [
-        Target(ip="10.0.0.1", port=ingress_port, instance_id="", name="ingress_replica")
-    ]
-    assert target_group.direct_http_targets == {
-        "LLMServer": [
-            Target(
-                ip="10.0.0.2",
-                port=direct_port,
-                instance_id="",
-                name="LLMServer_replica",
-            )
-        ]
-    }
-
-
-def test_get_target_groups_keeps_direct_http_deployments_separate(
-    direct_ingress_controller: FakeDirectIngressController,
-):
-    """Replicas of different `_direct_http` deployments are never flattened.
-
-    This is the invariant the HAProxy phase depends on: each deployment gets its
-    own backend, so a retry or redispatch can never send a request meant for one
-    model to another model's replica.
-    """
-    ingress_replica, direct_http_replicas = _setup_direct_http_app(
-        direct_ingress_controller, "app1", "/app1", ["LLMServer_a", "LLMServer_b"]
-    )
-    _allocate_http_port(direct_ingress_controller, ingress_replica)
     port_a = _allocate_http_port(
         direct_ingress_controller, direct_http_replicas["LLMServer_a"]
     )
@@ -978,10 +945,19 @@ def test_get_target_groups_keeps_direct_http_deployments_separate(
 
     target_groups = direct_ingress_controller.get_target_groups(app_name="app1")
 
-    assert target_groups[0].direct_http_targets == {
+    assert len(target_groups) == 1
+    by_protocol = {tg.protocol: tg for tg in target_groups}
+    http_target_group = by_protocol[RequestProtocol.HTTP]
+    assert http_target_group.targets == [
+        Target(ip="10.0.0.1", port=ingress_port, instance_id="", name="ingress_replica")
+    ]
+    assert http_target_group.direct_http_targets == {
         "LLMServer_a": [
             Target(
-                ip="10.0.0.2", port=port_a, instance_id="", name="LLMServer_a_replica"
+                ip="10.0.0.2",
+                port=port_a,
+                instance_id="",
+                name="LLMServer_a_replica",
             )
         ],
         "LLMServer_b": [
@@ -1011,7 +987,8 @@ def test_get_target_groups_omits_direct_http_deployment_without_port(
 
     target_groups = direct_ingress_controller.get_target_groups(app_name="app1")
 
-    assert target_groups[0].direct_http_targets == {
+    by_protocol = {tg.protocol: tg for tg in target_groups}
+    assert by_protocol[RequestProtocol.HTTP].direct_http_targets == {
         "Started": [
             Target(
                 ip="10.0.0.2",
@@ -1031,7 +1008,9 @@ def test_get_target_groups_grpc_has_no_direct_http_targets(
         direct_ingress_controller, "app1", "/app1", ["LLMServer"]
     )
     _allocate_http_port(direct_ingress_controller, ingress_replica)
-    _allocate_http_port(direct_ingress_controller, direct_http_replicas["LLMServer"])
+    direct_port = _allocate_http_port(
+        direct_ingress_controller, direct_http_replicas["LLMServer"]
+    )
     direct_ingress_controller.allocate_replica_port(
         ingress_replica.node_id,
         ingress_replica.replica_id.unique_id,
@@ -1043,21 +1022,16 @@ def test_get_target_groups_grpc_has_no_direct_http_targets(
     by_protocol = {tg.protocol: tg for tg in target_groups}
     assert RequestProtocol.GRPC in by_protocol
     assert by_protocol[RequestProtocol.GRPC].direct_http_targets == {}
-    assert by_protocol[RequestProtocol.HTTP].direct_http_targets != {}
-
-
-def test_get_target_groups_without_direct_http_deployments(
-    direct_ingress_controller: FakeDirectIngressController,
-):
-    """An app with no `_direct_http` deployments is unchanged."""
-    ingress_replica, _ = _setup_direct_http_app(
-        direct_ingress_controller, "app1", "/app1", []
-    )
-    _allocate_http_port(direct_ingress_controller, ingress_replica)
-
-    target_groups = direct_ingress_controller.get_target_groups(app_name="app1")
-
-    assert target_groups[0].direct_http_targets == {}
+    assert by_protocol[RequestProtocol.HTTP].direct_http_targets == {
+        "LLMServer": [
+            Target(
+                ip="10.0.0.2",
+                port=direct_port,
+                instance_id="",
+                name="LLMServer_replica",
+            )
+        ]
+    }
 
 
 def test_get_target_groups_app_with_no_running_replicas(
