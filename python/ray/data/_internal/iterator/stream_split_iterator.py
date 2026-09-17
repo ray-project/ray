@@ -583,6 +583,10 @@ class SplitCoordinator:
             # read them and they'd otherwise pin memory until the next epoch.
             self._next_bundle.pop(split_idx, None)
             self._report_prefetched_bytes_to_executor()
+            # A consumer that stops early makes no further `get`, so the reset
+            # in `get`'s `finally` never runs for this split.
+            self._client_retained_bytes[split_idx] = 0
+            self._report_retained_bytes_to_executor()
 
             if (
                 len(self._finished_splits) == self._n

@@ -949,6 +949,22 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
+def test_notify_split_finished_clears_retained_bytes(
+    ray_start_regular_shared_2_cpus,
+):
+    """A consumer that stops without another `get` still gets cleared."""
+    splits = ray.data.range(20, override_num_blocks=4).streaming_split(2, equal=True)
+    coord = splits[0]._coord_actor
+    # Both splits must reach the barrier before `start_epoch` returns.
+    epoch = ray.get([coord.start_epoch.remote(i) for i in range(2)])[0]
+    ray.get(coord.get.remote(epoch, 0, 0, 500))
+    assert ray.get(coord.get_client_retained_bytes.remote())[0] == 500
+
+    ray.get(coord.notify_split_finished.remote(epoch, 0))
+
+    assert ray.get(coord.get_client_retained_bytes.remote())[0] == 0
+
+
 def test_streaming_split_materialize_reports_retained_bytes(
     ray_start_regular_shared_2_cpus,
 ):

@@ -180,8 +180,8 @@ class TestDownstreamCapacityBackpressurePolicy:
         retained_bytes=0,
     ):
         """Helper to create a resource manager mock with common settings."""
-        # spec= so a stub for a method ResourceManager does not have fails here
-        # rather than silently inventing one.
+        # spec= so stubbing a method ResourceManager does not have fails here,
+        # rather than MagicMock silently inventing it.
         rm = MagicMock(spec=ResourceManager)
         # Bind real methods from ResourceManager
         rm.is_op_eligible = types.MethodType(ResourceManager.is_op_eligible, rm)
