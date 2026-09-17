@@ -28,7 +28,7 @@ scaling-guide
 
 (rllib-feature-guide)=
 
-## RLlib Feature Guides
+## RLlib feature guides
 
 ::::{grid} 1 2 3 4
 :gutter: 1
@@ -40,7 +40,7 @@ scaling-guide
 
 ```{button-ref} rllib-advanced-api-doc
 
-Advanced features of the RLlib python API
+Advanced features of the RLlib Python API
 ```
 :::
 
@@ -90,7 +90,7 @@ How to process trajectories through episodes
 
 ```{button-ref} connector-v2
 
-How To Use Connectors and Connector pipelines?
+How to use connectors and connector pipelines?
 ```
 :::
 
