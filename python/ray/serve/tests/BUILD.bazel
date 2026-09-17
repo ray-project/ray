@@ -545,6 +545,9 @@ py_test(
         "test_failure.py",
         "test_failure_2.py",
     ],
+    env = {
+        "RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING": "0.1",
+    },
     tags = [
         "exclusive",
         "team:serve",

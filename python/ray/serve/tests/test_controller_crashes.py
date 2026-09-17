@@ -3,9 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Fraction of checkpoint writes after which the controller kills itself.
-CRASH_PROBABILITY = "0.1"
-
 if __name__ == "__main__":
     curr_dir = Path(__file__).parent
     test_paths = curr_dir.rglob("test_*.py")
@@ -16,10 +13,11 @@ if __name__ == "__main__":
     for test_file in serve_tests_files:
         print("->", test_file.split("/")[-1])
 
-    # Set in the driver so the raylet, and therefore the controller actor,
-    # inherits it. Assigning a module global here would never reach that process.
-    print(f"Setting RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY={CRASH_PROBABILITY}")
-    os.environ["RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY"] = CRASH_PROBABILITY
+    # Set by the target's `env` in BUILD.bazel, and inherited from here by the
+    # raylet and so by the controller actor. Printed because a run without it
+    # injects nothing at all, which is how this target rotted in the first place.
+    key = "RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING"
+    print(f"{key}={os.environ.get(key, '0')}")
 
     # Bazel's python stub builds sys.path in-process, so subprocesses need it
     # passed through explicitly to import ray and the test modules.
