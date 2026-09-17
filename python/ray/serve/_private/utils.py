@@ -5,6 +5,7 @@ import errno
 import importlib
 import inspect
 import logging
+import os
 import random
 import re
 import time
@@ -27,6 +28,7 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID, RequestMetadata, ServeComponentType
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY,
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -191,6 +193,17 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Format for component files
 FILE_FMT = "{component_name}_{component_id}{suffix}"
+
+
+def maybe_crash_after_checkpoint() -> None:
+    """Test-only. Crash the controller so recovery is exercised at checkpoint
+    boundaries a test cannot choose, unlike an explicit `ray.kill`."""
+    if (
+        RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY
+        and random.random() < RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY
+    ):
+        logger.warning("Intentionally crashing the controller after a checkpoint.")
+        os._exit(1)
 
 
 class _ServeCustomEncoders:

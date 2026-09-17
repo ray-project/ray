@@ -264,6 +264,12 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
+# Test-only. Crash the controller right after each checkpoint write with this
+# probability, so recovery runs from unpredictable points.
+RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY = get_env_float_non_negative(
+    "RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY", 0.0
+)
+
 # Dependency ordered shutdown deletes deployments in tiers, callers before
 # callees. This is the max time to wait on a tier before advancing past it.
 RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S = get_env_float_positive(
