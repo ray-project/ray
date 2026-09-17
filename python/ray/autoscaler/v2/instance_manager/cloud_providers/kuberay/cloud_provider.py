@@ -141,7 +141,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
-        self._evaluate_no_driver_termination()
+        self._evaluate_idle_termination()
         return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
@@ -506,12 +506,12 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
-        self._refresh_no_driver_config()
+        self._refresh_idle_termination_config()
         self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
         self._ippr_provider.sync_with_raylets()
 
-    def _refresh_no_driver_config(self) -> None:
+    def _refresh_idle_termination_config(self) -> None:
         """Reads IdleTerminationOptions from the RayCluster CR."""
         opts = self._ray_cluster["spec"].get(IDLE_TERMINATION_OPTIONS_KEY, {})
         secs = opts.get(IDLE_TERMINATION_OPTIONS_TIMEOUT_SECONDS_KEY)
@@ -698,7 +698,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
 
-    def _evaluate_no_driver_termination(self) -> None:
+    def _evaluate_idle_termination(self) -> None:
         """Apply idleTerminationOptions.policy once no driver held for the timeout.
 
         Detached actors do not count as a driver.
@@ -725,7 +725,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._no_driver_observed_since = now
         if now - self._no_driver_observed_since < self._no_driver_timeout_seconds:
             return
-        self._apply_no_driver_policy()
+        self._apply_idle_termination_policy()
 
     def _driver_status(self) -> Tuple[bool, int]:
         """Returns whether a non-internal driver is alive and the latest job end time.
@@ -755,7 +755,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                 has_active_driver = True
         return has_active_driver, latest_job_end_time
 
-    def _apply_no_driver_policy(self) -> None:
+    def _apply_idle_termination_policy(self) -> None:
         """Applies the configured no-driver timeout policy to the RayCluster CR."""
         if self._no_driver_policy not in {"Delete", "Suspend"}:
             logger.warning(
@@ -768,9 +768,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             # Append the ray.io/no-driver-idle-termination finalizer
             # using a read-modify-write to preserve existing finalizers.
             finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
-            if NO_DRIVER_TIMEOUT_FINALIZER not in finalizers:
-                # metadata.finalizers is an array so we use a JSON Patch add-operation to append NO_DRIVER_TIMEOUT_FINALIZER
-                payload = finalizer_patch(NO_DRIVER_TIMEOUT_FINALIZER, finalizers)
+            if IDLE_TERMINATION_CLEANUP_FINALIZER not in finalizers:
+                # metadata.finalizers is an array so we use a JSON Patch add-operation to append IDLE_TERMINATION_CLEANUP_FINALIZER
+                payload = finalizer_patch(
+                    IDLE_TERMINATION_CLEANUP_FINALIZER, finalizers
+                )
                 try:
                     patched_raycluster = self._k8s_api_client.patch(
                         path, payload, content_type="application/json-patch+json"
@@ -778,19 +780,19 @@ class KubeRayProvider(ICloudInstanceProvider):
 
                     if not isinstance(
                         patched_raycluster, dict
-                    ) or NO_DRIVER_TIMEOUT_FINALIZER not in patched_raycluster.get(
+                    ) or IDLE_TERMINATION_CLEANUP_FINALIZER not in patched_raycluster.get(
                         "metadata", {}
                     ).get(
                         "finalizers", []
                     ):
                         logger.error(
-                            f"Unable to persist {NO_DRIVER_TIMEOUT_FINALIZER} to metadata.finalizers for {self._cluster_name}"
+                            f"Unable to persist {IDLE_TERMINATION_CLEANUP_FINALIZER} to metadata.finalizers for {self._cluster_name}"
                         )
                         return None
 
                 except Exception:
                     logger.exception(
-                        f"Failed to add {NO_DRIVER_TIMEOUT_FINALIZER} finalizer to {self._cluster_name}"
+                        f"Failed to add {IDLE_TERMINATION_CLEANUP_FINALIZER} finalizer to {self._cluster_name}"
                     )
                     return None
 
