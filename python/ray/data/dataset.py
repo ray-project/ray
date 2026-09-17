@@ -51,11 +51,15 @@ from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
 from ray.data._internal.datasource.lance_datasink import LanceDatasink
 from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
+from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import (
+    WebDatasetDatasink,
+    WebDatasetEncoderConfig,
+)
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.executor import OutputIterator
@@ -174,7 +178,7 @@ if TYPE_CHECKING:
     from ray.data.grouped_data import GroupedData
     from ray.data.stats import DatasetSummary
 
-from ray.data.expressions import Expr, StarExpr, col
+from ray.data.expressions import Expr, StarExpr, UnnestExpr, col
 
 logger = logging.getLogger(__name__)
 
@@ -1018,8 +1022,8 @@ class Dataset:
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_columns(
         self,
-        exprs: Mapping[str, "Expr"],
-        *,
+        exprs: Optional[Union[Mapping[str, "Expr"], "UnnestExpr"]] = None,
+        *more_exprs: Union[Mapping[str, "Expr"], "UnnestExpr"],
         compute: Optional[ComputeStrategy] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1041,6 +1045,11 @@ class Dataset:
         columns, which avoids the repeated work of chaining several
         ``with_column`` calls.
 
+        In addition to a mapping from column name to expression, positional
+        arguments may be :func:`~ray.data.expressions.unnest` expressions:
+        each wraps a struct-typed expression and contributes one output
+        column per struct field, named after the fields.
+
         Examples:
             >>> import ray
             >>> from ray.data.expressions import col
@@ -1052,10 +1061,19 @@ class Dataset:
             {'id': 0, 'id_2': 0, 'id_3': 0}
             {'id': 1, 'id_2': 2, 'id_3': 3}
 
+            See :func:`~ray.data.expressions.unnest` for expanding a
+            struct-returning UDF into multiple columns, including mixed
+            usage such as ``ds.with_columns({"a2": col("a") * 2},
+            unnest(make_features(col("a"), col("b"))))``.
+
         Args:
             exprs: A mapping from new column name to the expression that
-                defines its values. Column order follows the mapping's
-                insertion order.
+                defines its values, or an
+                :func:`~ray.data.expressions.unnest` expression. Column
+                order follows the mapping's insertion order.
+            *more_exprs: Additional mappings or
+                :func:`~ray.data.expressions.unnest` expressions, appended
+                in argument order.
             compute: The compute strategy to use for the projection operation.
             num_cpus: The number of CPUs to reserve for each worker.
             num_gpus: The number of GPUs to reserve for each worker.
@@ -1081,13 +1099,28 @@ class Dataset:
 
         _warn_on_ray_remote_args(ray_remote_args)
 
-        if not exprs:
+        args = [] if exprs is None else [exprs]
+        args.extend(more_exprs)
+
+        projection_exprs: List[Expr] = [StarExpr()]
+        for arg in args:
+            if isinstance(arg, UnnestExpr):
+                projection_exprs.append(arg)
+            elif isinstance(arg, Mapping):
+                if any(isinstance(expr, DownloadExpr) for expr in arg.values()):
+                    raise ValueError(
+                        "`with_columns` does not support DownloadExpr. "
+                        "Use `with_column` for download expressions instead."
+                    )
+                projection_exprs.extend(expr.alias(name) for name, expr in arg.items())
+            else:
+                raise TypeError(
+                    "`with_columns` arguments must be mappings from column "
+                    "name to expression, or unnest() expressions, got "
+                    f"{type(arg).__name__}."
+                )
+        if len(projection_exprs) == 1:
             return self
-        if any(isinstance(expr, DownloadExpr) for expr in exprs.values()):
-            raise ValueError(
-                "`with_columns` does not support DownloadExpr. "
-                "Use `with_column` for download expressions instead."
-            )
 
         from ray.data._internal.logical.operators import Project
 
@@ -1108,7 +1141,7 @@ class Dataset:
         )
 
         project_op = Project(
-            exprs=[StarExpr(), *(expr.alias(name) for name, expr in exprs.items())],
+            exprs=projection_exprs,
             input_dependencies=[self._logical_plan.dag],
             compute=compute,
             ray_remote_args=ray_remote_args,
@@ -5628,6 +5661,130 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_orc(
+        self,
+        path: str,
+        *,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        try_create_dir: bool = True,
+        arrow_open_stream_args: Optional[Dict[str, Any]] = None,
+        filename_provider: Optional[FilenameProvider] = None,
+        arrow_orc_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
+        min_rows_per_file: Optional[int] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+        mode: SaveMode = SaveMode.APPEND,
+        **arrow_orc_args,
+    ) -> None:
+        """Writes the :class:`~ray.data.Dataset` to ORC files.
+
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.orc``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom :class:`~ray.data.datasource.FilenameProvider`
+        and pass it in as the ``filename_provider`` argument.
+
+
+        Examples:
+            Write the dataset as ORC files to a local directory.
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("/tmp/data")
+
+            Write the dataset as ORC files to S3.
+
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_orc("s3://bucket/folder/")  # doctest: +SKIP
+
+        Time complexity: O(dataset size / parallelism)
+
+        Args:
+            path: The path to the destination root directory, where
+                the ORC files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path if ``True``. Does nothing if all directories already
+                exist. Defaults to ``True``.
+            arrow_open_stream_args: kwargs passed to
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to. Don't pass ``compression`` here.
+                To configure ORC compression, pass ``compression`` directly to
+                :meth:`write_orc`.
+            filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
+                implementation. Use this parameter to customize what your filenames
+                look like.
+            arrow_orc_args_fn: Callable that returns a dictionary of write
+                arguments that are provided to `pyarrow.orc.write_table <https://\
+                arrow.apache.org/docs/python/generated/\
+                pyarrow.orc.write_table.html#pyarrow.orc.write_table>`_ when writing
+                each block to a file. Overrides any duplicate keys from
+                ``arrow_orc_args``. Use this argument instead of ``arrow_orc_args``
+                if any of your write arguments cannot be pickled, or if you'd like to
+                lazily resolve the write arguments for each dataset block.
+            min_rows_per_file: [Experimental] The target minimum number of rows to write
+                to each file. If ``None``, Ray Data writes a system-chosen number of
+                rows to each file. If the number of rows per block is larger than the
+                specified value, Ray Data writes the number of rows per block to each file.
+                The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently. Set this
+                to control number of tasks to run concurrently. This doesn't change the
+                total number of tasks run. By default, concurrency is dynamically
+                decided based on the available resources.
+            mode: Determines how to handle existing files. Valid modes are "overwrite", "error",
+                "ignore", "append". Defaults to "append".
+                NOTE: This method isn't atomic. "Overwrite" first deletes all the data
+                before writing to `path`.
+            **arrow_orc_args: Options to pass to `pyarrow.orc.write_table <https://\
+                arrow.apache.org/docs/python/generated/pyarrow.orc.write_table.html\
+                    #pyarrow.orc.write_table>`_
+                when writing each block to a file.
+        """
+        if arrow_orc_args_fn is None:
+            arrow_orc_args_fn = lambda: {}  # noqa: E731
+
+        effective_min_rows, _ = _validate_rows_per_file_args(
+            min_rows_per_file=min_rows_per_file
+        )
+
+        datasink = ORCDatasink(
+            path,
+            arrow_orc_args_fn=arrow_orc_args_fn,
+            arrow_orc_args=arrow_orc_args,
+            min_rows_per_file=effective_min_rows,
+            filesystem=filesystem,
+            try_create_dir=try_create_dir,
+            open_stream_args=arrow_open_stream_args,
+            filename_provider=filename_provider,
+            dataset_uuid=self._uuid,
+            mode=mode,
+        )
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
     def write_tfrecords(
         self,
@@ -5750,29 +5907,21 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_
+        tar archives.
 
-        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
-        records, with one Example record for each row in the dataset.
-
-        .. warning::
-            tf.train.Feature only natively stores ints, floats, and bytes,
-            so this function only supports datasets with these data types,
-            and will error if the dataset contains unsupported types.
+        Each row is written as a WebDataset sample.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
-        for the dataset.
+        Unless a custom filename provider is given, generated output filenames end
+        in ``.tar``.
 
         Examples:
 
@@ -5781,14 +5930,19 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.range(100)
+                ds = ray.data.from_items(
+                    [
+                        {"__key__": f"{i:06d}", "txt": str(i)}
+                        for i in range(100)
+                    ]
+                )
                 ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where tfrecords
-                files are written to.
+            path: The path to the destination root directory, where WebDataset tar
+                archives are written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
@@ -5806,11 +5960,12 @@ class Dataset:
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             encoder: Controls how dataset rows are encoded into WebDataset samples.
-                If ``True`` (default), uses the default encoder that automatically
-                handles common data types. If ``False``, disables encoding and requires
-                all values to already be bytes or strings. A string specifies a format
-                hint for the default encoder, a callable provides a custom encoding
-                function, and a list applies multiple encoders in sequence.
+                A boolean or string selects the built-in encoder, which automatically
+                handles common data types based on column-name extensions. A callable
+                receives and returns a sample dictionary, and a list applies multiple
+                encoder specifications in sequence. Set this to ``None`` to skip
+                encoding; in that case, each non-special value that isn't ``None``
+                must already be bytes or a string.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically

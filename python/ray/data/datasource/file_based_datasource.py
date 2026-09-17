@@ -24,6 +24,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
+    _truncated_repr,
     infer_compression,
     iterate_with_retry,
     make_async_gen,
@@ -180,23 +181,35 @@ class FileBasedDatasource(Datasource):
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
-        paths, file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
+        expanded_paths = list(
+            meta_provider.expand_paths(
+                paths,
+                self._filesystem,
+                partitioning,
+                ignore_missing_paths=ignore_missing_paths,
+            )
         )
 
-        if ignore_missing_paths and len(paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
+        if not expanded_paths:
+            # Only listing has run at this point: `partition_filter` and
+            # `file_extensions` are applied below and raise their own errors, so
+            # naming them here would point at causes that cannot apply yet. What
+            # can leave the listing empty is a path that holds nothing readable,
+            # including a directory whose entries are all skipped by prefix.
+            message = (
+                f"No files found under {_truncated_repr(paths)}. Note that "
+                "listing skips names starting with '_' or '.'."
             )
+            if ignore_missing_paths:
+                # Missing paths are dropped inside listing, so we cannot tell
+                # here whether they were absent or merely empty.
+                message += (
+                    " Paths that do not exist were also skipped because "
+                    "'ignore_missing_paths' is set to True."
+                )
+            raise ValueError(message)
+
+        paths, file_sizes = map(list, zip(*expanded_paths))
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
@@ -283,21 +296,32 @@ class FileBasedDatasource(Datasource):
                     parse = PathPartitionParser(partitioning)
                     partitions = parse(read_path)
 
-                with RetryingContextManager(
-                    self._open_input_source(fs, read_path, **open_stream_args),
-                    context=self._data_context,
-                ) as f:
-                    for block in iterate_with_retry(
-                        lambda: self._read_stream(f, read_path),
-                        description="read stream iteratively",
-                        match=self._data_context.retried_io_errors,
-                    ):
-                        if partitions:
-                            block = _add_partitions(block, partitions)
-                        if self._include_paths:
-                            block_accessor = BlockAccessor.for_block(block)
-                            block = block_accessor.fill_column("path", read_path)
-                        yield block
+                # `iterate_with_retry` skips the blocks that a failed attempt
+                # already yielded, so every attempt has to replay the same blocks
+                # from the start of the file. Open the file inside the factory:
+                # reusing one handle would resume a retry from wherever the failure
+                # left the cursor, and the skip would then discard real data. The
+                # `with` lives inside the generator so each attempt's handle is
+                # closed as soon as that attempt ends, whether it raises or runs to
+                # completion.
+                def open_and_read_stream() -> Iterator[Block]:
+                    with RetryingContextManager(
+                        self._open_input_source(fs, read_path, **open_stream_args),
+                        context=self._data_context,
+                    ) as f:
+                        yield from self._read_stream(f, read_path)
+
+                for block in iterate_with_retry(
+                    open_and_read_stream,
+                    description="read stream iteratively",
+                    match=self._data_context.retried_io_errors,
+                ):
+                    if partitions:
+                        block = _add_partitions(block, partitions)
+                    if self._include_paths:
+                        block_accessor = BlockAccessor.for_block(block)
+                        block = block_accessor.fill_column("path", read_path)
+                    yield block
 
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():

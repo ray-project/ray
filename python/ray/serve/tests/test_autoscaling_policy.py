@@ -776,7 +776,9 @@ def test_e2e_intermediate_downscaling(serve_instance_with_signal):
     wait_for_condition(check_num_replicas_gte, name="A", target=20, timeout=30)
     signal.send.remote()
 
-    wait_for_condition(check_num_replicas_lte, name="A", target=1, timeout=30)
+    # Wait for zero, not <= 1: the last replica stays routable until the
+    # controller's stop reaches it, and would admit the requests below.
+    wait_for_condition(check_num_replicas_eq, name="A", target=0, timeout=30)
     signal.send.remote(clear=True)
 
     [handle.remote() for _ in range(50)]
@@ -1184,7 +1186,9 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return httpx.get("http://localhost:8000/").text
+        # The first call is in flight across the 0->1 cold start, which this test
+        # budgets at 20s below; httpx's 5s default read timeout would fire first.
+        return httpx.get("http://localhost:8000/", timeout=60).text
 
     ref = send_request.remote()
 

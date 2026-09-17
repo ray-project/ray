@@ -5,6 +5,20 @@
 
 Ray Generators
 ==============
+Choosing a generator API
+-------------------------
+
+Ray's streaming generator API, also called the regular generator API, is the
+recommended way to consume generator results. It returns an
+``ObjectRefGenerator``. Use it when a task yields a known or naturally bounded
+stream of results. You can iterate over it, call ``ray.get`` on each reference, or pass
+it to ``ray.wait``.
+
+The deprecated dynamic generator API is only needed to support existing code
+that sets ``num_returns="dynamic"``. It returns a ``DynamicObjectRefGenerator``
+through a single ``ObjectRef``. New code should use the streaming generator
+API instead. Ray plans to remove the dynamic generator API in an upcoming
+version; see :ref:`Dynamic generators <dynamic_generators>` for details.
 
 `Python generators <https://docs.python.org/3/howto/functional.html#generators>`_ are functions
 that behave like iterators, yielding one value per iteration. Ray also supports the generators API.
