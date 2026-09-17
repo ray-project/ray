@@ -103,7 +103,7 @@ An Exploration class implements the `get_exploration_action` method, where you d
 :end-before: __sphinx_doc_end_get_exploration_action__
 ```
 
-At the highest level, the `Algorithm.compute_actions` and `Policy.compute_actions` methods have a boolean `explore` switch, which RLlib passes into `Exploration.get_exploration_action`. If `explore=None`, RLlib uses the value of `Algorithm.config[“explore”]`, which serves as the main switch for exploratory behavior. For example, you can turn off all exploration for evaluation. See {ref}`CustomEvaluation`.
+At the highest level, the `Algorithm.compute_actions` and `Policy.compute_actions` methods have a boolean `explore` switch, which RLlib passes into `Exploration.get_exploration_action`. If `explore=None`, RLlib uses the value of `Algorithm.config["explore"]`, which serves as the main switch for exploratory behavior. For example, you can turn off all exploration for evaluation. See {ref}`CustomEvaluation`.
 
 The following excerpts from `rllib/algorithms/algorithm.py` set up different exploration behaviors for different Algorithms:
 
