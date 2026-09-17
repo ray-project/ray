@@ -44,7 +44,7 @@ and override one or more of its methods. Those are in particular:
 * :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.get_default_policy_class`
 * :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step`
 
-`See here for an example on how to override Algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`_.
+`See here for an example on how to override Algorithm <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/ppo/ppo.py>`_.
 
 
 .. _rllib-algorithm-api:

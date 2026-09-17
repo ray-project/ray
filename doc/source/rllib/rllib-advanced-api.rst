@@ -12,12 +12,12 @@ Advanced Python APIs
 Custom training workflows
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In the `basic training example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__,
+In the `basic training example <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/custom_gym_env.py>`__,
 Tune will call ``train()`` on your algorithm once per training iteration and report
 the new training results.
 Sometimes, it's desirable to have full control over training, but still run inside Tune.
 Tune supports using :ref:`custom trainable functions <trainable-docs>` to
-implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__.
+implement `custom training workflows (example) <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/ray_tune/custom_experiment.py>`__.
 
 Curriculum learning
 ~~~~~~~~~~~~~~~~~~~
@@ -32,14 +32,14 @@ See `Reverse Curriculum Generation for Reinforcement Learning Agents <https://ba
 for another example of doing curriculum learning.
 
 RLlib's Algorithm and custom callbacks APIs allow for implementing any arbitrary
-curricula. This `example script <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__ introduces
+curricula. This `example script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curriculum/curriculum_learning.py>`__ introduces
 the basic concepts you need to understand.
 
 First, define some env options. This example uses the `FrozenLake-v1` environment,
 a grid world, whose map you can fully customize. RLlib represents three tasks of different env difficulties
 with slightly different maps that the agent has to navigate.
 
-.. literalinclude:: ../../../rllib/examples/curriculum/curriculum_learning.py
+.. literalinclude:: ../../../python/ray/rllib/examples/curriculum/curriculum_learning.py
    :language: python
    :start-after: __curriculum_learning_example_env_options__
    :end-before: __END_curriculum_learning_example_env_options__
@@ -114,7 +114,7 @@ RLlib offers a unified top-level API to configure and customize an agent’s
 exploration behavior, including the decisions, like how and whether, to sample
 actions from distributions, stochastically or deterministically.
 Set up the behavior using built-in Exploration classes.
-See `this package <https://github.com/ray-project/ray/tree/master/rllib/utils/exploration>`__),
+See `this package <https://github.com/ray-project/ray/tree/master/python/ray/rllib/utils/exploration>`__),
 which you specify and further configure inside
 ``AlgorithmConfig().env_runners(..)``.
 Besides using one of the available classes, you can sub-class any of
@@ -143,7 +143,7 @@ a timestep, like the global env-sampling steps already taken,
 and an ``explore`` switch. It outputs a tuple of a) action and
 b) log-likelihood:
 
-.. literalinclude:: ../../../rllib/utils/exploration/exploration.py
+.. literalinclude:: ../../../python/ray/rllib/utils/exploration/exploration.py
    :language: python
    :start-after: __sphinx_doc_begin_get_exploration_action__
    :end-before: __sphinx_doc_end_get_exploration_action__
@@ -343,11 +343,11 @@ If you want to entirely customize the evaluation step,
 set ``custom_eval_function`` in the config to a callable, which takes the Algorithm
 object and an :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object, the Algorithm's ``self.evaluation_workers``
 :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` instance, and returns a metrics dictionary.
-See `algorithm.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py>`__
+See `algorithm.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/algorithm.py>`__
 for further documentation.
 
 This end-to-end example shows how to set up a custom online evaluation in
-`custom_evaluation.py <https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py>`__.
+`custom_evaluation.py <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/evaluation/custom_evaluation.py>`__.
 Note that if you only want to evaluate your policy at the end of training,
 set ``evaluation_interval: [int]``, where ``[int]`` should be the number
 of training iterations before stopping.

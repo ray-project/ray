@@ -139,7 +139,7 @@ The custom connector computes the intrinsic reward as the inverse number of time
 Thus, the more the agent visits a certain state, the lower the
 computed intrinsic reward for that state, motivating the agent to visit new states and show better exploratory behavior.
 
-See `here for the full count-based intrinsic reward example script <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`__.
+See `here for the full count-based intrinsic reward example script <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/count_based_curiosity.py>`__.
 
 You can write the custom Learner connector by subclassing :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` and overriding
 the :py:meth:`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method:
@@ -244,7 +244,7 @@ you have to apply the stacking logic twice (in the :ref:`env-to-module pipeline 
 The following is an example for implementing such a frame-stacking mechanism using
 the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` APIs with an RL environment, in which observations are plain 1D tensors.
 
-See here for a `more complex end-to-end Atari example for PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py>`__.
+See here for a `more complex end-to-end Atari example for PPO <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/atari_ppo.py>`__.
 
 You can write a single :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class to cover both the env-to-module as well as
 the Learner custom connector part:

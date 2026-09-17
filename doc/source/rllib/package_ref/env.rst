@@ -30,7 +30,7 @@ External Envs
     shared memory, is to write your own :py:class:`~ray.rllib.env.env_runner.EnvRunner`
     subclass.
 
-See this an end-to-end example of an `external CartPole (client) env <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__
+See this an end-to-end example of an `external CartPole (client) env <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__
 connecting to RLlib through a custom, TCP-capable
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` server.
 

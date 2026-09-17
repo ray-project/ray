@@ -58,8 +58,7 @@ Ray is a unified framework for scaling AI and Python applications. Its source is
 laid out as:
 
 - `src/ray/`: C++ core runtime
-- `python/ray/`: Python API and libraries (data, serve, train, tune)
-- `rllib/`: RLlib (symlinked from `python/ray/rllib`)
+- `python/ray/`: Python API and libraries (data, rllib, serve, train, tune)
 - `doc/source/`: Sphinx documentation
 
 The default test timeout is 180s (`pytest.ini`). For build, test, lint, and

@@ -301,7 +301,7 @@ This example utilizes RLlib's :py:class:`~ray.rllib.utils.metrics.metrics_logger
 of the injected code. See :ref:`rllib-metric-logger-docs` for more details about the MetricsLogger API.
 
 Also, see this more complex example that
-`generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
+`generates and logs a PacMan heatmap (image) to WandB <https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/metrics/custom_metrics_in_env_runners.py>`__.
 
 .. testcode::
 
