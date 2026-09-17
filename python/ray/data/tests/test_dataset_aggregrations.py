@@ -230,7 +230,7 @@ def test_global_tabular_std(ray_start_regular_shared_2_cpus, ds_format, num_part
     assert pd.isnull(nan_ds.std("A", ignore_nulls=False))
 
 
-def test_global_aggregation_over_empty_dataset(ray_start_regular):
+def test_global_aggregation_over_empty_dataset(ray_start_regular_shared_2_cpus):
     """A global aggregation over zero rows still has exactly one group.
 
     Unlike a keyed aggregation, which has no groups to report, a global one must
@@ -267,7 +267,7 @@ def test_resolve_aggregated_column_names(names, expected):
     assert len(set(resolved)) == len(resolved)
 
 
-def test_repeated_aggregations_keep_every_result(ray_start_regular):
+def test_repeated_aggregations_keep_every_result(ray_start_regular_shared_2_cpus):
     """Repeating an aggregation must not drop results to a name collision."""
     from ray.data.aggregate import Sum
 
