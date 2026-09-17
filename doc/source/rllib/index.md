@@ -131,7 +131,7 @@ You can use any [Farama-Foundation Gymnasium](https://github.com/Farama-Foundati
 
 In `config.env_runners()`, you can specify the number of parallel {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors that collect samples from the environment, among many other settings.
 
-You can also change the neural network architecture with RLlib's {py:class}`~ray.rllib.core.rl_module.default_model_cnofig.DefaultModelConfig`, and set up a separate config for the evaluation {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
+You can also change the neural network architecture with RLlib's {py:class}`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`, and set up a separate config for the evaluation {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
 
 To learn more about the RLlib training APIs, see {ref}`the RLlib Python API <rllib-python-api>`. For an example of an action inference loop after training, see [this example script](https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py).
 
@@ -254,7 +254,7 @@ For a quick preview of which algorithms and environments RLlib supports, expand 
 * - [gymnasium](https://gymnasium.farama.org/index.html) <img src="images/sigils/single-agent.svg" class="inline-figure" width="72" alt="single_agent">
 
     ```bash
-    pip install "gymnasium[atari,accept-rom-license,mujoco]"``
+    pip install "gymnasium[atari,accept-rom-license,mujoco]"
     ```
 
     ```python

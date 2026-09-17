@@ -844,7 +844,7 @@ config = (
 With this, {ref}`Ray Data <data>` starts up to `8` post-processing actors to move data downstream faster, for example under backpressure.
 
 :::{note}
-An autoscaled actor pool in the **Post-Processing (Pre-Learner)** layer doesn't guarantee that backpressure disappears. Adding more {py:class}`~ray.rllib.offline.offline_prelearner.OffLinePreLearner` instances introduces overhead. RLlib's offline RL pipeline is optimized for streaming data, which typically shows stable throughput and resource usage, except when upstream and downstream tasks are imbalanced. As a rule of thumb, use autoscaling only when one of the following holds:
+An autoscaled actor pool in the **Post-Processing (Pre-Learner)** layer doesn't guarantee that backpressure disappears. Adding more {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` instances introduces overhead. RLlib's offline RL pipeline is optimized for streaming data, which typically shows stable throughput and resource usage, except when upstream and downstream tasks are imbalanced. As a rule of thumb, use autoscaling only when one of the following holds:
 
 - Throughput is highly variable.
 - Cluster resources fluctuate, for example in shared or dynamic environments.
@@ -852,7 +852,7 @@ An autoscaled actor pool in the **Post-Processing (Pre-Learner)** layer doesn't 
 :::
 
 #### Allocated resources
-Besides the number of post-processing actors, you can tune the **Post-Processing (PreLearner)** layer by defining the resources allocated to each {py:class}`~ray.rllib.offline.offline_prelearner.OffLinePreLearner` in the actor pool. Define these resources through `num_cpus` and `num_gpus`, or in `ray_remote_args`.
+Besides the number of post-processing actors, you can tune the **Post-Processing (PreLearner)** layer by defining the resources allocated to each {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` in the actor pool. Define these resources through `num_cpus` and `num_gpus`, or in `ray_remote_args`.
 
 :::{note}
 Typically, increasing the number of CPUs is enough to tune the post-processing stage. You need GPUs only in specialized cases, such as customized pipelines. For example, RLlib's {py:class}`~ray.rllib.algorithms.marwil.marwil.MARWIL` implementation uses the {py:class}`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply [General Advantage Estimation](https://arxiv.org/abs/1506.02438) to experience batches. These calculations apply the value model of the algorithm's {py:class}`~ray.rllib.core.rl_module.RLModule`, which you can accelerate by running on a GPU.
@@ -983,7 +983,7 @@ To choose an appropriate `input_read_batch_size`, look at the length of your rec
 
 ### Actor pool size
 
-RLlib scales {py:class}`~ray.rllib.core.learner.learner.Learner` instances through the `num_learners` parameter. When this value is `0`, RLlib uses a Learner instance in the local process. For values greater than `0`, RLlib scales out with a {py:class}`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified number of {py:class}`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training, and aggregates intermediate results across {py:class}`~ray.rllib.core.learner.learner.Learner` actors. Scaling {py:class}`~ray.rllib.core.learner.learner.Learner` instances increases training throughput. Apply it only when the upstream components in your Offline Data pipeline can supply data fast enough to match the increased training capacity. RLlib's Offline API scales at its final layer with {py:class}`~ray.data.Dataset.streaming_split`, which divides the data stream into multiple substreams. Individual {py:class}`~ray.rllib.core.learner.learner.Learner` instances then process these substreams, which enables efficient parallel consumption and improves overall throughput.
+RLlib scales {py:class}`~ray.rllib.core.learner.learner.Learner` instances through the `num_learners` parameter. When this value is `0`, RLlib uses a Learner instance in the local process. For values greater than `0`, RLlib scales out with a {py:class}`~ray.train._internal.backend_executor.BackendExecutor`. This executor spawns your specified number of {py:class}`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training, and aggregates intermediate results across {py:class}`~ray.rllib.core.learner.learner.Learner` actors. Scaling {py:class}`~ray.rllib.core.learner.learner.Learner` instances increases training throughput. Apply it only when the upstream components in your Offline Data pipeline can supply data fast enough to match the increased training capacity. RLlib's Offline API scales at its final layer with {py:class}`~ray.data.Dataset.streaming_split`, which divides the data stream into multiple substreams. Individual {py:class}`~ray.rllib.core.learner.learner.Learner` instances then process these substreams, which enables efficient parallel consumption and improves overall throughput.
 
 For example, to set the number of learners to `4`, use the following syntax:
 
@@ -1025,7 +1025,7 @@ If you experience backpressure in the **Post-Processing (Pre-Learner)** stage, e
 #### Scheduling strategy
 The scheduling strategy in Ray plays a key role in task and actor placement. It tries to distribute tasks and actors across multiple nodes in a cluster to maximize resource utilization and fault tolerance. On a single-node cluster, one large head node, the scheduling strategy has little to no noticeable impact. In a multi-node cluster, scheduling can significantly influence the performance of your Offline Data pipeline, because data locality matters. Data processing occurs across all nodes, and maintaining data locality during training can improve performance.
 
-In such scenarios, you can improve data locality by changing RLlib's default scheduling strategy from `"PACK"` to `"SPREAD"`. This strategy distributes the {py:class}`~ray.rllib.core.learner.learner.Learner` actors across the cluster, so `Ray Data <data>` can use locality-aware bundle selection to improve efficiency.
+In such scenarios, you can improve data locality by changing RLlib's default scheduling strategy from `"PACK"` to `"SPREAD"`. This strategy distributes the {py:class}`~ray.rllib.core.learner.learner.Learner` actors across the cluster, so {ref}`Ray Data <data>` can use locality-aware bundle selection to improve efficiency.
 
 The following example changes the scheduling strategy:
 
@@ -1090,7 +1090,7 @@ config = (
 A good starting point for batch size tuning is `2048`.
 :::
 
-In `Ray Data <data>`, it's common to use batch sizes that are powers of two. You can select any integer value for the batch size based on your needs.
+In {ref}`Ray Data <data>`, it's common to use batch sizes that are powers of two. You can select any integer value for the batch size based on your needs.
 
 #### Batch prefetching
 Batch prefetching controls data consumption on the downstream side of your offline data pipeline. The goal is to keep learners active and maintain a continuous flow of data. RLlib prepares the next batch while the learner processes the current one. Prefetching determines how many batches RLlib keeps ready for learners. Tune it based on the time needed to produce the next batch and the learner's update speed. Prefetching too many batches can cause memory inefficiencies and, in some cases, backpressure in upstream tasks.
@@ -1223,7 +1223,7 @@ config = (
 As the comments note, this approach to adding a {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the {py:class}`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` is suitable only if you intend to manipulate raw episodes, because your {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece is the foundation for building the rest of the pipeline, including batching and other processing steps. If you want to modify data further along in the {py:class}`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`, either override the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`'s `build_learner_connector` method or use the third option, overriding the entire {py:class}`~ray.rllib.offline.offline_prelearner.PreLearner`.
 
 ### PreLearner level
-If you need to perform data transformations at a deeper level, before your data reaches the {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` stage, override the {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. This class orchestrates the complete data transformation pipeline and converts raw input data into {py:class}`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects ready for training. For instance, if your data is in specialized formats that need pre-parsing and restructuring, such as XML, HTML, Protobuf, images, or videos, you might need to handle these custom formats directly. You can use tools such as `Ray Data's custom datasources <custom_datasource>`, for example {py:meth}`~ray.data.read_binary_files`, to manage the ingestion. To structure and sort this data into {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects, override the {py:meth}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes` static method.
+If you need to perform data transformations at a deeper level, before your data reaches the {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` stage, override the {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. This class orchestrates the complete data transformation pipeline and converts raw input data into {py:class}`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects ready for training. For instance, if your data is in specialized formats that need pre-parsing and restructuring, such as XML, HTML, Protobuf, images, or videos, you might need to handle these custom formats directly. You can use tools such as {ref}`Ray Data's custom datasources <custom_datasource>`, for example {py:meth}`~ray.data.read_binary_files`, to manage the ingestion. To structure and sort this data into {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects, override the {py:meth}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes` static method.
 
 For more extensive customization, you can rewrite the `__call__` method to define custom transformation steps, implement a unique {py:class}`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`, and construct {py:class}`~ray.rllib.policy.sample_batch.MultiAgentBatch` instances for the {py:class}`~ray.rllib.core.learner.learner.Learner`.
 
@@ -1589,7 +1589,7 @@ config = (
 If these customization capabilities still don't meet your requirements, move to the **Pipeline Level** for greater flexibility.
 
 #### Pipeline level
-At this level of RLlib's Offline RL API, you can redefine your complete pipeline from data reading to batch iteration by overriding the {py:class}`~®ay.rllib.offline.offline_data.OfflineData` class. In most cases, though, the other two levels are sufficient. Manipulating the complete pipeline needs careful handling, because it can degrade your pipeline's performance significantly. Study the {py:class}`~ray.rllib.offline.offline_data.OfflineData` class carefully to understand how the default pipeline works before you program your own. Two main methods define this pipeline:
+At this level of RLlib's Offline RL API, you can redefine your complete pipeline from data reading to batch iteration by overriding the {py:class}`~ray.rllib.offline.offline_data.OfflineData` class. In most cases, though, the other two levels are sufficient. Manipulating the complete pipeline needs careful handling, because it can degrade your pipeline's performance significantly. Study the {py:class}`~ray.rllib.offline.offline_data.OfflineData` class carefully to understand how the default pipeline works before you program your own. Two main methods define this pipeline:
 
 - The {py:meth}`~ray.rllib.offline.offline_data.OfflineData.__init__` method that defines the data reading process.
 - The {py:meth}`~ray.rllib.offline.offline_data.OfflineData.sample` method that defines the data mapping and batch iteration.

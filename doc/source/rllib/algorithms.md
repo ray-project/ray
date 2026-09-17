@@ -162,7 +162,7 @@ For a complete [rainbow](https://arxiv.org/pdf/1710.02298.pdf) setup, make the f
 **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
 Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and reused
 for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
-This reuse of training data makes DQN sample-efficient and off-policy.
+This reuse of training data makes SAC sample-efficient and off-policy.
 SAC scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
 for updating the model.
 ```
@@ -298,7 +298,7 @@ Episode mean rewards for various Atari 100k tasks on one versus four GPUs.
 
 ```{figure} images/dreamerv3/dmc_1_vs_4gpus.svg
 
-Episode mean rewards for various Atari 100k tasks on one versus four GPUs.
+Episode mean rewards for various DeepMind Control Suite tasks on one versus four GPUs.
 **Left**: Episode reward over environment timesteps sampled.
 **Right**: Episode reward over wall-time.
 ```

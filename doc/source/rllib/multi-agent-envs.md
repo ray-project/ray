@@ -316,7 +316,7 @@ For an example on the pistonball env with RLlib, see the [PettingZoo RLlib tutor
 
 ### DeepMind OpenSpiel
 
-The [OpenSpiel API by DeepMind](https://github.com/google-deepmind/open_spiel) is a framework for research and development in multi-agent reinforcement learning, game theory, and decision-making. The API is directly compatible with RLlib through the built-in {py:class}`~ray.rllib.env.wrappers.pettingzoo_env.PettingZooEnv` wrapper:
+The [OpenSpiel API by DeepMind](https://github.com/google-deepmind/open_spiel) is a framework for research and development in multi-agent reinforcement learning, game theory, and decision-making. The API is directly compatible with RLlib through the built-in {py:class}`~ray.rllib.env.wrappers.open_spiel.OpenSpielEnv` wrapper:
 
 ```{testcode}
 import pyspiel  # pip install open_spiel

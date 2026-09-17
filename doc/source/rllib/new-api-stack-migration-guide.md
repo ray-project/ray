@@ -194,7 +194,7 @@ Use this method to specify the following:
 ### AlgorithmConfig.env_runners()
 
 ```{testcode}
-# RolloutWorkers have been replace by EnvRunners. EnvRunners are more efficient and offer
+# RolloutWorkers have been replaced by EnvRunners. EnvRunners are more efficient and offer
 # a more separation-of-concerns design and cleaner code.
 config.env_runners(
     num_env_runners=2,  # use this instead of `num_workers`
