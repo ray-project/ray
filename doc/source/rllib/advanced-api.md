@@ -10,13 +10,13 @@ myst:
 
 ## Custom training workflows
 
-In the [basic training example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py), Tune will call `train()` on your algorithm once per training iteration and report the new training results. Sometimes, it's desirable to have full control over training, but still run inside Tune. Tune supports using {ref}`custom trainable functions <trainable-docs>` to implement [custom training workflows (example)](https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py).
+In the [basic training example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py), Tune calls `train()` on your algorithm once per training iteration and reports the new training results. Sometimes you want full control over training while still running inside Tune. Tune supports {ref}`custom trainable functions <trainable-docs>` to implement [custom training workflows](https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py).
 
 ## Curriculum learning
 
-In curriculum learning, you can set the environment to different difficulties throughout the training process. This setting allows the algorithm to learn how to solve the actual and final problem incrementally, by interacting with and exploring in more and more difficult phases. Normally, such a curriculum starts with setting the environment to an easy level and then - as training progresses - transitions more toward a harder-to-solve difficulty. See [Reverse Curriculum Generation for Reinforcement Learning Agents](https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/) blog post for another example of doing curriculum learning.
+In curriculum learning, you set the environment to different difficulties throughout training. With this setting, the algorithm learns to solve the final problem incrementally by interacting with and exploring increasingly difficult phases. Normally, such a curriculum starts with an easy level and transitions toward a harder difficulty as training progresses. For another curriculum learning example, see the [Reverse Curriculum Generation for Reinforcement Learning Agents](https://bair.berkeley.edu/blog/2017/12/20/reverse-curriculum/) blog post.
 
-RLlib's Algorithm and custom callbacks APIs allow for implementing any arbitrary curricula. This [example script](https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py) introduces the basic concepts you need to understand.
+With RLlib's Algorithm and custom callbacks APIs, you can implement any curriculum. This [example script](https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py) introduces the basic concepts.
 
 First, define some env options. This example uses the `FrozenLake-v1` environment, a grid world, whose map you can fully customize. RLlib represents three tasks of different env difficulties with slightly different maps that the agent has to navigate.
 
@@ -26,7 +26,7 @@ First, define some env options. This example uses the `FrozenLake-v1` environmen
 :end-before: __END_curriculum_learning_example_env_options__
 ```
 
-Then, define the central piece controlling the curriculum, which is a custom callbacks class overriding the {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_train_result`.
+Then define the central piece that controls the curriculum. This is a custom callbacks class that overrides {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_train_result`.
 
 <!-- TODO move to doc_code and make it use algo configs. -->
 ```python
@@ -58,7 +58,7 @@ tune.Tuner(
 
 ## Global coordination
 
-Sometimes, you need to coordinate between pieces of code that live in different processes managed by RLlib. For example, it can be useful to maintain a global average of a certain variable, or centrally control a hyperparameter that policies use. Ray provides a general way to achieve this coordination through *named actors*. See {ref}`Ray actors <actor-guide>` to learn more. RLlib assigns these actors a global name. You can retrieve handles to them using these names. As an example, consider maintaining a shared global counter that's environments increment and read periodically from the driver program:
+Sometimes you need to coordinate between pieces of code that live in different processes managed by RLlib. For example, you might maintain a global average of a variable, or centrally control a hyperparameter that policies use. Ray provides a general way to achieve this coordination through *named actors*. See {ref}`Ray actors <actor-guide>`. RLlib assigns these actors a global name. You can retrieve handles to them using these names. As an example, maintain a shared global counter that environments increment and the driver program reads periodically:
 
 ```{literalinclude} ./doc_code/advanced_api.py
 :language: python
@@ -66,11 +66,11 @@ Sometimes, you need to coordinate between pieces of code that live in different 
 :end-before: __rllib-adv_api_counter_end__
 ```
 
-Ray actors provide high levels of performance. In more complex cases you can use them to implement communication patterns such as parameter servers and all-reduce.
+Ray actors provide high performance. For more complex cases, use them to implement communication patterns such as parameter servers and all-reduce.
 
 ## Visualizing custom metrics
 
-Access and visualize custom metrics like any other training result:
+Access and visualize custom metrics as you do any other training result:
 
 ```{image} images/custom_metric.png
 ```
@@ -79,9 +79,9 @@ Access and visualize custom metrics like any other training result:
 
 ## Customizing exploration behavior
 
-RLlib offers a unified top-level API to configure and customize an agent’s exploration behavior, including the decisions, like how and whether, to sample actions from distributions, stochastically or deterministically. Set up the behavior using built-in Exploration classes. See [this package](https://github.com/ray-project/ray/tree/master/rllib/utils/exploration)), which you specify and further configure inside `AlgorithmConfig().env_runners(..)`. Besides using one of the available classes, you can sub-class any of these built-ins, add custom behavior to it, and use that new class in the config instead.
+RLlib offers a unified top-level API to configure and customize an agent's exploration behavior, including how and whether to sample actions from distributions, stochastically or deterministically. Set up the behavior with built-in Exploration classes from [this package](https://github.com/ray-project/ray/tree/master/rllib/utils/exploration). You specify and configure them inside `AlgorithmConfig().env_runners(..)`. You can also sub-class any of these built-ins, add custom behavior, and use that new class in the config instead.
 
-Every policy has an Exploration object, which RLlib creates from the AlgorithmConfig’s `.env_runners(exploration_config=...)` method. The method specifies the class to use through the special “type” key, as well as constructor arguments through all other keys. For example:
+Every policy has an Exploration object, which RLlib creates from the AlgorithmConfig's `.env_runners(exploration_config=...)` method. The method specifies the class through the special `type` key and constructor arguments through all other keys. For example:
 
 ```{literalinclude} ./doc_code/advanced_api.py
 :language: python
@@ -95,7 +95,7 @@ The following table lists all built-in Exploration sub-classes and the agents th
 ```{image} images/rllib-exploration-api-table.svg
 ```
 
-An Exploration class implements the `get_exploration_action` method, in which you define the exact exploratory behavior. It takes the model’s output, the action distribution class, the model itself, a timestep, like the global env-sampling steps already taken, and an `explore` switch. It outputs a tuple of a) action and b) log-likelihood:
+An Exploration class implements the `get_exploration_action` method, where you define the exact exploratory behavior. It takes the model's output, the action distribution class, the model itself, a timestep such as the global env-sampling steps already taken, and an `explore` switch. It outputs a tuple of the action and the log-likelihood:
 
 ```{literalinclude} ../../../rllib/utils/exploration/exploration.py
 :language: python
@@ -103,9 +103,9 @@ An Exploration class implements the `get_exploration_action` method, in which yo
 :end-before: __sphinx_doc_end_get_exploration_action__
 ```
 
-At the highest level, the `Algorithm.compute_actions` and `Policy.compute_actions` methods have a boolean `explore` switch, which RLlib passes into `Exploration.get_exploration_action`. If `explore=None`, RLlib uses the value of `Algorithm.config[“explore”]`, which serves as a main switch for exploratory behavior, allowing for example turning off of any exploration easily for evaluation purposes. See {ref}`CustomEvaluation`.
+At the highest level, the `Algorithm.compute_actions` and `Policy.compute_actions` methods have a boolean `explore` switch, which RLlib passes into `Exploration.get_exploration_action`. If `explore=None`, RLlib uses the value of `Algorithm.config[“explore”]`, which serves as the main switch for exploratory behavior. For example, you can turn off all exploration for evaluation. See {ref}`CustomEvaluation`.
 
-The following are example excerpts from different Algorithms' configs to setup different exploration behaviors from `rllib/algorithms/algorithm.py`:
+The following excerpts from `rllib/algorithms/algorithm.py` set up different exploration behaviors for different Algorithms:
 
 <!-- TODO move to doc_code and make it use algo configs. -->
 ```python
@@ -161,7 +161,7 @@ The following are example excerpts from different Algorithms' configs to setup d
 
 ## Customized evaluation during training
 
-RLlib reports online training rewards, however in some cases you may want to compute rewards with different settings. For example, with exploration turned off, or on a specific set of environment configurations. You can activate evaluating policies during training (`Algorithm.train()`) by setting the `evaluation_interval` to a positive integer. This value specifies how many `Algorithm.train()` calls should occur each time RLlib runs an "evaluation step":
+RLlib reports online training rewards, but sometimes you want to compute rewards with different settings, such as with exploration turned off or on a specific set of environment configurations. To evaluate policies during `Algorithm.train()`, set the `evaluation_interval` to a positive integer. This value specifies how many `Algorithm.train()` calls occur each time RLlib runs an "evaluation step":
 
 ```{literalinclude} ./doc_code/advanced_api.py
 :language: python
@@ -169,7 +169,7 @@ RLlib reports online training rewards, however in some cases you may want to com
 :end-before: __rllib-adv_api_evaluation_1_end__
 ```
 
-An evaluation step runs, using its own `EnvRunner` instances, for `evaluation_duration` episodes or time-steps, depending on the `evaluation_duration_unit` setting, which can take values of either `"episodes"`, which is the default, or `"timesteps"`.
+An evaluation step uses its own `EnvRunner` instances and runs for `evaluation_duration` episodes or time-steps. The `evaluation_duration_unit` setting determines the unit and takes either `"episodes"`, the default, or `"timesteps"`.
 
 ```{literalinclude} ./doc_code/advanced_api.py
 :language: python
@@ -177,7 +177,7 @@ An evaluation step runs, using its own `EnvRunner` instances, for `evaluation_du
 :end-before: __rllib-adv_api_evaluation_2_end__
 ```
 
-Note that when using `evaluation_duration_unit=timesteps` and the `evaluation_duration` setting isn't divisible by the number of evaluation workers, RLlib rounds up the number of time-steps specified to the nearest whole number of time-steps that's divisible by the number of evaluation workers. Also, when using `evaluation_duration_unit=episodes` and the `evaluation_duration` setting isn't divisible by the number of evaluation workers, RLlib runs the remainder of episodes on the first n evaluation EnvRunners and leave the remaining workers idle for that time. You can configure evaluation workers with `evaluation_num_env_runners`.
+When you use `evaluation_duration_unit=timesteps` and `evaluation_duration` isn't divisible by the number of evaluation workers, RLlib rounds the number of time-steps up to the nearest whole number that's divisible by the number of evaluation workers. When you use `evaluation_duration_unit=episodes` and `evaluation_duration` isn't divisible by the number of evaluation workers, RLlib runs the remaining episodes on the first n evaluation EnvRunners and leaves the other workers idle for that time. You can configure evaluation workers with `evaluation_num_env_runners`.
 
 For example:
 
@@ -189,15 +189,15 @@ For example:
 
 Before each evaluation step, RLlib synchronizes weights from the main model to all evaluation workers.
 
-By default, RLlib runs the evaluation step, provided one exists in the current iteration, immediately **after** the respective training step. For example, for `evaluation_interval=1`, the sequence of events is: `train(0->1), eval(1), train(1->2), eval(2), train(2->3), ...`. The indices show the version of neural network weights RLlib used. `train(0->1)` is an update step that changes the weights from version 0 to version 1 and `eval(1)` then uses weights version 1. Weights index 0 represents the randomly initialized weights of the neural network.
+By default, RLlib runs the evaluation step, provided one exists in the current iteration, immediately after the respective training step. For example, for `evaluation_interval=1`, the sequence of events is: `train(0->1), eval(1), train(1->2), eval(2), train(2->3), ...`. The indices show the version of neural network weights RLlib uses. `train(0->1)` is an update step that changes the weights from version 0 to version 1, and `eval(1)` then uses weights version 1. Weights index 0 represents the randomly initialized weights of the neural network.
 
 The following is another example. For `evaluation_interval=2`, the sequence is: `train(0->1), train(1->2), eval(2), train(2->3), train(3->4), eval(4), ...`.
 
 Instead of running `train` and `eval` steps in sequence, you can also run them in parallel with the `evaluation_parallel_to_training=True` config setting. In this case, RLlib runs both training and evaluation steps at the same time using multi-threading. This parallelization can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported training and evaluation results. The evaluation results are behind in this case because they use slightly outdated model weights, which RLlib synchronizes after the previous training step.
 
-For example, for `evaluation_parallel_to_training=True` and `evaluation_interval=1`, the sequence is: `train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)`, where `+` connects phases happening at the same time. Note that the change in the weights indices are with respect to the non-parallel examples. The evaluation weights indices are now "one behind" the resulting train weights indices (`train(1->**2**) + eval(**1**)`).
+For example, for `evaluation_parallel_to_training=True` and `evaluation_interval=1`, the sequence is: `train(0->1) + eval(0), train(1->2) + eval(1), train(2->3) + eval(2)`, where `+` connects phases happening at the same time. The weights indices change with respect to the non-parallel examples. The evaluation weights indices are now "one behind" the resulting train weights indices (`train(1->**2**) + eval(**1**)`).
 
-When running with the `evaluation_parallel_to_training=True` setting, RLlib supports a special "auto" value for `evaluation_duration`. Use this auto setting to make the evaluation step take roughly as long as the concurrently ongoing training step:
+When running with the `evaluation_parallel_to_training=True` setting, RLlib supports a special "auto" value for `evaluation_duration`. Use this auto setting to make the evaluation step take roughly as long as the concurrent training step:
 
 ```{literalinclude} ./doc_code/advanced_api.py
 :language: python
@@ -205,7 +205,7 @@ When running with the `evaluation_parallel_to_training=True` setting, RLlib supp
 :end-before: __rllib-adv_api_evaluation_4_end__
 ```
 
-The `evaluation_config` key allows you to override any config settings for the evaluation workers. For example, to switch off exploration in the evaluation steps, do the following:
+Use the `evaluation_config` key to override any config settings for the evaluation workers. For example, to switch off exploration in the evaluation steps, do the following:
 
 ```{literalinclude} ./doc_code/advanced_api.py
 :language: python
@@ -215,17 +215,17 @@ The `evaluation_config` key allows you to override any config settings for the e
 
 :::{note}
 
-Policy gradient algorithms are able to find the optimal policy, even if this is a stochastic one. Setting "explore=False" results in the evaluation workers not using this stochastic policy.
+Policy gradient algorithms can find the optimal policy, even if it's stochastic. Setting `explore=False` results in the evaluation workers not using this stochastic policy.
 :::
 
-RLlib determines the level of parallelism within the evaluation step by the `evaluation_num_env_runners` setting. Set this parameter to a larger value if you want the desired evaluation episodes or time-steps to run as much in parallel as possible. For example, if `evaluation_duration=10`, `evaluation_duration_unit=episodes`, and `evaluation_num_env_runners=10`, each evaluation `EnvRunner` only has to run one episode in each evaluation step.
+The `evaluation_num_env_runners` setting determines the level of parallelism within the evaluation step. Set it to a larger value to run more evaluation episodes or time-steps in parallel. For example, if `evaluation_duration=10`, `evaluation_duration_unit=episodes`, and `evaluation_num_env_runners=10`, each evaluation `EnvRunner` runs only one episode in each evaluation step.
 
-In case you observe occasional failures in the evaluation EnvRunners during evaluation, for example an environment that sometimes crashes or stalls, use the following combination of settings, to minimize the negative effects of that environment behavior:
+If you observe occasional failures in the evaluation EnvRunners during evaluation, for example an environment that sometimes crashes or stalls, use the following settings to minimize the negative effects of that behavior:
 
 <!-- todo (sven): Add link here to new fault-tolerance page, once done. -->
 <!-- :ref:`fault tolerance settings <rllib-fault-tolerance-docs>`, such as -->
 
-Note that with or without parallel evaluation, RLlib respects all fault tolerance settings, such as `ignore_env_runner_failures` or `restart_failed_env_runners`, and applies them to the failed evaluation workers.
+With or without parallel evaluation, RLlib respects all fault tolerance settings, such as `ignore_env_runner_failures` or `restart_failed_env_runners`, and applies them to the failed evaluation workers.
 
 The following is an example:
 
@@ -235,13 +235,13 @@ The following is an example:
 :end-before: __rllib-adv_api_evaluation_6_end__
 ```
 
-This example runs the parallel sampling of all evaluation EnvRunners, such that if one of the workers takes too long to run through an episode and return data or fails entirely, the other evaluation EnvRunners still complete the job.
+This example runs all evaluation EnvRunners in parallel, so that if one worker takes too long to run through an episode and return data, or fails entirely, the other evaluation EnvRunners still complete the job.
 
-If you want to entirely customize the evaluation step, set `custom_eval_function` in the config to a callable, which takes the Algorithm object and an {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object, the Algorithm's `self.evaluation_workers` {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` instance, and returns a metrics dictionary. See [algorithm.py](https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py) for further documentation.
+To fully customize the evaluation step, set `custom_eval_function` in the config to a callable. This callable takes the Algorithm object and an {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object, the Algorithm's `self.evaluation_workers` {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` instance, and returns a metrics dictionary. See [algorithm.py](https://github.com/ray-project/ray/blob/master/rllib/algorithms/algorithm.py) for further documentation.
 
-This end-to-end example shows how to set up a custom online evaluation in [custom_evaluation.py](https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py). Note that if you only want to evaluate your policy at the end of training, set `evaluation_interval: [int]`, where `[int]` should be the number of training iterations before stopping.
+This end-to-end example shows how to set up a custom online evaluation in [custom_evaluation.py](https://github.com/ray-project/ray/blob/master/rllib/examples/evaluation/custom_evaluation.py). To evaluate your policy only at the end of training, set `evaluation_interval: [int]`, where `[int]` is the number of training iterations before stopping.
 
-Below are some examples of how RLlib reports the custom evaluation metrics nested under the `evaluation` key of normal training results:
+The following examples show how RLlib reports the custom evaluation metrics, nested under the `evaluation` key of normal training results:
 
 <!-- TODO make sure these outputs are still valid. -->
 ```bash
@@ -296,12 +296,12 @@ Result for PG_SimpleCorridor_0de4e686:
 
 ## Rewriting trajectories
 
-In the `on_postprocess_traj` callback you have full access to the trajectory batch (`post_batch`) and other training state. You can use this information to rewrite the trajectory, which has a number of uses including:
+In the `on_postprocess_traj` callback, you have full access to the trajectory batch `post_batch` and other training state. You can use this information to rewrite the trajectory. Rewriting the trajectory has several uses:
 
  * Backdating rewards to previous time steps, for example, based on values in `info`.
  * Adding model-based curiosity bonuses to rewards. You can train the model with a {doc}`custom model supervised loss </rllib/rl-modules>`.
 
-To access the policy or model (`policy.model`) in the callbacks, note that `info['pre_batch']` returns a tuple where the first element is a policy and the second one is the batch itself. You can also access all the rollout worker state using the following call:
+To access the policy or model `policy.model` in the callbacks, `info['pre_batch']` returns a tuple where the first element is the policy and the second is the batch itself. You can also access all the rollout worker state with the following call:
 
 <!-- TODO move to doc_code and make it use algo configs. -->
 ```python
@@ -313,4 +313,4 @@ from ray.rllib.evaluation.rollout_worker import get_global_worker
 rollout_worker = get_global_worker()
 ```
 
-RLlib defines policy losses over the `post_batch` data, so you can mutate that in the callbacks to change what data the policy loss function sees.
+RLlib defines policy losses over the `post_batch` data, so you can mutate it in the callbacks to change what data the policy loss function sees.

@@ -6,62 +6,62 @@ myst:
 
 (rllib-external-env-setups-doc)=
 
-# External Environments and Applications
+# External environments and applications
 
-In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib. For example, if you train a policy inside a complex simulator that operates its own execution loop, like a game engine or a robotics simulation. A natural and user friendly approach is to flip this setup around and - instead of RLlib "stepping" the env - allow the agents in the simulation to fully control their own stepping. An external RLlib-powered service would be available for either querying individual actions or for accepting batched sample data. The service would cover the task of training the policies, but wouldn't pose any restrictions on when and how often per second the simulation should step.
+Sometimes it doesn't make sense for RLlib to "step" an RL environment. For example, you might train a policy inside a complex simulator that runs its own execution loop, such as a game engine or a robotics simulation. A natural approach flips this setup around. Instead of RLlib stepping the environment, the agents in the simulation control their own stepping. An external, RLlib-powered service is available to answer queries for individual actions or to accept batched sample data. The service trains the policies but doesn't restrict when or how often per second the simulation steps.
 
 ```{figure} images/envs/external_env_setup_client_inference.svg
 :align: left
 :width: 600
 
-**External application with client-side inference**: An external simulator (for example a game engine)
-connects to RLlib, which runs as a server through a tcp-cabable, custom EnvRunner.
-The simulator sends batches of data from time to time to the server and in turn receives weights updates.
-For better performance, actions are computed locally on the client side.
+**External application with client-side inference**: An external simulator, such as a game engine,
+connects to RLlib, which runs as a server through a TCP-capable, custom EnvRunner.
+The simulator periodically sends batches of data to the server and in turn receives weight updates.
+For better performance, the client computes actions locally.
 ```
 
-RLlib provides an [external messaging protocol](https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py) called {ref}`RLlink <rllink-protocol-docs>` for this purpose as well as the option to customize your {py:class}`~ray.rllib.env.env_runner.EnvRunner` class toward communicating through {ref}`RLlink <rllink-protocol-docs>` with one or more clients. An example, [tcp-based EnvRunner implementation with RLlink is available here](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py). It also contains a dummy (CartPole) client that can be used for testing and as a template for how your external application or simulator should use the {ref}`RLlink <rllink-protocol-docs>` protocol.
+RLlib provides an [external messaging protocol](https://github.com/ray-project/ray/blob/master/rllib/env/external/rllink.py) called {ref}`RLlink <rllink-protocol-docs>` for this purpose. You can also customize your {py:class}`~ray.rllib.env.env_runner.EnvRunner` class to communicate through {ref}`RLlink <rllink-protocol-docs>` with one or more clients. An [example TCP-based EnvRunner implementation with RLlink](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py) is available. It also contains a dummy CartPole client for testing and as a template for how your external application or simulator should use the {ref}`RLlink <rllink-protocol-docs>` protocol.
 
 :::{note}
-External application support is still work-in-progress on RLlib's new API stack. The Ray team is working on more examples for custom EnvRunner implementations (besides [the already available tcp-based one](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py)) as well as various client-side, non-python RLlib-adapters, for example for popular game engines and other simulation software.
+External application support is a work in progress on RLlib's new API stack. The Ray team is developing more examples for custom EnvRunner implementations, beyond [the available TCP-based one](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py), along with client-side, non-Python RLlib adapters for popular game engines and other simulation software.
 :::
 
 (rllink-protocol-docs)=
 
-## The RLlink Protocol
+## The RLlink protocol
 
-RLlink is a simple, stateful protocol designed for communication between a reinforcement learning (RL) server (ex., RLlib) and an external client acting as an environment simulator. The protocol enables seamless exchange of RL-specific data such as episodes, configuration, and model weights, while also facilitating on-policy training workflows.
+RLlink is a simple, stateful protocol for communication between a reinforcement learning (RL) server, such as RLlib, and an external client that acts as an environment simulator. It exchanges RL-specific data such as episodes, configuration, and model weights, and it supports on-policy training workflows.
 
-### Key Features
+### Key features
 
-- **Stateful Design**: The protocol maintains some state through sequences of message exchanges (ex., request-response pairs like `GET_CONFIG` -> `SET_CONFIG`).
-- **Strict Request-Response Design**: The protocol is strictly (client) request -> (server) response based. Due to the necessity to let the client simulation run in its own execution loop, the server side refrains from sending any unsolicited messages to the clients.
-- **RL-Specific Capabilities**: Tailored for RL workflows, including episode handling, model weight updates, and configuration management.
-- **Flexible Sampling**: Supports both on-policy and off-policy data collection modes.
-- **JSON**: For reasons of better debugging and faster iterations, the first versions of RLlink are entirely JSON-based, non-encrypted, and non-secure.
+- **Stateful design**: The protocol maintains state across sequences of message exchanges, such as the request-response pair `GET_CONFIG` -> `SET_CONFIG`.
+- **Strict request-response design**: Every exchange goes from a client request to a server response. Because the client simulation runs in its own execution loop, the server never sends unsolicited messages to clients.
+- **RL-specific capabilities**: Tailored for RL workflows, including episode handling, model weight updates, and configuration management.
+- **Flexible sampling**: Supports both on-policy and off-policy data collection modes.
+- **JSON**: To simplify debugging and speed up iteration, the first versions of RLlink are entirely JSON-based, unencrypted, and insecure.
 
-### Message Structure
+### Message structure
 
 RLlink messages consist of a header and a body:
 
-  - **Header**: 8-byte length field indicating the size of the body, for example `00000016` for a body of length 16 (thus, in total, the message size).
+  - **Header**: An 8-byte length field giving the size of the body. For example, `00000016` indicates a body of length 16, and thus the total message size.
   - **Body**: JSON-encoded content with a `type` field indicating the message type.
 
-#### Example Messages: PING and EPISODES_AND_GET_STATE
+#### Example messages: PING and EPISODES_AND_GET_STATE
 
-Here is a complete simple example message for the `PING` message. Note the 8-byte header encoding the size of the following body to be of length `16`, followed by the message body with the mandatory "type" field.
+Here is a complete example of the `PING` message. The 8-byte header encodes the size of the following body as length `16`, followed by the message body with the mandatory "type" field.
 
 ```
 00000016{"type": "PING"}
 ```
 
-The `PING` message should be sent by the client after initiation of a new connection. The server then responds with:
+The client sends the `PING` message after initiating a new connection. The server then responds with:
 
 ```
 00000016{"type": "PONG"}
 ```
 
-Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to the server and carrying a batch of sampling data. With the same message, the client asks the server to send back the updated model weights.
+Here is an example `EPISODES_AND_GET_STATE` message that the client sends to the server, carrying a batch of sampling data. With the same message, the client asks the server to send back the updated model weights.
 
 (example-rllink-episode-and-get-state-msg)=
 
@@ -81,7 +81,7 @@ Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to 
 }
 ```
 
-### Overview of all Message Types
+### Overview of all message types
 
 #### Requests: Client → Server
 
@@ -89,24 +89,24 @@ Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to 
 
   - Example: `{"type": "PING"}`
   - Purpose: Initial handshake to establish communication.
-  - Expected Response: `{"type": "PONG"}`.
+  - Expected response: `{"type": "PONG"}`.
 
 - **`GET_CONFIG`**
 
   - Example: `{"type": "GET_CONFIG"}`
-  - Purpose: Request the relevant configuration (for example, how many timesteps to collect for a single `EPISODES_AND_GET_STATE` message; see below).
-  - Expected Response: `{"type": "SET_CONFIG", "env_steps_per_sample": 500, "force_on_policy": true}`.
+  - Purpose: Request the relevant configuration, such as how many timesteps to collect for a single `EPISODES_AND_GET_STATE` message. See below.
+  - Expected response: `{"type": "SET_CONFIG", "env_steps_per_sample": 500, "force_on_policy": true}`.
 
 - **`EPISODES_AND_GET_STATE`**
 
-  - Example: {ref}`See here for an example message <example-rllink-episode-and-get-state-msg>`
-  - Purpose: Combine `EPISODES` and `GET_STATE` into a single request. This is useful for workflows requiring on-policy (synchronous) updates to model weights after data collection.
+  - Example: {ref}`Example EPISODES_AND_GET_STATE message <example-rllink-episode-and-get-state-msg>`
+  - Purpose: Combine `EPISODES` and `GET_STATE` into a single request. This helps workflows that require on-policy, synchronous updates to model weights after data collection.
   - Body:
 
-    - `episodes`: A list of JSON objects (dicts), each with mandatory keys "obs" (list of observations in the episode), "actions" (list of actions in the episode), "rewards" (list of rewards in the episode), "is_terminated" (bool), and "is_truncated" (bool). Note that the "obs" list has one item more than the lists for "actions" and "rewards" due to the initial "reset" observation.
+    - `episodes`: A list of JSON objects, each with the mandatory keys "obs" (list of observations in the episode), "actions" (list of actions in the episode), "rewards" (list of rewards in the episode), "is_terminated" (bool), and "is_truncated" (bool). The "obs" list has one more item than the "actions" and "rewards" lists because of the initial reset observation.
     - `weights_seq_no`: Sequence number for the model weights version, ensuring synchronization.
 
-  - Expected Response: `{"type": "SET_STATE", "weights_seq_no": 123, "mlir_file": ".. [b64 encoded string of the binary .mlir file with the model in it] .."}`.
+  - Expected response: `{"type": "SET_STATE", "weights_seq_no": 123, "mlir_file": ".. [b64 encoded string of the binary .mlir file with the model in it] .."}`.
 
 #### Responses: Server → Client
 
@@ -118,7 +118,7 @@ Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to 
 - **`SET_STATE`**
 
   - Example: `{"type": "SET_STATE", "weights_seq_no": 123, "onnx_file": "... [base64 encoded ONNX file] ..."}`
-  - Purpose: Provide the client with the current state (for example, model weights).
+  - Purpose: Provide the client with the current state, such as model weights.
   - Body:
 
     - `onnx_file`: Base64-encoded, compressed ONNX model file.
@@ -130,31 +130,31 @@ Here is an example of an `EPISODES_AND_GET_STATE` message sent by the client to 
   - Body:
 
     - `env_steps_per_sample`: Number of total env steps collected for one `EPISODES_AND_GET_STATE` message.
-    - `force_on_policy`: Whether on-policy sampling is enforced. If true, the client should wait after sending the `EPISODES_AND_GET_STATE` message for the `SET_STATE` response before continuing to collect the next round of samples.
+    - `force_on_policy`: Whether to enforce on-policy sampling. If true, the client waits after sending the `EPISODES_AND_GET_STATE` message for the `SET_STATE` response before collecting the next round of samples.
 
-#### Workflow Examples
+#### Workflow examples
 
-**Initial Handshake**
+**Initial handshake**
 
 1. Client sends `PING`.
 2. Server responds with `PONG`.
 
-**Configuration Request**
+**Configuration request**
 
 1. Client sends `GET_CONFIG`.
 2. Server responds with `SET_CONFIG`.
 
-**Training (on-policy)**
+**On-policy training**
 
 1. Client collects on-policy data and sends `EPISODES_AND_GET_STATE`.
 2. Server processes the episodes and responds with `SET_STATE`.
 
 :::{note}
-This protocol is an initial draft of the attempt to develop a widely adapted protocol for communication between an external client and a remote RL-service. Expect many changes, enhancements, and upgrades as it moves toward maturity, including adding a safety layer and compression. For now, however, it offers a lightweight, simple, yet powerful interface for integrating external environments with RL frameworks.
+This protocol is an initial draft toward a widely adopted protocol for communication between an external client and a remote RL service. Expect many changes, enhancements, and upgrades as it matures, including a safety layer and compression. It offers a lightweight, simple interface for integrating external environments with RL frameworks.
 :::
 
-## Example: External client connecting to tcp-based EnvRunner
+## Example: External client connecting to a TCP-based EnvRunner
 
-An example [tcp-based EnvRunner implementation with RLlink is available here](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py). See [here for the full end-to-end example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
+An [example TCP-based EnvRunner implementation with RLlink](https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py) is available. See the [full end-to-end example](https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py).
 
-Feel free to alter the underlying logic of your custom EnvRunner, for example, you could implement a shared memory based communication layer (instead of the tcp-based one).
+You can alter the underlying logic of your custom EnvRunner. For example, you could implement a shared-memory communication layer instead of the TCP-based one.
