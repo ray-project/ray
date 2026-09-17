@@ -66,6 +66,11 @@ def get_valid_runtime_envs() -> List[Dict]:
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
         },
+        # Runtime_env pointing at directories already present on every node.
+        {
+            "working_dir": "local:///app",
+            "py_modules": ["local:///app/lib"],
+        },
     ]
 
 
@@ -80,7 +85,9 @@ def get_invalid_runtime_envs() -> List[Dict]:
                 "/Desktop/my_project",
                 TEST_DEPLOY_GROUP_PINNED_URI,
             ],
-        }
+        },
+        # A "local://" URI must carry an absolute path
+        {"working_dir": "local://relative/path"},
     ]
 
 
@@ -537,7 +544,7 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
-    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+    def test_gang_scheduling_config_scale_to_zero(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
@@ -545,11 +552,9 @@ class TestDeploymentSchema:
             "min_replicas": 0,
             "max_replicas": 9,
         }
-        with pytest.raises(
-            ValueError,
-            match="Scale to zero isn't supported for gang scheduling",
-        ):
-            DeploymentSchema.model_validate(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.autoscaling_config["min_replicas"] == 0
+        assert schema.gang_scheduling_config.gang_size == 3
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
         deployment_schema = self.get_minimal_deployment_schema()

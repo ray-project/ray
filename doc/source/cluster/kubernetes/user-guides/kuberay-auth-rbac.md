@@ -49,7 +49,7 @@ When enabled, the KubeRay operator will:
 * Automatically set the `RAY_ENABLE_K8S_TOKEN_AUTH` environment variable to `true` on all Ray containers.
 * Automatically mount a projected service account token to the Ray containers, for intra-cluster Ray process authentication.
 
-If you are using a KubeRay version older than v1.6.0, you can enable RBAC authentication by setting the `RAY_AUTH_MODE` and `RAY_ENABLE_K8S_TOKEN_AUTH` environment variables and manually mounting the projected service account token to the Ray containers. See the following example:
+If you are using a KubeRay version older than v1.7.0, you can enable RBAC authentication by setting the `RAY_AUTH_MODE` and `RAY_ENABLE_K8S_TOKEN_AUTH` environment variables and manually mounting the projected service account token to the Ray containers. See the following example:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.kubernetes.auth-manual.yaml

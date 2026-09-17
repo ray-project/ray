@@ -182,7 +182,7 @@ to setup different exploration behaviors from ``rllib/algorithms/algorithm.py``:
     "explore": True,
     "exploration_config": {
        # Exploration sub-class by name or full path to module+class
-       # (e.g., “ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy”)
+       # (e.g., "ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy")
        "type": "EpsilonGreedy",
        # Parameters for the Exploration class' constructor:
        "initial_epsilon": 1.0,

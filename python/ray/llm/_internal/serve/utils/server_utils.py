@@ -10,7 +10,7 @@ from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
-from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS
+from ray.llm._internal.common.errors import VLLM_CLIENT_ERRORS, VLLM_FATAL_ERRORS
 from ray.llm._internal.serve.constants import DEFAULT_FATAL_ERROR_COOLDOWN_S
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ErrorInfo,
@@ -169,6 +169,8 @@ def get_response_for_error(
         status_code = 400
     elif isinstance(e, HTTPXHTTPStatusError):
         status_code = e.response.status_code
+    elif isinstance(e, VLLM_CLIENT_ERRORS):
+        status_code = 400
     else:
         # Try to get the status code attribute from exception,
         # if not present, fallback to generic 500

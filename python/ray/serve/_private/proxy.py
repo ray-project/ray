@@ -331,7 +331,7 @@ class GenericProxy(ABC):
             exc: The exception that occurred, if any.
         """
         if exc:
-            set_span_exception(exc, escaped=True)  # type: ignore[arg-type]
+            set_span_exception(exc, escaped=True)
             if status is not None:
                 set_trace_status(status.is_error, str(exc))
         elif status is not None:

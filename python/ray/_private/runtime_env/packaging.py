@@ -10,10 +10,23 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
+from urllib.parse import urlparse
 from zipfile import ZipFile
 
 from filelock import FileLock
 
+from ray._common.runtime_env_package import (
+    COMPOUND_ARCHIVE_EXTENSIONS,
+    JAR_EXTENSION,
+    TAR_EXTENSIONS,
+    TAR_GZ_EXTENSION,
+    TAR_XZ_EXTENSION,
+    TGZ_EXTENSION,
+    WHEEL_EXTENSION,
+    ZIP_EXTENSION,
+    get_package_extension,
+    has_package_extension,
+)
 from ray._common.runtime_env_uri import parse_uri as _parse_uri
 from ray._private.ray_constants import (
     GRPC_CPP_MAX_MESSAGE_SIZE,
@@ -259,7 +272,7 @@ def is_zip_uri(uri: str) -> bool:
     except ValueError:
         return False
 
-    return Path(path).suffix == ".zip"
+    return Path(path).suffix == ZIP_EXTENSION
 
 
 def is_whl_uri(uri: str) -> bool:
@@ -268,7 +281,7 @@ def is_whl_uri(uri: str) -> bool:
     except ValueError:
         return False
 
-    return Path(path).suffix == ".whl"
+    return Path(path).suffix == WHEEL_EXTENSION
 
 
 def is_jar_uri(uri: str) -> bool:
@@ -277,7 +290,7 @@ def is_jar_uri(uri: str) -> bool:
     except ValueError:
         return False
 
-    return Path(path).suffix == ".jar"
+    return Path(path).suffix == JAR_EXTENSION
 
 
 def is_tar_gz_uri(uri: str) -> bool:
@@ -286,7 +299,16 @@ def is_tar_gz_uri(uri: str) -> bool:
     except ValueError:
         return False
 
-    return path.endswith(".tar.gz") or Path(path).suffix == ".tgz"
+    return path.endswith(TAR_GZ_EXTENSION) or Path(path).suffix == TGZ_EXTENSION
+
+
+def is_tar_uri(uri: str) -> bool:
+    try:
+        _, path = _parse_uri(uri)
+    except ValueError:
+        return False
+
+    return has_package_extension(path, TAR_EXTENSIONS)
 
 
 def _get_excludes(path: Path, excludes: List[str]) -> Callable:
@@ -448,8 +470,35 @@ def _store_package_in_gcs(
     return len(data)
 
 
+def get_local_dir_uri_path(pkg_uri: str) -> Optional[Path]:
+    """Returns the on node path a `local://` URI points to.
+
+    Returns None for every other protocol, and for plain paths. Raises ValueError
+    for a `local://` URI that is malformed, such as one with a relative path.
+    """
+    if urlparse(pkg_uri).scheme != Protocol.LOCAL.value:
+        return None
+    _, path = _parse_uri(pkg_uri)
+    return Path(path)
+
+
+def raise_if_local_dir_uri_missing(local_dir: Path, pkg_uri: str, field: str) -> None:
+    """Raises unless the directory a `local://` URI points to exists on this node."""
+    if not local_dir.is_dir():
+        raise ValueError(
+            f"{field} {pkg_uri} points to '{local_dir}', which must already "
+            "exist on every node."
+        )
+
+
 def _get_local_path(base_directory: str, pkg_uri: str) -> str:
-    _, pkg_name = _parse_uri(pkg_uri)
+    protocol, pkg_name = _parse_uri(pkg_uri)
+    if protocol == Protocol.LOCAL:
+        raise ValueError(
+            '"local://" URIs refer to a directory that must already exist on '
+            f"every node, so {pkg_uri} is never downloaded or unpacked. It is "
+            "only supported in working_dir and py_modules."
+        )
     return os.path.join(base_directory, pkg_name)
 
 
@@ -525,7 +574,7 @@ def package_exists(pkg_uri: str) -> bool:
 def get_uri_for_package(package: Path) -> str:
     """Get a content-addressable URI from a package's contents."""
 
-    if package.suffix == ".whl":
+    if package.suffix == WHEEL_EXTENSION:
         # Wheel file names include the Python package name, version
         # and tags, so it is already effectively content-addressed.
         return "{protocol}://{whl_filename}".format(
@@ -533,12 +582,14 @@ def get_uri_for_package(package: Path) -> str:
         )
     else:
         hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
-        if package.name.endswith(".tar.gz"):
-            ext = ".tar.gz"
-        elif package.suffix == ".tgz":
-            ext = ".tar.gz"
+        if package.name.endswith(TAR_GZ_EXTENSION):
+            ext = TAR_GZ_EXTENSION
+        elif package.suffix == TGZ_EXTENSION:
+            ext = TAR_GZ_EXTENSION
+        elif package.name.endswith(TAR_XZ_EXTENSION):
+            ext = TAR_XZ_EXTENSION
         else:
-            ext = ".zip"
+            ext = ZIP_EXTENSION
         return "{protocol}://{pkg_name}{ext}".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val, ext=ext
         )
@@ -818,10 +869,9 @@ def get_local_dir_from_uri(uri: str, base_directory: str) -> Path:
     """Return the local directory corresponding to this URI."""
     pkg_file = Path(_get_local_path(base_directory, uri))
     pkg_name = pkg_file.name
-    if pkg_name.endswith(".tar.gz"):
-        local_dir = pkg_file.parent / pkg_name[: -len(".tar.gz")]
-    elif pkg_name.endswith(".tar.bz2"):
-        local_dir = pkg_file.parent / pkg_name[: -len(".tar.bz2")]
+    compound_extension = get_package_extension(pkg_name, COMPOUND_ARCHIVE_EXTENSIONS)
+    if compound_extension is not None:
+        local_dir = pkg_file.parent / pkg_name[: -len(compound_extension)]
     else:
         local_dir = pkg_file.with_suffix("")
     return local_dir
@@ -837,7 +887,8 @@ async def download_and_unpack_package(
 ) -> str:
     """Download the package corresponding to this URI and unpack it.
 
-    Supports .zip, .jar, .tar.gz, and .tgz archives for remote protocols.
+    Supports .zip, .jar, .tar.gz, .tgz, .tar.bz2, and .tar.xz archives for
+    remote protocols.
     Will be written to a file or directory named {base_directory}/{uri}.
     Returns the path to this file or directory.
 
@@ -927,7 +978,7 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
-                elif is_tar_gz_uri(pkg_uri):
+                elif is_tar_uri(pkg_uri):
                     untar_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
@@ -940,7 +991,7 @@ async def download_and_unpack_package(
             elif protocol in Protocol.remote_protocols():
                 protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
 
-                if pkg_file.suffix in [".zip", ".jar"]:
+                if pkg_file.suffix in [ZIP_EXTENSION, JAR_EXTENSION]:
                     unzip_package(
                         package_path=pkg_file,
                         target_dir=local_dir,
@@ -948,13 +999,9 @@ async def download_and_unpack_package(
                         unlink_zip=True,
                         logger=logger,
                     )
-                elif pkg_file.suffix == ".whl":
+                elif pkg_file.suffix == WHEEL_EXTENSION:
                     return str(pkg_file)
-                elif (
-                    str(pkg_file).endswith(".tar.gz")
-                    or pkg_file.suffix == ".tgz"
-                    or str(pkg_file).endswith(".tar.bz2")
-                ):
+                elif is_tar_uri(pkg_uri):
                     untar_package(
                         package_path=pkg_file,
                         target_dir=local_dir,

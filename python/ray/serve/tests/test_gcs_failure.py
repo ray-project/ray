@@ -41,6 +41,18 @@ def collect_pids_from_all_replicas(send_request: Callable[[], int], num_replicas
     assert len(pids) == num_replicas, f"Only {pids} served requests"
 
 
+def wait_for_gcs_available():
+    """A just-restarted GCS is not reachable immediately, and the Serve KV writes
+    that follow run under a 1s RAY_SERVE_KV_TIMEOUT_S, so they must not race it.
+    """
+
+    def kv_write_succeeds():
+        RayInternalKVStore().put("gcs_available_probe", b"1")
+        return True
+
+    wait_for_condition(kv_write_succeeds, timeout=STARTUP_TIMEOUT_S)
+
+
 @ray.remote
 class _GcsFailureDeploymentActor:
     """Minimal deployment-scoped actor for ``test_deployment_actor_survives_gcs_failure``."""
@@ -68,13 +80,17 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     serve.start()
     yield (address_info, _get_global_client())
 
-    # When GCS is down, right now some core worker members are not cleared
-    # properly in ray.shutdown.
-    ray.worker._global_node.start_gcs_server()
-
-    # Clear cache and global serve client
-    serve.shutdown()
-    ray.shutdown()
+    # When GCS is down, core worker members are not cleared properly in ray.shutdown.
+    # Restart it only if the test left it down, and always shut down: an unconditional
+    # restart asserts, skips the shutdown, and cascades into every later test.
+    try:
+        if ray.worker._global_node._gcs_address is None:
+            ray.worker._global_node.start_gcs_server()
+            wait_for_gcs_available()
+    finally:
+        # Clear cache and global serve client
+        serve.shutdown()
+        ray.shutdown()
 
 
 @pytest.mark.skipif(
@@ -129,6 +145,7 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     print("Start GCS")
     ray.worker._global_node.start_gcs_server()
+    wait_for_gcs_available()
 
     # Make sure nothing changed even when GCS is back.
     with pytest.raises(Exception):

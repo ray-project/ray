@@ -119,7 +119,7 @@ type AcceleratorMemoryEntryProps = {
   slot: number;
   utilization: number | null;
   total: number | null;
-  utilPercent?: number;
+  utilPercent?: number | null;
 };
 
 const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
@@ -137,6 +137,7 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   // (as is the case on some TPU generations), spoof the bar with just a percentage.
   if (
     utilPercent !== undefined &&
+    utilPercent !== null &&
     (capacity === 0 || !isKnownMemoryValue(capacity))
   ) {
     ratioStr = `${utilPercent.toFixed(1)}%`;

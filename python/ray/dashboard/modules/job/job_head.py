@@ -50,6 +50,10 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.dashboard.runtime_env_redaction import (
+    redact_runtime_env,
+    should_redact_runtime_env,
+)
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.subprocesses.utils import ResponseType
@@ -211,6 +215,14 @@ class JobAgentSubmissionClient:
         except Exception:
             if not ignore_error:
                 raise
+
+
+def _job_details_to_dict(job: JobDetails, redact: bool) -> Dict:
+    """Serialize `job` for an HTTP response, optionally redacting its runtime env."""
+    job_dict = job.dict()
+    if redact:
+        job_dict["runtime_env"] = redact_runtime_env(job_dict.get("runtime_env"))
+    return job_dict
 
 
 class JobHead(SubprocessModule):
@@ -511,7 +523,7 @@ class JobHead(SubprocessModule):
             )
 
         return Response(
-            text=json.dumps(job.dict()),
+            text=json.dumps(_job_details_to_dict(job, should_redact_runtime_env(req))),
             content_type="application/json",
         )
 
@@ -536,11 +548,18 @@ class JobHead(SubprocessModule):
             )
             for submission_id, job in submission_jobs.items()
         ]
+        redact = should_redact_runtime_env(req)
         return Response(
             text=json.dumps(
                 [
-                    *[submission_job.dict() for submission_job in submission_jobs],
-                    *[job_info.dict() for job_info in driver_jobs.values()],
+                    *[
+                        _job_details_to_dict(submission_job, redact)
+                        for submission_job in submission_jobs
+                    ],
+                    *[
+                        _job_details_to_dict(job_info, redact)
+                        for job_info in driver_jobs.values()
+                    ],
                 ]
             ),
             content_type="application/json",

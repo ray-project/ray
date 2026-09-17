@@ -11,6 +11,26 @@ build:linux --workspace_status_command="bash ./bazel/workspace_status.sh"
 # To distinguish different incompatible environments.
 build --action_env=RAY_BUILD_ENV
 
+# Let the invoking environment pick the Python package index that repository
+# rules resolve from, e.g. to point a CI fleet at a caching mirror instead of
+# pypi.org. Both are deliberately valueless, so bazel inherits whatever the
+# client environment holds and pins nothing here. rules_python runs
+# whl_library's pip with --isolated, which makes pip ignore every PIP_* variable,
+# so RULES_PYTHON_PIP_ISOLATED=0 is what lets the other through. Neither is set
+# in a plain checkout, and then pip resolves from PyPI as before.
+common --repo_env=PIP_INDEX_URL
+common --repo_env=RULES_PYTHON_PIP_ISOLATED
+
+# The same again for test actions, which get a curated environment rather than the
+# client's: --repo_env covers repository rules only. //ci/raydepsets:test_cli shells
+# out to uv, so without these it resolves against PyPI no matter what the step is
+# configured to use, which is how a 502 reached it while every other resolve in the
+# same job went through the mirror. The hosted index is one fleet-wide URL rather
+# than per job, so this does not churn test cache keys; unset in a plain checkout,
+# these forward nothing.
+test --test_env=PIP_INDEX_URL
+test --test_env=UV_INDEX_URL
+
 ###############################################################################
 # On       Windows, provide: BAZEL_SH, and BAZEL_LLVM (if using clang-cl)
 # On all platforms, provide: PYTHON3_BIN_PATH=python
