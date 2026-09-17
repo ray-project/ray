@@ -438,9 +438,10 @@ class ServeController:
         ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
             if autoscaling_metrics_codec.is_columnar(handle_metric_report):
-                # Wire-detected on the frame magic, so a mixed fleet mid-rollout is
-                # read correctly whatever each sender chose to emit. Timed apart from
-                # decompress: separating the two codecs is the point of the metric.
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
                 decode_start = time.monotonic()
                 d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
                 self._health_metrics_tracker.record_columnar_decode(
