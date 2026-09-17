@@ -871,7 +871,6 @@ _intersphinx_targets = {
     "lightgbm": ("https://lightgbm.readthedocs.io/en/latest/", None),
     "mars": ("https://mars-project.readthedocs.io/en/latest/", None),
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
-    "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "pandas": (
         "https://pandas.pydata.org/pandas-docs/stable/",
