@@ -253,6 +253,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                 }
             },
             "target_capacity": None,
+            # Set by the controller: this version restores a deployment option
+            # that a re-applied config stops setting.
+            "restores_unset_config_options": True,
             "target_groups": [
                 {
                     "targets": [

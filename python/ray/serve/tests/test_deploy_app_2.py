@@ -1141,5 +1141,67 @@ def test_terminally_failed_rolling_update_survives_controller_restart(
     assert _deployment_details(client).recent_dead_replicas == []
 
 
+def test_instance_details_report_restoring_unset_options(serve_instance):
+    """The controller reports that removing overrides restores the original values."""
+    client = serve_instance
+    details = ray.get(client._controller.get_serve_instance_details.remote())
+    assert details["restores_unset_config_options"] is True
+
+
+@pytest.mark.parametrize("restart_controller", [False, True])
+def test_sparse_config_rollback_restores_code_defined_options(
+    serve_instance, restart_controller
+):
+    """Rollback restores values from the decorator and reuses surviving replicas."""
+    client = serve_instance
+    sparse = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [sparse]}))
+    wait_for_condition(check_running)
+    initial_pids = _running_replica_pids(client)
+    assert len(initial_pids) == 2
+    assert _deployment_details(client).deployment_config.max_ongoing_requests == 7
+
+    # The runtime environment override makes new replicas fail to start.
+    failing = copy(sparse)
+    failing["deployments"] = [
+        {
+            "name": "FailOnFlag",
+            "max_ongoing_requests": 3,
+            "ray_actor_options": {"runtime_env": {"env_vars": {"FAIL_ON_INIT": "1"}}},
+        }
+    ]
+    client.deploy_apps(ServeDeploySchema(**{"applications": [failing]}))
+
+    def check_deploy_failed():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        deployment = status.deployments["FailOnFlag"]
+        assert deployment.status_trigger == "REPLICA_STARTUP_FAILED"
+        assert set(deployment.replica_states) == {"RUNNING"}
+        return True
+
+    wait_for_condition(check_deploy_failed, timeout=60)
+    surviving_pids = _running_replica_pids(client)
+    assert len(surviving_pids) == 1 and set(surviving_pids) <= set(initial_pids)
+    assert _deployment_details(client).deployment_config.max_ongoing_requests == 3
+
+    if restart_controller:
+        _restart_controller(client)
+        wait_for_condition(check_deploy_failed, timeout=60)
+
+    # Removing both overrides reuses the survivor and replaces the missing replica.
+    client.deploy_apps(ServeDeploySchema(**{"applications": [sparse]}))
+    wait_for_condition(check_running, timeout=60)
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
+    assert set(surviving_pids) <= set(_running_replica_pids(client))
+    assert _deployment_details(client).deployment_config.max_ongoing_requests == 7
+    for _ in range(10):
+        r = httpx.get("http://localhost:8000/", timeout=10)
+        assert r.status_code == 200 and r.text == "ok"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
