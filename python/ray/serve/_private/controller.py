@@ -1649,12 +1649,12 @@ class ServeController:
         )
 
         # Get running replicas for the ingress deployment
-        replica_details = self._get_running_replica_details_for_ingress_deployment(
-            app_name
+        ingress_replica_details = (
+            self._get_running_replica_details_for_ingress_deployment(app_name)
         )
         # Without ingress replicas, HAProxy has no data-plane targets to route to,
         # so suppress router targets too — the app is effectively unreachable.
-        if not replica_details:
+        if not ingress_replica_details:
             return []
 
         ingress_request_router_targets = []
@@ -1683,16 +1683,15 @@ class ServeController:
         target_groups = []
 
         # Create targets for each protocol
-        # TODO (celinaky): possibly rename replica_details variable to specify ingress
-        http_targets = self._get_targets_for_protocol(
-            replica_details, RequestProtocol.HTTP
+        ingress_http_targets = self._get_targets_for_protocol(
+            ingress_replica_details, RequestProtocol.HTTP
         )
-        if http_targets:
+        if ingress_http_targets:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
-                    targets=http_targets,
+                    targets=ingress_http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
                     direct_http_targets=direct_http_targets,
@@ -1702,15 +1701,15 @@ class ServeController:
 
         # Add gRPC targets if enabled
         if is_grpc_enabled(self.get_grpc_config()):
-            grpc_targets = self._get_targets_for_protocol(
-                replica_details, RequestProtocol.GRPC
+            ingress_grpc_targets = self._get_targets_for_protocol(
+                ingress_replica_details, RequestProtocol.GRPC
             )
-            if grpc_targets:
+            if ingress_grpc_targets:
                 target_groups.append(
                     TargetGroup(
                         protocol=RequestProtocol.GRPC,
                         route_prefix=route_prefix,
-                        targets=grpc_targets,
+                        targets=ingress_grpc_targets,
                         app_name=app_name,
                         ingress_request_router_targets=[],
                         direct_http_targets={},
