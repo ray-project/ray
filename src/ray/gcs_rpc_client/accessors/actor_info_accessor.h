@@ -134,6 +134,10 @@ class ActorInfoAccessor : public ActorInfoAccessorInterface {
                           const rpc::StatusCallback &callback,
                           int64_t timeout_ms = -1) override;
 
+  void AsyncRegisterActorBatch(const std::vector<TaskSpecification> &task_specs,
+                               const rpc::StatusCallback &callback,
+                               int64_t timeout_ms = -1) override;
+
   /**
     Restart actor for lineage reconstruction asynchronously.
 

@@ -3578,6 +3578,22 @@ def cancel(
     return worker.core_worker.cancel_task(ray_waitable, force, recursive)
 
 
+@contextmanager
+def batch():
+    """A context manager for batching actor creation requests.
+
+    When creating actors within this context, actor creation requests are buffered
+    and registered with the GCS in a single batch RPC upon exiting the context.
+    """
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    worker.core_worker.enter_actor_batch()
+    try:
+        yield
+    finally:
+        worker.core_worker.exit_actor_batch()
+
+
 def _mode(worker=global_worker):
     """This is a wrapper around worker.mode.
 

@@ -116,6 +116,7 @@ from ray._private.worker import (  # noqa: E402,F401
     WORKER_MODE,
     RESTORE_WORKER_MODE,
     SPILL_WORKER_MODE,
+    batch,
     cancel,
     get,
     get_actor,
@@ -178,6 +179,7 @@ __all__ = [
     "get_runtime_context",
     "autoscaler",
     "available_resources",
+    "batch",
     "cancel",
     "client",
     "ClientBuilder",
@@ -206,6 +208,7 @@ __all__ = [
 
 # Public APIs that should automatically trigger ray.init().
 AUTO_INIT_APIS = {
+    "batch",
     "cancel",
     "get",
     "get_actor",

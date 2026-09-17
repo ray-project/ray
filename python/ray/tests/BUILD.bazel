@@ -51,6 +51,7 @@ py_test_module_list(
         "test_async.py",
         "test_asyncio.py",
         "test_autoscaler_drain_node_api.py",
+        "test_batch.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
         "test_dashboard_profiler.py",
