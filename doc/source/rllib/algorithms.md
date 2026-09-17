@@ -128,7 +128,7 @@ for updating the model.
 :align: left
 
 **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
-Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
+Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and reused
 for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
 This reuse of training data makes DQN very sample-efficient and off-policy.
 DQN scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
@@ -160,7 +160,7 @@ For a complete [rainbow](https://arxiv.org/pdf/1710.02298.pdf) setup, make the f
 :align: left
 
 **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
-Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
+Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and reused
 for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
 This reuse of training data makes DQN very sample-efficient and off-policy.
 SAC scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners

@@ -592,7 +592,7 @@ You didn't implement any APIs in the preceding example module, because you hadn'
 You can mix supervised losses into any RLlib algorithm through the {py:class}`~ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI`. Your Learner actors automatically call the implemented {py:meth}`~ray.rllib.core.rl_module.apis.self_supervised_loss_api.SelfSupervisedLossAPI.compute_self_supervised_loss` method to compute the model's own loss passing it the outputs of the {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.forward_train` call.
 
 
-See here for an [example script utilizing a self-supervised loss RLModule](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py). Losses can be defined over either policy evaluation inputs, or data read from {doc}`offline storage </rllib/offline>`. Note that you may want to set the {py:attr}`~ray.rllib.core.rl_module.rl_module.RLModuleSpec.learner_only` attribute to `True` in your custom {py:class}`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors. You may also need an extra Learner connector piece in this case to make sure your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` receives data to learn.
+See here for an [example script using a self-supervised loss RLModule](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py). Losses can be defined over either policy evaluation inputs, or data read from {doc}`offline storage </rllib/offline>`. Note that you may want to set the {py:attr}`~ray.rllib.core.rl_module.rl_module.RLModuleSpec.learner_only` attribute to `True` in your custom {py:class}`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` if you don't need the self-supervised model for collecting samples in your {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors. You may also need an extra Learner connector piece in this case to make sure your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` receives data to learn.
 
 
 ### End-to-end example
@@ -659,7 +659,7 @@ You implement the main action sampling logic in the `_forward_...()` methods:
                "avail_actions": Box(-1, 1, shape=(max_avail_actions, action_embedding_sz)),
                "real_obs": ...,
            })
-  2. A custom model can be defined that can interpret the ``action_mask`` and ``avail_actions`` portions of the observation. Here the model computes the action logits via the dot product of some network output and each action embedding. Invalid actions can be masked out of the softmax by scaling the probability to zero:
+  2. A custom model can be defined that can interpret the ``action_mask`` and ``avail_actions`` portions of the observation. Here the model computes the action logits through the dot product of some network output and each action embedding. Invalid actions can be masked out of the softmax by scaling the probability to zero:
   .. code-block:: python
     class ParametricActionsModel(TFModelV2):
         def __init__(self,
@@ -710,7 +710,7 @@ For multi-module setups, RLlib provides the {py:class}`~ray.rllib.core.rl_module
 
 The base-class {py:class}`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` implementation works for most of the use cases that need to define independent neural networks. However, for any complex, multi-network or multi-agent use case, where agents share one or more neural networks, you should inherit from this class and override the default implementation.
 
-The following code snippets create a custom multi-agent RL module with two simple "policy head" modules, which share the same encoder, the third network in the MultiRLModule. The encoder receives the raw observations from the env and outputs embedding vectors that then serve as input for the two policy heads to compute the agents' actions.
+The following code snippets create a custom multi-agent RLModule with two simple "policy head" modules, which share the same encoder, the third network in the MultiRLModule. The encoder receives the raw observations from the env and outputs embedding vectors that then serve as input for the two policy heads to compute the agents' actions.
 
 
 (rllib-rlmodule-guide-implementing-custom-multi-rl-modules)=
@@ -772,7 +772,7 @@ To plug in the {ref}`custom MultiRLModule <rllib-rlmodule-guide-implementing-cus
 
 
 :::{note}
-In order to properly learn with the preceding setup, you should write and use a specific multi-agent {py:class}`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder. This Learner should only have a single optimizer updating all three submodules, which are the encoder and the two policy nets, to stabilize learning. When using the standard "one-optimizer-per-module" Learners, however, the two optimizers for policy 1 and 2 would take turns updating the same shared encoder, which would lead to learning instabilities.
+To properly learn with the preceding setup, you should write and use a specific multi-agent {py:class}`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder. This Learner should only have a single optimizer updating all three submodules, which are the encoder and the two policy nets, to stabilize learning. When using the standard "one-optimizer-per-module" Learners, however, the two optimizers for policy 1 and 2 would take turns updating the same shared encoder, which would lead to learning instabilities.
 :::
 
 

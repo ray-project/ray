@@ -74,7 +74,7 @@ config = (
 ```
 
 :::{note}
-Unlike single-agent environments, RLlib can't vectorize multi-agent setups yet. The Ray team is working on a solution for this restriction by utilizing `gymnasium >= 1.x` custom vectorization feature.
+Unlike single-agent environments, RLlib can't vectorize multi-agent setups yet. The Ray team is working on a solution for this restriction by using `gymnasium >= 1.x` custom vectorization feature.
 :::
 
 Doing so allows the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` on the {py:class}`~ray.rllib.env.env_runner.EnvRunner` to run inference on a batch of data and thus compute actions for all sub-environments in parallel.

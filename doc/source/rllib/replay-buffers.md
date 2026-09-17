@@ -18,7 +18,7 @@ When sampling from a replay buffer, we choose which experiences to train our age
 
 ### Eviction Strategy
 
-A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorithm, a buffer will eventually reach its capacity and in order to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis. For your algorithms this means that buffers with a high capacity give the opportunity to learn from older samples, while smaller buffers make the learning process more on-policy. An exception from this strategy is made in buffers that implement reservoir sampling.
+A buffer is naturally limited in its capacity to hold experiences. In the course of running an algorithm, a buffer will eventually reach its capacity and to make room for new experiences, we need to delete (evict) older ones. This is generally done on a first-in-first-out basis. For your algorithms this means that buffers with a high capacity give the opportunity to learn from older samples, while smaller buffers make the learning process more on-policy. An exception from this strategy is made in buffers that implement reservoir sampling.
 
 ## Replay Buffers in RLlib
 

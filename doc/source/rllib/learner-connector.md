@@ -125,7 +125,7 @@ the default pieces at the end of the pipeline automatically add these changed re
 ```
 
 
-### Example: Reward shaping prior to loss computation
+### Example: Reward shaping before loss computation
 
 A good example of when to write a custom Learner ConnectorV2 piece is reward shaping before computing your algorithm's loss. The Learner connector's {py:meth}`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` has full access to the entire episode data, including observations, actions, other agents' data in multi-agent scenarios, and all rewards.
 

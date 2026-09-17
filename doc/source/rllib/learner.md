@@ -49,9 +49,9 @@ config.build()  # test that the algorithm can be built with the given resources
 
 :::{note}
 
-This features is in alpha. If you migrate to this algorithm, enable the feature by via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True, enable_env_runner_and_connector_v2=True)`.
+This features is in alpha. If you migrate to this algorithm, enable the feature by through `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True, enable_env_runner_and_connector_v2=True)`.
 
-The following algorithms support {py:class}`~ray.rllib.core.learner.learner.Learner` out of the box. Implement an algorithm with a custom {py:class}`~ray.rllib.core.learner.learner.Learner` to leverage this API for other algorithms.
+The following algorithms support {py:class}`~ray.rllib.core.learner.learner.Learner` out of the box. Implement an algorithm with a custom {py:class}`~ray.rllib.core.learner.learner.Learner` to use this API for other algorithms.
 
 ```{list-table}
 :header-rows: 1
@@ -75,7 +75,7 @@ Use the {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` utility t
 
 ## Construction
 
-If you enable the {ref}`RLModule <rlmodule-guide>` and {py:class}`~ray.rllib.core.learner.learner.Learner` APIs via the {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you're using these APIs standalone, you can construct the {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
+If you enable the {ref}`RLModule <rlmodule-guide>` and {py:class}`~ray.rllib.core.learner.learner.Learner` APIs through the {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` for you, but if you're using these APIs standalone, you can construct the {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows.
 
 ```{testcode}
 :hide:

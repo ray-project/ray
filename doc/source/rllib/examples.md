@@ -42,7 +42,7 @@ Most of the scripts share a common subset of generally applicable command line a
 
 (rllib-examples-overview-autoregressive-actions)=
 
-- [Auto-regressive actions](https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py): Configures an RL module that generates actions in an autoregressive manner, where the second component of an action depends on the previously sampled first component of the same action.
+- [Auto-regressive actions](https://github.com/ray-project/ray/blob/master/rllib/examples/actions/autoregressive_actions.py): Configures an RLModule that generates actions in an autoregressive manner, where the second component of an action depends on the previously sampled first component of the same action.
 
 - [Custom action distribution class](https://github.com/ray-project/ray/blob/master/rllib/examples/actions/custom_action_distribution.py): Demonstrates how to write a custom action distribution class, taking an additional temperature parameter on top of a Categorical distribution, and how to configure this class inside your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` implementation. Further explains how to define different such classes for the different forward methods of your {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` in case you need more granularity.
 
@@ -182,7 +182,7 @@ RLlib's Connector API has been re-written from scratch for the new API stack. Co
 
 - [Self-play with Footsies and PPO algorithm](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/multi_agent_footsies_ppo.py): Implements self-play with the Footsies environment (two player zero-sum game). This example highlights RLlib's capabilities in connecting to the external binaries running the game engine, as well as setting up a multi-agent self-play training scenario.
 
-- [Self-play with OpenSpiel](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py): Similar to the league-based self-play, but simpler. This script leverages OpenSpiel for two-player games, allowing agents to improve through direct self-play without building a complex, structured league.
+- [Self-play with OpenSpiel](https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py): Similar to the league-based self-play, but simpler. This script uses OpenSpiel for two-player games, allowing agents to improve through direct self-play without building a complex, structured league.
 
 ### Offline RL
 
@@ -244,7 +244,7 @@ The community examples listed here all refer to the old API stack of RLlib.
 - [Flatland](https://flatland.aicrowd.com/intro.html): A dense traffic simulating environment with RLlib-generated baselines.
 - [GFootball](https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py): Example of setting up a multi-agent version of [GFootball](https://github.com/google-research) with RLlib.
 - [mobile-env](https://github.com/stefanbschneider/mobile-env): An open, minimalist Gymnasium environment for autonomous coordination in wireless mobile networks. Includes an example notebook using Ray RLlib for multi-agent RL with mobile-env.
-- [Neural MMO](https://github.com/NeuralMMO/environment): A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games - self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures, and ad-hoc high-stakes single and team based conflict.
+- [Neural MMO](https://github.com/NeuralMMO/environment): A multi-agent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games - self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures, and ad-hoc high-stakes single and team based conflict.
 - [NeuroCuts](https://github.com/neurocuts/neurocuts): Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
 - [NeuroVectorizer](https://github.com/ucb-bar/NeuroVectorizer): Example of learning optimal LLVM vectorization compiler pragmas for loops in C and C++ codes using RLlib.
 - [Roboschool / SageMaker](https://github.com/aws/amazon-sagemaker-examples/tree/0cd3e45f425b529bf06f6155ca71b5e4bc515b9b/reinforcement_learning/rl_roboschool_ray): Example of training robotic control policies in SageMaker with RLlib.

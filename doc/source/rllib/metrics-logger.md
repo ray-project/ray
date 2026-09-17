@@ -369,4 +369,4 @@ Other changes:
 - Many metrics look more noisy after upgrading to 2.52. This is mostly because they are not smoothed anymore. Smoothing should happen downstream if desired.
 - {py:meth}`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.aggregate` is now the only way to aggregate metrics.
 - You can now pass a custom stats class to (AlgorithmConfig.reporting(custom_stats_cls_lookup={...})). This enables you to write your own stats class with its own reduction logic. If your own stats class constitutes a fix or a valuable addition to RLlib, please consider contributing it to the project through a PR.
-- When aggregating metrics, we can now peek only the onces that were merged in the most recent reduction cycle with the `latest_merged_only=True` argument in {py:meth}`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek`.
+- When aggregating metrics, we can now peek only the ones that were merged in the most recent reduction cycle with the `latest_merged_only=True` argument in {py:meth}`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek`.

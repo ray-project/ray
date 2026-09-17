@@ -207,7 +207,7 @@ Next, you can implement the constructor of your class:
 
 Note that we specify `self.agents = self.possible_agents` in the constructor to indicate that the agents don't change over the course of an episode and stay fixed at `[player1, player2]`.
 
-The `reset` logic is to simply add both players in the returned observations dict (both players are expected to act simultaneously in the next `step()` call) and reset a `num_moves` counter that keeps track of the number of moves being played in order to terminate the episode after exactly 10 timesteps (10 actions by either player):
+The `reset` logic is to simply add both players in the returned observations dict (both players are expected to act simultaneously in the next `step()` call) and reset a `num_moves` counter that keeps track of the number of moves being played to terminate the episode after exactly 10 timesteps (10 actions by either player):
 
 ```{literalinclude} ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
 :language: python
@@ -404,7 +404,7 @@ The example scripts [rock_paper_scissors_heuristic_vs_learned.py](https://github
 ### Scaling to Many MultiAgentEnvs per EnvRunner
 
 :::{note}
-Unlike for single-agent environments, multi-agent setups are not vectorizable yet. The Ray team is working on a solution for this restriction by utilizing `gymnasium >= 1.x` custom vectorization feature.
+Unlike for single-agent environments, multi-agent setups are not vectorizable yet. The Ray team is working on a solution for this restriction by using `gymnasium >= 1.x` custom vectorization feature.
 :::
 
 ### Variable-Sharing Between Policies

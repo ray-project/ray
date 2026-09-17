@@ -18,7 +18,7 @@ There are three main areas for RLlib fault tolerance support:
 
 RLlib supports self-recovering and elastic {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` for both training and evaluation EnvRunner workers. This provides fault tolerance at worker level.
 
-This means that if you have n {py:class}`~ray.rllib.env.env_runner.EnvRunner` workers sitting on different machines and a machine is pre-empted, RLlib can continue training and evaluation with minimal interruption.
+This means that if you have n {py:class}`~ray.rllib.env.env_runner.EnvRunner` workers sitting on different machines and a machine is preempted, RLlib can continue training and evaluation with minimal interruption.
 
 The two properties that RLlib supports here are self-recovery and elasticity:
 
@@ -27,7 +27,7 @@ The two properties that RLlib supports here are self-recovery and elasticity:
 
 You can turn on worker fault tolerance by setting `config.fault_tolerance(restart_failed_env_runners=True)`.
 
-RLlib achieves this by utilizing a [state-aware and fault tolerant actor manager](https://github.com/ray-project/ray/blob/master/rllib/utils/actor_manager.py). Under the hood, RLlib relies on Ray Core {ref}`actor fault tolerance <actor-fault-tolerance>` to automatically recover failed worker actors.
+RLlib achieves this by using a [state-aware and fault tolerant actor manager](https://github.com/ray-project/ray/blob/master/rllib/utils/actor_manager.py). Under the hood, RLlib relies on Ray Core {ref}`actor fault tolerance <actor-fault-tolerance>` to automatically recover failed worker actors.
 
 ## Env Fault Tolerance
 

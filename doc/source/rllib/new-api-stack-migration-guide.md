@@ -215,7 +215,7 @@ config.env_runners(
 ```
 
 :::{hint}
-If you want to IDE-debug what's going on inside your `EnvRunners`, set `num_env_runners=0` and make sure you are running your experiment locally and not through Ray Tune. In order to do this with any of RLlib's [example](https://github.com/ray-project/ray/tree/master/rllib/examples) or [tuned_example](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) scripts, simply set the command line args: `--no-tune --num-env-runners=0`.
+If you want to IDE-debug what's going on inside your `EnvRunners`, set `num_env_runners=0` and make sure you are running your experiment locally and not through Ray Tune. To do this with any of RLlib's [example](https://github.com/ray-project/ray/tree/master/rllib/examples) or [tuned_example](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) scripts, simply set the command line args: `--no-tune --num-env-runners=0`.
 :::
 
 In case you were using the `observation_filter` setting, perform the following translations:
@@ -330,13 +330,13 @@ The following callback methods are no longer available on the new API stack:
 
 If you're using a custom `ModelV2` class and want to translate the entire NN architecture and possibly action distribution logic to the new API stack, see {ref}`RL Modules <rlmodule-guide>` in addition to this section.
 
-Also, see these example scripts on [how to write a custom CNN-containing RL Module](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py) and [how to write a custom LSTM-containing RL Module](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py).
+Also, see these example scripts on [how to write a custom CNN-containing RLModule](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py) and [how to write a custom LSTM-containing RLModule](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py).
 
 There are various options for translating an existing, custom `ModelV2` from the old API stack, to the new API stack's {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
 1. Move your ModelV2 code to a new, custom `RLModule` class. See {ref}`RL Modules <rlmodule-guide>` for details).
-1. Use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack training run and use this checkpoint with the [new stack RL Module convenience wrapper](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py).
-1. Use an existing {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run, with the [new stack RL Module convenience wrapper](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py).
+1. Use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack training run and use this checkpoint with the [new stack RLModule convenience wrapper](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py).
+1. Use an existing {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run, with the [new stack RLModule convenience wrapper](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py).
 
 In more complex scenarios, you might've implemented custom policies, such that you could modify the behavior of constructing models and distributions.
 
@@ -439,7 +439,7 @@ The following example scripts show how to write:
 
 Note that the new API stack doesn't support the Policy class. In the old stack, this class holds a neural network, which is the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` in the new API stack, an old stack connector, which is the {py:class}`~ray.rllib.connector.connector_v2.ConnectorV2` in the new API stack, and one or more optimizers and losses, which are the {py:class}`~ray.rllib.core.learner.learner.Learner` class in the new API stack.
 
-The RL Module API is much more flexible than the old stack's Policy API and provides a cleaner separation-of-concerns experience. Things related to action inference run on the EnvRunners, and things related to updating run on the Learner workers It also provides superior scalability, allowing training in a multi-GPU setup in any Ray cluster and multi-node with multi-GPU training on the [Anyscale](https://anyscale.com) platform.
+The RLModule API is much more flexible than the old stack's Policy API and provides a cleaner separation-of-concerns experience. Things related to action inference run on the EnvRunners, and things related to updating run on the Learner workers It also provides superior scalability, allowing training in a multi-GPU setup in any Ray cluster and multi-node with multi-GPU training on the [Anyscale](https://anyscale.com) platform.
 
 
 ## Custom connectors
@@ -451,6 +451,6 @@ The {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is 
 The following are some examples on how to write ConnectorV2 pieces for the different pipelines:
 
 1. [Observation frame-stacking](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py).
-1. [Add the most recent action and reward to the RL Module's input](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py).
+1. [Add the most recent action and reward to the RLModule's input](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py).
 1. [Mean-std filtering on all observations](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py).
 1. [Flatten any complex observation space to a 1D space](https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py).

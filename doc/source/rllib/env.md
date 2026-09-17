@@ -121,7 +121,7 @@ algo.stop()
 ```
 
 :::{tip}
-For all supported environment names registered with Farama, refer to these resources (by env category):
+For all supported environment names registered with Farama, see these resources (by env category):
 
 * [Toy Text](https://gymnasium.farama.org/environments/toy_text/)
 * [Classic Control](https://gymnasium.farama.org/environments/classic_control/)
