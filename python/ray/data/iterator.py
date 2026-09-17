@@ -117,6 +117,19 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _report_retained_bytes(
+        self, num_bytes: int, executor: Optional["StreamingExecutor"]
+    ) -> None:
+        """Report bytes the caller has taken out of the pipeline and still holds.
+
+        The executor subtracts these from the producing operator's ref-counted
+        output, which would otherwise look like unconsumed blocks piling up and
+        backpressure the producer down to a single task. Subclasses whose
+        executor is not local override this.
+        """
+        if executor is not None:
+            executor.set_retained_consumer_bytes(num_bytes)
+
     def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
         """Hook fired from the consumer's thread when iteration ends.
 
@@ -1248,8 +1261,21 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
-        ref_bundles = list(ref_bundles_iter)
+        ref_bundles_iter, stats, executor = self._to_ref_bundle_iterator()
+
+        # Every bundle collected here stays alive for the rest of the job, so
+        # the producer needs to know it is not queue backlog.
+        ref_bundles = []
+        retained_bytes = 0
+        try:
+            for ref_bundle in ref_bundles_iter:
+                retained_bytes += ref_bundle.size_bytes()
+                self._report_retained_bytes(retained_bytes, executor)
+                ref_bundles.append(ref_bundle)
+        finally:
+            # The next execution produces its own blocks; this total does not
+            # carry over to it.
+            self._report_retained_bytes(0, executor)
         context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),

@@ -949,6 +949,57 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
+def test_streaming_split_materialize_reports_retained_bytes(
+    ray_start_regular_shared_2_cpus,
+):
+    """`materialize()` on a split shard tells the executor what it is holding.
+
+    The shard's executor lives in the ``SplitCoordinator`` actor, so the count
+    rides the ``get`` call the iterator already makes per bundle. Without that
+    the block ref counter counts the held blocks as unconsumed output and
+    backpressures the producer down to a single task.
+    """
+    ds = ray.data.range(200, override_num_blocks=10)
+    splits = ds.streaming_split(2, equal=True)
+    coord = splits[0]._coord_actor
+
+    peaks = {}
+
+    def consume(split, idx):
+        peak = 0
+        original = split._report_retained_bytes
+
+        def record(num_bytes, executor):
+            nonlocal peak
+            original(num_bytes, executor)
+            reported = ray.get(coord.get_client_retained_bytes.remote())
+            peak = max(peak, reported.get(idx, 0))
+
+        split._report_retained_bytes = record
+        split.materialize()
+        peaks[idx] = peak
+
+    threads = [
+        threading.Thread(target=consume, args=(splits[0], 0)),
+        threading.Thread(target=consume, args=(splits[1], 1)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Each shard reported a non-zero total while it was collecting. The count
+    # rides the *next* `get`, so the last bundles never arrive; assert it moved,
+    # not that it reached the shard's full size.
+    for idx, peak in peaks.items():
+        assert peak > 0, f"Split {idx} never reported retained bytes"
+
+    # Cleared once each shard finishes, so the next epoch starts from zero.
+    retained = ray.get(coord.get_client_retained_bytes.remote())
+    for idx, value in retained.items():
+        assert value == 0, f"Split {idx} has stale retained bytes: {value}"
+
+
 @pytest.mark.parametrize("prefetch_batches", [0, 2])
 def test_streaming_split_reports_and_clears_prefetched_bytes(
     ray_start_regular_shared_2_cpus, prefetch_batches

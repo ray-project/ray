@@ -188,6 +188,18 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         output_size_bytes = self._resource_manager.get_mem_op_outputs(
             op, include_ineligible_downstream=True
         )
+        if (
+            next(iter(self._resource_manager.get_downstream_eligible_ops(op)), None)
+            is None
+        ):
+            # Only the operator feeding the external consumer can have blocks it
+            # cannot reclaim; upstream blocks are released when the downstream
+            # task that read them finishes.
+            output_size_bytes = max(
+                output_size_bytes
+                - self._resource_manager.get_retained_consumer_bytes(),
+                0,
+            )
         # output_size_bytes includes both buffered outputs and downstream
         # in-flight inputs. Subtract 1 to isolate the buffered portion:
         #   output_pressure = op_outqueue_bytes / downstream_in_flight_bytes

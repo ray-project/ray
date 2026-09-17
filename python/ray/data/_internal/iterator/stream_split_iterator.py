@@ -71,9 +71,21 @@ class StreamSplitDataIterator(DataIterator):
         # picklable, since users pass split iterators to ``@ray.remote``
         # tasks.
         self._active_epoch: Optional[int] = None
+        # Sent to the coordinator on the next `get`. Plain attribute for the
+        # same picklability reason as `_active_epoch`.
+        self._retained_bytes: int = 0
         logger.debug(
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
         )
+
+    def _report_retained_bytes(self, num_bytes: int, executor) -> None:
+        """Stash the count; `gen_blocks` sends it with the next `get`.
+
+        The executor lives in the `SplitCoordinator` actor, so there is no local
+        handle to call. Riding the existing per-bundle `get` avoids an extra RPC,
+        at the cost of the last bundle's count never being sent.
+        """
+        self._retained_bytes = num_bytes
 
     def _to_ref_bundle_iterator(
         self,
@@ -89,7 +101,7 @@ class StreamSplitDataIterator(DataIterator):
 
             # Initial get with 0 prefetched bytes.
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
-                cur_epoch, self._output_split_idx, 0
+                cur_epoch, self._output_split_idx, 0, self._retained_bytes
             )
             last_log_time = 0.0
             while True:
@@ -109,6 +121,7 @@ class StreamSplitDataIterator(DataIterator):
                         cur_epoch,
                         self._output_split_idx,
                         prefetched_bytes,
+                        self._retained_bytes,
                     )
                     yield RefBundle(
                         blocks=block_ref_and_md.blocks,
@@ -231,6 +244,9 @@ class SplitCoordinator:
         # Track prefetched bytes reported by each client (from BatchIterator).
         # Guarded by self._lock.
         self._client_prefetched_bytes: Dict[int, int] = {}
+        # Bytes each client has taken out of the pipeline and still holds,
+        # e.g. a train loop calling `materialize()` on its shard.
+        self._client_retained_bytes: Dict[int, int] = {}
 
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
@@ -320,6 +336,7 @@ class SplitCoordinator:
                     )
                     # Register the streaming split external consumers with the executor's resource manager.
                     self._current_executor.set_external_consumer_bytes(0)
+                    self._current_executor.set_retained_consumer_bytes(0)
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
                         "synced)."
@@ -349,6 +366,7 @@ class SplitCoordinator:
         epoch_id: int,
         output_split_idx: int,
         client_prefetched_bytes: int = 0,
+        client_retained_bytes: int = 0,
     ) -> Optional[RefBundle]:
         """Blocking get operation.
 
@@ -359,6 +377,10 @@ class SplitCoordinator:
             output_split_idx: The output split index for this client.
             client_prefetched_bytes: The prefetched bytes reported by the
                 client's BatchIterator, used for resource accounting.
+            client_retained_bytes: Bytes the client has taken out of the
+                pipeline and still holds, e.g. from ``materialize()``. The
+                producing operator cannot reclaim these by slowing down, so
+                they are excluded from its backpressure signal.
 
         Returns:
             The next RefBundle for this split, or None if the epoch is done.
@@ -403,6 +425,8 @@ class SplitCoordinator:
                     output_split_idx
                 ] = client_prefetched_bytes
                 self._report_prefetched_bytes_to_executor()
+                self._client_retained_bytes[output_split_idx] = client_retained_bytes
+                self._report_retained_bytes_to_executor()
 
                 # Track per-split row dispatch count.
                 self._num_rows_dispatched[output_split_idx] += (
@@ -446,6 +470,8 @@ class SplitCoordinator:
                 with self._lock:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
+                    self._client_retained_bytes[output_split_idx] = 0
+                    self._report_retained_bytes_to_executor()
             # Track overhead time in the instance variable
             self._coordinator_overhead_s += time.perf_counter() - start_time
 
@@ -460,6 +486,16 @@ class SplitCoordinator:
         total += sum(self._client_prefetched_bytes.values())
         return total
 
+    def _report_retained_bytes_to_executor(self) -> None:
+        """Report the total bytes clients are holding to the resource manager.
+
+        Must be called while holding self._lock.
+        """
+        if self._current_executor is not None:
+            self._current_executor.set_retained_consumer_bytes(
+                sum(self._client_retained_bytes.values())
+            )
+
     def _report_prefetched_bytes_to_executor(self) -> None:
         """Report total prefetched bytes to the executor's resource manager.
 
@@ -468,6 +504,11 @@ class SplitCoordinator:
         if self._current_executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
             self._current_executor.set_external_consumer_bytes(total_bytes)
+
+    def get_client_retained_bytes(self) -> Dict[int, int]:
+        """Get retained bytes for each client (for testing)."""
+        with self._lock:
+            return dict(self._client_retained_bytes)
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""

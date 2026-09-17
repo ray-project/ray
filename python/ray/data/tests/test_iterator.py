@@ -482,6 +482,36 @@ def test_to_torch_emits_deprecation_warning(ray_start_regular_shared):
         ray.data.range(1).iterator().to_torch()
 
 
+def test_materialize_reports_retained_bytes(ray_start_regular_shared):
+    """`materialize()` tells the executor how much the caller is holding.
+
+    Those blocks stay alive for the rest of the job, so the ref counter keeps
+    attributing them to the operator that produced them. Reported, the
+    backpressure policy subtracts them instead of reading them as queue backlog.
+    """
+    ds = ray.data.range(200, override_num_blocks=10)
+    it = ds.iterator()
+
+    reported = []
+    original = it._report_retained_bytes
+
+    def record(num_bytes, executor):
+        reported.append(num_bytes)
+        original(num_bytes, executor)
+
+    it._report_retained_bytes = record
+    materialized = it.materialize()
+
+    assert materialized.count() == 200
+    # Rises monotonically as bundles are collected, then resets so the total
+    # does not carry into the next execution.
+    rising = reported[:-1]
+    assert rising, "nothing reported"
+    assert rising == sorted(rising)
+    assert rising[-1] > 0
+    assert reported[-1] == 0
+
+
 @pytest.mark.parametrize("should_equalize", [True, False])
 def test_iterator_to_materialized_dataset(ray_start_regular_shared, should_equalize):
     """Tests that `DataIterator.materialize` fully consumes the
