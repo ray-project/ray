@@ -31,7 +31,8 @@ def patch_ray_job_id():
         yield
 
 
-def test_multiplex_warns_without_haproxy_or_strict(caplog, patch_ray_job_id):
+def test_multiplex_downstream_no_warning(caplog, patch_ray_job_id):
+    """Downstream @serve.multiplexed is the supported pattern; do not warn."""
     replica_config = ReplicaConfig.create(MultiplexedModel)
     with patch.object(deploy_utils, "RAY_SERVE_ENABLE_HA_PROXY", False):
         with patch.object(
@@ -41,8 +42,26 @@ def test_multiplex_warns_without_haproxy_or_strict(caplog, patch_ray_job_id):
         ):
             with caplog.at_level(logging.WARNING, logger="ray.serve"):
                 deploy_utils.get_deploy_args("d", replica_config, ingress=False)
+    assert not any(
+        "@serve.multiplexed" in r.message for r in caplog.records
+    ), caplog.text
+
+
+def test_multiplex_ingress_warns_without_direct_ingress(caplog, patch_ray_job_id):
+    """Ingress multiplexing (without direct ingress) should warn, not raise."""
+    replica_config = ReplicaConfig.create(MultiplexedIngress)
+    with patch.object(deploy_utils, "RAY_SERVE_ENABLE_DIRECT_INGRESS", False):
+        with patch.object(deploy_utils, "RAY_SERVE_ENABLE_HA_PROXY", False):
+            with patch.object(
+                deploy_utils,
+                "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING",
+                False,
+            ):
+                with caplog.at_level(logging.WARNING, logger="ray.serve"):
+                    deploy_utils.get_deploy_args("d", replica_config, ingress=True)
     assert any(
-        "future Ray Serve release" in r.message for r in caplog.records
+        "ingress deployment uses @serve.multiplexed" in r.message
+        for r in caplog.records
     ), caplog.text
 
 

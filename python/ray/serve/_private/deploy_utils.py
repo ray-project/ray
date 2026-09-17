@@ -97,13 +97,17 @@ def get_deploy_args(
                 "RAY_SERVE_ENABLE_HA_PROXY=1. Disable HAProxy or remove "
                 "@serve.multiplexed from your deployments."
             )
-        logger.warning(
-            "This deployment uses @serve.multiplexed. Model multiplexing will be "
-            "disallowed in a future Ray Serve release. If you rely on this feature, "
-            "please reach out to the Ray team on GitHub or the Ray Slack. To fail "
-            "deployments that use multiplexing immediately, set "
-            "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1."
-        )
+        # Downstream multiplexing is the supported pattern; only warn when the
+        # non-recommended ingress placement is used (and did not already raise).
+        if ingress:
+            logger.warning(
+                "This ingress deployment uses @serve.multiplexed. Model "
+                "multiplexing on ingress is not recommended and is disallowed "
+                "when direct ingress is enabled. Use @serve.multiplexed only on "
+                "downstream replicas composed via DeploymentHandle. To fail "
+                "deployments that use multiplexing immediately, set "
+                "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1."
+            )
 
     deployment_config.version = version
 

@@ -399,7 +399,9 @@ def test_grpc_request_id(_skip_if_ff_not_enabled, serve_instance):
     pytest.skip("TODO: duplicate HTTP tests for gRPC")
 
 
-def test_multiplexed_on_ingress_disallowed(_skip_if_ff_not_enabled, serve_instance):
+def test_multiplexed_on_ingress_disallowed(
+    _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
+):
     """Deploying an ingress deployment that uses @serve.multiplexed should raise ValueError."""
 
     @serve.deployment
@@ -420,7 +422,7 @@ def test_multiplexed_on_ingress_disallowed(_skip_if_ff_not_enabled, serve_instan
 
 
 def test_direct_ingress_with_downstream_multiplexing(
-    _skip_if_ff_not_enabled, serve_instance
+    _skip_if_ff_not_enabled, _skip_if_haproxy_enabled, serve_instance
 ):
     """Ingress forwards to multiplexed downstream; model ID propagated via handle.options()."""
 
