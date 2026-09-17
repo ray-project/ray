@@ -8,6 +8,19 @@ import requests
 
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 
+# --- Test Fixtures ---
+
+
+@pytest.fixture
+def no_tpu_metadata(monkeypatch):
+    """Stub the GCE metadata server so worker ID tests never hit the network."""
+    monkeypatch.setattr(
+        "ray._private.accelerators.tpu._get_tpu_metadata", lambda **kwargs: None
+    )
+    monkeypatch.delenv("TPU_ACCELERATOR_TYPE", raising=False)
+    monkeypatch.delenv("TPU_TOPOLOGY", raising=False)
+    monkeypatch.delenv("TPU_WORKER_ID", raising=False)
+
 
 @patch("glob.glob")
 def test_autodetect_num_tpus_accel(mock_glob):
@@ -237,6 +250,7 @@ def test_autodetect_tpu_accelerator_type(
     [
         ("gce", "0", 0),
         ("gke", "0", 0),
+        ("gke", "not_an_int", None),
     ],
 )
 @patch("requests.get")
@@ -491,6 +505,9 @@ def test_get_tpu_resource_per_chip(monkeypatch):
         ("TPU-V5LITEPOD", "v5litepod"),
         ("tpuv6e-8", "v6e-8"),
         ("tpu7x-16", "v7x-16"),
+        ("tpu-v7x-16", "v7x-16"),
+        ("tpuv7x-16", "v7x-16"),
+        ("tpu7x", "v7x"),
         ("v4-8", "v4-8"),
         (None, ""),
     ],
@@ -638,10 +655,13 @@ def test_get_default_chips_per_vm():
 @pytest.mark.parametrize(
     "physical_worker_id, parent_topology, expected_labels",
     [
-        # 4x4 parent, 4 workers at positions (0,0), (1,0), (0,1), (1,1)
+        # 4x4 parent: 2x2 worker grid, x fastest-varying, each worker owning
+        # 2x2 chips. Worker (x, y): 0=(0,0), 1=(1,0), 2=(0,1), 3=(1,1).
+        # A 2x4 chip subslice is 2 chips in x by 4 in y, i.e. one worker in x
+        # and two in y, so it groups workers by their x position.
         (0, "4x4", {"ray.io/tpu-subslice-2x2": "0", "ray.io/tpu-subslice-2x4": "0"}),
-        (1, "4x4", {"ray.io/tpu-subslice-2x2": "1", "ray.io/tpu-subslice-2x4": "0"}),
-        (2, "4x4", {"ray.io/tpu-subslice-2x2": "2", "ray.io/tpu-subslice-2x4": "1"}),
+        (1, "4x4", {"ray.io/tpu-subslice-2x2": "1", "ray.io/tpu-subslice-2x4": "1"}),
+        (2, "4x4", {"ray.io/tpu-subslice-2x2": "2", "ray.io/tpu-subslice-2x4": "0"}),
         (3, "4x4", {"ray.io/tpu-subslice-2x2": "3", "ray.io/tpu-subslice-2x4": "1"}),
     ],
 )
@@ -654,13 +674,13 @@ def test_build_subslice_labels_2d(physical_worker_id, parent_topology, expected_
 
 def test_build_subslice_labels_3d():
     """Test subslice label computation for 3D."""
-    # 4x4x4 parent, 16 workers: (z,y,x)
+    # 4x4x4 parent, 16 workers: (x,y,z) host grid (2,2,4).
     # Worker 0 → (0,0,0)
     labels = tpu._build_subslice_labels(0, "4x4x4")
     assert labels["ray.io/tpu-subslice-2x2x1"] == "0"
     assert labels["ray.io/tpu-subslice-2x2x2"] == "0"
 
-    # Worker 8 → (1,0,0): z=1, y=0, x=0
+    # Worker 8 → wx=0, wy=0, wz=2
     labels = tpu._build_subslice_labels(8, "4x4x4")
     assert labels["ray.io/tpu-subslice-2x2x1"] == "8"
     assert labels["ray.io/tpu-subslice-2x2x2"] == "4"
@@ -680,6 +700,16 @@ def test_build_subslice_labels_3d():
             "2x4",
             0,
         ),
+        # 4x8 v6e-32 — 8 workers in a 2(x)×4(y) mesh, each owning 2x2 chips.
+        # Asymmetric topologies exercise the per-axis block sizes: the hosts
+        # with wy >= 2 are only reachable when the y extent (8) is divided by
+        # the y worker count (4) rather than by the x worker count (2).
+        ([[0, 0], [1, 0], [0, 1], [1, 1]], "4x8", 0),
+        ([[2, 0], [3, 0], [2, 1], [3, 1]], "4x8", 1),
+        ([[0, 2], [1, 2], [0, 3], [1, 3]], "4x8", 2),
+        ([[0, 4], [1, 4], [0, 5], [1, 5]], "4x8", 4),
+        ([[0, 6], [1, 6], [0, 7], [1, 7]], "4x8", 6),
+        ([[2, 6], [3, 6], [2, 7], [3, 7]], "4x8", 7),
     ],
 )
 def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
@@ -693,14 +723,18 @@ def test_get_physical_worker_id_2d(coords, parent_topology, expected_worker_id):
 @pytest.mark.parametrize(
     "coords, parent_topology, expected_worker_id",
     [
-        # 4x4x4: worker grid (z,y,x)=(2,2,4); each worker owns 1 chip in x,
-        # 2 in y, 2 in z. Coords are [x, y, z].
-        # Worker 0: x=0, y in {0,1}, z in {0,1}.
-        ([[0, 0, 0], [0, 1, 0], [0, 0, 1], [0, 1, 1]], "4x4x4", 0),
-        # Worker 1: wx=1 (x=1).
-        ([[1, 0, 0], [1, 1, 0], [1, 0, 1], [1, 1, 1]], "4x4x4", 1),
-        # Worker 8: wz=1 (z in {2,3}) → linear = wz*(dy*dx) = 1*(2*4) = 8.
-        ([[0, 0, 2], [0, 1, 2], [0, 0, 3], [0, 1, 3]], "4x4x4", 8),
+        # 4x4x4: worker grid (x,y,z)=(2,2,4); each worker owns 2 chips in x,
+        # 2 in y, 1 in z. Coords are [x, y, z].
+        # Worker 0: x in {0,1}, y in {0,1}, z=0.
+        ([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0]], "4x4x4", 0),
+        # Worker 1: wx=1 (x in {2,3}, y in {0,1}, z=0).
+        ([[2, 0, 0], [3, 0, 0], [2, 1, 0], [3, 1, 0]], "4x4x4", 1),
+        # Worker 2: wy=1 (x in {0,1}, y in {2,3}, z=0).
+        ([[0, 2, 0], [1, 2, 0], [0, 3, 0], [1, 3, 0]], "4x4x4", 2),
+        # Worker 4: wz=1 (x in {0,1}, y in {0,1}, z=1) -> linear = wz*(dy*dx) = 1*(2*2) = 4.
+        ([[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], "4x4x4", 4),
+        # Worker 8: wz=2 (z=2) -> linear = wz*(dy*dx) = 2*(2*2) = 8.
+        ([[0, 0, 2], [1, 0, 2], [0, 1, 2], [1, 1, 2]], "4x4x4", 8),
     ],
 )
 def test_get_physical_worker_id_3d(coords, parent_topology, expected_worker_id):
@@ -727,6 +761,69 @@ def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
     """
     with pytest.raises(ValueError, match="out of bounds"):
         tpu._get_physical_worker_id_from_coords(coords, parent_topology)
+
+
+@pytest.mark.parametrize(
+    "input_endpoint, expected_host",
+    [
+        ("10.0.0.1", "10.0.0.1"),
+        ("10.0.0.1:8471", "10.0.0.1"),
+        ("node-0.cluster.local", "node-0.cluster.local"),
+        ("node-0.cluster.local:8471", "node-0.cluster.local"),
+        ("2001:db8::1", "2001:db8::1"),
+        ("2001:db8:85a3::8a2e:370:7334", "2001:db8:85a3::8a2e:370:7334"),
+        ("[2001:db8::1]:8471", "2001:db8::1"),
+        ("[2001:db8::1]", "2001:db8::1"),
+        ("fe80::1ff:fe23:4567:890a", "fe80::1ff:fe23:4567:890a"),
+        ("::1", "::1"),
+        ("[::1]:8080", "::1"),
+        ("", ""),
+        ("   ", ""),
+        (None, ""),
+    ],
+)
+def test_strip_endpoint_port(input_endpoint, expected_host):
+    assert tpu._strip_endpoint_port(input_endpoint) == expected_host
+
+
+def test_query_local_tpu_chip_coordinates(monkeypatch):
+    """Test _query_local_tpu_chip_coordinates libtpu query, v7x skip, and JAX fallback."""
+    mock_sdk = mock.MagicMock()
+    mock_chip = mock.MagicMock()
+    mock_chip.coordinates.return_value = (2, 0)
+    mock_sdk.slice.get_chip_coordinates.return_value = [mock_chip]
+    mock_libtpu = mock.MagicMock(sdk=mock_sdk)
+    monkeypatch.setitem(sys.modules, "libtpu", mock_libtpu)
+
+    # 1. v6e queries libtpu when all worker hostnames are provided.
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-16")
+    assert tpu._query_local_tpu_chip_coordinates(
+        parent_topology="4x4",
+        worker_hostnames="h0,h1,h2,h3",
+        num_hosts=4,
+        worker_id=1,
+    ) == [[2, 0]]
+
+    # 2. v7x skips libtpu and falls back to jax.local_devices().
+    mock_sdk.slice.get_chip_coordinates.reset_mock()
+    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "tpu7x-32")
+    mock_dev = mock.MagicMock(coords=(0, 0, 2))
+    mock_jax = mock.MagicMock()
+    mock_jax.distributed.is_initialized.return_value = False
+    mock_jax.local_devices.return_value = [mock_dev]
+    monkeypatch.setitem(sys.modules, "jax", mock_jax)
+
+    assert tpu._query_local_tpu_chip_coordinates(
+        parent_topology="2x2x4",
+        worker_hostnames="h0,h1,h2,h3",
+        coordinator_address="h0:8476",
+        num_hosts=4,
+        worker_id=2,
+    ) == [[0, 0, 2]]
+    mock_sdk.slice.get_chip_coordinates.assert_not_called()
+    mock_jax.distributed.initialize.assert_called_once_with(
+        coordinator_address="h0:8476", num_processes=4, process_id=2
+    )
 
 
 if __name__ == "__main__":
