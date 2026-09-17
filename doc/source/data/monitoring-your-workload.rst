@@ -152,6 +152,8 @@ These metrics provide high-level information about dataset execution and resourc
      - CPUs allocated to dataset operators
    * - `data_gpu_usage_cores`
      - GPUs allocated to dataset operators
+   * - `data_memory_usage_bytes`
+     - Heap memory allocated to dataset operators
    * - `data_output_bytes`
      - Bytes outputted by dataset operators
    * - `data_output_rows`
