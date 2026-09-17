@@ -529,7 +529,7 @@ class MockReplicaActorWrapper:
         self._log_file_path: Optional[str] = None
         self._actor_id: Optional[str] = None
         self._internal_grpc_port = None
-        self._http_port = None
+        self._http_port: Optional[int] = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path: Optional[str] = None
