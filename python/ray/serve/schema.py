@@ -1664,9 +1664,7 @@ class TargetGroup(BaseModel):
         description="Name of the application's ingress deployment.",
     )
     # HTTP targets of non-ingress deployments that opted in with `_direct_http`,
-    # keyed by deployment name. Kept keyed rather than flattened because HAProxy
-    # gives each deployment its own backend, so a retry or redispatch can never
-    # cross from one deployment's replicas to another's.
+    # keyed by deployment name.
     # Only HTTP target groups populate this; gRPC target groups always leave it empty.
     direct_http_targets: Dict[str, List[Target]] = Field(
         default_factory=dict,
