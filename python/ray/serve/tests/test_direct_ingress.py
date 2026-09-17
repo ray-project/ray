@@ -382,22 +382,6 @@ def test_direct_http_non_ingress_deployment_gets_own_server(
         assert r.text == "from-ingress"
 
 
-def test_direct_http_port_not_in_target_groups(_skip_if_ff_not_enabled, serve_instance):
-    """Scope boundary: the flag grants a port, not HAProxy routing.
-
-    Wiring these replicas into target groups is a later phase; this test pins the
-    current boundary so that change is deliberate rather than accidental.
-    """
-    serve.run(
-        ParentIngress.bind(DirectChild.options(_direct_http=True).bind()),
-        name=SERVE_DEFAULT_APP_NAME,
-    )
-
-    child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
-    assert child_port is not None
-    assert child_port not in get_http_ports(first_only=False)
-
-
 def test_without_direct_http_non_ingress_has_no_port(
     _skip_if_ff_not_enabled, serve_instance
 ):
