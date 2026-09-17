@@ -97,6 +97,42 @@ def test_ordinal_encoder_strings():
         ), f"Expected {original} to be encoded as {expected_encoding[original]}, but got {encoded}"  # noqa: E501
 
 
+def test_ordinal_encoder_min_evidence_uses_global_counts():
+    input_dataframe = pd.DataFrame(
+        {
+            "category": [
+                "globally_frequent",
+                "infrequent",
+                "globally_frequent",
+                "infrequent",
+                "globally_frequent",
+            ]
+        }
+    )
+    ds = ray.data.from_arrow(pa.Table.from_pandas(input_dataframe)).repartition(3)
+    encoder = OrdinalEncoder(
+        columns=["category"],
+        encode_lists=False,
+        min_evidence=3,
+    )
+
+    encoder.fit(ds)
+
+    assert encoder.min_evidence == 3
+    assert not encoder.stat_computation_plan.has_custom_stat_fn()
+    assert _stats_to_dict(encoder.stats_["unique_values(category)"]) == {
+        "globally_frequent": 0
+    }
+    encoded = encoder.transform(ds).to_pandas()
+    assert encoded["category"].eq(0).sum() == 3
+    assert encoded["category"].isna().sum() == 2
+
+
+def test_ordinal_encoder_min_evidence_must_be_positive():
+    with pytest.raises(ValueError, match="min_evidence"):
+        OrdinalEncoder(columns=["category"], min_evidence=0)
+
+
 def test_ordinal_encoder_arrow_transform():
     """Test the OrdinalEncoder _transform_arrow method."""
     # Create test data
@@ -403,6 +439,16 @@ def test_ordinal_encoder_list_fallback_to_pandas():
     expected = [[2, 0], [1], [2, 1, 0]]
     result_lists = [list(arr) for arr in result_df["D"]]
     assert result_lists == expected
+
+
+@pytest.mark.parametrize("leading_null", [None, np.nan, pd.NA])
+def test_ordinal_encoder_list_fit_skips_leading_null_row(leading_null):
+    in_df = pd.DataFrame({"D": [leading_null, ["a"], ["a", "b"]]})
+    encoder = OrdinalEncoder(["D"], encode_lists=True)
+
+    encoder.fit(ray.data.from_pandas(in_df))
+
+    assert _stats_to_dict(encoder.stats_["unique_values(D)"]) == {"a": 0, "b": 1}
 
 
 # =============================================================================
@@ -1463,6 +1509,7 @@ class TestEncoderSerialization:
         assert deserialized._fitted
         assert deserialized.columns == ["category", "grade"]
         assert deserialized.encode_lists is True  # default value
+        assert deserialized.min_evidence == 1
 
         # Test functional equivalence
         test_df = pd.DataFrame({"category": ["A", "B"], "grade": ["high", "low"]})
