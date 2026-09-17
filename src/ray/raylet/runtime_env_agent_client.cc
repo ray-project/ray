@@ -333,10 +333,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
             << ", port: " << this->port_str_
             << ". A raylet cannot start without a runtime env agent, and it fate shares "
                "with the agent process, so reaching this means the agent is up but "
-               "unreachable. The usual cause is that this raylet has no free ephemeral "
-               "port left to open the connection from (check `ss -tan state time-wait | "
-               "wc -l` against `cat /proc/sys/net/ipv4/ip_local_port_range`), which "
-               "clears on its own. Failing this request.";
+               "this raylet could not reach it. Failing this request.";
         fail_callback(status);
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
