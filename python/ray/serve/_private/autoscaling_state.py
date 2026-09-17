@@ -137,6 +137,9 @@ class _ReplicaRunningMemo(NamedTuple):
     samples: MetricSamples
 
 
+HandleReport = Union["HandleMetricReport", "ColumnarHandleReport"]
+
+
 @dataclass(frozen=True)
 class ColumnarHandleReport:
     """A handle's decoded columnar report, written once at ingest and read by the
@@ -155,6 +158,48 @@ class ColumnarHandleReport:
     def total_requests(self) -> float:
         """Peak per series, summed, as HandleMetricReport.total_requests defines it."""
         return sum(self.queued.source_peaks() + self.running.source_peaks())
+
+
+class _HandleMetricStore:
+    """A deployment's per-handle reports in both wire formats, plus the staleness gate
+    across them. `accept` is the only writer, so a handle is never in both stores and
+    the gate never drifts from what they hold."""
+
+    def __init__(self) -> None:
+        self.objects: Dict[str, HandleMetricReport] = dict()
+        self.columnar: Dict[str, ColumnarHandleReport] = dict()
+        self._report_ts: Dict[str, float] = dict()
+
+    def is_fresher(self, handle_id: str, timestamp: float) -> bool:
+        """Whether `accept` would take this report. Lets the columnar path skip the
+        decode for a late frame, which is the expensive part of ingest."""
+        last_ts = self._report_ts.get(handle_id)
+        return last_ts is None or timestamp > last_ts
+
+    def accept(self, report: HandleReport) -> bool:
+        """Store the report unless one at least as fresh already arrived in either
+        format: producers on a pre-columnar version still send objects, and a delayed
+        report must not overwrite the other format's data."""
+        if not self.is_fresher(report.handle_id, report.timestamp):
+            return False
+        self._report_ts[report.handle_id] = report.timestamp
+        if isinstance(report, ColumnarHandleReport):
+            self.columnar[report.handle_id] = report
+            self.objects.pop(report.handle_id, None)
+        else:
+            self.objects[report.handle_id] = report
+            self.columnar.pop(report.handle_id, None)
+        return True
+
+    def forget(self, handle_id: str) -> None:
+        """Drop a handle from both stores and the gate together."""
+        self.objects.pop(handle_id, None)
+        self.columnar.pop(handle_id, None)
+        self._report_ts.pop(handle_id, None)
+
+    def all_reports(self) -> List[HandleReport]:
+        """Every stored report, materialized so callers can drop while iterating."""
+        return list(self.columnar.values()) + list(self.objects.values())
 
 
 def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str]]:
@@ -190,9 +235,7 @@ def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str
 
 
 def _log_dropped_handle(
-    report: Union[HandleMetricReport, ColumnarHandleReport],
-    timeout_s: float,
-    dead_actor: bool,
+    report: HandleReport, timeout_s: float, dead_actor: bool
 ) -> None:
     """One copy of the operator-facing drop text, shared by both report types.
     total_requests gates it so handles that never took traffic stay quiet."""
@@ -220,10 +263,9 @@ class DeploymentAutoscalingState:
     def __init__(self, deployment_id: DeploymentID):
         self._deployment_id = deployment_id
 
-        # Map from handle ID to handle request metric report. Metrics
-        # are removed from this dict either when the actor on which the
-        # handle lived dies, or after a period of no updates.
-        self._handle_requests: Dict[str, HandleMetricReport] = dict()
+        # Per-handle reports in both wire formats. A handle is dropped when the
+        # actor it lived on dies, or after a period of no updates.
+        self._handle_store = _HandleMetricStore()
         # Map from replica ID to replica request metric report. Metrics
         # are removed from this dict when a replica is stopped.
         # Prometheus + Custom metrics from each replica are also included
@@ -231,13 +273,6 @@ class DeploymentAutoscalingState:
         # (report timestamp, samples) memo of each replica's running series, so the
         # object->array conversion runs once per report, not once per decision tick.
         self._replica_running_memo: Dict[ReplicaID, _ReplicaRunningMemo] = dict()
-        # Columnar per-handle arrays: metadata + per-replica running + queued
-        # (filled whenever a columnar frame arrives).
-        self._handle_arrays: Dict[str, ColumnarHandleReport] = dict()
-        # Last accepted report timestamp per handle, across BOTH wire formats, so a
-        # delayed report in either cannot overwrite fresher data the other wrote.
-        # Pruned in drop_stale_handle_metrics.
-        self._handle_report_ts: Dict[str, float] = dict()
         # Async inference task queue length (from QueueMonitor).
         # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
         self._total_pending_async_requests: int = 0
@@ -450,7 +485,9 @@ class DeploymentAutoscalingState:
     def _queued_columnar_samples(self) -> List[MetricSamples]:
         """Each columnar handle's queued samples, one source apiece."""
         return [
-            report.queued for report in self._handle_arrays.values() if report.queued
+            report.queued
+            for report in self._handle_store.columnar.values()
+            if report.queued
         ]
 
     def _handle_running_columnar_samples(
@@ -460,7 +497,7 @@ class DeploymentAutoscalingState:
         (mirrors _collect_handle_running_requests). Passed through whole while every
         replica is still running; only a changed membership pays a per-source slice."""
         samples = []
-        for report in self._handle_arrays.values():
+        for report in self._handle_store.columnar.values():
             keys = report.running_keys
             if not keys:
                 continue
@@ -508,28 +545,20 @@ class DeploymentAutoscalingState:
         """Records average number of queued and running requests at a handle for this
         deployment.
         """
-        handle_id = handle_metric_report.handle_id
-        send_timestamp = handle_metric_report.timestamp
-        # Unified staleness gate across BOTH wire formats (see _handle_report_ts):
-        # producers on a pre-columnar version still send objects, so guard against a
-        # delayed report in either format wiping the other's data.
-        last_ts = self._handle_report_ts.get(handle_id)
-        if last_ts is None or send_timestamp > last_ts:
-            self._handle_requests[handle_id] = handle_metric_report
-            self._handle_report_ts[handle_id] = send_timestamp
-            self._handle_arrays.pop(handle_id, None)
+        self._handle_store.accept(handle_metric_report)
 
     def record_columnar_metrics_for_handle(self, payload: FlatHandleReport) -> None:
         """Store columnar handle metrics (no per-point objects)."""
         hid = payload["handle_id"]
-        # Unified staleness gate across BOTH wire formats (see _handle_report_ts).
-        last_ts = self._handle_report_ts.get(hid)
-        if last_ts is None or payload["timestamp"] > last_ts:
-            self._handle_report_ts[hid] = payload["timestamp"]
-            # Resolve the running samples once here rather than rebuilding them every
-            # 0.1s decision tick: the frame is frozen for as long as it is stored.
-            running, running_keys = _running_samples(payload)
-            self._handle_arrays[hid] = ColumnarHandleReport(
+        # Skip the decode outright for a late frame; _running_samples is the
+        # expensive part and accept would discard the result anyway.
+        if not self._handle_store.is_fresher(hid, payload["timestamp"]):
+            return
+        # Resolve the running samples once here rather than rebuilding them every
+        # 0.1s decision tick: the frame is frozen for as long as it is stored.
+        running, running_keys = _running_samples(payload)
+        self._handle_store.accept(
+            ColumnarHandleReport(
                 handle_id=hid,
                 actor_id=payload["actor_id"],
                 is_serve_component_source=payload["handle_source"]
@@ -542,7 +571,7 @@ class DeploymentAutoscalingState:
                 running=running,
                 running_keys=running_keys,
             )
-            self._handle_requests.pop(hid, None)
+        )
 
     def record_async_inference_task_queue_metrics(
         self, report: AsyncInferenceTaskQueueMetricReport
@@ -566,10 +595,7 @@ class DeploymentAutoscalingState:
         # Both stores hold reports with the same drop-relevant shape, so one loop. A
         # handle on a dead proxy/replica actor goes immediately; otherwise it goes when
         # it has not reported for timeout_s, which is expected after a shutdown.
-        stored = list(self._handle_arrays.values()) + list(
-            self._handle_requests.values()
-        )
-        for report in stored:
+        for report in self._handle_store.all_reports():
             dead_actor = (
                 report.is_serve_component_source
                 and report.actor_id is not None
@@ -577,16 +603,8 @@ class DeploymentAutoscalingState:
             )
             if not (dead_actor or now - report.timestamp >= timeout_s):
                 continue
-            self._handle_arrays.pop(report.handle_id, None)
-            self._handle_requests.pop(report.handle_id, None)
+            self._handle_store.forget(report.handle_id)
             _log_dropped_handle(report, timeout_s, dead_actor)
-
-        # Prune the unified per-handle timestamp gate to handles still tracked in either
-        # store (any dropped above no longer appear in _handle_arrays/_handle_requests).
-        live_handles = set(self._handle_arrays) | set(self._handle_requests)
-        for hid in list(self._handle_report_ts):
-            if hid not in live_handles:
-                del self._handle_report_ts[hid]
 
     def record_autoscaling_metrics(
         self,
@@ -705,7 +723,7 @@ class DeploymentAutoscalingState:
             List of timeseries data.
         """
         timeseries_list = []
-        for handle_metric_report in self._handle_requests.values():
+        for handle_metric_report in self._handle_store.objects.values():
             timeseries_list.append(handle_metric_report.queued_requests)
         return timeseries_list
 
@@ -730,7 +748,7 @@ class DeploymentAutoscalingState:
         """
         timeseries_list = []
 
-        for handle_metric in self._handle_requests.values():
+        for handle_metric in self._handle_store.objects.values():
             running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
             # Iterate the handle's own replicas, not every running replica: a handle
             # usually routes to a subset, and the merge is order-independent.
@@ -853,7 +871,7 @@ class DeploymentAutoscalingState:
         Returns:
             The aggregated total of running and queued requests.
         """
-        if not self._handle_arrays:
+        if not self._handle_store.columnar:
             # Pure-object fleet, which is every fleet until routers emit SCR1. Keeps
             # the object kernel and numpy off the hot path.
             return self._object_aggregate_total_requests()
@@ -866,7 +884,7 @@ class DeploymentAutoscalingState:
 
     def _object_aggregate_total_requests(self) -> float:
         """Total over the cloudpickle/object stores (_replica_metrics /
-        _handle_requests). 0 when both are empty."""
+        _handle_store.objects). 0 when both are empty."""
         # Only replicas that carry actual running-request data count as "collected
         # on replicas"; an empty running series (no samples) must not suppress
         # handle-side running. Matches the columnar/mixed paths (equivalence).
@@ -934,7 +952,7 @@ class DeploymentAutoscalingState:
             timeseries, aggregated over the window by `aggregation_function`.
         """
         queued_obj = self._collect_handle_queued_requests()
-        if not self._handle_arrays:
+        if not self._handle_store.columnar:
             # Pure-object fleet: keep the numpy-free object kernel.
             return self._merge_and_aggregate_timeseries(queued_obj)
         # Columnar present: one fused array merge over both queued sources

@@ -371,7 +371,7 @@ def test_fused_handle_path_equals_object_path(agg, monkeypatch):
         ref = _state(agg)
         ref._cached_running_replica_strs = keys
         for rep in reports:
-            ref._handle_requests[rep.handle_id] = rep
+            ref._handle_store.objects[rep.handle_id] = rep
         ref_total = ref.get_total_num_requests()
 
         col = _state(agg)
@@ -399,16 +399,16 @@ def test_object_empty_replica_series_does_not_suppress_handle_running(monkeypatc
     st._running_replicas = {rid}
     rep = _random_handle_report("h0", random.Random(5), 3)
     st._cached_running_replica_strs = set(rep.metrics[RUNNING_REQUESTS_KEY].keys())
-    st._handle_requests[rep.handle_id] = rep
+    st._handle_store.objects[rep.handle_id] = rep
     assert st.get_total_num_requests() > 0.0
 
 
 def test_drop_stale_handle_metrics_prunes_columnar_dead_actor(monkeypatch):
     rep = _random_handle_report("h1", random.Random(1), 2)
     st = _recorded_state(rep, monkeypatch)
-    assert "h1" in st._handle_arrays
+    assert "h1" in st._handle_store.columnar
     st.drop_stale_handle_metrics(alive_serve_actor_ids=set())  # actor-h1 is dead
-    assert "h1" not in st._handle_arrays
+    assert "h1" not in st._handle_store.columnar
 
 
 def test_drop_stale_handle_metrics_prunes_columnar_timeout(monkeypatch):
@@ -416,7 +416,7 @@ def test_drop_stale_handle_metrics_prunes_columnar_timeout(monkeypatch):
     st = _recorded_state(rep, monkeypatch)
     monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)  # long past any timeout
     st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
-    assert "h1" not in st._handle_arrays
+    assert "h1" not in st._handle_store.columnar
 
 
 def test_columnar_handle_drops_are_logged(monkeypatch):
@@ -426,7 +426,7 @@ def test_columnar_handle_drops_are_logged(monkeypatch):
         rep = _random_handle_report("h1", random.Random(1), 2)
         st = _recorded_state(rep, monkeypatch)
         # Guard against a vacuous pass: the log is gated on peak requests.
-        assert st._handle_arrays["h1"].total_requests > 0
+        assert st._handle_store.columnar["h1"].total_requests > 0
         log = mock.Mock()
         monkeypatch.setattr(A.logger, level, log)
         if dead_actor:
@@ -434,7 +434,7 @@ def test_columnar_handle_drops_are_logged(monkeypatch):
         else:
             monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)
             st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
-        assert "h1" not in st._handle_arrays
+        assert "h1" not in st._handle_store.columnar
         assert log.call_count == 1, (dead_actor, log.call_args_list)
         assert "h1" in log.call_args[0][0]
 
@@ -446,8 +446,8 @@ def test_stale_columnar_handle_report_rejected(monkeypatch):
     stale = HandleMetricReport(**{**stale.__dict__, "timestamp": NOW - 5.0})
     st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(stale)))
     # The delayed report must not overwrite the fresher one.
-    assert st._handle_arrays["h1"].timestamp == NOW
-    assert st._handle_report_ts["h1"] == NOW
+    assert st._handle_store.columnar["h1"].timestamp == NOW
+    assert st._handle_store._report_ts["h1"] == NOW
 
 
 def test_columnar_ingest_records_delay_through_the_real_helper():
@@ -493,9 +493,9 @@ def test_handle_cloudpickle_uses_object_store():
 
 def test_handle_cross_format_staleness_guard():
     """A delayed report in one wire format must not overwrite fresher data the other
-    wrote. A producer on a pre-columnar version still sends objects, so _handle_report_ts
-    is a unified per-handle last-accepted timestamp gating BOTH ingest paths. Regression
-    for the mixed-rollout stale-overwrite bug."""
+    wrote. A producer on a pre-columnar version still sends objects, so the store's gate
+    is a unified per-handle last-accepted timestamp covering BOTH ingest paths.
+    Regression for the mixed-rollout stale-overwrite bug."""
     st = _state()
     hid = "h0"
 
@@ -514,21 +514,21 @@ def test_handle_cross_format_staleness_guard():
     st.record_columnar_metrics_for_handle(
         codec.decode_handle_flat(codec.encode(_rep(NOW + 10)))
     )
-    assert hid in st._handle_arrays
-    assert st._handle_report_ts[hid] == NOW + 10
+    assert hid in st._handle_store.columnar
+    assert st._handle_store._report_ts[hid] == NOW + 10
 
     # STALE object report @ NOW+1 must be rejected: object store stays empty, columnar
     # data preserved, gate unchanged.
     st.record_request_metrics_for_handle(_rep(NOW + 1))
-    assert hid not in st._handle_requests
-    assert hid in st._handle_arrays
-    assert st._handle_report_ts[hid] == NOW + 10
+    assert hid not in st._handle_store.objects
+    assert hid in st._handle_store.columnar
+    assert st._handle_store._report_ts[hid] == NOW + 10
 
     # Fresh object report @ NOW+20 is accepted -> clears columnar, updates the gate.
     st.record_request_metrics_for_handle(_rep(NOW + 20))
-    assert hid in st._handle_requests
-    assert hid not in st._handle_arrays
-    assert st._handle_report_ts[hid] == NOW + 20
+    assert hid in st._handle_store.objects
+    assert hid not in st._handle_store.columnar
+    assert st._handle_store._report_ts[hid] == NOW + 20
 
 
 @pytest.mark.parametrize(
@@ -557,7 +557,7 @@ def test_empty_object_running_series_does_not_suppress_columnar_handle(
 
     # All-object twin (reference).
     ref = _state(agg)
-    ref._handle_requests["h0"] = handle
+    ref._handle_store.objects["h0"] = handle
     ref._replica_metrics[idle] = empty_rep
     ref._running_replicas = {live, idle}
     ref._cached_running_replica_strs = {live_str, idle_str}
@@ -584,12 +584,12 @@ def test_queued_from_both_stores(monkeypatch):
     q = [TimeStampedValue(NOW - 6, 2.0), TimeStampedValue(NOW, 2.0)]
     obj_h, col_h = _handle_report_queued("h_obj", q), _handle_report_queued("h_col", q)
     ref = _state()
-    ref._handle_requests["h_obj"] = obj_h
-    ref._handle_requests["h_col"] = col_h
+    ref._handle_store.objects["h_obj"] = obj_h
+    ref._handle_store.objects["h_col"] = col_h
     ref._running_replicas, ref._cached_running_replica_strs = set(), set()
     ref_q = ref._get_queued_requests()
     mix = _state()
-    mix._handle_requests["h_obj"] = obj_h
+    mix._handle_store.objects["h_obj"] = obj_h
     mix.record_columnar_metrics_for_handle(
         codec.decode_handle_flat(codec.encode(col_h))
     )
@@ -626,7 +626,7 @@ def test_replica_running_suppresses_columnar_handle_running(agg, monkeypatch):
                 codec.decode_handle_flat(codec.encode(handle))
             )
         else:
-            st._handle_requests["h0"] = handle
+            st._handle_store.objects["h0"] = handle
         st._running_replicas = [rid]
         st._cached_running_replica_strs = {rid_str}
         return st.get_total_num_requests()
@@ -675,7 +675,7 @@ def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
     live_strs = {r.to_full_id_str() for r in live}
 
     ref = _state(agg)
-    ref._handle_requests["h0"] = handle
+    ref._handle_store.objects["h0"] = handle
     ref._cached_running_replica_strs = live_strs
     col = _state(agg)
     col.record_columnar_metrics_for_handle(
@@ -695,3 +695,53 @@ def test_columnar_handle_masks_replicas_that_stopped(agg, monkeypatch):
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_handle_store_invariant_survives_interleaved_writes(monkeypatch):
+    """A handle must be in exactly one store, and the gate must track exactly what the
+    two hold. Asserted after interleaved writes in both formats plus a drop, since the
+    invariant is what lets the aggregation paths treat the stores as disjoint."""
+    st = _state()
+
+    def _obj(hid, timestamp):
+        return HandleMetricReport(
+            deployment_id=DEP,
+            handle_id=hid,
+            actor_id="a",
+            handle_source=DeploymentHandleSource.PROXY,
+            queued_requests=[TimeStampedValue(NOW, 1.0)],
+            metrics={RUNNING_REQUESTS_KEY: {}},
+            timestamp=timestamp,
+        )
+
+    def _check():
+        store = st._handle_store
+        assert not set(store.columnar) & set(store.objects)
+        assert set(store._report_ts) == set(store.columnar) | set(store.objects)
+
+    # Interleave both formats, including flips and stale reports that must be rejected.
+    for hid, timestamp, columnar in [
+        ("h0", NOW + 1, True),
+        ("h1", NOW + 1, False),
+        ("h0", NOW + 2, False),
+        ("h1", NOW + 2, True),
+        ("h0", NOW - 5, True),
+        ("h1", NOW - 5, False),
+        ("h2", NOW + 3, True),
+    ]:
+        report = _obj(hid, timestamp)
+        if columnar:
+            st.record_columnar_metrics_for_handle(
+                codec.decode_handle_flat(codec.encode(report))
+            )
+        else:
+            st.record_request_metrics_for_handle(report)
+        _check()
+
+    assert set(st._handle_store._report_ts) == {"h0", "h1", "h2"}
+
+    # Dropping must clear the gate too, or a dead handle blocks its own replacement.
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 10_000)
+    st.drop_stale_handle_metrics(set())
+    _check()
+    assert not st._handle_store._report_ts
