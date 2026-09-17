@@ -859,6 +859,131 @@ def unify_ref_bundles_schema(
     return unify_schemas_with_validation(schemas_to_unify)
 
 
+def find_insertion_index(
+    columns: List[np.ndarray],
+    pivot: Tuple[Union[Any]],
+    descending: List[bool],
+    has_nulls: Optional[List[bool]] = None,
+    _start_from_idx: int = 0,
+) -> int:
+    """For the given list of *sorted* columns, find the index where ``pivot`` value
+    should be added, while maintaining sorted order.
+
+    We do this by iterating over each key column, and binary searching for the
+    insertion index in the column. Each binary search shortens the "range" of indices
+    (represented by ``left`` and ``right``, which are indices of rows) where the pivot
+    value could be inserted.
+
+    Args:
+        columns: List of *sorted* arrays (as ndarrays).
+        pivot: A (row-like) tuple of corresponding column values, for which insertion
+                needs to be determined.
+        descending: List of booleans designating whether key columns are in ascending
+                    or descending order, since ``np.searchsorted`` expects these in
+                    ascending order.
+        has_nulls: Optional per-column flag indicating whether the column contains
+                   nulls or NaNs that need to be stripped before ``np.searchsorted``.
+                   When ``None`` (default), the strip runs unconditionally — safe
+                   but expensive when called in a hot loop. Callers that know the
+                   column has no nulls (e.g. via Arrow's O(1) ``null_count``) should
+                   pass ``False`` for that column to skip the O(n) strip.
+        _start_from_idx: The index to start the search from. Rows before this
+            index are assumed to already precede ``pivot`` in sorted order.
+
+    Returns:
+        Index where the pivot value would have been inserted into to maintain sorted
+        order of ``key_columns``.
+    """
+
+    assert len(columns) > 0, "Expected non-empty list of key columns"
+    assert has_nulls is None or len(has_nulls) == len(columns), (
+        f"has_nulls length ({len(has_nulls)}) must equal columns length "
+        f"({len(columns)})"
+    )
+
+    # NOTE: Left and right offsets track 2 insertion points:
+    #
+    #   - Left: for value of pivot `P`, it is an index `i`,
+    #     such that: A[i - 1] < P <= A[i]
+    #   - Right: for value of pivot P, it is an index `i`,
+    #     such that: A[i - 1] <= P < A[i]
+    #
+    # Tracking both is necessary to be able to properly find an appropriate
+    # insertion point in the multi-column scenario, since lexicographic ordering
+    # in the second (and beyond) columns might not necessarily match the
+    # non-lexicographic ordering.
+    left, right = _start_from_idx, len(columns[0])
+
+    for col_idx, cur_pivot_val in enumerate(pivot):
+        if left == right:
+            return right
+
+        # Project column range view for the given [left, right) range
+        #
+        # This is necessary to make sure that the values in the projected range
+        # are in the ascending/descending order (in multi-column scenario)
+        column_range_view = columns[col_idx][left:right]
+
+        # Nulls sort last in Arrow, so they accumulate at the tail of
+        # column_range_view. Stripping them before searching avoids a
+        # TypeError from np.searchsorted on None values — and if
+        # cur_pivot_val is also None, the answer is simply the end of
+        # the non-null region. Skip the O(n) strip when the caller has
+        # told us the column has no nulls (Arrow's null_count is O(1),
+        # so the caller can cheaply check once per column instead of us
+        # paying ``pd.isna`` per boundary).
+        if has_nulls is None or has_nulls[col_idx]:
+            column_range_view = column_range_view[~pd.isna(column_range_view)]
+        if cur_pivot_val is None:
+            return left + len(column_range_view)
+
+        if descending[col_idx] is True:
+            # ``np.searchsorted`` expects the array to be sorted in ascending
+            # order, so we pass ``sorter``, which is an array of integer indices
+            # that turn ``column_range_view`` into ascending order.
+            asc_indices = np.arange(len(column_range_view) - 1, -1, -1)
+
+            # The returned index is an index into the ascending order of
+            # ``column_range_view``, so we need to subtract it from
+            # ``len(column_range_view)`` to get the index in the original descending
+            # order of ``column_range_view``.
+            left_ins_offset_asc = np.searchsorted(
+                column_range_view,
+                cur_pivot_val,
+                side="left",
+                sorter=asc_indices,
+            )
+
+            right_ins_offset_asc = np.searchsorted(
+                column_range_view,
+                cur_pivot_val,
+                side="right",
+                sorter=asc_indices,
+            )
+
+            # NOTE: Converting back from ascending offsets into original
+            #       ones, the ordering of the left and right offsets are reversed
+            pivot_left_ins_offset = len(column_range_view) - right_ins_offset_asc
+            pivot_right_ins_offset = len(column_range_view) - left_ins_offset_asc
+
+        else:
+
+            pivot_left_ins_offset = np.searchsorted(
+                column_range_view, cur_pivot_val, side="left"
+            )
+
+            pivot_right_ins_offset = np.searchsorted(
+                column_range_view, cur_pivot_val, side="right"
+            )
+
+        prev_left = left
+
+        left = prev_left + pivot_left_ins_offset
+        right = prev_left + pivot_right_ins_offset
+
+    return right if descending[0] is True else left
+
+
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
     desired: Tuple[Union[int, float]],
@@ -866,11 +991,6 @@ def find_partition_index(
 ) -> int:
     """For the given block, find the index where the desired value should be
     added, to maintain sorted order.
-
-    We do this by iterating over each column, starting with the primary sort key,
-    and binary searching for the desired value in the column. Each binary search
-    shortens the "range" of indices (represented by ``left`` and ``right``, which
-    are indices of rows) where the desired value could be inserted.
 
     Args:
         table: The block to search in.
@@ -883,62 +1003,15 @@ def find_partition_index(
     Returns:
         The index where the desired value should be inserted to maintain sorted
         order.
+
+    Note:
+        This converts the key columns to NumPy on every call. To search a single
+        block for many boundaries, convert the columns once and call
+        :func:`find_insertion_index` directly.
     """
-    columns = sort_key.get_columns()
-    descending = sort_key.get_descending()
+    key_columns = [table[col_name].to_numpy() for col_name in sort_key.get_columns()]
 
-    left, right = 0, len(table)
-    for i in range(len(desired)):
-        if left == right:
-            return right
-        col_name = columns[i]
-        col_vals = table[col_name].to_numpy()[left:right]
-        desired_val = desired[i]
-
-        # Nulls and NaN sort last in Arrow, so they accumulate at the tail of
-        # col_vals. Strip them before np.searchsorted to avoid incorrect bounds.
-        # Use O(1) null_count as a fast path, and fall back to np.isnan for
-        # float columns that may contain NaN without Arrow nulls.
-        column = table[col_name]
-        if hasattr(column, "null_count") and column.null_count > 0:
-            col_vals = col_vals[~pd.isna(col_vals)]
-        elif col_vals.dtype.kind == "f" and np.isnan(col_vals).any():
-            col_vals = col_vals[~np.isnan(col_vals)]
-        if desired_val is None:
-            return left + len(col_vals)
-
-        prevleft = left
-        if descending[i] is True:
-            # ``np.searchsorted`` expects the array to be sorted in ascending
-            # order, so we pass ``sorter``, which is an array of integer indices
-            # that sort ``col_vals`` into ascending order. The returned index
-            # is an index into the ascending order of ``col_vals``, so we need
-            # to subtract it from ``len(col_vals)`` to get the index in the
-            # original descending order of ``col_vals``.
-            sorter = np.arange(len(col_vals) - 1, -1, -1)
-            left = prevleft + (
-                len(col_vals)
-                - np.searchsorted(
-                    col_vals,
-                    desired_val,
-                    side="right",
-                    sorter=sorter,
-                )
-            )
-            right = prevleft + (
-                len(col_vals)
-                - np.searchsorted(
-                    col_vals,
-                    desired_val,
-                    side="left",
-                    sorter=sorter,
-                )
-            )
-        else:
-            left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
-            right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
-
-    return right if descending[0] is True else left
+    return find_insertion_index(key_columns, desired, sort_key.get_descending())
 
 
 def get_attribute_from_class_name(class_name: str) -> Any:
