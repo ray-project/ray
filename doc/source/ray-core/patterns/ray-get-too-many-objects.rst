@@ -1,3 +1,6 @@
+.. meta::
+   :description: Anti-pattern: fetching too many objects at once with ray.get can exhaust the object store or heap and fail the job.
+
 .. _ray-get-too-many-objects:
 
 Anti-pattern: Fetching too many objects at once with ray.get causes failure

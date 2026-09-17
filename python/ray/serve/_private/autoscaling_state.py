@@ -3,7 +3,7 @@ import logging
 import math
 import time
 from collections import defaultdict
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -17,8 +17,6 @@ from ray.serve._private.common import (
     TimeSeries,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
@@ -38,6 +36,9 @@ from ray.serve.autoscaling_policy import (
 )
 from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
+
+if TYPE_CHECKING:
+    from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -78,8 +79,14 @@ class DeploymentAutoscalingState:
         # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
         self._total_pending_async_requests: int = 0
 
-        self._deployment_info = None
-        self._config = None
+        # Total-request aggregate from the most recent autoscaling decision, reused by
+        # the scale up/down log so it isn't recomputed within the same tick.
+        self._last_decision_total_num_requests: float = 0.0
+
+        self._deployment_info: Optional[DeploymentInfo] = None
+        # Set (non-None) by the first `update_config` call, which happens
+        # before any of the methods that read it are called.
+        self._config: "AutoscalingConfig" = None  # type: ignore[assignment]
         self._policy: Optional[
             Callable[
                 [AutoscalingContext], Tuple[Union[int, float], Optional[Dict[str, Any]]]
@@ -121,6 +128,18 @@ class DeploymentAutoscalingState:
                 "High values may indicate a slow or complex policy."
             ),
             tag_keys=("deployment", "application", "policy_scope"),
+        )
+
+        self.autoscaling_target_ongoing_requests_gauge = metrics.Gauge(
+            "serve_autoscaling_target_ongoing_requests",
+            description=(
+                "The configured target number of ongoing requests per replica. "
+                "For the default policy, this can be combined with "
+                "serve_autoscaling_total_requests to compute the raw desired number "
+                "of replicas (total_requests / target_ongoing_requests) and detect "
+                "autoscaling regressions."
+            ),
+            tag_keys=("deployment", "application"),
         )
 
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
@@ -285,24 +304,26 @@ class DeploymentAutoscalingState:
                 and handle_metric.actor_id not in alive_serve_actor_ids
             ):
                 del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
+                peak_requests = handle_metric.total_requests
+                if peak_requests > 0:
                     logger.debug(
                         f"Dropping metrics for handle '{handle_id}' because the Serve "
                         f"actor it was on ({handle_metric.actor_id}) is no longer "
-                        f"alive. It had {handle_metric.total_requests} ongoing requests"
+                        f"alive. Its peak ongoing requests was {peak_requests}."
                     )
             # Drop metrics for handles that haven't sent an update in a while.
             # This is expected behavior for handles that were on replicas or
             # proxies that have been shut down.
             elif time.time() - handle_metric.timestamp >= timeout_s:
                 del self._handle_requests[handle_id]
-                if handle_metric.total_requests > 0:
+                peak_requests = handle_metric.total_requests
+                if peak_requests > 0:
                     actor_id = handle_metric.actor_id
                     actor_info = f"on actor '{actor_id}' " if actor_id else ""
                     logger.info(
                         f"Dropping stale metrics for handle '{handle_id}' {actor_info}"
                         f"because no update was received for {timeout_s:.1f}s. "
-                        f"Ongoing requests was: {handle_metric.total_requests}."
+                        f"Peak ongoing requests was: {peak_requests}."
                     )
 
     def record_autoscaling_metrics(
@@ -318,8 +339,13 @@ class DeploymentAutoscalingState:
         }
         self.autoscaling_decision_gauge.set(decision_num_replicas, tags=tags)
         self.autoscaling_total_requests_gauge.set(total_num_requests, tags=tags)
+        # Stash the decision's value for the scale up/down log to reuse.
+        self._last_decision_total_num_requests = total_num_requests
         self.autoscaling_policy_execution_time_gauge.set(
             policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
+        )
+        self.autoscaling_target_ongoing_requests_gauge.set(
+            self._config.get_target_ongoing_requests(), tags=tags
         )
 
     def get_decision_num_replicas(
@@ -444,10 +470,11 @@ class DeploymentAutoscalingState:
 
         for handle_metric in self._handle_requests.values():
             running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
-            for replica_str in self._cached_running_replica_strs:
-                if replica_str not in running_reqs:
-                    continue
-                timeseries_list.append(running_reqs[replica_str])
+            # Iterate the handle's own replicas, not every running replica: a handle
+            # usually routes to a subset, and the merge is order-independent.
+            for replica_str, timeseries in running_reqs.items():
+                if replica_str in self._cached_running_replica_strs:
+                    timeseries_list.append(timeseries)
 
         return timeseries_list
 
@@ -515,7 +542,9 @@ class DeploymentAutoscalingState:
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
-                aggregation_function=self._config.aggregation_function,
+                # The field is declared `Union[str, AggregationFunction]`, but a
+                # pydantic validator coerces it to `AggregationFunction`.
+                aggregation_function=self._config.aggregation_function,  # type: ignore[arg-type]
                 last_window_s=last_window_s,
                 window_start=window_start,
             )
@@ -523,68 +552,50 @@ class DeploymentAutoscalingState:
 
         return 0.0
 
-    def _calculate_total_requests_aggregate_mode(self) -> float:
-        """Calculate total requests using aggregate metrics mode with timeseries data.
+    def get_total_num_requests(self) -> float:
+        """Total ongoing requests, aggregated at the controller from raw timeseries.
 
-        This method works with raw timeseries metrics data and performs aggregation
-        at the controller level, providing more accurate and stable metrics compared
-        to simple mode.
+        Running requests come from replicas or from handles, never both; the writer is
+        responsible for keeping those exclusive. Queued requests always come from
+        handles. Every series is merged as one set of sources, so the reduction sees
+        running and queued together rather than aggregating them separately.
 
-        Processing Steps:
-            1. Collect raw timeseries data (eg: running request) from replicas (if available)
-            2. Collect queued requests from handles (always tracked at handle level)
-            3. Collect raw timeseries data (eg: running request) from handles (if not available from replicas)
-            4. Merge timeseries using instantaneous approach for mathematically correct totals
-            5. Calculate time-weighted average running requests from the merged timeseries
+        Processing steps:
+            1. Collect running-request timeseries from replicas, if any reported.
+            2. Collect queued-request timeseries from handles (always).
+            3. Collect running-request timeseries from handles, only if step 1 was empty.
+            4. Merge every series into one instantaneous total: gauges are right-
+               continuous step functions, summed across sources at each change point,
+               which avoids the windowing bias of averaging each source first.
+            5. Reduce that step function with the deployment's `aggregation_function`,
+               so the result is a window mean, peak or trough, not the current value.
 
-        Key Differences from Simple Mode:
-            - Uses raw timeseries data instead of pre-aggregated metrics
-            - Performs instantaneous merging for exact gauge semantics
-            - Aggregates at the controller level rather than using pre-computed averages
-            - Uses time-weighted averaging over the look_back_period_s interval for accurate calculations
+        The window opens once every series has contributed a point, because a series is
+        implicitly 0 before its first sample and would otherwise drag the total down. It
+        closes `last_window_s` past the final point, that being how long the last sample
+        is assumed to hold.
 
-        Metrics Collection:
-            Running requests are collected with either replica-level or handle-level metrics.
+        Example (`aggregation_function` MEAN, now = 2.0s):
+            running r1  [(0.2, 5), (0.8, 7), (1.5, 6)]
+            running r2  [(0.1, 3), (0.9, 4), (1.4, 8)]
+            queued  h1  [(0.3, 2), (1.0, 3)]
 
-            Queued requests are always collected from handles regardless of where
-            running requests are collected.
+            merged      [(0.1, 3), (0.2, 8), (0.3, 10), (0.8, 12),
+                         (0.9, 13), (1.0, 14), (1.4, 18), (1.5, 17)]
 
-        Timeseries Aggregation:
-            Raw timeseries data from multiple sources is merged using an instantaneous
-            approach that treats gauges as right-continuous step functions. This provides
-            mathematically correct totals without arbitrary windowing bias.
-
-        Example with Numbers:
-            Assume metrics_interval_s = 0.5s, current time = 2.0s
-
-            Step 1: Collect raw timeseries from 2 replicas (r1, r2)
-            replica_metrics = [
-                {"running_requests": [(t=0.2, val=5), (t=0.8, val=7), (t=1.5, val=6)]},  # r1
-                {"running_requests": [(t=0.1, val=3), (t=0.9, val=4), (t=1.4, val=8)]}   # r2
-            ]
-
-            Step 2: Collect queued requests from handles
-            handle_queued = 2 + 3 = 5  # total from all handles
-
-            Step 3: No handle metrics needed (replica metrics available)
-            handle_metrics = []
-
-            Step 4: Merge timeseries using instantaneous approach
-            # Create delta events: r1 starts at 5 (t=0.2), changes to 7 (t=0.8), then 6 (t=1.5)
-            #                      r2 starts at 3 (t=0.1), changes to 4 (t=0.9), then 8 (t=1.4)
-            # Merged instantaneous total: [(t=0.1, val=3), (t=0.2, val=8), (t=0.8, val=10), (t=0.9, val=11), (t=1.4, val=15), (t=1.5, val=14)]
-            merged_timeseries = {"running_requests": [(0.1, 3), (0.2, 8), (0.8, 10), (0.9, 11), (1.4, 15), (1.5, 14)]}
-
-            Step 5: Calculate time-weighted average over full timeseries (t=0.1 to t=1.5+0.5=2.0)
-            # Time-weighted calculation: (3*0.1 + 8*0.6 + 10*0.1 + 11*0.5 + 15*0.1 + 14*0.5) / 2.0 = 10.05
-            avg_running = 10.05
-
-            Final result: total_requests = avg_running + queued = 10.05 + 5 = 15.05
+            window      opens at 0.3, the latest first point (h1); closes at 2.0,
+                        which is 1.5 plus a last_window_s of 0.5
+            result      (10*0.5 + 12*0.1 + 13*0.1 + 14*0.4 + 18*0.1 + 17*0.5) / 1.7
+                        = 23.4 / 1.7 = 13.76
 
         Returns:
-            Total number of requests (average running + queued) calculated from
-            timeseries data aggregation.
+            The aggregated total of running and queued requests.
         """
+        return self._object_aggregate_total_requests()
+
+    def _object_aggregate_total_requests(self) -> float:
+        """Aggregate the object-store timeseries. Split out of get_total_num_requests
+        so the caller can pick an aggregation path without carrying its body."""
         # Collect replica-based running requests (returns List[TimeSeries])
         replica_timeseries = self._collect_replica_running_requests()
         metrics_collected_on_replicas = len(replica_timeseries) > 0
@@ -618,106 +629,17 @@ class DeploymentAutoscalingState:
 
         return ongoing_requests
 
-    def _calculate_total_requests_simple_mode(self) -> float:
-        """Calculate total requests using simple aggregated metrics mode.
+    def get_last_decision_total_num_requests(self) -> float:
+        """Aggregate from the most recent autoscaling decision, not recomputed.
 
-        This method works with pre-aggregated metrics that are computed by averaging
-        (or other functions) over the past look_back_period_s seconds.
-
-        Metrics Collection:
-            Metrics can be collected at two levels:
-            1. Replica level: Each replica reports one aggregated metric value
-            2. Handle level: Each handle reports metrics for multiple replicas
-
-        Replica-Level Metrics Example:
-            For 3 replicas (r1, r2, r3), metrics might look like:
-            {
-                "r1": 10,
-                "r2": 20,
-                "r3": 30
-            }
-            Total requests = 10 + 20 + 30 = 60
-
-        Handle-Level Metrics Example:
-            For 3 handles (h1, h2, h3), each managing 2 replicas:
-            - h1 manages r1, r2
-            - h2 manages r2, r3
-            - h3 manages r3, r1
-
-            Metrics structure:
-            {
-                "h1": {"r1": 10, "r2": 20},
-                "h2": {"r2": 20, "r3": 30},
-                "h3": {"r3": 30, "r1": 10}
-            }
-
-            Total requests = 10 + 20 + 20 + 30 + 30 + 10 = 120
-
-            Note: We can safely sum all handle metrics because each unique request
-            is counted only once across all handles (no double-counting).
-
-        Queued Requests:
-            Queued request metrics are always tracked at the handle level, regardless
-            of whether running request metrics are collected at replicas or handles.
-
-        Returns:
-            Total number of requests (running + queued) across all replicas/handles.
+        Fresh only while ApplicationState.autoscale() stays synchronous (stash-on-decision,
+        read-by-log within one tick); an await between the two would reintroduce staleness.
         """
-        total_requests = 0
+        return self._last_decision_total_num_requests
 
-        # Iterate over _replica_metrics but only count running replicas. Stale metrics from
-        # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
-        for report in self._replica_metrics.values():
-            # TODO(abrar): Store replica_id as string in report to avoid this conversion.
-            if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
-                total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
-
-        metrics_collected_on_replicas = total_requests > 0
-
-        # Add handle metrics
-        for handle_metric in self._handle_requests.values():
-            total_requests += handle_metric.aggregated_queued_requests
-            # Add running requests from handles if not collected on replicas
-            if not metrics_collected_on_replicas:
-                running_reqs = handle_metric.aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY, {}
-                )
-                for replica_str, count in running_reqs.items():
-                    if replica_str in self._cached_running_replica_strs:
-                        total_requests += count
-        return total_requests
-
-    def _should_aggregate_metrics_at_controller(self) -> bool:
-        """
-        Determine if metrics should be aggregated at the controller.
-        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
-
-        Returns:
-            True if metrics should be aggregated at the controller, False otherwise.
-        """
-        return (
-            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
-        )
-
-    def get_total_num_requests(self) -> float:
-        """Get average total number of requests aggregated over the past
-        `look_back_period_s` number of seconds.
-
-        If there are 0 running replicas, then returns the total number
-        of requests queued at handles
-
-        This code assumes that the metrics are either emmited on handles
-        or on replicas, but not both. Its the responsibility of the writer
-        to ensure enclusivity of the metrics.
-        """
-        if self._should_aggregate_metrics_at_controller():
-            return self._calculate_total_requests_aggregate_mode()
-        else:
-            return self._calculate_total_requests_simple_mode()
-
-    def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
+    def get_replica_metrics(self) -> Dict[str, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
-        metric_values = defaultdict(list)
+        metric_values: Dict[str, List[TimeSeries]] = defaultdict(list)
         for id in self._running_replicas:
             if id in self._replica_metrics and self._replica_metrics[id].metrics:
                 for k, v in self._replica_metrics[id].metrics.items():
@@ -729,22 +651,12 @@ class DeploymentAutoscalingState:
         """Calculate the total number of queued requests across all handles.
 
         Returns:
-            Sum of queued requests at all handles. Uses aggregated values in simple mode,
-            or aggregates timeseries data in aggregate mode.
+            The merged instantaneous total of every handle's queued-requests
+            timeseries, aggregated over the window by `aggregation_function`.
         """
-        if self._should_aggregate_metrics_at_controller():
-            # Aggregate mode: collect and aggregate timeseries
-            queued_timeseries = self._collect_handle_queued_requests()
-            if not queued_timeseries:
-                return 0.0
-
-            return self._merge_and_aggregate_timeseries(queued_timeseries)
-        else:
-            # Simple mode: sum pre-aggregated values
-            return sum(
-                handle_metric.aggregated_queued_requests
-                for handle_metric in self._handle_requests.values()
-            )
+        return self._merge_and_aggregate_timeseries(
+            self._collect_handle_queued_requests()
+        )
 
     def _get_aggregated_custom_metrics(self) -> Dict[str, Dict[ReplicaID, float]]:
         """Aggregate custom metrics from replica metric reports.
@@ -755,7 +667,7 @@ class DeploymentAutoscalingState:
         Returns:
             Dict mapping metric name to dict of replica ID to aggregated metric value.
         """
-        aggregated_metrics = defaultdict(dict)
+        aggregated_metrics: Dict[str, Dict[ReplicaID, float]] = defaultdict(dict)
 
         for replica_id in self._running_replicas:
             replica_metric_report = self._replica_metrics.get(replica_id)
@@ -777,7 +689,7 @@ class DeploymentAutoscalingState:
         Returns:
             Dict mapping metric name to dict of replica ID to raw metric timeseries.
         """
-        raw_metrics = defaultdict(dict)
+        raw_metrics: Dict[str, Dict[ReplicaID, TimeSeries]] = defaultdict(dict)
 
         for replica_id in self._running_replicas:
             replica_metric_report = self._replica_metrics.get(replica_id)
@@ -831,7 +743,7 @@ class ApplicationAutoscalingState:
             autoscaling_policy: The autoscaling policy to register.
         """
         # Apply default autoscaling config to the policy
-        self._policy = _apply_app_level_autoscaling_config(
+        self._policy = _apply_app_level_autoscaling_config(  # type: ignore[assignment]
             _resolve_policy_callable(autoscaling_policy)
         )
         self._policy_state = {}
@@ -936,7 +848,10 @@ class ApplicationAutoscalingState:
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
             # policy state: {deployment_id -> Dict}
-            decisions, returned_policy_state = self._policy(autoscaling_contexts)
+            # `self._policy` is non-None here (guarded by `has_policy()` above).
+            decisions, returned_policy_state = self._policy(  # type: ignore[misc]
+                autoscaling_contexts
+            )
             policy_execution_time_ms = (time.time() - start_time) * 1000
             # Validate returned policy_state
             self._validate_policy_state(returned_policy_state)
@@ -962,7 +877,7 @@ class ApplicationAutoscalingState:
                     deployment_id
                 ]
                 deployment_autoscaling_state.record_autoscaling_metrics(
-                    num_replicas,
+                    num_replicas,  # type: ignore[arg-type]
                     autoscaling_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
@@ -1015,6 +930,13 @@ class ApplicationAutoscalingState:
         return self._deployment_autoscaling_states[
             deployment_id
         ].get_total_num_requests()
+
+    def get_last_decision_total_num_requests_for_deployment(
+        self, deployment_id: DeploymentID
+    ) -> float:
+        return self._deployment_autoscaling_states[
+            deployment_id
+        ].get_last_decision_total_num_requests()
 
     def get_replica_metrics_by_deployment_id(self, deployment_id: DeploymentID):
         return self._deployment_autoscaling_states[deployment_id].get_replica_metrics()
@@ -1191,7 +1113,7 @@ class AutoscalingStateManager:
 
     def get_metrics_for_deployment(
         self, deployment_id: DeploymentID
-    ) -> Dict[ReplicaID, List[TimeSeries]]:
+    ) -> Dict[str, List[TimeSeries]]:
         if deployment_id.app_name in self._app_autoscaling_states:
             return self._app_autoscaling_states[
                 deployment_id.app_name
@@ -1208,6 +1130,16 @@ class AutoscalingStateManager:
             ].get_total_num_requests_for_deployment(deployment_id)
         else:
             return 0
+
+    def get_last_decision_total_num_requests_for_deployment(
+        self, deployment_id: DeploymentID
+    ) -> float:
+        if deployment_id.app_name in self._app_autoscaling_states:
+            return self._app_autoscaling_states[
+                deployment_id.app_name
+            ].get_last_decision_total_num_requests_for_deployment(deployment_id)
+        else:
+            return 0.0
 
     def is_within_bounds(
         self, deployment_id: DeploymentID, num_replicas_running_at_target_version: int

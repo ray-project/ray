@@ -405,7 +405,19 @@ def _configure_key_pair(config):
             cli_logger.verbose(
                 "Creating new key pair {} for use as the default.", cf.bold(key_name)
             )
-            key = ec2.create_key_pair(KeyName=key_name)
+            try:
+                key = ec2.create_key_pair(KeyName=key_name)
+            except botocore.exceptions.ClientError as exc:
+                error_code = (
+                    exc.response.get("Error", {}).get("Code") if exc.response else None
+                )
+                if error_code != "InvalidKeyPair.Duplicate":
+                    raise
+                cli_logger.verbose(
+                    "Key pair {} was created concurrently; trying another name.",
+                    cf.bold(key_name),
+                )
+                continue
 
             # We need to make sure to _create_ the file with the right
             # permissions. In order to do that we need to change the default
@@ -467,9 +479,17 @@ def _usable_subnet_ids(
     * In one of the AZs, if AZs are provided.
     * In the given VPC, if a VPC is specified for Security Groups.
 
+    Args:
+        user_specified_subnets: Subnets the user explicitly configured.
+        all_subnets: All subnets available in the region.
+        azs: Comma-separated list of availability zones to filter by.
+        vpc_id_of_sg: VPC ID of an existing security group, used to
+            restrict subnets to that VPC.
+        use_internal_ips: If True, allow private (non-public-mapping) subnets.
+        node_type_key: Name of the node type, used for error messages.
+
     Returns:
-        List[str]: Subnets that are usable.
-        str: VPC ID of the first subnet.
+        A tuple of (subnet ids that are usable, VPC ID of the first subnet).
     """
 
     def _are_user_subnets_pruned(current_subnets: List[Any]) -> bool:
@@ -966,13 +986,12 @@ def _configure_from_launch_template(config: Dict[str, Any]) -> Dict[str, Any]:
     API.
 
     Args:
-        config (Dict[str, Any]): config to bootstrap
+        config: config to bootstrap
 
     Returns:
-        config (Dict[str, Any]): The input config with all launch template
-        data merged into the node config of all available node types. If no
-        launch template data is found, then the config is returned
-        unchanged.
+        The input config with all launch template data merged into the node
+        config of all available node types. If no launch template data is
+        found, then the config is returned unchanged.
 
     Raises:
         ValueError: When no launch template is found for the given launch template
@@ -996,14 +1015,13 @@ def _configure_node_type_from_launch_template(
     node config override the same parameters in the launch template.
 
     Args:
-        config (Dict[str, Any]): config to bootstrap
-        node_type (Dict[str, Any]): node type config to bootstrap
+        config: config to bootstrap
+        node_type: node type config to bootstrap
 
     Returns:
-        node_type (Dict[str, Any]): The input config with all launch template
-        data merged into the node config of the input node type. If no
-        launch template data is found, then the config is returned
-        unchanged.
+        The input config with all launch template data merged into the node
+        config of the input node type. If no launch template data is found,
+        then the config is returned unchanged.
 
     Raises:
         ValueError: When no launch template is found for the given launch template
@@ -1038,13 +1056,12 @@ def _configure_node_cfg_from_launch_template(
     for us after it fetches the referenced launch template data.
 
     Args:
-        config (Dict[str, Any]): config to bootstrap
-        node_cfg (Dict[str, Any]): node config to bootstrap
+        config: config to bootstrap
+        node_cfg: node config to bootstrap
 
     Returns:
-        node_cfg (Dict[str, Any]): The input node config merged with all launch
-        template data. If no launch template data is found, then the node
-        config is returned unchanged.
+        The input node config merged with all launch template data. If no
+        launch template data is found, then the node config is returned unchanged.
 
     Raises:
         ValueError: When no launch template is found for the given launch template
@@ -1082,13 +1099,12 @@ def _configure_from_network_interfaces(config: Dict[str, Any]) -> Dict[str, Any]
     parent node config for each available node type.
 
     Args:
-        config (Dict[str, Any]): config to bootstrap
+        config: config to bootstrap
 
     Returns:
-        config (Dict[str, Any]): The input config with all network interface
-        subnet and security group IDs copied into the node config of all
-        available node types. If no network interfaces are found, then the
-        config is returned unchanged.
+        The input config with all network interface subnet and security group
+        IDs copied into the node config of all available node types. If no
+        network interfaces are found, then the config is returned unchanged.
 
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
@@ -1112,13 +1128,12 @@ def _configure_node_type_from_network_interface(
     parent node config for the given node type.
 
     Args:
-        node_type (Dict[str, Any]): node type config to bootstrap
+        node_type: node type config to bootstrap
 
     Returns:
-        node_type (Dict[str, Any]): The input config with all network interface
-        subnet and security group IDs copied into the node config of the
-        given node type. If no network interfaces are found, then the
-        config is returned unchanged.
+        The input config with all network interface subnet and security group
+        IDs copied into the node config of the given node type. If no network
+        interfaces are found, then the config is returned unchanged.
 
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
@@ -1144,11 +1159,10 @@ def _configure_subnets_and_groups_from_network_interfaces(
     parent node config.
 
     Args:
-        node_cfg (Dict[str, Any]): node config to bootstrap
+        node_cfg: node config to bootstrap
 
     Returns:
-        node_cfg (Dict[str, Any]): node config with all copied network
-        interface subnet and security group IDs
+        node config with all copied network interface subnet and security group IDs
 
     Raises:
         ValueError: If [1] subnet and security group IDs exist at both the
@@ -1191,9 +1205,10 @@ def _subnets_in_network_config(config: Dict[str, Any]) -> List[str]:
     Returns all subnet IDs found in the given node config's network interfaces.
 
     Args:
-        config (Dict[str, Any]): node config
+        config: node config
+
     Returns:
-        subnet_ids (List[str]): List of subnet IDs for all network interfaces,
+        List of subnet IDs for all network interfaces,
         or an empty list if no network interfaces are defined. An empty string
         is returned for each missing network interface subnet ID.
     """
@@ -1206,12 +1221,12 @@ def _security_groups_in_network_config(config: Dict[str, Any]) -> List[List[str]
     interfaces.
 
     Args:
-        config (Dict[str, Any]): node config
+        config: node config
+
     Returns:
-        security_group_ids (List[List[str]]): List of security group ID lists
-        for all network interfaces, or an empty list if no network interfaces
-        are defined. An empty list is returned for each missing network
-        interface security group list.
+        List of security group ID lists for all network interfaces, or an
+        empty list if no network interfaces are defined. An empty list is
+        returned for each missing network interface security group list.
     """
     return [ni.get("Groups", []) for ni in config.get("NetworkInterfaces", [])]
 

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Get started with the Ray Data Dataset API: load data from files or cloud storage, transform it, consume it, and save results.
+
 .. _data_quickstart:
 
 Ray Data Quickstart
@@ -65,7 +68,7 @@ across your cluster for better performance.
         return batch
 
     # Apply the transformation to our dataset
-    transformed_ds = ds.map_batches(transform_batch)
+    transformed_ds = ds.map_batches(transform_batch, batch_size="auto")
     
     # View the updated schema with the new column
     # .materialize() will execute all the lazy transformations and

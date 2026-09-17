@@ -169,6 +169,9 @@ SYNCH_ENV_CONNECTOR_STATES_TIMER = "synch_env_connectors"
 SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
+# Time an EnvRunner spends pulling the latest state from the `EnvRunnerStateServer`
+# (PULL-based weight sync) at the top of each `sample()` call.
+ENV_RUNNER_STATE_SERVER_PULL_TIMER = "env_runner_state_server_pull"
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
 ENV_RESET_TIMER = "env_reset_timer"
 ENV_STEP_TIMER = "env_step_timer"

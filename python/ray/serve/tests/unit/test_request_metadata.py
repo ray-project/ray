@@ -25,6 +25,7 @@ def test_request_metadata():
     assert request_metadata.route == ""
     assert request_metadata.app_name == ""
     assert request_metadata.multiplexed_model_id == ""
+    assert request_metadata.session_id == ""
     assert request_metadata.is_streaming is False
     assert request_metadata._request_protocol == RequestProtocol.UNDEFINED
     assert request_metadata.is_http_request is False

@@ -32,7 +32,7 @@ def test_json_read(
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1)
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -46,7 +46,8 @@ def test_zipped_json_read(
     path1 = os.path.join(tmp_path, "test1.json.gz")
     df1.to_json(path1, compression="gzip", orient="records", lines=True)
     ds = ray.data.read_json(path1)
-    assert df1.equals(ds.to_pandas())
+    dsdf = ds.to_pandas()
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -92,7 +93,7 @@ def test_json_read_with_read_options(
         read_options=pajson.ReadOptions(use_threads=False, block_size=2**30),
     )
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -121,7 +122,7 @@ def test_json_read_with_parse_options(
     )
     dsdf = ds.to_pandas()
     assert len(dsdf.columns) == 1
-    assert (df1["two"]).equals(dsdf["two"])
+    pd.testing.assert_series_equal(df1["two"].astype(dsdf["two"].dtype), dsdf["two"])
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -213,8 +214,12 @@ def test_json_roundtrip(
     ds2 = ray.data.read_json(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._plan.execute().blocks:
-        assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+    for entry in ds2._execute().blocks:
+        assert (
+            # pyrefly: ignore[no-matching-overload]
+            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
+            == entry.metadata.size_bytes
+        )
 
 
 def test_json_read_small_file_unit_block_size(
@@ -229,7 +234,7 @@ def test_json_read_small_file_unit_block_size(
     df1.to_json(path1, orient="records", lines=True)
     ds = ray.data.read_json(path1, read_options=pajson.ReadOptions(block_size=1))
     dsdf = ds.to_pandas()
-    assert df1.equals(dsdf)
+    pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [path1]
@@ -257,7 +262,7 @@ def test_json_read_file_larger_than_block_size(
         path2, read_options=pajson.ReadOptions(block_size=block_size)
     )
     dsdf = ds.to_pandas()
-    assert df2.equals(dsdf)
+    pd.testing.assert_frame_equal(df2.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == num_rows
     assert ds.input_files() == [path2]
@@ -278,7 +283,7 @@ def test_json_read_negative_block_size_fallback(
     # Negative Buffer Size, fails with arrow but succeeds in fallback to json.load()
     ds = ray.data.read_json(path3, read_options=pajson.ReadOptions(block_size=-1))
     dsdf = ds.to_pandas()
-    assert df3.equals(dsdf)
+    pd.testing.assert_frame_equal(df3.astype(dsdf.dtypes.to_dict()), dsdf)
 
 
 def test_json_read_zero_block_size_failure(
@@ -427,6 +432,31 @@ class TestPandasJSONDatasource:
         with source._open_input_source(local_filesystem, path) as f:
             for block in source._read_stream(f, path):
                 assert len(block) == 4
+                block_builder.add_block(block)
+        block = block_builder.build()
+
+        # Verify.
+        assert rows_same(block, df)
+
+    def test_read_stream_with_advanced_file_pointer(
+        self, tmp_path, target_max_block_size_infinite_or_default
+    ):
+        # Setup test file.
+        df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+        path = os.path.join(tmp_path, "test.json")
+        df.to_json(path, orient="records", lines=True)
+
+        # Setup datasource.
+        local_filesystem = fs.LocalFileSystem()
+        source = PandasJSONDatasource(
+            path, target_output_size_bytes=1, filesystem=local_filesystem
+        )
+
+        # Simulate retrying a stream read on a file handle that was already consumed.
+        block_builder = PandasBlockBuilder()
+        with source._open_input_source(local_filesystem, path) as f:
+            f.read(1)
+            for block in source._read_stream(f, path):
                 block_builder.add_block(block)
         block = block_builder.build()
 

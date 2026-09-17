@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -239,6 +240,38 @@ ray.get(my_actor.print_message.remote())
     stderr = run_string_as_driver(script)
     assert "This is a Ray actor" in stderr
     assert "(MyActor pid=" not in stderr
+
+
+@pytest.mark.parametrize(
+    "env_value,expect_prefix",
+    [
+        ("1", False),  # opted out: prefix should be dropped
+        ("0", True),  # default: prefix should still be added
+    ],
+)
+def test_disable_worker_log_prefix_env_var(
+    shutdown_only, env_value: str, expect_prefix: bool
+):
+    """
+    RAY_DISABLE_WORKER_LOG_PREFIX=1 should drop the "(name pid=...)" prefix
+    from worker logs forwarded to the driver, without requiring a
+    LoggingConfig and without affecting the raw line content.
+    RAY_DISABLE_WORKER_LOG_PREFIX=0 should preserve the original behavior.
+    """
+    script = """
+import ray
+ray.init()
+@ray.remote
+class MyActor:
+    def print_message(self):
+        print("This is a Ray actor")
+my_actor = MyActor.remote()
+ray.get(my_actor.print_message.remote())
+"""
+    env = {**os.environ, "RAY_DISABLE_WORKER_LOG_PREFIX": env_value}
+    stdout = run_string_as_driver(script, env=env)
+    assert "This is a Ray actor" in stdout
+    assert ("(MyActor pid=" in stdout) == expect_prefix
 
 
 def test_configure_both_structured_logging_and_lib_logging(shutdown_only):

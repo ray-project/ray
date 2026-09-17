@@ -171,7 +171,7 @@ class ResultThread(threading.Thread):
     END_SENTINEL.
 
     Args:
-        object_refs (List[RayActorObjectRefs]): ObjectRefs to Ray Actor calls.
+        object_refs: ObjectRefs to Ray Actor calls.
             Thread tracks whether they are ready. More ObjectRefs may be added
             with add_object_ref (or _add_object_ref internally) until the object
             count reaches total_object_refs.
@@ -338,7 +338,7 @@ class AsyncResult:
         )
         self._result_thread.start()
 
-    def wait(self, timeout=None):
+    def wait(self, timeout: Optional[float] = None):
         """
         Returns once the result is ready or the timeout expires (does not
         raise TimeoutError).
@@ -564,6 +564,9 @@ class Pool:
         maxtasksperchild: maximum number of tasks to run in each actor process.
             After a process has executed this many tasks, it will be killed and
             replaced with a new one.
+        context: Accepted for ``multiprocessing.Pool`` API compatibility but
+            ignored; Ray controls process initialization. A warning is logged
+            if a non-None value is supplied.
         ray_address: address of the Ray cluster to run on. If None, a new local
             Ray cluster will be started on this machine. Otherwise, this will
             be passed to `ray.init()` to connect to a running cluster. This may
@@ -932,6 +935,11 @@ class Pool:
         The results are returned in the order corresponding to their arguments
         in the iterable.
 
+        Args:
+            func: Function to apply to each element of ``iterable``.
+            iterable: Iterable of arguments to ``func``.
+            chunksize: Number of elements to send to each worker per batch.
+
         Returns:
             OrderedIMapIterator
         """
@@ -949,6 +957,11 @@ class Pool:
         task's arguments consumes a large amount of resources.
 
         The results are returned in the order that they finish.
+
+        Args:
+            func: Function to apply to each element of ``iterable``.
+            iterable: Iterable of arguments to ``func``.
+            chunksize: Number of elements to send to each worker per batch.
 
         Returns:
             UnorderedIMapIterator

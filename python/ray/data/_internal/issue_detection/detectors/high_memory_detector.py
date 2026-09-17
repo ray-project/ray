@@ -2,7 +2,10 @@ import textwrap
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List
 
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.map_operator import (
+    MapOperator,
+    get_safe_default_logical_memory,
+)
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
@@ -37,10 +40,6 @@ class HighMemoryIssueDetectorConfig:
 
 
 class HighMemoryIssueDetector(IssueDetector):
-    # Many nodes have a 4 GiB : 1 core ratio, but this isn't always the case (e.g., for
-    # high memory nodes).
-    _MEMORY_PER_CORE_ESTIMATE = 4 * 1024**3
-
     def __init__(
         self,
         dataset_id: str,
@@ -82,20 +81,20 @@ class HighMemoryIssueDetector(IssueDetector):
             if not isinstance(op, MapOperator):
                 continue
 
-            if op.metrics.average_max_uss_per_task is None:
+            max_uss_bytes = op.metrics.max_uss_bytes
+            if max_uss_bytes.num_samples == 0:
                 continue
 
             remote_args = op._get_dynamic_ray_remote_args()
-            num_cpus_per_task = remote_args.get("num_cpus", 1)
-            max_memory_per_task = self._MEMORY_PER_CORE_ESTIMATE * num_cpus_per_task
+            safe_memory_per_task = get_safe_default_logical_memory(remote_args)
 
             if (
-                op.metrics.average_max_uss_per_task > self._initial_memory_requests[op]
-                and op.metrics.average_max_uss_per_task >= max_memory_per_task
+                max_uss_bytes.mean > self._initial_memory_requests[op]
+                and max_uss_bytes.mean >= safe_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
-                    memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
+                    memory_per_task=memory_string(max_uss_bytes.mean),
                     initial_memory_request=memory_string(
                         self._initial_memory_requests[op]
                     ),

@@ -1,11 +1,16 @@
+---
+myst:
+  html_meta:
+    description: "Storage and dependency recommendations for Ray on Kubernetes, split between interactive development and production use."
+---
+
 (kuberay-storage)=
 
 # Best Practices for Storage and Dependencies
 
 This document contains recommendations for setting up storage and handling application dependencies for your Ray deployment on Kubernetes.
 
-When you set up Ray on Kubernetes, the [KubeRay documentation](kuberay-quickstart) provides an overview of how to configure the operator to execute and manage the Ray cluster lifecycle.
-However, as administrators you may still have questions with respect to actual user workflows. For example:
+When you set up Ray on Kubernetes, the [KubeRay documentation](kuberay-quickstart) provides an overview of how to configure the operator to execute and manage the Ray cluster lifecycle. However, as administrators you may still have questions with respect to actual user workflows. For example:
 
 * How do you ship or run code on the Ray cluster?
 * What type of storage system should you set up for artifacts?

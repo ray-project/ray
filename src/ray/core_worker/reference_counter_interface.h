@@ -264,8 +264,7 @@ class ReferenceCounterInterface {
   /// \param[in] owner_address The owner's address.
   virtual bool AddBorrowedObject(const ObjectID &object_id,
                                  const ObjectID &outer_id,
-                                 const rpc::Address &owner_address,
-                                 bool foreign_owner_already_monitoring = false) = 0;
+                                 const rpc::Address &owner_address) = 0;
 
   /// Get the owner address of the given object.
   ///
@@ -374,8 +373,8 @@ class ReferenceCounterInterface {
   /// Returns the total number of actors owned by this worker.
   virtual size_t NumActorsOwnedByUs() const = 0;
 
-  /// Reports observability metrics to underlying monitoring system
-  virtual void RecordMetrics() = 0;
+  /// Reports owner-side observability metrics to underlying monitoring system.
+  virtual void RecordOwnerMetrics() = 0;
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   virtual std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const = 0;
@@ -509,9 +508,10 @@ class ReferenceCounterInterface {
   virtual std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) = 0;
 
-  /// Publish the snapshot of the object location for the given object id.
-  /// Publish the empty locations if object is already evicted or not owned by this
-  /// worker.
+  /// Publish the snapshot of the object location for the given object id and
+  /// mark the object as subscribed, so its later location publishes are not
+  /// skipped. Publish the empty locations if object is already evicted or not
+  /// owned by this worker.
   ///
   /// \param[in] object_id The object whose locations we want.
   virtual void PublishObjectLocationSnapshot(const ObjectID &object_id) = 0;

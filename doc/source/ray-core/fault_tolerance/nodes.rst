@@ -1,3 +1,6 @@
+.. meta::
+   :description: Node fault tolerance in Ray: what happens when a worker node, the head node, or an individual raylet fails.
+
 .. _fault-tolerance-nodes:
 
 Node Fault Tolerance

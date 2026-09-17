@@ -55,7 +55,7 @@ def main(args):
         orders_customer = customer_filtered.join(
             orders_filtered,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=200,
             on=("c_custkey",),
             right_on=("o_custkey",),
         ).select_columns(["o_orderkey", "o_orderdate", "o_shippriority"])
@@ -65,7 +65,7 @@ def main(args):
         ds = orders_customer.join(
             lineitem_filtered,
             join_type="inner",
-            num_partitions=16,
+            num_partitions=200,
             on=("o_orderkey",),
             right_on=("l_orderkey",),
         )

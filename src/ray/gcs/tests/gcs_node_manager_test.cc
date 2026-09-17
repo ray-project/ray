@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -25,9 +26,25 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
+
+// A publisher that counts how many messages have been published, so tests can
+// observe *when* (relative to the durable write) node death is broadcast.
+class RecordingPublisher : public pubsub::FakePublisher {
+ public:
+  explicit RecordingPublisher(std::atomic_int *publish_count)
+      : publish_count_(publish_count) {}
+  void Publish(rpc::PubMessage pub_message) override { ++(*publish_count_); }
+
+ private:
+  std::atomic_int *publish_count_;
+};
+
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
@@ -42,14 +59,18 @@ class GcsNodeManagerTest : public ::testing::Test {
         std::make_shared<gcs::InMemoryStoreClient>());
     io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
+    observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
   }
 
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<instrumented_io_context> io_context_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+  Clock clock_;
 };
 
 TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
@@ -65,7 +86,9 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
   auto node = GenNodeInfo();
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -82,8 +105,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
 
   // Test the node definition event + alive node lifecycle event
   ASSERT_EQ(register_events.size(), 2);
-  auto ray_event_0 = std::move(*register_events[0]).Serialize();
-  auto ray_event_1 = std::move(*register_events[1]).Serialize();
+  auto ray_event_0 = std::move(*register_events[0]).Serialize().value();
+  auto ray_event_1 = std::move(*register_events[1]).Serialize().value();
   ASSERT_EQ(ray_event_0.event_type(), rpc::events::RayEvent::NODE_DEFINITION_EVENT);
   ASSERT_EQ(ray_event_0.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_0.severity(), rpc::events::RayEvent::INFO);
@@ -116,7 +139,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   node_manager.UpdateAliveNode(NodeID::FromBinary(node->node_id()), sync_message);
   auto drain_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(drain_events.size(), 1);
-  auto ray_event_02 = std::move(*drain_events[0]).Serialize();
+  auto ray_event_02 = std::move(*drain_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_02.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_02.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_02.severity(), rpc::events::RayEvent::INFO);
@@ -145,7 +168,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   // Test the dead node lifecycle event
   auto unregister_events = fake_ray_event_recorder_->FlushBuffer();
   ASSERT_EQ(unregister_events.size(), 1);
-  auto ray_event_03 = std::move(*unregister_events[0]).Serialize();
+  auto ray_event_03 = std::move(*unregister_events[0]).Serialize().value();
   ASSERT_EQ(ray_event_03.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
   ASSERT_EQ(ray_event_03.source_type(), rpc::events::RayEvent::GCS);
   ASSERT_EQ(ray_event_03.severity(), rpc::events::RayEvent::INFO);
@@ -163,6 +186,94 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
             "mock reason message");
 }
 
+TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
+  // Regression test for the lost-wakeup fixed in this PR (root-cause proof in
+  // the provenance PR #64187, not merged): a health-check node failure must
+  // broadcast DEAD on the pub/sub layer *before* (and independent of) the
+  // durable node-table write completing, so that a slow backend (e.g. RocksDB
+  // fsync) cannot delay cluster-wide death detection.
+  std::atomic_int publish_count{0};
+  auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
+      std::make_unique<RecordingPublisher>(&publish_count));
+  gcs::GcsNodeManager node_manager(gcs_publisher.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  NodeID node_id = NodeID::FromBinary(node->node_id());
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+  publish_count = 0;
+
+  bool persist_completed = false;
+  node_manager.OnNodeFailure(node_id,
+                             [&persist_completed]() { persist_completed = true; });
+
+  // The publish is posted onto io_context ahead of the durable write's
+  // completion callback. Executing exactly one queued handler must run the
+  // publish -- and must NOT have run the persist-completion callback yet.
+  ASSERT_EQ(io_context_->run_one(), 1u);
+  ASSERT_GT(publish_count.load(), 0);
+  ASSERT_FALSE(persist_completed);
+
+  // Draining the rest runs the persist completion afterwards.
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_TRUE(persist_completed);
+}
+
+TEST_F(GcsNodeManagerTest, TestUnregisterNodePublishesDeathBeforePersist) {
+  // Same guarantee as above for the graceful-unregistration path
+  // (HandleUnregisterNode): death is published before the durable write, whose
+  // completion callback is what writes the DEAD export event.
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+  std::atomic_int publish_count{0};
+  auto gcs_publisher = std::make_unique<pubsub::GcsPublisher>(
+      std::make_unique<RecordingPublisher>(&publish_count));
+  gcs::GcsNodeManager node_manager(gcs_publisher.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto node = GenNodeInfo();
+  node_manager.AddNode(node);
+  while (io_context_->poll() > 0) {
+  }
+  fake_ray_event_recorder_->FlushBuffer();
+  publish_count = 0;
+
+  rpc::UnregisterNodeRequest unregister_request;
+  unregister_request.set_node_id(node->node_id());
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  rpc::UnregisterNodeReply unregister_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request,
+      &unregister_reply,
+      [](ray::Status, std::function<void()>, std::function<void()>) {},
+      "");
+
+  // One queued handler runs the publish; the DEAD export event (written from
+  // the persist-completion callback) must not have fired yet.
+  ASSERT_EQ(io_context_->run_one(), 1u);
+  ASSERT_GT(publish_count.load(), 0);
+  ASSERT_TRUE(fake_ray_event_recorder_->FlushBuffer().empty());
+
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_FALSE(fake_ray_event_recorder_->FlushBuffer().empty());
+}
+
 TEST_F(GcsNodeManagerTest, TestManagement) {
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
@@ -170,7 +281,9 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -190,7 +303,9 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::atomic_int callbacks_remaining = node_count;
@@ -264,7 +379,9 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
   int node_count = 10;
   std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
@@ -295,7 +412,9 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Create a test node
   auto node = GenNodeInfo();
@@ -374,7 +493,9 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Create and add a test node
   auto node = GenNodeInfo();
@@ -413,7 +534,9 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Add multiple alive nodes with different properties
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -611,7 +734,9 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
 
   // Add multiple alive nodes
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -730,6 +855,479 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
         });
 
     EXPECT_EQ(result.size(), 3);
+  }
+}
+
+TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLivenessPassiveNode) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   []() { return false; });  // Passive GCS
+
+  // Cache the local head node in-memory (passive mode). In production this is done
+  // by LeaderGatedNodeInfoHandler via the cache_local_node_fn callback.
+  auto head_node = GenNodeInfo();
+  head_node->set_is_head_node(true);
+  node_manager.CachePassiveLocalNode(*head_node);
+
+  // Test 1: Get all nodes without filter. Should return the passive local node.
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].node_id(), head_node->node_id());
+    EXPECT_EQ(result[0].state(), rpc::GcsNodeInfo::ALIVE);
+  }
+
+  // Test 2: Filter by specific node ID
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    node_ids.insert(NodeID::FromBinary(head_node->node_id()));
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 1);
+    EXPECT_EQ(result[0].node_id(), head_node->node_id());
+  }
+
+  // Test 3: Filter by different node ID (should be empty)
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    node_ids.insert(NodeID::FromRandom());
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        std::nullopt,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 0);
+  }
+
+  // Test 4: Get only alive nodes
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        rpc::GcsNodeInfo::ALIVE,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 1);
+  }
+
+  // Test 5: Get only dead nodes (should be empty)
+  {
+    absl::flat_hash_set<NodeID> node_ids;
+    std::vector<rpc::GcsNodeAddressAndLiveness> result;
+    node_manager.GetAllNodeAddressAndLiveness(
+        node_ids,
+        rpc::GcsNodeInfo::DEAD,
+        std::numeric_limits<int64_t>::max(),
+        [&result](rpc::GcsNodeAddressAndLiveness &&node) {
+          result.push_back(std::move(node));
+        });
+
+    EXPECT_EQ(result.size(), 0);
+  }
+}
+
+TEST_F(GcsNodeManagerTest, TestCachePassiveLocalNodeSkipsWhenPromoted) {
+  // Race guard: leader election may promote this GCS between the handler's
+  // passive check and CachePassiveLocalNode. When already leader, the call must
+  // be a no-op (not crash and not cache), since the promotion path owns
+  // registration.
+  bool is_leader = false;
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   [&is_leader]() { return is_leader; });
+
+  auto head_node = GenNodeInfo();
+  head_node->set_is_head_node(true);
+  NodeID node_id = NodeID::FromBinary(head_node->node_id());
+
+  // Query a node through the real visibility path (GetAllNodeInfo by node id) and
+  // return whether it is present in the reply.
+  auto node_visible = [&](const NodeID &id) {
+    rpc::GetAllNodeInfoRequest request;
+    request.add_node_selectors()->set_node_id(id.Binary());
+    rpc::GetAllNodeInfoReply reply;
+    node_manager.HandleGetAllNodeInfo(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+    return reply.node_info_list_size() == 1;
+  };
+
+  // Passive: cache takes effect, node becomes visible.
+  node_manager.CachePassiveLocalNode(*head_node);
+  EXPECT_TRUE(node_visible(node_id));
+
+  // Reset the cache so the next cases start clean and can reuse the same node id.
+  // TODO: update to real promotion path when implemented.
+  node_manager.ClearPassiveLocalNode();
+  EXPECT_FALSE(node_visible(node_id));
+
+  // Already leader: cache is skipped, node is not visible.
+  is_leader = true;
+  node_manager.CachePassiveLocalNode(*head_node);
+  EXPECT_FALSE(node_visible(node_id));
+
+  // Already leader: the normal registration path still works and makes the node
+  // visible (the leader owns registration).
+  rpc::RegisterNodeRequest register_request;
+  register_request.mutable_node_info()->CopyFrom(*head_node);
+  rpc::RegisterNodeReply register_reply;
+  node_manager.HandleRegisterNode(
+      register_request,
+      &register_reply,
+      [](Status, std::function<void()>, std::function<void()>) {});
+  while (io_context_->poll() > 0) {
+  }
+  EXPECT_TRUE(node_visible(node_id));
+}
+
+TEST_F(GcsNodeManagerTest, TestPassiveLocalNodeNotDoubleCounted) {
+  // Defensive de-dup: if the passive cache and alive_nodes_/dead_nodes_ both hold
+  // the same node id (e.g. a query racing with promotion before the cache is
+  // cleared), the visibility RPCs must surface it exactly once and never inflate
+  // the total.
+  bool is_leader = false;
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   [&is_leader]() { return is_leader; });
+
+  auto head_node = GenNodeInfo();
+  head_node->set_is_head_node(true);
+  NodeID node_id = NodeID::FromBinary(head_node->node_id());
+
+  auto get_all = [&](std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter) {
+    rpc::GetAllNodeInfoRequest request;
+    if (state_filter.has_value()) {
+      request.set_state_filter(state_filter.value());
+    }
+    rpc::GetAllNodeInfoReply reply;
+    node_manager.HandleGetAllNodeInfo(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+    return reply;
+  };
+
+  auto count_node = [&](const rpc::GetAllNodeInfoReply &reply) {
+    int count = 0;
+    for (const auto &n : reply.node_info_list()) {
+      if (NodeID::FromBinary(n.node_id()) == node_id) {
+        ++count;
+      }
+    }
+    return count;
+  };
+
+  // Cache the passive head, then also add the same id to alive_nodes_ directly to
+  // simulate the cache not yet being cleared after promotion.
+  node_manager.CachePassiveLocalNode(*head_node);
+  node_manager.AddNode(std::make_shared<rpc::GcsNodeInfo>(*head_node));
+
+  // No filter: the node appears exactly once and total is not inflated.
+  {
+    auto reply = get_all(std::nullopt);
+    EXPECT_EQ(count_node(reply), 1);
+    EXPECT_EQ(reply.total(), 1);
+  }
+
+  // ALIVE filter: still exactly once (from alive_nodes_, not the cache).
+  {
+    auto reply = get_all(rpc::GcsNodeInfo::ALIVE);
+    EXPECT_EQ(count_node(reply), 1);
+  }
+}
+
+TEST_F(GcsNodeManagerTest, TestCachePassiveLocalNodeSkippedWhenAlreadyTracked) {
+  // Write-path de-dup: CachePassiveLocalNode must not cache a node that is already
+  // tracked in alive_nodes_ (or dead_nodes_).
+  bool is_leader = false;
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   [&is_leader]() { return is_leader; });
+
+  auto head_node = GenNodeInfo();
+  head_node->set_is_head_node(true);
+  NodeID node_id = NodeID::FromBinary(head_node->node_id());
+
+  // Node is already alive; caching it as passive must be a no-op.
+  node_manager.AddNode(std::make_shared<rpc::GcsNodeInfo>(*head_node));
+  node_manager.CachePassiveLocalNode(*head_node);
+
+  rpc::GetAllNodeInfoRequest request;
+  request.add_node_selectors()->set_node_id(node_id.Binary());
+  rpc::GetAllNodeInfoReply reply;
+  node_manager.HandleGetAllNodeInfo(
+      request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+  // Exactly one entry (from alive_nodes_), and total counts it once.
+  EXPECT_EQ(reply.node_info_list_size(), 1);
+  EXPECT_EQ(reply.total(), 1);
+}
+
+TEST_F(GcsNodeManagerTest, TestCheckAliveLeadership) {
+  // 1. When constructed without is_leader_fn (or default), it must return is_leader =
+  // true.
+  {
+    gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                     gcs_table_storage_.get(),
+                                     *io_context_,
+                                     client_pool_.get(),
+                                     ClusterID::FromRandom(),
+                                     *fake_ray_event_recorder_,
+                                     "session_name",
+                                     observability_publisher_.get(),
+                                     clock_);
+
+    rpc::CheckAliveRequest request;
+    rpc::CheckAliveReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      EXPECT_TRUE(reply.is_leader());
+      callback_called = true;
+    };
+    node_manager.HandleCheckAlive(request, &reply, send_reply_callback);
+    EXPECT_TRUE(callback_called);
+  }
+
+  // 2. When constructed with is_leader_fn returning false, it must return is_leader =
+  // false.
+  {
+    gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                     gcs_table_storage_.get(),
+                                     *io_context_,
+                                     client_pool_.get(),
+                                     ClusterID::FromRandom(),
+                                     *fake_ray_event_recorder_,
+                                     "session_name",
+                                     observability_publisher_.get(),
+                                     clock_,
+                                     []() { return false; });
+
+    rpc::CheckAliveRequest request;
+    rpc::CheckAliveReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called, &reply](Status status,
+                                                          std::function<void()> f1,
+                                                          std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      EXPECT_FALSE(reply.is_leader());
+      callback_called = true;
+    };
+    node_manager.HandleCheckAlive(request, &reply, send_reply_callback);
+    EXPECT_TRUE(callback_called);
+  }
+}
+
+TEST_F(GcsNodeManagerTest, TestPassiveHandleGetAllNodeInfoAndCheckAlive) {
+  bool is_leader = false;
+  auto is_leader_fn = [&is_leader]() { return is_leader; };
+
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::FromRandom(),
+                                   *fake_ray_event_recorder_,
+                                   "session_name",
+                                   observability_publisher_.get(),
+                                   clock_,
+                                   is_leader_fn);
+
+  auto wait_ready = [this](std::future<bool> future) {
+    while (future.wait_for(std::chrono::milliseconds(1)) != std::future_status::ready) {
+      io_context_->poll();
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return future.get();
+  };
+
+  // Cache a passive local head node (in production done by LeaderGatedNodeInfoHandler).
+  NodeID passive_node_id = NodeID::FromRandom();
+  auto node_info = GenNodeInfo(10, "127.0.0.1", "passive_node");
+  node_info->set_node_id(passive_node_id.Binary());
+  node_info->set_is_head_node(true);
+
+  node_manager.CachePassiveLocalNode(*node_info);
+
+  // CheckAlive: passive node reports alive, unknown node does not.
+  {
+    rpc::CheckAliveRequest check_request;
+    check_request.add_node_ids(passive_node_id.Binary());
+    NodeID random_node_id = NodeID::FromRandom();
+    check_request.add_node_ids(random_node_id.Binary());
+
+    rpc::CheckAliveReply check_reply;
+    std::promise<bool> check_promise;
+    auto send_check_reply_callback = [&check_promise](Status status,
+                                                      std::function<void()> f1,
+                                                      std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      check_promise.set_value(true);
+    };
+    node_manager.HandleCheckAlive(check_request, &check_reply, send_check_reply_callback);
+    EXPECT_TRUE(wait_ready(check_promise.get_future()));
+
+    EXPECT_FALSE(check_reply.is_leader());
+    ASSERT_EQ(check_reply.raylet_alive_size(), 2);
+    EXPECT_TRUE(check_reply.raylet_alive(0));   // passive node is alive
+    EXPECT_FALSE(check_reply.raylet_alive(1));  // random node is not alive
+  }
+
+  // GetAllNodeInfo: passive node is found by its id.
+  {
+    rpc::GetAllNodeInfoRequest get_request;
+    get_request.add_node_selectors()->set_node_id(passive_node_id.Binary());
+
+    rpc::GetAllNodeInfoReply get_reply;
+    std::promise<bool> get_promise;
+    auto cb = [&get_promise](
+                  Status status, std::function<void()>, std::function<void()>) {
+      EXPECT_TRUE(status.ok());
+      get_promise.set_value(true);
+    };
+    node_manager.HandleGetAllNodeInfo(get_request, &get_reply, cb);
+    EXPECT_TRUE(wait_ready(get_promise.get_future()));
+
+    ASSERT_EQ(get_reply.node_info_list_size(), 1);
+    EXPECT_EQ(NodeID::FromBinary(get_reply.node_info_list(0).node_id()), passive_node_id);
+  }
+
+  // GetAllNodeInfo: name selector matches the passive node.
+  {
+    rpc::GetAllNodeInfoRequest get_request;
+    get_request.add_node_selectors()->set_node_name("passive_node");
+
+    rpc::GetAllNodeInfoReply get_reply;
+    std::promise<bool> get_promise;
+    auto cb = [&get_promise](
+                  Status status, std::function<void()>, std::function<void()>) {
+      EXPECT_TRUE(status.ok());
+      get_promise.set_value(true);
+    };
+    node_manager.HandleGetAllNodeInfo(get_request, &get_reply, cb);
+    EXPECT_TRUE(wait_ready(get_promise.get_future()));
+
+    ASSERT_EQ(get_reply.node_info_list_size(), 1);
+    EXPECT_EQ(NodeID::FromBinary(get_reply.node_info_list(0).node_id()), passive_node_id);
+  }
+
+  // GetAllNodeInfo: DEAD filter must not return the (alive) passive node.
+  {
+    rpc::GetAllNodeInfoRequest get_request;
+    get_request.set_state_filter(rpc::GcsNodeInfo::DEAD);
+
+    rpc::GetAllNodeInfoReply get_reply;
+    std::promise<bool> get_promise;
+    auto cb = [&get_promise](
+                  Status status, std::function<void()>, std::function<void()>) {
+      EXPECT_TRUE(status.ok());
+      get_promise.set_value(true);
+    };
+    node_manager.HandleGetAllNodeInfo(get_request, &get_reply, cb);
+    EXPECT_TRUE(wait_ready(get_promise.get_future()));
+
+    EXPECT_EQ(get_reply.node_info_list_size(), 0);
+  }
+
+  // GetAllNodeInfo: Add a second (non-head) node to the cache and test filtering.
+  {
+    auto worker_info = GenNodeInfo(12, "127.0.0.3", "alive_worker");
+    NodeID worker_node_id = NodeID::FromRandom();
+    worker_info->set_node_id(worker_node_id.Binary());
+    worker_info->set_is_head_node(false);
+    node_manager.AddNode(worker_info);
+
+    // No filter: both nodes returned.
+    {
+      rpc::GetAllNodeInfoRequest get_request;
+      rpc::GetAllNodeInfoReply get_reply;
+      std::promise<bool> get_promise;
+      auto cb = [&get_promise](
+                    Status status, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(status.ok());
+        get_promise.set_value(true);
+      };
+      node_manager.HandleGetAllNodeInfo(get_request, &get_reply, cb);
+      EXPECT_TRUE(wait_ready(get_promise.get_future()));
+
+      ASSERT_EQ(get_reply.node_info_list_size(), 2);
+      absl::flat_hash_set<NodeID> returned_ids;
+      for (const auto &node : get_reply.node_info_list()) {
+        returned_ids.insert(NodeID::FromBinary(node.node_id()));
+      }
+      EXPECT_TRUE(returned_ids.contains(passive_node_id));
+      EXPECT_TRUE(returned_ids.contains(worker_node_id));
+    }
+
+    // head-only query: only the passive head returned, no duplicate.
+    {
+      rpc::GetAllNodeInfoRequest get_request;
+      get_request.add_node_selectors()->set_is_head_node(true);
+      rpc::GetAllNodeInfoReply get_reply;
+      std::promise<bool> get_promise;
+      auto cb = [&get_promise](
+                    Status status, std::function<void()>, std::function<void()>) {
+        EXPECT_TRUE(status.ok());
+        get_promise.set_value(true);
+      };
+      node_manager.HandleGetAllNodeInfo(get_request, &get_reply, cb);
+      EXPECT_TRUE(wait_ready(get_promise.get_future()));
+
+      ASSERT_EQ(get_reply.node_info_list_size(), 1);
+      EXPECT_EQ(NodeID::FromBinary(get_reply.node_info_list(0).node_id()),
+                passive_node_id);
+      EXPECT_TRUE(get_reply.node_info_list(0).is_head_node());
+    }
   }
 }
 

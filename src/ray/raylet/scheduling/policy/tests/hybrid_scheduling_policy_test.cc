@@ -32,9 +32,9 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu)
-      .Set(ResourceID::Memory(), available_memory)
-      .Set(ResourceID::GPU(), available_gpu);
+  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
+  resources.SetAvailableResource(ResourceID::Memory(), available_memory);
+  resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
       .Set(ResourceID::GPU(), total_gpu);
@@ -62,7 +62,7 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
-                             /*target_label_domain*/ std::nullopt,
+                             /*target_topology_assignment*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              /*preferred_node*/ "",
                              schedule_top_k_absolute,
@@ -145,11 +145,6 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode) {
                                  /*preferred_node_id*/ {n2},
                                  /*preferred_node_score*/ 0));
   }
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 }  // namespace raylet_scheduling_policy

@@ -43,9 +43,9 @@ enum class SchedulingType {
   NODE_LABEL = 9,
 };
 
-// Label-domain-level scheduling strategies for placement groups.
+// Topology-level scheduling strategies for placement groups.
 // Only STRICT_PACK is supported for now.
-enum class LabelDomainSchedulingStrategy {
+enum class TopologySchedulingStrategy {
   NONE = 0,
   STRICT_PACK = 1,
 };
@@ -78,7 +78,7 @@ struct SchedulingOptions {
                              avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes(),
-                             /*target_label_domain*/ std::nullopt,
+                             /*target_topology_assignment*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              preferred_node_id);
   }
@@ -115,7 +115,7 @@ struct SchedulingOptions {
         /*avoid_local_node*/ false,
         /*require_node_available*/ true,
         /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
-        /*target_label_domain*/ std::nullopt,
+        /*target_topology_assignment*/ std::nullopt,
         std::move(scheduling_context));
   }
 
@@ -129,7 +129,7 @@ struct SchedulingOptions {
         /*avoid_local_node*/ false,
         /*require_node_available*/ true,
         /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
-        /*target_label_domain*/ std::nullopt,
+        /*target_topology_assignment*/ std::nullopt,
         std::move(scheduling_context));
   }
   /*
@@ -139,38 +139,38 @@ struct SchedulingOptions {
   // construct option for soft pack scheduling policy.
   static SchedulingOptions BundlePack(
       std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+          target_topology_assignment = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_label_domain));
+                             std::move(target_topology_assignment));
   }
 
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleSpread(
       std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+          target_topology_assignment = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_label_domain));
+                             std::move(target_topology_assignment));
   }
 
   // construct option for strict pack scheduling policy.
   static SchedulingOptions BundleStrictPack(
       scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil(),
       std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+          target_topology_assignment = std::nullopt) {
     SchedulingOptions options(SchedulingType::BUNDLE_STRICT_PACK,
                               /*spread_threshold*/ 0,
                               /*avoid_local_node*/ false,
                               /*require_node_available*/ true,
                               /*avoid_gpu_nodes*/ false,
-                              std::move(target_label_domain));
+                              std::move(target_topology_assignment));
     options.bundle_strict_pack_soft_target_node_id_ = soft_target_node_id;
     return options;
   }
@@ -179,13 +179,13 @@ struct SchedulingOptions {
   static SchedulingOptions BundleStrictSpread(
       std::unique_ptr<SchedulingContext> scheduling_context = nullptr,
       std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt) {
+          target_topology_assignment = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_label_domain),
+                             std::move(target_topology_assignment),
                              std::move(scheduling_context));
   }
 
@@ -194,15 +194,15 @@ struct SchedulingOptions {
   bool avoid_local_node_;
   bool require_node_available_;
   bool avoid_gpu_nodes_;
-  // The scheduling strategy for the label domain level.
-  // Set to NONE to disable label domain level scheduling.
-  LabelDomainSchedulingStrategy label_domain_scheduling_strategy_ =
-      LabelDomainSchedulingStrategy::NONE;
-  // The label domain target for label-domain-aware scheduling.
+  // The scheduling strategy for the topology level.
+  // Set to NONE to disable the topology strategy.
+  TopologySchedulingStrategy topology_scheduling_strategy_ =
+      TopologySchedulingStrategy::NONE;
+  // The topology target for topology strategy scheduling.
   // first: the node label key used to partition nodes into groups.
-  // second: if set, constrains scheduling to this domain value
+  // second: if set, constrains scheduling to this topology value
   //   (bundle rescheduling). If nullopt, a new group is selected.
-  std::pair<std::string, std::optional<std::string>> target_label_domain_;
+  std::pair<std::string, std::optional<std::string>> target_topology_assignment_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
   // Otherwise, the bundles can be placed elsewhere.
@@ -227,7 +227,7 @@ struct SchedulingOptions {
       bool require_node_available,
       bool avoid_gpu_nodes,
       std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_label_domain = std::nullopt,
+          target_topology_assignment = std::nullopt,
       std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
       const std::string &preferred_node_id = std::string(),
       int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
@@ -237,12 +237,13 @@ struct SchedulingOptions {
         avoid_local_node_(avoid_local_node),
         require_node_available_(require_node_available),
         avoid_gpu_nodes_(avoid_gpu_nodes),
-        label_domain_scheduling_strategy_(target_label_domain.has_value()
-                                              ? LabelDomainSchedulingStrategy::STRICT_PACK
-                                              : LabelDomainSchedulingStrategy::NONE),
-        target_label_domain_(target_label_domain.has_value()
-                                 ? std::move(*target_label_domain)
-                                 : std::pair<std::string, std::optional<std::string>>{}),
+        topology_scheduling_strategy_(target_topology_assignment.has_value()
+                                          ? TopologySchedulingStrategy::STRICT_PACK
+                                          : TopologySchedulingStrategy::NONE),
+        target_topology_assignment_(
+            target_topology_assignment.has_value()
+                ? std::move(*target_topology_assignment)
+                : std::pair<std::string, std::optional<std::string>>{}),
         scheduling_context_(std::move(scheduling_context)),
         preferred_node_id_(preferred_node_id),
         schedule_top_k_absolute_(schedule_top_k_absolute),

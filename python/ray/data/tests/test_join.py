@@ -9,10 +9,33 @@ import ray
 from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import MiB, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(
+    autouse=True,
+    params=[
+        (ShuffleStrategy.HASH_SHUFFLE, False),
+        (ShuffleStrategy.SHUFFLE_V2, False),
+        (ShuffleStrategy.SHUFFLE_V2, True),
+    ],
+    ids=["shufflev1", "shufflev2", "shufflev2external"],
+)
+def hash_shuffle_version(request, restore_data_context):
+    """Run every join test on v1 (old actor-based), v2 (object-store), and v2
+    external (on-disk, file-transport) shuffle."""
+    strategy, use_external = request.param
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = strategy
+    ctx.use_external_hash_shuffle = use_external
+    if strategy == ShuffleStrategy.SHUFFLE_V2:
+        # One map task per input bundle, so reducers see multiple shards per
+        # partition (the default batching folds small test data into one mapper).
+        ctx.shuffle_input_batch_bytes = 0
+    return strategy
 
 
 @pytest.mark.parametrize(
@@ -66,6 +89,7 @@ def test_simple_inner_join(
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -165,6 +189,9 @@ def test_simple_left_right_outer_semi_anti_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -226,6 +253,9 @@ def test_simple_full_outer_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -261,7 +291,9 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
         with pytest.raises(RayTaskError) as exc_info:
             joined.count()
 
-        assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
+        assert "Left and right columns suffixes cannot be both None" in str(
+            exc_info.value.cause
+        )
     else:
         joined_pd = joined.to_pandas()
 
@@ -387,8 +419,62 @@ def test_anti_join_no_matches(
     # Should get all rows from the respective table
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
+
+
+@pytest.mark.parametrize(
+    "join_type",
+    [
+        "inner",
+        "left_outer",
+        "right_outer",
+        "full_outer",
+        "left_semi",
+        "right_semi",
+        "left_anti",
+        "right_anti",
+    ],
+)
+@pytest.mark.parametrize("empty_side", ["left", "right"])
+def test_join_with_unknown_schema_empty_side(
+    ray_start_regular_shared_2_cpus,
+    hash_shuffle_version,
+    join_type,
+    empty_side,
+):
+    if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2:
+        pytest.skip("Unknown-schema empty-side handling is specific to shuffle V2")
+
+    non_empty = ray.data.from_items([{"id": 1, "value": "a"}, {"id": 2, "value": "b"}])
+    unknown_schema_empty = ray.data.range(0).map_batches(lambda batch: batch)
+
+    if empty_side == "left":
+        left, right = unknown_schema_empty, non_empty
+    else:
+        left, right = non_empty, unknown_schema_empty
+
+    result = left.join(
+        right,
+        join_type=join_type,
+        on=("id",),
+        num_partitions=1,
+    ).take_all()
+
+    preserves_non_empty_side = (
+        join_type == "full_outer"
+        or join_type in ("left_outer", "left_anti")
+        and empty_side == "right"
+        or join_type in ("right_outer", "right_anti")
+        and empty_side == "left"
+    )
+    expected = (
+        [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
+        if preserves_non_empty_side
+        else []
+    )
+    assert sorted(result, key=lambda row: row["id"]) == expected
 
 
 @pytest.mark.parametrize("join_type", ["left_anti", "right_anti"])
@@ -482,6 +568,7 @@ def test_anti_join_multi_key(
         drop=True
     )
     joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -517,6 +604,26 @@ def _assert_scalar_values(result_by_id, expected_values):
     for row_id, column_values in expected_values.items():
         for column, expected_value in column_values.items():
             assert result_by_id[row_id][column] == expected_value
+
+
+def test_should_not_index_empty_schema_tables():
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import _should_index_side
+
+    supported_table = pa.table({"id": pa.array([1])})
+    unsupported_table = pa.table({"unsupported": pa.array([[1]])})
+    empty_schema_table = pa.table({})
+
+    assert not _should_index_side(
+        "left", empty_schema_table, unsupported_table, JoinType.LEFT_OUTER
+    )
+    assert not _should_index_side(
+        "left", supported_table, empty_schema_table, JoinType.LEFT_OUTER
+    )
+    assert _should_index_side(
+        "left", supported_table, unsupported_table, JoinType.LEFT_OUTER
+    )
 
 
 @pytest.mark.skipif(
@@ -756,7 +863,7 @@ def test_join_with_predicate_pushdown(
     )
 
     # Check plan to verify pushdown behavior
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
     plan_str = optimized_plan.dag.dag_str
 
@@ -836,7 +943,7 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     assert all(row["left_val"] > row["right_val"] for row in result)
 
     # Check plan: filter should NOT be pushed down (should stay after join)
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Filter should come AFTER Join (not pushed down)
@@ -935,6 +1042,41 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
     )
 
     assert rows_same(result, expected)
+
+
+@pytest.mark.parametrize(
+    "join_type, expected_row_count",
+    [
+        ("inner", None),
+        ("left_outer", None),
+        ("right_outer", None),
+        ("full_outer", None),
+        ("left_semi", 1),
+        ("right_semi", 1),
+        ("left_anti", 1),
+        ("right_anti", 0),
+    ],
+)
+def test_overlapping_non_key_columns_without_suffixes(
+    ray_start_regular_shared_2_cpus, join_type, expected_row_count
+):
+    """When both sides share a non-key column and no suffixes are provided,
+    inner/outer joins must raise a clear ValueError (expected_row_count=None),
+    while semi/anti joins should succeed because only one side's columns
+    appear in the result."""
+    left = ray.data.from_items([{"id": 1, "value": 10}, {"id": 2, "value": 20}])
+    right = ray.data.from_items([{"id": 1, "value": 99}])
+
+    joined = left.join(right, join_type=join_type, on=("id",), num_partitions=1)
+
+    if expected_row_count is not None:
+        assert len(joined.take_all()) == expected_row_count
+    else:
+        with pytest.raises(RayTaskError) as exc_info:
+            joined.count()
+        assert "Left and right columns suffixes cannot be both None" in str(
+            exc_info.value.cause
+        )
 
 
 if __name__ == "__main__":

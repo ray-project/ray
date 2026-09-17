@@ -1,3 +1,6 @@
+.. meta::
+   :description: Use Modin as a drop-in pandas replacement on Ray: import modin.pandas to parallelize DataFrame operations across a cluster.
+
 .. _modin-on-ray:
 
 Using Pandas on Ray (Modin)

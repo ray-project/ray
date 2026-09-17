@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Build env-to-module ConnectorV2 pipelines that turn environment observations into RLModule input, with observation preprocessors and custom columns.
 
 .. _env-to-module-pipeline-docs:
 

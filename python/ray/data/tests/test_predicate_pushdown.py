@@ -1,25 +1,33 @@
+import os
 import re
+from dataclasses import replace
 from typing import Any, List
 
+import lance
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as version_parse
+from packaging.version import Version, parse as version_parse
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Dataset
 from ray.data._internal.logical.operators import (
     Filter,
     Limit,
+    ListFiles,
     Project,
+    ReadFiles,
     Repartition,
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
-from ray.data.expressions import col
+from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.datatype import DataType
+from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
@@ -33,9 +41,11 @@ from ray.data.tests.test_util import (
 from ray.tests.conftest import *  # noqa
 
 # Pattern to match read operators in logical plans.
-# Matches Read[Read<Format>] where format is Parquet, CSV, Range, etc.
+# Matches V1 ``Read[Read<Format>]`` or the V2 ``ListFiles → ReadFiles``
+# chain where the consumer is named ``ReadFiles<Format>`` (e.g.
+# ``ReadFilesParquetV2``).
 READ_OPERATOR_PATTERN = (
-    r"^(Read\[Read\w+\]|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\])"
+    r"^(Read\[Read\w+\]" r"|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\w*\])"
 )
 
 
@@ -54,7 +64,7 @@ def _check_plan_with_flexible_read(
         expected_result: The expected result data.
     """
     # Optimize the logical plan before checking
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
     actual_plan = optimized_plan.dag.dag_str
 
@@ -121,14 +131,124 @@ def test_filter_with_expressions(parquet_ds):
     )
 
 
+def test_filter_with_udf_expression_not_pushed_down(parquet_ds):
+    """A UDF based filter expression must not be pushed into the datasource."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    expected = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0).take_all()
+    filtered_ds = parquet_ds.filter(expr=gt5(col("sepal.length")))
+
+    # The whole UDF predicate stays as a Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+@pytest.mark.parametrize("udf_first", [True, False])
+def test_filter_mixed_udf_and_expression(parquet_ds, udf_first):
+    """Convertible conjuncts push down while the UDF stays as a Filter."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    udf_filter = gt5(col("sepal.length"))
+    expr_filter = col("sepal.width") > lit(3.0)
+
+    if udf_first:
+        filtered_ds = parquet_ds.filter(expr=udf_filter).filter(expr=expr_filter)
+    else:
+        filtered_ds = parquet_ds.filter(expr=expr_filter).filter(expr=udf_filter)
+
+    expected = parquet_ds.filter(
+        lambda r: r["sepal.length"] > 5.0 and r["sepal.width"] > 3.0
+    ).take_all()
+
+    # The convertible ``sepal.width > 3.0`` conjunct is pushed into the Read
+    # and only the UDF conjunct survives as a residual Filter
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_or_of_pyarrow_and_udf_not_pushed_down(parquet_ds):
+    """``pyarrow_expr | udf_expr`` must stay as a Filter above the Read."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    or_predicate = (col("sepal.width") > 3.0) | gt5(col("sepal.length"))
+    filtered_ds = parquet_ds.filter(expr=or_predicate)
+    expected = parquet_ds.filter(
+        lambda r: r["sepal.width"] > 3.0 or r["sepal.length"] > 5.0
+    ).take_all()
+
+    # The entire OR predicate stays as a single Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter((col('sepal.width') > 3.0) | gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_and_wrapping_or_with_udf_splits(parquet_ds):
+    """An AND of a convertible conjunct and a UDF containing OR splits correctly."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    or_conjunct = (col("sepal.width") > 3.0) | gt5(col("sepal.length"))
+    predicate = or_conjunct & (col("sepal.length") > 4.0)
+    filtered_ds = parquet_ds.filter(expr=predicate)
+    expected = parquet_ds.filter(
+        lambda r: (r["sepal.width"] > 3.0 or r["sepal.length"] > 5.0)
+        and r["sepal.length"] > 4.0
+    ).take_all()
+
+    # ``sepal.length > 4.0`` is pushed into the Read and only the OR conjunct
+    # survives as a residual Filter
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter((col('sepal.width') > 3.0) | gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_not_udf_not_pushed_down(parquet_ds):
+    """A negation of a UDF must stay as a Filter."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    filtered_ds = parquet_ds.filter(expr=~gt5(col("sepal.length")))
+    expected = parquet_ds.filter(lambda r: r["sepal.length"] <= 5.0).take_all()
+
+    # The negated UDF stays as a Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(~gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
 def test_filter_pushdown_source_and_op(ray_start_regular_shared):
     """Test filtering when expressions are provided both in source and operator."""
-    # Test with PyArrow compute expressions
-    source_expr = pc.greater(pc.field("sepal.length"), pc.scalar(5.0))
     filter_expr = "sepal.width > 3.0"
 
-    ds = ray.data.read_parquet("example://iris.parquet", filter=source_expr).filter(
-        expr=filter_expr
+    ds = (
+        ray.data.read_parquet("example://iris.parquet")
+        .filter(expr=col("sepal.length") > lit(5.0))
+        .filter(expr=filter_expr)
     )
     result = ds.take_all()
     assert all(r["sepal.length"] > 5.0 and r["sepal.width"] > 3.0 for r in result)
@@ -153,6 +273,49 @@ def test_chained_filter_with_expressions(parquet_ds):
         filtered_expr_chained_ds,
         "",  # All filters combined and pushed down to read
         filtered_udf_data,
+    )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        # NOTE: an ``s3_fs`` parametrization was previously listed here, but
+        # it didn't actually exercise S3 — the test uses ``_unwrap_protocol``
+        # to derive a local FS path, which on the moto-mocked ``s3_path``
+        # fixture returns a *relative* path (the fixture strips the leading
+        # ``/`` so the first segment becomes a moto bucket name). The
+        # resulting ``lance.write_dataset(<relative-path>)`` wrote into the
+        # current working directory, polluting the repo on every run.
+        # If S3 lance pushdown ever needs end-to-end coverage, add it
+        # separately and pass an actual ``s3://`` URI plus storage options
+        # through to ``lance.write_dataset``/``ray.data.read_lance``.
+    ],
+)
+# Same pylance version gate as tests/datasource/test_lance.py
+@pytest.mark.skipif(
+    Version(lance.__version__) <= Version("0.3.19"),
+    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
+)
+def test_pushdown_filter_lance(ray_start_regular_shared, fs, data_path):
+    """Test that Lance predicate pushdown absorbs expression filters into Read."""
+
+    df1 = pa.table({"a": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    lance.write_dataset(df1, path)
+    # Both filters specified on read_lance() and .filter() should be applied
+    lance_ds = ray.data.read_lance(path, filter="a <= 5")
+    filtered_expr_ds = lance_ds.filter(expr=col("a") >= 1.0)
+
+    filtered_expr_data = lance_ds.filter(
+        lambda r: r["a"] <= 5.0 and r["a"] >= 1.0
+    ).take_all()
+    _check_plan_with_flexible_read(
+        filtered_expr_ds,
+        "",  # Pushed down to read, no additional Filter operator
+        filtered_expr_data,
     )
 
 
@@ -270,19 +433,23 @@ def test_filter_mixed_expression_not_readfiles(ray_start_regular_shared):
         ),
         (
             # rename("sepal.length" -> a).filter(a).rename(a -> b)
-            lambda ds: ds.rename_columns({"sepal.length": "a"})
-            .filter(expr=col("a") > 2.0)
-            .rename_columns({"a": "b"}),
+            lambda ds: (
+                ds.rename_columns({"sepal.length": "a"})
+                .filter(expr=col("a") > 2.0)
+                .rename_columns({"a": "b"})
+            ),
             {"b": "sepal.length"},
             col("sepal.length") > 2.0,
             "rename_filter_rename",
         ),
         (
             # rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b)
-            lambda ds: ds.rename_columns({"sepal.length": "a"})
-            .filter(expr=col("a") > 2.0)
-            .rename_columns({"a": "b"})
-            .filter(expr=col("b") < 5.0),
+            lambda ds: (
+                ds.rename_columns({"sepal.length": "a"})
+                .filter(expr=col("a") > 2.0)
+                .rename_columns({"a": "b"})
+                .filter(expr=col("b") < 5.0)
+            ),
             {"b": "sepal.length"},
             (col("sepal.length") > 2.0) & (col("sepal.length") < 5.0),
             "rename_filter_rename_filter",
@@ -290,11 +457,13 @@ def test_filter_mixed_expression_not_readfiles(ray_start_regular_shared):
         (
             # rename("sepal.length" -> a).filter(a).rename(a -> b).filter(b).rename("sepal.width" -> a)
             # Here column a is referred multiple times in rename
-            lambda ds: ds.rename_columns({"sepal.length": "a"})
-            .filter(expr=col("a") > 2.0)
-            .rename_columns({"a": "b"})
-            .filter(expr=col("b") < 5.0)
-            .rename_columns({"sepal.width": "a"}),
+            lambda ds: (
+                ds.rename_columns({"sepal.length": "a"})
+                .filter(expr=col("a") > 2.0)
+                .rename_columns({"a": "b"})
+                .filter(expr=col("b") < 5.0)
+                .rename_columns({"sepal.width": "a"})
+            ),
             {"b": "sepal.length", "a": "sepal.width"},
             (col("sepal.length") > 2.0) & (col("sepal.length") < 5.0),
             "rename_filter_rename_filter_rename",
@@ -314,8 +483,9 @@ def test_pushdown_with_rename_and_filter(
     ds = operations(ray.data.read_parquet(path))
     result = ds.take_all()
 
-    # Check that plan is just the read (filters and renames pushed down/fused)
-    _check_plan_with_flexible_read(ds, "", result)
+    # Filters are pushed into the scan; renames stay as a ``Project`` of
+    # ``AliasExpr``s above the pruned scan.
+    _check_plan_with_flexible_read(ds, "Project[Project]", result)
 
     ds1 = ray.data.read_parquet(path).filter(expr=expected_filter_expr)
     # Convert to pandas to ensure both datasets are fully executed
@@ -327,7 +497,7 @@ def test_pushdown_with_rename_and_filter(
 
 def _get_optimized_plan(ds: Dataset) -> str:
     """Get the optimized logical plan as a string."""
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
     return optimized_plan.dag.dag_str
 
@@ -390,7 +560,7 @@ class TestPredicatePushdownIntoRead:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Verify plan: all filters pushed into Read, passthrough ops remain
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "No Filter operators should remain after pushdown into Read"
@@ -412,10 +582,14 @@ class TestPassthroughBehavior:
         [
             (lambda ds: ds.sort("id"), "Sort"),
             (lambda ds: ds.repartition(10), "Repartition"),
+            (
+                lambda ds: ds.repartition(target_num_rows_per_block=10),
+                "StreamingRepartition",
+            ),
             (lambda ds: ds.random_shuffle(), "RandomShuffle"),
             (lambda ds: ds.limit(50), "Limit"),
         ],
-        ids=["sort", "repartition", "random_shuffle", "limit"],
+        ids=["sort", "repartition", "streaming_repartition", "random_shuffle", "limit"],
     )
     def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
@@ -426,7 +600,7 @@ class TestPassthroughBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Filter pushed down, operator remains
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert plan_has_operator(
             optimized_plan, Filter
         ), "Filter should exist after pushdown"
@@ -444,7 +618,7 @@ class TestPassthroughBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Verify plan: filter pushed down, all operators remain
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert plan_has_operator(optimized_plan, Filter), "Filter should exist"
         assert plan_has_operator(optimized_plan, Sort), "Sort should remain"
         assert plan_has_operator(
@@ -461,7 +635,7 @@ class TestPassthroughBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Verify plan: filters fused and pushed, Sort remains
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         filters = get_operators_of_type(optimized_plan, Filter)
         assert len(filters) == 1, "Multiple filters should be fused into one"
         assert plan_has_operator(optimized_plan, Sort), "Sort should remain"
@@ -494,7 +668,7 @@ class TestPassthroughWithSubstitutionBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Filter rebound and pushed to Read (no Filter operators should remain)
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "Filter should be pushed into Read, no Filter operators should remain"
@@ -516,7 +690,7 @@ class TestPassthroughWithSubstitutionBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Filter should be pushed into Read after column rebinding
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "Filter should be pushed into Read after rebinding through renames"
@@ -541,10 +715,75 @@ class TestPassthroughWithSubstitutionBehavior:
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
         # Multiple filters should be fused, rebound, and pushed into Read
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "All filters should be fused, rebound, and pushed into Read"
+
+    def test_rename_with_partition_residual_filter(
+        self, ray_start_regular_shared, tmp_path
+    ):
+        """Residual Filter ends up below a rename Project, in original names.
+
+        When a predicate mixes partition and data columns under OR, the
+        unsplittable part is wrapped in a Filter above ReadFiles by
+        ``ReadFiles.apply_predicate``. The read stage never renames
+        columns (renaming is always carried by a ``Project`` above the
+        read), so the residual Filter — which sits between the rename
+        ``Project`` and ``ReadFiles`` after predicate pushdown — must
+        reference the original on-disk column names that the scanner
+        produces, not the renamed ones the user wrote.
+        """
+        table = pa.table(
+            {
+                "partition_col": [1, 1, 2, 2, 3, 3],
+                "data1": [10, 20, 30, 40, 50, 60],
+                "data2": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            }
+        )
+        pq.write_to_dataset(
+            table, root_path=str(tmp_path), partition_cols=["partition_col"]
+        )
+
+        ds = (
+            ray.data.read_parquet(
+                str(tmp_path),
+                partitioning=Partitioning("hive", field_types={"partition_col": int}),
+            )
+            .rename_columns({"data1": "D1", "data2": "D2"})
+            .filter(
+                expr=((col("D1") > 25) | (col("partition_col") == 1))
+                & (col("D2") < 5.5)
+            )
+        )
+
+        # Equivalent plan without the rename, to validate row-level correctness.
+        expected = ray.data.read_parquet(
+            str(tmp_path),
+            partitioning=Partitioning("hive", field_types={"partition_col": int}),
+        ).filter(
+            expr=((col("data1") > 25) | (col("partition_col") == 1))
+            & (col("data2") < 5.5)
+        )
+
+        # The dataset must execute without binding errors and produce the
+        # expected rows (with renamed column names).
+        result = ds.to_pandas().rename(columns={"D1": "data1", "D2": "data2"})
+        assert rows_same(result, expected.to_pandas())
+
+        # A residual Filter should remain below the rename ``Project``,
+        # and its predicate must reference the original on-disk column
+        # names (``data1``), not the renamed ones the user wrote.
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        residual_filters = get_operators_of_type(optimized_plan, Filter)
+        assert (
+            len(residual_filters) == 1
+        ), f"Expected one residual Filter, got plan: {optimized_plan.dag.dag_str}"
+        residual_expr_str = str(residual_filters[0].predicate_expr)
+        assert "data1" in residual_expr_str and "D1" not in residual_expr_str, (
+            f"Residual Filter predicate should reference original column 'data1', "
+            f"got: {residual_expr_str}"
+        )
 
 
 class TestProjectionWithFilterEdgeCases:
@@ -584,7 +823,7 @@ class TestProjectionWithFilterEdgeCases:
         assert rows_same(result_df, expected_df)
 
         # Verify plan: filter pushed through select
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert plan_operator_comes_before(
             optimized_plan, Filter, Project
         ), "Filter should be pushed before Project"
@@ -618,7 +857,7 @@ class TestProjectionWithFilterEdgeCases:
         assert rows_same(result_df, expected_df)
 
         # Verify plan: filter should NOT push through (stays after with_column)
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert plan_has_operator(
             optimized_plan, Filter
         ), "Filter should remain (not pushed through)"
@@ -701,21 +940,28 @@ class TestProjectionWithFilterEdgeCases:
             assert rows_same(ds_renamed_filtered.to_pandas(), expected.to_pandas())
 
         # Verify plan optimization
-        optimized_plan = LogicalOptimizer().optimize(
-            ds_renamed_filtered._plan._logical_plan
-        )
+        optimized_plan = LogicalOptimizer().optimize(ds_renamed_filtered._logical_plan)
 
         # Determine if the data source supports predicate pushdown by checking
         # if the filter was completely eliminated (pushed into the read operator)
         has_filter = plan_has_operator(optimized_plan, Filter)
         has_project = plan_has_operator(optimized_plan, Project)
 
-        # For file-based reads that support predicate pushdown (e.g., parquet),
-        # the filter should be completely pushed into the read operator.
-        # We detect this by checking if the filter is gone after optimization.
+        # Three valid post-optimization shapes:
+        #   1. ``has_filter=False, has_project=False`` — both pushed into a
+        #      legacy Read (rare; happens when neither rename nor filter
+        #      survives optimization).
+        #   2. ``has_filter=False, has_project=True`` - file-based reads
+        #      can push the filter into the scan and leave the rename
+        #      ``Project`` above it.
+        #   3. ``has_filter=True, has_project=True`` — source doesn't
+        #      support predicate pushdown (e.g. in-memory); filter at
+        #      least pushed below the rename ``Project``.
         if not has_filter and not has_project:
             # Filter was pushed into Read - this is the optimal case
-            pass  # Test passes
+            pass
+        elif not has_filter and has_project:
+            pass
         elif has_filter and has_project:
             # For in-memory datasets, filter should at least push through projection
             assert plan_operator_comes_before(
@@ -773,7 +1019,7 @@ class TestPyArrowComputeUDFPushdown:
         expected = parquet_ds.filter(fn=equivalent_fn)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "PyArrow-compute UDF filter should be pushed into Read"
@@ -792,7 +1038,7 @@ class TestPyArrowComputeUDFPushdown:
         )
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "Combined UDF + comparison filter should be pushed into Read"
@@ -811,7 +1057,7 @@ class TestPyArrowComputeUDFPushdown:
         )
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "Chained UDF filters should fuse and push into Read"
@@ -871,7 +1117,7 @@ class TestPyArrowComputeUDFPushdown:
         expected = ray.data.read_parquet(path).filter(fn=equivalent_fn)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
         assert not plan_has_operator(
             optimized_plan, Filter
         ), "Complex-type UDF filter should be pushed into Read"
@@ -924,6 +1170,101 @@ class TestPushIntoBranchesBehavior:
         )
         expected = expected_single.union(expected_single)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+
+def test_limit_over_partition_filter(ray_start_regular_shared, tmp_path):
+    """A limit under a partition filter must be correct *and* still stop early.
+
+    Listing prunes on row-group statistics, which cannot see partition columns
+    -- those live in the directory name, not the file. So listing counted all
+    50 rows of whichever file completed first, stopped, and the reader then
+    dropped that file, returning 0 rows whenever the first-listed file was not
+    ``year=2020``. Which file completed first is decided by an unordered actor
+    pool, so the query was nondeterministically wrong.
+
+    The fix gives listing the same path-based pruning the reader uses, so it
+    drops ``year=2019`` before reading its footer. Every row it counts towards
+    the limit now belongs to a file the reader keeps.
+    """
+    for year in (2019, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") == "2020")
+
+    optimized_plan = LogicalOptimizer().optimize(ds.limit(5)._logical_plan)
+    list_files = get_operators_of_type(optimized_plan, ListFiles)
+    assert len(list_files) == 1
+    # The limit survives -- pruning is what makes stopping early sound.
+    assert list_files[0].limit == 5
+    assert list_files[0].partition_pruner is not None
+
+    # Racy on master: it passed only when ``year=2020`` happened to land first.
+    assert len(ds.take(5)) == 5
+
+
+def test_limit_over_partition_filter_prunes_before_listing(
+    ray_start_regular_shared, tmp_path
+):
+    """Listing reads footers only for files the partition filter keeps.
+
+    Without pruning, a correct answer costs a footer read for every file in the
+    dataset, because the limit has to be abandoned to stay correct. The
+    ``ListFiles`` output row count is one row per file whose footer was read.
+    """
+    for year in range(2000, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") >= "2010")
+
+    # 10 of 20 partitions match, and a limit of 5 is satisfied by the first
+    # file, so listing should stop far short of even those 10.
+    assert len(ds.limit(5).take_all()) == 5
+
+    # Without a limit, pruning alone still keeps listing to the 10 matches.
+    assert ds.count() == 500
+
+
+def test_limit_over_partition_filter_without_partitioning_spec(
+    ray_start_regular_shared, tmp_path
+):
+    """With no partitioning spec, listing cannot prune, so it must not stop early.
+
+    This is the conservative branch: ``pushed_partition_pruner`` returns
+    ``None`` and planning drops the limit rather than risk truncating listing
+    to files the reader discards.
+    """
+    from ray.data._internal.datasource_v2.logical_optimizers import (
+        derive_list_files_pushdown,
+    )
+    from ray.data._internal.datasource_v2.scanners.parquet_scanner import (
+        ParquetScanner,
+    )
+
+    pq.write_table(pa.table({"x": [1, 2, 3]}), tmp_path / "a.parquet")
+    ds = ray.data.read_parquet(str(tmp_path))
+    reads = get_operators_of_type(
+        LogicalOptimizer().optimize(ds._logical_plan), ReadFiles
+    )
+    scanner = reads[0].scanner
+    assert isinstance(scanner, ParquetScanner)
+
+    # A partition predicate but no partitioning spec to evaluate it against.
+    scanner = replace(scanner, partition_predicate=col("year") == "2020")
+    scanner = replace(scanner, partitioning=None)
+    scanner = scanner.push_limit(5)
+
+    assert scanner.pushed_partition_pruner() is None
+    pushdown = derive_list_files_pushdown(scanner)
+    assert pushdown.limit is None
+    assert pushdown.partition_pruner is None
 
 
 if __name__ == "__main__":

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Recommended Ray Serve development loop: iterate locally with serve.run, send HTTP requests, use local testing mode, then test on a cluster."
+---
+
 (serve-dev-workflow)=
 
 # Development Workflow
@@ -61,8 +67,7 @@ serve run local_dev:app
 
 The `serve run` command blocks the terminal and can be canceled with Ctrl-C. Typically, `serve run` should not be run simultaneously from multiple terminals, unless each `serve run` is targeting a separate running Ray cluster.
 
-Now that Serve is running, we can send HTTP requests to the application.
-For simplicity, we'll just use the `curl` command to send requests from another terminal.
+Now that Serve is running, we can send HTTP requests to the application. For simplicity, we'll just use the `curl` command to send requests from another terminal.
 
 ```bash
 curl -X PUT "http://localhost:8000/?name=Ray"
@@ -126,5 +131,4 @@ You can also specify the `runtime_env` in a YAML file; see [serve run](#serve-cl
 
 ## What's Next?
 
-View details about your Serve application in the [Ray dashboard](dash-serve-view).
-Once you are ready to deploy to production, see the [Production Guide](serve-in-production).
+View details about your Serve application in the [Ray dashboard](dash-serve-view). Once you are ready to deploy to production, see the [Production Guide](serve-in-production).

@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Set up RLlib for local development without compiling Ray, plus contribution guidance for algorithms, API decorators, and finding worker memory leaks.
 
 .. include:: /_includes/rllib/new_api_stack.rst
 

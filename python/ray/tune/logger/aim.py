@@ -31,23 +31,6 @@ class AimLoggerCallback(LoggerCallback):
     compare them with a performant and well-designed UI.
 
     Source: https://github.com/aimhubio/aim
-
-    Args:
-        repo: Aim repository directory or a `Repo` object that the Run object will
-            log results to. If not provided, a default repo will be set up in the
-            experiment directory (one level above trial directories).
-        experiment: Sets the `experiment` property of each Run object, which is the
-            experiment name associated with it. Can be used later to query
-            runs/sequences.
-            If not provided, the default will be the Tune experiment name set
-            by `RunConfig(name=...)`.
-        metrics: List of metric names (out of the metrics reported by Tune) to
-            track in Aim. If no metric are specified, log everything that
-            is reported.
-        aim_run_kwargs: Additional arguments that will be passed when creating the
-            individual `Run` objects for each trial. For the full list of arguments,
-            please see the Aim documentation:
-            https://aimstack.readthedocs.io/en/latest/refs/sdk.html
     """
 
     VALID_HPARAMS = (str, bool, int, float, list, type(None))
@@ -60,8 +43,23 @@ class AimLoggerCallback(LoggerCallback):
         metrics: Optional[List[str]] = None,
         **aim_run_kwargs,
     ):
-        """
-        See help(AimLoggerCallback) for more information about parameters.
+        """Initialize the Aim logger callback.
+
+        Args:
+            repo: Aim repository directory or a `Repo` object that the Run object
+                will log results to. If not provided, a default repo will be set
+                up in the experiment directory (one level above trial directories).
+            experiment_name: Sets the `experiment` property of each Run object,
+                which is the experiment name associated with it. Can be used
+                later to query runs/sequences. If not provided, the default
+                will be the Tune experiment name set by `RunConfig(name=...)`.
+            metrics: List of metric names (out of the metrics reported by Tune)
+                to track in Aim. If no metric are specified, log everything
+                that is reported.
+            **aim_run_kwargs: Additional arguments that will be passed when
+                creating the individual `Run` objects for each trial. For the
+                full list of arguments, please see the Aim documentation:
+                https://aimstack.readthedocs.io/en/latest/refs/sdk.html
         """
         assert Run is not None, (
             "aim must be installed!. You can install aim with"

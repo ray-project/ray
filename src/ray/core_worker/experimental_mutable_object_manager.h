@@ -254,6 +254,8 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   FRIEND_TEST(MutableObjectTest, TestWriteAcquireDuringFailure);
   FRIEND_TEST(MutableObjectTest, TestReadAcquireDuringFailure);
   FRIEND_TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure);
+  FRIEND_TEST(MutableObjectTest, TestSemaphoreNameHasLeadingSlash);
+  FRIEND_TEST(MutableObjectTest, TestCrossNodeSemaphoreCreation);
 
   // TODO(jhumphri): If we do need to synchronize accesses to this map, we may want to
   // consider using RCU to avoid synchronization overhead in the common case.

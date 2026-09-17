@@ -79,8 +79,8 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         learning_rate=1e-5,  # config
         do_train=True,
         do_eval=True,
-        no_cuda=gpus_per_trial <= 0,
-        evaluation_strategy="epoch",
+        use_cpu=gpus_per_trial <= 0,
+        eval_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
         num_train_epochs=2,  # config

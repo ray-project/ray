@@ -1,4 +1,3 @@
-import math
 import time
 from collections import defaultdict
 from dataclasses import Field, dataclass, field
@@ -12,6 +11,9 @@ from ray.data._internal.execution.interfaces.common import (
     histogram_bucket_rows,
     histogram_buckets_bytes,
     histogram_buckets_s,
+)
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
@@ -43,7 +45,6 @@ class MetricsGroup(Enum):
     OUTPUTS = "outputs"
     TASKS = "tasks"
     OBJECT_STORE_MEMORY = "object_store_memory"
-    MISC = "misc"
     ACTORS = "actors"
 
 
@@ -51,6 +52,8 @@ class MetricsType(Enum):
     Counter = 0
     Gauge = 1
     Histogram = 2
+    Unsupported = 3
+    Distribution = 4
 
 
 @dataclass(frozen=True)
@@ -189,47 +192,6 @@ def node_id_from_block_metadata(meta: BlockMetadata) -> str:
     else:
         node_id = NODE_UNKNOWN
     return node_id
-
-
-class TaskDurationStats:
-    """
-    Tracks the running mean and variance incrementally with Welford's algorithm
-    by updating the current mean and a measure of total squared differences.
-    It allows stable updates of mean and variance in a single pass over the data
-    while reducing numerical instability often found in naive computations.
-
-    More on the algorithm: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
-    """
-
-    def __init__(self):
-        self._count = 0
-        self._mean = 0.0
-        self._m2 = 0.0  # Sum of (x - mean)^2
-
-    def add_duration(self, duration: float) -> None:
-        """Add a new sample (task duration in seconds)."""
-        self._count += 1
-        delta = duration - self._mean
-        self._mean += delta / self._count
-        delta2 = duration - self._mean
-        self._m2 += delta * delta2
-
-    def count(self) -> int:
-        return self._count
-
-    def mean(self) -> float:
-        return self._mean
-
-    def _variance(self) -> float:
-        """Return the current variance of the observed durations."""
-        # Variance is m2/(count-1) for sample variance
-        if self._count < 2:
-            return 0.0
-        return self._m2 / (self._count - 1)
-
-    def stddev(self) -> float:
-        """Return the current standard deviation of the observed durations."""
-        return math.sqrt(self._variance())
 
 
 @dataclass
@@ -443,6 +405,53 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Time spent serializing blocks produced.",
         metrics_group=MetricsGroup.TASKS,
     )
+    block_transform_time_s: float = metric_field(
+        default=0,
+        description=(
+            "Time spent transforming one output block. The input prep, function "
+            "body and output build metrics decompose this."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    # `None`, not zero, until a block reports a phase: a row transform is timed
+    # as a whole unless `DataContext.accurate_map_phase_timing` is set, and a
+    # consumer has to be able to tell that apart from a phase that took no time.
+    input_prep_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent turning input blocks into the batches or rows the "
+            "operator's stages consume. Absent when the operator measured only "
+            "its total, which is what a row transform does by default."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    function_body_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent inside the bodies of the operator's stages, the ones Ray "
+            "Data supplies as well as the ones you passed in, excluding the "
+            "batch/row formatting and block building around them. Absent when "
+            "the operator measured only its total."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
+    output_build_time_s: Optional[float] = metric_field(
+        default=None,
+        description=(
+            "Time spent assembling stage output back into blocks, including "
+            "materializing Python objects into Arrow. Absent when the operator "
+            "measured only its total."
+        ),
+        metrics_group=MetricsGroup.TASKS,
+        # Only map operators run a UDF transform chain.
+        map_only=True,
+    )
     task_submission_backpressure_time: float = metric_field(
         default=0,
         description="Wall-clock time operator wasn't able to launch any new tasks.",
@@ -533,6 +542,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of pending actors.",
         metrics_group=MetricsGroup.ACTORS,
     )
+    num_active_actors: int = metric_field(
+        default=0,
+        description="Number of actors with at least one active task.",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    num_idle_actors: int = metric_field(
+        default=0,
+        description="Number of idle actors (no active tasks).",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    pool_utilization: float = metric_field(
+        default=0.0,
+        description="Actor pool utilization ratio (tasks_in_flight / max_capacity).",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    num_tasks_in_flight: int = metric_field(
+        default=0,
+        description="Number of tasks currently being processed by actors.",
+        metrics_group=MetricsGroup.ACTORS,
+    )
 
     # === Object store memory metrics ===
     obj_store_mem_internal_inqueue_blocks: int = metric_field(
@@ -561,9 +590,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
     )
 
-    # === Miscellaneous metrics ===
-    # Use "metrics_group: "misc" in the metadata for new metrics in this section.
-
     def __init__(self, op: "PhysicalOperator"):
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
@@ -580,20 +606,17 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self._internal_inqueues = [create_bundle_queue() for _ in range(num_inputs)]
         self._internal_outqueue = create_bundle_queue()
         self._pending_task_inputs = create_bundle_queue()
-        self._op_task_duration_stats = TaskDurationStats()
 
         self._per_node_metrics: Dict[str, NodeMetrics] = defaultdict(NodeMetrics)
         self._per_node_metrics_enabled: bool = op.data_context.enable_per_node_metrics
 
-        self._cum_max_uss_bytes: Optional[int] = None
-        self._issue_detector_hanging = 0
-        self._issue_detector_high_memory = 0
-
-        # Initialize the histogram metrics
+        # Initialize the histogram and distribution metrics
         self.task_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
         self.block_completion_time = RuntimeMetricsHistogram(histogram_buckets_s)
         self.block_size_bytes = RuntimeMetricsHistogram(histogram_buckets_bytes)
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
+        self._op_task_duration_stats = DistributionTracker()
+        self._max_uss_bytes = DistributionTracker()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -625,6 +648,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             if skip_internal_metrics and metric.internal_only:
                 continue
             value = getattr(self, metric.name)
+            if hasattr(value, "as_dict"):
+                value = value.as_dict()
             result.append((metric.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
@@ -634,6 +659,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             [
                 ("cpu_usage", resource_usage.cpu or 0),
                 ("gpu_usage", resource_usage.gpu or 0),
+                ("memory_usage", resource_usage.memory or 0),
             ]
         )
         result.extend(self._extra_metrics.items())
@@ -905,32 +931,20 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.rows_outputs_of_finished_tasks / self.num_tasks_finished
 
     @metric_property(
-        description="Average USS usage of tasks.",
+        description="Distribution of task durations in seconds.",
         metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Unsupported,
     )
-    def average_max_uss_per_task(self) -> Optional[float]:
-        """Average max USS usage of tasks."""
-        if self._cum_max_uss_bytes is None:
-            return None
-        else:
-            assert self.num_task_outputs_generated > 0, self.num_task_outputs_generated
-            return self._cum_max_uss_bytes / self.num_task_outputs_generated
+    def op_task_duration_stats(self) -> DistributionTracker:
+        return self._op_task_duration_stats
 
     @metric_property(
-        description="Indicates if the operator is hanging.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
+        description="Distribution of max USS bytes across tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        metrics_type=MetricsType.Distribution,
     )
-    def issue_detector_hanging(self) -> int:
-        return self._issue_detector_hanging
-
-    @metric_property(
-        description="Indicates if the operator is using high memory.",
-        metrics_group=MetricsGroup.MISC,
-        internal_only=True,
-    )
-    def issue_detector_high_memory(self) -> int:
-        return self._issue_detector_high_memory
+    def max_uss_bytes(self) -> DistributionTracker:
+        return self._max_uss_bytes
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
@@ -1011,7 +1025,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
         input_node_ids = {
-            node_id_from_block_metadata(meta) for _, meta in inputs.blocks
+            node_id_from_block_metadata(entry.metadata) for entry in inputs.blocks
         }
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
@@ -1056,7 +1070,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info.last_updated = time.perf_counter()
 
         first_output_node_id = None
-        for block_ref, meta in output.blocks:
+        for entry in output.blocks:
+            block_ref = entry.ref
+            meta = entry.metadata
             exec_stats = meta.exec_stats
 
             assert (
@@ -1067,6 +1083,19 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
             self.block_generation_time += exec_stats.wall_time_s
             self.block_serialization_time_s += exec_stats.block_ser_time_s
+            self.block_transform_time_s += exec_stats.block_transform_time_s or 0
+            # Leave the phases `None` rather than summing them to zero when the
+            # chain measured only its total: three zeros that don't add up to
+            # `block_transform_time_s` read as "no time here" rather than as
+            # "not measured".
+            for name in (
+                "input_prep_time_s",
+                "function_body_time_s",
+                "output_build_time_s",
+            ):
+                measured = getattr(exec_stats, name)
+                if measured is not None:
+                    setattr(self, name, (getattr(self, name) or 0) + measured)
 
             task_info.cum_block_gen_time_s += exec_stats.wall_time_s
             task_info.cum_block_ser_time_s += exec_stats.block_ser_time_s
@@ -1074,12 +1103,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             assert meta.num_rows is not None
 
             trace_allocation(block_ref, "operator_output")
-
-            if exec_stats.max_uss_bytes is not None:
-                if self._cum_max_uss_bytes is None:
-                    self._cum_max_uss_bytes = exec_stats.max_uss_bytes
-                else:
-                    self._cum_max_uss_bytes += exec_stats.max_uss_bytes
 
             output_node_id = node_id_from_block_metadata(meta)
             if first_output_node_id is None:
@@ -1113,7 +1136,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
-            for _, meta in output.blocks:
+            for entry in output.blocks:
+                meta = entry.metadata
                 node_id = node_id_from_block_metadata(meta)
                 node_metrics = self._per_node_metrics[node_id]
 
@@ -1165,7 +1189,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             self.task_worker_completion_time_s += task_exec_stats.task_wall_time_s
 
         # NOTE: This is used for Issue Detection
-        self._op_task_duration_stats.add_duration(task_wall_time_s)
+        self._op_task_duration_stats.add_sample(task_wall_time_s)
+
+        if task_exec_stats is not None and task_exec_stats.max_uss_bytes is not None:
+            self._max_uss_bytes.add_sample(task_exec_stats.max_uss_bytes)
 
         task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
@@ -1206,8 +1233,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
             locations = ray.experimental.get_object_locations(inputs.block_refs)
-            for block, meta in inputs.blocks:
-                if locations[block].get("did_spill", False):
+            for entry in inputs.blocks:
+                meta = entry.metadata
+                if locations[entry.ref].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
 
@@ -1216,7 +1244,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # Update per node metrics
         if self._per_node_metrics_enabled:
             node_ids = set()
-            for _, meta in inputs.blocks:
+            for entry in inputs.blocks:
+                meta = entry.metadata
                 node_id = node_id_from_block_metadata(meta)
                 node_metrics = self._per_node_metrics[node_id]
 

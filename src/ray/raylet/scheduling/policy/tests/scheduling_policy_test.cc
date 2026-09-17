@@ -14,6 +14,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 
 namespace ray {
@@ -30,9 +31,9 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double available_gpu,
                                   double total_gpu) {
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), available_cpu)
-      .Set(ResourceID::Memory(), available_memory)
-      .Set(ResourceID::GPU(), available_gpu);
+  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
+  resources.SetAvailableResource(ResourceID::Memory(), available_memory);
+  resources.SetAvailableResource(ResourceID::GPU(), available_gpu);
   resources.total.Set(ResourceID::CPU(), total_cpu)
       .Set(ResourceID::Memory(), total_memory)
       .Set(ResourceID::GPU(), total_gpu);
@@ -69,7 +70,7 @@ class SchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
-                             /*target_label_domain*/ std::nullopt,
+                             /*target_topology_assignment*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              /*preferred node*/ "",
                              schedule_top_k_absolute,
@@ -79,16 +80,17 @@ class SchedulingPolicyTest : public ::testing::Test {
   std::unique_ptr<ClusterResourceManager> MockClusterResourceManager(
       const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_map) {
     static instrumented_io_context io_context;
-    auto cluster_resource_manager = std::make_unique<ClusterResourceManager>(io_context);
+    auto cluster_resource_manager =
+        std::make_unique<ClusterResourceManager>(PeriodicalRunner::Create(io_context));
     cluster_resource_manager->nodes_ = nodes_map;
     return cluster_resource_manager;
   }
 
-  absl::flat_hash_map<scheduling::NodeID, const Node *> GetCandidateNodes(
+  absl::flat_hash_set<scheduling::NodeID> GetCandidateNodes(
       const ClusterResourceManager &crm) {
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes;
     for (const auto &[id, node] : crm.GetResourceView()) {
-      candidate_nodes.emplace(id, &node);
+      candidate_nodes.insert(id);
     }
     return candidate_nodes;
   }
@@ -242,7 +244,7 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
   auto task_req2 = ResourceMapToResourceRequest({{"CPU", 1}}, false);
 
   NodeResources resources;
-  resources.available.Set(ResourceID::CPU(), 2.0);
+  resources.SetAvailableResource(ResourceID::CPU(), 2.0);
   resources.total.Set(ResourceID::CPU(), 2.0);
   ASSERT_FALSE(resources.IsAvailable(task_req1));
   ASSERT_TRUE(resources.IsAvailable(task_req2));
@@ -251,17 +253,17 @@ TEST_F(SchedulingPolicyTest, AvailableDefinitionTest) {
 TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
     resources.total.Set(ResourceID::CPU(), 2.0);
     ASSERT_EQ(resources.CalculateCriticalResourceUtilization(), 0.5);
   }
   {
     // Basic test of max
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 1)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
+    resources.SetAvailableResource(ResourceID::GPU(), 1);
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -272,10 +274,10 @@ TEST_F(SchedulingPolicyTest, CriticalResourceUtilizationDefinitionTest) {
   {
     // Skip GPU
     NodeResources resources;
-    resources.available.Set(ResourceID::CPU(), 1.0)
-        .Set(ResourceID::Memory(), 0.25)
-        .Set(ResourceID::GPU(), 0)
-        .Set(ResourceID::ObjectStoreMemory(), 50);
+    resources.SetAvailableResource(ResourceID::CPU(), 1.0);
+    resources.SetAvailableResource(ResourceID::Memory(), 0.25);
+    resources.SetAvailableResource(ResourceID::GPU(), 0);
+    resources.SetAvailableResource(ResourceID::ObjectStoreMemory(), 50);
     resources.total.Set(ResourceID::CPU(), 2.0)
         .Set(ResourceID::Memory(), 1)
         .Set(ResourceID::GPU(), 2)
@@ -733,26 +735,26 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(15, &bundle_req);
 
-  LabelDomainStrictPackSchedulingPolicy label_domain_policy;
+  TopologyStrictPackSchedulingPolicy topology_policy(*cluster_resource_manager);
   SchedulingOptions options = SchedulingOptions::BundlePack(
       std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
-  NodeScheduleFn node_schedule_fn =
-      [&bundle_pack_policy](const std::vector<const ResourceRequest *> &reqs,
-                            SchedulingOptions opts,
-                            absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
-        return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
-      };
+  NodeScheduleFn node_schedule_fn = [&bundle_pack_policy](
+                                        const std::vector<const ResourceRequest *> &reqs,
+                                        SchedulingOptions opts,
+                                        absl::flat_hash_set<scheduling::NodeID> nodes) {
+    return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+  };
 
   // Schedule should return SUCCESS with 15 nodes all from rack-1
-  SchedulingResult result_1 = label_domain_policy.Schedule(
+  SchedulingResult result_1 = topology_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result_1.status.IsSuccess());
-  ASSERT_TRUE(result_1.selected_label_domain.has_value());
-  ASSERT_EQ(result_1.selected_label_domain->first, kDomainLabelKey);
-  ASSERT_EQ(result_1.selected_label_domain->second, "rack-1");
+  ASSERT_TRUE(result_1.selected_topology_assignment.has_value());
+  ASSERT_EQ(result_1.selected_topology_assignment->first, kDomainLabelKey);
+  ASSERT_EQ(result_1.selected_topology_assignment->second, "rack-1");
   ASSERT_EQ(result_1.selected_nodes.size(), 15);
 
   for (const scheduling::NodeID &node_id : result_1.selected_nodes) {
@@ -761,7 +763,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
     absl::flat_hash_map<std::string, std::string>::const_iterator it =
         node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
-    ASSERT_EQ(it->second, result_1.selected_label_domain->second);
+    ASSERT_EQ(it->second, result_1.selected_topology_assignment->second);
   }
 
   // Subtract the resources from the selected nodes
@@ -774,15 +776,15 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   std::vector<const ResourceRequest *> req_list_2(3, &bundle_req);
 
   SchedulingResult result_2 =
-      label_domain_policy.Schedule(req_list_2,
-                                   options,
-                                   GetCandidateNodes(*cluster_resource_manager),
-                                   node_schedule_fn);
+      topology_policy.Schedule(req_list_2,
+                               options,
+                               GetCandidateNodes(*cluster_resource_manager),
+                               node_schedule_fn);
 
   ASSERT_TRUE(result_2.status.IsSuccess());
-  ASSERT_TRUE(result_2.selected_label_domain.has_value());
-  ASSERT_EQ(result_2.selected_label_domain->first, kDomainLabelKey);
-  ASSERT_EQ(result_2.selected_label_domain->second, "rack-1");
+  ASSERT_TRUE(result_2.selected_topology_assignment.has_value());
+  ASSERT_EQ(result_2.selected_topology_assignment->first, kDomainLabelKey);
+  ASSERT_EQ(result_2.selected_topology_assignment->second, "rack-1");
   ASSERT_EQ(result_2.selected_nodes.size(), 3);
 
   for (const scheduling::NodeID &node_id : result_2.selected_nodes) {
@@ -791,7 +793,7 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
     absl::flat_hash_map<std::string, std::string>::const_iterator it =
         node_resources.labels.find(kDomainLabelKey);
     ASSERT_NE(it, node_resources.labels.end());
-    ASSERT_EQ(it->second, result_2.selected_label_domain->second);
+    ASSERT_EQ(it->second, result_2.selected_topology_assignment->second);
   }
 
   // Verify the remaining 3 bundles uses nodes that weren't fully consumed by the first 15
@@ -828,28 +830,23 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
       ResourceMapToResourceRequest({{"CPU", 2}, {"GPU", 4}}, false);
   std::vector<const ResourceRequest *> req_list(16, &bundle_req);
 
-  LabelDomainStrictPackSchedulingPolicy label_domain_policy;
+  TopologyStrictPackSchedulingPolicy topology_policy(*cluster_resource_manager);
   SchedulingOptions options = SchedulingOptions::BundlePack(
       std::make_pair(kDomainLabelKey, std::optional<std::string>(std::nullopt)));
 
   BundlePackSchedulingPolicy bundle_pack_policy(*cluster_resource_manager);
-  NodeScheduleFn node_schedule_fn =
-      [&bundle_pack_policy](const std::vector<const ResourceRequest *> &reqs,
-                            SchedulingOptions opts,
-                            absl::flat_hash_map<scheduling::NodeID, const Node *> nodes) {
-        return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
-      };
+  NodeScheduleFn node_schedule_fn = [&bundle_pack_policy](
+                                        const std::vector<const ResourceRequest *> &reqs,
+                                        SchedulingOptions opts,
+                                        absl::flat_hash_set<scheduling::NodeID> nodes) {
+    return bundle_pack_policy.Schedule(reqs, opts, std::move(nodes));
+  };
 
-  SchedulingResult result = label_domain_policy.Schedule(
+  SchedulingResult result = topology_policy.Schedule(
       req_list, options, GetCandidateNodes(*cluster_resource_manager), node_schedule_fn);
 
   ASSERT_TRUE(result.status.IsInfeasible());
-  ASSERT_FALSE(result.selected_label_domain.has_value());
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+  ASSERT_FALSE(result.selected_topology_assignment.has_value());
 }
 
 }  // namespace raylet

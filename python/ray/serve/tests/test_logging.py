@@ -155,7 +155,7 @@ def test_http_access_log_in_stderr(serve_instance, log_format):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    f"-- {method} {route} {status_code}" in s,
+                    f"{method} {route} {status_code}" in s,
                     "ms" in s,
                     ("OOPS!" in s and "RuntimeError" in s)
                     if fail
@@ -355,7 +355,7 @@ def test_http_access_log_in_logs_file(serve_instance, log_format):
                     [
                         name in line,
                         f"default_{name} {replica_id}" in line,
-                        f"-- {call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
+                        f"{call_info['method']} {call_info['expected_route']} {call_info['expected_status']}"
                         in line,
                         "ms" in line,
                     ]
@@ -1153,7 +1153,7 @@ def test_configure_component_logger_with_log_encoding_env_text(log_encoding):
     "ray_instance, expect_client_ip",
     [
         ({"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"}, True),
-        ({}, False),
+        ({"RAY_SERVE_LOG_CLIENT_ADDRESS": "0"}, False),
     ],
     indirect=["ray_instance"],
 )
@@ -1193,10 +1193,6 @@ def test_http_access_log_client_address(
         wait_for_condition(check_log, timeout=20)
 
 
-@pytest.mark.skipif(
-    os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1",
-    reason="gRPC not supported for HAProxy.",
-)
 @pytest.mark.parametrize(
     "ray_instance",
     [

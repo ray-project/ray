@@ -22,10 +22,12 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
+    AvailableNodeResources,
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
     ReplicaSchedulingRequest,
     ReplicaSchedulingRequestStatus,
+    RequestedResources,
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
@@ -52,7 +54,7 @@ def rconfig(**config_opts):
     return ReplicaConfig.create(dummy, **config_opts)
 
 
-def get_random_resources(n: int) -> List[Resources]:
+def get_random_resources(n: int) -> List[dict]:
     """Gets n random resources."""
 
     resources = {
@@ -69,69 +71,86 @@ def get_random_resources(n: int) -> List[Resources]:
             if random.randint(0, 1) == 0:
                 resource_dict[resource] = callable()
 
-        res.append(Resources(resource_dict))
+        res.append(resource_dict)
 
     return res
 
 
 class TestResources:
+    def test_base_resources_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="cannot be instantiated directly"):
+            Resources()
+
     @pytest.mark.parametrize("resource_type", ["CPU", "GPU", "memory"])
     def test_basic(self, resource_type: str):
         # basic resources
-        a = Resources({resource_type: 1})
-        b = Resources({resource_type: 0})
+        a = AvailableNodeResources({resource_type: 1})
+        b = RequestedResources({resource_type: 0})
         assert a.can_fit(b)
+
+        b = AvailableNodeResources({resource_type: 0})
+        a = RequestedResources({resource_type: 1})
         assert not b.can_fit(a)
 
     def test_neither_bigger(self):
-        a = Resources({"CPU": 1, "GPU": 0})
-        b = Resources({"CPU": 0, "GPU": 1})
+        a = AvailableNodeResources({"CPU": 1, "GPU": 0})
+        b = RequestedResources({"CPU": 0, "GPU": 1})
         assert not a == b
         assert not a.can_fit(b)
-        assert not b.can_fit(a)
 
     combos = [tuple(get_random_resources(20)[i : i + 2]) for i in range(0, 20, 2)]
 
     @pytest.mark.parametrize("resource_A,resource_B", combos)
-    def test_soft_resources_consistent_comparison(self, resource_A, resource_B):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_soft_resources_consistent_comparison(
+        self, resource_A, resource_B, resource_class
+    ):
         """Resources should have consistent comparison. Either A==B, A<B, or A>B."""
 
         assert (
-            resource_A == resource_B
-            or resource_A > resource_B
-            or resource_A < resource_B
+            resource_class(resource_A) == resource_class(resource_B)
+            or resource_class(resource_A) > resource_class(resource_B)
+            or resource_class(resource_A) < resource_class(resource_B)
         )
 
-    def test_compare_resources(self):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_compare_resources(self, resource_class):
         # Prioritize GPU
-        a = Resources({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
-        b = Resources({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
+        b = resource_class({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
         assert b > a
 
         # Then CPU
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
-        b = Resources({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
+        b = resource_class({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
         assert b > a
 
         # Then memory
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
-        b = Resources({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
+        b = resource_class({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
         assert b > a
 
         # Then custom resources
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
-        b = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
+        b = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
         assert b > a
 
-    def test_sort_resources(self):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_sort_resources(self, resource_class):
         """Prioritize GPUs, CPUs, memory, then custom resources when sorting."""
 
-        a = Resources({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
-        b = Resources({"GPU": 0, "CPU": 2, "memory": 100})
-        c = Resources({"GPU": 1, "CPU": 1, "memory": 50})
-        d = Resources({"GPU": 2, "CPU": 0, "memory": 0})
-        e = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
-        f = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
+        a = resource_class({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
+        b = resource_class({"GPU": 0, "CPU": 2, "memory": 100})
+        c = resource_class({"GPU": 1, "CPU": 1, "memory": 50})
+        d = resource_class({"GPU": 2, "CPU": 0, "memory": 0})
+        e = resource_class({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
+        f = resource_class({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
 
         for _ in range(10):
             resources = [a, b, c, d, e, f]
@@ -140,18 +159,18 @@ class TestResources:
             assert resources == [e, f, d, c, a, b]
 
     def test_custom_resources(self):
-        a = Resources({"alice": 2})
-        b = Resources({"alice": 3})
-        assert a < b
-        assert b.can_fit(a)
-        assert a + b == Resources(**{"alice": 5})
+        a = AvailableNodeResources({"alice": 3})
+        b = AvailableNodeResources({"alice": 2})
+        assert b < a
+        assert a.can_fit(b)
+        assert a + b == AvailableNodeResources(**{"alice": 5})
 
-        a = Resources({"bob": 2})
-        b = Resources({"CPU": 4})
-        assert a + b == Resources(**{"CPU": 4, "bob": 2})
+        a = AvailableNodeResources({"bob": 2})
+        b = AvailableNodeResources({"CPU": 4})
+        assert a + b == AvailableNodeResources(**{"CPU": 4, "bob": 2})
 
     def test_implicit_resources(self):
-        r = Resources()
+        r = AvailableNodeResources()
         # Implicit resources
         assert r.get(f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}random") == 1
         # Everything else
@@ -161,56 +180,117 @@ class TestResources:
         assert r.get("random_custom") == 0
 
         # Arithmetric with implicit resources
-        implicit_resource = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
-        a = Resources()
-        b = Resources({implicit_resource: 0.5})
-        assert a.get(implicit_resource) == 1
-        assert b.get(implicit_resource) == 0.5
+        implicit_resource_1 = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
+        implicit_resource_2 = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever2"
+        a = AvailableNodeResources()
+        b = RequestedResources({implicit_resource_1: 0.5})
+        c = RequestedResources({implicit_resource_2: 0.25})
+        assert a.get(implicit_resource_1) == 1
         assert a.can_fit(b)
 
         a -= b
-        assert a.get(implicit_resource) == 0.5
+        assert a.get(implicit_resource_1) == 0.5
         assert a.can_fit(b)
 
         a -= b
-        assert a.get(implicit_resource) == 0
+        assert a.get(implicit_resource_1) == 0
         assert not a.can_fit(b)
+
+        for i in range(4):
+            assert a.can_fit(c)
+
+            a -= c
+            assert a.get(implicit_resource_1) == 0
+            assert a.get(implicit_resource_2) == 1 - 0.25 * (i + 1)
+
+        # Implicit resources exhausted
+        assert not a.can_fit(c)
 
 
 def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            RequestedResources({"CPU": 100}),
+            RequestedResources({"GPU": 100}),
         ],
         placement_group_strategy="STRICT_PACK",
     )
-    assert info.required_resources == Resources({"CPU": 100, "GPU": 100})
+    assert info.required_resources == RequestedResources({"CPU": 100, "GPU": 100})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            # Bundle 0 hosts the actor's CPU plus the CPU+GPU for a child
+            # task/actor captured into the PG.
+            RequestedResources({"CPU": 2, "GPU": 1}),
+            RequestedResources({"CPU": 1, "GPU": 1}),
         ],
         placement_group_strategy="PACK",
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    # Actor is pinned as a subset of bundle 0, so required_resources is
+    # bundle 0's full reservation, not just actor_resources.
+    assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert info.is_non_strict_pack_pg()
+
+
+def test_deployment_scheduling_info_required_resources_no_mutation():
+    dep_id = DeploymentID("app", "name")
+    actor = RequestedResources({"CPU": 1})
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=actor,
+        max_replicas_per_node=2,
+    )
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}" f"{dep_id.app_name}:{dep_id.name}"
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1, implicit: 0.5})
+    assert actor == RequestedResources({"CPU": 1})
+    assert implicit not in actor
+
+
+def test_max_replicas_per_node_zero_skips_implicit_resource():
+    """Falsy max_replicas_per_node (e.g. 0) must not trigger 1.0 / 0."""
+    dep_id = DeploymentID("app", "name")
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}" f"{dep_id.app_name}:{dep_id.name}"
+    )
+
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=RequestedResources({"CPU": 1}),
+        max_replicas_per_node=0,
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1})
+    assert implicit not in info.required_resources
+
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r0", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+        max_replicas_per_node=0,
+    )
+    assert req.requested_resources == RequestedResources({"CPU": 1})
+    assert implicit not in req.requested_resources
 
 
 def test_get_available_resources_per_node():
@@ -246,7 +326,9 @@ def test_get_available_resources_per_node():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -261,7 +343,9 @@ def test_get_available_resources_per_node():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -278,7 +362,9 @@ def test_get_available_resources_per_node():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -355,7 +441,9 @@ def test_get_available_resources_per_node_pg():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -369,7 +457,9 @@ def test_get_available_resources_per_node_pg():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -385,7 +475,9 @@ def test_get_available_resources_per_node_pg():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -407,10 +499,10 @@ def test_best_fit_node():
     # None of the nodes can schedule the replica
     assert (
         scheduler._best_fit_node(
-            required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+            required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
             available_resources={
-                "node1": Resources(GPU=3, CPU=3),
-                "node2": Resources(CPU=3, customx=1),
+                "node1": AvailableNodeResources(GPU=3, CPU=3),
+                "node2": AvailableNodeResources(CPU=3, customx=1),
             },
         )
         is None
@@ -418,30 +510,30 @@ def test_best_fit_node():
 
     # Only node2 can fit the replica
     assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(CPU=3),
-            "node2": Resources(GPU=1, CPU=3, customx=1),
-            "node3": Resources(CPU=3, customx=1),
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(GPU=1, CPU=3, customx=1),
+            "node3": AvailableNodeResources(CPU=3, customx=1),
         },
     )
 
     # We should prioritize minimizing fragementation of GPUs over CPUs
     assert "node1" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(GPU=2, CPU=10, customx=1),
-            "node2": Resources(GPU=10, CPU=2, customx=1),
+            "node1": AvailableNodeResources(GPU=2, CPU=10, customx=1),
+            "node2": AvailableNodeResources(GPU=10, CPU=2, customx=1),
         },
     )
 
     # When GPU is the same, should prioritize minimizing fragmentation
     # of CPUs over customer resources
     assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(GPU=10, CPU=5, customx=0.1),
-            "node2": Resources(GPU=10, CPU=2, customx=10),
+            "node1": AvailableNodeResources(GPU=10, CPU=5, customx=0.1),
+            "node2": AvailableNodeResources(GPU=10, CPU=2, customx=10),
         },
     )
 
@@ -454,24 +546,69 @@ def test_best_fit_node():
         Resources.CUSTOM_PRIORITY = ["customx", "customy"]
 
         assert "node2" == scheduler._best_fit_node(
-            required_resources=Resources(customx=1, customy=1),
+            required_resources=RequestedResources(customx=1, customy=1),
             available_resources={
-                "node1": Resources(customx=2, customy=5),
-                "node2": Resources(customx=2, customy=1),
+                "node1": AvailableNodeResources(customx=2, customy=5),
+                "node2": AvailableNodeResources(customx=2, customy=1),
             },
         )
 
         # If customx and customy are equal, GPU should determine best fit
         assert "node2" == scheduler._best_fit_node(
-            required_resources=Resources(customx=1, customy=1, GPU=1),
+            required_resources=RequestedResources(customx=1, customy=1, GPU=1),
             available_resources={
-                "node1": Resources(customx=2, customy=2, GPU=10),
-                "node2": Resources(customx=2, customy=2, GPU=2),
+                "node1": AvailableNodeResources(customx=2, customy=2, GPU=10),
+                "node2": AvailableNodeResources(customx=2, customy=2, GPU=2),
             },
         )
 
         # restore
         Resources.CUSTOM_PRIORITY = original
+
+
+def test_best_fit_node_tie_break_key():
+    """Test that _best_fit_node uses tie_break_key only to break ties."""
+
+    scheduler = default_impl.create_deployment_scheduler(
+        MockClusterNodeInfoCache(),
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    required_resources = RequestedResources(CPU=1)
+    tie_break_key = {"node1": 5, "node2": 1, "node3": 3}.get
+
+    # All nodes leave identical remaining space, so the smallest key wins.
+    assert "node2" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # Best fit dominates: node1 leaves less space and wins despite the largest key.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=2),
+            "node2": AvailableNodeResources(CPU=3),
+            "node3": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=tie_break_key,
+    )
+
+    # An equal key keeps the first node seen; the tie break only wins if strictly smaller.
+    assert "node1" == scheduler._best_fit_node(
+        required_resources=required_resources,
+        available_resources={
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(CPU=3),
+        },
+        tie_break_key=lambda node_id: 0,
+    )
 
 
 def test_schedule_replica():
@@ -618,6 +755,31 @@ def test_schedule_replica():
         "num_cpus": 1,
         "resources": {"my_rs": 1},
     }
+
+    # target_node_id set on the request pins with hard node affinity. The
+    # ingress request router uses this so a replica lands on its proxy node or
+    # not at all, unlike the soft param path above.
+    r5_id = ReplicaID(unique_id="r5", deployment_id=d_id)
+    node_id_2 = NodeID.from_random().hex()
+    scheduling_request = ReplicaSchedulingRequest(
+        replica_id=r5_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r5"},
+        actor_init_args=(),
+        on_scheduled=set_scheduling_strategy,
+        target_node_id=node_id_2,
+    )
+    scheduler._pending_replicas[d_id][r5_id] = scheduling_request
+    scheduler._schedule_replica(
+        scheduling_request=scheduling_request,
+        default_scheduling_strategy="some_default",
+        target_node_id=None,
+    )
+    assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+    assert scheduling_strategy.node_id == node_id_2
+    assert scheduling_strategy.soft is False
+    assert scheduling_strategy._spill_on_unavailable is False
 
 
 def test_downscale_multiple_deployments():
@@ -923,6 +1085,37 @@ def test_schedule_passes_placement_group_options():
     assert pg_request.bundle_label_selector == test_labels
 
 
+def test_schedule_pins_actor_to_bundle_0():
+    """Replicas with a placement group are scheduled with placement_group_bundle_index=0."""
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=lambda request: MockPlacementGroup(request),
+    )
+
+    dep_id = DeploymentID(name="pin_test")
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+
+    captured_handles = []
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=lambda handle, **kwargs: captured_handles.append(handle),
+        placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+        placement_group_strategy="PACK",
+    )
+    scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+
+    assert len(captured_handles) == 1
+    strategy = captured_handles[0]._options["scheduling_strategy"]
+    assert isinstance(strategy, PlacementGroupSchedulingStrategy)
+    assert strategy.placement_group_bundle_index == 0
+
+
 def test_filter_nodes_by_label_selector():
     """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
     when bin-packing, such that label constraints are enforced for the preferred node."""
@@ -934,9 +1127,9 @@ def test_filter_nodes_by_label_selector():
     scheduler = MockScheduler()
 
     nodes = {
-        "n1": Resources(),
-        "n2": Resources(),
-        "n3": Resources(),
+        "n1": AvailableNodeResources(),
+        "n2": AvailableNodeResources(),
+        "n3": AvailableNodeResources(),
     }
     node_labels = {
         "n1": {"region": "us-west", "gpu": "T4", "env": "prod"},
@@ -1385,6 +1578,110 @@ class TestPackScheduling:
         )
         assert state[node_id_1] == 4
         assert state[node_id_2] == 1
+
+    def test_heterogeneous_resources_with_max_replicas_per_node(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+        max_replicas_per_node = {d_id1: 2, d_id2: 3}
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        node1 = NodeID.from_random().hex()
+        node2 = NodeID.from_random().hex()
+
+        cluster_node_info_cache.add_node(node1, {"GPU": 8, "CPU": 32})
+        cluster_node_info_cache.add_node(node2, {"GPU": 10, "CPU": 32})
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy,
+                max_replicas_per_node=max_replicas_per_node[d_id1],
+                ray_actor_options={"num_gpus": 2, "num_cpus": 1},
+            ),
+        )
+        scheduler.on_deployment_deployed(
+            d_id2,
+            ReplicaConfig.create(
+                dummy,
+                max_replicas_per_node=max_replicas_per_node[d_id2],
+                ray_actor_options={"num_gpus": 2, "num_cpus": 1},
+            ),
+        )
+
+        state = defaultdict(list)
+
+        def on_scheduled(actor_handle, *args, **kwargs):
+            scheduling_strategy = actor_handle._options["scheduling_strategy"]
+            assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+            state[scheduling_strategy.node_id].append(
+                actor_handle._options["deployment"]
+            )
+
+        # Schedule one d1 and one d2
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="replica0", deployment_id=d_id1),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id1],
+                        actor_options={"name": "random", "deployment": d_id1},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    ),
+                ],
+                d_id2: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="replica1", deployment_id=d_id2),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id2],
+                        actor_options={"name": "random", "deployment": d_id2},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                ],
+            },
+            downscales={},
+        )
+        assert state[node1].count(d_id1) == 1
+        assert state[node1].count(d_id2) == 1
+        assert len(state[node2]) == 0
+
+        # Schedule two more d1
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(
+                            unique_id=f"replica{i+2}", deployment_id=d_id1
+                        ),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id1],
+                        actor_options={"name": "random", "deployment": d_id1},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                    for i in range(2)
+                ],
+            },
+            downscales={},
+        )
+        # 2 d1 + 1 d2 on node1
+        assert state[node1].count(d_id1) == 2
+        assert state[node1].count(d_id2) == 1
+
+        # 1 d1 on node2 because of max_replicas_per_node=2 (otherwise node1 could have fit both new d1 replicas)
+        assert state[node2].count(d_id1) == 1
+        assert state[node2].count(d_id2) == 0
 
     def test_custom_resources(self):
         d_id = DeploymentID(name="deployment1")

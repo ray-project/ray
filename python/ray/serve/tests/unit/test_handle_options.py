@@ -11,45 +11,66 @@ def test_dynamic_handle_options():
     default_options = DynamicHandleOptions()
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
+    assert default_options.session_id == ""
     assert default_options.stream is False
 
     # Test setting method name.
     only_set_method = default_options.copy_and_update(method_name="hi")
     assert only_set_method.method_name == "hi"
     assert only_set_method.multiplexed_model_id == ""
+    assert only_set_method.session_id == ""
     assert only_set_method.stream is False
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
+    assert default_options.session_id == ""
     assert default_options.stream is False
 
     # Test setting model ID.
     only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
     assert only_set_model_id.method_name == "__call__"
     assert only_set_model_id.multiplexed_model_id == "hi"
+    assert only_set_model_id.session_id == ""
     assert only_set_model_id.stream is False
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
+    assert default_options.session_id == ""
     assert default_options.stream is False
 
     # Test setting stream.
     only_set_stream = default_options.copy_and_update(stream=True)
     assert only_set_stream.method_name == "__call__"
     assert only_set_stream.multiplexed_model_id == ""
+    assert only_set_stream.session_id == ""
     assert only_set_stream.stream is True
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
+    assert default_options.session_id == ""
+    assert default_options.stream is False
+
+    # Test setting session ID.
+    only_set_session_id = default_options.copy_and_update(session_id="sess_abc")
+    assert only_set_session_id.method_name == "__call__"
+    assert only_set_session_id.multiplexed_model_id == ""
+    assert only_set_session_id.session_id == "sess_abc"
+    assert only_set_session_id.stream is False
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.session_id == ""
     assert default_options.stream is False
 
     # Test setting multiple.
     set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
     assert set_multiple.method_name == "hi"
     assert set_multiple.multiplexed_model_id == ""
+    assert set_multiple.session_id == ""
     assert set_multiple.stream is True
 
 

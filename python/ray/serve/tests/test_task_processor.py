@@ -398,14 +398,18 @@ class TestTaskConsumerWithRayServe:
             task_processor_config=processor_config
         )
 
-        def check_health():
-            health_status = adapter_instance.health_check_sync()
-            return len(health_status) > 0
+        # control.ping() is a broadcast with a short reply window, so the worker
+        # count can vary per call; capture the passing ping instead of re-pinging.
+        health_status = []
 
-        # Wait for the worker to be ready
+        def check_health():
+            nonlocal health_status
+            health_status = adapter_instance.health_check_sync() or []
+            return len(health_status) == 1
+
+        # Wait for exactly one worker to report healthy.
         wait_for_condition(check_health, timeout=20)
 
-        health_status = adapter_instance.health_check_sync()
         assert len(health_status) == 1
 
         worker_reply = health_status[0]

@@ -1,0 +1,53 @@
+# Pyrefly config for the Serve type-checking ratchet, deliberately scoped to
+# ray/serve via an explicit --config in the pre-commit hook. The filename is
+# deliberately NOT pyrefly.toml: that name is auto-discovered, and the
+# repo-root pyrefly.toml belongs to the ray/data CI job
+# (ci/lint/pyrefly-check.sh). Paths below are relative to this directory.
+# (See .pre-commit-config.yaml
+# "mypy (ray serve)" hook; this covers the same allowlist).
+project-includes = [
+    "_private/**/*.py",
+    "handle.py",
+    "tests/typing_files/check_handle_typing.py",
+]
+project-excludes = [
+    "_private/benchmarks/**",
+    "_private/thirdparty/**",
+]
+search-path = ["../.."]
+# Pin so results do not depend on the interpreter the hook env was built with
+# (ray supports 3.9+; CI lint containers and dev machines vary).
+python-version = "3.9"
+
+# Equivalent of mypy --ignore-missing-imports: generated/compiled modules whose
+# names only exist at runtime, plus third-party deps that are not installed in
+# the pre-commit env.
+replace-imports-with-any = [
+    "ray._raylet",
+    "ray.serve.generated",
+    "ray.serve.generated.*",
+    "ray.core.generated",
+    "ray.core.generated.*",
+    "ray.cloudpickle.*",
+    "fastapi.*",
+    "grpc.*",
+    "memray",
+    "opentelemetry.*",
+    "numpy",
+    "orjson",
+    "ormsgpack",
+    "packaging.*",
+    "pandas",
+    "pydantic.*",
+    "redis",
+    "anyio",
+    "requests",
+    "httpx",
+    "pytest",
+    "starlette.*",
+    "tornado.*",
+    "uvicorn.*",
+    "ray_haproxy",
+    "jinja2",
+    "jinja2.*",
+]

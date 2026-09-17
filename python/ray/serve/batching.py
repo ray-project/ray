@@ -139,9 +139,9 @@ class _BatchQueue:
             batch_wait_timeout_s: time to wait before returning an incomplete
                 batch.
             max_concurrent_batches: max number of batches to run concurrently.
-            handle_batch_func(Optional[Callable]): callback to run in the
+            handle_batch_func: callback to run in the
                 background to handle batches if provided.
-            batch_size_fn(Optional[Callable[[List], int]]): optional function to
+            batch_size_fn: optional function to
                 compute the effective batch size. If None, uses len(batch).
                 The function takes a list of requests and returns an integer
                 representing the batch size. This is useful for batching based
@@ -885,6 +885,9 @@ def batch(
             app = BatchedDeployment.bind()
 
     Arguments:
+        _func: When ``@serve.batch`` is applied without arguments, this is the
+            wrapped async function or method. When applied with arguments,
+            ``_func`` is ``None`` and a decorator is returned instead.
         max_batch_size: the maximum batch size that will be executed in
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
@@ -899,6 +902,10 @@ def batch(
             based on custom metrics such as total nodes in graphs, total tokens
             in sequences, or other domain-specific measures. If None, the batch
             size is computed as len(batch).
+
+    Returns:
+        The decorated async function/method (when ``_func`` is supplied) or a
+        decorator that produces one.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.

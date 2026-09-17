@@ -3,11 +3,18 @@ import math
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+)
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -23,9 +30,14 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
+    ExternalHashShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+)
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -40,6 +52,13 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
     "RAY_DATA_DEBUG_RESOURCE_MANAGER", None
 )
 
+# Only warn that the cluster can't run any task once the operator has been starved of
+# its minimum resources for this long. This avoids spurious warnings while the cluster
+# is still scaling up or waiting for a response from the autoscaling coordinator.
+#
+# I arbitrarily chose the default delay.
+STARVATION_WARNING_DELAY_S = env_float("RAY_DATA_STARVATION_WARNING_DELAY_S", 60)
+
 
 # Following list is a list of *blocking* materializing operators, that prevent
 # operators downstream from them from starting execution until these operators
@@ -47,9 +66,34 @@ LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
 _BLOCKING_MATERIALIZING_OPERATORS = (
     HashShufflingOperatorBase,
     AllToAllOperator,
+    ShuffleMapOp,
+    ExternalHashShuffleMapOp,
     # TODO remove after zip made fully streaming
     ZipOperator,
 )
+
+
+def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
+    """Return the executor sink: the unique op with no in-DAG downstream consumers.
+
+    ``build_streaming_topology`` is rooted at the same node passed to
+    ``StreamingExecutor``; that root is the only operator whose
+    ``output_dependencies`` is empty.
+    """
+    if not topology:
+        raise ValueError("topology must be non-empty")
+    sinks = [op for op in topology if not op.output_dependencies]
+    if len(sinks) == 1:
+        return sinks[0]
+    if not sinks:
+        raise ValueError(
+            "No terminal operator found in topology (expected exactly one "
+            "operator with empty output_dependencies)"
+        )
+    raise ValueError(
+        "Expected exactly one terminal operator in topology, found "
+        f"{len(sinks)}: {sinks!r}"
+    )
 
 
 class ResourceManager:
@@ -76,6 +120,7 @@ class ResourceManager:
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
         data_context: DataContext,
+        block_ref_counter: BlockRefCounter,
     ):
         self._topology = topology
         self._options = options
@@ -101,10 +146,14 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        self._has_external_consumer: bool = False
+
         # Executor sink (DAG root: unique op with no output_dependencies).
         # Iterator/streaming_split prefetch bytes are charged on this
         # operator's output usage.
-        self._output_operator = self._terminal_operator_from_topology(topology)
+        self._output_operator = terminal_operator_from_topology(topology)
+
+        self._block_ref_counter = block_ref_counter
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -120,60 +169,10 @@ class ResourceManager:
             )
         )
 
-        self._warn_about_object_store_memory_if_needed()
-
-    def _terminal_operator_from_topology(
-        self, topology: "Topology"
-    ) -> PhysicalOperator:
-        """Return the executor sink: the unique op with no in-DAG downstream consumers.
-
-        ``build_streaming_topology`` is rooted at the same node passed to
-        ``StreamingExecutor``; that root is the only operator whose
-        ``output_dependencies`` is empty.
-        """
-        if not topology:
-            raise ValueError("topology must be non-empty")
-        sinks = [op for op in topology if not op.output_dependencies]
-        if len(sinks) == 1:
-            return sinks[0]
-        if not sinks:
-            raise ValueError(
-                "No terminal operator found in topology (expected exactly one "
-                "operator with empty output_dependencies)"
-            )
-        raise ValueError(
-            "Expected exactly one terminal operator in topology, found "
-            f"{len(sinks)}: {sinks!r}"
-        )
-
-    def _warn_about_object_store_memory_if_needed(self):
-        """Warn if object store memory is configured below 50% of total memory."""
-        import ray
-        from ray.data.context import WARN_PREFIX
-        from ray.util.debug import log_once
-
-        if not ray.is_initialized():
-            return
-
-        cluster_resources = ray.cluster_resources()
-        total_memory = cluster_resources.get("memory", 0)
-        object_store_memory = cluster_resources.get("object_store_memory", 0)
-
-        # Check if we have actual numeric values (not mocks or None)
-        if total_memory > 0:
-            object_store_fraction = object_store_memory / total_memory
-
-            if object_store_fraction < 0.5 and log_once(
-                "ray_data_object_store_memory_warning"
-            ):
-                logger.warning(
-                    f"{WARN_PREFIX} Ray's object store is configured to use only "
-                    f"{object_store_fraction:.1%} of available memory ({object_store_memory / GiB:.1f}GiB "
-                    f"out of {total_memory / GiB:.1f}GiB total). For optimal Ray Data performance, "
-                    f"we recommend setting the object store to at least 50% of available memory. "
-                    f"You can do this by setting the 'object_store_memory' parameter when calling "
-                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
-                )
+    @property
+    def has_external_consumer(self) -> bool:
+        """Return whether there is any external consumer."""
+        return self._has_external_consumer
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
@@ -181,6 +180,7 @@ class ResourceManager:
             num_bytes >= 0
         ), f"external consumer bytes must be non-negative, got {num_bytes}"
         self._external_consumer_bytes = num_bytes
+        self._has_external_consumer = True
 
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
@@ -192,44 +192,10 @@ class ResourceManager:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
-            if op is self._output_operator:
-                self._mem_op_internal[op] = 0
-                self._mem_op_outputs[op] = self._external_consumer_bytes
-                return self._external_consumer_bytes
             return 0
 
-        # Operator's internal Object Store usage
-        mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
-
-        # Operator's outputs' Object Store usage
-        op_outputs_bytes = (
-            # Internal output queue
-            op.metrics.obj_store_mem_internal_outqueue
-            +
-            # External output queue
-            state.output_queue_bytes()
-        )
-
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
-        #
-        # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(op)
-                )
-                + downstream_op.metrics.obj_store_mem_pending_task_inputs
-            )
-            for downstream_op in op.output_dependencies
-        )
-
-        self._mem_op_internal[op] = mem_op_internal
-        self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
-
-        # Attribute iterator / streaming_split prefetch to the executor sink only.
-        if op is self._output_operator:
-            self._mem_op_outputs[op] += self._external_consumer_bytes
+        self._mem_op_internal[op] = op.metrics.obj_store_mem_pending_task_outputs or 0
+        self._mem_op_outputs[op] = op.estimate_object_store_usage()
 
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
@@ -238,9 +204,6 @@ class ResourceManager:
         # TODO(hchen): This method will be called frequently during the execution loop.
         # And some computations are redundant. We should either remove redundant
         # computations or remove this method entirely and compute usages on demand.
-        self._global_usage = ExecutionResources(0, 0, 0)
-        self._global_running_usage = ExecutionResources(0, 0, 0)
-        self._global_pending_usage = ExecutionResources(0, 0, 0)
         self._op_usages.clear()
         self._op_running_usages.clear()
         self._op_pending_usages.clear()
@@ -271,19 +234,19 @@ class ResourceManager:
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage
 
-            # Update `self._global_usage`, `self._global_running_usage`,
-            # and `self._global_pending_usage`.
-            self._global_usage = self._global_usage.add(op_usage)
-            self._global_running_usage = self._global_running_usage.add(
-                op_running_usage
-            )
-            self._global_pending_usage = self._global_pending_usage.add(
-                op_pending_usage
-            )
-
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
             op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
+        # Roll the per-op usages up into the global totals in a single pass
+        # each (one allocation per total instead of one per operator).
+        self._global_usage = ExecutionResources.combine_sum(self._op_usages.values())
+        self._global_running_usage = ExecutionResources.combine_sum(
+            self._op_running_usages.values()
+        )
+        self._global_pending_usage = ExecutionResources.combine_sum(
+            self._op_pending_usages.values()
+        )
 
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
@@ -360,10 +323,8 @@ class ResourceManager:
     def _get_downstream_ineligible_ops_usage(
         self, op: PhysicalOperator
     ) -> ExecutionResources:
-        return reduce(
-            lambda x, y: x.add(y),
-            [self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)],
-            ExecutionResources.zero(),
+        return ExecutionResources.combine_sum(
+            self.get_op_usage(op) for op in self._get_downstream_ineligible_ops(op)
         )
 
     def get_mem_op_internal(self, op: PhysicalOperator) -> int:
@@ -396,6 +357,8 @@ class ResourceManager:
             usage_str = "n/a"
         else:
             usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
+            if self._op_running_usages[op].memory:
+                usage_str += f", {self._op_running_usages[op].memory_str()} memory"
             if self._op_running_usages[op].gpu:
                 usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
             usage_str += f", {self._op_running_usages[op].object_store_memory_str()} object store"
@@ -407,18 +370,30 @@ class ResourceManager:
         if verbose:
             usage_str += (
                 f" (in={memory_string(self.get_mem_op_internal(op))},"
-                f"out={memory_string(self.get_mem_op_outputs(op))})"
+                f"out={memory_string(self.get_mem_op_outputs(op))}"
             )
+            # External-consumer bytes (iterator / streaming_split prefetch) are
+            # only attached to the output operator. Surface them in its line so
+            # users can see how much of `out` is held by the downstream iterator
+            # vs. the operator's own output queues.
+            if op is self._output_operator and self._has_external_consumer:
+                usage_str += (
+                    f",external_consumer="
+                    f"{memory_string(self._external_consumer_bytes)}"
+                )
+            usage_str += ")"
             if self._op_resource_allocator is not None:
                 allocation = self._op_resource_allocator.get_allocation(op)
                 if allocation:
                     usage_str += f", alloc=(cpu={allocation.cpu:.1f}"
+                    usage_str += f",mem={allocation.memory_str()}"
                     usage_str += f",gpu={allocation.gpu:.1f}"
                     usage_str += f",obj_store={allocation.object_store_memory_str()})"
 
                 budget = self._op_resource_allocator.get_budget(op)
                 if budget:
                     usage_str += f", budget=(cpu={budget.cpu:.1f}"
+                    usage_str += f",mem={budget.memory_str()}"
                     usage_str += f",gpu={budget.gpu:.1f}"
                     usage_str += f",obj_store={budget.object_store_memory_str()}"
 
@@ -450,6 +425,13 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
+    def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the allocation of the given operator, or None if the operator
+        doesn't have a designated allocation."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_allocation(op)
+
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
         return (
@@ -458,9 +440,6 @@ class ResourceManager:
             # non-taken outputs, we don't need to allocate resources for it.
             and not op.has_execution_finished()
         )
-
-    def get_eligible_ops(self) -> List[PhysicalOperator]:
-        return [op for op in self._topology if self.is_op_eligible(op)]
 
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
@@ -492,8 +471,10 @@ class ResourceManager:
             else:
                 yield from self.get_downstream_eligible_ops(next_op)
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
+        if self._op_resource_allocator is not None:
+            return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+        return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
         """
@@ -525,10 +506,9 @@ class ResourceManager:
             ops_to_exclude.append(op)
 
         completed_ops = list(set(ops_to_exclude))
-        completed_ops_usage = ExecutionResources.zero()
-
-        for op in completed_ops:
-            completed_ops_usage = completed_ops_usage.add(self.get_op_usage(op))
+        completed_ops_usage = ExecutionResources.combine_sum(
+            self.get_op_usage(op) for op in completed_ops
+        )
 
         return completed_ops_usage
 
@@ -558,6 +538,20 @@ class ResourceManager:
             for op in self._get_downstream_ineligible_ops(op)
         )
 
+    def _feeds_blocking_materializing_op(self, op: PhysicalOperator) -> bool:
+        """Whether a blocking, materializing operator consumes ``op``'s output.
+
+        Unlike ``_is_blocking_materializing_op``, eligibility is relevant here:
+        only the downstream *eligible* operators are inspected
+        (``get_downstream_eligible_ops`` skips over ineligible ones), and the op
+        itself is not checked. In ``Map1 -> Map2 -> Join`` it's Map2 that holds
+        the line, and exempting it keeps Map1 from backing up.
+        """
+        return any(
+            isinstance(downstream_op, _BLOCKING_MATERIALIZING_OPERATORS)
+            for downstream_op in self.get_downstream_eligible_ops(op)
+        )
+
 
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
@@ -575,75 +569,9 @@ class OpResourceAllocator(ABC):
     can read from its running tasks.
     """
 
-    class IdleDetector:
-        """Utility class for detecting idle operators.
-
-        Note, stalling can happen when there are less resources than Data executor
-        expects. E.g., when some resources are preempted by non-Data code, see
-        `test_no_deadlock_on_resource_contention` as an example.
-
-        This class is used to detect potential stalling and allow the execution
-        to make progress.
-        """
-
-        # The interval to detect idle operators.
-        # When downstream is idle, we'll allow reading at least one task output
-        # per this interval,
-        DETECTION_INTERVAL_S = 10.0
-        # Print a warning if an operator is idle for this time.
-        WARN_ON_IDLE_TIME_S = 60.0
-        # Whether a warning has been printed.
-        _warn_printed = False
-
-        def __init__(self):
-            # per-op fields
-            self.last_num_outputs = defaultdict(int)
-            self.last_output_time = defaultdict(lambda: time.time())
-            self.last_detection_time = defaultdict(lambda: time.time())
-
-        def detect_idle(self, op: PhysicalOperator):
-            cur_time = time.time()
-            if cur_time - self.last_detection_time[op] > self.DETECTION_INTERVAL_S:
-                cur_num_outputs = op.metrics.num_task_outputs_generated
-                if cur_num_outputs > self.last_num_outputs[op]:
-                    self.last_num_outputs[op] = cur_num_outputs
-                    self.last_output_time[op] = cur_time
-                    self.last_detection_time[op] = cur_time
-                else:
-                    self.print_warning_if_idle_for_too_long(
-                        op, cur_time - self.last_output_time[op]
-                    )
-                    return True
-
-            return False
-
-        @classmethod
-        def print_warning_if_idle_for_too_long(
-            cls, op: PhysicalOperator, idle_time: float
-        ):
-            """Print a warning if an operator is idle for too long."""
-            if idle_time < cls.WARN_ON_IDLE_TIME_S or cls._warn_printed:
-                return
-            cls._warn_printed = True
-            msg = (
-                f"Operator {op} is running but has no outputs for {idle_time} seconds."
-                " Execution may be slower than expected.\n"
-                "Ignore this warning if your UDF is expected to be slow."
-                " Otherwise, this can happen when there are fewer cluster resources"
-                " available to Ray Data than expected."
-                " If you have non-Data tasks or actors running in the cluster, exclude"
-                " their resources from Ray Data with"
-                " `DataContext.get_current().execution_options.exclude_resources`."
-                " This message will only print once."
-            )
-
-            logger.warning(msg)
-
     def __init__(self, resource_manager: "ResourceManager"):
         self._resource_manager = resource_manager
         self._topology = resource_manager._topology
-
-        self._idle_detector = self.IdleDetector()
 
     @abstractmethod
     def update_budgets(
@@ -718,61 +646,6 @@ class OpResourceAllocator(ABC):
             and not op.has_execution_finished()
         )
 
-    def _get_downstream_eligible_ops(
-        self, op: PhysicalOperator
-    ) -> Iterable[PhysicalOperator]:
-        """Get the downstream eligible operators of the given operator, ignoring
-        intermediate ineligible operators.
-
-        E.g.,
-          - "cur_map->downstream_map" will return [downstream_map].
-          - "cur_map->limit1->limit2->downstream_map" will return [downstream_map].
-        """
-        for next_op in op.output_dependencies:
-            if self._is_op_eligible(next_op):
-                yield next_op
-            else:
-                yield from self._get_downstream_eligible_ops(next_op)
-
-    def _should_unblock_streaming_output_backpressure(
-        self, op: PhysicalOperator
-    ) -> bool:
-        downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
-
-        # NOTE: If this operator is a terminal one, extracting outputs from it
-        #       should not be throttled
-        if not downstream_eligible_ops:
-            return True
-
-        for downstream_op in downstream_eligible_ops:
-            # To maintain liveness of the pipeline, we relax output backpressure
-            # in one of the following cases
-            if downstream_op.num_active_tasks() == 0:
-                downstream_op_state = self._topology[downstream_op]
-
-                # Case 1: Downstream operator
-                #   - Does *not* have running tasks and
-                #   - Is not able to schedule (resource constrained)
-                #
-                # In this case by relaxing output backpressure we allow upstream
-                # operator's task to complete sooner to free up resources
-                if not self.can_submit_new_task(downstream_op):
-                    return True
-
-                # Case 2: Downstream operator
-                #   - Does *not* have running tasks and
-                #   - *Can* schedule new tasks
-                #   - Does *not* have any input blocks in the queue
-                #
-                # In this case we relax output backpressure to produce at least
-                # 1 block for downstream operator
-                elif downstream_op_state.total_enqueued_input_blocks() == 0:
-                    return True
-
-        # As a last resort we check whether operator has been idling (ie not
-        # producing any outputs) for a while, and unblock in that case
-        return self._idle_detector.detect_idle(op)
-
 
 class ReservationOpResourceAllocator(OpResourceAllocator):
     """An OpResourceAllocator implementation that reserves resources for each operator.
@@ -800,11 +673,38 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     worse performance. And vice versa.
     """
 
-    def __init__(self, resource_manager: ResourceManager, reservation_ratio: float):
+    def __init__(
+        self,
+        resource_manager: ResourceManager,
+        reservation_ratio: float,
+        object_store_reservation_overshoot_ratio: Optional[float],
+        object_store_memory_pressure_fraction: Optional[float],
+    ):
         super().__init__(resource_manager)
 
         self._reservation_ratio = reservation_ratio
         assert 0.0 <= self._reservation_ratio <= 1.0
+        if (
+            object_store_reservation_overshoot_ratio is not None
+            and not 1.0 <= object_store_reservation_overshoot_ratio < math.inf
+        ):
+            raise ValueError(
+                "object_store_reservation_overshoot_ratio must be None or a finite "
+                f"float >= 1.0, got {object_store_reservation_overshoot_ratio}"
+            )
+        if object_store_memory_pressure_fraction is not None and not (
+            0.0 < object_store_memory_pressure_fraction <= 1.0
+        ):
+            raise ValueError(
+                "object_store_memory_pressure_fraction must be None or in the "
+                f"range (0.0, 1.0], got {object_store_memory_pressure_fraction}"
+            )
+        self._object_store_reservation_overshoot_ratio = (
+            object_store_reservation_overshoot_ratio
+        )
+        self._object_store_memory_pressure_fraction = (
+            object_store_memory_pressure_fraction
+        )
         # Per-op reserved resources, excluding `_reserved_for_op_outputs`.
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Memory reserved exclusively for the outputs of each operator.
@@ -828,11 +728,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # enough to run one task of each op.
         # See `test_no_deadlock_on_small_cluster_resources` as an example.
         self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
-
-        self._idle_detector = self.IdleDetector()
+        # `time.monotonic()` timestamp at which each operator most recently became
+        # starved of its minimum resources, or None if it currently has them.
+        self._op_starved_since: Dict[PhysicalOperator, Optional[float]] = {}
 
     def _update_reservation(self, limits: ExecutionResources):
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self._get_eligible_ops()
 
         self._op_reserved.clear()
         self._reserved_for_op_outputs.clear()
@@ -871,7 +772,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 remaining, ignore_object_store_memory=True
             ):
                 self._reserved_min_resources[op] = True
+                self._op_starved_since[op] = None
             else:
+                self._reserved_min_resources[op] = False
+                if self._op_starved_since.get(op) is None:
+                    self._op_starved_since[op] = time.monotonic()
+
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
                 # store memory, but not the CPU and GPU resources.
@@ -879,19 +785,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # NOTE: we prioritize upstream operators for minimum resource reservation.
                 # ops. It's fine that downstream ops don't get the minimum reservation,
                 # because they can wait for upstream ops to finish and release resources.
-                self._reserved_min_resources[op] = False
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
-                # Add `id(self)` to the log_once key so that it will be logged once
-                # per execution.
-                if index == 0 and log_once(f"low_resource_warning_{id(self)}"):
-                    # Log a warning if even the first operator cannot reserve
-                    # the minimum resources.
-                    logger.warning(
-                        f"Cluster resources are not enough to run any task from {op}."
-                        " The job may hang forever unless the cluster scales up."
-                    )
+
+            # Log a warning if even the first operator cannot reserve the minimum
+            # resources.
+            if index == 0:
+                self._warn_if_op_starved_too_long(op)
 
             self._op_reserved[op] = reserved_for_tasks
             self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
@@ -902,20 +803,71 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._total_shared = remaining
 
+    def _warn_if_op_starved_too_long(self, op: PhysicalOperator) -> None:
+        # The operator isn't starved. Return early.
+        if self._op_starved_since.get(op) is None:
+            return
+
+        op_starved_duration = time.monotonic() - self._op_starved_since[op]
+        if (
+            op_starved_duration >= STARVATION_WARNING_DELAY_S
+            # Add `id(self)` to the log_once key so that it will be logged once per
+            # execution.
+            and log_once(f"starvation_warning_{id(self)}")
+        ):
+            logger.warning(
+                f"Cluster resources are not enough to run any task from {op}."
+                " The job may hang forever unless the cluster scales up."
+            )
+
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        """Return whether the given operator can submit a new task based on budget."""
+        """Return whether the given operator can submit a new task based on budget.
+
+        CPU/GPU/memory limits are always enforced. When only the object-store
+        output budget is exhausted, an idle operator holding queued input is
+        allowed one task, so it drains what it holds instead of upstream being
+        relaxed to push more into an already-full store.
+        """
         budget = self.get_budget(op)
 
         if budget is None:
             return True
 
+        if not op.incremental_resource_usage().satisfies_limit(budget):
+            return False
+
+        if not self._is_task_submission_blocked_on_output_budget(op, budget):
+            return True
+
+        # NOTE: Returning True below also stops ``OutputBackpressureGuard.should_unblock``
+        #       from relaxing the upstream op's output backpressure. That guard unblocks
+        #       an op when a downstream op can't submit new tasks; here this op still can
+        #       — it's under object-store pressure with buffered inputs — so unblocking
+        #       upstream would only deepen the pressure.
+        #
+        # NOTE: The pressure check is load-bearing, not just an optimization. Being
+        #       idle with queued input is the *normal* steady state of an operator
+        #       held back by output backpressure, not evidence of a stall, and the
+        #       condition re-arms every time a task finishes. Without the check the
+        #       allowance would therefore admit one more task per idle cycle
+        #       indefinitely, defeating object-store backpressure on the default
+        #       path (see `test_input_backpressure_e2e`).
+        #
+        # Pressure check first: it short-circuits on the default path, where the
+        # threshold is unset.
         return (
-            op.incremental_resource_usage().satisfies_limit(budget)
-            and
-            # Avoid scheduling if there's no more Object Store budget (for
-            # task outputs)
-            budget.object_store_memory
-            >= (op.metrics.obj_store_mem_max_pending_output_per_task or 0)
+            self._is_execution_object_store_under_pressure()
+            and op.num_active_tasks() == 0
+            and self._topology[op].total_enqueued_input_blocks() > 0
+        )
+
+    @staticmethod
+    def _is_task_submission_blocked_on_output_budget(
+        op: PhysicalOperator, budget: ExecutionResources
+    ) -> bool:
+        """Whether the task-output estimate exceeds the remaining budget."""
+        return budget.object_store_memory < (
+            op.metrics.obj_store_mem_max_pending_output_per_task or 0
         )
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
@@ -955,10 +907,79 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         res = int(res)
         assert res >= 0
-        if res == 0 and self._should_unblock_streaming_output_backpressure(op):
-            res = 1
         self._output_budgets[op] = res
         return res
+
+    def _is_execution_object_store_under_pressure(self) -> bool:
+        """Whether object-store usage exceeds the configured fraction of the limit.
+
+        Returns False when the limit is unknown (<=0), leaving both the throttle
+        and the liveness allowance disabled.
+        """
+        if self._object_store_memory_pressure_fraction is None:
+            return False
+        object_store_limit = (
+            self._resource_manager.get_global_limits().object_store_memory
+        )
+        if object_store_limit <= 0:
+            return False
+        object_store_usage = (
+            self._resource_manager.get_global_usage().object_store_memory
+        )
+        return (
+            object_store_usage
+            > self._object_store_memory_pressure_fraction * object_store_limit
+        )
+
+    def _is_op_overshooting_object_store_reservation(
+        self, op: PhysicalOperator
+    ) -> bool:
+        """Whether ``op`` should lose its object-store share this round.
+
+        Only object-store is withheld, never CPU/GPU: the goal is to stop ``op``
+        *producing* more output while it keeps *draining* what it holds.
+
+        Off unless both thresholds are set. Requires ``op``'s object-store usage to
+        exceed ``object_store_reservation_overshoot_ratio`` times its reservation
+        (the >1x headroom absorbs ordinary output-buffer fluctuation) while the
+        execution is above ``object_store_memory_pressure_fraction`` of its limit.
+        Materializing operators and their feeders are exempt.
+        """
+        if (
+            self._object_store_reservation_overshoot_ratio is None
+            or self._object_store_memory_pressure_fraction is None
+        ):
+            return False
+        # Cheapest first, and execution-global: skips the per-op work below.
+        if not self._is_execution_object_store_under_pressure():
+            return False
+        total_reserved_os = (
+            self._op_reserved[op].object_store_memory
+            + self._reserved_for_op_outputs[op]
+        )
+        if total_reserved_os <= 0:
+            return False
+        op_usage_os = self._resource_manager.get_op_usage(
+            op, include_ineligible_downstream=True
+        ).object_store_memory
+        if (
+            op_usage_os
+            <= self._object_store_reservation_overshoot_ratio * total_reserved_os
+        ):
+            return False
+        # A materializer emits nothing until fully fed, so throttling its feeder
+        # only delays the release of what it holds. Two checks because
+        # `_is_blocking_materializing_op` walks ineligible deps only, missing the
+        # hash-shuffle family. Last because both walk the topology.
+        #
+        # NOTE: The unbounded-budget grant in `update_budgets` deliberately keeps
+        #       only the first check; widening it there would drop object-store
+        #       backpressure for every hash-shuffle feeder.
+        if self._resource_manager._is_blocking_materializing_op(op):
+            return False
+        if self._resource_manager._feeds_blocking_materializing_op(op):
+            return False
+        return True
 
     def update_budgets(
         self,
@@ -969,7 +990,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._update_reservation(limits)
 
         self._op_budgets.clear()
-        eligible_ops = self._resource_manager.get_eligible_ops()
+        eligible_ops = self._get_eligible_ops()
         if len(eligible_ops) == 0:
             return
 
@@ -1008,10 +1029,31 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
 
+        # Throttled ops don't participate in the object-store shared reservation,
+        # but still share CPU/GPU/memory, so the object-store split needs its own
+        # participant count and position.
+        throttled_ops = {
+            op
+            for op in eligible_ops
+            if self._is_op_overshooting_object_store_reservation(op)
+        }
+        num_os_participants = len(eligible_ops) - len(throttled_ops)
+        assert num_os_participants >= 0
+        os_position = 0
+
         # Allocate the remaining shared resources to each operator.
+        op_headroom: Dict[PhysicalOperator, ExecutionResources] = {}
         for i, op in enumerate(reversed(eligible_ops)):
             # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
+            if op in throttled_ops:
+                op_shared = op_shared.copy(object_store_memory=0)
+            else:
+                op_shared = op_shared.copy(
+                    object_store_memory=remaining_shared.object_store_memory
+                    * (1.0 / (num_os_participants - os_position))
+                )
+                os_position += 1
             # But if the op's budget is less than `min_scheduling_resources`,
             # it will be useless. So we'll let the downstream operator
             # borrow some resources from the upstream operator, if remaining_shared
@@ -1021,6 +1063,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 .subtract(self._op_budgets[op].add(op_shared))
                 .max(ExecutionResources.zero())
             )
+            if op in throttled_ops:
+                # May top up CPU/GPU, but must not hand back withheld object-store.
+                to_borrow = to_borrow.copy(object_store_memory=0)
             if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(
                 remaining_shared
             ):
@@ -1038,6 +1083,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     ExecutionResources.zero()
                 )
                 op_shared = op_shared.min(max_shared)
+                op_headroom[op] = max_shared.subtract(op_shared).max(
+                    ExecutionResources.zero()
+                )
 
             remaining_shared = remaining_shared.subtract(op_shared)
             assert remaining_shared.is_non_negative(), (
@@ -1049,14 +1097,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
-        # Give any remaining shared resources to the most downstream uncapped op.
-        # This can happen when some ops have their shared allocation capped.
-        if eligible_ops and not remaining_shared.is_zero():
-            for op in reversed(eligible_ops):
-                _, max_resource_usage = op.min_max_resource_requirements()
-                if max_resource_usage == ExecutionResources.inf():
-                    self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
-                    break
+        # Hand leftover resources out from the most downstream operator upwards,
+        # each taking as much as its remaining headroom allows. Matching per
+        # resource keeps one nobody wants (e.g. GPU) from vetoing one that's
+        # needed (e.g. CPU). Throttled ops may take everything but object-store.
+        for op in reversed(eligible_ops):
+            if remaining_shared.is_zero():
+                break
+            # Ops absent from `op_headroom` were never capped, so they can absorb
+            # the whole leftover.
+            headroom = op_headroom.get(op, ExecutionResources.inf())
+            if op in throttled_ops:
+                headroom = headroom.copy(object_store_memory=0)
+            op_leftover = remaining_shared.min(headroom)
+            if op_leftover.is_zero():
+                continue
+            self._op_budgets[op] = self._op_budgets[op].add(op_leftover)
+            remaining_shared = remaining_shared.subtract(op_leftover)
 
         # A materializing operator like `AllToAllOperator` waits for all its input
         # operator's outputs before processing data. This often forces the input

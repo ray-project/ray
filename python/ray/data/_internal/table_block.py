@@ -1,10 +1,8 @@
 import collections
-import heapq
 from typing import (
     TYPE_CHECKING,
     Any,
     Dict,
-    Iterator,
     List,
     Mapping,
     Optional,
@@ -14,23 +12,24 @@ from typing import (
     Union,
 )
 
+import numpy as np
+import pandas as pd
+
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_ops.transform_pyarrow import concat, concat_and_sort
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import (
-    NULL_SENTINEL,
-    find_partition_index,
-    is_nan,
-    keys_equal,
-)
+from ray.data._internal.util import find_insertion_index
 from ray.data.block import (
+    AggType,
     Block,
     BlockAccessor,
+    BlockColumn,
     BlockColumnAccessor,
     BlockExecStats,
+    BlockMetadata,
     BlockMetadataWithSchema,
     BlockType,
-    KeyType,
     U,
 )
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -127,13 +126,19 @@ class TableBlockBuilder(BlockBuilder):
             return True
         return self._concat_would_copy() and len(self._tables) > 1
 
-    def build(self) -> Block:
+    def build(self, *, additional_blocks: Sequence[Block] = ()) -> Block:
+        # Preserve insertion order: previously-compacted tables (older) first,
+        # then any rows added since the last compaction (newest) last.
+        tables = list(self._tables)
         if self._columns:
-            tables = [self._table_from_pydict(self._columns)]
-        else:
-            tables = []
+            tables.append(self._table_from_pydict(self._columns))
 
-        tables.extend(self._tables)
+        for block in additional_blocks:
+            if not isinstance(block, self._block_type):
+                raise TypeError(
+                    f"Got a block of type {type(block)}, expected {self._block_type}."
+                )
+            tables.append(block)
 
         if len(tables) == 0:
             return self._empty_table()
@@ -316,50 +321,48 @@ class TableBlockAccessor(BlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
+
+        if self.num_rows() == 0:
+            return self._empty_table()
+
+        # Resolve target aggregation column names (to avoid conflicts)
+        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(aggs)
         keys: List[str] = sort_key.get_columns()
 
-        def iter_groups() -> Iterator[Tuple[Sequence[KeyType], Block]]:
-            """Creates an iterator over zero-copy group views."""
-            if not keys:
-                # Global aggregation consists of a single "group", so we short-circuit.
-                yield tuple(), self.to_block()
-                return
-
-            yield from self._iter_groups_sorted(sort_key)
-
         builder = self.builder()
-        for group_keys, group_view in iter_groups():
-            # Aggregate.
-            init_vals = group_keys
-            if len(group_keys) == 1:
-                init_vals = group_keys[0]
 
-            accumulators = [agg.init(init_vals) for agg in aggs]
+        # TODO add multi-threading support
+
+        for group_key_values, group_block in self._iter_groups_sorted(sort_key):
+            # Step 1: Initialize accumulators for this group
+            accumulators = [
+                agg.init(
+                    # NOTE: For compatibility with existing semantic we're unwrapping
+                    #       cases when there's just a single column being grouped by
+                    group_key_values[0]
+                    if len(group_key_values) == 1
+                    else group_key_values
+                )
+                for agg in aggs
+            ]
+
+            # Step 2: Apply aggregations to provided group's block
             for i in range(len(aggs)):
-                accessor = BlockAccessor.for_block(group_view)
-                # Skip empty blocks
-                if accessor.num_rows() > 0:
-                    accumulators[i] = aggs[i].accumulate_block(
-                        accumulators[i], group_view
-                    )
+                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_block)
 
-            # Build the row.
-            row = {}
-            if keys:
-                for k, gk in zip(keys, group_keys):
-                    row[k] = gk
+            # Step 3: Compose resulting row from
+            #   - Grouped by column's values
+            #   - Current state of accumulators
+            row = dict(zip(keys, group_key_values)) if keys else {}
 
-            count = collections.defaultdict(int)
-            for agg, accumulator in zip(aggs, accumulators):
-                name = agg.name
-                # Check for conflicts with existing aggregation name.
-                if count[name] > 0:
-                    name = self._munge_conflict(name, count[name])
-                count[name] += 1
-                row[name] = accumulator
+            for i, accumulator in enumerate(accumulators):
+                agg_col_name = resolved_agg_col_names[i]
+                row[agg_col_name] = accumulator
 
             builder.add(row)
 
+        # TODO convert to Arrow to avoid during combination (protocol
+        #      relies on blocks being Arrow)
         return builder.build()
 
     @classmethod
@@ -390,102 +393,85 @@ class TableBlockAccessor(BlockAccessor):
             If key is None then the k column is omitted.
         """
 
-        # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks)
+        from ray.data._internal.arrow_block import ArrowBlockAccessor
 
         stats = BlockExecStats.builder()
-        keys = sort_key.get_columns()
 
-        def _key_fn(r):
-            if keys:
-                return tuple(r[keys])
-            else:
-                return (0,)
+        # Filter out empty blocks
+        blocks = [b for b in blocks if BlockAccessor.for_block(b).num_rows() > 0]
 
-        # Replace `None`s and `np.nan` with NULL_SENTINEL to make sure
-        # we can order the elements (both of these are incomparable)
-        def safe_key_fn(r):
-            values = _key_fn(r)
-            return tuple(
-                [NULL_SENTINEL if v is None or is_nan(v) else v for v in values]
+        if len(blocks) == 0:
+            meta = BlockMetadata(
+                num_rows=0,
+                size_bytes=0,
+                exec_stats=None,
+                input_files=None,
+            )
+            return cls._empty_table(), BlockMetadataWithSchema.from_metadata(
+                metadata=meta
             )
 
-        iter = heapq.merge(
-            *[
-                BlockAccessor.for_block(block).iter_rows(public_row_format=False)
-                for block in blocks
-            ],
-            key=safe_key_fn,
+        # Normalize blocks to make sure these are of the Arrow type
+        blocks = cls.normalize_block_types(blocks, target_block_type=BlockType.ARROW)
+
+        # Combine input blocks, sort resulting block (if needed)
+        #
+        # NOTE: In case of global aggregations (ie w/o actual grouping)
+        #       there's no need to sort resulting block
+        if sort_key.get_columns():
+            combined = concat_and_sort(blocks, sort_key, promote_types=True)
+        else:
+            combined = concat(blocks, promote_types=True)
+
+        block_accessor = ArrowBlockAccessor(combined)
+        builder = block_accessor.builder()
+
+        # Resolve aggregation names as resulting column names (collisions)
+        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(aggs)
+
+        keys: List[str] = sort_key.get_columns()
+
+        for group_key_vals, grouped_acc_block in block_accessor._iter_groups_sorted(
+            sort_key
+        ):
+            # Append the keys to the final aggregated row
+            row = dict(zip(keys, group_key_vals)) if keys else {}
+
+            # Combine partially aggregated values
+            for i, agg in enumerate(aggs):
+                agg_col_name = resolved_agg_col_names[i]
+
+                # Combine partially aggregated values (current values of the
+                # corresponding aggregation column)
+                agg_col = grouped_acc_block[agg_col_name]
+                combined_agg_result = cls._combine_column(agg, agg_col)
+
+                if finalize:
+                    final_agg_result = agg.finalize(combined_agg_result)
+                else:
+                    final_agg_result = combined_agg_result
+
+                row[agg_col_name] = final_agg_result
+
+            builder.add(row)
+
+        final_block = builder.build()
+
+        return final_block, BlockMetadataWithSchema.from_block(
+            final_block, block_exec_stats=stats.build()
         )
 
-        next_row = None
-        builder = BlockAccessor.for_block(blocks[0]).builder()
-
-        while True:
-            try:
-                if next_row is None:
-                    next_row = next(iter)
-
-                next_keys = _key_fn(next_row)
-                next_key_columns = keys
-
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    while keys_equal(_key_fn(next_row), next_keys):
-                        yield next_row
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-
-                # Merge.
-                first = True
-                accumulators = [None] * len(aggs)
-                resolved_agg_names = [None] * len(aggs)
-                for r in gen():
-                    if first:
-                        count = collections.defaultdict(int)
-                        for i in range(len(aggs)):
-                            name = aggs[i].name
-                            # Check for conflicts with existing aggregation
-                            # name.
-                            if count[name] > 0:
-                                name = TableBlockAccessor._munge_conflict(
-                                    name, count[name]
-                                )
-                            count[name] += 1
-                            resolved_agg_names[i] = name
-                            accumulators[i] = r[name]
-                        first = False
-                    else:
-                        for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
-                            )
-                # Build the row.
-                row = {}
-                if keys:
-                    for col_name, next_key in zip(next_key_columns, next_keys):
-                        row[col_name] = next_key
-
-                for agg, agg_name, accumulator in zip(
-                    aggs, resolved_agg_names, accumulators
-                ):
-                    if finalize:
-                        row[agg_name] = agg.finalize(accumulator)
-                    else:
-                        row[agg_name] = accumulator
-
-                builder.add(row)
-            except StopIteration:
-                break
-
-        ret = builder.build()
-        return ret, BlockMetadataWithSchema.from_block(
-            ret, block_exec_stats=stats.build()
+    @staticmethod
+    def _combine_column(agg: "AggregateFn", accumulator_col: BlockColumn) -> AggType:
+        from ray.data.aggregate import (
+            VectorizedAggregateFnV2,
+            _fold_accumulator_column,
         )
+
+        if isinstance(agg, VectorizedAggregateFnV2):
+            return agg._combine_column(accumulator_col)
+
+        return _fold_accumulator_column(agg, accumulator_col)
 
     def _find_partitions_sorted(
         self,
@@ -494,22 +480,69 @@ class TableBlockAccessor(BlockAccessor):
     ):
         partitions = []
 
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-        bounds = [
-            find_partition_index(self._table, boundary, sort_key)
-            for boundary in boundaries
+        columns = sort_key.get_columns()
+        descending = sort_key.get_descending()
+
+        key_columns = [
+            BlockColumnAccessor.for_column(self._table[col]).to_numpy()
+            for col in columns
         ]
 
+        # Per-column null check, computed once per block instead of once per
+        # boundary inside ``find_insertion_index``. Arrow's ``null_count`` is
+        # O(1) — the common path. For non-Arrow inputs (e.g. pandas ``Series``,
+        # which has no ``null_count`` attribute), fall back to ``pd.isna`` so
+        # we correctly detect dtype-specific nulls — ``pd.NA`` for nullable
+        # ``Int64``/``StringDtype``, ``NaT`` for datetimes, ``None`` for object
+        # columns. The O(n) scan happens once per column, not per boundary.
+        has_nulls = []
+        for col, np_c in zip(columns, key_columns):
+            arrow_col = self._table[col]
+            if hasattr(arrow_col, "null_count"):
+                has_null = arrow_col.null_count > 0 or (
+                    np_c.dtype.kind == "f" and bool(np.isnan(np_c).any())
+                )
+            else:
+                has_null = bool(pd.isna(np_c).any())
+            has_nulls.append(has_null)
+
+        # To obtain partition indices from boundaries we employ following algorithm:
+        #
+        #   1. For every boundary value we determine insertion index into the
+        #      list of key column values (ie, for boundary value ``b`` we determine
+        #      an index i, such that ``key_column[i] <= b < key_column[i+1]``, thus
+        #      determining the boundary of 2 partitions established by b).
+        #
+        #   2. Subsequently, list of such insertion indexes is traversed to derive
+        #      partitions as ``table[insertion_index[i], insertion_index[i+1]``
+        #
+        insertion_indices = np.arange(len(boundaries))
+
+        for idx, boundary in enumerate(boundaries):
+            # Avoid repeating insertion index search for duplicated boundaries
+            #
+            # NOTE: Boundaries currently are not de-duplicated and hence we have
+            #       to skip repeating insertion point searches here.
+            if idx > 0 and boundary == boundaries[idx - 1]:
+                insertion_indices[idx] = insertion_indices[idx - 1]
+            else:
+                insertion_indices[idx] = find_insertion_index(
+                    key_columns,
+                    boundary,
+                    descending,
+                    has_nulls=has_nulls,
+                    # NOTE: Search for next insertion index could be started off the
+                    #       last one, rather than 0
+                    _start_from_idx=(0 if idx == 0 else insertion_indices[idx - 1]),
+                )
+
         last_idx = 0
-        for idx in bounds:
+        for idx in insertion_indices:
             partitions.append(self._table[last_idx:idx])
             last_idx = idx
+
         partitions.append(self._table[last_idx:])
+
         return partitions
 
     @classmethod
@@ -588,3 +621,23 @@ class TableBlockAccessor(BlockAccessor):
             A new table with columns from both tables combined.
         """
         raise NotImplementedError
+
+
+def _resolve_aggregated_column_names(aggs: Sequence["AggregateFn"]) -> List[str]:
+    """Resolves aggregation column names to be unique (in case of collisions)"""
+
+    name_counts: Dict[str, int] = collections.defaultdict(int)
+
+    resolved_agg_names: List[str] = []
+
+    for agg in aggs:
+        name = agg.name
+        # Check for conflicts with existing aggregation
+        # name.
+        if name in name_counts:
+            name = TableBlockAccessor._munge_conflict(name, name_counts[name])
+
+        name_counts[name] += 1
+        resolved_agg_names.append(name)
+
+    return resolved_agg_names

@@ -263,7 +263,7 @@ class StateApiClient(SubmissionClient):
         """Get resources states by id
 
         Args:
-            resource_name: Resource names, i.e. 'workers', 'actors', 'nodes',
+            resource: Resource names, i.e. 'workers', 'actors', 'nodes',
                 'placement_groups', 'tasks', 'objects'.
                 'jobs' and 'runtime-envs' are not supported yet.
             id: ID for the resource, i.e. 'node_id' for nodes.
@@ -525,7 +525,7 @@ class StateApiClient(SubmissionClient):
         """Summarize resources states
 
         Args:
-            resource_name: Resource names,
+            resource: Resource names,
                 see `SummaryResource` for details.
             options: summary options. See `SummaryApiOptions` for details.
             raise_on_missing_output: Raise an exception if the output has missing data.
@@ -1256,8 +1256,9 @@ def get_log(
         filter_ansi_code: A boolean flag for determining whether to filter ANSI escape codes.
             Setting to `True` removes ANSI escape codes from the output. The default value is `False`.
 
-    Return:
-        A Generator of log line, None for SendType and ReturnType.
+    Yields:
+        str: A chunk of log content. When ``encoding`` is ``None`` the raw bytes
+            chunk is yielded instead.
 
     Raises:
         RayStateApiException: if the CLI failed to query the data.
@@ -1321,11 +1322,9 @@ def list_logs(
         node_ip: Ip of the node containing the logs.
         glob_filter: Name of the file (relative to the ray log directory) to be
             retrieved. E.g. `glob_filter="*worker*"` for all worker logs.
-        actor_id: Id of the actor if getting logs from an actor.
         timeout: Max timeout for requests made when getting the logs.
-        _interval: The interval in secs to print new logs when `follow=True`.
 
-    Return:
+    Returns:
         A dictionary where the keys are log groups (e.g. gcs, raylet, worker), and
         values are list of log filenames.
 
@@ -1390,7 +1389,7 @@ def summarize_tasks(
         _explain: Print the API information such as API latency or
             failed query information.
 
-    Return:
+    Returns:
         Dictionarified
         :class:`~ray.util.state.common.TaskSummaries`
 
@@ -1423,7 +1422,7 @@ def summarize_actors(
         _explain: Print the API information such as API latency or
             failed query information.
 
-    Return:
+    Returns:
         Dictionarified
         :class:`~ray.util.state.common.ActorSummaries`
 
@@ -1456,7 +1455,7 @@ def summarize_objects(
         _explain: Print the API information such as API latency or
             failed query information.
 
-    Return:
+    Returns:
         Dictionarified :class:`~ray.util.state.common.ObjectSummaries`
 
     Raises:

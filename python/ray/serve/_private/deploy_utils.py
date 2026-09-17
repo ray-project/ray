@@ -1,5 +1,4 @@
 import hashlib
-import inspect
 import json
 import logging
 import time
@@ -10,50 +9,33 @@ import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
+    RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import _callable_uses_multiplexing
+from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _deployment_uses_multiplexed(deployment_def) -> bool:
-    """Check if a deployment class or function uses @serve.multiplexed.
-
-    Multiplexing is not supported on ingress deployments. The multiplexed
-    decorator sets _serve_multiplexed=True on wrapped functions.
-    """
-    if not callable(deployment_def):
-        return False
-    if getattr(deployment_def, "_serve_multiplexed", False):
-        return True
-    if inspect.isclass(deployment_def):
-        for name in dir(deployment_def):
-            if name.startswith("__") and name.endswith("__"):
-                continue
-            try:
-                attr = getattr(deployment_def, name)
-                if getattr(attr, "_serve_multiplexed", False):
-                    return True
-            except (AttributeError, TypeError):
-                continue
-    return False
 
 
 def get_deploy_args(
     name: str,
     replica_config: ReplicaConfig,
     ingress: bool = False,
+    ingress_request_router: bool = False,
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
     serialized_autoscaling_policy_def: Optional[bytes] = None,
     serialized_request_router_cls: Optional[bytes] = None,
     serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
+    uses_multiplexing: bool = False,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -67,8 +49,9 @@ def get_deploy_args(
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
-    deployment_def = replica_config.deployment_def
-    uses_multiplexed = _deployment_uses_multiplexed(deployment_def)
+    uses_multiplexed = uses_multiplexing or _callable_uses_multiplexing(
+        replica_config.deployment_def
+    )
 
     if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
         if uses_multiplexed:
@@ -109,18 +92,20 @@ def get_deploy_args(
                 "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1."
             )
 
-    deployment_config.version = version
+    deployment_config.version = version  # type: ignore[union-attr]
 
     controller_deploy_args = {
         "deployment_name": name,
-        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
+        "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),  # type: ignore[union-attr]
         "replica_config_proto_bytes": replica_config.to_proto_bytes(),
         "route_prefix": route_prefix,
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
+        "ingress_request_router": ingress_request_router,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
+        "uses_multiplexing": uses_multiplexed,
     }
 
     return controller_deploy_args
@@ -133,7 +118,9 @@ def deploy_args_to_deployment_info(
     deployer_job_id: Union[str, bytes],
     app_name: Optional[str] = None,
     ingress: bool = False,
+    ingress_request_router: bool = False,
     route_prefix: Optional[str] = None,
+    uses_multiplexing: bool = False,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -141,10 +128,56 @@ def deploy_args_to_deployment_info(
     """
 
     deployment_config = DeploymentConfig.from_proto_bytes(deployment_config_proto_bytes)
+
+    if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        # Floor the timeout so the controller's force-kill can't cut the
+        # direct-ingress drain (min draining period) short.
+        floor_s = (
+            RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
+            + RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S
+        )
+        if deployment_config.graceful_shutdown_timeout_s < floor_s:
+            logger.info(
+                f"Raising graceful_shutdown_timeout_s for ingress deployment "
+                f"'{deployment_name}' from "
+                f"{deployment_config.graceful_shutdown_timeout_s}s to {floor_s}s so "
+                f"the force-kill deadline covers the direct-ingress drain period."
+            )
+            deployment_config.graceful_shutdown_timeout_s = floor_s
+
     version = deployment_config.version
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
+
+    if ingress_request_router:
+        if deployment_config.autoscaling_config is not None:
+            raise RayServeException(
+                "autoscaling_config is not supported on an ingress request "
+                "router. It runs one replica per proxy node."
+            )
+        # The controller pins one router replica per proxy node. Proxy and
+        # HAProxyManager run at num_cpus=0, so give the router the same empty
+        # footprint. Drop resource requests that would keep it off a proxy node,
+        # keeping non-resource actor options.
+        ray_actor_options = {
+            k: v
+            for k, v in replica_config.ray_actor_options.items()
+            if k not in {"num_gpus", "memory", "accelerator_type", "resources"}
+        }
+        ray_actor_options["num_cpus"] = 0
+        replica_config.update(
+            ray_actor_options=ray_actor_options,
+            placement_group_bundles=replica_config.placement_group_bundles,
+            placement_group_strategy=replica_config.placement_group_strategy,
+            placement_group_bundle_label_selector=(
+                replica_config.placement_group_bundle_label_selector
+            ),
+            placement_group_fallback_strategy=(
+                replica_config.placement_group_fallback_strategy
+            ),
+            max_replicas_per_node=replica_config.max_replicas_per_node,
+        )
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):
@@ -154,7 +187,8 @@ def deploy_args_to_deployment_info(
 
     return DeploymentInfo(
         actor_name=DeploymentID(
-            name=deployment_name, app_name=app_name
+            name=deployment_name,
+            app_name=app_name,  # type: ignore[arg-type]
         ).to_replica_actor_class_name(),
         version=version,
         deployment_config=deployment_config,
@@ -163,6 +197,7 @@ def deploy_args_to_deployment_info(
         start_time_ms=int(time.time() * 1000),
         route_prefix=route_prefix,
         ingress=ingress,
+        ingress_request_router=ingress_request_router,
     )
 
 

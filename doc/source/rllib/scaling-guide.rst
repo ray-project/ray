@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Scale RLlib training by tuning EnvRunner actor count, environments per runner, and Learner actor count for higher sampling and learning throughput.
 
 .. _rllib-scaling-guide:
 

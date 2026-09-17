@@ -15,6 +15,7 @@
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 #include "gtest/gtest.h"
 #include "ray/common/status.h"
@@ -24,19 +25,36 @@
 namespace ray {
 namespace core {
 
-TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
-  std::unique_ptr<NormalTaskExecutionQueue> queue =
-      std::make_unique<NormalTaskExecutionQueue>();
+namespace {
 
-  int n_ok = 0;
-  int n_rej = 0;
+// Construct a TaskToExecute container for tests. The reply and
+// send_reply_callback are dummy implementations
+// that are never inspected by the tests' queue-level callbacks.
+TaskToExecute MakeTaskToExecute(const TaskSpecification &task_spec) {
+  static rpc::PushTaskReply dummy_reply;
+  return TaskToExecute(
+      task_spec,
+      /*resource_ids=*/std::nullopt,
+      &dummy_reply,
+      [](const Status &, std::function<void()>, std::function<void()>) {});
+}
+
+}  // namespace
+
+TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
+  int n_executed = 0;
+  int n_canceled = 0;
+
+  std::unique_ptr<NormalTaskExecutionQueue> queue =
+      std::make_unique<NormalTaskExecutionQueue>(
+          [&n_executed](TaskToExecute &task) { n_executed++; },
+          [&n_canceled](const TaskToExecute &task, const Status &status) {
+            n_canceled++;
+          });
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task = TaskToExecute(
-      [&n_ok](const TaskSpecification &task_spec) { n_ok++; },
-      [&n_rej](const TaskSpecification &task_spec, const Status &status) { n_rej++; },
-      task_spec);
+  TaskToExecute task = MakeTaskToExecute(task_spec);
 
   queue->EnqueueTask(task);
   queue->EnqueueTask(task);
@@ -45,28 +63,27 @@ TEST(NormalTaskExecutionQueueTest, TestCancelQueuedTask) {
   queue->EnqueueTask(task);
   ASSERT_TRUE(queue->CancelTaskIfFound(TaskID::Nil()));
   queue->ExecuteQueuedTasks();
-  ASSERT_EQ(n_ok, 4);
-  ASSERT_EQ(n_rej, 1);
+  ASSERT_EQ(n_executed, 4);
+  ASSERT_EQ(n_canceled, 1);
 
   queue->Stop();
 }
 
 TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
-  std::unique_ptr<NormalTaskExecutionQueue> queue =
-      std::make_unique<NormalTaskExecutionQueue>();
+  int n_executed = 0;
+  std::atomic<int> n_canceled{0};
 
-  int n_ok = 0;
-  std::atomic<int> n_rej{0};
+  std::unique_ptr<NormalTaskExecutionQueue> queue =
+      std::make_unique<NormalTaskExecutionQueue>(
+          [&n_executed](TaskToExecute &task) { n_executed++; },
+          [&n_canceled](const TaskToExecute &task, const Status &status) {
+            ASSERT_TRUE(status.IsSchedulingCancelled());
+            n_canceled.fetch_add(1);
+          });
 
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().set_type(TaskType::NORMAL_TASK);
-  TaskToExecute task =
-      TaskToExecute([&n_ok](const TaskSpecification &task_spec) { n_ok++; },
-                    [&n_rej](const TaskSpecification &task_spec, const Status &status) {
-                      ASSERT_TRUE(status.IsSchedulingCancelled());
-                      n_rej.fetch_add(1);
-                    },
-                    task_spec);
+  TaskToExecute task = MakeTaskToExecute(task_spec);
 
   // Enqueue several normal tasks but do not schedule them.
   queue->EnqueueTask(task);
@@ -76,14 +93,9 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
   // Stopping should cancel all queued tasks without running them.
   queue->Stop();
 
-  ASSERT_EQ(n_ok, 0);
-  ASSERT_EQ(n_rej.load(), 3);
+  ASSERT_EQ(n_executed, 0);
+  ASSERT_EQ(n_canceled.load(), 3);
 }
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

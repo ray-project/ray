@@ -140,7 +140,7 @@ if __name__ == "__main__":
     }
 
     # Prepare Ray Datasets
-    hf_datasets = load_dataset("glue", "mrpc")
+    hf_datasets = load_dataset("nyu-mll/glue", "mrpc")
     ray_datasets = {
         "train": ray.data.from_huggingface(hf_datasets["train"]),
         "validation": ray.data.from_huggingface(hf_datasets["validation"]),

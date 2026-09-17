@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Update a running Serve application in place with lightweight config updates, user_config changes, or a full code redeploy."
+---
+
 (serve-inplace-updates)=
 
 # Updating Applications In-Place

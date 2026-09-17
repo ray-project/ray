@@ -1,3 +1,6 @@
+.. meta::
+   :description: Run Hugging Face Accelerate training on Ray Train, including Accelerate configuration and migration off AccelerateTrainer.
+
 .. _train-hf-accelerate:
 
 Get Started with Distributed Training using Hugging Face Accelerate
@@ -205,7 +208,7 @@ Next, see these end-to-end examples below for more details:
 
 You may also find these user guides helpful:
 
-- :ref:`Configuring Scale and GPUs <train_scaling_config>`
+- :ref:`train_scaling_config`
 - :ref:`Configuration and Persistent Storage <persistent-storage-guide>`
 - :ref:`Saving and Loading Checkpoints <train-checkpointing>`
 - :ref:`How to use Ray Data with Ray Train <data-ingest-torch>`

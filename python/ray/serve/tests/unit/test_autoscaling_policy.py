@@ -6,7 +6,13 @@ import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
-from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
+    SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
+)
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.gang_scheduling_autoscaling_policy import (
     GangSchedulingAutoscalingPolicy,
 )
@@ -1351,6 +1357,31 @@ class TestGangSchedulingAutoscalingPolicy:
         policy = self._make_policy(gang_size=4, inner_result=0)
         assert policy(ctx)[0] == 0
 
+    def test_scale_to_zero_after_downscaling_to_one_gang(self):
+        """The base policy's logical 1 -> 0 transition removes one gang."""
+        ctx = self._make_ctx(current_num_replicas=8)
+        ctx.target_num_replicas = 8
+        ctx.config = AutoscalingConfig(
+            min_replicas=0,
+            max_replicas=8,
+            downscale_delay_s=0,
+            downscale_to_zero_delay_s=0,
+        )
+        policy = GangSchedulingAutoscalingPolicy(
+            _apply_autoscaling_config(lambda _: (0, {})), gang_size=2
+        )
+
+        # The first scale-down preserves one complete gang.
+        decision, ctx.policy_state = policy(ctx)
+        assert decision == 2
+
+        # The next evaluation must interpret that gang as the base policy's
+        # logical single replica, then allow the final transition to zero.
+        ctx.current_num_replicas = decision
+        ctx.target_num_replicas = decision
+        decision, _ = policy(ctx)
+        assert decision == 0
+
     def test_gang_size_one_no_op(self):
         ctx = self._make_ctx(current_num_replicas=3)
         policy = self._make_policy(gang_size=1, inner_result=5)
@@ -1484,6 +1515,114 @@ class TestWarmupScalingFeedbackLoop:
             target = new_target
 
         assert target == min_replicas
+
+
+class TestAppLevelPolicyStateIsolation:
+    """
+    Test that no internal state cross contamination when a user policy returns the same
+    dict object for multiple deployments.
+    """
+
+    def _make_context(self, dep_id, policy_state=None):
+        config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=5,
+            upscale_delay_s=100,
+            downscale_delay_s=100,
+        )
+        return AutoscalingContext(
+            config=config,
+            current_num_replicas=2,
+            target_num_replicas=2,
+            total_num_requests=0,
+            total_queued_requests=0,
+            capacity_adjusted_min_replicas=config.min_replicas,
+            capacity_adjusted_max_replicas=config.max_replicas,
+            policy_state=policy_state or {},
+            deployment_id=dep_id,
+            deployment_name=dep_id.name,
+            app_name=dep_id.app_name,
+            running_replicas=[],
+            current_time=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+            total_pending_async_requests=0,
+        )
+
+    def test_shared_user_state_does_not_contaminate_internal_state(self):
+
+        d1 = DeploymentID("d1", "app")
+        d2 = DeploymentID("d2", "app")
+
+        fake_now = 1000.0
+
+        d1_internal_state = {
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: 3,
+            SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY: fake_now,
+        }
+        d2_internal_state = {
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: 0,
+            SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY: None,
+        }
+
+        shared_state = {"counter": 5}
+
+        def fake_policy(contexts):
+            return {d1: 3, d2: 3}, {d1: shared_state, d2: shared_state}
+
+        wrapped = _apply_app_level_autoscaling_config(fake_policy)
+        contexts = {
+            d1: self._make_context(d1, policy_state=d1_internal_state),
+            d2: self._make_context(d2, policy_state=d2_internal_state),
+        }
+
+        with patch("ray.serve.autoscaling_policy.time") as mock_time:
+            mock_time.time = lambda: fake_now
+            _, final_state = wrapped(contexts)
+
+        # d1 had counter=3, timestamp=fake_now. Delay logic sees scale-up
+        # (desired=3 > target=2), counter was positive so it increments to 4.
+        # Delay hasn't elapsed (0s < 100s) so no reset.
+        assert final_state[d1][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 4
+        assert final_state[d1][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
+        # user state remains intact
+        assert final_state[d1]["counter"] == 5
+
+        # d2 had counter=0, timestamp=None. Delay logic sees scale-up,
+        # increments counter to 1, sets timestamp to fake_now.
+        assert final_state[d2][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 1
+        assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
+        # user state remains intact
+        assert final_state[d2]["counter"] == 5
+
+
+def test_last_decision_total_num_requests_reuses_decision_value():
+    """record_autoscaling_metrics stashes the decision's total; the getter returns it
+    verbatim.
+    """
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=42.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+    )
+    assert st.get_last_decision_total_num_requests() == 42.0
 
 
 if __name__ == "__main__":

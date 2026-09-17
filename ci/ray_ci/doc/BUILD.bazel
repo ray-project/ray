@@ -8,6 +8,14 @@ py_binary(
 )
 
 py_binary(
+    name = "cmd_check_api_param_coverage",
+    srcs = ["cmd_check_api_param_coverage.py"],
+    deps = [
+        ":doc",
+    ],
+)
+
+py_binary(
     name = "cmd_build",
     srcs = ["cmd_build.py"],
     exec_compatible_with = ["//bazel:py3"],
@@ -41,6 +49,7 @@ py_test(
     size = "small",
     srcs = [
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_module.py",
     ],
@@ -60,6 +69,7 @@ py_test(
     size = "small",
     srcs = [
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_api.py",
     ],
@@ -79,8 +89,49 @@ py_test(
     size = "small",
     srcs = [
         "mock/__init__.py",
+        "mock/_internal/__init__.py",
         "mock/mock_module.py",
         "test_autodoc.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_cmd_check_api_discrepancy",
+    size = "small",
+    srcs = [
+        "cmd_check_api_discrepancy.py",
+        "mock/__init__.py",
+        "mock/_internal/__init__.py",
+        "mock/mock_module.py",
+        "test_cmd_check_api_discrepancy.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_api_param_coverage",
+    size = "small",
+    srcs = [
+        "cmd_check_api_param_coverage.py",
+        "test_api_param_coverage.py",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [

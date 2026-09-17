@@ -6,12 +6,13 @@ from lightning_exp_tracking_model_dl import DummyModel, dataloader
 
 # __lightning_experiment_tracking_wandb_start__
 import os
-import pytorch_lightning as pl
 import wandb
-from pytorch_lightning.loggers.wandb import WandbLogger
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
+
+import lightning.pytorch as pl
+from lightning.pytorch.loggers import WandbLogger
 
 
 def train_func(config):

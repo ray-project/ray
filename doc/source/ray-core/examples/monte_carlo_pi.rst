@@ -1,3 +1,6 @@
+.. meta::
+   :description: Worked Ray Core example that estimates π by Monte Carlo sampling, combining parallel remote tasks with a progress-tracking actor.
+
 .. _monte-carlo-pi:
 
 Monte Carlo Estimation of π

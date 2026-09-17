@@ -124,13 +124,15 @@ if __name__ == "__main__":
         f"{num_partitions * partition_size / GiB}GB total"
     )
 
-    def run_benchmark(args):
-        # Override target max-block size to avoid creating too many blocks
-        DataContext.get_current().target_max_block_size = 1 * GiB
+    # Override target max-block size to avoid creating too many blocks
+    DataContext.get_current().target_max_block_size = 1 * GiB
+    source = RandomIntRowDatasource()
+    # Each row has an int64 key.
+    num_rows_per_partition = partition_size // (8 + args.row_size_bytes)
 
-        source = RandomIntRowDatasource()
-        # Each row has an int64 key.
-        num_rows_per_partition = partition_size // (8 + args.row_size_bytes)
+    holder = {}
+
+    def run_benchmark(args):
         ds = ray.data.read_datasource(
             source,
             override_num_blocks=num_partitions,
@@ -142,49 +144,50 @@ if __name__ == "__main__":
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
-        exc = None
         try:
-            ds = ds.materialize()
+            holder["ds"] = ds.materialize()
         except Exception as e:
-            exc = e
-
-        ds_stats = ds.stats()
-
-        # TODO(swang): Add stats for OOM worker kills. This is not very
-        # convenient to do programmatically right now because it requires
-        # querying Prometheus.
-        print("==== Driver memory summary ====")
-        maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
-        print(f"max: {maxrss / 1e9}/GB")
-        process = psutil.Process(os.getpid())
-        rss = int(process.memory_info().rss)
-        print(f"rss: {rss / 1e9}/GB")
-
-        try:
-            print(memory_summary(stats_only=True))
-        except Exception:
-            print("Failed to retrieve memory summary")
-            print(traceback.format_exc())
-        print("")
-
-        if ds_stats is not None:
-            print(ds_stats)
-
-        results = {
-            "num_partitions": num_partitions,
-            "partition_size": partition_size,
-            "peak_driver_memory": maxrss,
-        }
-
-        # Wait until after the stats have been printed to raise any exceptions.
-        if exc is not None:
-            print(results)
-            raise exc
-
-        return results
+            holder["exc"] = e
+            holder["ds"] = ds
 
     benchmark = Benchmark()
     benchmark.run_fn("main", run_benchmark, args)
+
+    ds = holder["ds"]
+    ds_stats = ds.stats()
+
+    # TODO(swang): Add stats for OOM worker kills. This is not very
+    # convenient to do programmatically right now because it requires
+    # querying Prometheus.
+    print("==== Driver memory summary ====")
+    maxrss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1e3)
+    print(f"max: {maxrss / 1e9}/GB")
+    process = psutil.Process(os.getpid())
+    rss = int(process.memory_info().rss)
+    print(f"rss: {rss / 1e9}/GB")
+
+    try:
+        print(memory_summary(stats_only=True))
+    except Exception:
+        print("Failed to retrieve memory summary")
+        print(traceback.format_exc())
+    print("")
+
+    if ds_stats is not None:
+        print(ds_stats)
+
+    results = {
+        "num_partitions": num_partitions,
+        "partition_size": partition_size,
+        "peak_driver_memory": maxrss,
+    }
+    benchmark.result["main"].update(results)
+
+    # Wait until after the stats have been printed to raise any exceptions.
+    if "exc" in holder:
+        print(results)
+        raise holder["exc"]
+
     benchmark.write_result()
 
     ray.timeline("dump.json")

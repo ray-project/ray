@@ -14,12 +14,13 @@ from ray.train.examples.experiment_tracking.lightning_exp_tracking_model_dl impo
 
 # __lightning_experiment_tracking_tensorboard_start__
 import os
-import pytorch_lightning as pl
-from pytorch_lightning.loggers.tensorboard import TensorBoardLogger
 
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
+
+import lightning.pytorch as pl
+from lightning.pytorch.loggers import TensorBoardLogger
 
 
 def train_func(config):

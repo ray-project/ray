@@ -26,6 +26,9 @@ class Once:
 
         Will block until ``func`` has been called by one thread.
 
+        Args:
+            func: The function to execute exactly once.
+
         Returns:
             Whether or not ``func`` was executed in this call
         """

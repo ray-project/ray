@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 from typing import Collection, DefaultDict, List, Optional, Union
 
+import ray
 from ray.rllib.core import (
     COMPONENT_RL_MODULE,
     DEFAULT_AGENT_ID,
@@ -223,6 +224,8 @@ class EnvRunnerServerForExternalInference(EnvRunner, Checkpointable):
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 rl_module_state = state[COMPONENT_RL_MODULE]
+                if isinstance(rl_module_state, ray.ObjectRef):
+                    rl_module_state = ray.get(rl_module_state)
                 if (
                     isinstance(rl_module_state, dict)
                     and DEFAULT_MODULE_ID in rl_module_state

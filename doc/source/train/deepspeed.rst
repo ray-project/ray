@@ -1,3 +1,6 @@
+.. meta::
+   :description: Launch DeepSpeed training across a Ray cluster with TorchTrainer, using ZeRO optimization stages to train large models efficiently.
+
 .. _train-deepspeed:
 
 Get Started with DeepSpeed
@@ -110,7 +113,7 @@ Install the requirements:
 Fine-tune LLMs with DeepSpeed
 -----------------------------
 
-See this step-by-step guide for how to fine-tune large language models (LLMs) with Ray Train and DeepSpeed: :doc:`Fine-tune an LLM with Ray Train and DeepSpeed <examples/pytorch/deepspeed_finetune/README>`.
+See this step-by-step guide for how to fine-tune large language models (LLMs) with Ray Train and DeepSpeed: :doc:`Fine-tune an LLM with Ray Train and DeepSpeed </_collections/train/examples/pytorch/deepspeed_finetune/README>`.
 
 
 Run DeepSpeed with Other Frameworks

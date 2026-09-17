@@ -241,10 +241,11 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def __init__(
         self,
-        provider_config,
-        cluster_name,
+        provider_config: Dict[str, Any],
+        cluster_name: str,
     ):
-        """
+        """Initialize the fake multi-node provider.
+
         Args:
             provider_config: Configuration for the provider.
             cluster_name: Name of the cluster.

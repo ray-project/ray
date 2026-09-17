@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -454,6 +455,87 @@ async def test_serve_udf_success_with_continue_on_error_includes_none_error(
     assert len(results) == 1
     assert results[0]["__inference_error__"] == ""
     assert results[0]["generated_text"] == "Hello!"
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_timeout_raises_by_default(mock_serve_deployment_handle):
+    """With a request_timeout_s and default error handling, a slow request raises."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            await asyncio.sleep(10)
+            yield {"generated_text": "too late"}
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        request_timeout_s=0.05,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test", "temperature": 0.7},
+            }
+        ]
+    }
+
+    with pytest.raises(TimeoutError, match="timed out after 0.05s"):
+        async for _ in udf(batch):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_serve_udf_timeout_recovers_with_continue_on_error(
+    mock_serve_deployment_handle,
+):
+    """A timed-out request becomes an error row when should_continue_on_error=True."""
+
+    def mock_remote_call(*args, **kwargs):
+        async def mock_async_iterator():
+            await asyncio.sleep(10)
+            yield {"generated_text": "too late"}
+
+        return mock_async_iterator()
+
+    mock_serve_deployment_handle.completions.remote.side_effect = mock_remote_call
+
+    udf = ServeDeploymentStageUDF(
+        data_column="__data",
+        expected_input_keys=["method", "request_kwargs"],
+        deployment_name="test_deployment",
+        app_name="test_app",
+        dtype_mapping={"CompletionRequest": CompletionRequest},
+        should_continue_on_error=True,
+        request_timeout_s=0.05,
+    )
+
+    batch = {
+        "__data": [
+            {
+                "method": "completions",
+                "dtype": "CompletionRequest",
+                "request_kwargs": {"prompt": "test prompt", "temperature": 0.7},
+            }
+        ]
+    }
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert len(results) == 1
+    assert "TimeoutError" in results[0]["__inference_error__"]
+    assert "request_kwargs" in results[0]
 
 
 if __name__ == "__main__":

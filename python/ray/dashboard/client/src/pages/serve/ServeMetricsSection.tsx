@@ -22,6 +22,10 @@ import {
   TIME_RANGE_TO_FROM_VALUE,
   TimeRangeOptions,
 } from "../metrics";
+import {
+  grafanaClusterQueryParam,
+  grafanaDatasourceQueryParam,
+} from "../metrics/utils";
 
 // NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/serve_dashboard_panels.py
 export const APPS_METRICS_CONFIG: MetricConfig[] = [
@@ -85,6 +89,7 @@ export const ServeMetricsSection = ({
     dashboardDatasource,
     currentTimeZone,
     themeMode,
+    grafanaClusterFilter,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
@@ -110,6 +115,8 @@ export const ServeMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const clusterQuery = grafanaClusterQueryParam(grafanaClusterFilter);
+  const datasourceQuery = grafanaDatasourceQueryParam(dashboardDatasource);
 
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection
@@ -132,7 +139,7 @@ export const ServeMetricsSection = ({
           }}
         >
           <Button
-            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&var-datasource=${dashboardDatasource}`}
+            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}${datasourceQuery}${clusterQuery}`}
             target="_blank"
             rel="noopener noreferrer"
             endIcon={<RiExternalLinkLine />}
@@ -203,7 +210,7 @@ export const ServeMetricsSection = ({
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?orgId=${grafanaOrgId}&theme=${themeMode}&${pathParams}` +
-              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}${datasourceQuery}${clusterQuery}`;
             return (
               <Paper
                 key={pathParams}

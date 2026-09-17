@@ -17,7 +17,7 @@ def is_cython(obj):
     )
 
 
-def is_function_or_method(obj):
+def is_function_or_method(obj: object) -> bool:
     """Check if an object is a function or method.
 
     Args:
@@ -34,7 +34,7 @@ def is_class_method(f):
     return hasattr(f, "__self__") and f.__self__ is not None
 
 
-def is_static_method(cls, f_name):
+def is_static_method(cls: type, f_name: str) -> bool:
     """Returns whether the class has a static method with the given name.
 
     Args:
@@ -42,6 +42,9 @@ def is_static_method(cls, f_name):
             search for the method in.
         f_name: The name of the method to look up in this class
             and check whether or not it is static.
+
+    Returns:
+        True if ``cls`` defines a static method named ``f_name``.
     """
     for base_cls in inspect.getmro(cls):
         if f_name in base_cls.__dict__:

@@ -148,7 +148,6 @@ cdef class CoreWorker:
         serialized_object,
         optional[c_string] c_tensor_transport,
         c_bool pin_object=*,
-        owner_address=*,
         c_bool inline_small_object=*,
         c_bool _is_experimental_channel=*,
     )

@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: ConnectorV2 pipelines that transform data between environment, module, and learner, covering the three pipeline types and batch construction phases.
 
 .. _connector-v2-docs:
 

@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Fault tolerance and elastic training in RLlib: EnvRunner recovery, environment failures, and how Ray Tune restores interrupted experiments.
 
 .. include:: /_includes/rllib/new_api_stack.rst
 

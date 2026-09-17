@@ -92,6 +92,18 @@ def test_client_job_flag_initialization(method, value, expected):
     assert config._client_job is expected
 
 
+@pytest.mark.parametrize("method", ["constructor", "from_json"])
+def test_code_search_path_must_be_list_or_tuple(method):
+    """JobConfig should reject invalid code_search_path types consistently."""
+    expected_message = "The type of code search path is incorrect"
+
+    with pytest.raises(TypeError, match=expected_message):
+        if method == "constructor":
+            JobConfig(code_search_path="/tmp/code")
+        else:
+            JobConfig.from_json({"code_search_path": "/tmp/code"})
+
+
 def test_validate_no_local_paths_not_called_for_client_job():
     """Verify _validate_no_local_paths is not called when _client_job=True."""
     with tempfile.TemporaryDirectory() as tmp_dir:

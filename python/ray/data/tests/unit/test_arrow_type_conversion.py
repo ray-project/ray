@@ -190,7 +190,7 @@ def test_convert_to_pyarrow_array_object_ext_type_fallback():
 
     assert (
         str(exc_info.value)
-        == "Error converting data to Arrow: ['hi' 1 None list([[[[]]]]) {'a': [[{'b': 2, 'c': UserObj(i=123)}]]}\n UserObj(i=456)]"  # noqa: E501
+        == "Error converting column 'py_object_column' (target type: string) to Arrow: ['hi' 1 None list([[[[]]]]) {'a': [[{'b': 2, 'c': UserObj(i=123)}]]}\n UserObj(i=456)]"  # noqa: E501
     )
 
     # Subsequently, assert that fallback to `ArrowObjectExtensionType` succeeds

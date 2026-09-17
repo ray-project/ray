@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
+from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
+
 # TODO(rickyx): We should eventually remove these imports
 # when we deprecate the v1 kuberay node provider.
 from ray.autoscaler._private.kuberay.node_provider import (
@@ -24,6 +26,9 @@ from ray.autoscaler._private.kuberay.node_provider import (
     worker_delete_patch,
     worker_replica_patch,
 )
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
+    KubeRayIPPRProvider,
+)
 from ray.autoscaler.v2.instance_manager.node_provider import (
     CloudInstance,
     CloudInstanceId,
@@ -33,9 +38,15 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
     NodeKind,
     TerminateNodeError,
 )
-from ray.autoscaler.v2.schema import NodeType
+from ray.autoscaler.v2.schema import IPPRSpecs, IPPRStatus, NodeType
 
 logger = logging.getLogger(__name__)
+
+# Annotation the KubeRay operator acts on to terminate the cluster.
+NO_DRIVER_TTL_EXPIRED_ANNOTATION = "ray.io/no-driver-ttl-expired"
+
+AUTOSCALER_OPTIONS_KEY = "autoscalerOptions"
+NO_DRIVER_TIMEOUT_SECONDS_KEY = "noDriverTimeoutSeconds"
 
 
 class KubeRayProvider(ICloudInstanceProvider):
@@ -51,14 +62,18 @@ class KubeRayProvider(ICloudInstanceProvider):
         self,
         cluster_name: str,
         provider_config: Dict[str, Any],
+        gcs_client: GcsClient,
         k8s_api_client: Optional[IKubernetesHttpApiClient] = None,
     ):
         """
+        Initializes a new KubeRayProvider.
+
         Args:
             cluster_name: The name of the RayCluster resource.
-            provider_config: The namespace of the RayCluster.
-            k8s_api_client: The client to the Kubernetes API server.
-                This could be used to mock the Kubernetes API server for testing.
+            provider_config: The configuration for the RayCluster.
+            gcs_client: The client to the GCS server. Will be used for resizing raylets.
+            k8s_api_client: The client to the Kubernetes
+                API server. This can be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
@@ -66,15 +81,27 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
         )
+        self._gcs_client = gcs_client
 
         # Below are states that are cached locally.
         self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
 
+        # Below are states for idle-cluster termination tracking.
+        # Monotonic timestamp when no driver was first observed; None resets it.
+        self._no_driver_observed_since: Optional[float] = None
+        # Latest GCS job end time seen; a newer one means a driver came and went.
+        self._last_seen_job_end_time = 0
+        # No-driver timeout (seconds) from the CR; None disables the feature.
+        self._no_driver_timeout_seconds: Optional[float] = None
+
         # Below are states that are fetched from the Kubernetes API server.
         self._ray_cluster = None
         self._cached_instances: Dict[CloudInstanceId, CloudInstance]
+        self._ippr_provider = KubeRayIPPRProvider(
+            gcs_client=gcs_client, k8s_api_client=self._k8s_api_client
+        )
 
     @dataclass
     class ScaleRequest:
@@ -111,6 +138,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def get_non_terminated(self) -> Dict[CloudInstanceId, CloudInstance]:
         self._sync_with_api_server()
+        self._evaluate_no_driver_termination()
         return copy.deepcopy(dict(self._cached_instances))
 
     def terminate(self, ids: List[CloudInstanceId], request_id: str) -> None:
@@ -174,9 +202,25 @@ class KubeRayProvider(ICloudInstanceProvider):
                 )
                 return
 
-            self._submit_scale_request(scale_request)
-            # Only add to processed requests if successful
+            rejected_nodes = self._submit_scale_request(scale_request)
+
+            # This request_id has been handled (full, partial, or no-op). Cache it
+            # so a replay does not add to_launch again. Instances that did not get
+            # a slot are failed below so they do not retry with this same id.
             self._requests.add(request_id)
+
+            nodes_to_reject = {}
+            for node_type, rejected in rejected_nodes.items():
+                requested = shape.get(node_type, 0)
+                if requested > 0 and rejected > 0:
+                    nodes_to_reject[node_type] = min(rejected, requested)
+
+            if nodes_to_reject:
+                self._add_launch_errors(
+                    nodes_to_reject,
+                    request_id,
+                    details="Launch capped by maxReplicas limit.",
+                )
 
         except Exception as e:
             logger.exception(f"Error launching nodes: {scale_request or 'N/A'}")
@@ -189,6 +233,31 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
         return errors
+
+    def get_ippr_specs(self) -> IPPRSpecs:
+        """Return the cached, validated IPPR specs for the cluster.
+
+        The IPPR specs are refreshed during the provider's periodic sync with the
+        API server by reading the RayCluster annotation and validating it against
+        the IPPR schema.
+        """
+        return self._ippr_provider.get_ippr_specs()
+
+    def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        """Return the latest per-pod IPPR statuses keyed by pod name.
+
+        These statuses are refreshed from the current pod list during the provider's
+        periodic sync with the API server.
+        """
+        return self._ippr_provider.get_ippr_statuses()
+
+    def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
+        """Execute IPPR resize requests via the underlying IPPR provider.
+
+        Args:
+            resizes: The list of per-pod IPPR actions produced by the scheduler.
+        """
+        self._ippr_provider.do_ippr_requests(resizes)
 
     ############################
     # Private
@@ -297,7 +366,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
     def _submit_scale_request(
         self, scale_request: "KubeRayProvider.ScaleRequest"
-    ) -> None:
+    ) -> Dict[NodeType, int]:
         """Submits a scale request to the Kubernetes API server.
 
         This method will convert the scale request to patches and submit the patches
@@ -305,6 +374,10 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         Args:
             scale_request: The scale request.
+
+        Returns:
+            A dictionary mapping node types to the number of nodes that were rejected
+            due to the maxReplicas cap.
 
         Raises:
             Exception: An exception is raised if the Kubernetes API server returns an
@@ -315,6 +388,8 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         raycluster = self.ray_cluster
 
+        rejected_nodes = {}
+
         # Collect patches for replica counts.
         for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
@@ -323,12 +398,18 @@ class KubeRayProvider(ICloudInstanceProvider):
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
             target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
+            original_target_replicas = target_replicas
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
                     "Autoscaler attempted to create "
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
                 target_replicas = group_max_replicas
+
+                # Calculate how many nodes were rejected due to the cap
+                rejected_replicas = original_target_replicas - target_replicas
+                if rejected_replicas > 0:
+                    rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
@@ -358,12 +439,11 @@ class KubeRayProvider(ICloudInstanceProvider):
             patch = worker_delete_patch(group_index, [])
             patch_payload.append(patch)
 
-        if len(patch_payload) == 0:
-            # No patch required.
-            return
+        if len(patch_payload) > 0:
+            logger.info(f"Submitting a scale request: {scale_request}")
+            self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
 
-        logger.info(f"Submitting a scale request: {scale_request}")
-        self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
+        return rejected_nodes
 
     def _add_launch_errors(
         self,
@@ -423,7 +503,16 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _sync_with_api_server(self) -> None:
         """Fetches the RayCluster resource from the Kubernetes API server."""
         self._ray_cluster = self._get(f"rayclusters/{self._cluster_name}")
+        self._refresh_no_driver_timeout_seconds()
+        self._ippr_provider.validate_and_set_ippr_specs(self._ray_cluster)
         self._cached_instances = self._fetch_instances()
+        self._ippr_provider.sync_with_raylets()
+
+    def _refresh_no_driver_timeout_seconds(self) -> None:
+        """Reads noDriverTimeoutSeconds from the RayCluster CR."""
+        opts = self._ray_cluster["spec"].get(AUTOSCALER_OPTIONS_KEY, {})
+        secs = opts.get(NO_DRIVER_TIMEOUT_SECONDS_KEY)
+        self._no_driver_timeout_seconds = float(secs) if secs is not None else None
 
     @property
     def ray_cluster(self) -> Dict[str, Any]:
@@ -441,13 +530,19 @@ class KubeRayProvider(ICloudInstanceProvider):
         Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
 
+        Args:
+            ray_cluster_spec: The RayCluster CR spec dict.
+            node_set: The set of currently known cloud instance IDs.
+
         Returns:
-            worker_groups_with_pending_deletes: The worker groups that have pending
-                deletes.
-            worker_groups_with_finished_deletes: The worker groups that have finished
-                deletes.
-            worker_to_delete_set: A set of Pods that are included in the workersToDelete
-                field of any worker group.
+            A tuple of:
+
+            - worker_groups_with_pending_deletes: The worker groups that have pending
+              deletes.
+            - worker_groups_with_finished_deletes: The worker groups that have finished
+              deletes.
+            - worker_to_delete_set: A set of Pods that are included in the
+              workersToDelete field of any worker group.
         """
 
         worker_groups_with_pending_deletes = set()
@@ -529,6 +624,9 @@ class KubeRayProvider(ICloudInstanceProvider):
             cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
+
+        self._ippr_provider.sync_ippr_status_from_pods(pod_list["items"])
+
         return cloud_instances
 
     @staticmethod
@@ -538,6 +636,10 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         Args:
             pod: The pod resource dict.
+
+        Returns:
+            The CloudInstance representing the pod, or None if the pod is not a
+            tracked Ray node (e.g. a redis-cleanup pod).
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
@@ -590,6 +692,97 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _patch(self, remote_path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Patch a resource on the Kubernetes API server."""
         return self._k8s_api_client.patch(remote_path, payload)
+
+    def _evaluate_no_driver_termination(self) -> None:
+        """Patches the no-driver-TTL annotation once no driver held for the timeout.
+
+        Detached actors do not count as a driver.
+        """
+        # Feature disabled or a driver is attached: reset the anchor.
+        if self._no_driver_timeout_seconds is None:
+            self._no_driver_observed_since = None
+            return
+        has_active_driver, latest_job_end_time = self._driver_status()
+        if has_active_driver:
+            self._no_driver_observed_since = None
+            return
+
+        # A driver finished since the last check: it was attached during the
+        # no-driver window, so restart the timer.
+        if latest_job_end_time > self._last_seen_job_end_time:
+            self._last_seen_job_end_time = latest_job_end_time
+            self._no_driver_observed_since = None
+
+        # Anchor on the first loop with no driver, then dispatch once the
+        # no-driver window reaches the timeout.
+        now = time.monotonic()
+        if self._no_driver_observed_since is None:
+            self._no_driver_observed_since = now
+        if now - self._no_driver_observed_since < self._no_driver_timeout_seconds:
+            return
+        self._set_no_driver_annotation()
+
+    def _driver_status(self) -> Tuple[bool, int]:
+        """Returns whether a non-internal driver is alive and the latest job end time.
+
+        Fails closed: a failed GCS query reports a driver as present.
+        """
+        try:
+            jobs = self._gcs_client.get_all_job_info(
+                skip_submission_job_info_field=True,
+                skip_is_running_tasks_field=True,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to query GCS job table; treating as drivers attached."
+            )
+            return True, self._last_seen_job_end_time
+
+        has_active_driver = False
+        latest_job_end_time = 0
+        for job in jobs.values():
+            # Ray-internal drivers (e.g. the dashboard) are not user activity.
+            if job.config.ray_namespace.startswith(RAY_INTERNAL_NAMESPACE_PREFIX):
+                continue
+            if job.is_dead:
+                latest_job_end_time = max(latest_job_end_time, job.end_time)
+            else:
+                has_active_driver = True
+        return has_active_driver, latest_job_end_time
+
+    def _set_no_driver_annotation(self) -> None:
+        """Sets `ray.io/no-driver-ttl-expired=true` on the RayCluster CR.
+
+        Idempotent via the CR cached this reconcile loop; PATCH errors are swallowed.
+        """
+        annotations = self._ray_cluster.get("metadata", {}).get("annotations", {})
+        if annotations.get(NO_DRIVER_TTL_EXPIRED_ANNOTATION) == "true":
+            return
+
+        path = f"rayclusters/{self._cluster_name}"
+        # Merge patch covers missing and present annotations in one call.
+        payload = {
+            "metadata": {"annotations": {NO_DRIVER_TTL_EXPIRED_ANNOTATION: "true"}}
+        }
+        try:
+            self._k8s_api_client.patch(
+                path,
+                payload,
+                content_type="application/merge-patch+json",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to PATCH %s=true on RayCluster %s",
+                NO_DRIVER_TTL_EXPIRED_ANNOTATION,
+                self._cluster_name,
+            )
+            return
+
+        logger.info(
+            "Set %s=true on RayCluster %s.",
+            NO_DRIVER_TTL_EXPIRED_ANNOTATION,
+            self._cluster_name,
+        )
 
     def _get_head_pod_resource_version(self) -> str:
         """

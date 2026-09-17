@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: SingleAgentEpisode, RLlib's trajectory data container: construction, getter APIs, numpy'ized episodes, and cut() with lookback buffers.
 
 .. _single-agent-episode-docs:
 

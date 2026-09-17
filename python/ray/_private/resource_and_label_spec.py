@@ -6,11 +6,22 @@ from typing import Dict, Optional, Tuple
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME, NODE_ID_PREFIX
-from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
+from ray._common.utils import (
+    RESOURCE_CONSTRAINT_PREFIX,
+    env_bool,
+    get_cgroup_aware_swap_memory,
+)
 from ray._private import accelerators
 from ray._private.accelerators import AcceleratorManager
+from ray._private.resource_isolation_config import ResourceIsolationConfig
 
 logger = logging.getLogger(__name__)
+
+# Mirrors the C++ RAY_CONFIG of the same name. When true, swap is counted as
+# part of node capacity for scheduling and ray status. The C++ raylet reads the
+# same env var to gate the OOM killer's swap accounting, so flipping this env
+# var keeps both sides consistent.
+_COUNT_SWAP_IN_MEMORY_MONITOR = env_bool("RAY_count_swap_in_memory_monitor", False)
 
 
 class ResourceAndLabelSpec:
@@ -26,7 +37,6 @@ class ResourceAndLabelSpec:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         memory: Optional[float] = None,
-        available_memory_bytes: Optional[int] = None,
         object_store_memory: Optional[float] = None,
         resources: Optional[Dict[str, float]] = None,
         labels: Optional[Dict[str, str]] = None,
@@ -38,7 +48,6 @@ class ResourceAndLabelSpec:
             num_cpus: The CPUs allocated for this raylet.
             num_gpus: The GPUs allocated for this raylet.
             memory: The memory allocated for this raylet.
-            available_memory_bytes: Memory available for use on this node.
             object_store_memory: The object store memory allocated for this raylet.
             resources: The custom resources allocated for this raylet.
             labels: The labels associated with this node. Labels can be used along
@@ -47,7 +56,6 @@ class ResourceAndLabelSpec:
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
-        self.available_memory_bytes = available_memory_bytes
         self.object_store_memory = object_store_memory
         self.resources = resources
         self.labels = labels
@@ -125,7 +133,10 @@ class ResourceAndLabelSpec:
         return resources
 
     def resolve(
-        self, is_head: bool, node_ip_address: Optional[str] = None
+        self,
+        is_head: bool,
+        node_ip_address: Optional[str] = None,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
     ) -> "ResourceAndLabelSpec":
         """Fills out this ResourceAndLabelSpec instance with merged values from system defaults and user specification.
 
@@ -133,6 +144,9 @@ class ResourceAndLabelSpec:
             is_head: Whether this is the head node.
             node_ip_address: The IP address of the node that we are on.
                 This is used to automatically create a node id resource.
+            resource_isolation_config: Optional resource isolation config. When
+                enabled and memory is not explicitly set, the system reserved
+                memory for resource isolation is subtracted from available user memory.
 
         Returns:
             ResourceAndLabelSpec: This instance with all fields resolved.
@@ -157,7 +171,7 @@ class ResourceAndLabelSpec:
         self._resolve_labels(accelerator_manager)
 
         # Resolve memory resources
-        self._resolve_memory_resources()
+        self._resolve_memory_resources(resource_isolation_config)
 
         self._is_resolved = True
         assert self._all_fields_set()
@@ -371,19 +385,49 @@ class ResourceAndLabelSpec:
         if additional_resources:
             self.resources.update(additional_resources)
 
-    def _resolve_memory_resources(self):
+    def _resolve_memory_resources(
+        self,
+        resource_isolation_config: Optional[ResourceIsolationConfig] = None,
+    ):
+        """
+        Resolves logical and object store memory resources if not
+        explicitly set.
+
+        Args:
+            resource_isolation_config: Optional resource isolation config. When
+                enabled and memory is not explicitly set, the system reserved
+                memory for resource isolation is subtracted from available user
+                memory.
+        """
         # Choose a default object store size.
         system_memory = ray._common.utils.get_system_memory()
-        if self.available_memory_bytes is None:
-            self.available_memory_bytes = ray._private.utils.estimate_available_memory()
+        isolation_enabled = (
+            resource_isolation_config is not None
+            and resource_isolation_config.is_enabled()
+        )
+        if isolation_enabled:
+            available_memory_bytes = (
+                system_memory
+                - resource_isolation_config.system_reserved_memory
+                - ray_constants.DEFAULT_USER_PHYSICAL_LOGICAL_MEMORY_LIMIT_BUFFER_BYTES
+            )
+        else:
+            available_memory_bytes = ray._private.utils.estimate_available_memory()
         if self.object_store_memory is None:
             self.object_store_memory = ray._private.utils.resolve_object_store_memory(
-                self.available_memory_bytes
+                available_memory_bytes
             )
 
         memory = self.memory
         if memory is None:
-            memory = self.available_memory_bytes - self.object_store_memory
+            # Optionally include swap as overflow capacity for the Ray "memory"
+            # resource so scheduling and ray status reflect the kernel's
+            # effective working set. Off by default; flip via
+            # RAY_count_swap_in_memory_monitor=1 (matches the C++ flag).
+            swap_total = 0
+            if _COUNT_SWAP_IN_MEMORY_MONITOR:
+                swap_total, _ = get_cgroup_aware_swap_memory()
+            memory = available_memory_bytes + swap_total - self.object_store_memory
             if memory < 100e6 and memory < 0.05 * system_memory:
                 raise ValueError(
                     "After taking into account object store and redis memory "

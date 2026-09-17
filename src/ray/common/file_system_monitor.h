@@ -22,8 +22,8 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/util/event.h"
 
 namespace ray {

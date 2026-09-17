@@ -19,10 +19,11 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -121,13 +122,16 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::string GetSessionName() const override { return "test-session-name"; }
 
   NodeID GetNodeID() const override { return NodeID::Nil(); }
+  int64_t GetCurrentTimestampNanos() const override { return 0; }
 };
 
 class TaskReceiverTest : public ::testing::Test {
  public:
   TaskReceiverTest()
       : actor_task_execution_arg_waiter_(std::make_unique<ActorTaskExecutionArgWaiter>(
-            [](const std::vector<rpc::ObjectReference> &args, int64_t tag) {})) {
+            [](const std::vector<rpc::ObjectReference> &args,
+               const TaskID &task_id,
+               int32_t attempt_number) {})) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
@@ -141,6 +145,7 @@ class TaskReceiverTest : public ::testing::Test {
     receiver_ = std::make_unique<TaskReceiver>(
         task_execution_service_,
         task_event_buffer_,
+        ray_task_event_recorder_,
         execute_task,
         *actor_task_execution_arg_waiter_,
         /* initialize_thread_callback= */ []() { return []() { return; }; });
@@ -170,6 +175,7 @@ class TaskReceiverTest : public ::testing::Test {
 
   instrumented_io_context task_execution_service_;
   MockTaskEventBuffer task_event_buffer_;
+  ray::observability::FakeRayEventRecorder ray_task_event_recorder_;
   std::unique_ptr<ActorTaskExecutionArgWaiter> actor_task_execution_arg_waiter_;
 };
 

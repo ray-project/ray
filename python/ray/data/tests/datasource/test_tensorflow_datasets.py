@@ -30,7 +30,7 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     # Check that metadata fetch is included in stats.
     assert "FromItems" in ray_dataset.stats()
     # Underlying implementation uses `FromItems` operator
-    assert ray_dataset._plan._logical_plan.dag.name == "FromItems"
+    assert ray_dataset._logical_plan.dag.name == "FromItems"
     _check_usage_record(["FromItems"])
 
 

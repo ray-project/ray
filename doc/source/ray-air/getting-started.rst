@@ -1,3 +1,6 @@
+.. meta::
+   :description: Overview of using Ray as ML infrastructure, covering how Ray Train, Ray Data, and Ray Serve compose end-to-end ML workflows on a unified compute runtime.
+
 .. _ray-for-ml-infra:
 
 Ray for ML Infrastructure

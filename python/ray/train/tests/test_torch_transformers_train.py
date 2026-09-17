@@ -119,7 +119,7 @@ def train_func(config):
     # HF Transformers Trainer
     training_args = TrainingArguments(
         f"{MODEL_NAME}-wikitext2",
-        evaluation_strategy=config["evaluation_strategy"],
+        eval_strategy=config["evaluation_strategy"],
         logging_strategy=config["logging_strategy"],
         save_strategy=config["save_strategy"],
         eval_steps=config["eval_steps"],
@@ -132,7 +132,7 @@ def train_func(config):
         per_device_eval_batch_size=BATCH_SIZE_PER_WORKER,
         weight_decay=0.01,
         disable_tqdm=True,
-        no_cuda=config["no_cuda"],
+        use_cpu=config["no_cuda"],
         report_to="none",
     )
     trainer = Trainer(

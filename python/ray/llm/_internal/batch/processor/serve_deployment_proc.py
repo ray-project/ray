@@ -11,9 +11,6 @@ from ray.llm._internal.batch.processor.base import (
     ProcessorBuilder,
     ProcessorConfig,
 )
-from ray.llm._internal.batch.stages import (
-    ServeDeploymentStage,
-)
 
 
 class ServeDeploymentProcessorConfig(ProcessorConfig):
@@ -37,6 +34,16 @@ class ServeDeploymentProcessorConfig(ProcessorConfig):
         "instead of raising an exception. Failed rows will have a non-null "
         "'__inference_error__' column containing the error message. Error rows "
         "bypass postprocess. If False (default), any inference error raises.",
+    )
+    request_timeout_s: Optional[float] = Field(
+        default=None,
+        gt=0,
+        description="Optional per-request timeout in seconds. When set, a request "
+        "that does not return within this many seconds raises TimeoutError instead "
+        "of blocking indefinitely (e.g. when replicas are saturated). TimeoutError "
+        "is recoverable, so combine with should_continue_on_error=True to drop the "
+        "slow row as an error instead of failing the job. If None (default), "
+        "requests wait indefinitely.",
     )
 
 
@@ -64,6 +71,9 @@ def build_serve_deployment_processor(
     Returns:
         The constructed processor.
     """
+    # Defer Ray Serve imports until this processor is constructed.
+    from ray.llm._internal.batch.stages import ServeDeploymentStage
+
     stages = [
         ServeDeploymentStage(
             fn_constructor_kwargs=dict(
@@ -71,6 +81,7 @@ def build_serve_deployment_processor(
                 app_name=config.app_name,
                 dtype_mapping=config.dtype_mapping,
                 should_continue_on_error=config.should_continue_on_error,
+                request_timeout_s=config.request_timeout_s,
             ),
             map_batches_kwargs=dict(
                 compute=ActorPoolStrategy(

@@ -18,30 +18,18 @@ This notebook consists of the following steps:
   <p><strong>Note:</strong> This tutorial is optimized for the Anyscale platform. When running on open source Ray, you need additional configuration. For example, you would need to manually:</p>
 
   <ul>
-    <li><strong>Configure your Ray Cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li>
-    <li><strong>Manage Dependencies</strong>: Manually install and manage dependencies on each node.</li>
-    <li><strong>Set Up Storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
+    <li><strong>Configure your Ray Cluster</strong>: Set up your multi-node environment and manage resource allocation without Anyscale's automation.</li> <li><strong>Manage Dependencies</strong>: Manually install and manage dependencies on each node.</li> <li><strong>Set Up Storage</strong>: Configure your own distributed or shared storage system for model checkpointing.</li>
   </ul>
 
   <p>All these configurations are handled automatically through the Anyscale platform.
 </div>
 
 <style>
-  div#anyscale-note > p,
-  div#anyscale-note > ul,
-  div#anyscale-note > ul li {
-    color: black;
-  }
+  div#anyscale-note > p, div#anyscale-note > ul, div#anyscale-note > ul li { color: black; }
 
-  div#anyscale-note {
-    background-color: rgb(255, 243, 205);
-  }
+  div#anyscale-note { background-color: rgb(255, 243, 205); }
 
-  div#anyscale-note {
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    padding: 15px;
-  }
+  div#anyscale-note { border: 1px solid #ccc; border-radius: 8px; padding: 15px; }
 
 </style>
 
@@ -96,8 +84,7 @@ import ray
 ray.init()
 ```
 
-Use `ray.cluster_resources()` to check which resources your cluster has access to.
-If you're running this notebook on your local machine or Google Colab, you should see the number of CPU cores and GPUs available to you.
+Use `ray.cluster_resources()` to check which resources your cluster has access to. If you're running this notebook on your local machine or Google Colab, you should see the number of CPU cores and GPUs available to you.
 
 
 ```python
@@ -267,16 +254,13 @@ print(results.get_best_checkpoint("reward", "max"))
 
 The preceding example trains with 4 workers on a small 100-sample subset of the dataset. To scale up, adjust `num_workers` in `ScalingConfig` and the `num_workers` variable at the top of the notebook, along with the dataset size and model.
 
-**Scaling workers:**
-Each worker claims one GPU. With `vllm_mode="colocate"`, each worker runs its own vLLM instance for generation and its own training process — generation requires no inter-GPU communication. Adding more workers increases the effective batch size and reduces time-to-convergence without any changes to training logic.
+**Scaling workers:** Each worker claims one GPU. With `vllm_mode="colocate"`, each worker runs its own vLLM instance for generation and its own training process — generation requires no inter-GPU communication. Adding more workers increases the effective batch size and reduces time-to-convergence without any changes to training logic.
 
-**Scaling the model:**
-Replace `"Qwen/Qwen2.5-0.5B"` with a larger checkpoint. Larger models require more GPU memory per worker. If a model doesn't fit on a single GPU, consider:
+**Scaling the model:** Replace `"Qwen/Qwen2.5-0.5B"` with a larger checkpoint. Larger models require more GPU memory per worker. If a model doesn't fit on a single GPU, consider:
 - Explore using DeepSpeed ZeRO to distribute the model weights across multiple GPUs.
 - Reducing `vllm_gpu_memory_utilization` from `0.3` to leave more memory for model weights at the cost of a smaller vLLM KV cache.
 
-**Fault Tolerance:**
-For longer runs where worker or node failures are possible, set `failure_config=FailureConfig(max_failures=1)` in `RunConfig`. Ray Train will automatically restart training up to twice on failure. Because this example already saves a checkpoint each epoch, a restarted run resumes from the last checkpoint rather than from scratch.
+**Fault Tolerance:** For longer runs where worker or node failures are possible, set `failure_config=FailureConfig(max_failures=1)` in `RunConfig`. Ray Train will automatically restart training up to twice on failure. Because this example already saves a checkpoint each epoch, a restarted run resumes from the last checkpoint rather than from scratch.
 
 ## Summary
 

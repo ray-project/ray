@@ -147,6 +147,11 @@ config = vLLMEngineProcessorConfig(
 )
 # __row_level_fault_tolerance_config_example_end__
 
+# Seed the input directory because Ray Data V2's `read_parquet` errors on empty dirs
+ray.data.from_items(
+    [{"id": i, "message": f"Question {i}: What is 2 + 2?"} for i in range(4)]
+).write_parquet(input_path)
+
 # __checkpoint_config_setup_example_start__
 from ray.data.checkpoint import CheckpointConfig
 
@@ -161,6 +166,10 @@ ctx.checkpoint_config = CheckpointConfig(
 # __checkpoint_usage_example_start__
 processor_config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
+    engine_kwargs={
+        "max_num_batched_tokens": 4096,
+        "max_model_len": 4096,
+    },
     concurrency=1,
     batch_size=16,
 )
@@ -169,7 +178,7 @@ processor = build_processor(
     processor_config,
     preprocess=lambda row: dict(
         id=row["id"], # Preserve the ID column for checkpointing
-        prompt=row["prompt"],
+        messages=[{"role": "user", "content": row["message"]}],
         sampling_params=dict(
             temperature=0.3,
             max_tokens=10,
@@ -447,7 +456,7 @@ config = vLLMEngineProcessorConfig(
     max_concurrent_batches=8,
     # Number of tasks Ray Data queues per actor (default: 16)
     # Increase to keep actor task queue saturated
-    experimental={"max_tasks_in_flight_per_actor": 16},
+    max_tasks_in_flight_per_actor=16,
 )
 # __concurrent_batches_tuning_example_end__
 # __basic_llm_example_end__

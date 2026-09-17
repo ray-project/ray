@@ -1,20 +1,6 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-max_workers: 3
-
-head_node_type:
-    name: head_node
-    instance_type: g4dn.12xlarge
-
-worker_node_types:
-    - name: worker_node
-      instance_type: g4dn.12xlarge
-      max_workers: 3
-      min_workers: 0
-      use_spot: false
-
-advanced_configurations_json:
+advanced_instance_config:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
@@ -28,3 +14,17 @@ advanced_configurations_json:
           Tags:
             - Key: chaos-test-name
               Value: "train-chaos-test"
+
+head_node:
+    instance_type: g4dn.12xlarge
+    # GPU head — expose natural resources (48 vCPU + 4 T4 GPU) so elastic
+    # training can use the head as one of its GPU nodes.
+    resources:
+      CPU: 48
+      GPU: 4
+
+worker_nodes:
+    - instance_type: g4dn.12xlarge
+      min_nodes: 0
+      max_nodes: 3
+      market_type: ON_DEMAND

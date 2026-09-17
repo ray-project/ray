@@ -1,11 +1,8 @@
 package io.ray.runtime.object;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import io.ray.api.Ray;
-import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
-import io.ray.runtime.AbstractRayRuntime;
 import io.ray.runtime.context.WorkerContext;
 import io.ray.runtime.generated.Common.Address;
 import java.util.HashMap;
@@ -33,14 +30,7 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public ObjectId putRaw(NativeRayObject obj) {
-    return new ObjectId(nativePut(obj, null));
-  }
-
-  @Override
-  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
-    byte[] serializedOwnerAddressBytes =
-        ((AbstractRayRuntime) Ray.internal()).getGcsClient().getActorAddress(ownerActorId);
-    return new ObjectId(nativePut(obj, serializedOwnerAddressBytes));
+    return new ObjectId(nativePut(obj));
   }
 
   @Override
@@ -57,11 +47,6 @@ public class NativeObjectStore extends ObjectStore {
   public List<Boolean> wait(
       List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal) {
     return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs, fetchLocal);
-  }
-
-  @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly) {
-    nativeDelete(toBinaryList(objectIds), localOnly);
   }
 
   @Override
@@ -116,7 +101,7 @@ public class NativeObjectStore extends ObjectStore {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] nativePut(NativeRayObject obj, byte[] serializedOwnerAddressBytes);
+  private static native byte[] nativePut(NativeRayObject obj);
 
   private static native void nativePut(byte[] objectId, NativeRayObject obj);
 
@@ -124,8 +109,6 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native List<Boolean> nativeWait(
       List<byte[]> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);
-
-  private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly);
 
   private static native void nativeAddLocalReference(byte[] objectId);
 

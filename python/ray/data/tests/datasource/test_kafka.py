@@ -15,6 +15,47 @@ from ray.data._internal.datasource.kafka_datasource import (
 pytest.importorskip("confluent_kafka")
 
 
+def _wait_for_watermark(bootstrap_server, topic, expected_count, timeout=5):
+    """Poll until the topic's high watermark reaches expected_count messages."""
+    from confluent_kafka import Consumer, TopicPartition
+
+    consumer = Consumer(
+        {
+            "bootstrap.servers": bootstrap_server,
+            "group.id": "test-watermark-poller",
+        }
+    )
+    try:
+        deadline = time.monotonic() + timeout
+        total = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
+            metadata = consumer.list_topics(topic, timeout=remaining)
+            topic_meta = metadata.topics.get(topic)
+            if topic_meta and topic_meta.partitions:
+                total = 0
+                for pid in topic_meta.partitions:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    _, high = consumer.get_watermark_offsets(
+                        TopicPartition(topic, pid), timeout=remaining
+                    )
+                    total += high
+                if total >= expected_count:
+                    return
+            time.sleep(0.1)
+        raise TimeoutError(
+            f"Timed out waiting for {expected_count} messages in topic {topic!r} "
+            f"(got {total})"
+        )
+    finally:
+        consumer.close()
+
+
 @pytest.fixture(scope="session")
 def kafka_container():
     from testcontainers.kafka import KafkaContainer
@@ -250,9 +291,7 @@ def test_read_kafka_basic(bootstrap_server, kafka_producer, ray_start_regular_sh
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.produce(topic, value=message, key=f"key-{i}")
     kafka_producer.flush()
-
-    # Wait a bit for messages to be committed
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 100)
 
     # Read from Kafka
     ds = ray.data.read_kafka(
@@ -311,7 +350,7 @@ def test_read_kafka_with_offsets(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, total_messages)
 
     ds = ray.data.read_kafka(
         topics=[topic],
@@ -344,7 +383,7 @@ def test_read_kafka_multiple_partitions(
         partition = i % 3
         kafka_producer.produce(topic, value=message, partition=partition)
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 150)
 
     # Read from all partitions
     ds = ray.data.read_kafka(
@@ -373,7 +412,8 @@ def test_read_kafka_multiple_topics(
         kafka_producer.produce(topic2, value=message)
 
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic1, 50)
+    _wait_for_watermark(bootstrap_server, topic2, 30)
 
     # Read from both topics
     ds = ray.data.read_kafka(
@@ -398,7 +438,7 @@ def test_read_kafka_with_message_headers(
         ]
         kafka_producer.produce(topic, value=message, headers=headers)
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 10)
 
     ds = ray.data.read_kafka(
         topics=[topic],
@@ -441,7 +481,7 @@ def test_read_kafka_offset_exceeds_available_messages(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 100)
 
     # end_offset exceeds available messages, but it gets clamped to the high
     # watermark during offset resolution, so the read completes without
@@ -467,7 +507,7 @@ def test_read_kafka_default_no_timeout(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 50)
 
     # timeout_ms is intentionally omitted (defaults to None).
     # Verifies the no-timeout code path works correctly.
@@ -525,7 +565,7 @@ def test_read_kafka_invalid_offsets(
         message = {"id": i, "value": f"message-{i}"}
         kafka_producer.produce(topic, value=message)
     kafka_producer.flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 100)
 
     with pytest.raises(ValueError, match=expected_error):
         ds = ray.data.read_kafka(
@@ -551,8 +591,7 @@ def test_read_kafka_with_datetime_offsets(
     for i in range(3):
         kafka_producer.produce(topic, value={"id": i}, timestamp=msg_ts)
     kafka_producer.flush()
-    # Brief wait for consumer-side metadata propagation after flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 3)
 
     ds = ray.data.read_kafka(
         topics=[topic],
@@ -596,8 +635,7 @@ def test_read_kafka_datetime_partial_range(
         timestamp=batch2_ts,
     )
     kafka_producer.flush()
-    # Brief wait for consumer-side metadata propagation after flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 4)
 
     # Read only the second batch using boundary_time as start
     ds = ray.data.read_kafka(
@@ -628,8 +666,7 @@ def test_read_kafka_datetime_after_all_messages(
 
     kafka_producer.produce(topic, value={"id": 0})
     kafka_producer.flush()
-    # Brief wait for consumer-side metadata propagation after flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 1)
 
     future_time = datetime(2099, 1, 1)
 
@@ -651,8 +688,7 @@ def test_read_kafka_datetime_before_all_messages(
 
     kafka_producer.produce(topic, value={"id": 0})
     kafka_producer.flush()
-    # Brief wait for consumer-side metadata propagation after flush()
-    time.sleep(0.3)
+    _wait_for_watermark(bootstrap_server, topic, 1)
 
     past_time = datetime(1970, 1, 2)
 
@@ -1188,6 +1224,183 @@ def test_write_kafka_dataset_with_nulls(
         value = json.loads(msg.value().decode("utf-8"))
         assert "id" in value
         # value["value"] should be either a string or null
+
+
+@pytest.mark.parametrize(
+    "start_offset,expected_error",
+    [
+        (
+            {"my-topic": {0: "latest"}},
+            r"start_offset\['my-topic'\]\[0\] cannot be 'latest'",
+        ),
+        (
+            {"my-topic": {"not-an-int": 100}},
+            r"start_offset\['my-topic'\] keys must be integers",
+        ),
+        (
+            {"my-topic": "not-a-dict"},
+            r"start_offset\['my-topic'\] must be a dict",
+        ),
+    ],
+)
+def test_per_partition_start_offset_invalid_values(start_offset, expected_error):
+    """Per-partition start_offset with disallowed values raises ValueError at init."""
+    with pytest.raises(ValueError, match=expected_error):
+        ray.data.read_kafka(
+            topics="my-topic",
+            bootstrap_servers="localhost:9092",
+            start_offset=start_offset,
+        )
+
+
+@pytest.mark.parametrize(
+    "end_offset,expected_error",
+    [
+        (
+            {"my-topic": {0: "earliest"}},
+            r"end_offset\['my-topic'\]\[0\] cannot be 'earliest'",
+        ),
+        (
+            {"my-topic": {"not-an-int": 100}},
+            r"end_offset\['my-topic'\] keys must be integers",
+        ),
+        (
+            {"my-topic": "not-a-dict"},
+            r"end_offset\['my-topic'\] must be a dict",
+        ),
+    ],
+)
+def test_per_partition_end_offset_invalid_values(end_offset, expected_error):
+    """Per-partition end_offset with disallowed values raises ValueError at init."""
+    with pytest.raises(ValueError, match=expected_error):
+        ray.data.read_kafka(
+            topics="my-topic",
+            bootstrap_servers="localhost:9092",
+            end_offset=end_offset,
+        )
+
+
+def test_per_partition_start_offset_non_existent_partition(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition dict referencing a non-existent partition raises ValueError."""
+    topic = "test-per-partition-bad-partition"
+
+    for i in range(10):
+        message = {"id": i, "value": f"message-{i}"}
+        kafka_producer.produce(topic, value=message)
+    kafka_producer.flush()
+    _wait_for_watermark(bootstrap_server, topic, 10)
+
+    with pytest.raises(
+        ValueError,
+        match=r"start_offset references partition 99 in topic",
+    ):
+        ds = ray.data.read_kafka(
+            topics=[topic],
+            bootstrap_servers=[bootstrap_server],
+            start_offset={topic: {99: 0}},
+        )
+        ds.take_all()
+
+
+def test_per_partition_start_offset_specific_offsets(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition start_offset reads correct slice from each partition."""
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    topic = "test-per-partition-start-offset"
+
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=2, replication_factor=1)
+    admin_client.create_topics([topic_config])
+    time.sleep(2)  # Wait for topic creation
+
+    # Send 50 messages to partition 0 and 50 to partition 1
+    for i in range(50):
+        kafka_producer.produce(topic, value={"id": i}, partition=0)
+        kafka_producer.produce(topic, value={"id": i}, partition=1)
+    kafka_producer.flush()
+    _wait_for_watermark(bootstrap_server, topic, 100)
+
+    # Read partition 0 from offset 20, partition 1 from offset 40
+    # Expected: 30 messages from partition 0 + 10 messages from partition 1 = 40
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset={topic: {0: 20, 1: 40}},
+        end_offset="latest",
+    )
+
+    records = ds.take_all()
+    assert len(records) == 40
+
+
+def test_per_partition_end_offset_specific_offsets(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Per-partition end_offset reads correct slice from each partition."""
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    topic = "test-per-partition-end-offset"
+
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=2, replication_factor=1)
+    admin_client.create_topics([topic_config])
+    time.sleep(2)  # Wait for topic creation
+
+    # Send 50 messages to partition 0 and 50 to partition 1
+    for i in range(50):
+        kafka_producer.produce(topic, value={"id": i}, partition=0)
+        kafka_producer.produce(topic, value={"id": i}, partition=1)
+    kafka_producer.flush()
+    _wait_for_watermark(bootstrap_server, topic, 100)
+
+    # End partition 0 at offset 30, partition 1 at offset 20
+    # Expected: 30 messages from partition 0 + 20 messages from partition 1 = 50
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset="earliest",
+        end_offset={topic: {0: 30, 1: 20}},
+    )
+
+    records = ds.take_all()
+    assert len(records) == 50
+
+
+def test_per_partition_start_offset_fallback_to_earliest(
+    bootstrap_server, kafka_producer, ray_start_regular_shared
+):
+    """Partitions not listed in per-partition dict fall back to 'earliest'."""
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    topic = "test-per-partition-fallback"
+
+    admin_client = AdminClient({"bootstrap.servers": bootstrap_server})
+    topic_config = NewTopic(topic, num_partitions=2, replication_factor=1)
+    admin_client.create_topics([topic_config])
+    time.sleep(2)  # Wait for topic creation
+
+    # Send 50 messages to each partition
+    for i in range(50):
+        kafka_producer.produce(topic, value={"id": i}, partition=0)
+        kafka_producer.produce(topic, value={"id": i}, partition=1)
+    kafka_producer.flush()
+    _wait_for_watermark(bootstrap_server, topic, 100)
+
+    # Only specify offset for partition 0; partition 1 should fall back to earliest (0)
+    # Expected: 30 messages from partition 0 + 50 messages from partition 1 = 80
+    ds = ray.data.read_kafka(
+        topics=[topic],
+        bootstrap_servers=[bootstrap_server],
+        start_offset={topic: {0: 20}},
+        end_offset="latest",
+    )
+
+    records = ds.take_all()
+    assert len(records) == 80
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@
 
 #include <boost/range/adaptor/map.hpp>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -88,7 +89,11 @@ class ResourceRequest {
   void Clear() { resources_.Clear(); }
 
   bool operator==(const ResourceRequest &other) const {
-    return this->resources_ == other.resources_;
+    // Compare every field: two requests with equal quantities but different
+    // label selectors or object-store-memory flags are not interchangeable.
+    return this->resources_ == other.resources_ &&
+           this->requires_object_store_memory_ == other.requires_object_store_memory_ &&
+           this->label_selector_ == other.label_selector_;
   }
 
   bool operator<=(const ResourceRequest &other) const {
@@ -99,9 +104,7 @@ class ResourceRequest {
     return this->resources_ >= other.resources_;
   }
 
-  bool operator!=(const ResourceRequest &other) const {
-    return this->resources_ != other.resources_;
-  }
+  bool operator!=(const ResourceRequest &other) const { return !(*this == other); }
 
   ResourceRequest operator+(const ResourceRequest &other) const {
     ResourceRequest res = *this;
@@ -311,7 +314,6 @@ class NodeResources {
   explicit NodeResources(const NodeResourceSet &resources)
       : total(resources), available(resources) {}
   NodeResourceSet total;
-  NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
 
@@ -355,6 +357,30 @@ class NodeResources {
   std::string DebugString() const;
   /// Returns compact dict-like string.
   std::string DictString() const;
+
+  /// Get the scalar available amount for a resource.
+  FixedPoint GetAvailableSum(scheduling::ResourceID resource_id) const;
+
+  /// Get the set of resource IDs that have explicit available entries.
+  std::set<scheduling::ResourceID> GetAvailableResourceIds() const;
+
+  /// Subtract resources from available, dropping any entry that goes negative.
+  void SubtractAvailableAndRemoveNegative(const ResourceSet &resource_set);
+
+  /// Set a single resource's available to an explicit scalar value.
+  void SetAvailableResource(scheduling::ResourceID resource_id, FixedPoint value);
+
+  /// Replace the entire available field from a NodeResourceSet.
+  void SetAvailable(NodeResourceSet resource_set);
+
+  /// Return available resources as a name->value map.
+  absl::flat_hash_map<std::string, double> GetAvailableResourceMap() const;
+
+  /// Read-only access to the entire available resource set.
+  const NodeResourceSet &GetAvailable() const;
+
+ private:
+  NodeResourceSet available;
 };
 
 /// Total and available capacities of each resource instance.
@@ -399,7 +425,13 @@ struct Node {
   std::optional<absl::Time> local_view_modified_ts_;
 };
 
-/// \request Conversion result to a ResourceRequest data structure.
+/// Convert a map of resources to a NodeResources data structure.
+///
+/// \param resource_map_total: Total capacities of resources we want to convert.
+/// \param resource_map_available: Available capacities of resources we want to convert.
+/// \param node_labels: Labels for the node.
+///
+/// \return Conversion result to a NodeResources data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
     const absl::flat_hash_map<std::string, double> &resource_map_available,

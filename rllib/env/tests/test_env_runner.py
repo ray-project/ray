@@ -863,15 +863,25 @@ class TestEnvRunnerCallbacks:
         on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
         on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
-        assert (
-            len(on_episode_created_calls)
-            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-        )
-        assert (
-            len(on_episode_start_calls)
-            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-        )
-        assert len(on_episode_end_calls) == sum(e.is_done for e in episodes)
+        num_done = sum(e.is_done for e in episodes)
+        num_envs = env_runner_with_callback.num_envs
+
+        # `on_episode_created` fires eagerly: once per env on the initial reset,
+        # plus once for the replacement episode that is created the instant an
+        # episode ends. So it is always exactly num_done + num_envs.
+        assert len(on_episode_created_calls) == num_done + num_envs
+        # `on_episode_start` fires lazily: only once a (replacement) episode has
+        # received its reset observation on the *next* sampled timestep. If an
+        # episode ends exactly on the final sampled timestep, its replacement is
+        # created but not yet started within this sample() call (and, having no
+        # data, is not returned). So the number of `on_episode_start` calls
+        # matches the number of episodes actually returned. Comparing against
+        # num_done + num_envs is off by one whenever an episode ends on the
+        # boundary -- the source of prior flakiness with unseeded random actions.
+        # (This is the same created-vs-started asymmetry that
+        # test_callbacks_on_sample_episodes asserts deterministically.)
+        assert len(on_episode_start_calls) == len(episodes)
+        assert len(on_episode_end_calls) == num_done
         assert len(on_sample_end_calls) == 1
         assert on_sample_end_calls[0][NUM_EPISODES] == len(episodes)
 
@@ -911,15 +921,17 @@ class TestEnvRunnerCallbacks:
         on_episode_end_calls = CallbackTracker.get_calls("on_episode_end")
         on_sample_end_calls = CallbackTracker.get_calls("on_sample_end")
 
-        assert (
-            len(on_episode_created_calls)
-            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-        )
-        assert (
-            len(on_episode_start_calls)
-            == sum(e.is_done for e in episodes) + env_runner_with_callback.num_envs
-        )
-        assert len(on_episode_end_calls) == sum(e.is_done for e in episodes)
+        num_done = sum(e.is_done for e in episodes)
+        num_envs = env_runner_with_callback.num_envs
+
+        # See test_callbacks_on_sample_timesteps for why `on_episode_start` is
+        # compared against the number of returned episodes rather than
+        # num_done + num_envs: sampling a rollout fragment is timestep-based, so
+        # an episode ending on the final sampled timestep creates -- but does not
+        # start -- its replacement within this sample() call.
+        assert len(on_episode_created_calls) == num_done + num_envs
+        assert len(on_episode_start_calls) == len(episodes)
+        assert len(on_episode_end_calls) == num_done
         assert len(on_sample_end_calls) == 1
         assert on_sample_end_calls[0][NUM_EPISODES] == len(episodes)
 

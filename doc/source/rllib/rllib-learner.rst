@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: The Learner API that applies gradient and non-gradient updates to RLModules, with DDP-based distribution, state access, and checkpointing.
 
 .. include:: /_includes/rllib/new_api_stack.rst
 

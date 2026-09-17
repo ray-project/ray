@@ -14,7 +14,6 @@ from ray.train.examples.horovod.horovod_pytorch_example import (
     train_func as hvd_train_func,
 )
 from ray.train.horovod import HorovodTrainer
-from ray.train.torch import TorchPredictor
 
 
 @pytest.fixture
@@ -51,7 +50,6 @@ def test_horovod(ray_start_4_cpus):
     model = Net()
     with result.checkpoint.as_directory() as checkpoint_dir:
         model.load_state_dict(torch.load(os.path.join(checkpoint_dir, "model.pt")))
-    predictor = TorchPredictor(model=model)
 
     # Find some test data to run on.
     test_set = datasets.MNIST(
@@ -68,7 +66,7 @@ def test_horovod(ray_start_4_cpus):
     images, labels = next(
         test_dataloader_iter
     )  # only running a batch inference of 10 images
-    predicted_labels = run_image_prediction(predictor.model, images)
+    predicted_labels = run_image_prediction(model, images)
     assert torch.equal(predicted_labels, labels)
 
 

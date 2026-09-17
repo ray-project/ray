@@ -1,20 +1,170 @@
+import copy
+import logging
 import warnings
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Dict, Optional, Set, Tuple
+
+import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTake,
+    try_prepare_chunked_tensor_take,
+)
 from ray.data._internal.util import get_total_obj_store_mem_on_node
+from ray.data._internal.utils.transform_pyarrow import (
+    _is_multi_chunk_extension_column,
+)
 from ray.data.block import Block, BlockAccessor
 from ray.util import log_once
+
+logger = logging.getLogger(__name__)
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
 # frequent compactions. Setting this to higher values increases memory usage but
 # reduces compaction frequency.
 SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
+
+# Ratio of remaining compacted rows to shuffle_buffer_min_size at which
+# compaction (and re-shuffling of indices) is triggered. Experiments show 0.5
+# is a good trade-off between throughput and randomness.
+SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
+
+
+def _prepare_local_shuffle_arrow_table(
+    table: pa.Table,
+) -> Tuple[pa.Table, Dict[int, PreparedChunkedTensorTake]]:
+    """Prepare an Arrow table for repeated local-shuffle row takes.
+
+    Args:
+        table: Arrow shuffle buffer to prepare.
+    Returns:
+        A table with unsupported multi-chunk columns combined and a mapping of
+        column positions to reusable prepared tensor takes.
+    """
+    if not any(column.num_chunks > 1 for column in table.columns):
+        return table, {}
+
+    prepared_takes = {}
+    columns = []
+    for index, column in enumerate(table.columns):
+        if column.num_chunks <= 1:
+            columns.append(column)
+        elif _is_multi_chunk_extension_column(column):
+            try:
+                take_plan = try_prepare_chunked_tensor_take(
+                    column, max_output_rows=table.num_rows
+                )
+            except Exception:
+                logger.warning(
+                    "Shuffle tensor preparation failed for column %s; combining column",
+                    index,
+                    exc_info=True,
+                )
+                take_plan = None
+            if take_plan is not None:
+                prepared_takes[index] = take_plan
+                columns.append(column)
+            else:
+                columns.append(transform_pyarrow.combine_chunked_array(column))
+        else:
+            columns.append(transform_pyarrow.combine_chunked_array(column))
+    return pa.Table.from_arrays(columns, schema=table.schema), prepared_takes
+
+
+@dataclass
+class _ShuffleBufferState:
+    """One logical shuffle-buffer generation and its consumption state.
+
+    The block, permutation, cursor, and prepared tensor takes must always refer
+    to the same generation. Replacing this object atomically starts a new
+    generation and prevents partially reset combinations of those fields.
+    """
+
+    block: Block
+    shuffled_indices: np.ndarray
+    prepared_tensor_takes: Dict[int, PreparedChunkedTensorTake]
+    batch_head: int = 0
+    # A failed plan stays disabled even if combining its source column raises.
+    failed_tensor_columns: Set[int] = field(default_factory=set)
+
+    @property
+    def remaining_rows(self) -> int:
+        """Return the number of rows not yet yielded from this generation."""
+        return len(self.shuffled_indices) - self.batch_head
+
+    def materialize_remaining(self) -> Block:
+        """Copy unyielded rows in permutation order for the next generation."""
+        assert self.remaining_rows > 0
+        return self._take(self.shuffled_indices[self.batch_head :])
+
+    def take_next(self, batch_size: int) -> Block:
+        """Take the next batch and advance this generation's cursor."""
+        assert self.remaining_rows > 0
+        rows_to_take = min(batch_size, self.remaining_rows)
+        indices = self.shuffled_indices[
+            self.batch_head : self.batch_head + rows_to_take
+        ]
+        result = self._take(indices)
+        self.batch_head += rows_to_take
+        return result
+
+    def _take(self, indices: np.ndarray) -> Block:
+        """Take rows through the implementation chosen for this generation."""
+        if not self.prepared_tensor_takes and not self.failed_tensor_columns:
+            return self._take_standard(indices)
+        return self._take_arrow(indices)
+
+    def _combine_failed_tensor_column(self, index: int) -> pa.ChunkedArray:
+        """Persist the standard representation before clearing a failed column."""
+        column = transform_pyarrow.combine_chunked_array(self.block.column(index))
+        self.block = self.block.set_column(
+            index, self.block.schema.field(index), column
+        )
+        self.failed_tensor_columns.remove(index)
+        return self.block.column(index)
+
+    def _take_arrow(self, indices: np.ndarray) -> pa.Table:
+        """Reuse plans, permanently replacing failed columns with standard storage.
+
+        Standard operations run outside the exception handler. If combining a
+        failed column also raises, its pending marker prevents re-preparation
+        on retry. Once combined, later batches reuse the replacement source.
+        """
+        assert isinstance(self.block, pa.Table)
+        columns = []
+        for index, column in enumerate(self.block.columns):
+            take_plan = self.prepared_tensor_takes.get(index)
+            if take_plan is None:
+                if index in self.failed_tensor_columns:
+                    column = self._combine_failed_tensor_column(index)
+                result = column.take(indices)
+            else:
+                try:
+                    result = take_plan.take(indices)
+                except Exception:
+                    logger.warning(
+                        "Shuffle tensor take failed for column %s; using standard take",
+                        index,
+                        exc_info=True,
+                    )
+                    self.failed_tensor_columns.add(index)
+                    del self.prepared_tensor_takes[index]
+                    take_plan = None
+                if take_plan is None:
+                    column = self._combine_failed_tensor_column(index)
+                    result = column.take(indices)
+            columns.append(result)
+        return pa.Table.from_arrays(columns, schema=self.block.schema)
+
+    def _take_standard(self, indices) -> Block:
+        """Take rows through the standard block accessor path."""
+        return BlockAccessor.for_block(self.block).take(indices)
 
 
 class BatcherInterface:
@@ -135,7 +285,9 @@ class Batcher(BatcherInterface):
                 # subsequent slicing operation)
                 if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
-                        transform_pyarrow.try_combine_chunked_columns(block)
+                        transform_pyarrow.try_combine_chunked_columns(
+                            block, min_chunks_to_combine=1
+                        )
                     )
 
                 # We only need part of the block to fill out a batch.
@@ -158,24 +310,29 @@ class Batcher(BatcherInterface):
 
 
 class ShufflingBatcher(BatcherInterface):
-    """Chunks blocks into shuffled batches, using a local in-memory shuffle buffer."""
+    """Chunks blocks into shuffled batches, using a local in-memory shuffle buffer.
 
-    # Implementation Note:
-    #
-    # This shuffling batcher lazily builds a shuffle buffer from added blocks, and once
-    # a batch is requested via .next_batch(), it concatenates the blocks into a concrete
-    # shuffle buffer and randomly shuffles the entire buffer.
-    #
-    # Adding of more blocks can be intermixed with retrieving batches, but it should be
-    # noted that we can end up performing two expensive operations on each retrieval:
-    #  1. Build added blocks into a concrete shuffle buffer.
-    #  2. Shuffling the entire buffer.
-    # To amortize the overhead of this process, we only shuffle the blocks after a
-    # delay designated by SHUFFLE_BUFFER_COMPACTION_RATIO.
-    #
-    # Similarly, adding blocks is very cheap. Each added block will be appended to a
-    # list, with concatenation of the underlying data delayed until the next batch
-    # compaction.
+    Uses an **incremental index** approach: on each compaction a permutation
+    array is generated over the buffer rows, and each ``next_batch()`` call
+    gathers a small slice of that permutation via ``take``.
+
+    Properties of this approach:
+
+    * **Memory-efficient** -- the data buffer is kept as-is; only a
+      lightweight int64 index array is allocated on top.
+    * **Smooth per-batch latency** -- each ``take`` operates on a small
+      slice of indices, so per-batch work is short and uniform, making it
+      easy to hide behind prefetch threads.
+
+    Example with ``batch_size=3`` and a 9-row buffer::
+
+        buffer:  [A, B, C, D, E, F, G, H, I]
+        indices: [4, 7, 1, 0, 8, 3, 6, 2, 5]   # random permutation
+
+        next_batch() -> take([4, 7, 1]) -> [E, H, B]   # batch_head 0 -> 3
+        next_batch() -> take([0, 8, 3]) -> [A, I, D]   # batch_head 3 -> 6
+        next_batch() -> take([6, 2, 5]) -> [G, C, F]   # batch_head 6 -> 9
+    """
 
     def __init__(
         self,
@@ -199,18 +356,21 @@ class ShufflingBatcher(BatcherInterface):
         if batch_size is None:
             raise ValueError("Must specify a batch_size if using a local shuffle.")
         self._batch_size = batch_size
-        self._shuffle_seed = shuffle_seed
+        self._rng = np.random.default_rng(shuffle_seed)
         if shuffle_buffer_min_size < batch_size:
             # Round it up internally to `batch_size` since our algorithm requires it.
             # This is harmless since it only offers extra randomization.
             shuffle_buffer_min_size = batch_size
-        self._min_rows_to_yield_batch = shuffle_buffer_min_size
+        self._shuffle_buffer_min_size = shuffle_buffer_min_size
+
+        self._min_rows_to_yield_batch = max(
+            1, int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD)
+        )
         self._min_rows_to_trigger_compaction = int(
             shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
         )
         self._builder = DelegatingBlockBuilder()
-        self._shuffle_buffer: Block = None
-        self._batch_head = 0
+        self._buffer_state: Optional[_ShuffleBufferState] = None
         self._done_adding = False
 
         self._total_object_store_nbytes = get_total_obj_store_mem_on_node()
@@ -240,7 +400,7 @@ class ShufflingBatcher(BatcherInterface):
                 "store memory, but the shuffle buffer is estimated to use "
                 f"{memory_string(self._estimated_min_nbytes_in_buffers)}. If you don't "
                 f"decrease the shuffle buffer size from "
-                f"{self._min_rows_to_yield_batch} rows, you might encounter spilling."
+                f"{self._shuffle_buffer_min_size} rows, you might encounter spilling."
             )
 
         block_accessor = BlockAccessor.for_block(block)
@@ -287,7 +447,7 @@ class ShufflingBatcher(BatcherInterface):
         if not self._done_adding:
             # Delay pulling of batches until the buffer is large enough in order to
             # amortize compaction overhead.
-            return (
+            return num_rows >= self._batch_size and (
                 self._num_compacted_rows() >= self._min_rows_to_yield_batch
                 or num_rows - self._batch_size >= self._min_rows_to_trigger_compaction
             )
@@ -302,20 +462,43 @@ class ShufflingBatcher(BatcherInterface):
         return self._num_compacted_rows() + self._num_uncompacted_rows()
 
     def _num_compacted_rows(self) -> int:
-        """Return number of unyielded rows in the compacted (shuffle) buffer."""
-        if self._shuffle_buffer is None:
-            return 0
-        # The size of the concrete (materialized) shuffle buffer, adjusting
-        # for the batch head position, which also serves as a counter of the number
-        # of already-yielded rows from the current concrete shuffle buffer.
-        return max(
-            0,
-            BlockAccessor.for_block(self._shuffle_buffer).num_rows() - self._batch_head,
-        )
+        """Return number of unyielded rows in the compacted buffer."""
+        return self._buffer_state.remaining_rows if self._buffer_state else 0
 
     def _num_uncompacted_rows(self) -> int:
         """Return number of unyielded rows in the uncompacted buffer."""
         return self._builder.num_rows()
+
+    def _start_new_shuffle_generation(self) -> None:
+        """Prepare a generation locally and publish it only after success."""
+        additional_blocks = []
+        if self._buffer_state is not None and self._buffer_state.remaining_rows > 0:
+            additional_blocks.append(self._buffer_state.materialize_remaining())
+
+        # Combine pending blocks and carry-over together: an intermediate build
+        # can copy the payload and perform irreversible dtype promotion.
+        block = self._builder.build(additional_blocks=additional_blocks)
+        accessor = BlockAccessor.for_block(block)
+        prepared_takes = {}
+        if isinstance(accessor, ArrowBlockAccessor):
+            block, prepared_takes = _prepare_local_shuffle_arrow_table(block)
+            accessor = BlockAccessor.for_block(block)
+
+        # Failed preparation must leave both pending rows and random state intact.
+        next_rng = copy.deepcopy(self._rng)
+        shuffled_indices = next_rng.permutation(accessor.num_rows()).astype(
+            np.int64, copy=False
+        )
+        next_state = _ShuffleBufferState(
+            block=block,
+            shuffled_indices=shuffled_indices,
+            prepared_tensor_takes=prepared_takes,
+        )
+        self._rng, self._builder, self._buffer_state = (
+            next_rng,
+            DelegatingBlockBuilder(),
+            next_state,
+        )
 
     def next_batch(self) -> Block:
         """Get the next shuffled batch from the shuffle buffer.
@@ -324,46 +507,11 @@ class ShufflingBatcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
-        # Add rows in the builder to the shuffle buffer. Note that we delay compaction
-        # as much as possible to amortize the concatenation overhead. Compaction is
-        # only necessary when the materialized buffer size falls below the min size.
         if self._num_uncompacted_rows() > 0 and (
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            if self._shuffle_buffer is not None:
-                if self._batch_head > 0:
-                    # Compact the materialized shuffle buffer.
-                    block = BlockAccessor.for_block(self._shuffle_buffer)
-                    self._shuffle_buffer = block.slice(
-                        self._batch_head, block.num_rows()
-                    )
-                # Add the unyielded rows from the existing shuffle buffer.
-                self._builder.add_block(self._shuffle_buffer)
-            # Build the new shuffle buffer.
-            self._shuffle_buffer = self._builder.build()
-            self._shuffle_buffer = BlockAccessor.for_block(
-                self._shuffle_buffer
-            ).random_shuffle(self._shuffle_seed)
-            if self._shuffle_seed is not None:
-                self._shuffle_seed += 1
+            self._start_new_shuffle_generation()
 
-            if isinstance(
-                BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
-            ):
-                self._shuffle_buffer = try_combine_chunked_columns(self._shuffle_buffer)
-
-            # Reset the builder.
-            self._builder = DelegatingBlockBuilder()
-            self._batch_head = 0
-
-        assert self._shuffle_buffer is not None
-        buffer_size = BlockAccessor.for_block(self._shuffle_buffer).num_rows()
-        # Truncate the batch to the buffer size, if necessary.
-        batch_size = min(self._batch_size, buffer_size)
-        slice_start = self._batch_head
-        self._batch_head += batch_size
-        # Yield the shuffled batch.
-        return BlockAccessor.for_block(self._shuffle_buffer).slice(
-            slice_start, self._batch_head
-        )
+        assert self._buffer_state is not None
+        return self._buffer_state.take_next(self._batch_size)

@@ -2,7 +2,7 @@ import logging
 import time
 from collections import Counter
 from functools import reduce
-from typing import Dict, List
+from typing import Any, Callable, Dict, List, Optional
 
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
@@ -23,8 +23,12 @@ logger = logging.getLogger(__name__)
 def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str, float]:
     """Add the values in two dictionaries.
 
+    Args:
+        dict1: The first dictionary.
+        dict2: The second dictionary.
+
     Returns:
-        dict: A new dictionary (inputs remain unmodified).
+        A new dictionary (inputs remain unmodified).
     """
     new_dict = dict1.copy()
     for k, v in dict2.items():
@@ -32,24 +36,28 @@ def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str,
     return new_dict
 
 
-def freq_of_dicts(dicts: List[Dict], serializer=None, deserializer=dict) -> DictCount:
+def freq_of_dicts(
+    dicts: List[Dict],
+    serializer: Optional[Callable[[Dict], Any]] = None,
+    deserializer: Callable[[Any], Any] = dict,
+) -> DictCount:
     """Count a list of dictionaries (or unhashable types).
 
     This is somewhat annoying because mutable data structures aren't hashable,
     and set/dict keys must be hashable.
 
     Args:
-        dicts (List[D]): A list of dictionaries to be counted.
-        serializer (D -> S): A custom serialization function. The output type S
+        dicts: A list of dictionaries to be counted.
+        serializer: A custom serialization function. The output type
             must be hashable. The default serializer converts a dictionary into
             a frozenset of KV pairs.
-        deserializer (S -> U): A custom deserialization function. See the
-            serializer for information about type S. For dictionaries U := D.
+        deserializer: A custom deserialization function. See the
+            serializer for information about the intermediate type. For
+            dictionaries the output type is the same as the input type.
 
     Returns:
-        List[Tuple[U, int]]: Returns a list of tuples. Each entry in the list
-            is a tuple containing a unique entry from `dicts` and its
-            corresponding frequency count.
+        A list of tuples. Each entry in the list is a tuple containing a unique
+        entry from `dicts` and its corresponding frequency count.
     """
     if serializer is None:
         serializer = lambda d: frozenset(d.items())  # noqa: E731
@@ -139,7 +147,7 @@ class LoadMetrics:
         This method removes from LoadMetrics the ips unknown to the autoscaler.
 
         Args:
-            active_ips (List[str]): The node ips known to the autoscaler.
+            active_ips: The node ips known to the autoscaler.
         """
         active_ips = set(active_ips)
 
@@ -167,6 +175,9 @@ class LoadMetrics:
     def get_node_resources(self):
         """Return a list of node resources (static resource sizes).
 
+        Returns:
+            An iterable of node resource dicts.
+
         Example:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics
             >>> metrics = LoadMetrics(...) # doctest: +SKIP
@@ -177,6 +188,9 @@ class LoadMetrics:
 
     def get_static_node_resources_by_ip(self) -> Dict[NodeIP, ResourceDict]:
         """Return a dict of node resources for every node ip.
+
+        Returns:
+            A mapping from node IP to its static resource dict.
 
         Example:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics

@@ -24,11 +24,15 @@
 
 namespace ray {
 
-ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(PeriodicalRunner::Create(io_service)),
+ClusterResourceManager::ClusterResourceManager(
+    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner)
+    : periodical_runner_(std::move(periodical_runner)),
       local_resource_view_node_count_gauge_(
           raylet::GetLocalResourceViewNodeCountGaugeMetric()) {
-  timer_->RunFnPeriodically(
+  if (periodical_runner_ == nullptr) {
+    return;
+  }
+  periodical_runner_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
             RayConfig::instance().ray_syncer_message_refresh_interval_ms());
@@ -85,13 +89,11 @@ bool ClusterResourceManager::UpdateNode(
   const auto resources_available =
       MapFromProtobuf(resource_view_sync_message.resources_available());
   auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-  NodeResources node_resources =
-      ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = std::move(node_resources.total);
-  local_view.available = std::move(node_resources.available);
+  local_view.total = NodeResourceSet(resources_total);
+  local_view.SetAvailable(NodeResourceSet(resources_available));
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
@@ -168,7 +170,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   auto local_view = it->second.GetMutableLocalView();
   FixedPoint resource_total_fp(resource_total);
   auto local_total = local_view->total.Get(resource_id);
-  auto local_available = local_view->available.Get(resource_id);
+  auto local_available = local_view->GetAvailableSum(resource_id);
   auto diff_capacity = resource_total_fp - local_total;
   auto total = local_total + diff_capacity;
   auto available = local_available + diff_capacity;
@@ -179,22 +181,7 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
     available = 0;
   }
   local_view->total.Set(resource_id, total);
-  local_view->available.Set(resource_id, available);
-}
-
-bool ClusterResourceManager::DeleteResources(
-    scheduling::NodeID node_id, const std::vector<scheduling::ResourceID> &resource_ids) {
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    return false;
-  }
-
-  auto local_view = it->second.GetMutableLocalView();
-  for (const auto &resource_id : resource_ids) {
-    local_view->total.Set(resource_id, 0);
-    local_view->available.Set(resource_id, 0);
-  }
-  return true;
+  local_view->SetAvailableResource(resource_id, available);
 }
 
 std::string ClusterResourceManager::GetNodeResourceViewString(
@@ -217,8 +204,7 @@ bool ClusterResourceManager::SubtractNodeAvailableResources(
 
   NodeResources *resources = it->second.GetMutableLocalView();
 
-  resources->available -= resource_request.GetResourceSet();
-  resources->available.RemoveNegative();
+  resources->SubtractAvailableAndRemoveNegative(resource_request.GetResourceSet());
 
   // TODO(swang): We should also subtract object store memory if the task has
   // arguments. Right now we do not modify object_pulls_queued in case of
@@ -260,13 +246,13 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
   auto node_resources = it->second.GetMutableLocalView();
   for (auto &resource_id : resource_set.ResourceIds()) {
     if (node_resources->total.Has(resource_id)) {
-      auto available = node_resources->available.Get(resource_id);
+      auto available = node_resources->GetAvailableSum(resource_id);
       auto total = node_resources->total.Get(resource_id);
       auto new_available = available + resource_set.Get(resource_id);
       if (new_available > total) {
         new_available = total;
       }
-      node_resources->available.Set(resource_id, new_available);
+      node_resources->SetAvailableResource(resource_id, new_available);
     }
   }
   return true;
@@ -302,6 +288,18 @@ void ClusterResourceManager::SetNodeLabels(
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = std::move(labels);
+}
+
+const absl::flat_hash_map<std::string, std::string>
+    &ClusterResourceManager::GetNodeLabels(scheduling::NodeID node_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().labels;
+}
+
+FixedPoint ClusterResourceManager::GetNodeTotalResources(
+    scheduling::NodeID node_id, scheduling::ResourceID resource_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().total.Get(resource_id);
 }
 
 void ClusterResourceManager::RecordMetrics() const {

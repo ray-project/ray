@@ -61,7 +61,6 @@ llm_config = LLMConfig(
             },
         },
     },
-    runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})

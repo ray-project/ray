@@ -103,6 +103,21 @@ GPU_USAGE_PANEL = Panel(
     stack=False,
 )
 
+MEMORY_USAGE_PANEL = Panel(
+    id=92,
+    title="Logical Slots Being Used (Memory)",
+    description="Current amount of logical heap memory in bytes allocated to running tasks per dataset operator. This tracks logical resource allocation, not actual physical memory usage.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='sum(ray_data_memory_usage_bytes{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Memory Usage: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 BYTES_OUTPUT_PER_SECOND_PANEL = Panel(
     id=7,
     title="Bytes Output / Second",
@@ -431,6 +446,21 @@ FAILED_TASKS_PANEL = Panel(
     stack=False,
 )
 
+MAX_USS_PER_TASK_PANEL = Panel(
+    id=91,
+    title="Max Task USS Memory per Operator",
+    description="Maximum unique set size (USS) memory usage in bytes among completed tasks for each operator.",
+    unit="bytes",
+    targets=[
+        Target(
+            expr='max(ray_data_max_uss_bytes_max{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Max Task USS: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 TASK_THROUGHPUT_BY_NODE_PANEL = Panel(
     id=46,
     title="Task Throughput (by Node)",
@@ -459,6 +489,44 @@ BLOCK_GENERATION_TIME_PANEL = Panel(
     ],
     fill=0,
     stack=False,
+)
+
+BLOCK_TRANSFORM_TIME_PANEL = Panel(
+    id=126,
+    title="Block Transform Time",
+    description="Average time (in seconds) a map, read, or write operator spent transforming data per output block over a recent 5-minute window. This covers the whole transform chain: forming the batches or rows the operator's stages consume, running the stage bodies, and building the output blocks. Block Generation Time measures the same blocks as wall clock over everything between them, so it is always the larger of the two and the gap is Ray Data's own per-block work rather than yours. Neither includes the object store write, which ray_data_block_serialization_time_s reports. Only map, read, and write operators report this; shuffles and aggregations don't.",
+    unit="s",
+    targets=[
+        Target(
+            expr='increase(ray_data_block_transform_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Block Transform Time: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL = Panel(
+    id=127,
+    title="Block Transform Time by Phase",
+    description="The Block Transform Time panel broken into the three phases that sum to it, averaged per output block over a recent 5-minute window. Input prep is turning input blocks into the batches or rows your functions receive; Function body is the stage bodies themselves, both yours and the ones Ray Data supplies; Output block build is assembling what they return back into blocks. This panel is empty for row-based transforms such as map and filter unless DataContext.accurate_map_phase_timing is set, because timing each row individually costs more than the breakdown reports; the Block Transform Time panel still plots the total.",
+    unit="s",
+    targets=[
+        Target(
+            expr='increase(ray_data_input_prep_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Input Prep: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='increase(ray_data_function_body_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Function Body: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='increase(ray_data_output_build_time_s{{{global_filters}, operator=~"$Operator"}}[5m]) / increase(ray_data_num_task_outputs_generated{{{global_filters}, operator=~"$Operator"}}[5m])',
+            legend="Output Block Build: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=10,
+    stack=True,
 )
 
 TASK_SUBMISSION_BACKPRESSURE_PANEL = Panel(
@@ -897,8 +965,8 @@ ITERATION_INITIALIZATION_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}, {{operator}}",
+            expr="sum(ray_data_iter_initialize_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -912,8 +980,8 @@ ITERATION_BLOCKED_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_total_blocked_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -927,8 +995,8 @@ ITERATION_USER_PANEL = Panel(
     unit="s",
     targets=[
         Target(
-            expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_user_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -942,8 +1010,8 @@ ITERATION_GET_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_get_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_get_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -957,8 +1025,8 @@ ITERATION_NEXT_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_next_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_next_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -972,8 +1040,8 @@ ITERATION_FORMAT_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_format_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_format_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -987,8 +1055,8 @@ ITERATION_COLLATE_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_collate_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_collate_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1002,8 +1070,8 @@ ITERATION_FINALIZE_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_finalize_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_finalize_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1017,8 +1085,8 @@ ITERATION_BLOCKS_LOCAL_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_blocks_local{{{global_filters}}}) by (dataset)",
-            legend="Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_blocks_local{{{global_filters}}}) by (dataset, split)",
+            legend="Blocks: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1032,8 +1100,8 @@ ITERATION_BLOCKS_REMOTE_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_blocks_remote{{{global_filters}}}) by (dataset)",
-            legend="Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_blocks_remote{{{global_filters}}}) by (dataset, split)",
+            legend="Blocks: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1047,8 +1115,8 @@ ITERATION_BLOCKS_UNKNOWN_LOCATION_PANEL = Panel(
     unit="blocks",
     targets=[
         Target(
-            expr="sum(ray_data_iter_unknown_location{{{global_filters}}}) by (dataset)",
-            legend="Blocks: {{dataset}}",
+            expr="sum(ray_data_iter_unknown_location{{{global_filters}}}) by (dataset, split)",
+            legend="Blocks: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1062,8 +1130,8 @@ ITERATION_PREFETCHED_BYTES_PANEL = Panel(
     unit="bytes",
     targets=[
         Target(
-            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset)",
-            legend="Prefetched Bytes: {{dataset}}",
+            expr="sum(ray_data_iter_prefetched_bytes{{{global_filters}}}) by (dataset, split)",
+            legend="Prefetched Bytes: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1077,8 +1145,8 @@ ITERATION_TIME_TO_FIRST_BATCH_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_time_to_first_batch_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1092,8 +1160,8 @@ ITERATION_GET_REF_BUNDLES_PANEL = Panel(
     unit="seconds",
     targets=[
         Target(
-            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset)",
-            legend="Seconds: {{dataset}}",
+            expr="sum(ray_data_iter_get_ref_bundles_seconds{{{global_filters}}}) by (dataset, split)",
+            legend="Seconds: {{dataset}}, {{split}}",
         )
     ],
     fill=0,
@@ -1462,6 +1530,8 @@ DATA_GRAFANA_ROWS = [
             AVERAGE_BYTES_PER_BLOCK_PANEL,
             AVERAGE_BLOCKS_PER_TASK_PANEL,
             BLOCK_GENERATION_TIME_PANEL,
+            BLOCK_TRANSFORM_TIME_PANEL,
+            BLOCK_TRANSFORM_TIME_BY_PHASE_PANEL,
         ],
         collapsed=True,
     ),
@@ -1479,6 +1549,7 @@ DATA_GRAFANA_ROWS = [
             TASK_COMPLETION_TIME_WITHOUT_BACKPRESSURE_PANEL,
             TASK_OUTPUT_BACKPRESSURE_TIME_PANEL,
             TASK_SUBMISSION_BACKPRESSURE_PANEL,
+            MAX_USS_PER_TASK_PANEL,
             TASK_THROUGHPUT_BY_NODE_PANEL,
             TASKS_WITH_OUTPUT_PANEL,
             SUBMITTED_TASKS_PANEL,
@@ -1494,6 +1565,7 @@ DATA_GRAFANA_ROWS = [
         panels=[
             CPU_USAGE_PANEL,
             GPU_USAGE_PANEL,
+            MEMORY_USAGE_PANEL,
             CPU_BUDGET_PANEL,
             GPU_BUDGET_PANEL,
             MEMORY_BUDGET_PANEL,

@@ -13,6 +13,7 @@ import yaml
 from filelock import FileLock
 
 import ray
+from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import (
     get_or_create_event_loop,
     try_to_create_directory,
@@ -25,8 +26,8 @@ from ray._private.runtime_env.conda_utils import (
     get_conda_info_json,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
@@ -115,6 +116,10 @@ def current_ray_pip_specifier(
 ) -> Optional[str]:
     """The pip requirement specifier for the running version of Ray.
 
+    Args:
+        logger: Logger used to warn when the running Ray version cannot be
+            detected (e.g. when running a source build).
+
     Returns:
         A string which can be passed to `pip install` to install the
         currently running Ray version, or None if running on a version
@@ -160,7 +165,7 @@ def inject_dependencies(
             environment YAML file.  This dict will be modified and returned.
         py_version: A string representing a Python version to inject
             into the conda dependencies, e.g. "3.7.7"
-        pip_dependencies (List[str]): A list of pip dependencies that
+        pip_dependencies: A list of pip dependencies that
             will be prepended to the list of pip dependencies in
             the conda dict.  If the conda dict does not already have a "pip"
             field, one will be created.

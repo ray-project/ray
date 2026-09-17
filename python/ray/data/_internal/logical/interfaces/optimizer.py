@@ -44,4 +44,9 @@ class Optimizer:
             if plan.dag.dag_str == previous_plan.dag.dag_str:
                 break
             previous_plan = plan
+        return self._post_optimize(plan)
+
+    def _post_optimize(self, plan: Plan) -> Plan:
+        """Post optimize is used for rules or other post-processing
+        that needs to be executed only once after the `optimize` loop."""
         return plan

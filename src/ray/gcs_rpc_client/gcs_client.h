@@ -22,7 +22,7 @@
 #include <unordered_map>
 #include <utility>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs_rpc_client/accessor.h"
@@ -233,6 +233,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   virtual rpc::GcsRpcClient &GetGcsRpcClient() {
     return client_context_->GetGcsRpcClient();
+  }
+
+  virtual rpc::ObservabilityPubSubRpcClient &GetObservabilityPubSubRpcClient() {
+    return client_context_->GetObservabilityPubSubRpcClient();
   }
 
   virtual pubsub::GcsSubscriber &GetGcsSubscriber() {

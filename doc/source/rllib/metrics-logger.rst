@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Log and aggregate metrics across RLlib components with MetricsLogger: scalars, non-scalar data, timers, counters, and throughput measurements.
 
 .. _rllib-metric-logger-docs:
 
@@ -349,7 +350,7 @@ only the :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` aspec
 
     # Train n times. Expect `theta1_mean` to be found in the results under:
     # `env_runners/theta1_mean`
-    for i in range(10):
+    for i in range(2):
         results = ppo.train()
         print(
             f"iter={i} "

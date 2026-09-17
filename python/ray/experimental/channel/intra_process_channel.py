@@ -8,8 +8,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class IntraProcessChannel(ChannelInterface):
-    """
-    IntraProcessChannel is a channel for communication between two tasks in the same
+    """IntraProcessChannel is a channel for communication between two tasks in the same
     worker process. It writes data directly to the worker's _SerializationContext
     and reads data from the _SerializationContext to avoid the serialization
     overhead and the need for reading/writing from shared memory. Note that if the
@@ -19,11 +18,14 @@ class IntraProcessChannel(ChannelInterface):
     Args:
         num_readers: The number of readers that will read from this channel. Readers
             can be the same method of the same actor.
+        _channel_id: Optional pre-generated channel identifier. If ``None``, a
+            new UUID4 is generated. Used internally for re-creating channels
+            after pickling.
     """
 
     def __init__(
         self,
-        num_readers,
+        num_readers: int,
         _channel_id: Optional[str] = None,
     ):
         # Generate a unique ID for the channel. The writer and reader will use

@@ -18,9 +18,16 @@ from ray.autoscaler.v2.scheduler import (
     SchedulingNodeStatus,
     SchedulingReply,
     SchedulingRequest,
+    UnschedulableRequestCache,
     logger,
 )
-from ray.autoscaler.v2.schema import AutoscalerInstance, NodeType
+from ray.autoscaler.v2.schema import (
+    AutoscalerInstance,
+    IPPRGroupSpec,
+    IPPRSpecs,
+    IPPRStatus,
+    NodeType,
+)
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
@@ -53,6 +60,8 @@ def sched_request(
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
+    ippr_specs: Optional[IPPRSpecs] = None,
+    ippr_statuses: Optional[Dict[str, IPPRStatus]] = None,
     cloud_resource_availabilities: Optional[Dict[NodeType, float]] = None,
 ) -> SchedulingRequest:
 
@@ -64,6 +73,8 @@ def sched_request(
         cluster_resource_constraints = []
     if instances is None:
         instances = []
+    if ippr_statuses is None:
+        ippr_statuses = {}
     if cloud_resource_availabilities is None:
         cloud_resource_availabilities = {}
 
@@ -88,6 +99,8 @@ def sched_request(
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
         disable_launch_config_check=disable_launch_config_check,
+        ippr_specs=ippr_specs,
+        ippr_statuses=ippr_statuses,
         cloud_resource_availabilities=cloud_resource_availabilities,
     )
 
@@ -291,6 +304,35 @@ class TestSchedulingNode:
         }
         assert node.total_resources == {"CPU": 1}
         assert node.labels == {"foo": "foo"}
+
+    @staticmethod
+    def test_new_running_instance_without_ray_node_returns_none():
+        # Regression test: a RAY_RUNNING instance whose ray_node is missing in
+        # GCS used to crash SchedulingNode.new with an AssertionError. The
+        # defensive guard returns None instead.
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+        instance = make_autoscaler_instance(
+            ray_node=None,
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="i-stale",
+                node_id="r-gone",
+            ),
+        )
+        node = SchedulingNode.new(
+            instance,
+            node_type_configs,
+            disable_launch_config_check=False,
+        )
+        assert node is None
 
     @staticmethod
     def test_new_head_node():
@@ -2942,6 +2984,1135 @@ def test_identical_node_state_caching():
         to_launch, _ = _launch_and_terminate(reply)
         assert to_launch == {}
         assert len(reply.infeasible_resource_requests) == 0
+
+
+def test_ippr_resize_to_maximum_capacity():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    # IPPR limits/specs and provider suggestion to upsize CPU to 2
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Scheduler should issue one IPPR action with desired set to suggested values
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    assert reply.to_ippr[0].desired_cpu == 4.0
+    assert reply.to_ippr[0].desired_memory == 8 * 1024 * 1024 * 1024
+    assert reply.to_launch == []
+
+
+def test_ippr_resize_scale_out_if_one_ippr_is_new():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    # IPPR limits/specs and provider suggestion to upsize CPU to 2
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+        k8s_resize_status="new",  # error or timeout will be rollback with a new IPPR action
+        raylet_id="r1",
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Scheduler should issue a new IPPR for the rollback.
+    assert len(reply.to_ippr) == 1
+    assert reply.to_ippr[0].cloud_instance_id == "pod-1"
+    assert reply.to_ippr[0].desired_cpu == 1
+    assert reply.to_ippr[0].desired_memory == 1 * 1024 * 1024 * 1024
+    # Scheduler should scale out a new node
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {"type_1": 1}
+
+
+def test_ippr_resize_scale_out_if_one_ippr_is_inprogress():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    # IPPR limits/specs and provider suggestion to upsize CPU to 2
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=2,
+        desired_memory=2 * 1024 * 1024 * 1024,
+        k8s_resize_status="inprogress",
+        raylet_id="r1",
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 4})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Scheduler should not issue new IPPR action because the IPPR is in progress
+    assert len(reply.to_ippr) == 0
+    # Scheduler should scale out a new node
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {"type_1": 1}
+
+
+def test_ippr_in_progress_exposes_desired_capacity_avoids_launch():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing running node with an in-progress resize to CPU=4
+    instance = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="type_1",
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            node_id=b"r1",
+        ),
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.RAY_RUNNING,
+            instance_id="i-1",
+            node_id="r1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=4,
+        desired_memory=8 * 1024 * 1024 * 1024,
+        resizing_at=int(time.time()),
+        k8s_resize_status="inprogress",
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # The scheduler should fit the 2-CPU request on the existing node (using desired capacity)
+    assert reply.to_launch == []
+    assert reply.to_ippr == []  # already in progress, no new IPPR action
+
+
+def test_ippr_does_not_resize_pending_node_without_ray_node_id():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # Existing pending node has no ray_node_id yet.
+    instance = make_autoscaler_instance(
+        im_instance=Instance(
+            instance_type="type_1",
+            status=Instance.ALLOCATED,
+            instance_id="i-1",
+        ),
+        cloud_instance_id="pod-1",
+    )
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_status = IPPRStatus(
+        cloud_instance_id="pod-1",
+        spec=ippr_specs.groups["type_1"],
+        current_cpu=1,
+        current_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=1,
+        desired_memory=1 * 1024 * 1024 * 1024,
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        instances=[instance],
+        ippr_specs=ippr_specs,
+        ippr_statuses={"pod-1": ippr_status},
+    )
+
+    reply = scheduler.schedule(request)
+    # Pending nodes without a ray_node_id should not be selected for IPPR.
+    assert reply.to_ippr == []
+    # Scheduler should also not launch a new node since the pending node could fulfill the request after IPPR.
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {}
+
+
+def test_ippr_capacity_of_unselected_candidates_not_modified():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r1",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="i-1",
+                node_id="r1",
+            ),
+            cloud_instance_id="pod-1",
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r2",
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="i-2",
+                node_id="r2",
+            ),
+            cloud_instance_id="pod-2",
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="type_1",
+                available_resources={"CPU": 1},
+                total_resources={"CPU": 1},
+                node_id=b"r3",
+                idle_duration_ms=10_000,
+            ),
+            im_instance=Instance(
+                instance_type="type_1",
+                status=Instance.RAY_RUNNING,
+                instance_id="i-3",
+                node_id="r3",
+            ),
+            cloud_instance_id="pod-3",
+        ),
+    ]
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=8 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+    ippr_statuses = {
+        "pod-1": IPPRStatus(
+            cloud_instance_id="pod-1",
+            spec=ippr_specs.groups["type_1"],
+            current_cpu=1,
+            current_memory=1 * 1024 * 1024 * 1024,
+            desired_cpu=1,
+            desired_memory=1 * 1024 * 1024 * 1024,
+        ),
+        "pod-2": IPPRStatus(
+            cloud_instance_id="pod-2",
+            spec=ippr_specs.groups["type_1"],
+            current_cpu=1,
+            current_memory=1 * 1024 * 1024 * 1024,
+            desired_cpu=1,
+            desired_memory=1 * 1024 * 1024 * 1024,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        gang_resource_requests=[[ResourceRequestUtil.make({"CPU": 2})]],
+        instances=instances,
+        idle_timeout_s=0,
+        ippr_specs=ippr_specs,
+        ippr_statuses=ippr_statuses,
+    )
+
+    reply = scheduler.schedule(request)
+
+    assert reply.to_launch == []
+    # Only one IPPR candidate is selected for this gang request.
+    assert len(reply.to_ippr) == 1
+    assert {status.cloud_instance_id for status in reply.to_ippr} == {"pod-1"}
+    assert {status.desired_cpu for status in reply.to_ippr} == {4.0}
+    _, to_terminate = _launch_and_terminate(reply)
+    assert [instance_id for instance_id, _, _ in to_terminate] == ["i-3"]
+    # if pod-2 is accidentally selected for IPPR (it should not be),
+    # the cluster resources should be bigger than 5.0
+    assert reply.cluster_resources["CPU"] == 5.0
+
+
+def test_ippr_max_limits_affect_new_node_capacity():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    # No existing instances; IPPR max allows new nodes to expose larger capacity
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=4 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 4,
+        ippr_specs=ippr_specs,
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+    # With IPPR max=4, all four 1-CPU bundles should fit on a single launched node
+    assert to_launch == {"type_1": 1}
+    assert reply.to_ippr == []
+
+
+def test_ippr_max_limits_affect_new_node_capacity_2():
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "type_1": NodeTypeConfig(
+            name="type_1",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    ippr_specs = IPPRSpecs(
+        groups={
+            "type_1": IPPRGroupSpec(
+                min_cpu=1,
+                max_cpu=4,
+                min_memory=1 * 1024 * 1024 * 1024,
+                max_memory=4 * 1024 * 1024 * 1024,
+                resize_timeout=60,
+            )
+        }
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 6,
+        ippr_specs=ippr_specs,
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    # Each launched node should be evaluated with IPPR max=4 CPU capacity:
+    # six 1-CPU bundles should require exactly two new nodes, not three.
+    assert to_launch == {"type_1": 2}
+    assert reply.to_ippr == []
+
+
+class TestSchedulerPerformanceOptimizations:
+    """Tests for large-cluster performance optimizations."""
+
+    def test_precompute_serializes_once_per_unique_request(self, monkeypatch):
+        """The same request object repeated count times should be serialized once."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 10, "memory": 100},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * 10,
+        )
+        # Patch after sched_request: group_by_count inside it serializes each
+        # request legitimately, which would skew the count below.
+        calls = 0
+        serialized_ids = set()
+        orig = ResourceRequest.SerializeToString
+
+        def counting_serialize(self, deterministic=None):
+            nonlocal calls
+            calls += 1
+            serialized_ids.add(id(self))
+            return orig(self, deterministic=deterministic)
+
+        monkeypatch.setattr(ResourceRequest, "SerializeToString", counting_serialize)
+        ResourceDemandScheduler(event_logger).schedule(request)
+        assert calls == 1 and len(serialized_ids) == 1
+
+    def test_quick_reject_skips_exhausted_nodes(self):
+        """Nodes with no available resources should be skipped without deepcopy."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 10, "memory": 100},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # Create instances where all resources are allocated (available = 0).
+        instances = []
+        for i in range(50):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={},  # All resources used up
+                        total_resources={"CPU": 10, "memory": 100},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 2})] * 10,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # Should launch new nodes since existing are exhausted.
+        assert to_launch == {"type_1": 2}
+
+    def test_quick_reject_partial_resources(self):
+        """Nodes with some resources but below minimum demand are skipped."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 10, "memory": 100},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # Node has 1 CPU available but all requests need 4 CPU.
+        instances = []
+        for i in range(10):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 1, "memory": 10},
+                        total_resources={"CPU": 10, "memory": 100},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 4})] * 5,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # All existing nodes have < 4 CPU available, must launch new.
+        # 5 requests × 4 CPU each, new nodes have 10 CPU → fits 2 per node → need 3.
+        assert to_launch == {"type_1": 3}
+
+    def test_quick_reject_does_not_skip_feasible_nodes(self):
+        """Nodes with sufficient resources should still be scheduled on."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 10, "memory": 100},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # Nodes have plenty of resources.
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 10, "memory": 100},
+                        total_resources={"CPU": 10, "memory": 100},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 2})] * 10,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # Existing nodes can handle all requests (5 nodes × 10 CPU ÷ 2 CPU = 25 slots).
+        assert to_launch == {}
+
+    def test_quick_reject_cpu_exhausted_but_memory_available(self):
+        """Nodes with CPU exhausted but memory available should be skipped."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # CPU is fully used but memory is abundant.
+        instances = []
+        for i in range(50):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        # All requests need both CPU and memory.
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=[ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})]
+            * 10,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # 50 nodes have CPU=0, no request (needing CPU=0.2) can fit.
+        # 10 requests * 0.2 CPU, each new node has 1 CPU -> need 2 nodes.
+        assert to_launch == {"type_1": 2}
+
+    def test_quick_reject_mixed_shapes_or_across_shapes(self):
+        """Nodes kept if they can fit at least one request shape (OR across shapes).
+
+        Scenario: two types of requests with different resource shapes.
+        - Shape A: {CPU: 2} (CPU-only)
+        - Shape B: {GPU: 1} (GPU-only)
+        Nodes have CPU available but no GPU. They should NOT be rejected because
+        shape A can still fit (OR across shapes keeps the node).
+        """
+        node_type_configs = {
+            "type_cpu": NodeTypeConfig(
+                name="type_cpu",
+                resources={"CPU": 8},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+            "type_gpu": NodeTypeConfig(
+                name="type_gpu",
+                resources={"CPU": 4, "GPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # CPU nodes with available CPU but no GPU.
+        instances = []
+        for i in range(3):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_cpu",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_cpu-{i}",
+                        node_id=f"r{i}type_cpu",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_cpu".encode("utf-8"),
+                        ray_node_type_name="type_cpu",
+                        available_resources={"CPU": 4},
+                        total_resources={"CPU": 8},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_cpu-{i}",
+                )
+            )
+
+        # Mix of CPU-only and GPU-only requests.
+        resource_requests = [ResourceRequestUtil.make({"CPU": 2})] * 4 + [
+            ResourceRequestUtil.make({"GPU": 1})
+        ] * 2
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # CPU requests: 4 × 2 CPU = 8 CPU needed. 3 nodes × 4 CPU avail = 12 CPU.
+        # Existing CPU nodes can handle all CPU requests (no new CPU nodes needed).
+        # GPU requests: 2 × 1 GPU. No existing node has GPU → need new GPU nodes.
+        # type_gpu has 1 GPU each → need 2 GPU nodes.
+        assert to_launch == {"type_gpu": 2}
+
+    def test_quick_reject_mixed_shapes_all_exhausted(self):
+        """Nodes rejected when they cannot fit ANY request shape.
+
+        Scenario: two types of requests with different resource shapes.
+        - Shape A: {CPU: 2, memory: 100}
+        - Shape B: {GPU: 1}
+        Nodes have CPU=0 (exhausted) and no GPU. Neither shape can fit, so the
+        node should be rejected by the pre-filter.
+        """
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 4, "memory": 500},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+            "type_gpu": NodeTypeConfig(
+                name="type_gpu",
+                resources={"CPU": 1, "GPU": 1, "memory": 500},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # Nodes with CPU exhausted, plenty of memory, no GPU.
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 400},
+                        total_resources={"CPU": 4, "memory": 500},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+
+        # Shape A needs CPU+memory; Shape B needs GPU.
+        # Existing nodes have CPU=0 (fails shape A) and no GPU (fails shape B).
+        resource_requests = [
+            ResourceRequestUtil.make({"CPU": 2, "memory": 100})
+        ] * 3 + [ResourceRequestUtil.make({"GPU": 1})] * 2
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # All existing nodes are rejected (can't fit shape A or B).
+        # Shape A: 3 × {CPU:2, memory:100}. type_1 has 4 CPU, 500 mem → fits 2/node → need 2.
+        # Shape B: 2 × {GPU:1}. type_gpu has 1 GPU each (CPU=1 can't fit shape A) → need 2.
+        assert to_launch == {"type_1": 2, "type_gpu": 2}
+
+    def test_quick_reject_keeps_nodes_for_zero_resource_requests(self):
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                # Cluster is already at its configured maximum.
+                max_worker_nodes=5,
+            ),
+        }
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+        # 3 CPU requests that genuinely cannot be placed (every node has CPU=0
+        # and the cluster is at max_worker_nodes), plus 2 zero-resource
+        # requests that fit on any of the 5 existing nodes.
+        resource_requests = [
+            ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})
+        ] * 3 + [ResourceRequestUtil.make({})] * 2
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # At max_worker_nodes, so nothing can be launched either way.
+        assert to_launch == {}
+        # Only the 3 CPU requests are infeasible. The 2 zero-resource requests
+        # must be placed on the existing nodes, not reported as unschedulable.
+        assert len(reply.infeasible_resource_requests) == 3
+
+    def test_quick_reject_keeps_nodes_for_implicit_resource_requests(self):
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 1, "memory": 1000},
+                min_worker_nodes=0,
+                # Cluster is already at its configured maximum.
+                max_worker_nodes=5,
+            ),
+        }
+        instances = []
+        for i in range(5):
+            instances.append(
+                make_autoscaler_instance(
+                    im_instance=Instance(
+                        instance_type="type_1",
+                        status=Instance.RAY_RUNNING,
+                        instance_id=f"type_1-{i}",
+                        node_id=f"r{i}type_1",
+                    ),
+                    ray_node=NodeState(
+                        node_id=f"r{i}type_1".encode("utf-8"),
+                        ray_node_type_name="type_1",
+                        available_resources={"CPU": 0, "memory": 800},
+                        total_resources={"CPU": 1, "memory": 1000},
+                        idle_duration_ms=0,
+                        status=NodeStatus.RUNNING,
+                    ),
+                    cloud_instance_id=f"c-type_1-{i}",
+                )
+            )
+        # 3 CPU requests that cannot be placed (every node has CPU=0 and the
+        # cluster is at max_worker_nodes), plus one implicit-resource request
+        # that every node satisfies implicitly (nodes do not list implicit
+        # keys in available_resources).
+        implicit_resource = ray._raylet.IMPLICIT_RESOURCE_PREFIX + "a"
+        resource_requests = [
+            ResourceRequestUtil.make({"CPU": 0.2, "memory": 30})
+        ] * 3 + [ResourceRequestUtil.make({implicit_resource: 1})]
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # At max_worker_nodes, so nothing can be launched either way.
+        assert to_launch == {}
+        # Only the 3 CPU requests are infeasible. The implicit-resource request
+        # must be placed on an existing node, not reported as unschedulable.
+        assert len(reply.infeasible_resource_requests) == 3
+
+
+class TestPrecomputeSerializeKeys:
+    """Tests for precomputed shape_keys optimization in try_schedule."""
+
+    def test_precomputed_keys_produce_same_result_as_fallback(self):
+        """try_schedule with precomputed shape_keys gives identical results to fallback."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_configs["type_1"],
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        requests = [ResourceRequestUtil.make({"CPU": 1}) for _ in range(6)]
+
+        # Run without shape_keys (fallback path).
+        import copy
+
+        node_copy1 = copy.deepcopy(node)
+        remaining1, score1 = node_copy1.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND
+        )
+
+        # Run with precomputed shape_keys.
+        shape_keys = {id(r): r.SerializeToString(deterministic=True) for r in requests}
+        node_copy2 = copy.deepcopy(node)
+        remaining2, score2 = node_copy2.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND, shape_keys
+        )
+
+        assert len(remaining1) == len(remaining2)
+        assert score1 == score2
+        # 4 CPU node fits 4 requests, 2 remain.
+        assert len(remaining1) == 2
+
+    def test_precomputed_keys_fallback_on_missing_id(self):
+        """If a request id is not in shape_keys, fallback to SerializeToString."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 2},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_configs["type_1"],
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+        requests = [ResourceRequestUtil.make({"CPU": 1}) for _ in range(3)]
+
+        # Intentionally pass an empty shape_keys dict — all ids will miss.
+        shape_keys = {}
+        import copy
+
+        node_copy = copy.deepcopy(node)
+        remaining, score = node_copy.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND, shape_keys
+        )
+
+        # Should still work via fallback: 2 CPU fits 2 requests, 1 remains.
+        assert len(remaining) == 1
+
+    def test_unschedulable_request_cache_bytes_interface(self):
+        """UnschedulableRequestCache works correctly with raw bytes keys."""
+        cache = UnschedulableRequestCache()
+
+        key_a = b"shape_a"
+        key_b = b"shape_b"
+
+        assert not cache.contains(key_a)
+        assert not cache.contains(key_b)
+
+        cache.add(key_a)
+        assert cache.contains(key_a)
+        assert not cache.contains(key_b)
+
+        cache.add(key_b)
+        assert cache.contains(key_a)
+        assert cache.contains(key_b)
+
+        cache.clear()
+        assert not cache.contains(key_a)
+        assert not cache.contains(key_b)
+
+    def test_precomputed_keys_with_duplicate_objects(self):
+        """Duplicate request objects (same id) work correctly with shape_keys."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 2},
+                min_worker_nodes=0,
+                max_worker_nodes=10,
+            ),
+        }
+
+        node = SchedulingNode.from_node_config(
+            node_config=node_type_configs["type_1"],
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            node_kind=NodeKind.WORKER,
+        )
+
+        # Simulate ungroup_by_count: same object repeated multiple times.
+        single_request = ResourceRequestUtil.make({"CPU": 1})
+        requests = [single_request] * 5  # All have the same id()
+
+        shape_keys = {
+            id(single_request): single_request.SerializeToString(deterministic=True)
+        }
+
+        import copy
+
+        node_copy = copy.deepcopy(node)
+        remaining, score = node_copy.try_schedule(
+            requests, ResourceRequestSource.PENDING_DEMAND, shape_keys
+        )
+
+        # 2 CPU node fits 2 requests, 3 remain.
+        assert len(remaining) == 3
+
+    def test_precomputed_keys_end_to_end_scheduling(self):
+        """Full scheduling round with precomputed keys produces correct launch decisions."""
+        node_type_configs = {
+            "type_1": NodeTypeConfig(
+                name="type_1",
+                resources={"CPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=100,
+            ),
+        }
+        # One existing node with 2 CPU available.
+        instances = [
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="type_1",
+                    available_resources={"CPU": 2},
+                    total_resources={"CPU": 4},
+                    node_id=b"r1",
+                ),
+                im_instance=Instance(
+                    instance_type="type_1",
+                    status=Instance.RAY_RUNNING,
+                    instance_id="1",
+                    node_id="r1",
+                ),
+                cloud_instance_id="c-1",
+            ),
+        ]
+
+        # 10 requests × 1 CPU each. Existing node fits 2, need 2 new nodes for 8.
+        resource_requests = [ResourceRequestUtil.make({"CPU": 1})] * 10
+
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            resource_requests=resource_requests,
+            instances=instances,
+        )
+        reply = ResourceDemandScheduler(event_logger).schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        # Existing node handles 2, remaining 8 need 8/4 = 2 new nodes.
+        assert to_launch == {"type_1": 2}
 
 
 if __name__ == "__main__":

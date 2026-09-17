@@ -8,7 +8,11 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.operators.map_transformer import (
+    MapTransformer,
+    TransformClock,
+)
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -47,7 +51,9 @@ def generate_repartition_fn(
 
             def upstream_map_fn(blocks):
                 DataContext._set_current(data_context)
-                return map_transformer.apply_transform(blocks, ctx)
+                return map_transformer.apply_transform(
+                    blocks, ctx, clock=TransformClock()
+                )
 
         shuffle_spec = ShuffleTaskSpec(
             target_shuffle_max_block_size=(
@@ -62,10 +68,15 @@ def generate_repartition_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(shuffle_spec)
 
+        label_selector = data_context.execution_options.label_selector
+        map_ray_remote_args = merge_label_selector({}, label_selector)
+        reduce_ray_remote_args = merge_label_selector({}, label_selector)
         return scheduler.execute(
             refs,
             num_outputs,
             ctx,
+            map_ray_remote_args=map_ray_remote_args,
+            reduce_ray_remote_args=reduce_ray_remote_args,
             _debug_limit_execution_to_num_blocks=(
                 _debug_limit_shuffle_execution_to_num_blocks
             ),
@@ -82,7 +93,16 @@ def generate_repartition_fn(
             random_shuffle=False,
         )
         scheduler = SplitRepartitionTaskScheduler(shuffle_spec)
-        return scheduler.execute(refs, num_outputs, ctx)
+        label_selector = data_context.execution_options.label_selector
+        map_ray_remote_args = merge_label_selector({}, label_selector)
+        reduce_ray_remote_args = merge_label_selector({}, label_selector)
+        return scheduler.execute(
+            refs,
+            num_outputs,
+            ctx,
+            map_ray_remote_args=map_ray_remote_args,
+            reduce_ray_remote_args=reduce_ray_remote_args,
+        )
 
     if shuffle:
         return shuffle_repartition_fn

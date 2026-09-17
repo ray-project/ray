@@ -15,18 +15,7 @@ if TYPE_CHECKING:
 
 @PublicAPI
 class PlacementGroupSchedulingStrategy:
-    """Placement group based scheduling strategy.
-
-    Attributes:
-        placement_group: the placement group this actor belongs to,
-            or None if it doesn't belong to any group.
-        placement_group_bundle_index: the index of the bundle
-            if the actor belongs to a placement group, which may be -1 to
-            specify any available bundle.
-        placement_group_capture_child_tasks: Whether or not children tasks
-            of this actor should implicitly use the same placement group
-            as its parent. It is False by default.
-    """
+    """Placement group based scheduling strategy."""
 
     def __init__(
         self,
@@ -34,6 +23,18 @@ class PlacementGroupSchedulingStrategy:
         placement_group_bundle_index: int = -1,
         placement_group_capture_child_tasks: Optional[bool] = None,
     ):
+        """Initialize a ``PlacementGroupSchedulingStrategy``.
+
+        Args:
+            placement_group: the placement group this actor belongs to,
+                or None if it doesn't belong to any group.
+            placement_group_bundle_index: the index of the bundle
+                if the actor belongs to a placement group, which may be -1 to
+                specify any available bundle.
+            placement_group_capture_child_tasks: Whether or not children tasks
+                of this actor should implicitly use the same placement group
+                as its parent. It is False by default.
+        """
         self.placement_group = placement_group
         self.placement_group_bundle_index = placement_group_bundle_index
         self.placement_group_capture_child_tasks = placement_group_capture_child_tasks
@@ -41,21 +42,7 @@ class PlacementGroupSchedulingStrategy:
 
 @PublicAPI
 class NodeAffinitySchedulingStrategy:
-    """Static scheduling strategy used to run a task or actor on a particular node.
-
-    Attributes:
-        node_id: the hex id of the node where the task or actor should run.
-        soft: whether the scheduler should run the task or actor somewhere else
-            if the target node doesn't exist (e.g. the node dies) or is infeasible
-            during scheduling.
-            If the node exists and is feasible, the task or actor
-            will only be scheduled there.
-            This means if the node doesn't have the available resources,
-            the task or actor will wait indefinitely until resources become available.
-            If the node doesn't exist or is infeasible, the task or actor
-            will fail if soft is False
-            or be scheduled somewhere else if soft is True.
-    """
+    """Static scheduling strategy used to run a task or actor on a particular node."""
 
     def __init__(
         self,
@@ -64,6 +51,25 @@ class NodeAffinitySchedulingStrategy:
         _spill_on_unavailable: bool = False,
         _fail_on_unavailable: bool = False,
     ):
+        """Initialize a ``NodeAffinitySchedulingStrategy``.
+
+        Args:
+            node_id: the hex id of the node where the task or actor should run.
+            soft: whether the scheduler should run the task or actor somewhere
+                else if the target node doesn't exist (e.g. the node dies) or
+                is infeasible during scheduling. If the node exists and is
+                feasible, the task or actor will only be scheduled there. This
+                means if the node doesn't have the available resources, the
+                task or actor will wait indefinitely until resources become
+                available. If the node doesn't exist or is infeasible, the
+                task or actor will fail if ``soft`` is False or be scheduled
+                somewhere else if ``soft`` is True.
+            _spill_on_unavailable: (Private) When ``soft`` is True, allow
+                spilling to another node if the target node is unavailable.
+            _fail_on_unavailable: (Private) When ``soft`` is False, fail
+                immediately if the target node is unavailable rather than
+                waiting.
+        """
         # This will be removed once we standardize on node id being hex string.
         if not isinstance(node_id, str):
             node_id = node_id.hex()
@@ -146,13 +152,15 @@ class DoesNotExist:
 
 
 class _LabelMatchExpression:
-    """An expression used to select node by node's labels
-    Attributes:
-        key: the key of label
-        operator: In、NotIn、Exists、DoesNotExist
-    """
+    """An expression used to select node by node's labels."""
 
     def __init__(self, key: str, operator: Union[In, NotIn, Exists, DoesNotExist]):
+        """Initialize a ``_LabelMatchExpression``.
+
+        Args:
+            key: the key of label.
+            operator: one of ``In``, ``NotIn``, ``Exists``, ``DoesNotExist``.
+        """
         self.key = key
         self.operator = operator
 

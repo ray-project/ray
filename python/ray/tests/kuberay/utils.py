@@ -389,7 +389,8 @@ def _kubectl_port_forward(
             by the service.
 
     Yields:
-        The local port. The service can then be accessed at 127.0.0.1:<local_port>.
+        int: The local port. The service can then be accessed at
+            127.0.0.1:<local_port>.
     """
     # First, figure out which port the service exposes for the given target port.
     service_port = _get_service_port(service, namespace, target_port)
@@ -466,6 +467,8 @@ def kubectl_delete(kind: str, name: str, namespace: str, wait: bool = True):
         kind: Kind of the K8s resource (e.g. pod)
         name: Name of the K8s resource.
         namespace: Namespace of the K8s resource.
+        wait: Whether to pass ``--wait=true`` so ``kubectl`` blocks until the
+            resource is fully removed.
     """
     wait_str = "true" if wait else "false"
     subprocess.check_output(

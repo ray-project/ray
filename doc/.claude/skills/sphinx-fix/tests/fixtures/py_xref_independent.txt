@@ -1,0 +1,8 @@
+Build: 4161499   State: Finished   Success: False   Duration: 669s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (1):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/releases-2.56.0/python/ray/train/collective/__init__.py:docstring of ray.train.collective.broadcast_from_rank_zero:: WARNING: py:exc reference target not found: pickle.PicklingError [ref.exc]
+
+Summary line: build finished with problems, 1 warning.

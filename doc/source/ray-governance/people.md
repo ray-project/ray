@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Directory of Ray project committers and maintainers, listing the people responsible for governance and ongoing development of the Ray open-source project."
+---
+
 (people)=
 
 # People
@@ -9,10 +15,13 @@ This page lists the key people involved in the governance and maintenance of the
 - Abrar Sheikh ([GitHub](https://github.com/abrarsheikh/))
 - Alan Guo ([GitHub](https://github.com/alanwguo/))
 - Alex Wu ([GitHub](https://github.com/wuisawesome/))
+- Alex Yang ([GitHub](https://github.com/akyang-anyscale/))
 - Alexey Kudinkin ([GitHub](https://github.com/alexeykudinkin/))
 - Alexey Tumanov ([GitHub](https://github.com/atumanov/))
 - Ameer Haj Ali ([GitHub](https://github.com/AmeerHajAli/))
 - Amog Kamsetty ([GitHub](https://github.com/amogkam/))
+- Andrew Pollack-Gray ([GitHub](https://github.com/andrew-anyscale/))
+- Andrew Sy Kim ([GitHub](https://github.com/andrewsykim/))
 - Angelina Le Grix ([GitHub](https://github.com/angelinalg/))
 - Antoni Baum ([GitHub](https://github.com/Yard1/))
 - Archit Kulkarni ([GitHub](https://github.com/archit-kulkarni/))
@@ -26,16 +35,21 @@ This page lists the key people involved in the governance and maintenance of the
 - Devin Petersohn ([GitHub](https://github.com/devin-petersohn/))
 - Dhyey Shah ([GitHub](https://github.com/dayshah/))
 - Dmitri Gekhtman ([GitHub](https://github.com/DmitriGekhtman/))
+- Douglas Strodtman ([GitHub](https://github.com/dstrodtman/))
 - Edward Oakes ([GitHub](https://github.com/edoakes/))
+- Elliot Barnwell ([GitHub](https://github.com/elliot-barn/))
 - Eric Liang ([GitHub](https://github.com/ericl/))
 - Fengbin Fang ([GitHub](https://github.com/ffbin/))
+- Goutam Venkatramanan ([GitHub](https://github.com/goutamvenkat-anyscale/))
 - Guyang Song ([GitHub](https://github.com/SongGuyang/))
 - Hao Chen ([GitHub](https://github.com/raulchen/))
 - Ian Rodney ([GitHub](https://github.com/ijrsvt/))
 - Ibrahim Rabbani ([GitHub](https://github.com/israbbani/))
 - Ion Stoica ([GitHub](https://github.com/istoica/))
+- Jeffrey Wang ([GitHub](https://github.com/jeffreywang88/))
 - Jiajun Yao ([GitHub](https://github.com/jjyao/))
 - Jian Xiao ([GitHub](https://github.com/jianoaix/))
+- Joshua Lee ([GitHub](https://github.com/Sparks0219/))
 - Jun Gong ([GitHub](https://github.com/gjoliver/))
 - Justin Yu ([GitHub](https://github.com/justinvyu/))
 - Kai Fricke ([GitHub](https://github.com/krfricke/))
@@ -54,10 +68,14 @@ This page lists the key people involved in the governance and maintenance of the
 - Richard Liaw ([GitHub](https://github.com/richardliaw/))
 - Ricky Xu ([GitHub](https://github.com/rickyyx/))
 - Robert Nishihara ([GitHub](https://github.com/robertnishihara/))
+- Rueian Huang ([GitHub](https://github.com/rueian/))
 - Rui Qiao ([GitHub](https://github.com/ruisearch42/))
 - Ruiyang Wang ([GitHub](https://github.com/rynewang/))
+- Ryan O'Leary ([GitHub](https://github.com/ryanaoleary/))
+- Sampan Nayak ([GitHub](https://github.com/sampan-s-nayak/))
 - SangBin Cho ([GitHub](https://github.com/rkooo567/))
 - Scott Lee ([GitHub](https://github.com/scottjlee/))
+- Seiji Eicher ([GitHub](https://github.com/eicherseiji/))
 - Shreyas Krishnaswamy ([GitHub](https://github.com/shrekris-anyscale/))
 - Simon Mo ([GitHub](https://github.com/simon-mo/))
 - Siyuan Zhuang ([GitHub](https://github.com/suquark/))
@@ -65,6 +83,7 @@ This page lists the key people involved in the governance and maintenance of the
 - Sven Mika ([GitHub](https://github.com/sven1977/))
 - Xiaowei Jiang ([GitHub](https://github.com/xwjiang2010/))
 - Yi Cheng ([GitHub](https://github.com/fishbone/))
+- You-Cheng Lin (Owen) ([GitHub](https://github.com/owenowenisme/))
 - Yuhong Guo ([GitHub](https://github.com/guoyuhong/))
 - Zhe Zhang ([GitHub](https://github.com/zhe-thoughts/))
 - Zhen Wang ([GitHub](https://github.com/joneswong/))

@@ -1,88 +1,20 @@
 import asyncio
-import math
 import sys
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Deque, List, Optional
-
-from pydantic import BaseModel
+from typing import Deque, Tuple
 
 from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve.schema import ControllerHealthMetrics, DurationStats
 
 # Number of recent loop iterations to track for rolling averages
 _HEALTH_METRICS_HISTORY_SIZE = 100
 
-
-class DurationStats(BaseModel):
-    """Statistics for a collection of duration/latency measurements."""
-
-    mean: float = 0.0
-    std: float = 0.0
-    min: float = 0.0
-    max: float = 0.0
-
-    @classmethod
-    def from_values(cls, values: List[float]) -> "DurationStats":
-        """Compute statistics from a list of values."""
-        if not values:
-            return cls()
-
-        n = len(values)
-        mean = sum(values) / n
-        min_val = min(values)
-        max_val = max(values)
-
-        # Compute standard deviation
-        if n > 1:
-            variance = sum((x - mean) ** 2 for x in values) / n
-            std = math.sqrt(variance)
-        else:
-            std = 0.0
-
-        return cls(mean=mean, std=std, min=min_val, max=max_val)
-
-
-class ControllerHealthMetrics(BaseModel):
-    """Health metrics for the Ray Serve controller.
-
-    These metrics help diagnose controller performance issues, especially
-    as cluster size increases.
-    """
-
-    # Timestamps
-    timestamp: float = 0.0  # When these metrics were collected
-    controller_start_time: float = 0.0  # When the controller started
-    uptime_s: float = 0.0  # Controller uptime in seconds
-
-    # Control loop metrics
-    num_control_loops: int = 0  # Total number of control loops executed
-    loop_duration_s: Optional[
-        DurationStats
-    ] = None  # Loop duration stats (rolling window)
-    loops_per_second: float = 0.0  # Control loop iterations per second
-
-    # Sleep/scheduling metrics
-    last_sleep_duration_s: float = 0.0  # Actual sleep duration of last iteration
-    expected_sleep_duration_s: float = 0.0  # Expected sleep (CONTROL_LOOP_INTERVAL_S)
-    event_loop_delay_s: float = 0.0  # Delay = actual - expected (positive = overloaded)
-
-    # Event loop health
-    num_asyncio_tasks: int = 0  # Number of pending asyncio tasks
-
-    # Component update durations (rolling window stats)
-    deployment_state_update_duration_s: Optional[DurationStats] = None
-    application_state_update_duration_s: Optional[DurationStats] = None
-    proxy_state_update_duration_s: Optional[DurationStats] = None
-    node_update_duration_s: Optional[DurationStats] = None
-
-    # Autoscaling metrics latency tracking (rolling window stats)
-    # These track the delay between when metrics are generated and when they reach controller
-    handle_metrics_delay_ms: Optional[DurationStats] = None
-    replica_metrics_delay_ms: Optional[DurationStats] = None
-
-    # Memory usage (in MB)
-    process_memory_mb: float = 0.0
+# Larger window for ingestion samples: at high fan-in there are many more
+# record_* calls than control loops, so we keep more samples to get a stable
+# picture of per-call cost.
+_INGEST_METRICS_HISTORY_SIZE = 2000
 
 
 @dataclass
@@ -90,6 +22,9 @@ class ControllerHealthMetricsTracker:
     """Tracker for collecting controller health metrics over time."""
 
     controller_start_time: float = field(default_factory=time.time)
+    # Separate monotonic anchor: controller_start_time is an absolute timestamp
+    # reported in the schema, but a rate must not be measured off the wall clock.
+    mono_start_time: float = field(default_factory=time.monotonic)
 
     # Rolling history of loop durations
     loop_durations: Deque[float] = field(
@@ -118,12 +53,43 @@ class ControllerHealthMetricsTracker:
         default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
     )
 
+    # --- Ingestion-path instrumentation (autoscaling metrics fan-in) ---
+    # Rolling history of per-call ingestion processing time (ms): the wall time
+    # spent inside record_autoscaling_metrics_from_{handle,replica}, i.e. the
+    # decompress + deserialize + state-write work that shares the controller's
+    # single event loop with the control loop.
+    handle_ingest_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
+    )
+    replica_ingest_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
+    )
+    # Decompress-only time (ms), to split transport cost from state-write cost.
+    decompress_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
+    )
+
+    # Monotonic counters since controller start.
+    handle_reports_received: int = 0
+    replica_reports_received: int = 0
+    # Cumulative wall-seconds spent on the ingestion path since start.
+    total_ingest_seconds: float = 0.0
+    # (wall clock, total_ingest_seconds) sampled once per control loop, so
+    # ingest_cpu_fraction can report a recent rate rather than a lifetime average
+    # that a long-lived controller can never move.
+    ingest_totals: Deque[Tuple[float, float]] = field(
+        default_factory=lambda: deque(maxlen=_HEALTH_METRICS_HISTORY_SIZE)
+    )
+
     # Latest values (used in collect_metrics)
     last_sleep_duration_s: float = 0.0
     num_control_loops: int = 0
+    last_control_loop_time: float = 0.0
 
     def record_loop_duration(self, duration: float):
         self.loop_durations.append(duration)
+        # Sampled here, not on the ingest path, so the rate costs the fan-in nothing.
+        self.ingest_totals.append((time.monotonic(), self.total_ingest_seconds))
 
     def record_handle_metrics_delay(self, delay_ms: float):
         self.handle_metrics_delays.append(delay_ms)
@@ -143,6 +109,19 @@ class ControllerHealthMetricsTracker:
     def record_node_update_duration(self, duration: float):
         self.node_update_durations.append(duration)
 
+    def record_handle_ingest(self, duration_ms: float):
+        self.handle_ingest_durations.append(duration_ms)
+        self.handle_reports_received += 1
+        self.total_ingest_seconds += duration_ms / 1000.0
+
+    def record_replica_ingest(self, duration_ms: float):
+        self.replica_ingest_durations.append(duration_ms)
+        self.replica_reports_received += 1
+        self.total_ingest_seconds += duration_ms / 1000.0
+
+    def record_decompress(self, duration_ms: float):
+        self.decompress_durations.append(duration_ms)
+
     def collect_metrics(self) -> ControllerHealthMetrics:
         """Collect and return current health metrics."""
         now = time.time()
@@ -157,7 +136,8 @@ class ControllerHealthMetricsTracker:
         # Calculate event loop delay (actual sleep - expected sleep)
         # Positive values indicate the event loop is overloaded
         event_loop_delay = max(
-            0.0, self.last_sleep_duration_s - CONTROL_LOOP_INTERVAL_S
+            0.0,
+            self.last_sleep_duration_s - CONTROL_LOOP_INTERVAL_S,
         )
 
         # Get asyncio task count
@@ -181,6 +161,29 @@ class ControllerHealthMetricsTracker:
         )
         node_update_stats = DurationStats.from_values(list(self.node_update_durations))
 
+        # Ingestion-path statistics
+        handle_ingest_stats = DurationStats.from_values(
+            list(self.handle_ingest_durations)
+        )
+        replica_ingest_stats = DurationStats.from_values(
+            list(self.replica_ingest_durations)
+        )
+        decompress_stats = DurationStats.from_values(list(self.decompress_durations))
+        ingest_reports_received = (
+            self.handle_reports_received + self.replica_reports_received
+        )
+        # Fraction of one event-loop core consumed by ingestion over the sampled
+        # window, falling back to the whole run before the first loop sample lands.
+        # Monotonic end to end so an NTP step cannot distort the rate.
+        mono_now = time.monotonic()
+        ingest_span = mono_now - self.mono_start_time
+        ingest_seconds = self.total_ingest_seconds
+        if self.ingest_totals:
+            sampled_at, sampled_total = self.ingest_totals[0]
+            ingest_span = mono_now - sampled_at
+            ingest_seconds = self.total_ingest_seconds - sampled_total
+        ingest_cpu_fraction = ingest_seconds / ingest_span if ingest_span > 0 else 0.0
+
         # Get memory usage in MB
         # Note: ru_maxrss is in bytes on macOS but kilobytes on Linux
         # The resource module is Unix-only, so we handle Windows gracefully
@@ -201,6 +204,7 @@ class ControllerHealthMetricsTracker:
             timestamp=now,
             controller_start_time=self.controller_start_time,
             uptime_s=uptime,
+            last_control_loop_time=self.last_control_loop_time,
             num_control_loops=self.num_control_loops,
             loop_duration_s=loop_duration_stats,
             loops_per_second=loops_per_second,
@@ -214,5 +218,12 @@ class ControllerHealthMetricsTracker:
             node_update_duration_s=node_update_stats,
             handle_metrics_delay_ms=handle_delay_stats,
             replica_metrics_delay_ms=replica_delay_stats,
+            handle_ingest_duration_ms=handle_ingest_stats,
+            replica_ingest_duration_ms=replica_ingest_stats,
+            metrics_decompress_duration_ms=decompress_stats,
+            handle_reports_received=self.handle_reports_received,
+            replica_reports_received=self.replica_reports_received,
+            ingest_reports_received=ingest_reports_received,
+            ingest_cpu_fraction=ingest_cpu_fraction,
             process_memory_mb=process_memory_mb,
         )

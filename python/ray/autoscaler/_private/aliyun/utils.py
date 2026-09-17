@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import List, Optional
 
 from aliyunsdkcore import client
 from aliyunsdkcore.acs_exception.exceptions import ClientException, ServerException
@@ -53,7 +54,13 @@ class AcsClient:
         max_retries: The maximum number of retries each connection.
     """
 
-    def __init__(self, access_key, access_key_secret, region_id, max_retries):
+    def __init__(
+        self,
+        access_key: str,
+        access_key_secret: str,
+        region_id: str,
+        max_retries: int,
+    ):
         self.cli = client.AcsClient(
             ak=access_key,
             secret=access_key_secret,
@@ -61,12 +68,19 @@ class AcsClient:
             region_id=region_id,
         )
 
-    def describe_instances(self, tags=None, instance_ids=None):
+    def describe_instances(
+        self,
+        tags: Optional[List[dict]] = None,
+        instance_ids: Optional[List[str]] = None,
+    ) -> Optional[list]:
         """Query the details of one or more Elastic Compute Service (ECS) instances.
 
-        :param tags: The tags of the instance.
-        :param instance_ids: The IDs of ECS instances
-        :return: ECS instance list
+        Args:
+            tags: The tags of the instance.
+            instance_ids: The IDs of ECS instances.
+
+        Returns:
+            ECS instance list.
         """
         request = DescribeInstancesRequest()
         if tags is not None:
@@ -81,33 +95,36 @@ class AcsClient:
 
     def create_instance(
         self,
-        instance_type,
-        image_id,
-        tags,
-        key_pair_name,
-        optimized="optimized",
-        instance_charge_type="PostPaid",
-        spot_strategy="SpotWithPriceLimit",
-        internet_charge_type="PayByTraffic",
-        internet_max_bandwidth_out=5,
-    ):
+        instance_type: str,
+        image_id: str,
+        tags: List[dict],
+        key_pair_name: str,
+        optimized: str = "optimized",
+        instance_charge_type: str = "PostPaid",
+        spot_strategy: str = "SpotWithPriceLimit",
+        internet_charge_type: str = "PayByTraffic",
+        internet_max_bandwidth_out: int = 5,
+    ) -> Optional[str]:
         """Create a subscription or pay-as-you-go ECS instance.
 
-        :param instance_type: The instance type of the ECS.
-        :param image_id: The ID of the image used to create the instance.
-        :param tags: The tags of the instance.
-        :param key_pair_name: The name of the key pair to be bound to
-                              the instance.
-        :param optimized: Specifies whether the instance is I/O optimized
-        :param instance_charge_type: The billing method of the instance.
-                                     Default value: PostPaid.
-        :param spot_strategy: The preemption policy for the pay-as-you-go
-                              instance.
-        :param internet_charge_type: The billing method for network usage.
-                                     Default value: PayByTraffic.
-        :param internet_max_bandwidth_out: The maximum inbound public
-                                           bandwidth. Unit: Mbit/s.
-        :return: The created instance ID.
+        Args:
+            instance_type: The instance type of the ECS.
+            image_id: The ID of the image used to create the instance.
+            tags: The tags of the instance.
+            key_pair_name: The name of the key pair to be bound to
+                the instance.
+            optimized: Specifies whether the instance is I/O optimized.
+            instance_charge_type: The billing method of the instance.
+                Default value: PostPaid.
+            spot_strategy: The preemption policy for the pay-as-you-go
+                instance.
+            internet_charge_type: The billing method for network usage.
+                Default value: PayByTraffic.
+            internet_max_bandwidth_out: The maximum inbound public
+                bandwidth. Unit: Mbit/s.
+
+        Returns:
+            The created instance ID.
         """
         request = CreateInstanceRequest()
         request.set_InstanceType(instance_type)
@@ -130,44 +147,45 @@ class AcsClient:
 
     def run_instances(
         self,
-        instance_type,
-        image_id,
-        tags,
-        security_group_id,
-        vswitch_id,
-        key_pair_name,
-        amount=1,
-        optimized="optimized",
-        instance_charge_type="PostPaid",
-        spot_strategy="SpotWithPriceLimit",
-        internet_charge_type="PayByTraffic",
-        internet_max_bandwidth_out=1,
-    ):
-        """Create one or more pay-as-you-go or subscription
-            Elastic Compute Service (ECS) instances
+        instance_type: str,
+        image_id: str,
+        tags: List[dict],
+        security_group_id: str,
+        vswitch_id: str,
+        key_pair_name: str,
+        amount: int = 1,
+        optimized: str = "optimized",
+        instance_charge_type: str = "PostPaid",
+        spot_strategy: str = "SpotWithPriceLimit",
+        internet_charge_type: str = "PayByTraffic",
+        internet_max_bandwidth_out: int = 1,
+    ) -> Optional[List[str]]:
+        """Create one or more pay-as-you-go or subscription ECS instances.
 
-        :param instance_type: The instance type of the ECS.
-        :param image_id: The ID of the image used to create the instance.
-        :param tags: The tags of the instance.
-        :param security_group_id: The ID of the security group to which to
-                                  assign the instance. Instances in the same
-                                  security group can communicate with
-                                  each other.
-        :param vswitch_id: The ID of the vSwitch to which to connect
-                           the instance.
-        :param key_pair_name: The name of the key pair to be bound to
-                              the instance.
-        :param amount: The number of instances that you want to create.
-        :param optimized: Specifies whether the instance is I/O optimized
-        :param instance_charge_type: The billing method of the instance.
-                                     Default value: PostPaid.
-        :param spot_strategy: The preemption policy for the pay-as-you-go
-                              instance.
-        :param internet_charge_type: The billing method for network usage.
-                                     Default value: PayByTraffic.
-        :param internet_max_bandwidth_out: The maximum inbound public
-                                           bandwidth. Unit: Mbit/s.
-        :return: The created instance IDs.
+        Args:
+            instance_type: The instance type of the ECS.
+            image_id: The ID of the image used to create the instance.
+            tags: The tags of the instance.
+            security_group_id: The ID of the security group to which to
+                assign the instance. Instances in the same security group
+                can communicate with each other.
+            vswitch_id: The ID of the vSwitch to which to connect
+                the instance.
+            key_pair_name: The name of the key pair to be bound to
+                the instance.
+            amount: The number of instances that you want to create.
+            optimized: Specifies whether the instance is I/O optimized.
+            instance_charge_type: The billing method of the instance.
+                Default value: PostPaid.
+            spot_strategy: The preemption policy for the pay-as-you-go
+                instance.
+            internet_charge_type: The billing method for network usage.
+                Default value: PayByTraffic.
+            internet_max_bandwidth_out: The maximum inbound public
+                bandwidth. Unit: Mbit/s.
+
+        Returns:
+            The created instance IDs.
         """
         request = RunInstancesRequest()
         request.set_InstanceType(instance_type)
@@ -190,12 +208,14 @@ class AcsClient:
         logging.error("instance created failed.")
         return None
 
-    def create_security_group(self, vpc_id):
-        """Create a security group
+    def create_security_group(self, vpc_id: str) -> Optional[str]:
+        """Create a security group.
 
-        :param vpc_id: The ID of the VPC in which to create
-                       the security group.
-        :return: The created security group ID.
+        Args:
+            vpc_id: The ID of the VPC in which to create the security group.
+
+        Returns:
+            The created security group ID.
         """
         request = CreateSecurityGroupRequest()
         request.set_VpcId(vpc_id)
@@ -205,12 +225,19 @@ class AcsClient:
             return security_group_id
         return None
 
-    def describe_security_groups(self, vpc_id=None, tags=None):
+    def describe_security_groups(
+        self,
+        vpc_id: Optional[str] = None,
+        tags: Optional[List[dict]] = None,
+    ) -> Optional[list]:
         """Query basic information of security groups.
 
-        :param vpc_id: The ID of the VPC to which the security group belongs.
-        :param tags: The tags of the security group.
-        :return: Security group list.
+        Args:
+            vpc_id: The ID of the VPC to which the security group belongs.
+            tags: The tags of the security group.
+
+        Returns:
+            Security group list.
         """
         request = DescribeSecurityGroupsRequest()
         if vpc_id is not None:
@@ -225,16 +252,21 @@ class AcsClient:
         return None
 
     def authorize_security_group(
-        self, ip_protocol, port_range, security_group_id, source_cidr_ip
-    ):
+        self,
+        ip_protocol: str,
+        port_range: str,
+        security_group_id: str,
+        source_cidr_ip: str,
+    ) -> None:
         """Create an inbound security group rule.
 
-        :param ip_protocol: The transport layer protocol.
-        :param port_range: The range of destination ports relevant to
-                           the transport layer protocol.
-        :param security_group_id: The ID of the destination security group.
-        :param source_cidr_ip: The range of source IPv4 addresses.
-                               CIDR blocks and IPv4 addresses are supported.
+        Args:
+            ip_protocol: The transport layer protocol.
+            port_range: The range of destination ports relevant to
+                the transport layer protocol.
+            security_group_id: The ID of the destination security group.
+            source_cidr_ip: The range of source IPv4 addresses.
+                CIDR blocks and IPv4 addresses are supported.
         """
         request = AuthorizeSecurityGroupRequest()
         request.set_IpProtocol(ip_protocol)
@@ -243,14 +275,18 @@ class AcsClient:
         request.set_SourceCidrIp(source_cidr_ip)
         self._send_request(request)
 
-    def create_v_switch(self, vpc_id, zone_id, cidr_block):
-        """Create vSwitches to divide the VPC into one or more subnets
+    def create_v_switch(
+        self, vpc_id: str, zone_id: str, cidr_block: str
+    ) -> Optional[str]:
+        """Create vSwitches to divide the VPC into one or more subnets.
 
-        :param vpc_id: The ID of the VPC to which the VSwitch belongs.
-        :param zone_id: The ID of the zone to which
-                        the target VSwitch belongs.
-        :param cidr_block: The CIDR block of the VSwitch.
-        :return:
+        Args:
+            vpc_id: The ID of the VPC to which the VSwitch belongs.
+            zone_id: The ID of the zone to which the target VSwitch belongs.
+            cidr_block: The CIDR block of the VSwitch.
+
+        Returns:
+            The created VSwitch ID, or None if the request failed.
         """
         request = CreateVSwitchRequest()
         request.set_ZoneId(zone_id)
@@ -263,10 +299,11 @@ class AcsClient:
             logging.error("create_v_switch vpc_id %s failed.", vpc_id)
         return None
 
-    def create_vpc(self):
-        """Creates a virtual private cloud (VPC).
+    def create_vpc(self) -> Optional[str]:
+        """Create a virtual private cloud (VPC).
 
-        :return: The created VPC ID.
+        Returns:
+            The created VPC ID.
         """
         request = CreateVpcRequest()
         response = self._send_request(request)
@@ -274,10 +311,11 @@ class AcsClient:
             return response.get("VpcId")
         return None
 
-    def describe_vpcs(self):
-        """Queries one or more VPCs in a region.
+    def describe_vpcs(self) -> Optional[list]:
+        """Query one or more VPCs in a region.
 
-        :return: VPC list.
+        Returns:
+            VPC list.
         """
         request = DescribeVpcsRequest()
         response = self._send_request(request)
@@ -285,12 +323,18 @@ class AcsClient:
             return response.get("Vpcs").get("Vpc")
         return None
 
-    def tag_resource(self, resource_ids, tags, resource_type="instance"):
+    def tag_resource(
+        self,
+        resource_ids: List[str],
+        tags: List[dict],
+        resource_type: str = "instance",
+    ) -> None:
         """Create and bind tags to specified ECS resources.
 
-        :param resource_ids: The IDs of N resources.
-        :param tags: The tags of the resource.
-        :param resource_type: The type of the resource.
+        Args:
+            resource_ids: The IDs of N resources.
+            tags: The tags of the resource.
+            resource_type: The type of the resource.
         """
         request = TagResourcesRequest()
         request.set_Tags(tags)
@@ -302,10 +346,11 @@ class AcsClient:
         else:
             logging.error("instance %s create tag failed.", resource_ids)
 
-    def start_instance(self, instance_id):
+    def start_instance(self, instance_id: str) -> None:
         """Start an ECS instance.
 
-        :param instance_id: The Ecs instance ID.
+        Args:
+            instance_id: The ECS instance ID.
         """
         request = StartInstanceRequest()
         request.set_InstanceId(instance_id)
@@ -316,12 +361,12 @@ class AcsClient:
         else:
             logging.error("instance %s start failed.", instance_id)
 
-    def stop_instance(self, instance_id, force_stop=False):
+    def stop_instance(self, instance_id: str, force_stop: bool = False) -> None:
         """Stop an ECS instance that is in the Running state.
 
-        :param instance_id: The Ecs instance ID.
-        :param force_stop: Specifies whether to forcibly stop the instance.
-        :return:
+        Args:
+            instance_id: The ECS instance ID.
+            force_stop: Specifies whether to forcibly stop the instance.
         """
         request = StopInstanceRequest()
         request.set_InstanceId(instance_id)
@@ -329,12 +374,15 @@ class AcsClient:
         logging.info("Stop %s command submit successfully.", instance_id)
         self._send_request(request)
 
-    def stop_instances(self, instance_ids, stopped_mode="StopCharging"):
+    def stop_instances(
+        self, instance_ids: List[str], stopped_mode: str = "StopCharging"
+    ) -> None:
         """Stop one or more ECS instances that are in the Running state.
 
-        :param instance_ids: The IDs of instances.
-        :param stopped_mode: Specifies whether billing for the instance
-                             continues after the instance is stopped.
+        Args:
+            instance_ids: The IDs of instances.
+            stopped_mode: Specifies whether billing for the instance
+                continues after the instance is stopped.
         """
         request = StopInstancesRequest()
         request.set_InstanceIds(instance_ids)
@@ -343,11 +391,11 @@ class AcsClient:
         if response is None:
             logging.error("stop_instances failed")
 
-    def delete_instance(self, instance_id):
-        """Release a pay-as-you-go instance or
-            an expired subscription instance.
+    def delete_instance(self, instance_id: str) -> None:
+        """Release a pay-as-you-go instance or an expired subscription instance.
 
-        :param instance_id: The ID of the instance that you want to release.
+        Args:
+            instance_id: The ID of the instance that you want to release.
         """
         request = DeleteInstanceRequest()
         request.set_InstanceId(instance_id)
@@ -355,23 +403,26 @@ class AcsClient:
         logging.info("Delete %s command submit successfully", instance_id)
         self._send_request(request)
 
-    def delete_instances(self, instance_ids):
-        """Release one or more pay-as-you-go instances or
-            expired subscription instances.
+    def delete_instances(self, instance_ids: List[str]) -> None:
+        """Release one or more pay-as-you-go or expired subscription instances.
 
-        :param instance_ids: The IDs of instances that you want to release.
+        Args:
+            instance_ids: The IDs of instances that you want to release.
         """
         request = DeleteInstancesRequest()
         request.set_Force(True)
         request.set_InstanceIds(instance_ids)
         self._send_request(request)
 
-    def allocate_public_address(self, instance_id):
+    def allocate_public_address(self, instance_id: str) -> Optional[str]:
         """Assign a public IP address to an ECS instance.
 
-        :param instance_id: The ID of the instance to which you want to
-                            assign a public IP address.
-        :return: The assigned ip.
+        Args:
+            instance_id: The ID of the instance to which you want to
+                assign a public IP address.
+
+        Returns:
+            The assigned IP address.
         """
         request = AllocatePublicIpAddressRequest()
         request.set_InstanceId(instance_id)
@@ -379,11 +430,14 @@ class AcsClient:
         if response is not None:
             return response.get("IpAddress")
 
-    def create_key_pair(self, key_pair_name):
+    def create_key_pair(self, key_pair_name: str) -> Optional[dict]:
         """Create an SSH key pair.
 
-        :param key_pair_name: The name of the key pair.
-        :return: The created keypair data.
+        Args:
+            key_pair_name: The name of the key pair.
+
+        Returns:
+            The created keypair data.
         """
         request = CreateKeyPairRequest()
         request.set_KeyPairName(key_pair_name)
@@ -395,33 +449,36 @@ class AcsClient:
             logging.error("Create Key Pair Failed")
             return None
 
-    def import_key_pair(self, key_pair_name, public_key_body):
-        """Import the public key of an RSA-encrypted key pair
-            that is generated by a third-party tool.
+    def import_key_pair(self, key_pair_name: str, public_key_body: str) -> None:
+        """Import the public key of an RSA-encrypted key pair.
 
-        :param key_pair_name: The name of the key pair.
-        :param public_key_body: The public key of the key pair.
+        Args:
+            key_pair_name: The name of the key pair.
+            public_key_body: The public key of the key pair.
         """
         request = ImportKeyPairRequest()
         request.set_KeyPairName(key_pair_name)
         request.set_PublicKeyBody(public_key_body)
         self._send_request(request)
 
-    def delete_key_pairs(self, key_pair_names):
+    def delete_key_pairs(self, key_pair_names: List[str]) -> None:
         """Delete one or more SSH key pairs.
 
-        :param key_pair_names: The name of the key pair.
-        :return:
+        Args:
+            key_pair_names: The names of the key pairs.
         """
         request = DeleteKeyPairsRequest()
         request.set_KeyPairNames(key_pair_names)
         self._send_request(request)
 
-    def describe_key_pairs(self, key_pair_name=None):
+    def describe_key_pairs(self, key_pair_name: Optional[str] = None) -> Optional[list]:
         """Query one or more key pairs.
 
-        :param key_pair_name: The name of the key pair.
-        :return:
+        Args:
+            key_pair_name: The name of the key pair.
+
+        Returns:
+            Key pair list, or None if the request failed.
         """
         request = DescribeKeyPairsRequest()
         if key_pair_name is not None:
@@ -432,11 +489,14 @@ class AcsClient:
         else:
             return None
 
-    def describe_v_switches(self, vpc_id=None):
-        """Queries one or more VSwitches.
+    def describe_v_switches(self, vpc_id: Optional[str] = None) -> Optional[list]:
+        """Query one or more VSwitches.
 
-        :param vpc_id: The ID of the VPC to which the VSwitch belongs.
-        :return: VSwitch list.
+        Args:
+            vpc_id: The ID of the VPC to which the VSwitch belongs.
+
+        Returns:
+            VSwitch list.
         """
         request = DescribeVSwitchesRequest()
         if vpc_id is not None:

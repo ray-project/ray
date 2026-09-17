@@ -7,11 +7,14 @@ All Ray actor calls are mocked so the tests run on a standard CPU cluster.
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pyarrow as pa
 import pytest
 
 import ray
+import ray.data._internal.gpu_shuffle.hash_shuffle as hash_shuffle
 from ray.data._internal.execution.interfaces import (
+    BlockEntry,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
@@ -25,8 +28,10 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Repartition
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.util import explain_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.tests.conftest import noop_counter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -54,7 +59,10 @@ def _make_input_op_mock(num_blocks=None, size_bytes=None):
 def _make_bundle(num_blocks: int = 1) -> RefBundle:
     """Return a RefBundle with *num_blocks* placeholder block refs."""
     meta = BlockMetadata(num_rows=10, size_bytes=100, exec_stats=None, input_files=None)
-    blocks = [(ray.ObjectRef(bytes([i % 256]) * 28), meta) for i in range(num_blocks)]
+    blocks = [
+        BlockEntry(ray.ObjectRef(bytes([i % 256]) * 28), meta)
+        for i in range(num_blocks)
+    ]
     return RefBundle(blocks, schema=None, owns_blocks=False)
 
 
@@ -173,11 +181,15 @@ class TestGPURankPool:
         return GPURankPool(
             nranks=nranks,
             total_nparts=total_nparts,
-            key_columns=["user_id"],
-            columns=None,
-            rmm_pool_size="auto",
-            spill_memory_limit="auto",
             setup_timeout_s=60.0,
+            actor_cls_factory=lambda: hash_shuffle.GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": ["user_id"],
+                "columns": None,
+                "rmm_pool_size": "auto",
+                "spill_memory_limit": "auto",
+            },
+            log_label="GPUShufflePool",
         )
 
     def test_actors_empty_before_start(self):
@@ -236,6 +248,7 @@ class TestGPURankPool:
 
         assert mock_kill.call_count == 2
         assert pool.actors == []
+        assert pool.is_shutdown
 
     def test_shutdown_without_force_clears_actors(self):
         pool = self._make_pool(nranks=2)
@@ -246,6 +259,7 @@ class TestGPURankPool:
 
         mock_kill.assert_not_called()
         assert pool.actors == []
+        assert pool.is_shutdown
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +305,23 @@ class TestGPUShuffleOperatorConstructor:
         op = self._make_op(nranks=6, num_partitions=6)
         usage = op.base_resource_usage
         assert usage.gpu == 6
+
+    def test_current_logical_usage_reserves_nranks_before_pool_start(self):
+        """Empty actor list before start must still reserve configured GPUs."""
+        op = self._make_op(nranks=5, num_partitions=5)
+        assert op.current_logical_usage().gpu == 5
+
+    def test_current_logical_usage_matches_len_actors_when_running(self):
+        op = self._make_op(nranks=4, num_partitions=4)
+        op._rank_pool._actors = [MagicMock() for _ in range(4)]
+        assert op.current_logical_usage().gpu == 4
+
+    def test_current_logical_usage_zero_after_pool_shutdown(self):
+        """Early actor release must drop logical GPU usage for the scheduler."""
+        op = self._make_op(nranks=4, num_partitions=4)
+        op._rank_pool._actors = [MagicMock() for _ in range(4)]
+        op._rank_pool.shutdown(force=False)
+        assert op.current_logical_usage().gpu == 0
 
     def test_incremental_resource_usage_is_one_gpu(self):
         op = self._make_op()
@@ -403,6 +434,7 @@ class TestGPUShuffleOperatorFinalization:
             )
         op._rank_pool._actors = mock_actors
         op._rank_pool._nranks = nranks
+        op._block_ref_counter = noop_counter()
         return op, mock_actors
 
     def test_finalization_not_started_until_inputs_complete(self):
@@ -458,8 +490,8 @@ class TestGPUShuffleOperatorFinalization:
     def test_has_next_true_when_output_queued(self):
         op, _ = self._make_op()
         bundle = _make_bundle(1)
-        op._output_queue.append(bundle)
-        # Mark finalization as done so has_next doesn't try to finalize
+        op._output_queue.add(bundle, key=0)
+        op._output_queue.finalize(key=0)
         op._finalization_started = True
         assert op.has_next()
 
@@ -467,7 +499,10 @@ class TestGPUShuffleOperatorFinalization:
         op, _ = self._make_op()
         b1 = _make_bundle(1)
         b2 = _make_bundle(1)
-        op._output_queue.extend([b1, b2])
+        op._output_queue.add(b1, key=0)
+        op._output_queue.finalize(key=0)
+        op._output_queue.add(b2, key=1)
+        op._output_queue.finalize(key=1)
 
         with patch.object(op._reduce_metrics, "on_output_dequeued"), patch.object(
             op._reduce_metrics, "on_output_taken"
@@ -475,13 +510,41 @@ class TestGPUShuffleOperatorFinalization:
             result = op._get_next_inner()
 
         assert result is b1
-        assert len(op._output_queue) == 1
+        assert op._output_queue.has_next()
 
     def test_has_completed_false_while_extracting(self):
         op, _ = self._make_op()
         op._finalization_started = True
         op._extraction_tasks[0] = MagicMock()  # still running
         assert not op.has_completed()
+
+    def test_output_order_is_partition_order_regardless_of_arrival(self):
+        """Bundles arriving out of order must be emitted in ascending partition order."""
+        op, _ = self._make_op(nranks=2, num_partitions=4)
+        op._finalization_started = True
+
+        # Build 4 bundles, insert in reverse order (3, 2, 1, 0)
+        bundles = {}
+        for partition_id in reversed(range(4)):
+            meta = BlockMetadata(
+                num_rows=1, size_bytes=8, exec_stats=None, input_files=None
+            )
+            bundle = RefBundle(
+                [BlockEntry(ray.ObjectRef(bytes([partition_id]) * 28), meta)],
+                schema=None,
+                owns_blocks=False,
+            )
+            bundles[partition_id] = bundle
+            op._output_queue.add(bundle, key=partition_id)
+            op._output_queue.finalize(key=partition_id)
+
+        with patch.object(op._reduce_metrics, "on_output_dequeued"), patch.object(
+            op._reduce_metrics, "on_output_taken"
+        ):
+            results = [op._get_next_inner() for _ in range(4)]
+
+        # Output must be in partition order 0, 1, 2, 3 — not insertion order 3, 2, 1, 0
+        assert results == [bundles[i] for i in range(4)]
 
     def test_get_active_tasks_combines_both_phases(self):
         op, _ = self._make_op()
@@ -523,8 +586,8 @@ class TestPlanAllToAllOpRouting:
 
     def _make_repartition_op(self, keys=("user_id",), num_outputs=8):
         return Repartition(
-            input_op=MagicMock(LogicalOperator),
             num_outputs=num_outputs,
+            input_dependencies=[MagicMock(LogicalOperator)],
             shuffle=True,
             keys=list(keys),
         )
@@ -541,7 +604,7 @@ class TestPlanAllToAllOpRouting:
 
         assert isinstance(op, GPUShuffleOperator)
 
-    def test_hash_shuffle_still_routes_to_hash_operator(self):
+    def test_hash_shuffle_still_routes_to_hash_shufflle_v1(self, restore_data_context):
         from ray.data._internal.execution.operators.hash_shuffle import (
             HashShuffleOperator,
         )
@@ -559,6 +622,26 @@ class TestPlanAllToAllOpRouting:
             op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
 
         assert isinstance(op, HashShuffleOperator)
+
+    def test_hash_shuffle_still_routes_to_hash_shufflle_v2(self, restore_data_context):
+        """V2 hash shuffle is a two-op DAG; planner returns the ShuffleReduceOp
+        with the ShuffleMapOp as its upstream input dependency."""
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+            ShuffleMapOp,
+        )
+        from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+            ShuffleReduceOp,
+        )
+
+        ctx = DataContext()
+        ctx._shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+
+        logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
+        input_physical_op = _make_input_op_mock()
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, ShuffleReduceOp)
+        assert isinstance(op.input_dependencies[0], ShuffleMapOp)
 
     def test_unsupported_strategy_with_keys_raises(self):
         ctx = DataContext()
@@ -711,7 +794,6 @@ class TestGPUShuffleActorReal:
 
     def test_insert_batch_large_table(self, ray_with_gpu):
         """insert_batch handles a larger Arrow Table without error."""
-        import numpy as np
 
         n = 5_000
         actor = self._make_setup_actor(total_nparts=4)
@@ -891,11 +973,15 @@ class TestGPURankPoolReal:
         return GPURankPool(
             nranks=nranks,
             total_nparts=total_nparts,
-            key_columns=["id"],
-            columns=None,
-            rmm_pool_size="auto",
-            spill_memory_limit="auto",
             setup_timeout_s=60.0,
+            actor_cls_factory=lambda: hash_shuffle.GPUShuffleActor,
+            actor_kwargs={
+                "key_columns": ["id"],
+                "columns": None,
+                "rmm_pool_size": "auto",
+                "spill_memory_limit": "auto",
+            },
+            log_label="GPUShufflePool",
         )
 
     def test_pool_start_creates_actors(self, ray_with_gpu):
@@ -918,7 +1004,7 @@ class TestGPURankPoolReal:
         pool.start()
         actor = pool.actors[0]
         # Actor is fully set up by pool.start(); insert_batch should work immediately
-        table = pa.table({"k": [1], "v": [2]})
+        table = pa.table({"id": [1], "v": [2]})
         ray.get(actor.insert_batch.remote(table))
         pool.shutdown(force=True)
 
@@ -944,7 +1030,7 @@ class TestGPUHashShuffle:
 
         ds = ray.data.range(num_rows, parallelism=parallelism).materialize()
         ds = ds.repartition(keys=["id"], num_blocks=num_blocks)
-        assert "GPUShuffle" in ds._plan.explain()
+        assert "GPUShuffle" in explain_plan(ds._logical_plan)
         ds = ds.materialize()
         assert ds.num_blocks() == max(num_blocks, num_gpus)
         assert ds.count() == num_rows

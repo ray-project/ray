@@ -27,7 +27,6 @@ def get_llm_config(
             tensor_parallel_size=tensor_parallel_size,
             enforce_eager=True,
         ),
-        runtime_env={"env_vars": {"VLLM_USE_V1": "1"}},
     )
 
 

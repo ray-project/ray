@@ -11,15 +11,31 @@ from ray.air._internal.torch_utils import (
     load_torch_model,
 )
 from ray.train._internal.framework_checkpoint import FrameworkCheckpoint
-from ray.util.annotations import PublicAPI
+from ray.train.constants import V2_MIGRATION_GUIDE_LINK_MESSAGE
+from ray.util.annotations import Deprecated, PublicAPI
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
 
 ENCODED_DATA_KEY = "torch_encoded_data"
 
+_TORCH_CHECKPOINT_DEPRECATION_MESSAGE = (
+    "`TorchCheckpoint` is deprecated and will be removed in a future release. "
+    "Use `ray.train.Checkpoint` directly instead. "
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
+)
+
+_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE = (
+    "`TorchCheckpoint.from_model()` is deprecated and will be removed in a future "
+    "release. It stores the entire ``nn.Module`` via pickle, which allows arbitrary "
+    "code execution when loaded from an untrusted source. "
+    "Use `TorchCheckpoint.from_state_dict()` or migrate to `ray.train.Checkpoint`. "
+    f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
+)
+
 
 @PublicAPI(stability="beta")
+@Deprecated(message=_TORCH_CHECKPOINT_DEPRECATION_MESSAGE, warning=True)
 class TorchCheckpoint(FrameworkCheckpoint):
     """A :class:`~ray.train.Checkpoint` with Torch-specific functionality."""
 
@@ -95,6 +111,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
         return checkpoint
 
     @classmethod
+    @Deprecated(message=_TORCH_CHECKPOINT_FROM_MODEL_DEPRECATION_MESSAGE, warning=True)
     def from_model(
         cls,
         model: torch.nn.Module,
@@ -152,10 +169,25 @@ class TorchCheckpoint(FrameworkCheckpoint):
     def get_model(self, model: Optional[torch.nn.Module] = None) -> torch.nn.Module:
         """Retrieve the model stored in this checkpoint.
 
+        .. warning::
+
+            The checkpoint path must point to a **trusted** source.
+            Checkpoints created with
+            :meth:`~ray.train.torch.TorchCheckpoint.from_model` store the entire
+            ``nn.Module`` via pickle serialization. Loading such a checkpoint from an
+            untrusted path (shared storage, downloaded artifact, checkpoint produced by
+            a different party) is equivalent to executing arbitrary Python code. Prefer
+            checkpoints created with
+            :meth:`~ray.train.torch.TorchCheckpoint.from_state_dict`, which stores
+            only model weights and is safe to load from untrusted sources.
+
         Args:
             model: If the checkpoint contains a model state dict, and not
                 the model itself, then the state dict will be loaded to this
                 ``model``. Otherwise, the model will be discarded.
+
+        Returns:
+            The loaded ``torch.nn.Module``.
         """
         with self.as_directory() as tempdir:
             model_path = Path(tempdir, self.MODEL_FILENAME).as_posix()
@@ -173,10 +205,7 @@ class TorchCheckpoint(FrameworkCheckpoint):
             if model:
                 warnings.warn(
                     "TorchCheckpoint already contains all information needed. "
-                    "Discarding provided `model` argument. If you are using "
-                    "TorchPredictor directly, you should do "
-                    "`TorchPredictor.from_checkpoint(checkpoint)` by removing kwargs "
-                    "`model=`."
+                    "Discarding provided `model` argument."
                 )
         model = load_torch_model(
             saved_model=model_or_state_dict, model_definition=model

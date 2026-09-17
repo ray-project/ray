@@ -359,13 +359,13 @@ def run(
             will need to first register the function:
             ``tune.register_trainable("lambda_id", lambda x: ...)``. You can
             then use ``tune.run("lambda_id")``.
+        name: Name of experiment.
         metric: Metric to optimize. This metric should be reported
             with `tune.report()`. If set, will be passed to the search
             algorithm and scheduler.
         mode: Must be one of [min, max]. Determines whether objective is
             minimizing or maximizing the metric attribute. If set, will be
             passed to the search algorithm and scheduler.
-        name: Name of experiment.
         stop: Stopping criteria. If dict,
             the keys may be any field in the return result of 'train()',
             whichever is reached first. If function, it must take (trial_id,
@@ -395,6 +395,8 @@ def run(
         storage_path: Path to store results at. Can be a local directory or
             a destination on cloud storage. Defaults to
             the local ``~/ray_results`` directory.
+        storage_filesystem: Optional ``pyarrow.fs.FileSystem`` used to read
+            and write results at ``storage_path``.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
         scheduler: Scheduler for executing
@@ -402,6 +404,8 @@ def run(
             AsyncHyperBand, HyperBand and PopulationBasedTraining. Refer to
             ray.tune.schedulers for more options. You can also use the
             name of the scheduler.
+        checkpoint_config: Checkpointing configuration object used to control
+            how trial checkpoints are saved and managed.
         verbose: 0, 1, or 2. Verbosity mode.
             0 = silent, 1 = default, 2 = verbose. Defaults to 1.
             If the ``RAY_AIR_NEW_OUTPUT=1`` environment variable is set,
@@ -428,7 +432,6 @@ def run(
             unique identifier (such as `Trial.trial_id`) is used in each trial's
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
-        chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
         sync_config: Configuration object for syncing. See tune.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
@@ -474,16 +477,19 @@ def run(
             a :class:`ConcurrencyLimiter`, and thus setting this argument
             will raise an exception if the ``search_alg`` is already a
             :class:`ConcurrencyLimiter`. Defaults to None.
-        _remote: Whether to run the Tune driver in a remote function.
-            This is disabled automatically if a custom trial executor is
-            passed in. This is enabled by default in Ray client mode.
-        local_dir: Deprecated. Use `storage_path` instead.
         keep_checkpoints_num: Deprecated. use checkpoint_config instead.
         checkpoint_score_attr: Deprecated. use checkpoint_config instead.
         checkpoint_freq: Deprecated. use checkpoint_config instead.
         checkpoint_at_end: Deprecated. use checkpoint_config instead.
-        checkpoint_keep_all_ranks: Deprecated. use checkpoint_config instead.
-        checkpoint_upload_from_workers: Deprecated. use checkpoint_config instead.
+        chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
+        local_dir: Deprecated. Use `storage_path` instead.
+        _remote: Whether to run the Tune driver in a remote function.
+            This is disabled automatically if a custom trial executor is
+            passed in. This is enabled by default in Ray client mode.
+        _remote_string_queue: Internal. Optional queue used to stream remote
+            driver output when running in Ray client mode.
+        _entrypoint: Internal. Marks which user-facing entrypoint invoked
+            ``tune.run`` so that error messages can be tailored.
 
     Returns:
         ExperimentAnalysis: Object for experiment analysis.
@@ -1083,6 +1089,24 @@ def run_experiments(
         >>> run_experiments(experiments=experiment_spec) # doctest: +SKIP
         >>> experiment_spec = {"experiment": {"run": my_func}} # doctest: +SKIP
         >>> run_experiments(experiments=experiment_spec) # doctest: +SKIP
+
+    Args:
+        experiments: Experiments to run. Each experiment can be an
+            ``Experiment`` instance or a mapping describing one.
+        scheduler: Optional trial scheduler used to manage trial execution.
+        verbose: Verbosity level forwarded to ``tune.run``.
+        progress_reporter: Optional progress reporter forwarded to
+            ``tune.run``.
+        resume: Resume option forwarded to ``tune.run``.
+        resume_config: Optional resume configuration forwarded to
+            ``tune.run``.
+        reuse_actors: Whether to reuse actors between trials.
+        raise_on_failed_trial: Raise ``TuneError`` if any trial fails.
+        concurrent: If True, run all experiments concurrently. If False,
+            run them sequentially.
+        callbacks: Optional list of callbacks forwarded to ``tune.run``.
+        _remote: Internal. Whether to run the Tune driver in a remote
+            function. Enabled automatically in Ray client mode.
 
     Returns:
         List of Trial objects, holding data for each executed trial.

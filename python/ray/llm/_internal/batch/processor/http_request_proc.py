@@ -1,5 +1,6 @@
 """The HTTP request processor."""
 
+import hashlib
 from typing import Any, Dict, Optional
 
 from pydantic import Field
@@ -34,9 +35,9 @@ class HttpRequestProcessorConfig(ProcessorConfig):
     )
     headers: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="The query header. Note that we will add "
-        "'Content-Type: application/json' to be the header for sure "
-        "because we only deal with requests body in JSON.",
+        description="The request headers. JSON payloads default to "
+        "'Content-Type: application/json'. Payloads with a file field use "
+        "multipart/form-data with an aiohttp-generated boundary.",
     )
     qps: Optional[int] = Field(
         default=None,
@@ -123,7 +124,11 @@ def build_http_request_processor(
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
         BatchModelTelemetry(
+            # Hash the target URL so distinct endpoints stay separate in the
+            # dedup key without the cleartext URL reaching the head-node actor.
+            model_id_hash=hashlib.sha256(config.url.encode("utf-8")).hexdigest(),
             processor_config_name=type(config).__name__,
+            batch_size=config.batch_size,
             concurrency=config.concurrency,
         )
     )

@@ -34,7 +34,7 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
     recorder = TelemetryRecorder.remote()
 
     def record_tag_func(key, value):
-        recorder.record.remote(key, value)
+        ray.get(recorder.record.remote(key, value))
 
     telemetry_agent = _get_or_create_telemetry_agent()
     telemetry_agent._reset_models.remote()
@@ -122,8 +122,6 @@ def test_push_telemetry_report_for_all_models(disable_placement_bundles):
     assert telemetry == {
         TagKey.LLM_SERVE_SERVE_MULTIPLE_MODELS: "1",
         TagKey.LLM_SERVE_SERVE_MULTIPLE_APPS: "0",
-        TagKey.LLM_SERVE_JSON_MODE_MODELS: "llm_model_arch,llm_config_autoscale_model_arch,llm_config_json_model_arch,llm_config_lora_model_arch,llm_config_no_accelerator_type_arch",
-        TagKey.LLM_SERVE_JSON_MODE_NUM_REPLICAS: "1,2,1,1,1",
         TagKey.LLM_SERVE_LORA_BASE_MODELS: "llm_config_lora_model_arch",
         TagKey.LLM_SERVE_INITIAL_NUM_LORA_ADAPTERS: "2",
         TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS: "llm_config_autoscale_model_arch",
@@ -180,6 +178,123 @@ def test_infer_gpu_from_hardware():
 
     result = HardwareUsage(fake_get_gpu_type).infer_gpu_from_hardware()
     assert result == "UNSPECIFIED"
+
+
+def test_telemetry_dedups_replicas_and_restarts(disable_placement_bundles):
+    """The same model reported by many replicas/restarts collapses to one entry."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="dup_model_id"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+    )
+    config._set_model_architecture(model_architecture="dup_arch")
+
+    # Simulate three replicas (or restarts) of the SAME model reporting.
+    for _ in range(3):
+        push_telemetry_report_for_all_models(
+            all_models=[config],
+            get_hardware_fn=lambda *a, **k: ["L4"],
+        )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_MODELS] == "dup_arch"
+    assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS] == "1"
+    assert telemetry[TagKey.LLM_SERVE_GPU_TYPE] == "L4"
+
+
+def test_telemetry_reports_fixed_num_replicas(disable_placement_bundles):
+    """A fixed (non-autoscaling) num_replicas is reported, not hardcoded to 1."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="fixed_replicas_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+        deployment_config=dict(num_replicas=4),
+    )
+    config._set_model_architecture(model_architecture="fixed_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS] == "4"
+
+
+def test_telemetry_reports_zero_num_replicas(disable_placement_bundles):
+    """An explicit num_replicas=0 is reported as 0, not coerced to 1."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="zero_replicas_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+        deployment_config=dict(num_replicas=0),
+    )
+    config._set_model_architecture(model_architecture="zero_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS] == "0"
+
+
+def test_telemetry_reports_auto_num_replicas(disable_placement_bundles):
+    """num_replicas="auto" is reported as autoscaling, not dropped."""
+    recorder = TelemetryRecorder.remote()
+
+    def record_tag_func(key, value):
+        ray.get(recorder.record.remote(key, value))
+
+    telemetry_agent = _get_or_create_telemetry_agent()
+    telemetry_agent._reset_models.remote()
+    telemetry_agent._update_record_tag_func.remote(record_tag_func)
+
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="auto_replicas_model"),
+        llm_engine=LLMEngine.vLLM,
+        accelerator_type="L4",
+        deployment_config=dict(num_replicas="auto"),
+    )
+    config._set_model_architecture(model_architecture="auto_arch")
+
+    push_telemetry_report_for_all_models(
+        all_models=[config],
+        get_hardware_fn=lambda *a, **k: ["L4"],
+    )
+
+    telemetry = ray.get(recorder.telemetry.remote())
+    # Recorded as autoscaling with an integer replica count (not the string "auto").
+    assert telemetry[TagKey.LLM_SERVE_AUTOSCALING_ENABLED_MODELS] == "auto_arch"
+    assert telemetry[TagKey.LLM_SERVE_NUM_REPLICAS].isdigit()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,16 @@
+✗ HARD-BROKEN BUILD — fix this first; the rest of the log is unreliable.
+  signal: extension-error
+    Extension error:
+    Could not import extension myst_parser (exception: No module named 'markdown_it')
+  The warning list below is incomplete until this is fixed.
+
+Build: state=Finished  success=False  exit=2
+
+Partial findings (warning pass did not complete) (0):
+  (none)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: fix the hard-broken build above, then rebuild and re-run.

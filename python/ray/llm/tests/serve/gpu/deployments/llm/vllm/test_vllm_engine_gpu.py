@@ -54,7 +54,7 @@ async def test_vllm_engine_start_with_custom_resource_bundle(
             await self.engine.check_health()
 
         async def shutdown(self):
-            self.engine.shutdown()
+            await self.engine.shutdown()
 
     actor = Actor.remote()
     await actor.start.remote()

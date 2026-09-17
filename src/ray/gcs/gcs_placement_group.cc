@@ -18,9 +18,6 @@
 #include <string>
 #include <vector>
 
-#include "ray/common/constants.h"
-#include "ray/common/scheduling/label_selector.h"
-
 namespace ray {
 namespace gcs {
 
@@ -30,7 +27,7 @@ void GcsPlacementGroup::UpdateState(
     RAY_CHECK_EQ(placement_group_table_data_.state(),
                  rpc::PlacementGroupTableData::PREPARED);
     placement_group_table_data_.set_placement_group_final_bundle_placement_timestamp_ms(
-        current_sys_time_ms());
+        clock_.NowUnixMillis());
 
     double duration_ms =
         placement_group_table_data_
@@ -86,6 +83,10 @@ GcsPlacementGroup::GetUnplacedBundles() const {
 
 bool GcsPlacementGroup::HasUnplacedBundles() const {
   return !GetUnplacedBundles().empty();
+}
+
+bool GcsPlacementGroup::AllUnplacedBundles() const {
+  return GetBundles().size() == GetUnplacedBundles().size();
 }
 
 rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
@@ -147,36 +148,23 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
 }
 
-std::optional<std::string> GcsPlacementGroup::GetLabelDomainKey() const {
-  const std::string &key = placement_group_table_data_.label_domain_key();
-  if (key.empty()) {
+std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKeys()
+    const {
+  const auto &entries = placement_group_table_data_.topology_strategy();
+  if (entries.empty()) {
     return std::nullopt;
   }
-  return key;
+  std::vector<std::string> keys;
+  keys.reserve(entries.size());
+  for (const auto &entry : entries) {
+    keys.push_back(entry.first);
+  }
+  return keys;
 }
 
-void GcsPlacementGroup::ComputeLabelDomainKey() {
-  const auto &proto_bundles = placement_group_table_data_.bundles();
-  if (proto_bundles.empty()) {
-    return;
-  }
-  BundleSpecification first_bundle(proto_bundles.Get(0));
-  const LabelSelector &label_selector =
-      first_bundle.GetRequiredResources().GetLabelSelector();
-  for (const LabelConstraint &constraint : label_selector.GetConstraints()) {
-    if (constraint.GetLabelKey() == kLabelKeyNodeAcceleratorType &&
-        constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
-        (constraint.GetLabelValues().contains(kGB300) ||
-         constraint.GetLabelValues().contains(kGB200))) {
-      placement_group_table_data_.set_label_domain_key(kGpuDomainLabelKey);
-      return;
-    }
-  }
-}
-
-std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
+std::optional<std::string> GcsPlacementGroup::GetTopologyAssignment(
     const std::string &label_key) const {
-  const auto &assignments = placement_group_table_data_.label_domain_assignments();
+  const auto &assignments = placement_group_table_data_.topology_assignments();
   auto it = assignments.find(label_key);
   if (it != assignments.end()) {
     return it->second;
@@ -184,14 +172,13 @@ std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
   return std::nullopt;
 }
 
-void GcsPlacementGroup::SetLabelDomainAssignment(const std::string &label_key,
-                                                 const std::string &label_value) {
-  (*placement_group_table_data_.mutable_label_domain_assignments())[label_key] =
-      label_value;
+void GcsPlacementGroup::SetTopologyAssignment(const std::string &label_key,
+                                              const std::string &label_value) {
+  (*placement_group_table_data_.mutable_topology_assignments())[label_key] = label_value;
 }
 
-void GcsPlacementGroup::ClearLabelDomainAssignments() {
-  placement_group_table_data_.mutable_label_domain_assignments()->clear();
+void GcsPlacementGroup::ClearTopologyAssignments() {
+  placement_group_table_data_.mutable_topology_assignments()->clear();
 }
 
 }  // namespace gcs

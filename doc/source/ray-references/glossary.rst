@@ -1,3 +1,6 @@
+.. meta::
+   :description: Alphabetical definitions of key Ray terminology, from tasks, actors, and objects to reinforcement learning terms.
+
 .. _ray_glossary:
 
 Ray Glossary
@@ -152,7 +155,7 @@ documentation, sorted alphabetically.
 
     .. TODO: DAG
 
-    Ray Dashboard
+    Ray dashboard
         Ray’s built-in dashboard is a web interface that provides metrics, charts,
         and other features that help Ray users to understand and debug Ray applications.
 
@@ -403,10 +406,6 @@ documentation, sorted alphabetically.
         to its next action inside an RL environment.
 
     .. TODO: Policy evaluation
-
-    Predictor
-        :class:`An interface for performing inference<ray.train.predictor.Predictor>` (prediction)
-        on input data with a trained model.
 
     Preprocessor
         :ref:`An interface used to preprocess a Dataset<preprocessor-ref>` for

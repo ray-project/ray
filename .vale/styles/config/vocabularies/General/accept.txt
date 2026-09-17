@@ -3,6 +3,7 @@
 [Aa]sync
 [Cc]odec
 [Cc]omposable
+Databricks
 [Dd]eduplicate(s)?
 [Dd]eduplication
 [Dd]etokenization
@@ -16,11 +17,12 @@
 [Pp]arallelization
 [Pp]erformant
 [Pp]rofiler
-[Rr]esample
+[Rr]esample[sd]?
 [Rr]esampling
 [Ss]pectogram(s)?
 [Ss]ubclassing
 [Tt][Ll][Ss]
+vCPUs?
 [Vv]ision LMs
 admin
 agentic
@@ -71,6 +73,7 @@ GPTQ
 GPU(s)?
 hostfile
 http
+HAProxy
 HTTP
 Karpenter
 KServe
@@ -90,7 +93,7 @@ Mixtral
 MLflow
 MLOps
 MNIST
-namespace
+namespaces?
 NER
 NLP
 Nsight
@@ -98,7 +101,7 @@ NumPy
 NVIDIA
 NVLink
 NVMe
-OOM
+OOM(s)?
 open-source
 Palo
 [Pp][Aa][Cc][Kk]
@@ -135,7 +138,7 @@ superset
 teardown
 tiktoken
 TPU(s)?
-tokenization
+[Tt]okenization
 uncaptured
 URI(s)?
 UUID

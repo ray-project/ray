@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Generic, List, Optional
+from typing import Generic
 
 import pyarrow as pa
 
 from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
-from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
 
@@ -20,8 +19,12 @@ class Scanner(ABC, Generic[InputSplit]):
 
     The Scanner is responsible for:
     1. Determining the output schema after all projections
-    2. Planning input partitions for parallel execution
-    3. Creating Reader instances configured with all pushdowns
+    2. Creating Reader instances configured with all pushdowns
+
+    Splitting the input into parallel work units used to live here as a
+    ``plan()`` method. That responsibility now belongs to the listing-side
+    pipeline (``ListFiles`` + ``FilePartitioner``); scanners only
+    need to answer "what schema?" and "give me a reader."
     """
 
     @abstractmethod
@@ -35,27 +38,23 @@ class Scanner(ABC, Generic[InputSplit]):
         """
         ...
 
-    @abstractmethod
-    def plan(
-        self,
-        manifest: InputSplit,
-        parallelism: int,
-        data_context: Optional["DataContext"] = None,
-    ) -> List[InputSplit]:
-        """Split the input into parallel work units.
+    def metadata_row_count_is_exact(self) -> bool:
+        """Whether this scan's row count may come from file metadata.
 
-        This method determines how to divide the work for parallel execution.
-        The resulting partitions should be roughly balanced in terms of work.
+        Asked by ``pushdown_count_files`` before it answers ``count()`` without
+        reading data. It is about the rows this scan *returns*, so a source
+        whose metadata says per file whether a filter is fully satisfied may
+        answer ``True`` under that filter; for most sources it collapses to "no
+        row-reducing pushdown is set".
 
-        Args:
-            manifest: The full input to partition.
-            parallelism: Target number of parallel tasks.
-            data_context: Optional data context for configuration.
-
-        Returns:
-            List of InputSplit objects, one per parallel task.
+        Default ``False``: over-claiming makes ``count()`` return a wrong number
+        silently, while declining only costs a real read. Account for every
+        row-reducing knob, including ones set at construction
+        (``read_iceberg(row_filter=...)``) rather than pushed down. The reader
+        answers the same question in ``SupportsMetadata.available_metadata``;
+        both must agree.
         """
-        ...
+        return False
 
     @abstractmethod
     def create_reader(self) -> Reader[InputSplit]:

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Convert a PyTorch script to distributed training with Ray Train: TorchTrainer, sharded dataloaders, metrics, checkpoints, and GPU scaling.
+
 .. _train-pytorch:
 
 Get Started with Distributed Training using PyTorch

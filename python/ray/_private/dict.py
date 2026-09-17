@@ -12,11 +12,11 @@ T = TypeVar("T")
 def merge_dicts(d1: dict, d2: dict) -> dict:
     """
     Args:
-        d1 (dict): Dict 1.
-        d2 (dict): Dict 2.
+        d1: Dict 1.
+        d2: Dict 2.
 
     Returns:
-         dict: A new dict that is d1 and d2 deep merged.
+         A new dict that is d1 and d2 deep merged.
     """
     merged = copy.deepcopy(d1)
     deep_update(merged, d2, True, [])
@@ -50,6 +50,9 @@ def deep_update(
             entire value (dict), iff the "type" key in that value dict changes.
         override_all_key_list: List of top level keys
             for which we override the entire value if the key is in the new_dict.
+
+    Returns:
+        The updated original dict.
     """
     allow_new_subkey_list = allow_new_subkey_list or []
     override_all_if_type_changes = override_all_if_type_changes or []
@@ -136,10 +139,8 @@ def flatten_dict(
                 remove.append(key)
             elif flatten_list and isinstance(value, list):
                 for i, v in enumerate(value):
-                    if prevent_delimiter and delimiter in subkey:
-                        # Raise if delimiter is in any of the subkeys
-                        _raise_delimiter_exception()
-
+                    # No delimiter check: `i` comes from enumerate(), so the
+                    # index string is always digits and can never contain it.
                     add[delimiter.join([key, str(i)])] = v
                 remove.append(key)
 
@@ -189,6 +190,9 @@ def unflatten_list_dict(dt: Dict[str, T], delimiter: str = "/") -> Dict[str, T]:
         dt: Flattened dictionary that is originally nested by multiple
             list and dict.
         delimiter: Delimiter of keys.
+
+    Returns:
+        The unflattened nested dict/list.
 
     Example:
         >>> dt = {"aaa/0/bb": 12, "aaa/1/cc": 56, "aaa/1/dd": 92}

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Anti-pattern: processing results in submission order idles on slow tasks; use ray.wait to handle them as they complete.
+
 Anti-pattern: Processing results in submission order using ray.get increases runtime
 ====================================================================================
 

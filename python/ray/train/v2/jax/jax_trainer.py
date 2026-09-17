@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
 
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.train import DataConfig
@@ -132,7 +132,7 @@ class JaxTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Union[Callable[[], Any], Callable[[Dict], Any]],
         *,
         train_loop_config: Optional[Dict] = None,
         jax_config: Optional[JaxConfig] = None,

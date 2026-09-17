@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Replay buffers in RLlib: sampling and eviction strategies, the ReplayBuffer base class, configuration, and building a custom buffer.
 
 .. include:: /_includes/rllib/new_api_stack.rst
 

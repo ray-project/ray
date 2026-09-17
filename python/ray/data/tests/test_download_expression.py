@@ -1,4 +1,5 @@
 import io
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pyarrow as pa
@@ -6,7 +7,23 @@ import pytest
 from PIL import Image
 
 import ray
+from ray.data._internal.planner.download_partition_actor import (
+    PartitionActor,
+    _ExactDownloadPartitioner,
+)
+from ray.data._internal.planner.plan_download_op import split_download_uri_blocks
+from ray.data._internal.util import MiB
 from ray.data.expressions import DownloadExpr, col, download
+
+_TARGET_BLOCK_SIZE = 128 * MiB
+
+
+def _make_partition_actor(uri_columns=None, target_block_size=_TARGET_BLOCK_SIZE):
+    ctx = MagicMock()
+    ctx.target_max_block_size = target_block_size
+    ctx.target_min_block_size = 1 * MiB
+    ctx.retried_io_errors = ()
+    return PartitionActor(uri_columns or ["uri"], ctx)
 
 
 class TestDownloadExpressionStructure:
@@ -422,6 +439,89 @@ class TestDownloadExpressionIntegration:
         assert len(results) == 1
         assert results[0]["decoded_text"] == "Hello, World!"
         assert results[0]["raw_bytes"] == test_content
+
+
+class TestDownloadPartitionActorExactPartitioning:
+    def test_uri_blocks_are_sharded_by_row_count_before_partition_actors(self):
+        block = pa.table({"uri": [f"s3://bucket/file_{i}" for i in range(25)]})
+
+        out = list(
+            split_download_uri_blocks(
+                iter([block]),
+                None,
+                max_rows_per_block=10,
+            )
+        )
+
+        assert [partition.num_rows for partition in out] == [10, 10, 5]
+
+    def test_fetches_all_uris_in_input_block(self):
+        actor = _make_partition_actor()
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(100)]})
+
+        with patch.object(
+            actor._size_provider,
+            "get_file_sizes",
+            side_effect=lambda uris: [1 * MiB] * len(uris),
+        ) as get_file_sizes:
+            out = list(actor(block))
+
+        assert len(get_file_sizes.call_args_list) == 1
+        assert get_file_sizes.call_args.args[0] == block.column("uri").to_pylist()
+        assert [partition.num_rows for partition in out] == [50, 50]
+
+    def test_partitions_by_exact_sizes(self):
+        actor = _make_partition_actor(target_block_size=10 * MiB)
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(4)]})
+
+        with patch.object(
+            actor._size_provider,
+            "get_file_sizes",
+            return_value=[4 * MiB, 4 * MiB, 4 * MiB, 4 * MiB],
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [2, 2]
+
+    def test_multiple_uri_columns_use_combined_exact_row_size(self):
+        actor = _make_partition_actor(["left_uri", "right_uri"], 10 * MiB)
+        block = pa.table(
+            {
+                "left_uri": [f"left_{i}.bin" for i in range(3)],
+                "right_uri": [f"right_{i}.bin" for i in range(3)],
+            }
+        )
+
+        def _get_file_sizes(uris):
+            if uris[0].startswith("left_"):
+                return [3 * MiB] * len(uris)
+            return [4 * MiB] * len(uris)
+
+        with patch.object(
+            actor._size_provider, "get_file_sizes", side_effect=_get_file_sizes
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [1, 1, 1]
+
+    def test_round_robin_bucketing_spreads_rows_after_min_size(self):
+        size_provider = MagicMock()
+        size_provider.get_file_sizes.return_value = [1 * MiB] * 5
+        partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            3 * MiB,
+            size_provider,
+            target_min_nbytes=1 * MiB,
+            num_buckets=2,
+        )
+        block = pa.table({"uri": [f"file_{i}.bin" for i in range(5)]})
+
+        out = list(partitioner.partition(block))
+
+        assert [partition.column("uri").to_pylist() for partition in out] == [
+            ["file_0.bin", "file_2.bin", "file_4.bin"],
+            ["file_1.bin", "file_3.bin"],
+        ]
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+Build: 4102000   State: Finished   Success: False   Duration: 460s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (2):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64220/doc/source/_static/redoc.html: WARNING: copying overwrites an existing file [misc.copy_overwrite]
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64220/doc/source/_collections/example.md:3: ERROR: Unknown target name: "foo".
+
+Summary line: build finished with problems, 2 warnings.

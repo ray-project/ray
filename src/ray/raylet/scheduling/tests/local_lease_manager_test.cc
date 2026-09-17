@@ -27,6 +27,7 @@
 
 #include "mock/ray/gcs_client/gcs_client.h"
 #include "mock/ray/object_manager/object_manager.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
@@ -34,6 +35,7 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 
@@ -60,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
     return {};
   }
 
-  bool IsWorkerAvailableForScheduling() const override {
+  bool AllAliveWorkersAreActors() const override {
     RAY_CHECK(false) << "Not used.";
     return false;
   }
@@ -253,19 +255,21 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
     const std::string &id,
     double num_cpus,
     gcs::GcsClient &gcs_client,
-    ray::observability::MetricInterface &resource_usage_gauge) {
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ray::ClockInterface &clock) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      io_context,
+      PeriodicalRunner::Create(io_context),
       scheduling::NodeID(id),
       local_node_resources,
       /*is_node_available_fn*/
       [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
       },
-      resource_usage_gauge);
+      resource_usage_gauge,
+      clock);
 
   return scheduler;
 }
@@ -320,7 +324,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(
-            id_.Binary(), num_cpus, *gcs_client_, fake_resource_usage_gauge_)),
+            id_.Binary(), num_cpus, *gcs_client_, fake_resource_usage_gauge_, clock_)),
         object_manager_(),
         fake_task_by_state_counter_(),
         scheduler_metrics_{fake_scheduler_tasks_gauge_,
@@ -357,7 +361,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             },
             /*max_pinned_lease_arguments_bytes=*/1000,
             /*scheduler_metrics=*/scheduler_metrics_,
-            /*get_time=*/[this]() { return current_time_ms_; })) {}
+            /*clock=*/clock_)) {}
 
   void SetUp() override {
     static rpc::GcsNodeAddressAndLiveness node_info;
@@ -378,13 +382,13 @@ class LocalLeaseManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   int default_arg_size_ = 10;
-  int64_t current_time_ms_ = 0;
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 
@@ -443,11 +447,11 @@ TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
 TEST_F(LocalLeaseManagerTest, TestLeaseGrantingOrder) {
   // Initial setup: 3 CPUs available.
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker3 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
@@ -523,9 +527,9 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   // See https://github.com/ray-project/ray/pull/52295 for reasons why added this.
 
   std::shared_ptr<MockWorker> worker1 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   std::shared_ptr<MockWorker> worker2 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
 
   // Create 2 leases that requires 3 CPU's each and are waiting on an arg.
@@ -537,7 +541,7 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   auto lease2 = CreateLease({{kCPU_ResourceLabel, 3}}, "f2", args);
 
   // The node is idle initially.
-  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), true);
   EXPECT_CALL(object_manager_, Pull(_, _, _))
       .WillOnce(::testing::Return(1))
       .WillOnce(::testing::Return(2));
@@ -564,7 +568,7 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)},
       internal::WorkStatus::WAITING));
   // The node is no longer idle as it is pulling objects.
-  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), false);
 
   // Node no longer has cpu.
   scheduler_->GetLocalResourceManager().DeleteLocalResource(
@@ -582,7 +586,7 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
   ASSERT_EQ(num_callbacks_called, 2);
   ASSERT_EQ(local_lease_manager_->GetLeasesToGrant().size(), 0);
   // The node is idle again as the leases are cancelled.
-  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), true);
 }
 
 TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
@@ -592,9 +596,9 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
   // - Node has 3 CPUs available with one free worker.
   // - Node is idle initially.
   std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 0, clock_);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
-  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), true);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), true);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);
 
   // A lease that requires 3 CPUs and pulling task arguments is submitted to this
@@ -616,20 +620,15 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
       std::vector<internal::ReplyCallback>{
           internal::ReplyCallback(empty_callback, &reply)},
       internal::WorkStatus::WAITING));
-  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), false);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);
 
   // Simulate arg becoming local. The node is still node idle but because it is now
   // doing work (3 CPUs are now used).
   local_lease_manager_->LeasesUnblocked({lease.GetLeaseSpecification().LeaseId()});
   pool_.TriggerCallbacks();
-  ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
+  ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), false);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 }  // namespace ray::raylet

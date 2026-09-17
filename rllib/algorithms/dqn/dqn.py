@@ -305,7 +305,7 @@ class DQNConfig(AlgorithmConfig):
             sigma0: Control the initial parameter noise for noisy nets.
             dueling: Whether to use dueling DQN.
             hiddens: Dense-layer setup for each the advantage branch and the value
-                branch
+                branch in a dueling architecture.
             double_q: Whether to use double DQN.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples. An

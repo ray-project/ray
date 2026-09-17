@@ -1,3 +1,6 @@
+.. meta::
+   :description: Python SDK reference for querying live Ray state: list, get, and summary APIs for tasks, actors, and objects, plus log access and result schemas.
+
 .. _state-api-ref:
 
 State API

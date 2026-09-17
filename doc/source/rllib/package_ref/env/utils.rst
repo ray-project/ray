@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _env-utils-reference-docs:
 
 Env Utils

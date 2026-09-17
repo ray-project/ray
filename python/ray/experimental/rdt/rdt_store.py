@@ -1,3 +1,4 @@
+import logging
 import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     import torch
 
 
+logger = logging.getLogger(__name__)
+
+
 def __ray_send__(
     self,
     obj_id: str,
@@ -31,14 +35,6 @@ def __ray_send__(
 
     tensors = rdt_store.get_object(obj_id)
 
-    device = tensor_transport_meta.tensor_device
-    tensor_meta = tensor_transport_meta.tensor_meta
-
-    if tensor_meta and not device_match_transport(device, backend):
-        raise ValueError(
-            f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
-        )
-
     tensor_transport_manager = get_tensor_transport_manager(backend)
     tensor_transport_manager.send_multiple_tensors(
         tensors,
@@ -50,7 +46,6 @@ def __ray_send__(
 def validate_tensor_buffers(
     tensor_buffers: List["torch.Tensor"],
     tensor_meta: List[Tuple["torch.Size", "torch.dtype"]],
-    device: str,
 ):
     if len(tensor_buffers) != len(tensor_meta):
         raise ValueError(
@@ -70,12 +65,6 @@ def validate_tensor_buffers(
             raise ValueError(
                 tensor_buffer_mismatch_msg("Dtype", idx, single_buffer.dtype, dtype)
             )
-        if single_buffer.device.type != device:
-            raise ValueError(
-                tensor_buffer_mismatch_msg(
-                    "Device", idx, single_buffer.device.type, device
-                )
-            )
         if not single_buffer.is_contiguous():
             raise ValueError(f"Tensor buffer at index {idx} is not contiguous.")
 
@@ -86,33 +75,19 @@ def __ray_recv__(
     tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
     backend: str,
-    target_buffers: Optional[List[Any]] = None,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
     from ray._private.worker import global_worker
 
     rdt_store = global_worker.rdt_manager.rdt_store
     try:
-        device = tensor_transport_meta.tensor_device
-        tensor_meta = tensor_transport_meta.tensor_meta
-
-        if tensor_meta and not device_match_transport(device, backend):
-            raise ValueError(
-                f"Tensor transport backend {backend} does not support tensor transfer on device {device}."
-            )
-
         tensor_transport_manager = get_tensor_transport_manager(backend)
-        if target_buffers:
-            # Currently only torch tensors are supported as target buffers. We could make this
-            # more generic in the future by adding a pluggable buffer validation function.
-            validate_tensor_buffers(target_buffers, tensor_meta, device)
         tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
             communicator_meta,
-            target_buffers,
         )
-        assert len(tensors) == len(tensor_meta)
+        assert len(tensors) == len(tensor_transport_meta.tensor_meta)
         rdt_store.add_object(obj_id, tensors)
     except Exception as e:
         # Store the error as an RDT object if the recv fails, so waiters will raise the error.
@@ -136,18 +111,27 @@ def __ray_free__(
     try:
         from ray._private.worker import global_worker
 
-        tensor_transport_manager = get_tensor_transport_manager(
-            tensor_transport_backend
-        )
         rdt_manager = global_worker.rdt_manager
         rdt_store = rdt_manager.rdt_store
 
         if not rdt_store.has_object(obj_id):
             return
         tensors = rdt_store.get_object(obj_id)
-        tensor_transport_manager.garbage_collect(obj_id, tensor_transport_meta, tensors)
-
-        rdt_store.pop_object(obj_id)
+        try:
+            tensor_transport_manager = get_tensor_transport_manager(
+                tensor_transport_backend
+            )
+            tensor_transport_manager.garbage_collect(
+                obj_id, tensor_transport_meta, tensors
+            )
+        except Exception:
+            logger.exception(
+                "Failed to garbage collect RDT object %s with transport %s.",
+                obj_id,
+                tensor_transport_backend,
+            )
+        finally:
+            rdt_store.pop_object(obj_id)
     except AssertionError:
         # This could fail if this is a retry and it's already been freed.
         pass
@@ -252,11 +236,35 @@ class RDTStore:
     def add_object_primary(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> TensorTransportMetadata:
-        self.add_object(obj_id, tensors, is_primary=True)
+        with self._object_present_cv:
+            # A primary entry may already exist from a prior attempt of the
+            # same task (e.g., a task that succeeded and populated the RDT
+            # store but whose reply was lost, then got retried). Keep the
+            # existing primary — do not re-store — and return metadata
+            # derived from it so the metadata matches what `__ray_send__`
+            # will actually transmit.
+            queue = self._rdt_store.get(obj_id)
+            if queue:
+                tensors_to_describe = queue[0].data
+            else:
+                self.add_object(obj_id, tensors, is_primary=True)
+                tensors_to_describe = tensors
+
         tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
         tensor_transport_meta = (
-            tensor_transport_manager.extract_tensor_transport_metadata(obj_id, tensors)
+            tensor_transport_manager.extract_tensor_transport_metadata(
+                obj_id, tensors_to_describe
+            )
         )
+
+        if tensor_transport_meta.tensor_meta and not device_match_transport(
+            tensor_transport_meta.tensor_device, tensor_transport
+        ):
+            raise ValueError(
+                f"Tensor transport backend {tensor_transport} does not support "
+                f"tensor transfer on device {tensor_transport_meta.tensor_device}."
+            )
+
         return tensor_transport_meta
 
     def is_primary_copy(self, obj_id: str) -> bool:

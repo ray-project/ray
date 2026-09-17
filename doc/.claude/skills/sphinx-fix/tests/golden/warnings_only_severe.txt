@@ -1,0 +1,13 @@
+Findings (1):
+  Tier 3 — warnings:
+    [T3] myst-xref-missing-cross-extension  doc/source/tune/api.md:7
+          msg:    'myst' cross-reference target not found: 'development.rst'
+          fix:    Rewrite as a {doc} role so it resolves to the document and is never ambiguous; drop the extension on the target.  Suggested: {doc}`text <development>`
+          safety: mechanical
+
+Unclassified (1) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+  doc/source/tune/index.md:42: SEVERE: Title level inconsistent:
+
+Suppressed (0) — known-benign, not actionable:
+
+Next: apply the fixes above, then rebuild and re-run to confirm clean.

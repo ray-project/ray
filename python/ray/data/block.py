@@ -1,5 +1,7 @@
 import collections
+import functools
 import logging
+import sys
 import time
 from dataclasses import dataclass, field, fields
 from enum import Enum
@@ -23,6 +25,7 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -129,7 +132,14 @@ DEFAULT_BATCH_FORMAT = "numpy"
 
 
 def _is_cudf_dataframe(obj: Any) -> bool:
-    """Check if the object is a cudf.DataFrame (lazy import)."""
+    """Check if the object is a cudf.DataFrame (lazy import).
+
+    Checks ``sys.modules`` first to avoid importing cudf (which loads CUDA
+    and ~1.5 GiB of RSS) when it hasn't been imported yet.  If cudf is not
+    in ``sys.modules``, no object in the process can be a cudf DataFrame.
+    """
+    if "cudf" not in sys.modules:
+        return False
     try:
         import cudf
 
@@ -181,11 +191,35 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
+class CustomOpStats:
+    """Base for operator-specific, worker-reported per-task stats.
+
+    A generic extension slot carried by :class:`TaskExecWorkerStats`. Operators
+    that want to report extra per-task stats to the driver subclass this; it
+    cannot be instantiated directly.
+    """
+
+    def __post_init__(self):
+        if type(self) is CustomOpStats:
+            raise TypeError("CustomOpStats cannot be instantiated directly")
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 
     # Total task's wall-clock time from start to finish (measured on the worker)
     task_wall_time_s: float
+
+    # Peak USS (Unique Set Size) memory in bytes observed during the task,
+    # or None if USS measurement is unavailable (e.g., non-Linux platforms).
+    max_uss_bytes: Optional[int] = None
+
+    # Operator-specific worker-reported stats: one CustomOpStats entry per
+    # reporting transform (fused transforms each contribute one). Empty for
+    # operators that do not report any extra stats.
+    custom_op_stats: List[CustomOpStats] = field(default_factory=list)
 
 
 @DeveloperAPI
@@ -208,16 +242,25 @@ class BlockExecStats:
     end_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent inside UDF while generating block.
-    udf_time_s: Optional[float] = 0
+    # Time spent in the map transform chain while generating this block: the
+    # whole chain, not just the user's functions. The three fields below
+    # decompose it and sum back to it.
+    block_transform_time_s: Optional[float] = 0
+    # Time spent turning input blocks into the batches or rows the transforms
+    # consume.
+    input_prep_time_s: Optional[float] = None
+    # Time spent inside the stage bodies themselves, whether the caller wrote
+    # them or Ray Data supplied them, with the formatting and block building
+    # around them excluded.
+    function_body_time_s: Optional[float] = None
+    # Time spent assembling transform output back into blocks. Includes
+    # materializing Python objects into Arrow, which is why it is not covered by
+    # `block_ser_time_s`.
+    output_build_time_s: Optional[float] = None
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
     cpu_time_s: Optional[float] = None
-
-    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
-    # as estimated by the memory profiler.
-    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -303,6 +346,17 @@ class BlockMetadata(BlockStats):
         )
 
 
+@functools.lru_cache(maxsize=128)
+def _read_arrow_schema_cached(schema_bytes: bytes) -> "pa.Schema":
+    # Hot path on the StreamingExecutor scheduling thread: every completed task
+    # ships a `BlockMetadataWithSchema` whose `schema` is serialized Arrow IPC
+    # bytes. For wide schemas (hundreds of columns, especially with extension
+    # types like ArrowTensorType) `pa.ipc.read_schema` can dominate scheduler
+    # CPU. The same schema bytes recur across tasks of the same operator, so a
+    # small LRU collapses thousands of identical re-parses into one.
+    return pa.ipc.read_schema(pa.BufferReader(schema_bytes))
+
+
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
@@ -347,6 +401,26 @@ class BlockMetadataWithSchema(BlockMetadata):
             task_exec_stats=self.task_exec_stats,
         )
 
+    def __getstate__(self) -> Dict[str, Any]:
+        state = {f.name: getattr(self, f.name) for f in fields(BlockMetadataWithSchema)}
+
+        if isinstance(self.schema, pa.Schema):
+            state["schema"] = self.schema.serialize().to_pybytes()
+        else:
+            state["schema"] = self.schema
+
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]):
+        schema_val: bytes | bytearray | Schema | None = state["schema"]
+        if isinstance(schema_val, (bytes, bytearray)):
+            # `bytearray` itself is unhashable so it can't key the LRU cache —
+            # coerce to `bytes` first.
+            if isinstance(schema_val, bytearray):
+                schema_val = bytes(schema_val)
+            state["schema"] = _read_arrow_schema_cached(schema_val)
+        self.__dict__.update(state)
+
 
 @DeveloperAPI
 class BlockAccessor:
@@ -367,6 +441,9 @@ class BlockAccessor:
         Args:
             public_row_format: Whether to cast rows into the public Dict row
                 format (this incurs extra copy conversions).
+
+        Returns:
+            An iterator over rows in this block.
         """
         raise NotImplementedError
 
@@ -434,6 +511,10 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+
+        Returns:
+            A NumPy ndarray when a single column is selected, or a dict mapping
+            column names to ndarrays when multiple columns are selected.
         """
         raise NotImplementedError
 
@@ -515,6 +596,7 @@ class BlockAccessor:
         block_type: Optional[BlockType] = None,
     ) -> Block:
         """Create a block from user-facing data formats."""
+        import pandas
 
         if isinstance(batch, np.ndarray):
             raise ValueError(
@@ -528,7 +610,15 @@ class BlockAccessor:
         # implements the Mapping protocol. Use bulk GPU->CPU transfer via
         # to_arrow() instead of the slow column-by-column Mapping path.
         elif _is_cudf_dataframe(batch):
-            return batch.to_arrow()
+            return batch.to_arrow(preserve_index=False)
+
+        elif isinstance(batch, pandas.DataFrame):
+            if (block_type == BlockType.ARROW) or (
+                block_type is None
+                and DataContext.get_current().batch_to_block_arrow_format
+            ):
+                return cls.for_block(batch).to_arrow()
+            return batch
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
@@ -540,7 +630,7 @@ class BlockAccessor:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
                     if log_once("_fallback_to_pandas_block_warning"):
-                        logger.warning(
+                        logger.debug(
                             f"Failed to convert batch to Arrow due to: {e}; "
                             f"falling back to Pandas block"
                         )
@@ -642,7 +732,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn", ...]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -657,7 +747,7 @@ class BlockAccessor:
     def _combine_aggregated_blocks(
         blocks: List[Block],
         sort_key: "SortKey",
-        aggs: Tuple["AggregateFn"],
+        aggs: Tuple["AggregateFn", ...],
         finalize: bool = True,
     ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Aggregate partially combined and sorted blocks."""
@@ -692,8 +782,6 @@ class BlockAccessor:
         NOTE: In each column, NaNs/None are considered to be the same group.
 
         Args:
-            block: sorted block for which grouping of rows will be determined
-                    based on provided key
             keys: list of columns determining the key for every row based on
                     which the block will be grouped
 
@@ -755,7 +843,7 @@ class BlockColumnAccessor:
 
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a sum of the values in the column"""
-        return NotImplementedError()
+        raise NotImplementedError()
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a min of the values in the column"""

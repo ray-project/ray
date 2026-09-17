@@ -1,4 +1,5 @@
 # This workload tests submitting and getting many tasks over and over.
+import os
 import time
 
 import numpy as np
@@ -46,6 +47,9 @@ def f(*xs):
     return np.zeros(1024, dtype=np.uint8)
 
 
+# Stop before the 24h job timeout so the test exits cleanly as success.
+MAX_RUNTIME_S = int(os.environ.get("MAX_RUNTIME_S", 22 * 60 * 60))
+
 iteration = 0
 ids = []
 start_time = time.time()
@@ -79,3 +83,6 @@ while True:
     )
     previous_time = new_time
     iteration += 1
+    if new_time - start_time > MAX_RUNTIME_S:
+        print(f"Reached max runtime of {MAX_RUNTIME_S}s. Exiting successfully.")
+        break

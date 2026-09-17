@@ -8,6 +8,7 @@ import ray
 from ray._private.test_utils import placement_group_assert_no_leak
 from ray._private.utils import get_ray_doc_version
 from ray.util.placement_group import (
+    NODE_ID_LABEL_KEY,
     VALID_PLACEMENT_GROUP_STRATEGIES,
     _validate_bundle_label_selector,
     _validate_bundles,
@@ -672,6 +673,69 @@ class TestPlacementGroupValidation:
         # Any other strategy should raise a ValueError.
         with pytest.raises(ValueError, match="Invalid placement group strategy"):
             validate_placement_group(bundles=[{"CPU": 1}], strategy="invalid")
+
+    def test_topology_strategy_validation(self):
+        """Test topology_strategy validation when creating a placement group."""
+
+        valid_topology_strategies = [
+            {NODE_ID_LABEL_KEY: "PACK"},
+            {NODE_ID_LABEL_KEY: "STRICT_SPREAD"},
+            {"ray.io/gpu-domain": "STRICT_PACK"},
+            {
+                NODE_ID_LABEL_KEY: "SPREAD",
+                "ray.io/gpu-domain": "STRICT_PACK",
+            },
+        ]
+        for topology_strategy in valid_topology_strategies:
+            validate_placement_group(
+                bundles=[{"CPU": 1}], topology_strategy=topology_strategy
+            )
+
+        with pytest.raises(
+            ValueError, match="strategy` and `topology_strategy` cannot both"
+        ):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                strategy="PACK",
+                topology_strategy={"ray.io/gpu-domain": "STRICT_PACK"},
+            )
+
+        with pytest.raises(ValueError, match="must be a dict"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                topology_strategy=[{"ray.io/gpu-domain": "STRICT_PACK"}],
+            )
+
+        with pytest.raises(ValueError, match="keys must be non-empty strings"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}], topology_strategy={"": "STRICT_PACK"}
+            )
+
+        with pytest.raises(ValueError, match="keys must be non-empty strings"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}], topology_strategy={1: "STRICT_PACK"}
+            )
+
+        with pytest.raises(ValueError, match="Invalid topology strategy"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                topology_strategy={NODE_ID_LABEL_KEY: "invalid"},
+            )
+
+        with pytest.raises(ValueError, match="only 'STRICT_PACK' is supported"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                topology_strategy={"ray.io/gpu-domain": "SPREAD"},
+            )
+
+        with pytest.raises(ValueError, match="at most one topology label"):
+            validate_placement_group(
+                bundles=[{"CPU": 1}],
+                topology_strategy={
+                    "ray.io/gpu-domain": "STRICT_PACK",
+                    "ray.io/zone": "STRICT_PACK",
+                },
+            )
 
     def test_bundle_validation(self):
         """Test _validate_bundle()."""

@@ -14,14 +14,15 @@
 
 #include "ray/gcs/actor/gcs_actor_scheduler.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/asio_util.h"
+#include "ray/asio/asio_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/time.h"
+#include "ray/common/scheduling/label_selector.h"
 
 namespace ray {
 namespace gcs {
@@ -34,7 +35,8 @@ GcsActorScheduler::GcsActorScheduler(
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     rpc::RayletClientPool &raylet_client_pool,
     rpc::CoreWorkerClientPool &worker_client_pool,
-    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
+    ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
+    ClockInterface &clock)
     : io_context_(io_context),
       gcs_actor_table_(gcs_actor_table),
       gcs_node_manager_(gcs_node_manager),
@@ -42,7 +44,8 @@ GcsActorScheduler::GcsActorScheduler(
       schedule_success_handler_(std::move(schedule_success_handler)),
       raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
-      scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {
+      scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram),
+      clock_(clock) {
   RAY_CHECK(schedule_failure_handler_ != nullptr && schedule_success_handler_ != nullptr);
 }
 
@@ -84,9 +87,41 @@ NodeID GcsActorScheduler::SelectForwardingNode(std::shared_ptr<GcsActor> actor) 
   // Select a node to lease worker for the actor.
   std::shared_ptr<const rpc::GcsNodeInfo> node;
 
+  const auto &lease_spec = actor->GetLeaseSpecification();
+
+  // If the actor targets a specific node -- via either a `ray.io/node-id` label selector
+  // or a NodeAffinitySchedulingStrategy (soft or hard), regardless of resource demand --
+  // forward the lease directly to that node, and fall back to the default logic only if
+  // the node is not alive. This:
+  //  1. reduces spillbacks, since the lease goes straight to the node the actor should be
+  //     scheduled on; and
+  //  2. avoids a race with resource-view propagation through the syncer -- otherwise the
+  //     node GCS picks may not have the pinned node's labels in its view yet, so a hard
+  //     affinity is transiently treated as infeasible and the actor creation is cancelled
+  //     with an ActorUnschedulableError.
+  if (auto hard_node_ids = GetHardNodeAffinityValues(lease_spec.GetLabelSelector());
+      hard_node_ids.has_value()) {
+    // Sort for deterministic selection when a label selector pins multiple nodes and
+    // more than one is alive (absl::flat_hash_set iteration order is randomized).
+    std::vector<std::string> sorted_node_ids(hard_node_ids->begin(),
+                                             hard_node_ids->end());
+    std::sort(sorted_node_ids.begin(), sorted_node_ids.end());
+    for (const auto &node_hex : sorted_node_ids) {
+      const auto node_id = NodeID::FromHex(node_hex);
+      if (gcs_node_manager_.GetAliveNode(node_id).has_value()) {
+        return node_id;
+      }
+    }
+  }
+  if (lease_spec.IsNodeAffinitySchedulingStrategy()) {
+    const auto node_id = lease_spec.GetNodeAffinitySchedulingStrategyNodeId();
+    if (gcs_node_manager_.GetAliveNode(node_id).has_value()) {
+      return node_id;
+    }
+  }
+
   // If an actor has resource requirements, we will try to schedule it on the same node as
   // the owner if possible.
-  const auto &lease_spec = actor->GetLeaseSpecification();
   if (!lease_spec.GetRequiredResources().IsEmpty()) {
     auto maybe_node = gcs_node_manager_.GetAliveNode(actor->GetOwnerNodeID());
     node = maybe_node.has_value() ? maybe_node.value()
@@ -260,14 +295,18 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   static uint32_t lease_id_counter = 0;
   actor->GetMutableLeaseSpec()->set_lease_id(
       LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
+
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(actor->GetLeaseSpecification().GetMessage());
+  request.set_grant_or_reject(actor->GetGrantOrReject());
+  request.set_backlog_size(0);
+  request.set_is_selected_based_on_locality(false);
   raylet_client->RequestWorkerLease(
-      actor->GetLeaseSpecification().GetMessage(),
-      actor->GetGrantOrReject(),
+      std::move(request),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
-      },
-      0);
+      });
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(
@@ -343,7 +382,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     actor->UpdateLocalRayletAddress(actor_local_raylet_address);
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
-    actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(current_sys_time_ms());
+    actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(clock_.NowUnixMillis());
     actor->GetCreationTaskSpecification().EmitTaskMetrics(
         scheduler_placement_time_ms_histogram_);
     // Make sure to connect to the client before persisting actor info to GCS.

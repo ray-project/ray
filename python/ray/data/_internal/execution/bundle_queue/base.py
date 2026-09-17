@@ -187,7 +187,7 @@ class BaseBundleQueue(BundleQueue):
         self._on_enqueue_bundle(bundle)
         self._add_inner(bundle, **kwargs)
 
-    def _add_inner(self, bundle: RefBundle, **kwargs: Any):
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any) -> None:
         raise NotImplementedError
 
     def get_next(self) -> RefBundle:

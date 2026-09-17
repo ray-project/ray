@@ -32,6 +32,7 @@ Exceptions
     ray.exceptions.ObjectReconstructionFailedError
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
+    ray.exceptions.StreamingGeneratorReplayInconsistentError
     ray.exceptions.RayCgraphCapacityExceeded
     ray.exceptions.RayDirectTransportError
     ray.exceptions.RuntimeEnvSetupError

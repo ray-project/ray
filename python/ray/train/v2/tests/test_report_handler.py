@@ -1,5 +1,6 @@
 import random
 import unittest.mock
+from collections import deque
 from unittest.mock import MagicMock
 
 import pytest
@@ -98,6 +99,11 @@ async def test_report_handler(
     ) as fake_register_checkpoint:
         checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected
+
+    checkpoint_handler.after_replica_group_start(worker_group.get_replica_groups()[0])
+    assert checkpoint_handler._training_report_queues == [
+        deque() for _ in range(num_workers)
+    ]
 
     checkpoint_handler.before_worker_group_shutdown(worker_group)
     worker_group.shutdown()

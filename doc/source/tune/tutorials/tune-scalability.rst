@@ -1,5 +1,8 @@
 :orphan:
 
+.. meta::
+   :description: Benchmark results for Ray Tune's overhead and throughput at scale, covering result throughput and thousands of concurrent trials.
+
 Scalability and Overhead Benchmarks for Ray Tune
 ================================================
 

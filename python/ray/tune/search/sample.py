@@ -7,19 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
-# Backwards compatibility
 from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
-
-try:
-    # Added in numpy>=1.17 but we require numpy>=1.16
-    np_random_generator = np.random.Generator
-    LEGACY_RNG = False
-except AttributeError:
-
-    class np_random_generator:
-        pass
-
-    LEGACY_RNG = True
 
 logger = logging.getLogger(__name__)
 
@@ -48,21 +36,19 @@ class _BackwardsCompatibleNumpyRng:
     def __init__(
         self,
         generator_or_seed: Optional[
-            Union["np_random_generator", np.random.RandomState, int]
+            Union[np.random.Generator, np.random.RandomState, int]
         ] = None,
     ):
         if generator_or_seed is None or isinstance(
-            generator_or_seed, (np.random.RandomState, np_random_generator)
+            generator_or_seed, (np.random.RandomState, np.random.Generator)
         ):
             self._rng = generator_or_seed
-        elif LEGACY_RNG:
-            self._rng = np.random.RandomState(generator_or_seed)
         else:
             self._rng = np.random.default_rng(generator_or_seed)
 
     @property
     def legacy_rng(self) -> bool:
-        return not isinstance(self._rng, np_random_generator)
+        return not isinstance(self._rng, np.random.Generator)
 
     @property
     def rng(self):
@@ -80,7 +66,7 @@ class _BackwardsCompatibleNumpyRng:
 
 
 RandomState = Union[
-    None, _BackwardsCompatibleNumpyRng, np_random_generator, np.random.RandomState, int
+    None, _BackwardsCompatibleNumpyRng, np.random.Generator, np.random.RandomState, int
 ]
 
 
@@ -570,28 +556,91 @@ class Quantized(Sampler):
         if not isinstance(random_state, _BackwardsCompatibleNumpyRng):
             random_state = _BackwardsCompatibleNumpyRng(random_state)
 
-        if self.q == 1:
-            return self.sampler.sample(domain, config, size, random_state=random_state)
+        if isinstance(domain, Integer):
+            # A quantized integer domain is the same domain over grid indices to
+            # ensure that each are uniformly sampled
+            lower_index = int(self._grid_index(domain.lower, np.ceil))
+            upper_index = int(self._grid_index(domain.upper, np.floor))
+            if upper_index < lower_index:
+                raise ValueError(
+                    f"There is no multiple of the quantization factor q={self.q} "
+                    f"between the bounds {domain.lower} and {domain.upper} of this "
+                    f"domain, so it has no values to sample."
+                )
 
-        quantized_domain = copy(domain)
-        quantized_domain.lower = np.ceil(domain.lower / self.q) * self.q
-        quantized_domain.upper = np.floor(domain.upper / self.q) * self.q
-        values = self.sampler.sample(
-            quantized_domain, config, size, random_state=random_state
-        )
-        quantized = np.round(np.divide(values, self.q)) * self.q
+            index_domain = copy(domain)
+            index_domain.lower = lower_index
+            # Samplers are upper-exclusive except for ``q == 1``
+            index_domain.upper = upper_index + (0 if self.q == 1 else 1)
+
+            indices = self.sampler.sample(
+                index_domain, config, size, random_state=random_state
+            )
+            quantized = np.multiply(indices, self.q)
+        else:
+            # A quantized continuous (or other) domain
+            quantized_domain = copy(domain)
+            quantized_domain.lower = self._grid_index(domain.lower, np.ceil) * self.q
+            quantized_domain.upper = self._grid_index(domain.upper, np.floor) * self.q
+            values = self.sampler.sample(
+                quantized_domain, config, size, random_state=random_state
+            )
+            quantized = np.round(np.divide(values, self.q)) * self.q
 
         if not isinstance(quantized, np.ndarray):
             return domain.cast(quantized)
-        return list(quantized)
+        return [domain.cast(x) for x in quantized]
+
+    def _grid_index(self, bound: float, round_fn: Callable[[float], float]) -> float:
+        """Return ``bound``'s index on the quantization grid, rounded inwards.
+
+        The grid is the multiples of ``q``, so index ``k`` stands for the value
+        ``k * q`` and callers scale back up. ``round_fn`` gives the direction to
+        round a bound that falls between two grid points.
+
+        Args:
+            bound: The domain's ``lower`` or ``upper``.
+            round_fn: ``np.ceil`` for a lower bound, ``np.floor`` for an upper one.
+
+        Returns:
+            The grid index, or ``bound`` unchanged when it is infinite - ``qrandn``
+            domains are unbounded, so they have no grid index to snap to.
+        """
+        if not np.isfinite(bound):
+            # ``qrandn`` domains are unbounded; there is nothing to snap.
+            return bound
+        scaled = bound / self.q
+        nearest = round(scaled)
+        if isclose(scaled, nearest):
+            return nearest
+        return round_fn(scaled)
 
 
 @PublicAPI
 def sample_from(func: Callable[[Dict], Any]):
     """Specify that tune should sample configuration values from this function.
 
+    Use ``sample_from`` to define conditional search spaces, where the value
+    sampled for one parameter depends on the value sampled for another. The
+    callable receives the ``config`` dict, which exposes the values already
+    sampled for the trial.
+
     Arguments:
-        func: An callable function to draw a sample from.
+        func: A callable function to draw a sample from.
+
+    Returns:
+        A ``Function`` domain that samples values by calling ``func``.
+
+    Example:
+        >>> import numpy as np
+        >>> from ray import tune
+        >>> # Sample ``b`` from a range that depends on the value of ``a``.
+        >>> param_space = {
+        ...     "a": tune.randint(5, 10),
+        ...     "b": tune.sample_from(
+        ...         lambda config: np.random.randint(0, config["a"])
+        ...     ),
+        ... }
     """
     return Function(func)
 
@@ -628,7 +677,10 @@ def loguniform(lower: float, upper: float, base: object = _MISSING):
     Args:
         lower: Lower boundary of the output interval (e.g. 1e-4)
         upper: Upper boundary of the output interval (e.g. 1e-2)
+        base: Deprecated. No longer used.
 
+    Returns:
+        A ``Float`` domain that samples log-uniformly between ``lower`` and ``upper``.
     """
     if base is not _MISSING:
         _warn_for_base()
@@ -648,7 +700,10 @@ def qloguniform(lower: float, upper: float, q: float, base: object = _MISSING):
         upper: Upper boundary of the output interval (e.g. 1e-2)
         q: Quantization number. The result will be rounded to an
             integer increment of this value.
+        base: Deprecated. No longer used.
 
+    Returns:
+        A ``Float`` domain that samples log-uniformly and quantizes by ``q``.
     """
     if base is not _MISSING:
         _warn_for_base()
@@ -705,10 +760,10 @@ def lograndint(lower: int, upper: int, base: object = _MISSING):
 def qrandint(lower: int, upper: int, q: int = 1):
     """Sample an integer value uniformly between ``lower`` and ``upper``.
 
-    ``lower`` is inclusive, ``upper`` is also inclusive (!).
-
-    The value will be quantized, i.e. rounded to an integer increment of ``q``.
-    Quantization makes the upper bound inclusive.
+    ``lower`` is inclusive, ``upper`` is also inclusive except for ``q=1`` where
+    it's exclusive. The value will be quantized, i.e. it will be a multiple of
+    ``q``. The multiples of ``q`` between ``lower`` and ``upper`` are drawn
+    uniformly.
 
     .. versionchanged:: 1.5.0
         When converting Ray Tune configs to searcher-specific search spaces,
@@ -723,10 +778,10 @@ def qrandint(lower: int, upper: int, q: int = 1):
 def qlograndint(lower: int, upper: int, q: int, base: object = _MISSING):
     """Sample an integer value log-uniformly between ``lower`` and ``upper``.
 
-    ``lower`` is inclusive, ``upper`` is also inclusive (!).
-
-    The value will be quantized, i.e. rounded to an integer increment of ``q``.
-    Quantization makes the upper bound inclusive.
+    ``lower`` is inclusive, ``upper`` is also inclusive except for ``q=1`` where
+    it's exclusive. The value will be quantized, i.e. it will be a multiple of
+    ``q``. The multiples of ``q`` between ``lower`` and ``upper`` are drawn
+    log-uniformly.
 
     .. versionchanged:: 1.5.0
         When converting Ray Tune configs to searcher-specific search spaces,
@@ -747,6 +802,8 @@ def randn(mean: float = 0.0, sd: float = 1.0):
         mean: Mean of the normal distribution. Defaults to 0.
         sd: SD of the normal distribution. Defaults to 1.
 
+    Returns:
+        A ``Float`` domain that samples from a normal distribution.
     """
     return Float(None, None).normal(mean, sd)
 
@@ -763,5 +820,7 @@ def qrandn(mean: float, sd: float, q: float):
         q: Quantization number. The result will be rounded to an
             integer increment of this value.
 
+    Returns:
+        A ``Float`` domain that samples normally and quantizes by ``q``.
     """
     return Float(None, None).normal(mean, sd).quantized(q)

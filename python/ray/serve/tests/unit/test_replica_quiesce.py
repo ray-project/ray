@@ -1,0 +1,465 @@
+import asyncio
+import sys
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from ray.serve._private.common import RequestMetadata
+from ray.serve._private.replica import Replica
+
+
+def _make_metadata(*, is_direct_ingress: bool) -> RequestMetadata:
+    return RequestMetadata(
+        request_id="test-request",
+        internal_request_id="test-internal-request",
+        is_direct_ingress=is_direct_ingress,
+    )
+
+
+@contextmanager
+def _record_sleeps(events):
+    """Records `asyncio.sleep` calls into `events` instead of waiting.
+
+    Asserting on measured wall clock instead needs a margin above the platform
+    clock resolution, which is 15.625ms on Windows (CPython < 3.13).
+    """
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(delay, result=None, *args, **kwargs):
+        events.append(("sleep", delay))
+        # Still yield, so ordering against the other awaits is unchanged.
+        await real_sleep(0)
+        return result
+
+    with patch("asyncio.sleep", fake_sleep):
+        yield
+
+
+class FakeUvicornServer:
+    """Stand-in for `uvicorn.Server` that records when `should_exit` is set."""
+
+    def __init__(self, events):
+        # Write through __dict__ to avoid recursing into __setattr__.
+        self.__dict__["_events"] = events
+        self.__dict__["should_exit"] = False
+
+    def __setattr__(self, name, value):
+        if name == "should_exit":
+            self._events.append(("http_should_exit", value))
+        self.__dict__[name] = value
+
+
+class FakeGrpcServer:
+    """Stand-in for a `grpc.aio` server that records graceful stops."""
+
+    def __init__(self, events, name):
+        self._events = events
+        self._name = name
+
+    async def stop(self, grace):
+        self._events.append((self._name, grace))
+
+
+def _make_shutdown_fake(
+    *,
+    initialized: bool = True,
+    with_http_server: bool = False,
+    http_task=None,
+    with_grpc_server: bool = False,
+    grpc_task=None,
+    internal_grpc_port=12345,
+    grace_period_s: float = 1.0,
+    is_direct_ingress: bool = False,
+):
+    """Builds a minimal stand-in for `Replica` for `_perform_graceful_shutdown`.
+
+    Returns the fake and the ordered list of events it records.
+    """
+    events = []
+
+    fake = MagicMock()
+    fake._shutting_down = False
+    fake._quiescing = False
+    fake._user_callable_initialized = initialized
+    # Set explicitly: on a MagicMock this would otherwise be truthy and silently
+    # select the behind-HAProxy drain path. Direct ingress is derived from
+    # `_ingress` + RAY_SERVE_ENABLE_DIRECT_INGRESS, so the tests that want the
+    # direct-ingress path patch that flag on as well.
+    fake._ingress = is_direct_ingress
+    fake._deployment_config.graceful_shutdown_timeout_s = grace_period_s
+    fake._direct_ingress_http_server = (
+        FakeUvicornServer(events) if with_http_server else None
+    )
+    fake._direct_ingress_http_server_task = http_task
+    fake._direct_ingress_grpc_server = (
+        FakeGrpcServer(events, "direct_ingress_grpc_stop") if with_grpc_server else None
+    )
+    fake._direct_ingress_grpc_server_task = grpc_task
+    fake._internal_grpc_port = internal_grpc_port
+    fake._server = FakeGrpcServer(events, "inter_deployment_stop")
+
+    async def drain(min_draining_period_s=0.0, check_immediately=False):
+        # The drain runs before quiescing, so the replica keeps serving
+        # normally while it drains.
+        assert fake._quiescing is False
+        events.append(("drain", min_draining_period_s))
+
+    fake._drain_ongoing_requests = drain
+
+    async def drain_behind_haproxy(min_draining_period_s):
+        assert fake._quiescing is False
+        events.append(("drain_behind_haproxy", min_draining_period_s))
+
+    fake._drain_behind_haproxy = drain_behind_haproxy
+
+    async def shutdown():
+        events.append(("shutdown",))
+
+    fake.shutdown = shutdown
+
+    return fake, events
+
+
+class TestCanAcceptRequestWhileQuiescing:
+    @staticmethod
+    def _bind_quiescing(fake):
+        # _can_accept_request delegates the quiescing decision to
+        # _is_replica_quiescing; wire the real helper onto the fake so it runs
+        # instead of returning a truthy MagicMock.
+        fake._is_replica_quiescing = lambda rm: Replica._is_replica_quiescing(fake, rm)
+
+    def test_handle_path_rejected_when_quiescing(self):
+        fake = MagicMock()
+        fake._quiescing = True
+        self._bind_quiescing(fake)
+
+        assert (
+            Replica._can_accept_request(fake, _make_metadata(is_direct_ingress=False))
+            is False
+        )
+
+    def test_direct_ingress_not_rejected_when_quiescing(self):
+        """Direct ingress requests must NOT be rejected while quiescing.
+
+        The HTTP/gRPC servers are shut down gracefully during quiescing, so
+        any direct ingress request that still arrives is served to
+        completion; rejecting it would surface a client-visible error
+        instead of a safe retry.
+        """
+        fake = MagicMock()
+        fake._quiescing = True
+        fake.max_queued_requests = -1
+        fake._num_queued_requests = 0
+        self._bind_quiescing(fake)
+
+        assert (
+            Replica._can_accept_request(fake, _make_metadata(is_direct_ingress=True))
+            is True
+        )
+
+    def test_handle_path_accepted_when_not_quiescing(self):
+        fake = MagicMock()
+        fake._quiescing = False
+        fake._semaphore.locked.return_value = False
+        self._bind_quiescing(fake)
+
+        assert (
+            Replica._can_accept_request(fake, _make_metadata(is_direct_ingress=False))
+            is True
+        )
+
+
+class TestPerformGracefulShutdown:
+    @pytest.mark.asyncio
+    async def test_quiesces_and_stops_servers_in_order(self):
+        """Drain → quiesce → graceful server stops → shutdown, in order."""
+        loop = asyncio.get_running_loop()
+        http_task = loop.create_future()
+        # Simulate the uvicorn serve task exiting promptly once
+        # `should_exit` is set.
+        http_task.set_result(None)
+        grpc_task = MagicMock()
+
+        fake, events = _make_shutdown_fake(
+            with_http_server=True,
+            http_task=http_task,
+            with_grpc_server=True,
+            grpc_task=grpc_task,
+            grace_period_s=1.0,
+        )
+
+        await Replica._perform_graceful_shutdown(fake)
+
+        assert fake._shutting_down is True
+        assert fake._quiescing is True
+        assert [e[0] for e in events] == [
+            "drain",
+            "http_should_exit",
+            "direct_ingress_grpc_stop",
+            "inter_deployment_stop",
+            "shutdown",
+        ]
+        # The grace passed to each stop is the REMAINING shutdown budget at
+        # that step (deadline-based), so it must be positive and within the
+        # configured budget.
+        for name, *args in events:
+            if name.endswith("_stop"):
+                assert 0.0 < args[0] <= 1.0
+        # The direct ingress gRPC server task is cancelled after the
+        # graceful stop completes.
+        assert grpc_task.cancel.called
+
+    @pytest.mark.asyncio
+    async def test_http_graceful_close_timeout_falls_back_to_cancel(self):
+        """If the HTTP server doesn't exit within the grace period, the
+        server task is cancelled (the previous abrupt behavior)."""
+        loop = asyncio.get_running_loop()
+        # A serve task that never exits on its own.
+        http_task = loop.create_future()
+
+        fake, events = _make_shutdown_fake(
+            with_http_server=True,
+            http_task=http_task,
+            grace_period_s=0.05,
+        )
+
+        await Replica._perform_graceful_shutdown(fake)
+
+        # `asyncio.wait_for` cancels the awaited task on timeout.
+        assert http_task.cancelled()
+        # Shutdown still completes despite the timeout.
+        assert fake._quiescing is True
+        assert events[-1] == ("shutdown",)
+
+    @pytest.mark.asyncio
+    async def test_abrupt_cancel_when_server_object_missing(self):
+        """If only the server task exists (no server object), fall back to
+        the abrupt cancel."""
+        http_task = MagicMock()
+        fake, events = _make_shutdown_fake(http_task=http_task)
+
+        await Replica._perform_graceful_shutdown(fake)
+
+        assert http_task.cancel.called
+        assert [e[0] for e in events] == [
+            "drain",
+            "inter_deployment_stop",
+            "shutdown",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_uninitialized_replica_skips_drain_and_server_stops(self):
+        """A replica that never initialized has no servers to stop and never
+        served traffic, so only the final shutdown step runs."""
+        fake, events = _make_shutdown_fake(
+            initialized=False,
+            internal_grpc_port=None,
+        )
+
+        await Replica._perform_graceful_shutdown(fake)
+
+        assert events == [("shutdown",)]
+
+    @pytest.mark.asyncio
+    async def test_behind_haproxy_uses_two_phase_drain(self):
+        """With HAProxy enabled, shutdown runs the two-phase drain."""
+        fake, events = _make_shutdown_fake(is_direct_ingress=True)
+
+        with patch(
+            "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+        ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", True):
+            await Replica._perform_graceful_shutdown(fake)
+
+        assert [e[0] for e in events] == [
+            "drain_behind_haproxy",
+            "inter_deployment_stop",
+            "shutdown",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_without_haproxy_keeps_serving_until_drained(self):
+        """With HAProxy disabled, shutdown runs the plain drain.
+
+        Nothing in front would retry a refused connection, so the replica
+        keeps accepting for the whole drain.
+        """
+        fake, events = _make_shutdown_fake(is_direct_ingress=True)
+
+        with patch(
+            "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+        ), patch("ray.serve._private.replica.RAY_SERVE_ENABLE_HA_PROXY", False):
+            await Replica._perform_graceful_shutdown(fake)
+
+        assert [e[0] for e in events] == [
+            "drain",
+            "inter_deployment_stop",
+            "shutdown",
+        ]
+
+
+class TestDrainBehindHAProxy:
+    @staticmethod
+    def _make_fake():
+        events = []
+        fake = MagicMock()
+        fake._direct_ingress_http_server = FakeUvicornServer(events)
+        fake._stop_accepting_direct_ingress = (
+            lambda: Replica._stop_accepting_direct_ingress(fake)
+        )
+
+        async def drain(min_draining_period_s=0.0, check_immediately=False):
+            events.append(("drain", min_draining_period_s, check_immediately))
+
+        fake._drain_ongoing_requests = drain
+        return fake, events
+
+    @pytest.mark.asyncio
+    async def test_closes_listeners_before_waiting_for_in_flight(self):
+        """The HTTP listener closes before we wait for in-flight requests.
+
+        A request that arrives after that is refused, so the caller can retry
+        it elsewhere instead of having it cut off when the replica exits.
+        """
+        fake, events = self._make_fake()
+
+        await Replica._drain_behind_haproxy(fake, 0.0)
+
+        assert [e[0] for e in events] == ["http_should_exit", "drain"]
+        # Phase 1 already waited, so don't wait again, and check the request
+        # count before sleeping (see `check_immediately`).
+        assert events[-1] == ("drain", 0.0, True)
+
+    @pytest.mark.asyncio
+    async def test_serves_the_full_deregistration_window_first(self):
+        """The listener stays open for the whole draining period.
+
+        That is the window load balancers need to deregister the replica.
+        """
+        fake, events = self._make_fake()
+
+        with _record_sleeps(events):
+            await Replica._drain_behind_haproxy(fake, 0.05)
+
+        assert events == [
+            ("sleep", 0.05),
+            ("http_should_exit", True),
+            ("drain", 0.0, True),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_no_http_server_is_a_no_op(self):
+        """A replica with no direct ingress HTTP server still drains."""
+        fake, events = self._make_fake()
+        fake._direct_ingress_http_server = None
+
+        await Replica._drain_behind_haproxy(fake, 0.0)
+
+        assert [e[0] for e in events] == ["drain"]
+
+
+class TestDrainOngoingRequests:
+    @staticmethod
+    def _make_fake(wait_loop_period_s: float, num_ongoing: int = 0):
+        """Returns the fake and its ordered list of sleeps and count checks."""
+        events = []
+        fake = MagicMock()
+        fake._deployment_config.graceful_shutdown_wait_loop_s = wait_loop_period_s
+
+        def get_num_ongoing_requests():
+            events.append(("check",))
+            return num_ongoing
+
+        fake.get_num_ongoing_requests = get_num_ongoing_requests
+        return fake, events
+
+    @pytest.mark.asyncio
+    async def test_check_immediately_skips_the_first_sleep(self):
+        """With the flag set, an idle replica returns without sleeping first.
+
+        Callers that already waited out the draining period use this: another
+        wait loop can overrun the controller's force-kill deadline, which
+        would cut the shutdown short before the servers close gracefully.
+        """
+        fake, events = self._make_fake(wait_loop_period_s=10)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake, check_immediately=True)
+
+        assert events == [("check",)]
+
+    @pytest.mark.asyncio
+    async def test_sleeps_before_the_first_check_by_default(self):
+        """Without the flag, the request count is checked after a wait loop."""
+        fake, events = self._make_fake(wait_loop_period_s=0.05)
+
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake)
+
+        assert events == [("sleep", 0.05), ("check",)]
+
+
+class TestGracefulShutdownIsIdempotent:
+    """The controller re-issues the stop when it restarts, so the shutdown
+    must run once and later calls must await that same run."""
+
+    @staticmethod
+    def _make_fake(shutdown_body):
+        fake = MagicMock()
+        fake._graceful_shutdown_task = None
+        fake._event_loop = asyncio.get_event_loop()
+        fake._perform_graceful_shutdown = shutdown_body
+        return fake
+
+    @pytest.mark.asyncio
+    async def test_second_call_does_not_start_a_second_shutdown(self):
+        calls = []
+
+        async def body():
+            calls.append("shutdown")
+            await asyncio.sleep(0.05)
+
+        fake = self._make_fake(body)
+        await asyncio.gather(
+            Replica.perform_graceful_shutdown(fake),
+            Replica.perform_graceful_shutdown(fake),
+        )
+
+        assert calls == ["shutdown"]
+
+    @pytest.mark.asyncio
+    async def test_second_call_waits_for_the_first_to_finish(self):
+        finished = []
+
+        async def body():
+            await asyncio.sleep(0.05)
+            finished.append(True)
+
+        fake = self._make_fake(body)
+        first = asyncio.ensure_future(Replica.perform_graceful_shutdown(fake))
+        await asyncio.sleep(0)  # let the first call create the task
+
+        # A caller arriving mid-shutdown must not return before it completes.
+        await Replica.perform_graceful_shutdown(fake)
+        assert finished == [True]
+        await first
+
+    @pytest.mark.asyncio
+    async def test_cancelled_caller_does_not_abort_the_shutdown(self):
+        finished = []
+
+        async def body():
+            await asyncio.sleep(0.05)
+            finished.append(True)
+
+        fake = self._make_fake(body)
+        caller = asyncio.ensure_future(Replica.perform_graceful_shutdown(fake))
+        await asyncio.sleep(0)
+        caller.cancel()
+
+        await asyncio.sleep(0.1)
+        assert finished == [True]
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

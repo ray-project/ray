@@ -3,6 +3,7 @@ load("//bazel:python.bzl", "doctest")
 
 doctest(
     size = "small",
+    data = glob(["**/*.lua.tmpl"]),
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -25,6 +26,7 @@ py_library(
         ["**/*.py"],
         exclude = ["tests/**/*.py"],
     ),
+    data = glob(["**/*.lua.tmpl"]),
     visibility = [
         "//python/ray/serve:__pkg__",
         "//python/ray/serve:__subpackages__",

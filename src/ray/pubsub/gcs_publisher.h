@@ -24,6 +24,25 @@
 namespace ray {
 namespace pubsub {
 
+/// Owns the `PublisherInterface` for observability GCS pubsub (`RAY_ERROR_INFO_CHANNEL`,
+/// `RAY_LOG_CHANNEL`, and `RAY_NODE_RESOURCE_USAGE_CHANNEL`).
+class ObservabilityPublisher {
+ public:
+  explicit ObservabilityPublisher(std::unique_ptr<PublisherInterface> publisher)
+      : publisher_(std::move(publisher)) {
+    RAY_CHECK(publisher_);
+  }
+
+  PublisherInterface &GetPublisher() const { return *publisher_; }
+
+  void PublishError(std::string id, rpc::ErrorTableData message);
+
+  std::string DebugString() const;
+
+ private:
+  const std::unique_ptr<PublisherInterface> publisher_;
+};
+
 /// \class GcsPublisher
 ///
 /// Supports publishing per-entity data and errors from GCS. Thread safe.
@@ -61,8 +80,6 @@ class GcsPublisher {
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   void PublishWorkerFailure(const WorkerID &id, rpc::WorkerDeltaData message);
-
-  void PublishError(std::string id, rpc::ErrorTableData message);
 
   /// Prints debugging info for the publisher.
   std::string DebugString() const;

@@ -1,5 +1,8 @@
 :orphan:
 
+.. meta::
+   :description: Runnable example training a TensorFlow model on MNIST with Ray Train.
+
 Training with TensorFlow and Ray Train
 ======================================
 

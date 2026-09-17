@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "vLLM features reachable through Ray Serve LLM: embeddings, transcriptions, structured JSON output, and vision language models."
+---
+
 (vllm-compatibility-guide)=
 # vLLM compatibility
 
@@ -6,15 +12,15 @@ Ray Serve LLM provides an OpenAI-compatible API that aligns with vLLM's OpenAI-c
 This compatibility means you can:
 
 - Use the same model configurations and engine arguments as vLLM
-- Leverage vLLM's latest features (multimodal, structured output, reasoning models)
+- Use vLLM features such as multimodal, structured output, and reasoning models
 - Switch between `vllm serve` and Ray Serve LLM with no code changes and scale
-- Take advantage of Ray Serve's production features (autoscaling, multi-model serving, advanced routing)
+- Use Ray Serve's production features such as autoscaling, multi-model serving, and advanced routing
 
 This guide shows how to use vLLM features such as embeddings, structured output, vision language models, and reasoning models with Ray Serve.
 
 ## Embeddings
 
-You can generate embeddings by setting the `task` parameter to `"embed"` in the engine arguments. Models supporting this use case are listed in the [vLLM text embedding models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html#text-embedding-task-embed).
+In vLLM, embedding generation falls in the category of [Pooling Models](https://docs.vllm.ai/en/stable/models/pooling_models/). You can generate embeddings by setting the 'pooler_config' [parameter](https://docs.vllm.ai/en/stable/models/pooling_models/#pooling-tasks) to '{"task": "embed"}' in the engine arguments. Models supporting this use case are listed in the [vLLM embedding models documentation](https://docs.vllm.ai/en/stable/models/pooling_models/embed/#supported-models).
 
 
 ### Deploy an embedding model
@@ -34,7 +40,7 @@ llm_config = LLMConfig(
         model_source="Qwen/Qwen2.5-0.5B-Instruct",
     ),
     engine_kwargs=dict(
-        task="embed",
+        pooler_config=dict(task="embed"),
     ),
 )
 
@@ -83,7 +89,7 @@ curl -X POST http://localhost:8000/v1/embeddings \
 
 ## Transcriptions
 
-You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+You can generate audio transcriptions using Speech-to-Text (STT) models trained specifically for Automatic Speech Recognition (ASR) tasks. Models supporting this use case are listed in the [vLLM transcription models documentation](https://docs.vllm.ai/en/stable/models/supported_models/).
 
 
 ### Deploy a transcription model
@@ -349,17 +355,17 @@ for chunk in response:
 
 ### Supported models
 
-For a complete list of supported vision models, see the [vLLM multimodal models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html#multimodal-language-models).
+For a complete list of supported vision models, see the [vLLM multimodal models documentation](https://docs.vllm.ai/en/stable/models/supported_models/#list-of-multimodal-language-models).
 
 ## Reasoning models
 
 Ray Serve LLM supports reasoning models such as DeepSeek-R1 and QwQ through vLLM. These models use extended thinking processes before generating final responses.
 
-For reasoning model support and configuration, see the [vLLM reasoning models documentation](https://docs.vllm.ai/en/stable/models/supported_models.html).
+For reasoning model support and configuration, see the [vLLM reasoning models documentation](https://docs.vllm.ai/en/stable/models/supported_models/).
 
 ## See also
 
-- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models.html) - Complete list of supported models and features
-- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server.html) - vLLM's OpenAI-compatible server documentation
+- [vLLM supported models](https://docs.vllm.ai/en/stable/models/supported_models/) - Complete list of supported models and features
+- [vLLM OpenAI compatibility](https://docs.vllm.ai/en/stable/serving/openai_compatible_server/) - vLLM's OpenAI-compatible server documentation
 - {doc}`Quickstart <../quick-start>` - Basic LLM deployment examples
 

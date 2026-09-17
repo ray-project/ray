@@ -32,9 +32,10 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/time/time.h"
-#include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/periodical_runner.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -43,6 +44,7 @@
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
+#include "ray/util/clock.h"
 #include "ray/util/process.h"
 #include "ray/util/process_interface.h"
 
@@ -53,8 +55,46 @@ namespace raylet {
 using WorkerCommandMap =
     absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
 
+constexpr int64_t kWorkerGrpcThreadsWarningThreshold = 16;
+
+/**
+ * @brief Return a warning when a high-CPU node uses gRPC's default worker thread sizing.
+ *
+ * @param detected_cpus The number of CPUs detected on the node.
+ * @param configured_threads The configured worker gRPC thread count.
+ * @return A warning when the node exceeds the threshold and the thread count isn't
+ * configured to a positive value; otherwise, std::nullopt.
+ */
+std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
+                                                       int64_t configured_threads);
+
 // TODO(#54703): Put this type in a separate target.
 using AddProcessToCgroupHook = std::function<void(const std::string &)>;
+
+/// Build the list of ports that workers on this raylet may bind on.
+///
+/// \param worker_ports The explicit port list (--worker-port-list). Takes
+/// precedence over the port range when non-empty.
+/// \param min_worker_port The lower bound of the port range (--min-worker-port).
+/// 0 means no port range is configured.
+/// \param max_worker_port The upper bound of the port range (--max-worker-port).
+/// 0 means the range extends to the maximum valid port.
+/// \param gen The random bit generator used to shuffle the ports.
+/// \return The configured ports in a random order, or an empty vector if no port
+/// pool is configured, in which case workers bind port 0 and let the OS pick.
+///
+/// Explicit list values are preserved as configured. Port ranges retain the
+/// existing WorkerPool validation that their bounds are within [1, 65535].
+///
+/// The order is randomized so that raylets sharing a network namespace and the
+/// same port range don't all start from the low end of the range and
+/// deterministically contend for the same ports. This lowers the odds of a
+/// collision; it is not a cross-raylet port reservation protocol, and two
+/// raylets can still pick the same port.
+std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
+                                     int min_worker_port,
+                                     int max_worker_port,
+                                     absl::BitGenRef gen);
 
 enum PopWorkerStatus {
   // OK.
@@ -191,8 +231,8 @@ class WorkerPoolInterface : public IOWorkerPoolInterface {
   virtual std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  /// Checks if any registered worker is available for scheduling.
-  virtual bool IsWorkerAvailableForScheduling() const = 0;
+  /// Returns true if this node's workers are solely actors.
+  virtual bool AllAliveWorkersAreActors() const = 0;
 
   /// Get registered worker process by id or nullptr if not found.
   virtual std::shared_ptr<WorkerInterface> GetRegisteredWorker(
@@ -309,12 +349,13 @@ class WorkerPool : public WorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time in milliseconds.
+  /// \param clock Clock for time operations.
   /// \param add_to_cgroup_hook A lifecycle hook that the forked worker process will
   /// execute becoming a worker process. The hook adds a newly forked process into
   /// the appropriate cgroup.
   WorkerPool(
       instrumented_io_context &io_service,
+      std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
       const NodeID &node_id,
       std::string node_address,
       std::function<int64_t()> get_num_cpus_available,
@@ -328,7 +369,7 @@ class WorkerPool : public WorkerPoolInterface {
       std::string native_library_path,
       std::function<void()> starting_worker_timeout_callback,
       int ray_debugger_external,
-      std::function<absl::Time()> get_time,
+      ClockInterface &clock,
       WorkerPoolMetrics &worker_pool_metrics,
       AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
@@ -514,7 +555,7 @@ class WorkerPool : public WorkerPoolInterface {
   std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const override;
 
-  bool IsWorkerAvailableForScheduling() const override;
+  bool AllAliveWorkersAreActors() const override;
 
   /// Get all the registered drivers.
   ///
@@ -560,6 +601,9 @@ class WorkerPool : public WorkerPoolInterface {
       const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override;
 
  protected:
+  /// Clock for getting current time.
+  ClockInterface &clock_;
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -640,8 +684,8 @@ class WorkerPool : public WorkerPoolInterface {
     rpc::WorkerType worker_type;
     /// The worker process instance.
     std::unique_ptr<ProcessInterface> proc;
-    /// The worker process start time.
-    std::chrono::high_resolution_clock::time_point start_time;
+    /// The worker process start time (monotonic, for measuring startup latency).
+    SteadyTimePoint start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
@@ -825,7 +869,7 @@ class WorkerPool : public WorkerPoolInterface {
       const WorkerID &worker_id,
       rpc::WorkerType worker_type,
       std::unique_ptr<ProcessInterface> proc,
-      const std::chrono::high_resolution_clock::time_point &start,
+      SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
       std::optional<absl::Duration> worker_startup_keep_alive_duration);
@@ -912,10 +956,8 @@ class WorkerPool : public WorkerPoolInterface {
       pending_exit_idle_workers_;
 
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
-  /// A callback to get the current time.
-  const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
   std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats

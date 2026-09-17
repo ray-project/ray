@@ -20,11 +20,10 @@ logger = logging.getLogger(__name__)
 
 
 def _create_channel_ref(
-    self,
+    self: Any,
     buffer_size_bytes: int,
 ) -> "ray.ObjectRef":
-    """
-    Create a channel that can be read and written through Ray's shared-memory
+    """Create a channel that can be read and written through Ray's shared-memory
     object store.
 
     The channel has no buffer, so the writer will block until reader(s) have
@@ -35,12 +34,15 @@ def _create_channel_ref(
     readers' buffers.
 
     Args:
+        self: The actor on which to allocate the channel buffer. Passed via
+            ``__ray_call__`` so this function executes on the actor.
         buffer_size_bytes: The initial buffer size in bytes for messages
             that can be passed between tasks in the DAG. The buffers will
             be automatically resized if larger messages are written to the
             channel.
+
     Returns:
-        Channel: A wrapper around ray.ObjectRef.
+        A wrapper around ``ray.ObjectRef`` backing the channel.
     """
     worker = ray._private.worker.global_worker
     worker.check_connected()
@@ -48,9 +50,7 @@ def _create_channel_ref(
     value = b"0" * buffer_size_bytes
 
     try:
-        object_ref = worker.put_object(
-            value, owner_address=None, _is_experimental_channel=True
-        )
+        object_ref = worker.put_object(value, _is_experimental_channel=True)
     except ray.exceptions.ObjectStoreFullError:
         logger.info(
             "Put failed since the value was either too large or the "
@@ -70,7 +70,8 @@ ReaderRefInfo = namedtuple(
 
 
 class _ResizeChannel:
-    """
+    """Sentinel used to resize a channel's backing store on the readers.
+
     When a channel must be resized, the channel backing store must be resized on both
     the writer and the reader nodes. The writer first resizes its own backing store. The
     writer then uses an instance of this class as a sentinel value to tell the reader to
@@ -81,9 +82,11 @@ class _ResizeChannel:
         self,
         _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
     ):
-        """
+        """Initialize the resize sentinel.
+
         Args:
-            _node_id_to_reader_ref_info: A node id to ReaderRefInfo.
+            _node_id_to_reader_ref_info: Mapping from node id to ``ReaderRefInfo``
+                describing the new reader buffers per node.
         """
         self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
 
@@ -95,7 +98,8 @@ class SharedMemoryType(ChannelOutputType):
         buffer_size_bytes: Optional[int] = None,
         num_shm_buffers: Optional[int] = None,
     ):
-        """
+        """Initialize a ``SharedMemoryType``.
+
         Args:
             buffer_size_bytes: The initial buffer size in bytes for messages
                 that can be passed between tasks in the DAG. The buffers will
@@ -165,8 +169,7 @@ class Channel(ChannelInterface):
         _writer_registered: bool = False,
         _reader_registered: bool = False,
     ):
-        """
-        Create a channel that can be read and written by co-located Ray processes.
+        """Create a channel that can be read and written by co-located Ray processes.
 
         Anyone may write to or read from the channel. The channel has no
         buffer, so the writer will block until reader(s) have read the previous
@@ -179,8 +182,17 @@ class Channel(ChannelInterface):
             typ: Type information about the values passed through the channel.
                 Either an integer representing the max buffer size in bytes
                 allowed, or a SharedMemoryType.
-        Returns:
-            Channel: A wrapper around ray.ObjectRef.
+            _writer_node_id: Internal. Node ID hosting the writer. Provided
+                when rehydrating a channel that was constructed on another
+                process.
+            _writer_ref: Internal. Pre-existing writer-side ``ObjectRef``.
+                When set, the constructor skips allocating a new writer buffer.
+            _node_id_to_reader_ref_info: Internal. Mapping from node id to
+                ``ReaderRefInfo`` describing existing reader buffers per node.
+            _writer_registered: Internal. Whether the writer side has already
+                been registered with the core worker.
+            _reader_registered: Internal. Whether the reader side has already
+                been registered with the core worker.
         """
         assert len(reader_and_node_list) > 0
         for reader, _ in reader_and_node_list:
@@ -646,21 +658,11 @@ class BufferedSharedMemoryChannel(ChannelInterface):
 
 @PublicAPI(stability="alpha")
 class CompositeChannel(ChannelInterface):
-    """
-    Can be used to send data to different readers via different channels.
+    """Routes data to different readers via per-locality channels.
+
     For example, if the reader is in the same worker process as the writer,
     the data can be sent via IntraProcessChannel. If the reader is in a different
     worker process, the data can be sent via shared memory channel.
-
-    Args:
-        writer: The actor that may write to the channel. None signifies the driver.
-        reader_and_node_list: A list of tuples, where each tuple contains a reader
-            actor handle and the node ID where the actor is located.
-        num_shm_buffers: The number of shared memory buffers per channel.
-            Note: In the case of multiple nodes, we only support 1 shared
-            memory buffer.
-        driver_actor_id: If this channel is read by a driver and that driver is an
-            actual actor, this will be the actor ID of that driver actor.
     """
 
     def __init__(
@@ -674,6 +676,27 @@ class CompositeChannel(ChannelInterface):
         _writer_registered: bool = False,
         _reader_registered: bool = False,
     ):
+        """Initialize a ``CompositeChannel``.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            reader_and_node_list: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the actor is located.
+            num_shm_buffers: The number of shared memory buffers per channel.
+                Note: In the case of multiple nodes, we only support 1 shared
+                memory buffer.
+            driver_actor_id: If this channel is read by a driver and that driver is an
+                actual actor, this will be the actor ID of that driver actor.
+            _channel_dict: Internal. Pre-populated mapping from actor id to
+                the underlying channel. When provided, channels are not
+                re-created (used during deserialization).
+            _channels: Internal. Deduplicated set of channels backing
+                ``_channel_dict``. When provided, channels are not re-created.
+            _writer_registered: Internal. Whether the writer side has already
+                been registered with the core worker.
+            _reader_registered: Internal. Whether the reader side has already
+                been registered with the core worker.
+        """
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
         self._num_shm_buffers = num_shm_buffers

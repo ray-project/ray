@@ -1,6 +1,8 @@
+import atexit
 import logging
 import queue
 import threading
+import weakref
 from queue import Queue
 from typing import Any, Dict, List
 
@@ -303,6 +305,18 @@ class IMPALALearner(Learner):
         super().remove_module(module_id)
         self.entropy_coeff_schedulers_per_module.pop(module_id)
 
+    @override(Learner)
+    def shutdown(self) -> None:
+        # Stop the learner thread deterministically: setting the stop event
+        # and enqueuing a sentinel wakes the consumer if it's blocked on
+        # `_in_queue.get()`. Then `join` ensures it has fully exited before
+        # we return, so any subsequent `ray.shutdown()`/interpreter teardown
+        # can't race with the daemon thread.
+        thread = getattr(self, "_learner_thread", None)
+        if thread is not None and thread.is_alive():
+            thread.request_stop()
+            thread.join(timeout=5.0)
+
     @classmethod
     @override(Learner)
     def rl_module_required_apis(cls) -> list[type]:
@@ -466,6 +480,20 @@ class _LearnerThread(threading.Thread):
         self._metrics_learner_impala_thread_step_update.set_default_tags(
             {"rllib": "IMPALA/LearnerThread"}
         )
+
+        # Stop cleanly at interpreter shutdown so the daemon thread doesn't
+        # get killed mid-call inside an auto_init-wrapped Ray API (which
+        # would otherwise trigger e.g. `start_reaper` -> `preexec_fn not
+        # supported at interpreter shutdown`). Use a weakref so this hook
+        # doesn't pin the thread (and therefore the Learner) alive.
+        weak_self = weakref.ref(self)
+
+        def _request_stop_at_exit():
+            t = weak_self()
+            if t is not None:
+                t.request_stop()
+
+        atexit.register(_request_stop_at_exit)
 
     # Keeps compatibility, but thread-safe.
     @property

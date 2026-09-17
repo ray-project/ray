@@ -31,6 +31,10 @@ class KVStoreBase(metaclass=abc.ABCMeta):
         Args:
             key: Key for object to be stored.
             val: Byte value of object.
+
+        Returns:
+            True if the value was newly inserted, False if it overwrote an
+            existing value.
         """
         raise NotImplementedError("put() has to be implemented")
 

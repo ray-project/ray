@@ -1,0 +1,33 @@
+# Windows CI driver deps, pip-installed into the agent's Python 3.8 env.
+# Keep in sync with release/requirements_py310.in (minus the docs toolchain and twine).
+aioboto3
+anyscale >= 0.26.14
+azure-identity
+azure-storage-blob
+bazel-runfiles
+boto3
+click
+freezegun
+google-cloud-storage
+jinja2
+msal
+protobuf >= 3.15.3, != 3.19.5
+pytest
+responses
+pyyaml
+pybuildkite
+requests >= 2.31.0
+docker >= 7.1.0
+aws_requests_auth
+pyopenssl
+tzdata
+tqdm
+networkx
+pip_requirements_parser
+typing-extensions>=4.10,<4.14
+jsonschema>=4.23.0
+certifi>=2025.1.31
+h11>=0.16.0
+google-cloud-logging
+packaging==25.0
+anyscale==0.26.74

@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Offline RL in RLlib: record expert data, train on saved experiences, convert tabular data to episode format, and scale offline I/O throughput.
 
 Working with offline data
 =========================
@@ -1716,7 +1717,7 @@ Monitoring
 ----------
 To effectively monitor your offline data pipeline, leverage :ref:`Ray Data's built-in monitoring capacities <monitoring-your-workload>`. Focus on ensuring that all stages of your offline data streaming pipeline are actively processing data. Additionally, keep an eye on the Learner instance, particularly the `learner_update_timer`, which should maintain low values - around `0.02` for small models - to indicate efficient data processing and model updates.
 
-.. note:: RLlib doesn't include :ref:`Ray Data <data>`  metrics in its results or display them in `Tensorboard` through :ref:`Ray Tune <tune-main>`'s :py:class:`~ray.tune.logger.tensorboardx.TBXLoggerCallback`. It's strongly recommended to enable the :ref:`Ray Dashboard <observability-getting-started>`, accessible at `127.0.0.1:8265`, for comprehensive monitoring and insights.
+.. note:: RLlib doesn't include :ref:`Ray Data <data>`  metrics in its results or display them in `Tensorboard` through :ref:`Ray Tune <tune-main>`'s :py:class:`~ray.tune.logger.tensorboardx.TBXLoggerCallback`. It's strongly recommended to enable the :ref:`Ray dashboard <observability-getting-started>`, accessible at `127.0.0.1:8265`, for comprehensive monitoring and insights.
 
 Input API
 ---------

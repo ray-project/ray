@@ -16,6 +16,7 @@ from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.request_router.common import (
@@ -27,7 +28,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import SharedCounter, get_application_url
 from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
@@ -115,6 +116,75 @@ def test_ingress_async_init(serve_instance):
     resp = httpx.get(f"{get_application_url()}/check")
     assert resp.status_code == 200
     assert resp.json() == "initialized"
+
+
+def test_ingress_sync_init_subclass_raises():
+    """Subclassing a @serve.ingress class with a sync __init__ must fail loudly.
+
+    The parent __init__ is async, so a sync `super().__init__(...)` call from
+    a subclass would silently drop the returned coroutine and leave the
+    replica uninitialized (e.g. `_serve_asgi_lifespan` never set), surfacing
+    later as a cryptic AttributeError at runtime. We reject the bad pattern
+    at class-definition time with a clear migration message instead.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(WrappedIngress):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+
+def test_ingress_sync_init_via_mixin_subclass_raises():
+    """A sync __init__ inherited from a mixin earlier in the MRO must also raise.
+
+    `class Sub(SyncMixin, WrappedIngress)` doesn't define `__init__` on
+    `Sub` itself, but the resolved `Sub.__init__` is the sync mixin's, which
+    would still silently drop the wrapper's async coroutine. The check must
+    use MRO resolution, not just the subclass `__dict__`.
+    """
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class SyncMixin:
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+
+    with pytest.raises(TypeError, match="async def"):
+
+        class ExtendedIngress(SyncMixin, WrappedIngress):
+            pass
+
+
+def test_ingress_async_init_subclass_allowed():
+    """Subclassing a @serve.ingress class with an async __init__ is allowed."""
+    app = FastAPI()
+
+    class BaseIngress:
+        pass
+
+    WrappedIngress = serve.ingress(app)(BaseIngress)
+
+    class ExtendedIngress(WrappedIngress):
+        async def __init__(self, *args, **kwargs):
+            await super().__init__(*args, **kwargs)
+
+    # No __init__ defined on subclass is also allowed (inherits parent's async).
+    class InheritingIngress(WrappedIngress):
+        pass
+
+    assert ExtendedIngress is not None
+    assert InheritingIngress is not None
 
 
 class FakeRequestRouter(RequestRouter):
@@ -453,8 +523,7 @@ def test_deploy_application_basic(serve_instance):
     url = f"{get_application_url(app_name='app_g')}"
     assert httpx.get(url).text == "got g"
 
-    # Test function deployment with app name and route_prefix set in deployment
-    # decorator
+    # Test function deployment with app name and route_prefix
     h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
     assert h_handle.remote().result() == "got h"
     url = f"{get_application_url(app_name='app_h')}"
@@ -500,19 +569,8 @@ def test_delete_application(serve_instance):
 async def test_delete_while_initializing(serve_instance):
     """Test that __del__ runs when a replica terminates while initializing."""
 
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def incr(self):
-            self.count += 1
-
-        def get_count(self) -> int:
-            return self.count
-
     signal = SignalActor.remote()
-    counter = Counter.remote()
+    counter = SharedCounter.remote()
 
     @serve.deployment(graceful_shutdown_timeout_s=0.01)
     class HangingStart:
@@ -527,7 +585,7 @@ async def test_delete_while_initializing(serve_instance):
 
         async def __del__(self):
             print("Running __del__")
-            await self.counter.incr.remote()
+            await self.counter.inc.remote()
 
     serve._run(HangingStart.bind(signal, counter), _blocking=False)
 
@@ -539,7 +597,7 @@ async def test_delete_while_initializing(serve_instance):
 
     # Ensure that __del__ ran once, even though the deployment terminated
     # during initialization.
-    assert (await counter.get_count.remote()) == 1
+    assert (await counter.get.remote()) == 1
 
 
 def test_deployment_name_with_app_name(serve_instance):
@@ -1265,6 +1323,13 @@ def test_max_ongoing_requests_none(serve_instance):
     assert get_max_ongoing_requests() == 12
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_deploy_app_with_custom_request_router(serve_instance):
     """Test deploying an app with a custom request router configured in the
     deployment decorator."""
@@ -1284,6 +1349,13 @@ class AppWithCustomRequestRouterAndKwargs:
         return "Hello, world!"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason=(
+        "Custom ingress request routers are currently only available with Ray "
+        "Serve LLM and RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING."
+    ),
+)
 def test_custom_request_router_kwargs(serve_instance):
     """Check that custom kwargs can be passed to the request router."""
 

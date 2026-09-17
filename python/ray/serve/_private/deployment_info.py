@@ -19,8 +19,9 @@ class DeploymentInfo:
         actor_name: Optional[str] = None,
         version: Optional[str] = None,
         end_time_ms: Optional[int] = None,
-        route_prefix: str = None,
+        route_prefix: Optional[str] = None,
         ingress: bool = False,
+        ingress_request_router: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
@@ -39,6 +40,7 @@ class DeploymentInfo:
 
         self.route_prefix = route_prefix
         self.ingress = ingress
+        self.ingress_request_router = ingress_request_router
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -54,10 +56,10 @@ class DeploymentInfo:
 
     def update(
         self,
-        deployment_config: DeploymentConfig = None,
-        replica_config: ReplicaConfig = None,
-        version: str = None,
-        route_prefix: str = None,
+        deployment_config: Optional[DeploymentConfig] = None,
+        replica_config: Optional[ReplicaConfig] = None,
+        version: Optional[str] = None,
+        route_prefix: Optional[str] = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
             deployment_config=deployment_config or self.deployment_config,
@@ -69,6 +71,7 @@ class DeploymentInfo:
             end_time_ms=self.end_time_ms,
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
+            ingress_request_router=self.ingress_request_router,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )
@@ -143,12 +146,13 @@ class DeploymentInfo:
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
+            "ingress_request_router": proto.ingress_request_router,
         }
 
         return cls(**data)
 
     def to_proto(self):
-        data = {
+        data: Dict[str, Any] = {
             "start_time_ms": self.start_time_ms,
             "actor_name": self.actor_name,
             "version": self.version,
@@ -166,6 +170,7 @@ class DeploymentInfo:
             data["target_capacity_direction"] = TargetCapacityDirectionProto.UNSET
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
+        data["ingress_request_router"] = self.ingress_request_router
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

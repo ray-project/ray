@@ -10,16 +10,30 @@ exclude: |
     release/release_logs/|
     rllib/offline/tests/data|
     thirdparty/patches/|
+    python/requirements/llm/patches/|
     src/ray/thirdparty/|
     doc/external/|
-    doc/source/
+    # Excludes doc/source, except the Markdown and rST prose under doc/source/data
+    # that the `vale` hook below lints and Bazel BUILD files for buildifier.
+    # pre-commit ANDs this top-level `exclude` with each hook's own `files`, so
+    # excluded BUILD files would never reach the buildifier hooks.
+    doc/source/(?!data/.*[.](md|rst)$|(?:.*/)?BUILD(?:\.bazel)?$)|
+    doc/.claude/skills/sphinx-fix/tests/
   )
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        # Narrowing the top-level `exclude` above (so the `vale` hook can see
+        # doc/source/data prose) also exposed those files to this hook for the
+        # first time, which would rewrite 17 unrelated files. Keep them exempt
+        # here so enabling Vale stays a config-only change, and clean the
+        # whitespace up in its own PR.
+        exclude: ^doc/source/data/
       - id: end-of-file-fixer
+        # Same reason as trailing-whitespace above.
+        exclude: ^doc/source/data/
       - id: check-added-large-files
       - id: check-ast
         exclude: |
@@ -43,7 +57,7 @@ repos:
         args: [ --select, "I", --fix, --exit-non-zero-on-fix ]
 
   - repo: https://github.com/jsh9/pydoclint
-    rev: "0.8.3"
+    rev: "0.9.1"
     hooks:
       - id: pydoclint
         args: [
@@ -59,7 +73,7 @@ repos:
           --check-return-types=False,
           --allow-init-docstring=True,
           --check-class-attributes=False,
-          # --check-style-mismatch=True, # Bring this back once things are a bit cleaner
+          --check-style-mismatch=True,
         ]
         types: [python]
         files: '^python/ray/'
@@ -80,9 +94,9 @@ repos:
     rev: 8.0.1
     hooks:
       - id: buildifier
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
       - id: buildifier-lint
-        files: ^(src|cpp|python|rllib|ci|release|java)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
+        files: ^(src|cpp|python|rllib|ci|release|java|doc)(/[^/]+)*/BUILD(\.bazel)?$|^BUILD.bazel$
 
   - repo: https://github.com/psf/black
     rev: 22.10.0
@@ -90,19 +104,19 @@ repos:
       - id: black
         exclude: |
           (?x)^(
-            python/ray/cloudpickle/|
+            doc/external/|
             python/build/|
-            python/ray/core/src/ray/gcs/|
-            python/ray/thirdparty_files/|
             python/ray/_private/thirdparty/|
-            python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/cloudpickle/|
+            python/ray/core/src/ray/gcs/|
             python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
-            doc/external/
+            python/ray/serve/tests/test_config_files/syntax_error\.py|
+            python/ray/thirdparty_files/
           )
         types_or: [python]
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.0.3
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.6
     hooks:
       - id: prettier
         files: 'doc/'
@@ -120,14 +134,57 @@ repos:
             python/ray/autoscaler/sdk/sdk.py|
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
-            python/ray/_private/gcs_utils.py|
-            python/ray/serve/handle.py|
-            python/ray/serve/tests/typing_files/check_handle_typing.py
+            python/ray/_private/gcs_utils.py
           )
         additional_dependencies:
           [
             types-PyYAML==6.0.12.2,
           ]
+      # Serve-scoped type checking. Unlike the hook above, this uses
+      # `--follow-imports=silent` so imported types actually resolve (with
+      # `skip`, every cross-module type collapses to `Any` and wrong-type
+      # arguments go undetected). The whole serve/_private tree is checked
+      # except benchmarks/ (dev scripts) and thirdparty/ (vendored code).
+      - id: mypy
+        name: mypy (ray serve)
+        args: ['--follow-imports=silent', '--ignore-missing-imports']
+        additional_dependencies:
+          [
+            types-requests==2.31.0.6,
+          ]
+        files: |
+          (?x)^(
+            python/ray/serve/_private/.*\.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
+          )$
+        exclude: |
+          (?x)^python/ray/serve/_private/(benchmarks|thirdparty)/
+
+  # Second type checker over the same Serve allowlist. Pyrefly resolves
+  # modules and narrows differently than mypy, so it catches a disjoint set
+  # of bugs; scope/config (import replacement, search path) lives in
+  # pyrefly.toml. Keep the files/exclude patterns in sync with the "mypy (ray serve)"
+  # hook above.
+  - repo: local
+    hooks:
+      - id: pyrefly-serve
+        name: pyrefly (ray serve)
+        language: python
+        additional_dependencies: [pyrefly==1.1.1]
+        # The repo-root pyrefly.toml belongs to the ray/data CI job
+        # (ci/lint/pyrefly-check.sh); pass the serve-scoped config explicitly
+        # under a name pyrefly does not auto-discover.
+        entry: pyrefly check --config python/ray/serve/pyrefly-serve.toml
+        pass_filenames: true
+        files: |
+          (?x)^(
+            python/ray/serve/_private/.*\.py|
+            python/ray/serve/handle.py|
+            python/ray/serve/tests/typing_files/check_handle_typing.py
+          )$
+        exclude: |
+          (?x)^python/ray/serve/_private/(benchmarks|thirdparty)/
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
@@ -138,7 +195,7 @@ repos:
       - id: python-check-mock-methods
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.9.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
         args: ['--exclude=1090,1091,2207']
@@ -153,7 +210,7 @@ repos:
       - id: clang-format
 
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.11.0
+    rev: v2.16.0
     hooks:
       - id: pretty-format-java
         args: [--autofix, --google-java-formatter-version=1.7]
@@ -173,14 +230,8 @@ repos:
         language: system
         types: [python]
 
-  - repo: https://github.com/semgrep/pre-commit
-    rev: v1.32.0
-    hooks:
-      - id: semgrep
-        args: [--config=semgrep.yml, --error]
-
   - repo: https://github.com/errata-ai/vale
-    rev: v3.4.1
+    rev: v3.19.0
     hooks:
       - id: vale
         files: ^doc/source/data/.*\.(md|rst)$
@@ -222,7 +273,7 @@ repos:
       args: ["--patch_dir", "ray/train/v2"]
 
   - repo: https://github.com/pre-commit/mirrors-eslint
-    rev: v8.26.0
+    rev: v10.9.1
     hooks:
       - id: eslint
         files: ^python/ray/dashboard/client/src/.*\.(tsx|ts)$
@@ -237,5 +288,8 @@ repos:
           - eslint-plugin-prefer-arrow@1.2.3
           - '@typescript-eslint/parser@5.41.0'
           - '@typescript-eslint/eslint-plugin@5.41.0'
-          - '@typescript-eslint/parser@5.41.0'
-          - '@typescript-eslint/eslint-plugin@5.41.0'
+          # Pin typescript: eslint-config-react-app declares `typescript: "*"`,
+          # which otherwise floats to a TS major incompatible with
+          # @typescript-eslint 5.41 and breaks plugin load in CI. Matches the
+          # dashboard client's own typescript devDependency.
+          - typescript@4.8.4

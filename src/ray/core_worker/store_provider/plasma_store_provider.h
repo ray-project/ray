@@ -28,6 +28,7 @@
 #include "ray/core_worker/context.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_ipc_client/raylet_ipc_client_interface.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -99,6 +100,7 @@ class CoreWorkerPlasmaStoreProvider {
       bool warmup,
       std::shared_ptr<plasma::PlasmaClientInterface> store_client,
       int64_t fetch_batch_size,
+      ClockInterface &clock,
       std::function<std::string()> get_current_call_site = nullptr);
 
   ~CoreWorkerPlasmaStoreProvider();
@@ -239,7 +241,7 @@ class CoreWorkerPlasmaStoreProvider {
 
   /// Print a warning if we've attempted the fetch for too long and some
   /// objects are still unavailable.
-  static void WarnIfFetchHanging(
+  void WarnIfFetchHanging(
       int64_t fetch_start_time_ms,
       const absl::flat_hash_map<ObjectID, int64_t> &remaining_object_id_to_idx);
 
@@ -258,6 +260,7 @@ class CoreWorkerPlasmaStoreProvider {
   std::shared_ptr<BufferTracker> buffer_tracker_;
   int64_t fetch_batch_size_ = 0;
   std::atomic<int64_t> get_request_counter_;
+  ClockInterface &clock_;
 };
 
 }  // namespace core

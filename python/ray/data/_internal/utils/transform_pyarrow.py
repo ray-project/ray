@@ -1,7 +1,4 @@
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
+import pyarrow
 
 
 def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
@@ -10,6 +7,11 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     """
     # NOTE: Native Tensors are also BaseExtensionType
     return isinstance(pa_type, pyarrow.BaseExtensionType)
+
+
+def _is_multi_chunk_extension_column(column: "pyarrow.ChunkedArray") -> bool:
+    """Return whether a column needs multi-chunk extension-array handling."""
+    return column.num_chunks > 1 and _is_pa_extension_type(column.type)
 
 
 def _is_native_tensor_type(t: "pyarrow.BaseExtentionType") -> bool:
@@ -41,7 +43,7 @@ def _concatenate_extension_column(
     )
 
     if not _is_pa_extension_type(ca.type):
-        raise ValueError("Chunked array isn't an extension array: {ca}")
+        raise ValueError(f"Chunked array isn't an extension array: {ca.type}")
 
     tensor_extension_types = get_arrow_extension_tensor_types()
 

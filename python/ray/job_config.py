@@ -34,12 +34,15 @@ class JobConfig:
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
             See :ref:`Ray cross-language programming <cross_language>` for more details.
         runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
+        _client_job: Whether this job was submitted via Ray Client.
         metadata: An opaque metadata dictionary.
         ray_namespace: A :ref:`namespace <namespaces-guide>`
             is a logical grouping of jobs and named actors.
         default_actor_lifetime: The default value of actor lifetime,
             can be "detached" or "non_detached".
             See :ref:`actor lifetimes <actor-lifetimes>` for more details.
+        _py_driver_sys_path: A list of directories that specify the search path
+            for python workers.
     """
 
     def __init__(
@@ -57,12 +60,14 @@ class JobConfig:
         self.jvm_options = jvm_options or []
         #: A list of directories or jar files that
         #: specify the search path for user code.
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
-            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
-        )
+        validated_code_search_path = code_search_path or []
+        # Validate eagerly so optimized Python runs do not skip this check.
+        if not isinstance(validated_code_search_path, (list, tuple)):
+            raise TypeError(
+                "The type of code search path is incorrect: "
+                f"{type(code_search_path)}"
+            )
+        self.code_search_path = validated_code_search_path
         self._client_job = _client_job
         #: An opaque metadata dictionary.
         self.metadata = metadata or {}
@@ -132,6 +137,26 @@ class JobConfig:
             logging_config: The logging configuration to set.
         """
         self.py_logging_config = logging_config
+
+    def ensure_logging_config(
+        self,
+        logging_config: Optional[Union[dict, LoggingConfig]] = None,
+    ) -> None:
+        """Set logging config from a dict or LoggingConfig if not already configured.
+
+        This is a no-op when *logging_config* is ``None`` or
+        ``py_logging_config`` is already set.
+        """
+        if logging_config is None or self.py_logging_config is not None:
+            return
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig.from_dict(logging_config)
+        elif not isinstance(logging_config, LoggingConfig):
+            raise TypeError(
+                "logging_config must be a dict or LoggingConfig, "
+                f"got {type(logging_config)}"
+            )
+        self.set_py_logging_config(logging_config)
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
@@ -240,7 +265,7 @@ class JobConfig:
         return self._get_proto_job_config().runtime_env_info.runtime_env_config
 
     @classmethod
-    def from_json(cls, job_config_json):
+    def from_json(cls, job_config_json: Dict[str, Any]) -> "JobConfig":
         """Generates a JobConfig object from json.
 
         Examples:
@@ -253,6 +278,9 @@ class JobConfig:
 
         Args:
             job_config_json: The job config json dictionary.
+
+        Returns:
+            A :class:`JobConfig` instance built from the dictionary.
         """
         return cls(
             jvm_options=job_config_json.get("jvm_options", None),

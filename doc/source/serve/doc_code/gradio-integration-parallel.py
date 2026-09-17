@@ -41,7 +41,11 @@ class MyGradioServer(GradioIngress):
         self._d1 = downstream_model_1
         self._d2 = downstream_model_2
 
-        super().__init__(lambda: gr.Interface(self.fanout, "textbox", "textbox"))
+        super().__init__(
+            lambda: gr.Interface(
+                self.fanout, "textbox", "textbox", api_name="predict"
+            )
+        )
 
     async def fanout(self, text):
         [result1, result2] = await asyncio.gather(

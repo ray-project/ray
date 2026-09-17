@@ -1,5 +1,17 @@
+---
+myst:
+  html_meta:
+    description: "Ray Serve API reference: the Python API for writing and running applications, configs and schemas, request router, CLI, and REST API."
+---
+
 (serve-api)=
 # Ray Serve API
+
+```{toctree}
+:hidden:
+
+Serve CLI <cli>
+```
 
 ## Python API
 
@@ -12,9 +24,7 @@
 ### Writing Applications
 
 <!---
-NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity.
-This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map").
---->
+NOTE: `serve.deployment` and `serve.Deployment` have an autosummary-generated filename collision due to case insensitivity. This is fixed by added custom filename mappings in `source/conf.py` (look for "autosummary_filename_map"). --->
 
 ```{eval-rst}
 .. autosummary::
@@ -43,8 +53,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
 #### Deployment Handles
 
 :::{note}
-The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
-See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10. See the [model composition guide](serve-model-composition) for how to update code to use the {mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` API instead.
 :::
 
 ```{eval-rst}
@@ -56,6 +65,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.handle.DeploymentHandle
    serve.handle.DeploymentResponse
    serve.handle.DeploymentResponseGenerator
+   serve.handle.DeploymentBroadcastResponse
 ```
 
 ### Running Applications
@@ -84,6 +94,10 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.ProxyLocation
    serve.config.AutoscalingContext
    serve.autoscaling_policy.replica_queue_length_autoscaling_policy
+   serve.autoscaling_policy.PrometheusScalar
+   serve.autoscaling_policy.PrometheusSample
+   serve.autoscaling_policy.PrometheusVector
+   serve.autoscaling_policy.PrometheusQueryMixin
    serve.config.AggregationFunction
    serve.config.GangPlacementStrategy
    serve.config.GangRuntimeFailurePolicy
@@ -93,10 +107,12 @@ See the [model composition guide](serve-model-composition) for how to update cod
    :toctree: doc/
    :template: autosummary/autopydantic.rst
 
+   serve.config.ControllerOptions
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
    serve.config.AutoscalingPolicy
+   serve.config.BackpressureConfig
    serve.config.RequestRouterConfig
    serve.config.GangSchedulingConfig
    serve.config.DeploymentActorConfig
@@ -170,24 +186,19 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.exceptions.RequestCancelledError
    serve.exceptions.gRPCStatusError
    serve.exceptions.DeploymentUnavailableError
+   serve.exceptions.ReplicaUnavailableError
 ```
 
-
-(serve-cli)=
 
 ## Command Line Interface (CLI)
 
-```{eval-rst}
-.. click:: ray.serve.scripts:cli
-   :prog: serve
-   :nested: full
-```
+The `serve` command line interface deploys, inspects, and manages Serve applications from the command line. See the [Serve CLI reference](serve-cli) for the full command list.
 
 (serve-rest-api)=
 
 ## Serve REST API
 
-The Serve REST API is exposed at the same port as the Ray Dashboard. The Dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
+The Serve REST API is exposed at the same port as the Ray dashboard. The dashboard port is `8265` by default. This port can be changed using the `--dashboard-port` argument when running `ray start`. All example requests in this section use the default port.
 
 ### `PUT "/api/serve/applications/"`
 
@@ -278,7 +289,6 @@ Content-Type: application/json
             "status": "HEALTHY"
         }
     },
-    "deploy_mode": "MULTI_APP",
     "applications": {
         "app1": {
             "name": "app1",
@@ -443,6 +453,8 @@ Content-Type: application/json
    schema.Target
    schema.DeploymentNode
    schema.DeploymentTopology
+   schema.ControllerHealthMetrics
+   schema.DurationStats
 
 .. autosummary::
    :nosignatures:
@@ -473,6 +485,7 @@ Content-Type: application/json
    :template: autosummary/autopydantic.rst
 
    schema.LoggingConfig
+   schema.TracingConfig
 ```
 
 (serve-llm-api)=
@@ -522,5 +535,7 @@ Content-Type: application/json
    :toctree: doc/
 
    serve.llm.LLMServer
-   serve.llm.LLMRouter
+   serve.llm.deployment.PDDecodeServer
+   serve.llm.deployment.PDPrefillServer
+   serve.llm.deployment.DPServer
 ```

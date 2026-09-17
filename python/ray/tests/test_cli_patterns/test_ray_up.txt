@@ -41,7 +41,12 @@ Acquiring an up-to-date head node
   \[7/7\] Starting the Ray runtime
   New status: up-to-date
 
-Useful commands:
+-{60}
+Note: The output above is from the head node \(via `ray start`\)\.
+  Commands shown in 'Next steps' may only work from the head node
+  or from within the cluster network\.
+
+Useful commands for your local machine:
   To terminate the cluster:
     ray down .+
 

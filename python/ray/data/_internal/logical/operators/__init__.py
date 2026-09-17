@@ -20,6 +20,7 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.join_operator import Join, JoinSide, JoinType
 from ray.data._internal.logical.operators.map_operator import (
+    CSE_TEMP_COLUMN_PREFIX,
     AbstractMap,
     AbstractUDFMap,
     Filter,
@@ -29,13 +30,23 @@ from ray.data._internal.logical.operators.map_operator import (
     Project,
     StreamingRepartition,
 )
-from ray.data._internal.logical.operators.n_ary_operator import NAry, Union, Zip
+from ray.data._internal.logical.operators.n_ary_operator import (
+    Mix,
+    MixStoppingCondition,
+    NAry,
+    Union,
+    Zip,
+)
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
     Download,
     Limit,
 )
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.read_operator import (
+    ListFiles,
+    Read,
+    ReadFiles,
+)
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 
@@ -46,6 +57,7 @@ __all__ = [
     "AbstractOneToOne",
     "AbstractUDFMap",
     "Aggregate",
+    "CSE_TEMP_COLUMN_PREFIX",
     "Count",
     "Download",
     "Filter",
@@ -60,13 +72,17 @@ __all__ = [
     "JoinSide",
     "JoinType",
     "Limit",
+    "ListFiles",
     "MapBatches",
     "MapRows",
+    "Mix",
+    "MixStoppingCondition",
     "NAry",
     "Project",
     "RandomShuffle",
     "RandomizeBlocks",
     "Read",
+    "ReadFiles",
     "Repartition",
     "Sort",
     "StreamingRepartition",

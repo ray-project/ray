@@ -392,4 +392,18 @@ Status CgroupManager::AddProcessToSystemCgroup(const std::string &pid) {
   return AddProcessToCgroup(system_leaf_cgroup_, pid);
 }
 
+std::string CgroupManager::GetSystemCgroupPath() const { return system_cgroup_; }
+
+std::string CgroupManager::GetUserCgroupPath() const { return user_cgroup_; }
+
+StatusOr<std::string> CgroupManager::GetSystemCgroupConstraintValue(
+    const std::string &constraint_name) const {
+  return cgroup_driver_->GetConstraintValue(system_cgroup_, constraint_name);
+}
+
+StatusOr<std::string> CgroupManager::GetUserCgroupConstraintValue(
+    const std::string &constraint_name) const {
+  return cgroup_driver_->GetConstraintValue(user_cgroup_, constraint_name);
+}
+
 }  // namespace ray

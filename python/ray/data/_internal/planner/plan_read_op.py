@@ -4,7 +4,11 @@ from typing import Iterable, List
 
 import ray
 from ray import ObjectRef
-from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.interfaces import (
+    BlockEntry,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -85,7 +89,7 @@ def plan_read_op(
             read_task_ref = ray.put(read_task)
             ref_bundle = RefBundle(
                 (
-                    (
+                    BlockEntry(
                         # TODO: figure out a better way to pass read
                         # tasks other than ray.put().
                         read_task_ref,
@@ -112,7 +116,6 @@ def plan_read_op(
         [
             BlockMapTransformFn(
                 do_read,
-                is_udf=False,
                 output_block_size_option=OutputBlockSizeOption.of(
                     target_max_block_size=data_context.target_max_block_size,
                 ),
@@ -127,4 +130,5 @@ def plan_read_op(
         name=op.name,
         compute_strategy=op.compute,
         ray_remote_args=op.ray_remote_args,
+        isolate_workers=data_context.isolate_read_workers,
     )

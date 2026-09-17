@@ -28,12 +28,13 @@
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/task_submission/actor_submit_queue.h"
+#include "ray/core_worker/task_submission/actor_submit_queue_interface.h"
 #include "ray/core_worker/task_submission/dependency_resolver.h"
 #include "ray/core_worker/task_submission/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/task_submission/sequential_actor_submit_queue.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
@@ -77,7 +78,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      std::function<void(const ActorID &, const std::string &, int64_t)>
                          on_excess_queueing,
                      instrumented_io_context &io_service,
-                     std::shared_ptr<ReferenceCounterInterface> reference_counter)
+                     std::shared_ptr<ReferenceCounterInterface> reference_counter,
+                     ClockInterface &clock)
       : core_worker_client_pool_(core_worker_client_pool),
         raylet_client_pool_(raylet_client_pool),
         gcs_client_(std::move(gcs_client)),
@@ -88,7 +90,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
         next_queueing_warn_threshold_(
             ::RayConfig::instance().actor_excess_queueing_warn_threshold()),
         io_service_(io_service),
-        reference_counter_(std::move(reference_counter)) {}
+        reference_counter_(std::move(reference_counter)),
+        clock_(clock) {}
 
   void SetPreempted(const ActorID &actor_id) override {
     absl::MutexLock lock(&mu_);
@@ -316,7 +319,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     bool is_restartable_ = false;
 
     /// The queue that orders actor requests.
-    std::unique_ptr<IActorSubmitQueue> actor_submit_queue_;
+    std::unique_ptr<ActorSubmitQueueInterface> actor_submit_queue_;
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as
@@ -456,6 +459,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   instrumented_io_context &io_service_;
 
   std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+  ClockInterface &clock_;
 };
 
 }  // namespace core

@@ -1,6 +1,7 @@
 import logging
+import threading
 import time
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Set, Tuple
 
 from ray.core.generated.export_dataset_operator_event_pb2 import (
     ExportDatasetOperatorEventData as ProtoOperatorEventData,
@@ -36,6 +37,11 @@ class IssueDetectorManager:
         }
         self.executor = executor
         self._operator_event_exporter = get_operator_event_exporter()
+        # Set of detected (issue_type, operator) pairs for usage collection.
+        self._detected_issues: Set[Tuple[IssueType, "PhysicalOperator"]] = set()
+        # We protect the above set with a lock to avoid race conditions between the executor thread, that invokes the detectors (adding to the set of detected issues), and the
+        # consumer thread that checks the set of detected issues on shutdown (in the usage callback).
+        self._detected_issues_lock = threading.Lock()
 
     def invoke_detectors(self) -> None:
         curr_time = time.perf_counter()
@@ -60,16 +66,15 @@ class IssueDetectorManager:
         for i, operator in enumerate(self.executor._topology.keys()):
             operators[operator.id] = operator
             op_to_id[operator] = self.executor._get_operator_id(operator, i)
-            # Reset issue detector metrics for each operator so that previous issues
-            # don't affect the current ones.
-            operator.metrics._issue_detector_hanging = 0
-            operator.metrics._issue_detector_high_memory = 0
 
         for issue in issues:
             logger.warning(issue.message)
             operator = operators.get(issue.operator_id)
             if not operator:
                 continue
+
+            with self._detected_issues_lock:
+                self._detected_issues.add((issue.issue_type, operator))
 
             issue_event_type = format_export_issue_event_name(issue.issue_type)
             if (
@@ -87,12 +92,12 @@ class IssueDetectorManager:
                     message=issue.message,
                 )
                 self._operator_event_exporter.export_operator_event(operator_event)
-
-            if issue.issue_type == IssueType.HANGING:
-                operator.metrics._issue_detector_hanging += 1
-            if issue.issue_type == IssueType.HIGH_MEMORY:
-                operator.metrics._issue_detector_high_memory += 1
         if len(issues) > 0:
             logger.warning(
                 f"Found {len(issues)} issues. To disable issue detection, run DataContext.get_current().issue_detectors_config.detectors = []."
             )
+
+    def get_detected_issues(self) -> Set[Tuple[IssueType, "PhysicalOperator"]]:
+        """Return a copy of the detected (issue_type, operator) pairs."""
+        with self._detected_issues_lock:
+            return set(self._detected_issues)

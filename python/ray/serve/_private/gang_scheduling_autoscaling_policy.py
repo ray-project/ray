@@ -1,3 +1,4 @@
+import copy
 import math
 from typing import Any, Callable, Dict, Tuple
 
@@ -28,6 +29,15 @@ class GangSchedulingAutoscalingPolicy:
         self._gang_size = gang_size
 
     def __call__(self, ctx: AutoscalingContext) -> Tuple[int, Dict[str, Any]]:
+        # Preserve the base policy's final logical 1 -> 0 transition.
+        if (
+            ctx.config is not None
+            and ctx.config.min_replicas == 0
+            and ctx.target_num_replicas == self._gang_size
+        ):
+            ctx = copy.copy(ctx)
+            ctx.target_num_replicas = 1
+
         num_replicas, policy_state = self._base_scaling_policy(ctx)
 
         if self._gang_size > 1 and num_replicas > 0:

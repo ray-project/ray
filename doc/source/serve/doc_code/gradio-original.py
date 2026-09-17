@@ -20,7 +20,10 @@ def model2(text):
 
 
 demo = gr.Interface(
-    lambda text: f"{model1(text)}\n------------\n{model2(text)}", "textbox", "textbox"
+    lambda text: f"{model1(text)}\n------------\n{model2(text)}",
+    "textbox",
+    "textbox",
+    api_name="predict",
 )
 # __doc_code_end__
 

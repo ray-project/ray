@@ -1,3 +1,6 @@
+.. meta::
+   :description: Read, transform, run inference on, and save large text datasets with Ray Data.
+
 Working with Text
 =================
 
@@ -156,7 +159,7 @@ that sets up and invokes a model. Then, call
 
     ds = (
         ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
-        .map_batches(TextClassifier, compute=ray.data.ActorPoolStrategy(size=2))
+        .map_batches(TextClassifier, compute=ray.data.ActorPoolStrategy(size=2), batch_size="auto")
     )
 
     ds.show(3)
@@ -185,11 +188,12 @@ To view the full list of supported file formats, see the
 :ref:`Saving Data API <saving-data-api>`.
 
 .. testcode::
+    :skipif: True
 
     import ray
 
     ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
 
-    ds.write_parquet("local:///tmp/results")
+    ds.write_parquet("s3://my-bucket/results")
 
 For more information on saving data, see :ref:`Saving data <saving-data>`.

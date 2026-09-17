@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _single-agent-episode-reference-docs:
 
 SingleAgentEpisode API
@@ -29,7 +27,6 @@ Getting basic information
     :nosignatures:
     :toctree: env/
 
-    ~SingleAgentEpisode.__len__
     ~SingleAgentEpisode.get_return
     ~SingleAgentEpisode.get_duration_s
     ~SingleAgentEpisode.is_done

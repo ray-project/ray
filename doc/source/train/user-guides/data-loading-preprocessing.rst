@@ -1,3 +1,6 @@
+.. meta::
+   :description: Load and preprocess data for Ray Train with Ray Data: ingest, transform, split across workers, consume shards in the training function, and debug data loading bottlenecks.
+
 .. _data-ingest-torch:
 
 Data Loading and Preprocessing
@@ -67,7 +70,7 @@ Data ingestion can be set up with four basic steps:
                 batch["y"] = batch["y"] + 1
                 return batch
 
-            train_dataset = train_dataset.map_batches(increment)
+            train_dataset = train_dataset.map_batches(increment, batch_size="auto")
 
 
             def train_func():
@@ -565,8 +568,150 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
 This example persists the fitted preprocessor using the ``Trainer(metadata={...})`` constructor argument. This arg specifies a dict that is available from ``TrainContext.get_metadata()`` and ``checkpoint.get_metadata()`` for checkpoints that the Trainer saves. This design enables the recreation of the fitted preprocessor for inference.
 
+.. _train-debugging-data-loading-bottlenecks:
+
+Debugging data loading bottlenecks
+----------------------------------
+
+When diagnosing bottlenecks leading to slow training throughput, the first question to answer is whether the training ever stalls to wait for the next data batch. Ray Train's dashboard builds on Ray Data's per-stage iterator metrics to answer this: the **Data Ingestion** row tells you whether data loading is stalling training, and then narrows down which stage and if rank stragglers are responsible.
+
+To view these panels, run Ray 2.58 or later and set up Prometheus and Grafana for your cluster as described in :ref:`observability-visualization-setup`. Ray then provisions a Grafana dashboard titled **Train Dashboard**; open it from Grafana's dashboard list and find the **Data Ingestion** section.
+
+Follow the steps below using the panels to identify data loading bottlenecks.
+
+Step 1: Is training stalling on data loading?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Check **Max Exposed Data Loading Time**. This panel reports the per-batch data loading time that the training loop is actually blocked on, taken as the maximum across ranks so that it reflects the slowest rank.
+
+Ray Data prefetches batches on background threads while your training loop computes on the current batch, so data loading work that finishes before the next batch is requested is completely hidden and costs you nothing. This panel measures only the part that isn't hidden and stalls your training.
+
+.. figure:: ../images/data_ingestion/max_exposed_time.png
+    :align: center
+    :alt: Exposed data loading time fluctuating between zero and roughly five milliseconds per batch.
+
+    **Max Exposed Data Loading Time** for a collate-heavy run. The values are
+    non-zero, so training is stalling on data loading and it's worth continuing
+    to step 2.
+
+- **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
+- **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
+
+To corroborate a non-zero reading, cross-reference GPU utilization, which the **GPU Usage**
+panel reports in the same dashboard. A training loop whose accelerators stay fed holds
+utilization high and steady. One that stalls on data loading shows the opposite: utilization
+collapses every time the loop runs dry waiting for the next batch and recovers once it
+arrives, so the chart swings continuously instead of settling. Unstable GPU utilization is
+often the first symptom users notice, and exposed data loading time is what explains it. A
+PyTorch profiler trace shows the same pattern at finer granularity, as gaps between kernel
+launches while the loop waits.
+
+.. figure:: ../images/data_ingestion/spiky_gpu_utilization.png
+    :align: center
+    :alt: GPU utilization oscillating between roughly 10 and 85 percent on every rank, with no sustained plateau.
+
+    GPU utilization on a run bottlenecked by data loading. Every rank swings between roughly
+    10% and 85% and never holds a plateau, because the training loop repeatedly runs dry
+    waiting for the next batch.
+
+Step 2: Which data loading stage is responsible?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Check **Percentage Data Loading Breakdown by Stage**. This stacked chart shows the share of per-batch data loading time spent in each stage of the :meth:`iter_batches <ray.data.DataIterator.iter_batches>` pipeline, in the order they run:
+
+.. list-table::
+    :header-rows: 1
+    :widths: 20 80
+
+    * - Stage
+      - What it covers
+    * - Production Wait
+      - Waiting for the upstream Ray Data pipeline to produce the next block. Points at the data pipeline rather than at the training worker.
+    * - Data Transfer
+      - Resolving and transferring blocks to the training worker, including cross-node object store transfers.
+    * - Batching
+      - Building batches out of blocks, including slicing and local shuffle buffer operations.
+    * - Format
+      - Converting blocks to the requested batch format, such as NumPy or pandas.
+    * - Collate
+      - Running your ``collate_fn``.
+    * - Finalize
+      - Finalizing the batch. For GPU training this is the host-to-device transfer.
+
+Look for the stage that contributes the largest percentage of the data loading time breakdown. For instance, a large **Production Wait** percentage means the upstream Ray Data pipeline can't produce data fast enough. A large percentage in any of the other stages means the bottleneck is last-mile batch preparation on the training worker itself.
+
+.. figure:: ../images/data_ingestion/data_loading_by_stage.png
+    :align: center
+    :alt: Stacked chart in which the collate band fills about 93 percent of the plot and batching fills the remainder.
+
+    **Percentage Data Loading Breakdown by Stage** for the same run. Collate
+    accounts for roughly 93% of data loading time and Batching for most of the
+    rest, so the bottleneck is on the training worker rather than upstream.
+
+.. note::
+
+    This panel breaks down *total* data loading time, including the portion that pipelining hides behind training, and it always adds up to 100%. Read it only after step 1 shows a non-zero exposed time. Otherwise, none of the stages are contributing to training stall.
+
+Step 3: Is the stage systemically slow, or is one rank straggling?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every stage has a matching per-rank panel: **Production Wait Time by Rank**, **Data Transfer Time by Rank**, **Batching Time by Rank**, **Format Time by Rank**, **Collate Time by Rank**, and **Finalize Time by Rank**. Open the one for the stage that step 2 pointed at.
+
+.. figure:: ../images/data_ingestion/per_stage_metrics.png
+    :align: center
+    :alt: Six per-rank panels in which each stage's lines sit close together across ranks.
+
+    The six per-rank stage panels. Collate time is high but nearly identical on
+    every rank, at roughly 180 ms/batch, which points at a systemically slow
+    stage rather than a straggler.
+
+- **Uniformly high across all ranks.** The stage is systemically slow, and the fixes in :ref:`train-ingest-performance-tips` apply to the run as a whole.
+- **One rank far above the rest.** That rank is a straggler. Because distributed training synchronizes across ranks on every step, a single slow rank holds back the entire run, so a straggler costs you much more than its share of the work. Common causes are poor data locality, where blocks are consistently fetched from a remote node, and a hot node where the training worker competes with Ray Data tasks for CPU.
+
+Monitoring ingest throughput
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Two more panels sit alongside the drill-down as general health metrics rather than as steps in it:
+
+- **Data Ingest Throughput by Rank**: rows per second each rank consumes from its data loader. Use it to learn the steady-state ingest rate of a healthy run, so that you can spot drops and imbalance across ranks later.
+- **Data Production Throughput**: rows per second the Ray Data pipeline delivers to the training workers. This panel only reports data for datasets that are split across workers, which is controlled by the ``datasets_to_split`` argument of :class:`DataConfig <ray.train.DataConfig>`, so datasets you excluded from splitting show nothing here.
+
+.. figure:: ../images/data_ingestion/throughput_metrics.png
+    :align: center
+    :alt: Ingest throughput per rank averaging about one thousand rows per second beside production throughput averaging about four thousand.
+
+    **Data Ingest Throughput by Rank** and **Data Production Throughput** for the
+    same run. Aggregate ingest across the four ranks tracks production closely,
+    at roughly 4.4K rows/s, so production and consumption are balanced.
+
+Choosing a fix
+~~~~~~~~~~~~~~
+
+.. list-table::
+    :header-rows: 1
+    :widths: 45 55
+
+    * - What the drill-down showed
+      - Where to look next
+    * - Collate dominates the breakdown
+      - :ref:`avoid-heavy-collate-fn` and :ref:`scaling_collation_functions`
+    * - Data Transfer or Format dominates the breakdown
+      - :ref:`prefetching-batches`
+    * - Production Wait dominates the breakdown
+      - :ref:`adding-cpu-only-nodes` and :ref:`dataset_cache_performance`
+    * - A single rank straggles
+      - :ref:`isolating-ray-data-worker-processes`
+    * - Batching dominates and you use a large local shuffle buffer
+      - :ref:`map_batches_shuffle`
+
+For lower-level, per-operator timings that these panels don't cover, see the :ref:`Ray Data dashboard <ray-data-dashboard>` and :ref:`Ray Data stats <ray-data-stats>`.
+
+.. _train-ingest-performance-tips:
+
 Performance tips
 ----------------
+
+.. _prefetching-batches:
 
 Prefetching batches
 ~~~~~~~~~~~~~~~~~~~
@@ -602,10 +747,12 @@ For example, the following code prefetches 10 batches at a time for each trainin
     )
     my_trainer.fit()
 
+.. _avoid-heavy-collate-fn:
+
 Avoid heavy transformation in collate_fn
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer. When your expensive transformation requires batch_size as input, such as text tokenization, you can :ref:`scale it out to Ray Data <train-scaling-collation-functions>` for better performance.
+The ``collate_fn`` parameter in :meth:`iter_batches <ray.data.DataIterator.iter_batches>` or :meth:`iter_torch_batches <ray.data.DataIterator.iter_torch_batches>` allows you to transform data before feeding it to the model. This operation happens locally in the training workers. Avoid adding a heavy transformation in this function as it may become the bottleneck. Instead, :ref:`apply the transformation with map or map_batches <transforming_data>` before passing the dataset to the Trainer. When your expensive transformation requires batch_size as input, such as text tokenization, you can :ref:`scale it out to Ray Data <scaling_collation_functions>` for better performance.
 
 
 .. _dataset_cache_performance:
@@ -634,7 +781,7 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Preprocess the data. Transformations that are made before the materialize call
     # below are only run once.
-    train_ds = train_ds.map_batches(normalize_length)
+    train_ds = train_ds.map_batches(normalize_length, batch_size="auto")
 
     # Materialize the dataset in object store memory.
     # Only do this if train_ds is small enough to fit in object store memory.
@@ -646,10 +793,12 @@ Transformations that you want to run per-epoch, such as randomization, should go
 
     # Add per-epoch preprocessing. Transformations that you want to run per-epoch, such
     # as data augmentation or randomization, should go after the materialize call.
-    train_ds = train_ds.map_batches(augment_data)
+    train_ds = train_ds.map_batches(augment_data, batch_size="auto")
 
     # Pass train_ds to the Trainer
 
+
+.. _adding-cpu-only-nodes:
 
 Adding CPU-only nodes to your cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -658,3 +807,71 @@ If the GPU training is bottlenecked on expensive CPU preprocessing and the prepr
 In general, adding CPU-only nodes can help in two ways:
 * Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
 * Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to :ref:`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
+
+.. _isolating-ray-data-worker-processes:
+
+Isolating Ray Data worker processes from training nodes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes
+when training workers themselves run CPU or RAM-heavy operations
+such as storing large local shuffle buffers or running expensive collate functions.
+Launching more Ray Data processes would oversubscribe the training worker nodes.
+Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous
+cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
+
+One workaround is to force full-node exclusion by reserving all CPUs per training worker via
+``resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}`` in ``ScalingConfig``.
+This method is fragile since it's tied to node shapes, and Ray Data also doesn't exclude other
+resources such as object store memory properly, since the typical configuration is to only take up logical
+CPUs and GPUs.
+
+The recommended approach is to use :ref:`subclusters <data_concurrent_execution>` to pin the
+training Dataset to CPU-only nodes. This correctly scopes the memory budget to only the nodes
+where data tasks can actually run. It requires adding labels to your worker node configurations and setting the
+``label_selector`` in two places:
+
+.. code-block:: python
+
+    import ray
+    from ray.data import ExecutionOptions
+    from ray.train import DataConfig
+    from ray.train.torch import TorchTrainer
+
+    # (1) Pin construction-time tasks (schema inference, file listing).
+    ctx = ray.data.DataContext.get_current().copy()
+    ctx.execution_options.label_selector = {"ray-subcluster": "data"}
+    with ray.data.DataContext.current(ctx):
+        train_dataset = ray.data.read_parquet(...)
+
+    # (2) Pin per-worker ingest. Train replaces ds.context options
+    # wholesale, so the selector must be restated here.
+    trainer = TorchTrainer(
+        ...,
+        datasets={"train": train_dataset},
+        dataset_config=DataConfig(
+            datasets_to_split=["train"],
+            execution_options={
+                "train": ExecutionOptions(
+                    label_selector={"ray-subcluster": "data"}
+                ),
+            },
+        ),
+    )
+
+.. tip::
+
+    Before resorting to isolating Ray Data tasks from training nodes, consider offloading that
+    heavy work from training workers to the data pipeline instead:
+    :ref:`scale out expensive collation <scaling_collation_functions>`
+    and use :ref:`map_batches-based shuffling <map_batches_shuffle>` in place of large local
+    shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
+    need for node isolation entirely.
+
+See :ref:`data_performance_tips` for more info on how to tune Ray Data.
+
+More data ingest guides
+-----------------------
+
+- :ref:`Weighted Dataset Mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
+- :ref:`Scaling Collation Functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.

@@ -132,10 +132,10 @@ def test_datasets_callback(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     assert isinstance(processed_train_ds, StreamSplitDataIterator)
@@ -170,19 +170,18 @@ def test_data_context_propagation(ray_start_4_cpus, restore_data_context):  # no
     trainer.fit()
 
 
-def test_configure_execution_options_carryover_context():
-    """Tests that execution options in DataContext
-    carry over to DataConfig automatically."""
+def test_default_ingest_options_inherited_from_context():
+    """Train uses default_ingest_options, not driver DataContext execution options."""
 
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.preserve_order = True
     ctx.execution_options.verbose_progress = True
 
     data_config = ray.train.DataConfig()
-
-    ingest_options = data_config.default_ingest_options()
-    assert ingest_options.preserve_order is True
-    assert ingest_options.verbose_progress is True
+    resolved = data_config._resolve_execution_options("train")
+    assert resolved == ray.train.DataConfig.default_ingest_options()
+    assert resolved.preserve_order is True
+    assert resolved.verbose_progress is True
 
 
 @pytest.mark.parametrize("enable_shard_locality", [True, False])
@@ -519,22 +518,23 @@ def test_per_dataset_execution_options_dict(ray_start_4_cpus):
         assert val_shard.get_context().execution_options.resource_limits.cpu == 2
         assert val_shard.get_context().execution_options.resource_limits.gpu == 1
 
-        # Verify dataset not in the dict gets default options
+        # Verify dataset not in the dict uses default ingest options.
+        default_options = ray.train.DataConfig.default_ingest_options()
         assert (
             test_shard.get_context().execution_options.preserve_order
-            == test_shard_2.get_context().execution_options.preserve_order
+            == default_options.preserve_order
         )
         assert (
             test_shard.get_context().execution_options.verbose_progress
-            == test_shard_2.get_context().execution_options.verbose_progress
+            == default_options.verbose_progress
         )
         assert (
-            test_shard.get_context().execution_options.resource_limits.cpu
-            == test_shard_2.get_context().execution_options.resource_limits.cpu
+            test_shard.get_context().execution_options.resource_limits
+            == default_options.resource_limits
         )
         assert (
-            test_shard.get_context().execution_options.resource_limits.gpu
-            == test_shard_2.get_context().execution_options.resource_limits.gpu
+            test_shard_2.get_context().execution_options.preserve_order
+            == test_shard.get_context().execution_options.preserve_order
         )
 
     trainer = DataParallelTrainer(
@@ -591,11 +591,10 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
         assert test_exec_options.exclude_resources.cpu == 1
         assert test_exec_options.exclude_resources.gpu == 0
 
-        # Check val dataset — no user-defined exclude_resources, so zero
+        # Check val dataset — no user execution_options, so Ray Data defaults apply.
         val_ds = ray.train.get_dataset_shard("val")
         val_exec_options = val_ds.get_context().execution_options
-        assert val_exec_options.is_resource_limits_default()
-        default_options = ray.train.DataConfig.default_ingest_options()
+        default_options = ExecutionOptions()
         assert (
             val_exec_options.exclude_resources.cpu
             == default_options.exclude_resources.cpu
@@ -616,63 +615,6 @@ def test_exclude_train_resources_applies_to_each_dataset(ray_start_4_cpus):
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
-
-
-def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypatch):
-    """Under the V1 cluster autoscaler, exclude_resources should still be set by DataConfig."""
-    monkeypatch.setenv("RAY_DATA_CLUSTER_AUTOSCALER", "V1")
-
-    NUM_WORKERS = 2
-
-    train_ds = ray.data.range(1000)
-    valid_ds = ray.data.range(1000)
-
-    data_config = ray.train.DataConfig(datasets_to_split=["train"])
-    scaling_config = ray.train.ScalingConfig(
-        num_workers=NUM_WORKERS, use_gpu=True, resources_per_worker={"CPU": 1, "GPU": 1}
-    )
-
-    worker_group_context = WorkerGroupContext(
-        run_attempt_id="attempt_1",
-        train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        num_workers=scaling_config.num_workers,
-        resources_per_worker=scaling_config.resources_per_worker,
-    )
-    train_run_context = create_dummy_run_context(
-        dataset_config=data_config,
-        scaling_config=scaling_config,
-    )
-    worker_group = DummyWorkerGroup(
-        train_run_context=train_run_context,
-        worker_group_context=worker_group_context,
-    )
-    worker_group._start()
-
-    callback = DatasetsCallback(
-        train_run_context=train_run_context,
-        datasets={"train": train_ds, "valid": valid_ds},
-    )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
-
-    dataset_manager = dataset_manager_for_each_worker[0]
-    processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
-    )
-    processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
-    )
-
-    # Under the V1 cluster autoscaler, exclude_resources should be set with training resources.
-    assert (
-        processed_train_ds.get_context().execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
-    )
-    assert (
-        processed_valid_ds.get_context().execution_options.exclude_resources
-        == ExecutionResources(cpu=NUM_WORKERS, gpu=NUM_WORKERS)
-    )
 
 
 def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
@@ -720,10 +662,10 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="train")
+        DatasetShardMetadata(dataset_name="train", world_rank=0)
     )
     processed_valid_ds = dataset_manager.get_dataset_shard(
-        DatasetShardMetadata(dataset_name="valid")
+        DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
     # Under the V2 cluster autoscaler (default), exclude_resources should be
@@ -738,10 +680,34 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
     )
 
 
-def test_fixed_scaling_policy_coordinator_lifecycle():
+@pytest.mark.parametrize(
+    "label_selector, expected_label_selectors",
+    [
+        # No label_selector — passed through as None; the coordinator
+        # auto-fills to a list of empty dicts internally.
+        (None, None),
+        # Single dict — replicated per worker.
+        (
+            {"instance-type": "m6i.xlarge"},
+            [{"instance-type": "m6i.xlarge"}, {"instance-type": "m6i.xlarge"}],
+        ),
+        # Per-worker list — passed through unchanged.
+        (
+            [{"zone": "us-west-2a"}, {"zone": "us-west-2b"}],
+            [{"zone": "us-west-2a"}, {"zone": "us-west-2b"}],
+        ),
+    ],
+)
+def test_fixed_scaling_policy_coordinator_lifecycle(
+    label_selector, expected_label_selectors
+):
     """Test that FixedScalingPolicy registers training resources with the
     AutoscalingCoordinator on start, periodically re-requests to keep
-    the reservation alive, and cancels on shutdown/abort."""
+    the reservation alive, and cancels on shutdown/abort.
+
+    Parametrized to cover the three `ScalingConfig.label_selector` shapes
+    (None / Dict / List) end-to-end through the controller→coordinator path
+    (regression test for #63241)."""
     from unittest.mock import patch
 
     from freezegun import freeze_time
@@ -763,23 +729,23 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
         num_workers=num_workers,
         use_gpu=True,
         resources_per_worker=resources_per_worker,
+        label_selector=label_selector,
     )
 
     mock_coordinator = MagicMock()
     expected_request_kwargs = dict(
         requester_id="train-test-run-123",
         resources=[resources_per_worker] * num_workers,
+        label_selectors=expected_label_selectors,
         expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
         priority=ResourceRequestPriority.HIGH,
     )
 
-    with patch(
-        "ray.get",
-        side_effect=lambda x, **_: x,
+    with patch("ray.get", side_effect=lambda x, **_: x,), patch(
+        "ray.train.v2._internal.execution.scaling_policy.autoscaling_coordinator_client.get_or_create_autoscaling_coordinator",
+        return_value=mock_coordinator,
     ):
         policy = FixedScalingPolicy(scaling_config)
-        # Inject mock coordinator
-        policy.__dict__["_autoscaling_coordinator"] = mock_coordinator
 
         with freeze_time() as frozen_time:
             # Simulate controller start

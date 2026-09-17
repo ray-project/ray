@@ -295,7 +295,7 @@ def test_tasks_keep_running_on_partial_placement_group(ray_start_cluster):
     pg = ray.util.placement_group([{"CPU": 2}, {"CPU": 1}])
     ray.get(pg.ready())
 
-    @ray.remote(scheduling_strategy=PlacementGroupSchedulingStrategy(pg))
+    @ray.remote
     class Actor:
         def f(self, signal_actor):
             ray.get(signal_actor.wait.remote())
@@ -303,9 +303,21 @@ def test_tasks_keep_running_on_partial_placement_group(ray_start_cluster):
 
     signal_actor = SignalActor.options(resources={"node:__internal_head__": 1}).remote()
 
-    actor_that_will_live = Actor.options(num_cpus=2).remote()
+    # Pin the actors to specific placement group bundles so the 1-CPU actor cannot prevent
+    # the 2-CPU actor from being scheduled.
+    actor_that_will_live = Actor.options(
+        num_cpus=2,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            pg, placement_group_bundle_index=0
+        ),
+    ).remote()
     actor_to_restart = Actor.options(
-        num_cpus=1, max_restarts=1, max_task_retries=1
+        num_cpus=1,
+        max_restarts=1,
+        max_task_retries=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            pg, placement_group_bundle_index=1
+        ),
     ).remote()
     ray.get(actor_that_will_live.__ray_ready__.remote())
     ray.get(actor_to_restart.__ray_ready__.remote())

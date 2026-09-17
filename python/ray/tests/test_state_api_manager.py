@@ -18,6 +18,7 @@ from ray._private.state_api_test_utils import (
 )
 from ray._raylet import NodeID
 from ray.core.generated.common_pb2 import (
+    PlacementStrategy,
     TaskInfoEntry,
     TaskStatus,
     TaskType,
@@ -290,6 +291,49 @@ async def test_api_manager_list_pgs(state_api_manager):
             option=create_api_options(limit=1)
         )
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
+
+
+@pytest.mark.asyncio
+async def test_api_manager_list_pgs_topology(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    pg_with_topology = generate_pg_data(
+        b"1",
+        name="topology-pg",
+        topology_strategy={"ray.io/gpu-domain": PlacementStrategy.STRICT_PACK},
+        topology_assignments={"ray.io/gpu-domain": "rack-1"},
+    )
+    pg_without_topology = generate_pg_data(b"2")
+
+    data_source_client.get_all_placement_group_info.return_value = (
+        GetAllPlacementGroupReply(
+            placement_group_table_data=[pg_with_topology, pg_without_topology],
+            total=2,
+        )
+    )
+
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(detail=True)
+    )
+    assert len(result.result) == 2
+
+    pg_topology = next(r for r in result.result if r["name"] == "topology-pg")
+    verify_schema(PlacementGroupState, pg_topology, detail=True)
+    assert pg_topology["topology_strategy"] == {"ray.io/gpu-domain": "STRICT_PACK"}
+    assert pg_topology["topology_assignments"] == {"ray.io/gpu-domain": "rack-1"}
+
+    pg_no_topology = next(r for r in result.result if r["name"] == "abc")
+    verify_schema(PlacementGroupState, pg_no_topology, detail=True)
+    assert pg_no_topology["topology_strategy"] == {}
+    assert pg_no_topology["topology_assignments"] == {}
+
+    # Verify the fields are excluded from non-detail responses.
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(detail=False)
+    )
+    for pg in result.result:
+        assert "topology_strategy" not in pg
+        assert "topology_assignments" not in pg
 
 
 @pytest.mark.asyncio

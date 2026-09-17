@@ -1,20 +1,29 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "doctest")
 
+# Shared env for train v2 tests. Footer actor pool kept tiny so Data-integrated
+# tests do not time out under CI parallelism.
+_TRAIN_V2_TEST_ENV = {
+    "RAY_TRAIN_V2_ENABLED": "1",
+    "RAY_DATA_PARQUET_FOOTER_NUM_ACTORS": "1",
+}
+
+_TRAIN_V2_TEST_ENV_TF = {
+    "RAY_TRAIN_V2_ENABLED": "1",
+    "RAY_DATA_PARQUET_FOOTER_NUM_ACTORS": "1",
+    "TF_USE_LEGACY_KERAS": "1",
+}
+
 doctest(
     name = "py_doctest[train_v2]",
     size = "large",
-    env = {
-        "RAY_TRAIN_V2_ENABLED": "1",
-        "TF_USE_LEGACY_KERAS": "1",
-    },
+    env = _TRAIN_V2_TEST_ENV_TF,
     files = glob(
         ["**/*.py"],
         exclude = [
             "tests/**",
             "horovod/**",
             "jax/**",
-            # TODO(tseah): enable this after CI has torchft dependencies
             "examples/pytorch/torchft_linear_example.py",
         ],
     ),
@@ -30,7 +39,23 @@ py_test(
     name = "test_accelerator_utils",
     size = "small",
     srcs = ["tests/test_accelerator_utils.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_autoscaling_coordinator_client",
+    size = "small",
+    srcs = ["tests/test_autoscaling_coordinator_client.py"],
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -44,9 +69,9 @@ py_test(
 
 py_test(
     name = "test_async_checkpointing_validation",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_async_checkpointing_validation.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -62,7 +87,7 @@ py_test(
     name = "test_checkpoint_manager",
     size = "small",
     srcs = ["tests/test_checkpoint_manager.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -78,7 +103,7 @@ py_test(
     name = "test_config",
     size = "small",
     srcs = ["tests/test_config.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -94,7 +119,7 @@ py_test(
     name = "test_circular_imports",
     size = "small",
     srcs = ["tests/test_circular_imports.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -110,7 +135,7 @@ py_test(
     name = "test_circular_import_linter",
     size = "small",
     srcs = ["tests/test_circular_import_linter.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -126,7 +151,7 @@ py_test(
     name = "test_validation_manager",
     size = "small",
     srcs = ["tests/test_validation_manager.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -140,9 +165,9 @@ py_test(
 
 py_test(
     name = "test_collective",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_collective.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -158,7 +183,7 @@ py_test(
     name = "test_callback_manager",
     size = "small",
     srcs = ["tests/test_callback_manager.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -174,7 +199,7 @@ py_test(
     name = "test_controller",
     size = "medium",
     srcs = ["tests/test_controller.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -190,7 +215,7 @@ py_test(
     name = "test_elastic_scaling_policy",
     size = "small",
     srcs = ["tests/test_elastic_scaling_policy.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -206,7 +231,23 @@ py_test(
     name = "test_elastic_e2e",
     size = "medium",
     srcs = ["tests/test_elastic_e2e.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_controller_callback_behaviour",
+    size = "medium",
+    srcs = ["tests/test_controller_callback_behaviour.py"],
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -222,7 +263,7 @@ py_test(
     name = "test_data_integration",
     size = "large",
     srcs = ["tests/test_data_integration.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "data_integration",
         "exclusive",
@@ -239,7 +280,23 @@ py_test(
     name = "test_data_parallel_trainer",
     size = "large",
     srcs = ["tests/test_data_parallel_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_report_fault_tolerance",
+    size = "medium",
+    srcs = ["tests/test_report_fault_tolerance.py"],
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -255,7 +312,24 @@ py_test(
     name = "test_data_resource_cleanup",
     size = "medium",
     srcs = ["tests/test_data_resource_cleanup.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "data_integration",
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_dataset_manager",
+    size = "medium",
+    srcs = ["tests/test_dataset_manager.py"],
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "data_integration",
         "exclusive",
@@ -272,7 +346,7 @@ py_test(
     name = "test_env_callbacks",
     size = "small",
     srcs = ["tests/test_env_callbacks.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -288,7 +362,7 @@ py_test(
     name = "test_failure_policy",
     size = "small",
     srcs = ["tests/test_failure_policy.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -304,7 +378,7 @@ py_test(
     name = "test_jax_elastic_e2e",
     size = "medium",
     srcs = ["tests/test_jax_elastic_e2e.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -318,9 +392,9 @@ py_test(
 
 py_test(
     name = "test_jax_trainer",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_jax_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -336,7 +410,7 @@ py_test(
     name = "test_jax_gpu",
     size = "medium",
     srcs = ["tests/test_jax_gpu.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         # Temporarily disabled in CI: Ray GPU CI is on CUDA 12.1, but JAX wheels
         # do not support CUDA 12.1 (and older JAX versions were removed from PyPI).
@@ -356,7 +430,7 @@ py_test(
     name = "test_lightgbm_trainer",
     size = "small",
     srcs = ["tests/test_lightgbm_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -372,7 +446,7 @@ py_test(
     name = "test_lightning_integration",
     size = "medium",
     srcs = ["tests/test_lightning_integration.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -386,9 +460,9 @@ py_test(
 
 py_test(
     name = "test_logging",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_logging.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -404,6 +478,22 @@ py_test(
     name = "test_metrics",
     size = "small",
     srcs = ["tests/test_metrics.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_nccl_ras_callback",
+    size = "small",
+    srcs = ["tests/test_nccl_ras_callback.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
         "exclusive",
@@ -417,10 +507,29 @@ py_test(
 )
 
 py_test(
+    name = "test_nccl_ras_hang_detection",
+    size = "large",
+    srcs = ["tests/test_nccl_ras_hang_detection.py"],
+    env = {
+        "NCCL_RAS_ENABLE": "1",
+        "RAY_TRAIN_V2_ENABLED": "1",
+    },
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2_gpu",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_persistence",
     size = "medium",
     srcs = ["tests/test_persistence.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -436,7 +545,7 @@ py_test(
     name = "test_report_handler",
     size = "small",
     srcs = ["tests/test_report_handler.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -452,7 +561,7 @@ py_test(
     name = "test_placement_group_cleaner",
     size = "small",
     srcs = ["tests/test_placement_group_cleaner.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -468,7 +577,39 @@ py_test(
     name = "test_placement_group_handle",
     size = "medium",
     srcs = ["tests/test_placement_group_handle.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_preemption_watcher",
+    size = "small",
+    srcs = ["tests/test_preemption_watcher.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "exclusive",
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_preemption_fault_tolerance",
+    size = "medium",
+    srcs = ["tests/test_preemption_fault_tolerance.py"],
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -484,7 +625,7 @@ py_test(
     name = "test_result",
     size = "medium",
     srcs = ["tests/test_result.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -500,7 +641,7 @@ py_test(
     name = "test_scheduling",
     size = "medium",
     srcs = ["tests/test_scheduling.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -516,7 +657,7 @@ py_test(
     name = "test_serialization",
     size = "small",
     srcs = ["tests/test_serialization.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -532,7 +673,7 @@ py_test(
     name = "test_state",
     size = "medium",
     srcs = ["tests/test_state.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -548,7 +689,7 @@ py_test(
     name = "test_state_export",
     size = "medium",
     srcs = ["tests/test_state_export.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -564,7 +705,7 @@ py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -580,7 +721,7 @@ py_test(
     name = "test_sync_actor",
     size = "small",
     srcs = ["tests/test_sync_actor.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -596,7 +737,7 @@ py_test(
     name = "test_telemetry",
     size = "medium",
     srcs = ["tests/test_telemetry.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -612,10 +753,7 @@ py_test(
     name = "test_tensorflow_trainer",
     size = "medium",
     srcs = ["tests/test_tensorflow_trainer.py"],
-    env = {
-        "RAY_TRAIN_V2_ENABLED": "1",
-        "TF_USE_LEGACY_KERAS": "1",
-    },
+    env = _TRAIN_V2_TEST_ENV_TF,
     tags = [
         "exclusive",
         "team:ml",
@@ -631,7 +769,7 @@ py_test(
     name = "test_thread_runner",
     size = "small",
     srcs = ["tests/test_thread_runner.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -647,7 +785,7 @@ py_test(
     name = "test_torch_gpu",
     size = "large",
     srcs = ["tests/test_torch_gpu.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -663,10 +801,11 @@ py_test(
     name = "test_torch_trainer",
     size = "medium",
     srcs = ["tests/test_torch_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
+        "torchft",
         "train_v2",
     ],
     deps = [
@@ -679,7 +818,7 @@ py_test(
     name = "test_torch_transformers_train",
     size = "medium",
     srcs = ["tests/test_torch_transformers_train.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -695,7 +834,7 @@ py_test(
     name = "test_util",
     size = "medium",
     srcs = ["tests/test_util.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -711,7 +850,7 @@ py_test(
     name = "test_v2_api",
     size = "small",
     srcs = ["tests/test_v2_api.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -727,7 +866,7 @@ py_test(
     name = "test_worker",
     size = "small",
     srcs = ["tests/test_worker.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -743,7 +882,7 @@ py_test(
     name = "test_worker_group",
     size = "medium",
     srcs = ["tests/test_worker_group.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -759,7 +898,7 @@ py_test(
     name = "test_worker_group_poll_status",
     size = "small",
     srcs = ["tests/test_worker_group_poll_status.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -775,7 +914,7 @@ py_test(
     name = "test_xgboost_trainer",
     size = "small",
     srcs = ["tests/test_xgboost_trainer.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "exclusive",
         "team:ml",
@@ -791,10 +930,7 @@ py_test(
     name = "test_local_mode",
     size = "medium",
     srcs = ["tests/test_local_mode.py"],
-    env = {
-        "RAY_TRAIN_V2_ENABLED": "1",
-        "TF_USE_LEGACY_KERAS": "1",
-    },
+    env = _TRAIN_V2_TEST_ENV_TF,
     tags = [
         "exclusive",
         "team:ml",
@@ -810,7 +946,7 @@ py_test(
     name = "test_data_config",
     size = "medium",
     srcs = ["tests/test_data_config.py"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+    env = _TRAIN_V2_TEST_ENV,
     tags = [
         "data_integration",
         "exclusive",

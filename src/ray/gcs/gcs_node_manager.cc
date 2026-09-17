@@ -26,7 +26,6 @@
 #include "ray/observability/ray_node_definition_event.h"
 #include "ray/observability/ray_node_lifecycle_event.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -39,14 +38,20 @@ GcsNodeManager::GcsNodeManager(
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
-    const std::string &session_name)
+    const std::string &session_name,
+    pubsub::ObservabilityPublisher *observability_publisher,
+    ClockInterface &clock,
+    std::function<bool()> is_leader_fn)
     : gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
+      clock_(clock),
+      is_leader_fn_(std::move(is_leader_fn)),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
@@ -156,10 +161,13 @@ void GcsNodeManager::HandleCheckAlive(rpc::CheckAliveRequest request,
                                       rpc::CheckAliveReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) {
   absl::ReaderMutexLock lock(&mutex_);
+  reply->set_is_leader(is_leader_fn_());
   reply->set_ray_version(kRayVersion);
   for (const auto &id : request.node_ids()) {
     const auto node_id = NodeID::FromBinary(id);
-    const bool is_alive = alive_nodes_.contains(node_id);
+    // CheckAlive is un-gated on a passive GCS (cluster-bootstrap allowlist), so it
+    // must report passive_local_node_ alive for visibility only.
+    const bool is_alive = alive_nodes_.contains(node_id) || IsPassiveLocalNode(node_id);
     reply->mutable_raylet_alive()->Add(is_alive);
   }
 
@@ -175,7 +183,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
       << "HandleUnregisterNode() for node";
   auto node = RemoveNodeFromCache(
-      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
@@ -188,8 +196,20 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   node_info_delta->set_state(node->state());
   node_info_delta->set_end_time_ms(node->end_time_ms());
 
-  auto on_put_done = [this, node_id, node_info_delta, node](const Status &status) {
-    PublishNodeInfoToPubsub(node_id, *node_info_delta);
+  // Publish node death on the in-memory DEAD transition, decoupled from the
+  // (possibly slow) durable write below -- same rationale as
+  // InternalOnNodeFailure (see the detailed comment there). Graceful
+  // unregistration is also a terminal, restart-re-derivable node-death
+  // transition, so it must not gate cluster-wide death detection on persist
+  // latency either. Posted onto io_context_ so it runs outside mutex_ (held
+  // here) yet independent of the persist completing.
+  io_context_.post(
+      [this, node_id, node_info_delta]() {
+        PublishNodeInfoToPubsub(node_id, *node_info_delta);
+      },
+      "GcsNodeManager.PublishNodeDeathOnUnregister");
+
+  auto on_put_done = [this, node](const Status &status) {
     WriteNodeExportEvent(*node, /*is_register_event*/ false);
   };
   gcs_table_storage_->NodeTable().Put(node_id, *node, {on_put_done, io_context_});
@@ -266,7 +286,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       continue;
     }
   }
-  const size_t total_num_nodes = alive_nodes_.size() + dead_nodes_.size();
+  const bool has_surfaceable_passive_node = HasSurfaceablePassiveLocalNode();
+  const size_t total_num_nodes =
+      alive_nodes_.size() + dead_nodes_.size() + (has_surfaceable_passive_node ? 1 : 0);
   int64_t num_added = 0;
 
   if (request.node_selectors_size() > 0 && only_node_id_filters) {
@@ -277,6 +299,9 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
           *reply->add_node_info_list() = *iter->second;
+          ++num_added;
+        } else if (IsPassiveLocalNode(node_id)) {
+          *reply->add_node_info_list() = *passive_local_node_;
           ++num_added;
         }
       }
@@ -314,6 +339,10 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     if (!request.has_state_filter() ||
         request.state_filter() == rpc::GcsNodeInfo::ALIVE) {
       check_and_add_head_node(alive_nodes_);
+      if (num_added == 0 && has_surfaceable_passive_node) {
+        *reply->add_node_info_list() = *passive_local_node_;
+        ++num_added;
+      }
     }
     if (num_added == 0 && (!request.has_state_filter() ||
                            request.state_filter() == rpc::GcsNodeInfo::DEAD)) {
@@ -327,6 +356,23 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   }
 
   const bool has_node_selectors = request.node_selectors_size() > 0;
+  // True if the request has no selectors (return all nodes) or the node matches any
+  // selector by id, name, ip address, or head-node flag.
+  auto node_matches_request_filters = [&](const NodeID &node_id,
+                                          const rpc::GcsNodeInfo &node_info) {
+    return !has_node_selectors || node_ids.contains(node_id) ||
+           node_names.contains(node_info.node_name()) ||
+           node_ip_addresses.contains(node_info.node_manager_address()) ||
+           (is_head_node_filter.has_value() &&
+            node_info.is_head_node() == is_head_node_filter.value());
+  };
+  auto add_node_to_response = [&](const rpc::GcsNodeInfo &node_info) {
+    NodeID node_id = NodeID::FromBinary(node_info.node_id());
+    if (num_added < limit && node_matches_request_filters(node_id, node_info)) {
+      *reply->add_node_info_list() = node_info;
+      num_added += 1;
+    }
+  };
   auto add_to_response =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
@@ -334,14 +380,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
           if (num_added >= limit) {
             break;
           }
-          if (!has_node_selectors || node_ids.contains(node_id) ||
-              node_names.contains(node_info_ptr->node_name()) ||
-              node_ip_addresses.contains(node_info_ptr->node_manager_address()) ||
-              (is_head_node_filter.has_value() &&
-               node_info_ptr->is_head_node() == is_head_node_filter.value())) {
-            *reply->add_node_info_list() = *node_info_ptr;
-            num_added += 1;
-          }
+          add_node_to_response(*node_info_ptr);
         }
       };
 
@@ -349,9 +388,13 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     switch (request.state_filter()) {
     case rpc::GcsNodeInfo::ALIVE:
       if (!has_node_selectors) {
-        reply->mutable_node_info_list()->Reserve(alive_nodes_.size());
+        reply->mutable_node_info_list()->Reserve(alive_nodes_.size() +
+                                                 (has_surfaceable_passive_node ? 1 : 0));
       }
       add_to_response(alive_nodes_);
+      if (has_surfaceable_passive_node) {
+        add_node_to_response(*passive_local_node_);
+      }
       break;
     case rpc::GcsNodeInfo::DEAD:
       if (!has_node_selectors) {
@@ -365,9 +408,13 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     }
   } else {
     if (!has_node_selectors) {
-      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size());
+      reply->mutable_node_info_list()->Reserve(alive_nodes_.size() + dead_nodes_.size() +
+                                               (has_surfaceable_passive_node ? 1 : 0));
     }
     add_to_response(alive_nodes_);
+    if (has_surfaceable_passive_node) {
+      add_node_to_response(*passive_local_node_);
+    }
     add_to_response(dead_nodes_);
   }
 
@@ -399,6 +446,7 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     const std::function<void(rpc::GcsNodeAddressAndLiveness &&)> &callback) const {
   absl::ReaderMutexLock lock(&mutex_);
   int64_t num_added = 0;
+  const bool has_surfaceable_passive_node = HasSurfaceablePassiveLocalNode();
 
   if (!node_ids.empty()) {
     // optimized path if request only wants specific node ids
@@ -410,6 +458,9 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
         auto iter = alive_nodes_.find(node_id);
         if (iter != alive_nodes_.end()) {
           callback(ConvertToGcsNodeAddressAndLiveness(*iter->second));
+          ++num_added;
+        } else if (IsPassiveLocalNode(node_id)) {
+          callback(ConvertToGcsNodeAddressAndLiveness(*passive_local_node_));
           ++num_added;
         }
       }
@@ -424,6 +475,12 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     return;
   }
 
+  auto add_node_address = [&](const rpc::GcsNodeInfo &node_info) {
+    if (num_added < limit) {
+      callback(ConvertToGcsNodeAddressAndLiveness(node_info));
+      num_added += 1;
+    }
+  };
   auto add_with_callback =
       [&](const absl::flat_hash_map<NodeID, std::shared_ptr<const rpc::GcsNodeInfo>>
               &nodes) {
@@ -431,8 +488,7 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
           if (num_added >= limit) {
             break;
           }
-          callback(ConvertToGcsNodeAddressAndLiveness(*node_info_ptr));
-          num_added += 1;
+          add_node_address(*node_info_ptr);
         }
       };
 
@@ -440,6 +496,9 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     switch (state_filter.value()) {
     case rpc::GcsNodeInfo::ALIVE:
       add_with_callback(alive_nodes_);
+      if (has_surfaceable_passive_node) {
+        add_node_address(*passive_local_node_);
+      }
       break;
     case rpc::GcsNodeInfo::DEAD:
       add_with_callback(dead_nodes_);
@@ -450,6 +509,9 @@ void GcsNodeManager::GetAllNodeAddressAndLiveness(
     }
   } else {
     add_with_callback(alive_nodes_);
+    if (has_surfaceable_passive_node) {
+      add_node_address(*passive_local_node_);
+    }
     add_with_callback(dead_nodes_);
   }
 }
@@ -549,7 +611,7 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
     expect_force_termination = false;
   } else {
     expect_force_termination =
-        (current_sys_time_ms() > iter->second->deadline_timestamp_ms()) &&
+        (clock_.NowUnixMillis() > iter->second->deadline_timestamp_ms()) &&
         (iter->second->reason() ==
          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
   }
@@ -564,6 +626,25 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
         "health check failed due to missing too many heartbeats");
   }
   return death_info;
+}
+
+void GcsNodeManager::CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
+  RAY_CHECK(node_info.is_head_node())
+      << "CachePassiveLocalNode must only cache the local head node.";
+  NodeID node_id = NodeID::FromBinary(node_info.node_id());
+  absl::MutexLock lock(&mutex_);
+  // Check under mutex_ so the leader check and the cache write are a single critical
+  // section.
+  if (is_leader_fn_()) {
+    return;
+  }
+  if (alive_nodes_.contains(node_id) || dead_nodes_.contains(node_id)) {
+    return;
+  }
+  RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
+                   "registration in-memory. node_id: "
+                << node_id;
+  passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
@@ -666,9 +747,8 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data = CreateErrorTableData(
-          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
-      gcs_publisher_->PublishError(node_id.Hex(), std::move(error_data));
+      auto error_data = CreateErrorTableData(type, error_message.str(), clock_.Now());
+      observability_publisher_->PublishError(node_id.Hex(), std::move(error_data));
     }
 
     // Notify all listeners.
@@ -691,7 +771,7 @@ void GcsNodeManager::InternalOnNodeFailure(
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
     auto node = RemoveNodeFromCache(
-        node_id, death_info, rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+        node_id, death_info, rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
 
     AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;
@@ -700,17 +780,41 @@ void GcsNodeManager::InternalOnNodeFailure(
     node_info_delta.set_end_time_ms(node->end_time_ms());
     node_info_delta.mutable_death_info()->CopyFrom(node->death_info());
 
-    auto on_done = [this,
-                    node_id,
-                    node_table_updated_callback,
-                    node_info_delta = std::move(node_info_delta),
-                    node](const Status &status) mutable {
-      WriteNodeExportEvent(*node, /*is_register_event*/ false);
-      if (node_table_updated_callback != nullptr) {
-        node_table_updated_callback();
-      }
-      PublishNodeInfoToPubsub(node_id, node_info_delta);
-    };
+    // Publish node death as soon as the in-memory state has flipped to DEAD,
+    // decoupled from the (possibly slow) durable write below -- rather than
+    // from inside the write's completion callback.
+    //
+    // Owners of objects/tasks react to a node's death ONLY from this single
+    // pushed pub/sub notification (core_worker.cc on_node_change, DEAD
+    // branch); there is no owner-side re-poll fallback. Gating the publish on
+    // the storage write's completion therefore couples cluster-wide death
+    // detection to persist latency: under a slow durable backend (e.g. the
+    // RocksDB GCS with per-write fsync) the notification is delayed enough to
+    // strand object recovery and hang dynamic-generator reconstruction. See
+    // the provenance PR #64187 (root-cause proof on the in-memory GCS, not
+    // merged) for the full analysis.
+    //
+    // This relaxes broadcast-after-durable ordering (a subscriber can observe
+    // DEAD before it is persisted), which is safe here because node death is
+    // a terminal, restart-re-derivable transition: on a GCS restart the same
+    // death is re-established by health checks. Do NOT generalize this to the
+    // actor channel, whose state machine can resurrect across a GCS crash.
+    //
+    // Posted onto io_context_ so it runs outside mutex_ (held by our caller
+    // OnNodeFailure) yet independent of the persist completing.
+    io_context_.post(
+        [this, node_id, node_info_delta = std::move(node_info_delta)]() {
+          PublishNodeInfoToPubsub(node_id, node_info_delta);
+        },
+        "GcsNodeManager.PublishNodeDeathOnFailure");
+
+    auto on_done =
+        [this, node_table_updated_callback, node](const Status &status) mutable {
+          WriteNodeExportEvent(*node, /*is_register_event*/ false);
+          if (node_table_updated_callback != nullptr) {
+            node_table_updated_callback();
+          }
+        };
     gcs_table_storage_->NodeTable().Put(
         node_id, *node, {std::move(on_done), io_context_});
   } else if (node_table_updated_callback != nullptr) {

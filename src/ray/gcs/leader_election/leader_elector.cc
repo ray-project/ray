@@ -1,0 +1,331 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#include "ray/gcs/leader_election/leader_elector.h"
+
+#include "ray/util/logging.h"
+
+namespace ray {
+namespace gcs {
+
+LeaderElector::LeaderElector(LeaderElectionConfig config)
+    : config_(std::move(config)), is_stopped_(false), is_leading_(false) {
+  RAY_CHECK(config_.lease_client) << "Lease client must be non-null.";
+  RAY_CHECK(!config_.holder_id.empty()) << "Holder ID must be non-empty.";
+  RAY_CHECK(config_.lease_duration_seconds > 0);
+  RAY_CHECK(config_.renew_deadline_seconds > 0);
+  RAY_CHECK(config_.retry_period_seconds > 0);
+  // The safety deadline must be strictly smaller than the lease TTL duration to ensure
+  // GCS steps down/suicides before another standby node can preemptively steal the lock.
+  RAY_CHECK(config_.renew_deadline_seconds < config_.lease_duration_seconds)
+      << "Renew deadline must be smaller than lease duration.";
+  RAY_CHECK(config_.retry_period_seconds < config_.renew_deadline_seconds)
+      << "Retry period must be smaller than renew deadline.";
+}
+
+LeaderElector::~LeaderElector() { Stop(); }
+
+void LeaderElector::Run() {
+  if (election_thread_ || watchdog_thread_) {
+    RAY_LOG(WARNING) << "Leader elector is already running.";
+    return;
+  }
+  is_stopped_ = false;
+  RAY_LOG(INFO) << "Starting leader election background thread for candidate: "
+                << config_.holder_id;
+  // Thread 1: Executes the network I/O loop to acquire and renew the Kubernetes Lease.
+  election_thread_ = std::make_unique<std::thread>([this]() { Loop(); });
+  // Thread 2: Lightweight watchdog that continuously checks that lease renewals are
+  // succeeding within the safety renew deadline.
+  watchdog_thread_ = std::make_unique<std::thread>([this]() { WatchdogLoop(); });
+}
+
+void LeaderElector::Stop() {
+  // Flag background loops to exit immediately. If already stopped, return.
+  {
+    std::scoped_lock lock(mutex_);
+    if (is_stopped_) {
+      return;
+    }
+    is_stopped_ = true;
+  }
+  // Wake up all background threads from their wait/sleep states so they can exit.
+  watchdog_cv_.notify_all();
+  election_cv_.notify_all();
+
+  // Safely join background execution threads first.
+  if (election_thread_ && election_thread_->joinable()) {
+    election_thread_->join();
+  }
+  election_thread_.reset();
+  if (watchdog_thread_ && watchdog_thread_->joinable()) {
+    watchdog_thread_->join();
+  }
+  watchdog_thread_.reset();
+
+  bool was_leading = false;
+  {
+    std::scoped_lock lock(mutex_);
+    if (is_leading_) {
+      is_leading_ = false;
+      was_leading = true;
+    }
+  }
+
+  if (was_leading) {
+    try {
+      // Graceful exit: Voluntarily release the lease in Kubernetes to allow the
+      // standby node to promote itself immediately.
+      config_.lease_client->Release(config_.holder_id);
+    } catch (const std::exception &e) {
+      RAY_LOG(WARNING) << "Exception occurred during voluntary lease release: "
+                       << e.what();
+    }
+  }
+}
+
+void LeaderElector::Loop() {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (is_stopped_) {
+        break;
+      }
+    }
+    // 1. Standby mode: Poll K8s to acquire the lease.
+    Acquire();
+    // 2. Active mode: Periodically renew lease heartbeats as long as we hold leadership.
+    bool should_renew = false;
+    {
+      std::scoped_lock lock(mutex_);
+      should_renew = is_leading_ && !is_stopped_;
+    }
+    if (should_renew) {
+      Renew();
+    }
+  }
+}
+
+Status LeaderElector::TryAcquireOrRenew(
+    std::function<Status(const std::string &, int, std::string &)> lease_op,
+    const std::string &op_name,
+    bool &success) {
+  success = false;
+  std::string current_leader = "";
+  int ttl_seconds = config_.lease_duration_seconds;
+
+  Status status = Status::OK();
+  try {
+    status = lease_op(config_.holder_id, ttl_seconds, current_leader);
+    success = status.ok() && (current_leader == config_.holder_id);
+  } catch (const std::exception &e) {
+    std::string err_msg =
+        std::string("Exception occurred during lease ") + op_name + ": " + e.what();
+    RAY_LOG(WARNING) << err_msg;
+    status = Status::IOError(err_msg);
+    success = false;
+    current_leader = "";
+  }
+
+  // If a new leader is observed in the cluster, fire the notification callback.
+  if (!current_leader.empty() && current_leader != last_observed_leader_) {
+    last_observed_leader_ = current_leader;
+    if (config_.on_new_leader) {
+      config_.on_new_leader(current_leader);
+    }
+  }
+
+  if (success) {
+    // Lock successfully acquired or renewed.
+    auto now_steady = std::chrono::steady_clock::now().time_since_epoch();
+    {
+      std::scoped_lock lock(mutex_);
+      last_successful_renew_steady_ns_ =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady).count();
+    }
+    // Wake up the watchdog thread early to recalculate the remaining safety window.
+    watchdog_cv_.notify_all();
+  }
+
+  return status;
+}
+
+void LeaderElector::Acquire() {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (is_leading_ || is_stopped_) {
+        return;
+      }
+    }
+    bool acquired = false;
+    Status status = TryAcquireOrRenew(
+        [this](
+            const std::string &holder_id, int ttl_seconds, std::string &current_leader) {
+          return config_.lease_client->TryAcquire(holder_id, ttl_seconds, current_leader);
+        },
+        "acquisition",
+        acquired);
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Error during lease acquisition: " << status.ToString();
+    }
+
+    if (acquired) {
+      RAY_LOG(INFO) << "Successfully acquired leader lease. Promoting to Leader!";
+      {
+        std::scoped_lock lock(mutex_);
+        is_leading_ = true;
+      }
+      watchdog_cv_.notify_all();
+      if (config_.on_started_leading) {
+        config_.on_started_leading();
+      }
+      return;
+    }
+
+    std::unique_lock<std::mutex> lock(mutex_);
+    election_cv_.wait_for(lock,
+                          std::chrono::seconds(config_.retry_period_seconds),
+                          [this]() { return is_stopped_; });
+  }
+}
+
+void LeaderElector::Renew() {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (!is_leading_ || is_stopped_) {
+        return;
+      }
+    }
+    bool renewed = false;
+    Status status = TryAcquireOrRenew(
+        [this](
+            const std::string &holder_id, int ttl_seconds, std::string &current_leader) {
+          return config_.lease_client->Renew(holder_id, ttl_seconds, current_leader);
+        },
+        "renewal",
+        renewed);
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Transient lease renewal failure: " << status.ToString();
+    }
+    // If the API call succeeded, but renewed is false (e.g. lease acquired by another
+    // node), step down immediately to prevent split-brain writes.
+    if (status.ok() && !renewed) {
+      RAY_LOG(ERROR) << "Lease ownership has been acquired by another node. Stepping "
+                        "down immediately.";
+      bool was_leading = false;
+      {
+        std::scoped_lock lock(mutex_);
+        if (is_leading_) {
+          is_leading_ = false;
+          was_leading = true;
+        }
+      }
+      watchdog_cv_.notify_all();
+      if (was_leading && config_.on_stopped_leading) {
+        config_.on_stopped_leading();
+      }
+      return;
+    }
+
+    // Wake up the election thread if one of the conditions below is met:
+    // 1. Stop() is called.
+    // 2. Leadership lost.
+    // 3. retry_period_seconds has elapsed.
+    std::unique_lock<std::mutex> lock(mutex_);
+    election_cv_.wait_for(lock,
+                          std::chrono::seconds(config_.retry_period_seconds),
+                          [this]() { return is_stopped_ || !is_leading_; });
+  }
+}
+
+void LeaderElector::WatchdogLoop() {
+  while (true) {
+    {
+      std::scoped_lock lock(mutex_);
+      if (is_stopped_) {
+        return;
+      }
+    }
+    // 1. If we are in standby (not leading), sleep on CV to prevent high CPU spin cycles.
+    bool leading = false;
+    {
+      std::scoped_lock lock(mutex_);
+      leading = is_leading_;
+    }
+    if (!leading) {
+      std::unique_lock<std::mutex> lock(mutex_);
+      // Wake up if we are elected as leader or stop() is called.
+      watchdog_cv_.wait(lock, [this]() { return is_leading_ || is_stopped_; });
+      continue;
+    }
+
+    // 2. Calculate monotonic elapsed time since the last successful lease renewal.
+    // Load the last successful renewal steady timestamp first.
+    int64_t last_renew_ns;
+    {
+      std::scoped_lock lock(mutex_);
+      last_renew_ns = last_successful_renew_steady_ns_;
+    }
+
+    // Capture current steady clock next. This order guarantees that last_renew_ns
+    // is always <= now_steady_ns, preventing negative elapsed time calculations.
+    auto now_steady = std::chrono::steady_clock::now().time_since_epoch();
+    int64_t now_steady_ns =
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now_steady).count();
+
+    int64_t elapsed_ms = (now_steady_ns - last_renew_ns) / 1000000;
+    int64_t remaining_ms = (config_.renew_deadline_seconds * 1000) - elapsed_ms;
+
+    // 3. If the elapsed time has breached the renew deadline, step GCS down immediately!
+    if (remaining_ms <= 0) {
+      RAY_LOG(ERROR) << "WATCHDOG: GCS leader lease renewal deadline exceeded ("
+                     << elapsed_ms / 1000.0 << "s > " << config_.renew_deadline_seconds
+                     << "s). Stepping down immediately!";
+      bool was_leading = false;
+      {
+        // Acquire mutex_ to prevent a lost wake-up race condition with the
+        // election thread waiting on election_cv_.
+        std::scoped_lock lock(mutex_);
+        if (is_leading_) {
+          is_leading_ = false;
+          was_leading = true;
+        }
+      }
+      election_cv_.notify_all();
+      if (was_leading && config_.on_stopped_leading) {
+        // Note: In GCS, this callback is bound to immediately suicide-terminate the
+        // GCS process (RAY_LOG(FATAL)) to prevent split-brain zombie writes to Redis.
+        config_.on_stopped_leading();
+      }
+      continue;
+    }
+
+    // 4. Sleep on the CV for the exact duration of the remaining safety deadline window.
+    // We will wake up early to stop waiting if:
+    //   - The process stops (is_stopped_ is true).
+    //   - A renewal succeeds early (last_successful_renew_steady_ns_ changes).
+    //   - Leadership is lost (is_leading_ is false).
+    std::unique_lock<std::mutex> lock(mutex_);
+    watchdog_cv_.wait_for(
+        lock, std::chrono::milliseconds(remaining_ms), [this, last_renew_ns]() {
+          return is_stopped_ || last_successful_renew_steady_ns_ != last_renew_ns ||
+                 !is_leading_;
+        });
+  }
+}
+
+}  // namespace gcs
+}  // namespace ray

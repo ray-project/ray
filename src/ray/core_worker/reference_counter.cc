@@ -72,6 +72,13 @@ void ReferenceCounter::UpdateOwnedObjectCounters(const ObjectID &object_id,
     return;
   }
 
+  // Relaxed order is good enough for metrics logging.
+  // Skip the store after the first transition to avoid cache-line
+  // bouncing on the hot path; this counter update runs per ref change.
+  if (!has_ever_owned_objects_.load(std::memory_order_relaxed)) {
+    has_ever_owned_objects_.store(true, std::memory_order_relaxed);
+  }
+
   int delta = decrement ? -1 : 1;
   int64_t size_delta = decrement ? -ref.object_size_ : ref.object_size_;
 
@@ -114,17 +121,14 @@ ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
 
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
-                                         const rpc::Address &owner_address,
-                                         bool foreign_owner_already_monitoring) {
+                                         const rpc::Address &owner_address) {
   absl::MutexLock lock(&mutex_);
-  return AddBorrowedObjectInternal(
-      object_id, outer_id, owner_address, foreign_owner_already_monitoring);
+  return AddBorrowedObjectInternal(object_id, outer_id, owner_address);
 }
 
 bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
-                                                 const rpc::Address &owner_address,
-                                                 bool foreign_owner_already_monitoring) {
+                                                 const rpc::Address &owner_address) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
@@ -132,7 +136,6 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   it->second.owner_address_ = owner_address;
-  it->second.foreign_owner_already_monitoring |= foreign_owner_already_monitoring;
 
   if (!outer_id.IsNil()) {
     auto outer_it = object_id_refs_.find(outer_id);
@@ -791,10 +794,12 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 }
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
-  // NOTE(swang): We have to publish failure to subscribers in case they
-  // subscribe after the ref is already deleted.
-  object_info_publisher_->PublishFailure(
-      rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+  // It is possible that when ref count reaches zero, there are still subscribers.
+  // See https://github.com/ray-project/ray/pull/63560 for details
+  if (it->second.has_ever_had_location_subscriber) {
+    object_info_publisher_->PublishFailure(
+        rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL, it->first.Binary());
+  }
 
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
   auto index_it = reconstructable_owned_objects_index_.find(it->first);
@@ -840,6 +845,20 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  // Only the owner is allowed to broadcast a free for an object. Borrowers
+  // also reach this code path when their local refs drop to zero, but they
+  // must not tell the cluster to evict an object that is still owned
+  // elsewhere.
+  if (it->second.owned_by_us_) {
+    absl::flat_hash_set<NodeID> locations_set = it->second.locations;
+    if (it->second.pinned_at_node_id_.has_value()) {
+      locations_set.insert(*it->second.pinned_at_node_id_);
+    }
+    if (!locations_set.empty()) {
+      free_object_on_nodes_async_(it->first, locations_set);
+    }
+  }
+
   for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }
@@ -986,7 +1005,15 @@ size_t ReferenceCounter::NumActorsOwnedByUs() const {
   return num_actors_owned_by_us_;
 }
 
-void ReferenceCounter::RecordMetrics() {
+void ReferenceCounter::RecordOwnerMetrics() {
+  // All metrics below pertain only to owner workers. Skip emission for
+  // workers that have never been an owner of any non-actor object, so we
+  // don't pollute per-worker metric cardinality with zero-valued series.
+  // Relaxed order is good enough for metrics logging.
+  if (!has_ever_owned_objects_.load(std::memory_order_relaxed)) {
+    return;
+  }
+
   // N.B. Metric reporting can interleave with counter updates, and may have an inaccurate
   // accounting at certain critical sections of counter updates.
   owned_object_count_by_state_.Record(owned_objects_spilled_, {{"State", "Spilled"}});
@@ -1100,26 +1127,20 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     return true;
   }
 
-  if (for_ref_removed || !ref.foreign_owner_already_monitoring) {
-    // If this object_id has not been encountered yet, add it to borrowed_refs.
-    if (encountered_ids.insert(object_id).second) {
-      RAY_LOG(DEBUG).WithField(object_id)
-          << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
-          << ref.borrow().stored_in_objects.size();
+  // If this object_id has not been encountered yet, add it to borrowed_refs.
+  if (encountered_ids.insert(object_id).second) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Object has " << ref.borrow().borrowers.size() << " borrowers, stored in "
+        << ref.borrow().stored_in_objects.size();
 
-      auto *proto_ref = borrowed_refs->Add();
-      bool has_local_ref = ref.RefCount() > (deduct_local_ref ? 1 : 0);
-      ref.ToProto(proto_ref, object_id, has_local_ref);
+    auto *proto_ref = borrowed_refs->Add();
+    bool has_local_ref = ref.RefCount() > (deduct_local_ref ? 1 : 0);
+    ref.ToProto(proto_ref, object_id, has_local_ref);
 
-      // Clear the local list of borrowers that we have accumulated. The receiver
-      // of the returned borrowed_refs must merge this list into their own list
-      // until all active borrowers are merged into the owner.
-      //
-      // If a foreign owner process is waiting for this ref to be removed already,
-      // then don't clear its stored metadata. Clearing this will prevent the
-      // foreign owner from learning about the parent task borrowing this value.
-      ref.borrow_info.reset();
-    }
+    // Clear the local list of borrowers that we have accumulated. The receiver
+    // of the returned borrowed_refs must merge this list into their own list
+    // until all active borrowers are merged into the owner.
+    ref.borrow_info.reset();
   }
 
   // Attempt to pop children.
@@ -1191,10 +1212,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   for (const auto &contained_in_borrowed_id :
        borrower_it->second.nested().contained_in_borrowed_ids) {
     RAY_CHECK(borrower_ref.owner_address_);
-    AddBorrowedObjectInternal(object_id,
-                              contained_in_borrowed_id,
-                              *borrower_ref.owner_address_,
-                              /*foreign_owner_already_monitoring=*/false);
+    AddBorrowedObjectInternal(
+        object_id, contained_in_borrowed_id, *borrower_ref.owner_address_);
   }
 
   // If we own this ID, then wait for all new borrowers to reach a ref count
@@ -1688,6 +1707,9 @@ bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const 
 }
 
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
+  if (!it->second.has_ever_had_location_subscriber) {
+    return;
+  }
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
   auto object_size = it->second.object_size_;
@@ -1745,9 +1767,8 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING).WithField(object_id)
-        << "Object locations requested for object, but ref already removed. This may be "
-           "a bug in the distributed "
-           "reference counting protocol.";
+        << "Object locations requested for object, but ref already removed. See "
+           "https://github.com/ray-project/ray/pull/63560 for details.";
     // First let subscribers handle this error.
     rpc::PubMessage pub_message;
     pub_message.set_key_id(object_id.Binary());
@@ -1763,6 +1784,7 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   // Always publish the location when subscribed for the first time.
   // This will ensure that the subscriber will get the first snapshot of the
   // object location.
+  it->second.has_ever_had_location_subscriber = true;
   PushToLocationSubscribers(it);
 }
 
@@ -1787,7 +1809,8 @@ std::string ReferenceCounter::Reference::DebugString() const {
      << " contained_in_borrowed: " << nested().contained_in_borrowed_ids.size()
      << " contains: " << nested().contains.size()
      << " stored_in: " << borrow().stored_in_objects.size()
-     << " lineage_ref_count: " << lineage_ref_count << "}";
+     << " lineage_ref_count: " << lineage_ref_count
+     << " has_ever_had_location_subscriber: " << has_ever_had_location_subscriber << "}";
   return ss.str();
 }
 

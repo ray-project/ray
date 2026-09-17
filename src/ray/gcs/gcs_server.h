@@ -18,14 +18,17 @@
 #include <memory>
 #include <string>
 
-#include "ray/common/asio/asio_util.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/asio_util.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/io_context_monitor.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_kv_manager.h"
+#include "ray/gcs/gcs_leader_gated_handlers.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_table_storage.h"
@@ -43,6 +46,7 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -70,6 +74,10 @@ struct GcsServerConfig {
   // This includes the config list of raylet.
   std::string raylet_config_list;
   std::string session_name;
+  // Whether GCS active-passive leader election is enabled. When true, the GCS
+  // server boots as passive and its mutating RPCs are gated until it is promoted
+  // to the active leader. Defaults to false (single active GCS, legacy behavior).
+  bool ray_leader_elect_enabled = false;
 };
 
 class GcsNodeManager;
@@ -120,6 +128,9 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
+  /// Check if this GCS server instance is currently the active leader.
+  bool IsLeader() const { return is_leader_.load(); }
+
   /// Retrieve cluster ID
   const ClusterID &GetClusterId() const { return rpc_server_.GetClusterId(); }
 
@@ -128,10 +139,12 @@ class GcsServer {
     UNKNOWN = 0,
     IN_MEMORY = 1,
     REDIS_PERSIST = 2,
+    ROCKSDB_PERSIST = 3,
   };
 
   static constexpr char kInMemoryStorage[] = "memory";
   static constexpr char kRedisStorage[] = "redis";
+  static constexpr char kRocksDbStorage[] = "rocksdb";
 
   void UpdateGcsResourceManagerInTest(
       const NodeID &node_id,
@@ -141,13 +154,40 @@ class GcsServer {
   }
 
  protected:
+  // Returns the handler to register for a GrpcService. When leader election is
+  // disabled the real handler is used directly (no wrapper, no per-RPC leader
+  // check), so non-HA clusters behave exactly as before with zero overhead.
+  // When enabled, the real handler is wrapped in a `GatedT` proxy (stored in `slot`
+  // to outlive the GrpcService, which holds it by reference) that rejects the
+  // service's mutating RPCs while passive. Any `extra` args are forwarded to
+  // the proxy constructor.
+  template <typename GatedT, typename RealHandlerT, typename... ExtraArgs>
+  typename GatedT::HandlerType &MaybeGate(std::unique_ptr<GatedT> &slot,
+                                          RealHandlerT &real_handler,
+                                          ExtraArgs &&...extra) {
+    if (!config_.ray_leader_elect_enabled) {
+      return real_handler;
+    }
+    slot = std::make_unique<GatedT>(
+        real_handler, [this]() { return IsLeader(); }, std::forward<ExtraArgs>(extra)...);
+    return *slot;
+  }
+
   void DoStart(const GcsInitData &gcs_init_data);
+
+  /// Register all GCS gRPC services on rpc_server_ in one place, so each service's
+  /// gated-vs-exempt status is explicit and a new service must be added here.
+  void RegisterRpcServices();
 
   /// Initialize gcs node manager.
   void InitGcsNodeManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs health check manager.
   void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
+
+  /// Start the IOContextMonitor that probes the GCS io_contexts and determines the gRPC
+  /// health check status.
+  void InitIOContextMonitor();
 
   /// Initialize gcs resource manager.
   void InitGcsResourceManager(const GcsInitData &gcs_init_data);
@@ -180,8 +220,13 @@ class GcsServer {
           &placement_group_scheduling_latency_in_ms_histogram,
       ray::observability::MetricInterface &placement_group_count_gauge);
 
-  /// Initialize gcs worker manager.
-  void InitGcsWorkerManager();
+  /**
+   * @brief Initialize the GCS worker manager and rebuild its dead-worker queue from the
+   * startup snapshot.
+   *
+   * @param gcs_init_data Metadata loaded from the store at startup.
+   */
+  void InitGcsWorkerManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
@@ -190,6 +235,9 @@ class GcsServer {
 
   /// Initialize gcs autoscaling manager.
   void InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data);
+
+  /// Start the periodic resource load pull.
+  void InitGcsResourceLoadPuller();
 
   /// Initialize usage stats client.
   void InitUsageStatsClient();
@@ -233,90 +281,109 @@ class GcsServer {
 
   RedisClientOptions GetRedisClientOptions();
 
-  /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
-  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
 
-  /// NOTICE: The declaration order for data members should follow dependency.
-  ///
-  /// Gcs server configuration.
+  /// NOTE: the declaration order for data members must follow the dependency structure
+  /// between them.
+  Clock clock_;
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
   const GcsServerConfig config_;
-  // Type of storage to use.
   const StorageType storage_type_;
-  /// The grpc server
   rpc::GrpcServer rpc_server_;
-  /// The `ClientCallManager` object that is shared by all `RayletClient`s.
+  /// Shared across all Raylet & Core Worker clients.
   rpc::ClientCallManager client_call_manager_;
-  /// Node manager client pool.
   rpc::RayletClientPool raylet_client_pool_;
-  // Core worker client pool.
   rpc::CoreWorkerClientPool worker_client_pool_;
-  /// The cluster resource scheduler.
+  rpc::ClientCallManager resource_load_pull_client_call_manager_;
+  rpc::RayletClientPool resource_load_pull_raylet_client_pool_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
-  /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  /// [gcs_resource_manager_] depends on [cluster_lease_manager_].
-  /// The gcs resource manager.
+  /// gcs_resource_manager_ depends on cluster_lease_manager_.
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
-  /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
-  /// A publisher for publishing gcs messages.
+  std::unique_ptr<GcsResourceLoadPuller> resource_load_puller_;
+  /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  /// Publisher for observability pubsub (logs, errors, dashboard resource JSON).
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
-  /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
-  /// The gcs placement group manager.
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
-  /// The gcs actor manager.
   std::shared_ptr<GcsActorManager> gcs_actor_manager_;
-  /// The gcs placement group scheduler.
-  /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
+  /// gcs_placement_group_scheduler_ depends on raylet_client_pool_.
   std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
-  /// Function table manager.
   std::unique_ptr<GCSFunctionManager> function_manager_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
-  /// Global KV storage handler.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
-  /// Job info handler.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
-  /// The Ray event recorder that is used to record events (e.g. job events, node events,
-  /// etc.).
   rpc::ClientCallManager event_aggregator_client_call_manager_;
   std::unique_ptr<rpc::EventAggregatorClient> event_aggregator_client_;
   std::unique_ptr<observability::RayEventRecorder> ray_event_recorder_;
+
+  // Leader-gated proxy handlers. Each wraps the real service handler and, on a
+  // passive GCS, rejects that service's mutating RPCs.
+  std::unique_ptr<LeaderGatedNodeInfoHandler> gated_node_info_handler_;
+  std::unique_ptr<LeaderGatedActorInfoHandler> gated_actor_info_handler_;
+  std::unique_ptr<LeaderGatedJobInfoHandler> gated_job_info_handler_;
+  std::unique_ptr<LeaderGatedPlacementGroupInfoHandler>
+      gated_placement_group_info_handler_;
+  std::unique_ptr<LeaderGatedAutoscalerStateHandler> gated_autoscaler_state_handler_;
+  std::unique_ptr<LeaderGatedInternalKVHandler> gated_internal_kv_handler_;
+  std::unique_ptr<LeaderGatedNodeResourceInfoHandler> gated_node_resource_info_handler_;
+  std::unique_ptr<LeaderGatedWorkerInfoHandler> gated_worker_info_handler_;
+  std::unique_ptr<LeaderGatedTaskInfoHandler> gated_task_info_handler_;
+  std::unique_ptr<LeaderGatedRuntimeEnvHandler> gated_runtime_env_handler_;
+  std::unique_ptr<LeaderGatedControlPlanePubSubHandler>
+      gated_control_plane_pubsub_handler_;
+  std::unique_ptr<LeaderGatedObservabilityPubSubHandler>
+      gated_observability_pubsub_handler_;
+  std::unique_ptr<LeaderGatedRayEventExportHandler> gated_ray_event_export_handler_;
+  std::unique_ptr<LeaderGatedRaySyncerHandler> gated_ray_syncer_handler_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
 
-  /// The node id of GCS.
+  /// The local node ID where the GCS is running.
   const NodeID gcs_node_id_;
 
-  /// The usage stats client.
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
-  /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
-  /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
-  /// GCS PubSub handler.
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  /// GCS PubSub handler (control-plane).
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
+  /// Observability pubsub handler.
+  std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
   /// GCS Task info manager for managing task states change events.
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
-  /// Grpc based pubsub's periodical runner.
+  /// gRPC based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> observability_pubsub_periodical_runner_;
+  /// The resource load pull's periodical runner.
+  std::shared_ptr<PeriodicalRunner> resource_load_pull_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
-  /// Gcs service state flag, which is used for ut.
+  /// GCS service state flag, which is used for unit tests.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
+  /// Whether this GCS is currently the active leader. Initialized from
+  /// config_.ray_leader_elect_enabled: leader election disabled => always leader
+  /// (legacy behavior); enabled => starts passive until promoted (promotion wired
+  /// up in a later PR).
+  std::atomic<bool> is_leader_;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
   // Invoked when the RPC server has bound to a port.
   std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
+  /// Monitors the GCS io_contexts on a dedicated thread. The health_callback
+  /// passed into it is used to set the gRPC health check as SERVING/NOT_SERVING.
+  /// Declared last so it is stopped/destroyed before the io_contexts
+  /// (owned by io_context_provider_) and metrics it references.
+  std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
 };
 
 }  // namespace gcs

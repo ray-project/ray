@@ -135,7 +135,7 @@ class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
             f"The following ranks have not joined the collective operation: {missing_ranks}\n"
             f"You can set the timeout with the {COLLECTIVE_TIMEOUT_S_ENV_VAR} "
             f"environment variable (current value: {timeout_s:.2f} seconds). "
-            "Disable the timeout by setting the environment variable to -1."
+            "Disable the timeout by setting the environment variable to `None`."
         )
         super().__init__(message)
 

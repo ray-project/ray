@@ -139,6 +139,44 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
         assert Result is not ResultV2
 
 
+@pytest.mark.parametrize("env_v2_enabled", [False, True])
+def test_report_callback_v2_only_arguments(monkeypatch, env_v2_enabled):
+    monkeypatch.setenv("RAY_TRAIN_V2_ENABLED", str(int(env_v2_enabled)))
+    import ray.train.lightning._lightning_utils
+
+    if env_v2_enabled:
+        from ray.train.v2.api.report_config import CheckpointUploadMode
+        from ray.train.v2.api.validation_config import ValidationConfig
+
+        def validation_fn(checkpoint):
+            return {"val_score": 1}
+
+        def train_fn():
+            ray.train.lightning._lightning_utils.RayTrainReportCallback(
+                checkpoint_upload_mode=CheckpointUploadMode.SYNC, validation=True
+            )
+
+        trainer = DataParallelTrainer(
+            train_fn,
+            validation_config=ValidationConfig(fn=validation_fn),
+        )
+        trainer.fit()
+    else:
+        with pytest.raises(
+            ValueError,
+            match="`checkpoint_upload_mode` is only supported in Ray Train v2",
+        ):
+            ray.train.lightning._lightning_utils.RayTrainReportCallback(
+                checkpoint_upload_mode="anything"
+            )
+        with pytest.raises(
+            ValueError, match="`validation` is only supported in Ray Train v2"
+        ):
+            ray.train.lightning._lightning_utils.RayTrainReportCallback(
+                validation="anything"
+            )
+
+
 if __name__ == "__main__":
     import sys
 

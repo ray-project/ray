@@ -5,13 +5,28 @@ steps:
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: oss-ci-base_build-multipy
+    depends_on: oss-ci-base_build-multipy(python=3.10)
     env:
       PYTHON: "3.10"
     tags: cibase
 
-  - label: doc tests
-    tags: python
+  # Runs //doc:doctest, the catch-all doctest target for documentation prose that
+  # no library owns (tagged team:none). The five per-library docs example steps
+  # each filter on their own team:<lib>, so this is the only step that reaches it.
+  #
+  # Postmerge only. It was already postmerge-only before this comment existed, but
+  # by accident rather than intent: the step carried the tag `python`, which no
+  # .rules.txt file declares and no rule emits, so premerge tag selection dropped
+  # it every time. `skip-on-premerge` states that intent explicitly, matching
+  # `doc: build` and `doc: linkcheck` in doc.rayci.yml and the postmerge-only core
+  # minimal-tests step in core.rayci.yml. `doc` is the build-and-validation tag,
+  # which is what this step is; it does not re-enable the step on premerge, since
+  # skip tags are rejected before tag selection runs.
+  - label: "doc: doctest"
+    tags:
+      - oss
+      - doc
+      - skip-on-premerge
     instance_type: large
     commands:
       # Disable test DB to avoid any hidden failures going forward.
@@ -23,7 +38,7 @@ steps:
         --python-version 3.10
     depends_on:
       - doctestbuild
-      - ray-core-build
+      - ray-core-build(python=3.10)
       - ray-dashboard-build
 
   # java
@@ -37,7 +52,7 @@ steps:
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash -iecuo pipefail
         "./java/test.sh"
-    depends_on: corebuild-multipy
+    depends_on: corebuild-multipy(python=3.10)
 
   # bot
   - label: ":robot_face: CI weekly green metric"

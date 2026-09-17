@@ -94,6 +94,20 @@ class LogFileInfo:
 
                 self.file_handle.seek(self.file_position)
                 self.size_when_last_opened = new_statinfo.st_size
+            else:
+                # Inode unchanged, but the file may have been truncated and
+                # rewritten in place. Compare against both the last read
+                # position and the last observed file size so we can detect
+                # rewrites even when the new content grows beyond the old
+                # position before the next poll.
+                if new_statinfo.st_size < max(
+                    self.file_position, self.size_when_last_opened
+                ):
+                    reopened_file = open(self.filename, "rb")
+                    self.file_handle.close()
+                    self.file_handle = reopened_file
+                    self.file_position = 0
+                    self.size_when_last_opened = new_statinfo.st_size
         except Exception:
             logger.debug(f"file no longer exists, skip re-opening of {self.filename}")
 

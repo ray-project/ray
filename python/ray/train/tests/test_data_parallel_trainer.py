@@ -281,7 +281,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra, tmp_path):
             return CudaTestBackend
 
     def get_resources():
-        cuda_visible_devices = os.environ["CUDA_VISIBLE_DEVICES"]
+        cuda_visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
         world_rank = train.get_context().get_world_rank()
         (tmp_path / f"{world_rank}").write_text(cuda_visible_devices)
         train.report(dict(devices=cuda_visible_devices))

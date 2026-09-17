@@ -1,5 +1,4 @@
 import argparse
-import json
 import logging
 import os
 import re
@@ -748,6 +747,8 @@ def run_rllib_example_script_experiment(
             print(f"`{success_metric_key}` of {success_metric_value} reached! ok")
 
         if args.as_release_test:
+            from ray._private.test_utils import safe_write_to_results_json
+
             trial = results._experiment_analysis.trials[0]
             stats = trial.last_result
             stats.pop("config", None)
@@ -759,10 +760,16 @@ def run_rllib_example_script_experiment(
                 "passed": [test_passed],
                 "not_passed": [not test_passed],
                 "failures": {str(trial): 1} if not test_passed else {},
+                # Curated fields so reward/target/throughput surface on the
+                # Anyscale release dashboard (not just pass/fail).
+                "success_metric": success_metric_key,
+                "best_value": float(best_value),
+                "target_value": float(success_metric_value),
             }
-            filename = os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json")
-            with open(filename, "wt") as f:
-                json.dump(json_summary, f)
+            # Atomic write to the release-test result artifact (guards against a
+            # corrupt json if the job is interrupted mid-write); honors
+            # TEST_OUTPUT_JSON just like the previous manual dump did.
+            safe_write_to_results_json(json_summary)
 
         if not test_passed:
             if args.as_release_test:

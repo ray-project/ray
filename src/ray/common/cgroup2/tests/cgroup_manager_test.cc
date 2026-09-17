@@ -486,4 +486,45 @@ TEST(
   ASSERT_TRUE(s.ok()) << s.ToString();
 }
 
+TEST(CgroupManagerTest, GetConstraintValueReturnsValue) {
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace("/sys/fs/cgroup",
+                   FakeCgroup{"/sys/fs/cgroup", {5}, {}, {"cpu", "memory"}, {}});
+
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+
+  int64_t system_memory_bytes_min = 900000;
+  int64_t system_memory_bytes_low = 1000000;
+  int64_t user_memory_high_bytes = 90000000;
+  int64_t user_memory_max_bytes = 100000000;
+  auto cgroup_manager_s = CgroupManager::Create("/sys/fs/cgroup",
+                                                "node_id_123",
+                                                100,
+                                                system_memory_bytes_min,
+                                                system_memory_bytes_low,
+                                                user_memory_high_bytes,
+                                                user_memory_max_bytes,
+                                                std::move(driver));
+  ASSERT_TRUE(cgroup_manager_s.ok()) << cgroup_manager_s.ToString();
+
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(cgroup_manager_s.value());
+
+  StatusOr<std::string> min_value =
+      cgroup_manager->GetSystemCgroupConstraintValue("memory.min");
+  ASSERT_TRUE(min_value.ok()) << min_value.ToString();
+  ASSERT_EQ(min_value.value(), std::to_string(system_memory_bytes_min));
+  StatusOr<std::string> low_value =
+      cgroup_manager->GetSystemCgroupConstraintValue("memory.low");
+  ASSERT_TRUE(low_value.ok()) << low_value.ToString();
+  ASSERT_EQ(low_value.value(), std::to_string(system_memory_bytes_low));
+  StatusOr<std::string> high_value =
+      cgroup_manager->GetUserCgroupConstraintValue("memory.high");
+  ASSERT_TRUE(high_value.ok()) << high_value.ToString();
+  ASSERT_EQ(high_value.value(), std::to_string(user_memory_high_bytes));
+  StatusOr<std::string> max_value =
+      cgroup_manager->GetUserCgroupConstraintValue("memory.max");
+  ASSERT_TRUE(max_value.ok()) << max_value.ToString();
+  ASSERT_EQ(max_value.value(), std::to_string(user_memory_max_bytes));
+}
 }  // namespace ray

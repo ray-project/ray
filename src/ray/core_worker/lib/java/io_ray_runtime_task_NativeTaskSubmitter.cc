@@ -162,6 +162,7 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
                            resources,
                            concurrency_group_name,
                            /*generator_backpressure_num_objects*/ -1,
+                           /*num_objects_per_yield*/ 1,
                            serialzied_runtime_env_info};
   return task_options;
 }

@@ -22,11 +22,13 @@
 
 #include "mock/ray/gcs/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -81,7 +83,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
  public:
   GcsPlacementGroupManagerTest()
       : mock_placement_group_scheduler_(new MockPlacementGroupScheduler()),
-        cluster_resource_manager_(io_service_) {
+        cluster_resource_manager_(PeriodicalRunner::Create(io_service_)) {
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ =
@@ -98,7 +100,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
-        fake_placement_group_count_gauge_));
+        fake_placement_group_count_gauge_,
+        clock_));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -117,7 +120,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
     std::string ray_namespace = job_namespace_table_[job_id];
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace, counter_),
+        std::make_shared<gcs::GcsPlacementGroup>(
+            request, ray_namespace, counter_, clock_),
         [&callback, &promise](Status status) {
           RAY_CHECK_OK(status);
           callback(status);
@@ -225,6 +229,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   ray::observability::FakeHistogram
       fake_placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::FakeGauge fake_placement_group_count_gauge_;
+  FakeClock clock_;
 
  private:
   ClusterResourceManager cluster_resource_manager_;
@@ -291,6 +296,54 @@ TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
   auto scheduling_latency_tag_to_value =
       fake_placement_group_scheduling_latency_in_ms_histogram_.GetTagToValue();
   ASSERT_EQ(scheduling_latency_tag_to_value.size(), 1);
+}
+
+// A placement-group state must stay visible in the `placement_groups` gauge on every
+// RecordMetrics() tick (not just on transitions), and be retracted to 0 once no PG is
+// in that state. The metrics backend clears gauge observations after each export
+// (#56405).
+TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupStateGaugeReEmitsAndRetracts) {
+  gcs_placement_group_manager_->SetUsageStatsClient(nullptr);
+  // Returns the placement_groups gauge value for the given State tag, or -1 if absent.
+  auto value_for_state = [this](const std::string &state) -> double {
+    for (const auto &[tags, value] : fake_placement_group_gauge_.GetTagToValue()) {
+      if (tags.at("State") == state) {
+        return value;
+      }
+    }
+    return -1;
+  };
+
+  // Create through the production entry point so the manager builds the placement
+  // group with its own state counter (the one RecordMetrics() reads), rather than
+  // the fixture's separate counter_.
+  auto request = GenCreatePlacementGroupRequest();
+  rpc::CreatePlacementGroupReply reply;
+  std::promise<void> promise;
+  auto callback = [&promise](Status, std::function<void()>, std::function<void()>) {
+    promise.set_value();
+  };
+  gcs_placement_group_manager_->HandleCreatePlacementGroup(request, &reply, callback);
+  RunIOService();
+  promise.get_future().get();
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.pop_back();
+
+  gcs_placement_group_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("PENDING"), 1);
+
+  // Re-emit across a tick with no transition.
+  fake_placement_group_gauge_.Clear();
+  gcs_placement_group_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("PENDING"), 1)
+      << "pending placement group must persist without a transition";
+
+  // The PG is created: PENDING drops to 0, CREATED becomes 1.
+  OnPlacementGroupCreationSuccess(placement_group);
+  gcs_placement_group_manager_->RecordMetrics();
+  ASSERT_EQ(value_for_state("CREATED"), 1);
+  ASSERT_EQ(value_for_state("PENDING"), 0)
+      << "PENDING gauge must be retracted to 0 after creation";
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
@@ -1107,7 +1160,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
   {  // Placement groups with the same namespace, different jobs should still collide.
     std::promise<void> promise;
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        std::make_shared<gcs::GcsPlacementGroup>(request3, "", counter_),
+        std::make_shared<gcs::GcsPlacementGroup>(request3, "", counter_, clock_),
         [&promise](Status status) {
           ASSERT_FALSE(status.ok());
           promise.set_value();
@@ -1184,7 +1237,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestStats) {
 TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
   auto request = GenCreatePlacementGroupRequest();
   std::atomic<int> registered_placement_group_count(0);
-  auto request_received_ns = absl::GetCurrentTimeNanos();
+  auto request_received_ns = clock_.NowUnixNanos();
   RegisterPlacementGroup(request,
                          [&registered_placement_group_count](const Status &status) {
                            ++registered_placement_group_count;
@@ -1193,10 +1246,13 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.clear();
 
+  // Advance time to simulate delay before scheduling retry.
+  clock_.AdvanceTime(absl::Milliseconds(100));
+
   /// Failed to create a pg.
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
       placement_group, GetExpBackOff(), /*is_feasible*/ true);
-  auto scheduling_started_ns = absl::GetCurrentTimeNanos();
+  auto scheduling_started_ns = clock_.NowUnixNanos();
   ASSERT_TRUE(WaitForCondition(
       [this]() {
         RunIOService();
@@ -1204,23 +1260,24 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
       },
       10 * 1000));
 
+  // Advance time to simulate scheduling duration.
+  clock_.AdvanceTime(absl::Milliseconds(50));
+
   OnPlacementGroupCreationSuccess(placement_group);
-  auto scheduling_done_ns = absl::GetCurrentTimeNanos();
+  auto scheduling_done_ns = clock_.NowUnixNanos();
 
   /// Make sure the creation time is correctly recorded.
   ASSERT_NE(placement_group->GetStats().scheduling_latency_us(), 0);
   ASSERT_NE(placement_group->GetStats().end_to_end_creation_latency_us(), 0);
-  // The way to measure latency is a little brittle now. Alternatively, we can mock
-  // the absl::GetCurrentNanos() to a callback method and have more accurate test.
+  // With FakeClock, we have precise control over time, so we can make exact assertions.
   auto scheduling_latency_us =
       absl::Nanoseconds(scheduling_done_ns - scheduling_started_ns) /
       absl::Microseconds(1);
   auto end_to_end_creation_latency_us =
       absl::Nanoseconds(scheduling_done_ns - request_received_ns) / absl::Microseconds(1);
-  ASSERT_TRUE(placement_group->GetStats().scheduling_latency_us() <
-              scheduling_latency_us);
-  ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() <
-              end_to_end_creation_latency_us);
+  ASSERT_EQ(placement_group->GetStats().scheduling_latency_us(), scheduling_latency_us);
+  ASSERT_EQ(placement_group->GetStats().end_to_end_creation_latency_us(),
+            end_to_end_creation_latency_us);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestGetAllPlacementGroupInfoLimit) {

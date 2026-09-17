@@ -18,18 +18,24 @@
 #include <string>
 #include <utility>
 
-#include "absl/time/clock.h"
+#include "ray/common/ray_config.h"
+#include "ray/observability/ray_task_event_recorder.h"
 
 namespace ray {
 namespace core {
 
 namespace worker {
 
-ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
-                           WorkerContext &worker_context,
-                           const std::string &node_ip_address,
-                           const std::string &event_name)
-    : task_event_buffer_(task_event_buffer) {
+ProfileEvent::ProfileEvent(
+    TaskEventBuffer &task_event_buffer,
+    ray::observability::RayEventRecorderInterface &ray_task_event_recorder,
+    WorkerContext &worker_context,
+    const std::string &node_ip_address,
+    const std::string &event_name,
+    ClockInterface &clock)
+    : task_event_buffer_(task_event_buffer),
+      ray_task_event_recorder_(ray_task_event_recorder),
+      clock_(clock) {
   const auto &task_spec = worker_context.GetCurrentTask();
   if (task_spec && !task_spec->EnableTaskEvents()) {
     event_ = nullptr;
@@ -48,7 +54,7 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
       worker_context.GetWorkerID().Binary(),
       node_ip_address,
       event_name,
-      absl::GetCurrentTimeNanos(),
+      clock_.NowUnixNanos(),
       task_event_buffer_.GetSessionName(),
       task_event_buffer_.GetNodeID());
 }
@@ -57,7 +63,11 @@ ProfileEvent::~ProfileEvent() {
   if (event_ == nullptr) {
     return;
   }
-  event_->SetEndTime(absl::GetCurrentTimeNanos());
+  event_->SetEndTime(clock_.NowUnixNanos());
+  // Record to the event aggregator before moving the event into the buffer.
+  if (observability::RayTaskEventRecorder::Enabled()) {
+    ray_task_event_recorder_.AddEvents(event_->ToRayEventInterfaces());
+  }
   // Add task event to the task event buffer
   task_event_buffer_.AddTaskEvent(std::move(event_));
 }

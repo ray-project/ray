@@ -32,7 +32,7 @@ class MockWorkerPool : public WorkerPoolInterface {
               GetAllRegisteredWorkers,
               (bool filter_dead_workers, bool filter_io_workers),
               (const, override));
-  MOCK_METHOD(bool, IsWorkerAvailableForScheduling, (), (const, override));
+  MOCK_METHOD(bool, AllAliveWorkersAreActors, (), (const, override));
   MOCK_METHOD(std::shared_ptr<WorkerInterface>,
               GetRegisteredWorker,
               (const WorkerID &worker_id),

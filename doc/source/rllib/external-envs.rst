@@ -1,4 +1,5 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
+.. meta::
+   :description: Connect external simulators and applications to RLlib over the RLlink protocol, covering message types, client-server workflow, and episode exchange.
 
 .. _rllib-external-env-setups-doc:
 

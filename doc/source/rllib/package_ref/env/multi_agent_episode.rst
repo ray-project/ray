@@ -1,5 +1,3 @@
-.. include:: /_includes/rllib/we_are_hiring.rst
-
 .. _multi-agent-episode-reference-docs:
 
 MultiAgentEpisode API
@@ -29,7 +27,6 @@ Getting basic information
     :nosignatures:
     :toctree: env/
 
-    ~MultiAgentEpisode.__len__
     ~MultiAgentEpisode.get_return
     ~MultiAgentEpisode.get_duration_s
     ~MultiAgentEpisode.is_done

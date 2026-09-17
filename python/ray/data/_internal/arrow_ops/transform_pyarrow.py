@@ -4,6 +4,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
+import pyarrow
 from packaging.version import parse as parse_version
 
 from ray._common.utils import env_integer
@@ -15,13 +16,18 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTake,
+    _log_take_fallback,
+    _TakeFallbackReason,
+    try_prepare_chunked_tensor_take,
+)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
-
+from ray.data._internal.utils.transform_pyarrow import (
+    _concatenate_extension_column,
+    _is_multi_chunk_extension_column,
+    _is_pa_extension_type,
+)
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
@@ -75,18 +81,65 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
+    """Check if any column type becomes unhashable after to_pandas() conversion.
+
+    Nested PyArrow types (struct/list/large_list/fixed_size_list/map/union and
+    their view variants) convert to Python dicts/lists, and Ray's tensor and
+    Python-object extension types convert to numpy arrays / Python objects.
+    None of these are hashable by pandas' hash_pandas_object. We check the
+    schema upfront so the hash algorithm choice is deterministic per schema,
+    not per block data.
+    """
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    tensor_types = get_arrow_extension_tensor_types()
+    for field in schema:
+        # `is_nested` covers struct/list/large_list/map/union and (on pyarrow
+        # 16+) list_view/large_list_view. It does NOT include fixed_size_list
+        # on older pyarrow (<10-ish), so check that explicitly.
+        if pyarrow.types.is_nested(field.type) or pyarrow.types.is_fixed_size_list(
+            field.type
+        ):
+            return True
+        if isinstance(field.type, tensor_types):
+            return True
+        if isinstance(field.type, ArrowPythonObjectType):
+            return True
+    return False
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
+    if _has_unhashable_pandas_types(table.schema):
+        # Struct/list/map columns become dicts/lists in pandas, which are
+        # unhashable. Use row-by-row hashing on PyArrow scalars instead.
+        partitions = np.zeros((table.num_rows,), dtype=np.int64)
 
-    partitions = np.zeros((table.num_rows,), dtype=np.int64)
-    for i in range(table.num_rows):
-        _tuple = tuple(c[i] for c in table.columns)
-        partitions[i] = hash(_tuple) % num_partitions
+        # Hoist per-column lookups out of the row loop. Iterating columns in
+        # lockstep with zip uses ChunkedArray.__iter__ (a C-level loop) instead
+        # of per-row __getitem__ calls, which avoids Python-side method dispatch
+        # on every element.
+        for i, _tuple in enumerate(zip(*table.columns)):
+            partitions[i] = hash(_tuple) % num_partitions
+    else:
+        # Use pandas' vectorized hash (xxhash-based) instead of a Python
+        # row-by-row loop.
+        import pandas as pd
 
-    # Convert to ndarray to compute hash partition indices
-    # more efficiently
+        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
+        # in pandas. This avoids int64 -> float64 promotion for nullable integer
+        # columns, which would cause the same value to hash differently across
+        # blocks depending on whether the block contains nulls.
+        hashes = pd.util.hash_pandas_object(
+            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+        ).values
+        # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
+        # avoid in-place np.mod(..., out=hashes). See #64552.
+        partitions = np.mod(hashes, num_partitions)
+
     return partitions
 
 
@@ -104,6 +157,7 @@ def hash_partition(
     """
 
     import numpy as np
+    import pyarrow.compute as pac
 
     assert num_partitions > 0
 
@@ -114,24 +168,119 @@ def hash_partition(
 
     projected_table = table.select(hash_cols)
     partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # For every partition compile list of indices of rows falling
-    # under that partition
-    indices = [np.where(partitions_array == p)[0] for p in range(num_partitions)]
+    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # NOTE: Subsequent `take` operation is known to be sensitive to the number of
-    #       chunks w/in the individual columns, and therefore to improve performance
-    #       we attempt to defragment the table to potentially combine some of those
-    #       chunks into contiguous arrays.
-    table = try_combine_chunked_columns(table)
+    # Sort rows by partition id so each partition occupies a contiguous range
+    # of the result, then carve out partitions with zero-copy slices. The N
+    # output partitions together form a permutation of `table`, so one big
+    # take + N slices is equivalent to N independent takes and pays the take
+    # fixed cost once.
+    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
+    counts = np.bincount(partitions_array, minlength=num_partitions)
+    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(counts)
 
+    sorted_table = take_table(table, sort_indices)
     return {
-        p: table.take(idx)
+        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p, idx in enumerate(indices)
-        if len(idx) > 0
+        for p in range(num_partitions)
+        if counts[p] > 0
     }
+
+
+def _try_normalize_take_indices(
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    row_count: int,
+) -> Optional[np.ndarray]:
+    """Normalize ``take_table`` indices once for the chunked tensor fast path.
+
+    This is the input boundary between Arrow's broad ``take`` API and the
+    internal tensor gather kernel. It performs all index-dependent work:
+
+    * Python lists are first parsed by Arrow so their type inference and errors
+      stay consistent with the standard path.
+    * Arrow arrays (contiguous or chunked) must have a non-null integer logical
+      type before conversion. This prevents non-integer logical types whose
+      NumPy representation happens to be integral from entering the fast path.
+    * The resulting NumPy array must be one-dimensional, native-endian,
+      integral, non-negative, and within ``row_count``.
+
+    On success, the returned array is always a native ``np.int64`` array. Fast
+    path consumers rely on that contract and must not reinterpret or rescan the
+    indices. Unsupported or invalid inputs return ``None`` so ``take_table`` can
+    preserve the standard Arrow fallback and its exception behavior.
+
+    Args:
+        indices: Row indices accepted by ``take_table``.
+        row_count: Number of rows in the source table.
+
+    Returns:
+        Normalized indices when the input satisfies the fast-path contract.
+        Otherwise, ``None`` and the caller must preserve the standard fallback.
+    """
+    if isinstance(indices, np.ma.MaskedArray):
+        return None
+
+    if isinstance(indices, list):
+        try:
+            indices = pyarrow.array(indices)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    if isinstance(indices, (pyarrow.Array, pyarrow.ChunkedArray)):
+        if indices.null_count > 0 or not pyarrow.types.is_integer(indices.type):
+            return None
+        values = indices.to_numpy(zero_copy_only=False)
+    elif isinstance(indices, np.ndarray):
+        values = np.asarray(indices)
+    else:
+        return None
+
+    if not values.dtype.isnative:
+        return None
+    if values.ndim != 1 or values.dtype.kind not in "iu":
+        return None
+    if values.size > 0:
+        if values.dtype.kind == "i" and np.any(values < 0):
+            return None
+        if np.any(values >= row_count):
+            return None
+    return values.astype(np.int64, copy=False)
+
+
+def _prepare_chunked_tensor_takes(
+    table: "pyarrow.Table",
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+) -> Dict[int, PreparedChunkedTensorTake]:
+    """Prepare eligible tensor columns for one table take request.
+
+    The index length is the exact output-size bound required by column
+    preparation. An unsized input produces no plans so the standard Arrow path
+    remains responsible for its existing exception behavior. This helper only
+    coordinates request-level preparation; all column eligibility rules remain
+    in ``try_prepare_chunked_tensor_take``.
+    """
+    try:
+        max_output_rows = len(indices)
+    except TypeError:
+        _log_take_fallback(_TakeFallbackReason.UNSUPPORTED_INDICES)
+        return {}
+
+    prepared_takes = {}
+    for index, column in enumerate(table.columns):
+        if not _is_multi_chunk_extension_column(column):
+            continue
+        prepared = try_prepare_chunked_tensor_take(
+            column,
+            max_output_rows=max_output_rows,
+        )
+        if prepared is not None:
+            prepared_takes[index] = prepared
+    return prepared_takes
 
 
 def take_table(
@@ -141,18 +290,54 @@ def take_table(
     """Select rows from the table.
 
     This method is an alternative to pyarrow.Table.take(), which breaks for
-    extension arrays. This is exposed as a static method for easier use on
-    intermediate tables, not underlying an ArrowBlockAccessor.
-    """
-    from ray.data._internal.utils.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_pa_extension_type,
-    )
+    extension arrays. Keeping the operation at table level also allows callers
+    to use it on intermediate tables without constructing an ArrowBlockAccessor.
 
+    When the operational fast path is enabled, eligible multi-chunk tensor
+    columns are prepared once before the per-column loop. Indices are normalized
+    only if at least one preparation succeeds, and the normalized representation
+    is shared by all prepared columns. Preparation validates the exact request
+    size. Unexpected preparation or execution failures are logged with a
+    traceback and retried through the standard path outside the exception handler. If the feature
+    is disabled or preparation or normalization fails, the original ``indices``
+    object is passed unchanged to the standard Arrow fallback.
+    """
     if any(_is_pa_extension_type(col.type) for col in table.columns):
+        try:
+            prepared_takes = _prepare_chunked_tensor_takes(table, indices)
+
+            if prepared_takes:
+                normalized_indices = _try_normalize_take_indices(
+                    indices, table.num_rows
+                )
+                if normalized_indices is None:
+                    _log_take_fallback(_TakeFallbackReason.UNSUPPORTED_INDICES)
+            else:
+                normalized_indices = None
+        except Exception:
+            logger.warning(
+                "Tensor take preparation failed; using standard take", exc_info=True
+            )
+            prepared_takes = {}
+            normalized_indices = None
+
         new_cols = []
-        for col in table.columns:
-            if _is_pa_extension_type(col.type) and col.num_chunks > 1:
+        for index, col in enumerate(table.columns):
+            if _is_multi_chunk_extension_column(col):
+                prepared = prepared_takes.get(index)
+                if normalized_indices is not None and prepared is not None:
+                    try:
+                        result = prepared.take(normalized_indices)
+                    except Exception:
+                        logger.warning(
+                            "Tensor take failed for column %s; using standard take",
+                            index,
+                            exc_info=True,
+                        )
+                    else:
+                        new_cols.append(result)
+                        continue
+                # Regular path.
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
@@ -292,6 +477,37 @@ def _unify_schemas_pyarrow(
     return pyarrow.unify_schemas(schemas, promote_options=promote_options)
 
 
+def reorder_columns_by_schema(
+    table: "pyarrow.Table", schema: "pyarrow.Schema"
+) -> "pyarrow.Table":
+    """Return `table` with its columns in the order of `schema.names`.
+
+    No-op when the column orders already match. Use before a positional
+    operation like `Table.cast(schema)` or
+    `RecordBatchReader.from_batches(schema, ...)` so blocks that share
+    the same field names in a different order — common when upstream
+    UDFs build dicts whose key order varies across workers — don't trip
+    the positional schema check.
+
+    Raises `ValueError` if `table` has any columns not in `schema.names`
+    (selecting on `schema.names` would silently drop them) and via
+    `Table.select` if `table` is missing any column in `schema.names`.
+    Callers reconciling field-set mismatches (e.g. via `unify_schemas`)
+    must handle that case before calling here.
+    """
+    if table.schema.names == schema.names:
+        return table
+    target_names = set(schema.names)
+    extra = [n for n in table.schema.names if n not in target_names]
+    if extra:
+        raise ValueError(
+            f"Table has columns not in target schema: {extra}. "
+            f"reorder_columns_by_schema only reorders an existing field set; "
+            f"reconcile the column set before calling."
+        )
+    return table.select(schema.names)
+
+
 def unify_schemas(
     schemas: List["pyarrow.Schema"], *, promote_types: bool = False
 ) -> "pyarrow.Schema":
@@ -334,17 +550,17 @@ def unify_schemas(
     if not overrides:
         raise pyarrow_exception
 
-    # Apply overrides to schemas
+    # Apply overrides to schemas. Rebuild each schema once by scanning its
+    # fields a single time, rather than calling Schema.set() per override:
+    # set() copies the whole schema on every call, which is O(n^2) when
+    # many/all columns diverge. This is O(fields + overrides) per schema.
     updated_schemas = []
     for schema in schemas_to_unify:
-        for name, new_type in overrides.items():
-            try:
-                idx = schema.get_field_index(name)
-                field = schema.field(name).with_type(new_type)
-                schema = schema.set(idx, field)
-            except KeyError:
-                pass
-        updated_schemas.append(schema)
+        fields = [
+            field.with_type(overrides[field.name]) if field.name in overrides else field
+            for field in schema
+        ]
+        updated_schemas.append(pyarrow.schema(fields, metadata=schema.metadata))
     schemas_to_unify = updated_schemas
 
     # Final unification with overrides applied
@@ -1094,24 +1310,34 @@ def to_numpy(
         )
 
 
-def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(
+    table: "pyarrow.Table",
+    min_chunks_to_combine: int = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+) -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
-    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
-    chunks in its `ChunkedArray`.
+    columns with at least ``min_chunks_to_combine`` chunks in its
+    ``ChunkedArray``.
 
     This is necessary to improve performance for some operations (like `take`, etc)
     when dealing with `ChunkedArrays` w/ large number of chunks
 
     For more details check out https://github.com/apache/arrow/issues/35126
-    """
 
+    Args:
+        table: The PyArrow table to combine chunks for.
+        min_chunks_to_combine: Minimum number of chunks in a column to trigger
+            combining. Defaults to MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS.
+
+    Returns:
+        A new table with chunked columns combined where applicable.
+    """
     if table.num_columns == 0:
         return table
 
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+        if col.num_chunks >= min_chunks_to_combine and col.num_chunks > 1:
             new_col = combine_chunked_array(col)
         else:
             new_col = col
@@ -1130,6 +1356,9 @@ def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table
     Args:
         table: Table with chunked columns to be combined into contiguous arrays.
         copy: Skip copying when copy is False and there is exactly 1 chunk.
+
+    Returns:
+        A new table with contiguous arrays for each column.
     """
 
     new_column_values_arrays = []
@@ -1159,6 +1388,10 @@ def combine_chunked_array(
         array: The chunked array to be combined into a single contiguous array.
         ensure_copy: Skip copying when ensure_copy is False and there's exactly
            1 chunk.
+
+    Returns:
+        A single combined ``Array`` (or ``ChunkedArray`` for extension types
+        that cannot be combined into a single array).
     """
 
     import pyarrow as pa

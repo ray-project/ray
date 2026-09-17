@@ -1,5 +1,5 @@
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._private.ray_constants import env_bool, env_set_by_user
@@ -47,7 +47,7 @@ DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 60.0
 COLLECTIVE_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_TIMEOUT_S"
 # NOTE: Default to no timeout to avoid introducing more timeouts for users to configure.
 # For example, users can already configure timeouts in torch distributed.
-DEFAULT_COLLECTIVE_TIMEOUT_S: float = -1
+DEFAULT_COLLECTIVE_TIMEOUT_S: Optional[float] = None
 # Interval in seconds to log a warning when waiting for a collective operation to complete.
 COLLECTIVE_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_WARN_INTERVAL_S"
 DEFAULT_COLLECTIVE_WARN_INTERVAL_S: float = 60
@@ -57,6 +57,20 @@ CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR = (
     "RAY_TRAIN_CHECKPOINT_UPLOAD_WARN_INTERVAL_S"
 )
 DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S: float = 60
+
+# Feature flag for the preemption watcher. Default-on; provides a quick
+# rollback path if the watcher actor misbehaves in a cluster.
+ENABLE_PREEMPTION_WATCHER_ENV_VAR = "RAY_TRAIN_ENABLE_PREEMPTION_WATCHER"
+DEFAULT_ENABLE_PREEMPTION_WATCHER: bool = True
+
+# How often the preemption watcher polls Ray Core's drain state.
+PREEMPTION_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_PREEMPTION_POLL_INTERVAL_S"
+DEFAULT_PREEMPTION_POLL_INTERVAL_S: float = 5.0
+
+# Fallback grace window the controller waits in PreemptingState when Ray Core
+# reports no reclaim deadline (deadline unknown). Only used as a default when
+# the deadline is unknown; a reported deadline is always respected as-is.
+DEFAULT_PREEMPTION_DEADLINE_S: float = 120.0
 
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
@@ -84,12 +98,13 @@ STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR = (
     "RAY_TRAIN_STATE_ACTOR_RECONCILIATION_INTERVAL_S"
 )
 DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S: float = 30.0
-# TODO: `ray.util.state.api.get_actor` takes 10-50ms but we cannot pick lower than 2s
-# due to https://github.com/ray-project/ray/issues/54153. Lower this after fix.
-GET_ACTOR_TIMEOUT_S: int = 2
-# GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
-# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
-CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
+# TODO: `ray.util.state.api.get_actor` typically takes 10-50ms but can take longer
+# when there is high load on the cluster.
+GET_ACTOR_TIMEOUT_S: int = 10
+# GET_ACTOR_TIMEOUT_S * CONTROLLERS_TO_POLL_PER_ITERATION should be
+# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S to give the state actor
+# time to update live train run state.
+CONTROLLERS_TO_POLL_PER_ITERATION: int = 1
 
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
@@ -99,6 +114,9 @@ DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
 
 # torchft lighthouse address
 TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
+
+# NCCL RAS listen address (``host:port``)
+NCCL_RAS_ADDR_ENV_VAR = "NCCL_RAS_ADDR"
 
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
@@ -117,6 +135,9 @@ ENV_VARS_TO_PROPAGATE = {
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
     RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
     TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR,
+    ENABLE_PREEMPTION_WATCHER_ENV_VAR,
+    PREEMPTION_POLL_INTERVAL_S_ENV_VAR,
+    NCCL_RAS_ADDR_ENV_VAR,
 }
 
 
@@ -126,6 +147,26 @@ ENV_VARS_TO_PROPAGATE = {
 
 # The environment variable to enable the Ray Train Metrics.
 METRICS_ENABLED_ENV_VAR = "RAY_TRAIN_METRICS_ENABLED"
+
+# ------------------------------------------------------------
+# NCCL RAS hang detection.
+# ------------------------------------------------------------
+
+# Feature flag for the NCCL RAS hang detector callback.
+ENABLE_NCCL_HANG_DETECTOR_ENV_VAR = "RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"
+
+# How often (seconds) to query the NCCL RAS subsystem on a worker
+NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S"
+DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S: float = 15.0
+# How long a communicator must make no progress before the detector acts.
+NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S"
+DEFAULT_NCCL_RAS_CONFIRM_DURATION_S: float = 10 * 60
+
+# Action to take on a confirmed hang
+NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
+NCCL_RAS_ACTION_FAIL = "fail"  # raises NCCLHangError (retryable via the failure policy)
+NCCL_RAS_ACTION_OBSERVE = "observe"  # logs the hang and captures stacks, never raises
+DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE  # defaults to observe
 
 
 def is_v2_enabled() -> bool:

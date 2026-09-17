@@ -1,12 +1,14 @@
 import asyncio
 import datetime
+import glob
 import os
 import random
+import socket
 import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 from unittest.mock import Mock
 
 import grpc
@@ -24,15 +26,20 @@ from ray._common.test_utils import (
 )
 from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
     DeploymentID,
     DeploymentStatus,
+    Duration,
     ReplicaID,
     RequestProtocol,
+    RunningReplicaInfo,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_SOCKET_PATH,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -43,8 +50,15 @@ from ray.serve._private.deployment_state import (
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaState,
+    ReplicaStateContainer,
 )
+from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
+from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.request_router import (
+    PendingRequest,
+    RunningReplica,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve.context import _get_global_client
 from ray.serve.gang import GangContext
@@ -57,6 +71,22 @@ STORAGE_ACTOR_NAME = "storage"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 
+def skip_if_haproxy(reason: str):
+    """Skip a test when the HAProxy ingress is enabled.
+
+    The HAProxy ingress runs as a separate premerge step with
+    RAY_SERVE_ENABLE_HA_PROXY=1. Some tests exercise behavior HAProxy does not
+    support yet (e.g. gRPC ingress) or that probes the native Serve proxy
+    directly. Mark those with this decorator instead of maintaining a separate
+    test allowlist. The test still runs in the non-HAProxy steps.
+    """
+    import pytest
+
+    return pytest.mark.skipif(
+        RAY_SERVE_ENABLE_HA_PROXY, reason=f"HAProxy ingress: {reason}"
+    )
+
+
 # Global variable that is fetched during controller recovery that
 # marks (simulates) which replicas have died since controller first
 # recovered a list of live replica names.
@@ -64,8 +94,12 @@ PROMETHEUS_METRICS_TIMEOUT_S = 5
 # is called in the controller's init function, instead of in the control
 # loop, so we can't "mark" a replica dead through a method. This global
 # state is cleared after each test that uses the fixtures in this file.
-dead_replicas_context = set()
-replica_rank_context: Dict[str, ReplicaRank] = {}
+dead_replicas_context: Set[ReplicaID] = set()
+# Replicas registered in this set will report `was_initialized() == False` to
+# the controller during recovery, simulating the case where a previous
+# controller crashed before the actor finished its initial setup.
+uninitialized_replicas_context: Set[ReplicaID] = set()
+replica_rank_context: Dict[str, Optional[ReplicaRank]] = {}
 
 
 class MockTimer(TimerBase):
@@ -91,11 +125,11 @@ class MockTimer(TimerBase):
 
 
 class MockAsyncTimer:
-    def __init__(self, start_time: Optional[float] = 0):
+    def __init__(self, start_time: float = 0):
         self.reset(start_time=start_time)
         self._num_sleepers = 0
 
-    def reset(self, start_time: 0):
+    def reset(self, start_time: float = 0):
         self._curr = start_time
 
     def time(self) -> float:
@@ -170,7 +204,12 @@ class MockClusterNodeInfoCache:
     def get_total_resources_per_node(self):
         return self.total_resources_per_node
 
-    def add_node(self, node_id: str, resources: Dict = None, labels: Dict = None):
+    def add_node(
+        self,
+        node_id: str,
+        resources: Optional[Dict] = None,
+        labels: Optional[Dict] = None,
+    ):
         self.alive_node_ids.add(node_id)
         self.total_resources_per_node[node_id] = deepcopy(resources) or {}
         self.available_resources_per_node[node_id] = deepcopy(resources) or {}
@@ -181,6 +220,117 @@ class MockClusterNodeInfoCache:
 
     def get_node_labels(self, node_id: str):
         return self.node_labels.get(node_id, {})
+
+
+# Default value used by FakeRunningReplica when the test doesn't override.
+FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS = 10
+# Every FakeRunningReplica is stamped with this deployment id. Router
+# tests never care about app/name specifically; cross-test consistency
+# matters more than differentiation.
+FAKE_REPLICA_DEPLOYMENT_ID = DeploymentID(name="TEST_DEPLOYMENT")
+
+
+class FakeRunningReplica(RunningReplica):
+    """In-memory ``RunningReplica`` stand-in for request-router unit tests.
+
+    Shared between ``test_pow_2_request_router.py`` and
+    ``test_consistent_hash_router.py``. Supports enough knobs for pow-2's
+    locality / cancellation / re-probe tests; consistent-hash only uses
+    the queue-length response hooks.
+    """
+
+    def __init__(
+        self,
+        replica_unique_id: str,
+        *,
+        node_id: str = "",
+        availability_zone: Optional[str] = None,
+        reset_after_response: bool = False,
+        model_ids: Optional[Set[str]] = None,
+        sleep_time_s: float = 0.0,
+        max_ongoing_requests: int = FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS,
+    ):
+        self._replica_id = ReplicaID(
+            unique_id=replica_unique_id,
+            deployment_id=FAKE_REPLICA_DEPLOYMENT_ID,
+        )
+        self._node_id = node_id
+        self._availability_zone = availability_zone
+        self._queue_len = 0
+        self._max_ongoing_requests = max_ongoing_requests
+        self._has_queue_len_response = asyncio.Event()
+        self._reset_after_response = reset_after_response
+        self._model_ids = model_ids or set()
+        self._sleep_time_s = sleep_time_s
+        self._exception: Optional[Exception] = None
+
+        self.get_queue_len_was_cancelled = False
+        self.queue_len_deadline_history: List[float] = list()
+        self.num_get_queue_len_calls = 0
+
+    @property
+    def replica_id(self) -> ReplicaID:
+        return self._replica_id
+
+    @property
+    def node_id(self) -> str:
+        return self._node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._availability_zone
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        return self._model_ids
+
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        self._model_ids = set(replica_info.multiplexed_model_ids)
+
+    @property
+    def max_ongoing_requests(self) -> int:
+        return self._max_ongoing_requests
+
+    def set_queue_len_response(
+        self,
+        queue_len: int,
+        exception: Optional[Exception] = None,
+    ):
+        self._queue_len = queue_len
+        self._exception = exception
+        self._has_queue_len_response.set()
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        pass
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        self.num_get_queue_len_calls += 1
+        self.queue_len_deadline_history.append(deadline_s)
+        try:
+            while not self._has_queue_len_response.is_set():
+                await self._has_queue_len_response.wait()
+
+            if self._sleep_time_s > 0:
+                await asyncio.sleep(self._sleep_time_s)
+
+            if self._reset_after_response:
+                self._has_queue_len_response.clear()
+
+            if self._exception is not None:
+                raise self._exception
+
+            return self._queue_len
+        except asyncio.CancelledError:
+            self.get_queue_len_was_cancelled = True
+            raise
+
+    def try_send_request(
+        self, pr: PendingRequest, with_rejection: bool
+    ) -> ReplicaResult:
+        raise NotImplementedError()
+
+    def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
+        raise NotImplementedError()
 
 
 class FakeRemoteFunction:
@@ -253,12 +403,8 @@ class MockDeploymentHandle:
     def options(self, *args, **kwargs):
         return self
 
-    def __eq__(self, dep: Tuple[str]):
-        other_deployment_name, other_app_name = dep
-        return (
-            self._deployment_name == other_deployment_name
-            and self._app_name == other_app_name
-        )
+    def __eq__(self, other: object) -> bool:
+        return other == (self._deployment_name, self._app_name)
 
     def _set_request_protocol(self, protocol: RequestProtocol):
         self._protocol = protocol
@@ -376,24 +522,33 @@ class MockReplicaActorWrapper:
         self.healthy = True
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
-        self._node_id = None
+        self._node_id: Optional[str] = None
         self._node_ip = None
         self._node_instance_id = None
         self._node_id_is_set = False
-        self._actor_id = None
+        self._log_file_path: Optional[str] = None
+        self._actor_id: Optional[str] = None
         self._internal_grpc_port = None
+        self._http_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
-        self._docs_path = None
+        self._docs_path: Optional[str] = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
-        self._assign_rank_callback = None
+        self._assign_rank_callback: Optional[Callable[..., ReplicaRank]] = None
         self._ingress = False
         self._gang_context = None
         self._gang_pg_index = None
+        self._unrecoverable = False
 
     @property
     def is_cross_language(self) -> bool:
         return self._is_cross_language
+
+    @property
+    def has_in_flight_health_or_routing_probe(self) -> bool:
+        # The mock's health/routing checks are synchronous (no in-flight ObjectRef), so
+        # nothing is ever in flight -- matches the real wrapper reporting no pending ref.
+        return False
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -457,7 +612,7 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
-        return None
+        return self._log_file_path
 
     @property
     def grpc_port(self) -> Optional[int]:
@@ -493,8 +648,10 @@ class MockReplicaActorWrapper:
     def set_status(self, status: ReplicaStartupStatus):
         self.status = status
 
-    def set_ready(self, version: DeploymentVersion = None):
+    def set_ready(self, version: Optional[DeploymentVersion] = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        # Mirror the real actor: a started replica has allocated a log file.
+        self._log_file_path = "serve/replica.log"
         if version:
             self.version_to_be_fetched_from_actor = version
         else:
@@ -523,10 +680,11 @@ class MockReplicaActorWrapper:
     def start(
         self,
         deployment_info: DeploymentInfo,
-        assign_rank_callback: Callable[[ReplicaID], ReplicaRank],
+        assign_rank_callback: Callable[..., ReplicaRank],
         gang_placement_group=None,
         gang_pg_index=None,
         gang_context=None,
+        target_node_id=None,
     ):
         self.started = True
         self._gang_context = gang_context
@@ -550,6 +708,7 @@ class MockReplicaActorWrapper:
             on_scheduled=_on_scheduled_stub,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
+            target_node_id=target_node_id,
         )
 
     @property
@@ -559,7 +718,7 @@ class MockReplicaActorWrapper:
     def reconfigure(
         self,
         version: DeploymentVersion,
-        rank: ReplicaRank = None,
+        rank: Optional[ReplicaRank] = None,
     ):
         self.started = True
         updating = self.version.requires_actor_reconfigure(version)
@@ -576,9 +735,23 @@ class MockReplicaActorWrapper:
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
+        # Mirror production: the `was_initialized` probe is fired here and
+        # observed asynchronously in `check_ready()`. Tests register
+        # uninitialized replicas via `uninitialized_replicas_context`.
+        self._unrecoverable = self.replica_id in uninitialized_replicas_context
         return True
 
-    def check_ready(self) -> ReplicaStartupStatus:
+    def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
+        # If the controller's async `was_initialized` probe came back False,
+        # report a failed-but-unrecoverable startup so the reconciler drops
+        # and replaces the replica without recording a deploy failure.
+        if self.recovering and self._unrecoverable:
+            return (
+                ReplicaStartupStatus.FAILED,
+                f"{self._replica_id} was found alive but never finished "
+                "its initial setup.",
+            )
+
         ready = self.status
         self.status = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
@@ -600,8 +773,11 @@ class MockReplicaActorWrapper:
         # Only used to print a warning.
         return {}
 
-    def graceful_stop(self) -> None:
-        assert self.started
+    def graceful_stop(self) -> Duration:
+        # `started` is only set after a successful `check_ready` transition
+        # to RUNNING. A replica force-stopped while still RECOVERING (e.g.,
+        # because the `was_initialized` probe failed) is a legitimate stop.
+        assert self.started or self.recovering
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
@@ -629,6 +805,10 @@ class MockReplicaActorWrapper:
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
 
+    @property
+    def unrecoverable(self) -> bool:
+        return self._unrecoverable
+
 
 @serve.deployment
 class GetPID:
@@ -636,7 +816,7 @@ class GetPID:
         return os.getpid()
 
 
-get_pid_entrypoint = GetPID.bind()
+get_pid_entrypoint = GetPID.bind()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
 
 def check_ray_stopped():
@@ -672,6 +852,66 @@ def get_num_alive_replicas(
         ]
     )
     return len(actors)
+
+
+def expected_proxy_actors(num_proxy_nodes: int = 1) -> Dict[str, int]:
+    """Proxy actors expected ALIVE by class name for the given number of proxy nodes.
+
+    Natively each proxy node runs one ProxyActor. Under HAProxy each proxy node runs an
+    HAProxyManager and the head node also runs a single fallback ProxyActor. Set-based
+    callers can take the keys, count-based callers use the counts directly.
+    """
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        return {"HAProxyManager": num_proxy_nodes, "ProxyActor": 1}
+    return {"ProxyActor": num_proxy_nodes}
+
+
+def wait_for_haproxy_routing_to_replica(timeout: int = 30):
+    """Block until HAProxy marks a replica's primary backend server UP.
+
+    serve.run returns once replicas are RUNNING, but until a replica's
+    direct-ingress server passes HAProxy's health check, HAProxy serves requests
+    from the head-node backup fallback proxy. That path adds proxy and router
+    spans, so trace-topology assertions must wait for direct routing first. No-op
+    without HAProxy, which has no fallback to race.
+    """
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        return
+
+    socket_glob = os.path.join(
+        os.path.dirname(RAY_SERVE_HAPROXY_SOCKET_PATH), "*", "admin.sock"
+    )
+
+    def replica_backend_up():
+        for sock_path in glob.glob(socket_glob):
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                    client.settimeout(5.0)
+                    client.connect(sock_path)
+                    client.sendall(b"show stat\n")
+                    data = b""
+                    while chunk := client.recv(65536):
+                        data += chunk
+            except OSError:
+                continue  # stale socket from a prior run
+            stats = HAProxyApi._parse_haproxy_csv_stats(data.decode(errors="replace"))
+            if any(
+                name.startswith("SERVE_REPLICA") and server.is_up
+                for servers in stats.values()
+                for name, server in servers.items()
+            ):
+                return True
+        return False
+
+    wait_for_condition(replica_backend_up, timeout=timeout)
+
+
+def alive_actor_counts() -> Dict[str, int]:
+    """Count of ALIVE actors by class name in the current Ray session."""
+    counts: Dict[str, int] = {}
+    for actor in list_actors(filters=[("STATE", "=", "ALIVE")]):
+        counts[actor["class_name"]] = counts.get(actor["class_name"], 0) + 1
+    return counts
 
 
 def check_num_replicas_gte(
@@ -723,7 +963,7 @@ def check_replica_counts(
     controller: ActorHandle,
     deployment_id: DeploymentID,
     total: Optional[int] = None,
-    by_state: Optional[List[Tuple[ReplicaState, int, Callable]]] = None,
+    by_state: Optional[List[Tuple[ReplicaState, int, Optional[Callable]]]] = None,
 ):
     """Uses _dump_replica_states_for_testing to check replica counts.
 
@@ -734,9 +974,15 @@ def check_replica_counts(
         by_state: A list of tuples of the form
             (replica state, number of replicas, filter function).
             Used for more fine grained checks.
+
+    Returns:
+        True when all assertions pass (raises ``AssertionError`` otherwise).
     """
-    replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(deployment_id)
+    replicas = cast(
+        ReplicaStateContainer,
+        ray.get(
+            controller._dump_replica_states_for_testing.remote(deployment_id)  # type: ignore[attr-defined]
+        ),
     )
 
     if total is not None:
@@ -762,7 +1008,7 @@ def check_replica_counts(
     return True
 
 
-@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)
+@ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)  # type: ignore[call-overload]  # pyrefly: ignore[unexpected-keyword]
 class TelemetryStorage:
     def __init__(self):
         self.reports_received = 0
@@ -790,7 +1036,7 @@ class TelemetryReceiver:
         return True
 
 
-receiver_app = TelemetryReceiver.bind()
+receiver_app = TelemetryReceiver.bind()  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
 
 
 def start_telemetry_app():
@@ -807,7 +1053,7 @@ def start_telemetry_app():
     to access the latest telemetry reports.
     """
 
-    storage = TelemetryStorage.remote()
+    storage = TelemetryStorage.remote()  # pyrefly: ignore[missing-attribute]
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
 
@@ -816,7 +1062,9 @@ def check_telemetry(
     tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
 ):
     storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
-    report = ray.get(storage_handle.get_report.remote())
+    report = cast(
+        Dict[str, Any], ray.get(storage_handle.get_report.remote())  # type: ignore[attr-defined]
+    )
     print(report["extra_usage_tags"])
     assert tag.get_value_from_report(report) == expected
     return True
@@ -854,7 +1102,9 @@ def ping_grpc_healthz(channel, test_draining=False):
     else:
         response, call = stub.Healthz.with_call(request=request)
         assert call.code() == grpc.StatusCode.OK
-        assert response.message == "success"
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            assert response.message == "success"
+    return True
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
@@ -921,11 +1171,13 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         yield
         await asyncio.sleep(100)
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, TaskCancelledError):
+        # A cancelled task surfaces as TaskCancelledError on an in-flight
+        # `.remote()` await, which is not an asyncio.CancelledError.
         cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
-        ray._raylet.async_task_id.set(None)
-        await signal_actor.send.remote()
+        ray._raylet.async_task_id.set(None)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        await signal_actor.send.remote()  # type: ignore[attr-defined]
 
     if not cancelled:
         raise RuntimeError(
@@ -980,19 +1232,21 @@ class FakeGrpcContext:
 
 
 class FakeGauge:
-    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+    def __init__(
+        self, name: Optional[str] = None, tag_keys: Optional[Tuple[str, ...]] = None
+    ):
         self.name = name
-        self.values = dict()
+        self.values: Dict[str, Any] = dict()
 
-        self.tags = tag_keys or ()
-        self.default_tags = dict()
+        self.tags: Tuple[str, ...] = tag_keys or ()
+        self.default_tags: Dict[str, str] = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
 
-    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+    def set(self, value: Union[int, float], tags: Optional[Dict[str, str]] = None):
         merged_tags = self.default_tags.copy()
         merged_tags.update(tags or {})
         assert set(merged_tags.keys()) == set(self.tags)
@@ -1007,7 +1261,7 @@ class FakeGauge:
         d[merged_tags[self.tags[-1]]] = value
 
     def get_value(self, tags: Dict[str, str]):
-        value = self.values
+        value: Any = self.values
         for tag in self.tags:
             tag_value = tags[tag]
             value = value.get(tag_value)
@@ -1018,19 +1272,23 @@ class FakeGauge:
 
 
 class FakeCounter:
-    def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
+    def __init__(
+        self, name: Optional[str] = None, tag_keys: Optional[Tuple[str, ...]] = None
+    ):
         self.name = name
-        self.counts = dict()
+        self.counts: Dict[str, Any] = dict()
 
-        self.tags = tag_keys or ()
-        self.default_tags = dict()
+        self.tags: Tuple[str, ...] = tag_keys or ()
+        self.default_tags: Dict[str, str] = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
             self.default_tags[key] = tag
 
-    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
+    def inc(
+        self, value: Union[int, float] = 1.0, tags: Optional[Dict[str, str]] = None
+    ):
         merged_tags = self.default_tags.copy()
         merged_tags.update(tags or {})
         assert set(merged_tags.keys()) == set(self.tags)
@@ -1045,13 +1303,13 @@ class FakeCounter:
         key = merged_tags[self.tags[-1]]
         d[key] = d.get(key, 0) + value
 
-    def get_count(self, tags: Dict[str, str]) -> int:
-        value = self.counts
+    def get_count(self, tags: Dict[str, str]) -> Optional[int]:
+        value: Any = self.counts
         for tag in self.tags:
             tag_value = tags[tag]
             value = value.get(tag_value)
             if value is None:
-                return
+                return None
 
         return value
 
@@ -1073,14 +1331,159 @@ def check_num_alive_nodes(target: int):
 def get_deployment_details(
     deployment_name: str,
     app_name: str = SERVE_DEFAULT_APP_NAME,
-    _client: ServeControllerClient = None,
-):
+    _client: Optional[ServeControllerClient] = None,
+) -> Dict[str, Any]:
     client = _client or _get_global_client()
+    assert client is not None
     details = client.get_serve_details()
     return details["applications"][app_name]["deployments"][deployment_name]
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
+class Barrier:
+    """Block until n participants have called wait()."""
+
+    def __init__(self, n: int):
+        self.n = n
+        self.count = 0
+        self.event = asyncio.Event()
+
+    async def wait(self):
+        self.count += 1
+        if self.count >= self.n:
+            self.event.set()
+        else:
+            await self.event.wait()
+
+    def get_count(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
+class Accumulator:
+    """Collect items from multiple actors/replicas."""
+
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self) -> list:
+        return list(self.items)
+
+    def count(self) -> int:
+        return len(self.items)
+
+
+@ray.remote(num_cpus=0)
+class FailedReplicaStore:
+    """Controls replica constructor failure behavior for constructor failure tests.
+
+    Behavior is determined by ``fail_first``:
+      - ``fail_first=True``  (transient): first caller fails, rest succeed.
+      - ``fail_first=False`` (partial):   first caller succeeds, rest fail.
+
+    All decisions are made in a single atomic actor call to avoid races
+    between concurrent replicas.
+    """
+
+    def __init__(self, fail_first: bool = False):
+        self._fail_first = fail_first
+        self._first_caller = False
+        self._fail_count = 0
+
+    def get_fail_count(self) -> int:
+        """Returns the number replica startup failures"""
+        return self._fail_count
+
+    def should_fail(self) -> bool:
+        """Returns whether this replica should raise in its constructor."""
+        if not self._first_caller:
+            self._first_caller = True
+            result = self._fail_first
+        else:
+            result = not self._fail_first
+        if result:
+            self._fail_count += 1
+        return result
+
+
+@ray.remote(num_cpus=0)
+class FailedGangReplicaStore:
+    """
+    Controls replica constructor failure behavior for gang scheduling tests.
+        - The first gang seen is allowed to run.
+        - The next gang has first replica flagged to fail.
+        - Retry gangs after the first failed gang have first replica flagged.
+    """
+
+    def __init__(self):
+        self._good_gang_chosen = False
+        self._successful_gang_id = None
+        self._failed_gang_ids = set()
+
+    def mark_first_failing_gang(self, gang_id: str) -> bool:
+        """Picks the good gang on the first call and flags the first replica of the next gang to fail."""
+        if not self._good_gang_chosen:
+            self._good_gang_chosen = True
+            self._successful_gang_id = gang_id
+            return False
+        if gang_id == self._successful_gang_id:
+            return False
+        if len(self._failed_gang_ids) == 0:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
+
+    def mark_retry_failing_gang(self, gang_id: str) -> bool:
+        """Flags the first replica of each new retry gang.
+        This is called after ``mark_first_failing_gang``."""
+        if gang_id == self._successful_gang_id:
+            return False
+        if gang_id not in self._failed_gang_ids:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
+
+    def get_failed_gang_count(self) -> int:
+        """Returns the number of distinct gangs that failed."""
+        return len(self._failed_gang_ids)
+
+
+@ray.remote(num_cpus=0)
+class SharedFlag:
+    """Non-blocking boolean flag shared across actors."""
+
+    def __init__(self):
+        self.value = False
+
+    def set(self):
+        self.value = True
+
+    def clear(self):
+        self.value = False
+
+    def is_set(self) -> bool:
+        return self.value
+
+
+@ray.remote(num_cpus=0)
+class SharedCounter:
+    """Simple shared counter for cross-actor coordination."""
+
+    def __init__(self):
+        self.count = 0
+
+    def inc(self) -> int:
+        self.count += 1
+        return self.count
+
+    def get(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
 class Counter:
     def __init__(self, target: int):
         self.count = 0
@@ -1114,7 +1517,9 @@ def check_target_groups_ready(
     possible that target groups are not ready immediately. An example is when the controller
     is recovering from a crash.
     """
-    target_groups = ray.get(client._controller.get_target_groups.remote(app_name))
+    target_groups = ray.get(
+        client._controller.get_target_groups.remote(app_name)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+    )
     target_groups = [
         target_group
         for target_group in target_groups
@@ -1148,7 +1553,8 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
+    assert client is not None
     serve_details = client.get_serve_details()
     assert (
         app_name in serve_details["applications"]
@@ -1161,7 +1567,7 @@ def get_application_urls(
     if isinstance(protocol, str):
         protocol = RequestProtocol(protocol)
     target_groups: List[TargetGroup] = ray.get(
-        client._controller.get_target_groups.remote(app_name, from_proxy_manager)
+        client._controller.get_target_groups.remote(app_name, from_proxy_manager)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
     )
     target_groups = [
         target_group
@@ -1273,8 +1679,10 @@ def get_metric_float(
         timeseries,
         timeout=timeout,
     ).get(metric, [])
+    # None (no tag filter) matches any sample, per the docstring.
+    tags_to_match = expected_tags or {}
     for sample in samples:
-        if expected_tags.items() <= sample.labels.items():
+        if tags_to_match.items() <= sample.labels.items():
             return sample.value
     return -1
 
@@ -1314,13 +1722,16 @@ def get_metric_dictionaries(
         timeseries = PrometheusTimeseries()
 
     def metric_available() -> bool:
-        assert name in fetch_prometheus_metric_timeseries(
+        prom_timeseries = fetch_prometheus_metric_timeseries(
             [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
             timeseries,
             # pass timeout to fetch_prometheus_metric_timeseries
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:
@@ -1337,7 +1748,7 @@ def get_metric_dictionaries(
 
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
-        if sample.name == name:
-            metric_dicts.append(sample.labels)
+        if sample.name == name:  # pyrefly: ignore[missing-attribute]
+            metric_dicts.append(sample.labels)  # pyrefly: ignore[missing-attribute]
 
     return metric_dicts

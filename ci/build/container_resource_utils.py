@@ -91,7 +91,7 @@ def main():
     bazel_jobs = max(1, min(cpu_limit, jobs_by_ram))
 
     print(
-        f"--jobs={bazel_jobs} --local_cpu_resources={cpu_limit} --local_ram_resources={mem_limit}"
+        f"--jobs={bazel_jobs} --local_resources=cpu={cpu_limit} --local_resources=memory={mem_limit}"
     )
 
 

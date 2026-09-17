@@ -43,10 +43,17 @@ RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
 
 
 async def _list_cluster_events_impl(
-    *, all_events, executor: ThreadPoolExecutor, option: ListApiOptions
+    *,
+    all_events: Dict[str, JobEvents],
+    executor: ThreadPoolExecutor,
+    option: ListApiOptions,
 ) -> ListApiResponse:
-    """
-    List all cluster events from the cluster. Made a free function to allow unit tests.
+    """List all cluster events from the cluster. Made a free function to allow unit tests.
+
+    Args:
+        all_events: Mapping of ``job_id`` to per-job event dictionaries.
+        executor: Executor used to run the (CPU-bound) transform off the event loop.
+        option: Query options (filters, limit, detail flag).
 
     Returns:
         A list of cluster events in the cluster.

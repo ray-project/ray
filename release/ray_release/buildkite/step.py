@@ -48,9 +48,14 @@ _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
                 "image": "python:3.10",
                 "shell": ["/bin/bash", "-elic"],
                 "propagate-environment": True,
+                # Lets the test job run `buildkite-agent` -- the reporters use
+                # it to annotate the build. The plugin mounts the binary the
+                # agent is actually running and passes the access token it needs
+                # to reach the API; hand-mounting the binary does neither, and
+                # `propagate-environment` does not carry the token.
+                "mount-buildkite-agent": True,
                 "volumes": [
                     "/var/lib/buildkite/builds:/var/lib/buildkite/builds",
-                    "/usr/local/bin/buildkite-agent:/usr/local/bin/buildkite-agent",
                     f"{DEFAULT_ARTIFACTS_DIR_HOST}:{DEFAULT_ARTIFACTS_DIR_HOST}",
                 ],
                 "environment": ["BUILDKITE_BUILD_PATH=/var/lib/buildkite/builds"],
@@ -63,7 +68,7 @@ _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
         "automatic": [
             {
                 "exit_status": os.environ.get("BUILDKITE_RETRY_CODE", 79),
-                "limit": os.environ.get("BUILDKITE_MAX_RETRIES", 1),
+                "limit": int(os.environ.get("BUILDKITE_MAX_RETRIES") or 1),
             }
         ]
     },
@@ -79,6 +84,7 @@ def get_step_for_test_group(
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
     block_step_key: Optional[str] = None,
+    gpu_map: Optional[Dict[str, str]] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -98,6 +104,7 @@ def get_step_for_test_group(
                     priority_val=priority,
                     global_config=global_config,
                     block_step_key=block_step_key,
+                    gpu_map=gpu_map,
                 )
 
                 if not is_concurrency_limit:
@@ -122,6 +129,7 @@ def get_step(
     priority_val: int = 0,
     global_config: Optional[str] = None,
     block_step_key: Optional[str] = None,
+    gpu_map: Optional[Dict[str, str]] = None,
 ):
     env = env or {}
     step = copy.deepcopy(_DEFAULT_STEP_TEMPLATE)
@@ -143,10 +151,6 @@ def get_step(
     if smoke_test:
         cmd += ["--smoke-test"]
 
-    num_retries = test.get("run", {}).get("num_retries")
-    if num_retries:
-        step["retry"]["automatic"][0]["limit"] = num_retries
-
     step["commands"] = [" ".join(cmd)]
 
     env_to_use = test.get("env", DEFAULT_ENVIRONMENT)
@@ -161,6 +165,15 @@ def get_step(
     env_dict["ANYSCALE_PROJECT"] = get_test_project_id(test, default_project_id)
 
     step["env"].update(env_dict)
+
+    # Set after the env update above so a per-test environment cannot clobber it.
+    num_retries = test.get("run", {}).get("num_retries")
+    # An explicit 0 disables retries, so it has to be distinguished from unset.
+    if num_retries is not None:
+        step["retry"]["automatic"][0]["limit"] = num_retries
+        # Keep the in-job view of the retry budget aligned with Buildkite's, so
+        # that _is_transient_error knows which attempt is the last one.
+        step["env"]["BUILDKITE_MAX_RETRIES"] = str(num_retries)
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -201,7 +214,7 @@ def get_step(
     if test.require_custom_byod_image():
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
-        step["depends_on"] = get_prerequisite_step(image, base_image)
+        step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
 
     if block_step_key:
         if not step["depends_on"]:
