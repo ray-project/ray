@@ -916,7 +916,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         offset = actor.ema_value_target_pct5
         invscale = torch.clamp(
             (actor.ema_value_target_pct95 - actor.ema_value_target_pct5),
-            min=1e-8,
+            min=1,
         )
         scaled_value_targets_H_B = (value_targets_H_B - offset) / invscale
         scaled_value_predictions_H_B = (value_predictions_H_B - offset) / invscale
