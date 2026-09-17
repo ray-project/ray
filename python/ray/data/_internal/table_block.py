@@ -325,12 +325,13 @@ class TableBlockAccessor(BlockAccessor):
             [agg.name for agg in aggs]
         )
         keys: List[str] = sort_key.get_columns()
+        is_global_aggregation = keys is None or len(keys) == 0
 
         # An empty block holds no groups, so a keyed aggregation has nothing to
         # emit. A global aggregation still has exactly one group -- the whole
         # block -- and must emit its identity row (``count()`` of an empty
         # dataset is 0, not "no answer").
-        if self.num_rows() == 0 and keys:
+        if self.num_rows() == 0 and not is_global_aggregation:
             return self._empty_table()
 
         builder = self.builder()
