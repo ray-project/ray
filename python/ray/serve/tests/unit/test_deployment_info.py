@@ -21,7 +21,7 @@ def test_deployment_info_serialization(
     target_capacity_direction: Optional[TargetCapacityDirection],
     direct_http: bool,
 ):
-    """Checks that deploymet infos can be serialized without losing data."""
+    """Checks that deployment infos can be serialized without losing data."""
     # Mock out the runtime_context call, so Ray doesn't start.
     class MockRuntimeContext:
         def get_job_id(self) -> str:
