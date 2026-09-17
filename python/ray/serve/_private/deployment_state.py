@@ -1816,9 +1816,11 @@ class ActorReplicaWrapper:
         # Pushed health is flowing -- probe only once the newest observation we hold
         # goes stale. Anchored to when it arrived, so a slow reconcile cannot stretch
         # the window.
-        if time.time() - self._last_applied_push_received_at < _push_freshness_window_s(
-            self.health_check_period_s
-        ):
+        # A push a probe beat to this tick is still information in hand, so count it
+        # too: arming against it both wastes the probe and races the verdict it holds.
+        pending = self._pushed_health[1] if self._pushed_health is not None else 0.0
+        newest = max(self._last_applied_push_received_at, pending)
+        if time.time() - newest < _push_freshness_window_s(self.health_check_period_s):
             return False
 
         # If there's no active health check, kick off another and reset

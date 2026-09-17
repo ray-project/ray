@@ -10964,6 +10964,22 @@ class TestPushedHealthRegressions:
         assert w._last_applied_push_received_at == arrived
         assert not w._should_start_new_health_check()
 
+    def test_stashed_push_defers_a_new_probe(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        # A probe outstanding longer than the period resolves this tick, so the push
+        # that landed meanwhile cannot be consumed yet...
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time() - 20.0
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda r: None)
+        now = time.time()
+        w.record_pushed_health(now, now, False, 3)
+        w.check_health()
+        # ...but it is fresh and in hand, so no new probe is armed against it.
+        assert w._pushed_health is not None
+        assert w._health_check_ref is None
+        w._actor_handle.check_health.remote.assert_not_called()
+
     def test_registry_rejects_out_of_order_reports(self):
         r = ReplicaHealthPushRegistry()
         r.record("r1", checked_at=200.0, healthy=True)
