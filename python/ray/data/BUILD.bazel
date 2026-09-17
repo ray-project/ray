@@ -492,7 +492,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -1100,7 +1100,7 @@ py_test(
 
 py_test(
     name = "test_projection_fusion",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_projection_fusion.py"],
     tags = [
         "exclusive",
