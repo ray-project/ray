@@ -1,3 +1,4 @@
+import logging
 import pickle
 import random
 import sys
@@ -14,6 +15,7 @@ from ray.data._internal.pandas_block import (
     PandasBlockAccessor,
     PandasBlockBuilder,
     PandasBlockColumnAccessor,
+    PandasRow,
 )
 from ray.data._internal.util import is_null
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
@@ -534,6 +536,76 @@ def test_tensor_column_with_all_nan_preserves_type(ray_start_regular_shared):
     assert isinstance(
         arrow_table.schema.field("foo").type, (ArrowTensorType, ArrowTensorTypeV2)
     ), "TensorDtype column with all-NaN values should preserve tensor type"
+
+
+@pytest.fixture
+def pandas_row():
+    df = pd.DataFrame(
+        {
+            "a": np.array([1, 2, 3], dtype=np.int64),
+            "b": np.array([10.5, 20.5, 30.5], dtype=np.float64),
+        }
+    )
+    return PandasRow(df, 1)
+
+
+@pytest.mark.parametrize(
+    "key", ["missing", ["missing"], ["a", "missing"], ["missing", "a"]]
+)
+def test_pandas_row_missing_column_raises_key_error(pandas_row, key):
+    """A missing column must raise, matching ``ArrowRow`` and plain dicts."""
+    with pytest.raises(KeyError):
+        pandas_row[key]
+
+
+def test_pandas_row_get_returns_default_for_missing_column(pandas_row):
+    """``Mapping.get`` can only return the default if ``__getitem__`` raises."""
+    assert pandas_row.get("missing") is None
+    assert pandas_row.get("missing", 0) == 0
+    assert pandas_row.get("a") == 2
+
+
+def test_pandas_row_empty_key_list(pandas_row):
+    """Selecting no columns yields no values, rather than raising."""
+    assert pandas_row[[]] == ()
+
+
+def test_pandas_row_unwraps_numpy_scalars(pandas_row):
+    """Scalars come back as Python natives, as ``ArrowRow`` returns via ``as_py``."""
+    assert type(pandas_row["a"]) is int
+    assert type(pandas_row["b"]) is float
+    assert pandas_row[["a", "b"]] == (2, 20.5)
+
+
+@pytest.mark.parametrize("shape", [(1,), (1, 1), (2, 2), (2, 3, 4)])
+def test_pandas_row_tensor_column_preserves_shape(shape):
+    """Tensor values stay arrays. ``ndarray`` has ``.item()``, so unwrapping by
+    ``hasattr(v, "item")`` silently collapsed size-1 tensors to a scalar."""
+    from ray.data.extensions import TensorArray
+
+    values = np.arange(3 * int(np.prod(shape))).reshape((3,) + shape)
+    row = PandasRow(pd.DataFrame({"emb": TensorArray(values)}), 1)
+
+    value = row["emb"]
+
+    assert isinstance(value, np.ndarray)
+    assert value.shape == shape
+    np.testing.assert_array_equal(value, values[1])
+
+
+def test_pandas_row_tensor_column_does_not_log(propagate_logs, caplog):
+    """Reading a tensor value used to log a warning per lookup, with the whole
+    tensor formatted into the message."""
+    from ray.data.extensions import TensorArray
+
+    values = np.arange(3 * 4 * 4).reshape(3, 4, 4)
+    row = PandasRow(pd.DataFrame({"emb": TensorArray(values)}), 1)
+
+    with caplog.at_level(logging.WARNING, logger="ray.data._internal.pandas_block"):
+        for _ in range(10):
+            row["emb"]
+
+    assert caplog.records == []
 
 
 if __name__ == "__main__":

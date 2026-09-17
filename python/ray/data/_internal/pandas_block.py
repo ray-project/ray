@@ -210,11 +210,11 @@ class PandasRow(Mapping):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        def get_item(keys: List[str]) -> Any:
+        def get_item(keys: List[str]) -> Tuple[Any, ...]:
             items = []
             for col_name in keys:
                 if col_name not in self._batch.columns:
-                    return None
+                    raise KeyError(col_name)
                 val = self._batch[col_name].iloc[self._row_idx]
                 if isinstance(val, TensorArrayElement):
                     # Getting an item in a Pandas tensor column may return
@@ -222,23 +222,20 @@ class PandasRow(Mapping):
                     val = val.to_numpy()
                 items.append(val)
 
-            # Try to interpret this as a numpy-type value.
+            # Unwrap NumPy scalars into their native Python equivalents, so that
+            # this returns what ``ArrowRow`` returns via ``pyarrow.Scalar.as_py()``.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-            try:
-                return tuple(v.item() if hasattr(v, "item") else v for v in items)
-            except (AttributeError, ValueError) as e:
-                logger.warning(
-                    f"Failed to convert {items} to native Python types", exc_info=e
-                )
-                # Fallback to the original form.
-                return tuple(items)
+            #
+            # Only ``np.generic`` is unwrapped. ``ndarray`` also has ``.item()``,
+            # but calling it on a tensor value either drops the array's shape
+            # (size-1 arrays) or raises ``ValueError`` (anything larger), and
+            # ``ArrowRow`` returns tensor values as arrays too.
+            return tuple(v.item() if isinstance(v, np.generic) else v for v in items)
 
         is_single_item = isinstance(key, str)
         keys = [key] if is_single_item else key
         items = get_item(keys)
 
-        if items is None:
-            return None
         return items[0] if is_single_item else items
 
     def __iter__(self) -> Iterator:
