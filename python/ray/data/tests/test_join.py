@@ -1087,8 +1087,9 @@ def test_join_tables_suffix_colliding_with_existing_column(side):
 
     from ray.data._internal.execution.operators.join import join_tables
 
-    # The side carrying the suffix also already holds the suffixed name, so
-    # renaming ``value`` would duplicate it.
+    # The side carrying the suffix also already holds the suffixed name, and
+    # that name is not shared with the other side, so nothing renames it out
+    # of the way and renaming ``value`` would duplicate it.
     if side == "left":
         left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [0, 0]})
         right = pa.table({"id": [1], "value": [99]})
@@ -1132,6 +1133,40 @@ def test_join_tables_suffix_not_flagged_when_name_is_free():
         left_columns_suffix="_l",
     )
     assert joined.column_names == ["id", "value_l", "value"]
+
+
+def test_join_tables_suffix_when_occupant_is_also_renamed():
+    """An already-suffixed column is not a conflict when the same mapping
+    renames it too, since Polars applies the mapping in one step. This is the
+    shape a self-join or a chained join hits once an earlier join has left
+    suffixed columns behind."""
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    # Both ``value`` and ``value_l`` are shared non-key columns, so both sides
+    # rename both: the left mapping is {value: value_l, value_l: value_l_l}.
+    left = pa.table({"id": [1, 2], "value": [10, 20], "value_l": [1, 2]})
+    right = pa.table({"id": [1], "value": [99], "value_l": [9]})
+    joined = join_tables(
+        left,
+        right,
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix="_l",
+        right_columns_suffix="_r",
+    )
+    assert joined.column_names == [
+        "id",
+        "value_l",
+        "value_l_l",
+        "value_r",
+        "value_l_r",
+    ]
+    assert joined.to_pylist() == [
+        {"id": 1, "value_l": 10, "value_l_l": 1, "value_r": 99, "value_l_r": 9}
+    ]
 
 
 @pytest.mark.parametrize(

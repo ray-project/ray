@@ -387,6 +387,14 @@ def _validate_suffix_collision(
     on the same side. Polars reports this from deep inside the lazy plan as a
     DuplicateError naming only the result, so name the inputs here.
 
+    Only a column that keeps its name can be collided with. Polars applies a
+    rename mapping in one step, so ``value`` -> ``value{suffix}`` is fine when
+    ``value{suffix}`` -> ``value{suffix}{suffix}`` moves the occupant aside in
+    the same mapping -- the shape a self-join or a chained join produces once
+    an earlier join has already left suffixed columns behind. Two renamed
+    columns can never collide with each other either, since appending one
+    suffix to distinct names keeps them distinct.
+
     Args:
         side: ``"left"`` or ``"right"``, used in the error message.
         suffix: The suffix to apply, or None to skip the check.
@@ -396,8 +404,9 @@ def _validate_suffix_collision(
     if not suffix:
         return
 
+    unmoved_col_names = side_col_names - renamed_col_names
     conflicting = sorted(
-        f"{c}{suffix}" for c in renamed_col_names if f"{c}{suffix}" in side_col_names
+        f"{c}{suffix}" for c in renamed_col_names if f"{c}{suffix}" in unmoved_col_names
     )
     if conflicting:
         raise ValueError(
