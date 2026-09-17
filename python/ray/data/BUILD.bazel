@@ -42,7 +42,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
-    files = glob(["_internal/datasource_v2/tests/test_*.py"]),
+    files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",
         "team:data",
@@ -53,9 +53,10 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
+py_test(
+    name = "test_read_files_logical",
     size = "small",
-    files = glob(["_internal/logical/operators/tests/test_*.py"]),
+    srcs = ["tests/test_read_files_logical.py"],
     tags = [
         "exclusive",
         "team:data",
