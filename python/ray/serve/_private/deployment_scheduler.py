@@ -391,6 +391,28 @@ def _flatten(
     }
 
 
+GiB = 2**30
+
+
+def _compaction_node_size(total_resources: Dict[str, float]) -> AvailableNodeResources:
+    """Reduce a node's total resources to what tells node sizes apart.
+
+    Every node carries its own `node:<ip>` label, and `memory` and
+    `object_store_memory` are sized from the memory free when the raylet started,
+    so two nodes of the same type never compare equal on raw totals. Drop the
+    label and the object store, and round memory to whole GiB, so same sized
+    nodes tie and the fewest migrations tie break gets a say.
+    """
+    size = {
+        k: v
+        for k, v in total_resources.items()
+        if not k.startswith("node:") and k != "object_store_memory"
+    }
+    if "memory" in size:
+        size["memory"] = round(size["memory"] / GiB) * GiB
+    return AvailableNodeResources(size)
+
+
 class DeploymentScheduler:
     """A centralized scheduler for all Serve deployments.
 
@@ -1634,12 +1656,8 @@ class DeploymentScheduler:
     def _find_best_node_to_compact(self) -> Optional[str]:
         node_to_running_replicas = self._get_node_to_running_replicas()
         available_resources_per_node = self._get_available_resources_per_node()
-        # Drop the per node `node:<ip>` labels, or no two nodes ever compare
-        # equal and the fewest migrations tie break never applies.
         total_resources_per_node = {
-            node_id: AvailableNodeResources(
-                {k: v for k, v in resources.items() if not k.startswith("node:")}
-            )
+            node_id: _compaction_node_size(resources)
             for node_id, resources in (
                 self._cluster_node_info_cache.get_total_resources_per_node().items()
             )

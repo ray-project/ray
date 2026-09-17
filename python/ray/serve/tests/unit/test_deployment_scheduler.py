@@ -3030,13 +3030,33 @@ def test_fruitless_scan_waits_before_rescanning():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-def test_tie_break_ignores_node_labels():
+def test_tie_break_ignores_node_labels_and_memory_jitter():
     small_id = DeploymentID(name="small")
     big_id = DeploymentID(name="big")
     cluster_node_info_cache = MockClusterNodeInfoCache()
-    # Same size nodes, told apart only by their node:<ip> label resource.
-    cluster_node_info_cache.add_node("node1", {"CPU": 3, "node:10.0.0.1": 1})
-    cluster_node_info_cache.add_node("node2", {"CPU": 3, "node:10.0.0.2": 1})
+    # Same type nodes. They differ only by their node:<ip> label and by the
+    # few MB of memory and object store jitter Ray sizes at raylet start.
+    # node2 has slightly more memory, so raw totals would call it larger.
+    GiB = 2**30
+    MiB = 2**20
+    cluster_node_info_cache.add_node(
+        "node1",
+        {
+            "CPU": 3,
+            "memory": 8 * GiB - 5 * MiB,
+            "object_store_memory": 2 * GiB - 3 * MiB,
+            "node:10.0.0.1": 1,
+        },
+    )
+    cluster_node_info_cache.add_node(
+        "node2",
+        {
+            "CPU": 3,
+            "memory": 8 * GiB + 3 * MiB,
+            "object_store_memory": 2 * GiB + 7 * MiB,
+            "node:10.0.0.2": 1,
+        },
+    )
     cluster_node_info_cache.add_node("node3", {"CPU": 8, "node:10.0.0.3": 1})
     scheduler = _compaction_scheduler(cluster_node_info_cache)
 
