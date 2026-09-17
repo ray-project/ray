@@ -244,26 +244,30 @@ doc/redirects/README.md:
 
 # === Prose skipped repo-wide ===
 # Markdown and reStructuredText outside doc/ -- package READMEs, design notes,
-# CONTRIBUTING/SECURITY, and agent files -- are prose and cannot change tested
-# code, so the two global *.md/*.rst patterns skip them. Before that rule each
-# of these matched the directory rule of the tree it sits in, so a content-only
-# edit fanned out to that library's whole suite (rllib/README.rst alone pulled
-# in the rllib component tests).
+# CONTRIBUTING/SECURITY, agent files -- are prose and cannot change tested code,
+# so the two global *.md/*.rst patterns skip them. A prose file next to source,
+# such as rllib/README.rst, used to match that tree's directory rule and fan a
+# content-only edit out to the whole library suite (rllib/README.rst alone
+# pulled in the rllib component tests); release/*.md emitted `tools`. The global
+# rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
+# entries and the release/*.md route, which were removed as dead code.
 rllib/README.rst:
 rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
 python/ray/tune/README.rst:
 src/ray/design_docs/task_states.rst:
+release/benchmarks/README.md:
 AGENTS.md:
 README.rst:
 CONTRIBUTING.rst:
 SECURITY.md:
-# Guard: source and tests beside a skipped README still route to their library.
-# The skip is prose-only and must not swallow a real code change in the same
-# directory. If either of these starts emitting nothing, the global prose
-# pattern has grown too broad.
+# Guard: source, tests, and config beside a skipped README still route to their
+# owner. The skip is prose-only and must not swallow a real change in the same
+# directory. If any of these starts emitting nothing, the global prose pattern
+# has grown too broad.
 rllib/algorithms/ppo/ppo.py: rllib rllib_gpu rllib_directly
 python/ray/data/read_api.py: data
+release/benchmarks/config.yaml: tools
 
 # === Release ===
 

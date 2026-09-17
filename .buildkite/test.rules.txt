@@ -519,7 +519,7 @@ doc/external/
 # the Read the Docs `-W` build, which runs outside tag selection; `doc` is what
 # gives the postmerge documentation build coverage here.
 #
-# README.md is already skipped by the `doc/*.md` prose rule further up, so this
+# README.md is already skipped by the `*.md` prose rule further up, so this
 # rule only ever sees the snapshots and the script.
 doc/source/_intersphinx/
 @ doc
@@ -566,7 +566,6 @@ ci/docker/doctest.build.wanda.yaml
 
 release/ray_release/
 release/requirements_*
-release/*.md
 release/*.yaml
 @ tools
 ;
@@ -717,9 +716,6 @@ src/
 ;
 
 .github/
-README.rst
-SECURITY.md
-CONTRIBUTING.rst
 LICENSE
 pylintrc
 setup_hooks.sh
