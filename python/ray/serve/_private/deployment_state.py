@@ -1794,7 +1794,8 @@ class ActorReplicaWrapper:
         checked_at is replica-clock (ordering and dedupe only); received_at is
         controller-clock, used for freshness so replica skew cannot widen it.
         """
-        if checked_at > self._last_consumed_push_ts:
+        stashed = self._pushed_health[0] if self._pushed_health is not None else 0.0
+        if checked_at > max(self._last_consumed_push_ts, stashed):
             self._pushed_health = (
                 checked_at,
                 received_at,
@@ -1912,6 +1913,8 @@ class ActorReplicaWrapper:
             # the older observation. ACTOR_CRASHED is exempt: a crash is
             # authoritative and a dead replica pushes nothing.
             response = ReplicaHealthCheckResponse.NONE
+            # Keep the latency sample -- the probe really did take that long -- but
+            # not the failure: the counter tracks what the controller acted on.
             self._last_health_check_failed = None
         if response is not ReplicaHealthCheckResponse.NONE:
             # Watermark by when this probe started: a push that arrived before that
