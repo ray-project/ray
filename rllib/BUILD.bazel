@@ -2682,8 +2682,6 @@ py_test(
 
 py_test(
     name = "test_offline_env_runner",
-    # "small" (60s) is too tight: the suite samples and writes/reads three
-    # datasets and regularly ran over the limit on loaded CI machines.
     size = "medium",
     srcs = ["offline/tests/test_offline_env_runner.py"],
     tags = [
