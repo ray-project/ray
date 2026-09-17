@@ -3558,6 +3558,7 @@ class TestApplicationLevelAutoscaling:
                 deployment_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
+                None,
             )
             app_state.update()
 
@@ -3615,6 +3616,7 @@ class TestApplicationLevelAutoscaling:
                     deployment_infos,
                     BuildAppStatus.SUCCEEDED,
                     "",
+                    None,
                 )
                 app_state.update()
 
@@ -5014,3 +5016,130 @@ class TestDeploymentDAG:
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+class TestConfigOverridesFromBuild:
+    """Removing config overrides restores code defaults, including after recovery."""
+
+    SPARSE = ServeApplicationSchema(
+        name="test_app", import_path="fa.ke", route_prefix="/"
+    )
+
+    @staticmethod
+    def _build(app_state_manager, check_obj_ref_ready_nowait):
+        app_state_manager.apply_app_configs([TestConfigOverridesFromBuild.SPARSE])
+        app_state = app_state_manager._application_states["test_app"]
+        check_obj_ref_ready_nowait.return_value = True
+        app_state.update()
+        assert app_state._target_state.build is not None
+        return app_state
+
+    @staticmethod
+    def _with_overrides(**deployment_overrides):
+        return ServeApplicationSchema(
+            name="test_app",
+            import_path="fa.ke",
+            route_prefix="/",
+            deployments=[{"name": "a", **deployment_overrides}],
+        )
+
+    @staticmethod
+    def _num_replicas(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].deployment_config.num_replicas
+
+    @staticmethod
+    def _actor_options(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].replica_config.ray_actor_options
+
+    @staticmethod
+    def _recover(kv_store):
+        new_app_state_manager = ApplicationStateManager(
+            MockDeploymentStateManager(kv_store),
+            AutoscalingStateManager(),
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+        return new_app_state_manager._application_states["test_app"]
+
+    def test_removed_override_returns_to_code_defined_value(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+        app_state.apply_app_config(
+            self._with_overrides(
+                num_replicas=5,
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}},
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert app_state._target_state.build is not None
+        assert self._num_replicas(app_state) == 5
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        app_state.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+    def test_sparse_rollback_after_controller_restart(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        app_state.apply_app_config(
+            self._with_overrides(
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}}
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+        app_state_manager.save_checkpoint()
+
+        recovered = self._recover(kv_store)
+        assert recovered._target_state.build is not None
+        assert self._actor_options(recovered)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert "runtime_env" not in self._actor_options(recovered)
+        assert self._num_replicas(recovered) == 1
+
+    def test_checkpoint_without_a_build_rebuilds_on_the_next_config(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        app_state.apply_app_config(
+            self._with_overrides(num_replicas=5), None, None, deployment_time=1.0
+        )
+        app_state._target_state.build = None
+        app_state_manager.save_checkpoint()
+
+        recovered = self._recover(kv_store)
+        assert recovered._target_state.build is None
+        recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        # Wait for the rebuild before setting target deployments.
+        assert recovered._target_state.deployment_infos is None
+        recovered.update()
+        assert recovered._target_state.build is not None
+        assert self._num_replicas(recovered) == 1
