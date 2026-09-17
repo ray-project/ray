@@ -11,8 +11,9 @@ from ray_release.command_runner._anyscale_job_wrapper import (
     main,
     run_bash_command,
     run_obj_store_util_check,
-    run_oom_check,
+    run_ray_oom_kill_check,
     run_spilling_check,
+    run_unexpected_worker_failure_check,
 )
 
 cloud_storage_kwargs = dict(
@@ -261,23 +262,17 @@ _PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE = {
 }
 
 
-def test_run_oom_check_ignores_idle_worker_kills(tmpdir, caplog):
+def test_run_ray_oom_kill_check_ignores_idle_worker_kills(tmpdir, caplog):
     metrics_path = str(tmpdir / "metrics.json")
     with open(metrics_path, "w") as f:
-        json.dump(
-            {
-                "worker_oom_kills": [_PROM_IDLE_WORKER_OOM_SAMPLE],
-                "unexpected_worker_failures": [],
-            },
-            f,
-        )
+        json.dump({"worker_oom_kills": [_PROM_IDLE_WORKER_OOM_SAMPLE]}, f)
 
     with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
-        assert run_oom_check() == 0
+        assert run_ray_oom_kill_check() == 0
     assert caplog.records == []
 
 
-def test_run_oom_check_summarizes_metric_series(tmpdir, caplog):
+def test_run_ray_oom_kill_check_summarizes_metric_series(tmpdir, caplog):
     metrics_path = str(tmpdir / "metrics.json")
     with open(metrics_path, "w") as f:
         json.dump(
@@ -285,18 +280,30 @@ def test_run_oom_check_summarizes_metric_series(tmpdir, caplog):
                 "worker_oom_kills": [
                     _PROM_TASK_OOM_SAMPLE,
                     _PROM_IDLE_WORKER_OOM_SAMPLE,
-                ],
-                "unexpected_worker_failures": [_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE],
+                ]
             },
             f,
         )
 
     with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
-        assert run_oom_check() == 1
+        assert run_ray_oom_kill_check() == 1
     assert [record.getMessage() for record in caplog.records] == [
         "Test failed: OOM worker kills detected. "
         "Latest cumulative counter values by metric:\n"
         "  - ReadFiles (MemoryManager.TaskEviction.Total): 4",
+    ]
+
+
+def test_run_unexpected_worker_failure_check_summarizes_metric_series(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {"unexpected_worker_failures": [_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE]}, f
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_unexpected_worker_failure_check() == 1
+    assert [record.getMessage() for record in caplog.records] == [
         "Test failed: Unexpected worker failures detected "
         "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
         "Latest cumulative counter values by metric:\n"
