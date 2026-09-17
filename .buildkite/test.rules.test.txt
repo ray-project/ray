@@ -251,6 +251,10 @@ doc/redirects/README.md:
 # pulled in the rllib component tests); release/*.md emitted `tools`. The global
 # rule also subsumes the standalone README.rst/SECURITY.md/CONTRIBUTING.rst skip
 # entries and the release/*.md route, which were removed as dead code.
+# TODO: RLlib currently lives at the repo-root rllib/ tree. When it migrates
+# under python/ray/rllib/, update the rllib/ paths in this section (the two
+# READMEs here and the rllib/algorithms/ppo/ppo.py guard below) along with the
+# rllib/ entry in test.rules.txt.
 rllib/README.rst:
 rllib/algorithms/ppo/README.md:
 python/ray/data/tests/unit/README.md:
