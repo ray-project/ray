@@ -40,7 +40,7 @@ as {ref}`DeepMind's OpenSpiel API <deepmind-openspiel-api>`.
 :::
 
 The {py:class}`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API of RLlib closely follows the
-conventions and APIs of [Farama's gymnasium (single-agent)](gymnasium.farama.org) envs and even subclasses
+conventions and APIs of [Farama's gymnasium (single-agent)](https://gymnasium.farama.org) envs and even subclasses
 from `gymnasium.Env`, however, instead of publishing individual observations, rewards, and termination/truncation flags
 from `reset()` and `step()`, a custom {py:class}`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation
 outputs separate dictionaries for observations, rewards, etc., where each dictionary maps agent IDs to the corresponding values for each agent.
