@@ -1256,6 +1256,47 @@
       --num-array-cols 400
       --blocks-per-worker 4
 
+# Production-shape read_parquet -> map_batches pipeline: 140-column mixed
+# schema (scalar float32/int64 + list<float32>), 2000 input files, and a
+# 400-task concurrency cap with batch_format="pyarrow". Reproduces the
+# scheduling-loop bottleneck seen in an ML feature transform workload; the
+# headline metric is the map operator's average_task_scheduling_time_s.
+- name: scheduling_loop_wide_schema
+  python: "3.10"
+  frequency: weekly
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      runtime_env:
+        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than
+        # extending it, so the guards are re-listed here.
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
+        # The V2 parquet reader bin-packs row groups into ~128 MiB read
+        # units and treats override_num_blocks as a hint. Production ran one
+        # read task per file (2000 tasks); a 1-byte bin forces the same
+        # one-file-per-task shape, which is what drives the scheduling-loop
+        # load being measured.
+        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1
+    # 100 x m5.2xlarge = 800 vCPU: room for the 400 concurrent map tasks
+    # plus read tasks.
+    cluster_compute: "fixed_size_100_cpu_compute.yaml"
+
+  run:
+    timeout: 3600
+    # PYSPY_ENABLED=1 -> driver-side py-spy speedscope is recorded by the
+    # profiling coordinator and uploaded to PROFILING_S3_BUCKET.
+    script: >
+      PYSPY_ENABLED=1
+      python scheduling_loop_benchmark.py
+      --num-files 2000
+      --rows-per-file 1200
+      --batch-size 1000
+      --concurrency 400
+      --num-cpus 1
+
 
 ######################
 # Backpressure tests
