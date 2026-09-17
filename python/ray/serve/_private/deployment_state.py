@@ -3537,7 +3537,8 @@ class DeploymentState:
             return True
 
         running_replica_infos = self.get_running_replica_infos()
-        is_available = not self._terminally_failed()
+        # Keep routing to surviving replicas after a rolling update fails.
+        is_available = not self._terminally_failed() or len(running_replica_infos) > 0
 
         running_set_changed = set(self._last_broadcasted_running_replica_infos) != set(
             running_replica_infos

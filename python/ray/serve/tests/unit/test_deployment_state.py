@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    DeploymentTargetInfo,
     GangReservationResult,
     HandleMetricReport,
     ReplicaID,
@@ -2644,6 +2645,80 @@ def test_deploy_with_consistent_constructor_failure(
         assert ds._replica_constructor_retry_counter == 4
         check_counts(ds, total=0)
         timer.advance(10)  # simulate time passing between each call to update
+
+    # A fresh deploy with no running replica is broadcast as unavailable.
+    assert _last_broadcast_target_info(ds).is_available is False
+
+
+def _last_broadcast_target_info(ds: DeploymentState) -> DeploymentTargetInfo:
+    key = (LongPollNamespace.DEPLOYMENT_TARGETS, TEST_DEPLOYMENT_ID)
+    for call in reversed(ds._long_poll_host.notify_changed.call_args_list):
+        if key in call[0][0]:
+            return call[0][0][key]
+    raise AssertionError("DEPLOYMENT_TARGETS was never broadcast")
+
+
+def test_terminally_failed_rolling_update_keeps_old_replicas_available(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
+    """A failed update must not make surviving old replicas unavailable to routers."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(num_replicas=2, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert _last_broadcast_target_info(ds).is_available is True
+
+    # Rolling update, one replica at a time: one old replica is stopped and
+    # one replica of the new version is started.
+    info_2, v2 = deployment_info(num_replicas=2, version="2")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    check_counts(
+        ds,
+        total=3,
+        by_state=[
+            (ReplicaState.RUNNING, 1, v1),
+            (ReplicaState.STOPPING, 1, v1),
+            (ReplicaState.STARTING, 1, v2),
+        ],
+    )
+    ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+    # The new version fails until the startup threshold is reached.
+    threshold = 2 * mock_max_per_replica_retry_count
+    for _ in range(threshold):
+        new_replica = ds._replicas.get(states=[ReplicaState.STARTING])[0]
+        assert new_replica.version == v2
+        new_replica._actor.set_failed_to_start()
+        dsm.update()
+        new_replica._actor.set_done_stopping()
+        dsm.update()
+
+    assert ds._replica_constructor_retry_counter == threshold
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert (
+        ds.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+    )
+    assert ds._terminally_failed()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # The surviving old replica keeps serving.
+    target_info = _last_broadcast_target_info(ds)
+    assert target_info.is_available is True
+    assert len(target_info.running_replicas) == 1
+    for _ in range(5):
+        dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert ds._last_broadcasted_availability is True
 
 
 def test_deploy_with_partial_constructor_failure(
