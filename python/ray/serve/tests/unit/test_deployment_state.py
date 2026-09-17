@@ -9343,6 +9343,26 @@ class TestGangRollingUpdate:
         dsm.update()
         self._finish_starting(ds)
 
+    def test_gang_pg_kept_while_a_replica_is_recovering(
+        self, mock_deployment_state_manager
+    ):
+        """A recovering replica has not re-registered its gang membership yet, so
+        an empty member set is not proof the gang is gone."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        ds._replicas.add(ReplicaState.RECOVERING, replica())
+
+        for r in stopping:
+            ds._unregister_gang_replica(r.replica_id, r)
+        assert all(r._actor.remove_placement_group_counter == 0 for r in stopping)
+
     def test_gang_pg_removed_only_after_last_member_stops(
         self, mock_deployment_state_manager
     ):

@@ -4797,9 +4797,11 @@ class DeploymentState:
                 members.discard(replica_id)
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
-                    # Don't clean up the associated gang PG until we're the
-                    # last replica in the gang.
-                    replica.remove_placement_group()
+                    # Don't clean up the associated gang PG until we're the last
+                    # replica in the gang. Membership re-registers only once a
+                    # replica finishes recovering, so skip while any is RECOVERING.
+                    if self._replicas.count(states=[ReplicaState.RECOVERING]) == 0:
+                        replica.remove_placement_group()
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
