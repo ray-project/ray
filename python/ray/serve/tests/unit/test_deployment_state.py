@@ -10805,6 +10805,14 @@ class TestPushedHealth:
         assert w._healthy is False
         assert w._consecutive_health_check_failures == threshold
 
+    def test_stash_keeps_the_newest_of_two_pushes(self):
+        w = self._wrapper()
+        now = time.time()
+        w.record_pushed_health(now, now, False, 5)
+        w.record_pushed_health(now - 1.0, now - 1.0, True)  # delayed older push
+        w.check_health()
+        assert w._consecutive_health_check_failures == 5
+
     def test_push_deduped_by_timestamp(self):
         w = self._wrapper()
         ts = time.time()
