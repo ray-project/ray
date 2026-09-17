@@ -132,6 +132,9 @@ class GcsServer {
   bool IsLeader() const { return is_leader_.load(); }
 
   /// Promote this GCS from passive to active.
+  ///
+  /// Must be called on the default io context, which is single threaded and therefore
+  /// serializes this against every other control-plane task.
   void PromoteToLeader();
 
   /// Retrieve cluster ID
@@ -399,8 +402,10 @@ class GcsServer {
   /// up in a later PR).
   std::atomic<bool> is_leader_;
   /// Whether PromoteToLeader() has begun loading the GCS tables. Closes the window
-  /// where is_leader_ is still false but a promotion is already in flight. Default io
-  /// context only, like PromoteToLeader() itself.
+  /// where is_leader_ is still false but a promotion is already in flight. Unlike the
+  /// flags above it is touched only by PromoteToLeader(), which is pinned to the default
+  /// io context, so a plain bool is correct; making it atomic would imply the rest of
+  /// that function is safe to call from another thread, and it is not.
   bool promotion_started_ = false;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
