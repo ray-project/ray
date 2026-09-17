@@ -378,6 +378,7 @@ py_test_module_list(
 # assertion is unreachable under the collect-on-handle default.
 py_test_module_list(
     size = "medium",
+    timeout = "long",
     args = [
         "-k",
         "test_num_replicas_auto_basic",

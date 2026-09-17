@@ -1,19 +1,26 @@
-"""Test fixture: a deployment whose constructor fails on demand.
+"""Serve fixture with optional startup and health check failures.
 
-The failure is switched on either by the app builder argument ``fail`` (a
-rebuild-class change) or by the ``FAIL_ON_INIT`` environment variable set through
-``ray_actor_options.runtime_env`` (a replica-restart-class change).
+Set the builder argument fail or the environment variable FAIL_ON_INIT=1
+to fail the constructor. FAIL_HEALTH_CHECK=1 lets the replica start, then
+fails subsequent health checks. A fixed max_constructor_retry_count keeps
+the failure threshold independent of the replica count.
 """
 import os
 
 from ray import serve
 
 
-@serve.deployment
+@serve.deployment(max_constructor_retry_count=3)
 class FailOnFlag:
     def __init__(self, fail: bool):
         if fail or os.environ.get("FAIL_ON_INIT") == "1":
             raise RuntimeError("constructor failure requested by the test")
+        self._health_checks = 0
+
+    def check_health(self):
+        self._health_checks += 1
+        if self._health_checks > 1 and os.environ.get("FAIL_HEALTH_CHECK") == "1":
+            raise RuntimeError("health check failure requested by the test")
 
     def __call__(self, *args):
         return "ok"
