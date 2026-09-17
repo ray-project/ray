@@ -47,7 +47,7 @@ aiobotocore==2.8.0
     # via
     #   aioboto3
     #   s3fs
-aiofiles==24.1.0
+aiofiles==25.1.0
     # via aim
 aiohappyeyeballs==2.6.1
     # via aiohttp
@@ -310,7 +310,7 @@ charset-normalizer==3.4.7
     #   snowflake-connector-python
 clang-format==12.0.1
     # via -r python/requirements/lint-requirements.txt
-click==8.3.2
+click==8.5.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -735,11 +735,16 @@ grpcio==1.75.0 ; python_version < "3.14"
     #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
+grpcio-reflection==1.71.2 ; python_version < "3.12"
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
 grpcio-status==1.71.2 ; python_version < "3.12"
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1140,7 +1145,7 @@ monotonic==1.6
     #   segment-analytics-python
 moocore==0.2.0
     # via pymoo
-more-itertools==11.0.2
+more-itertools==11.1.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
@@ -1463,7 +1468,7 @@ ormsgpack==1.12.2
     #   -r python/requirements/ml/rllib-requirements.txt
 overrides==7.7.0
     # via jupyter-server
-packaging==26.1
+packaging==25.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1640,6 +1645,7 @@ protobuf==5.27.5 ; python_version < "3.12"
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   mlflow-skinny
@@ -1687,7 +1693,7 @@ py-deviceid==0.1.1
     # via azure-cli-core
 py-partiql-parser==0.6.3
     # via moto
-py-spy==0.4.1 ; python_version < "3.12"
+py-spy==0.4.2 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
@@ -2047,7 +2053,7 @@ responses==0.26.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   moto
-restrictedpython==8.1
+restrictedpython==8.5
     # via aim
 retry-decorator==1.1.1
     # via
@@ -2158,7 +2164,7 @@ sentry-sdk==2.58.0
     # via
     #   comet-ml
     #   wandb
-serpent==1.42
+serpent==1.43
     # via
     #   hpbandster
     #   pyro4
@@ -2618,7 +2624,7 @@ virtualenv==21.2.4
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
-wandb==0.26.0
+wandb==0.24.2
     # via -r python/requirements/ml/core-requirements.txt
 watchfiles==0.19.0
     # via

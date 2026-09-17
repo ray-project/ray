@@ -323,6 +323,19 @@ def _metric_unavailable(check_name: str, metrics: dict, key: str) -> bool:
     return False
 
 
+def _summarize_metric_series(series_list: list[PrometheusSeries]) -> str:
+    """Summarize each series by its latest value, omitting raw samples."""
+    summaries = []
+    for series in series_list:
+        labels = series.get("metric", {})
+        values = series.get("values", [])
+        name = labels.get("Name", "unknown")
+        metric_type = labels.get("Type", "unknown")
+        final_value = values[-1][1] if values else "unknown"
+        summaries.append(f"  - {name} ({metric_type}): {final_value}")
+    return "\n".join(summaries)
+
+
 def run_ray_oom_kill_check():
     """Fail if Ray's memory monitor evicted any workers."""
     check_name = "Ray OOM kill check"
@@ -336,7 +349,9 @@ def run_ray_oom_kill_check():
     worker_oom_kills = _filter_idle_worker_kills(metrics["worker_oom_kills"])
     if worker_oom_kills:
         logger.error(
-            f"Test failed: OOM worker kills detected. Details: {worker_oom_kills}"
+            "Test failed: OOM worker kills detected. "
+            "Latest cumulative counter values by metric:\n"
+            f"{_summarize_metric_series(worker_oom_kills)}"
         )
         return 1
     return 0
@@ -371,7 +386,8 @@ def run_unexpected_worker_failure_check():
         logger.error(
             "Test failed: Unexpected worker failures detected "
             "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
-            f"Details: {metrics['unexpected_worker_failures']}"
+            "Latest cumulative counter values by metric:\n"
+            f"{_summarize_metric_series(metrics['unexpected_worker_failures'])}"
         )
         return 1
     return 0
