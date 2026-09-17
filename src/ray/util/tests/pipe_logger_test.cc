@@ -177,7 +177,7 @@ TEST(PipeLoggerTest, RedirectionWithLeakedChild) {
       [handle = std::move(stream_redirection_handle)]() mutable { handle.Close(); });
   // Close() returns once the drain timeout expires instead of blocking on the
   // child forever.
-  ASSERT_EQ(close_result.wait_for(std::chrono::seconds(5)), std::future_status::ready);
+  EXPECT_EQ(close_result.wait_for(std::chrono::seconds(5)), std::future_status::ready);
 
   kill(child, SIGKILL);
   int status = 0;
