@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -6,10 +7,14 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
     _find_valid_parent_topologies,
+    get_tpu_num_slices_for_workers,
+    get_tpu_worker_resources,
 )
 
 
@@ -2708,6 +2713,64 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
+
+
+def test_tpu_resource_and_label_spec_resolution_with_visible_chips(monkeypatch):
+    """A GKE injected chip mask must not halve the capacity of a dual-device node.
+
+    GKE presets TPU_VISIBLE_CHIPS to the node's 4 physical chips while the node
+    enumerates 8 logical devices, so comparing the two directly clamps the node
+    to 4 TPUs and an explicit --resources='{"TPU": 8}' fails outright.
+    """
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,2,3")
+    monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    monkeypatch.setattr(
+        TPUAcceleratorManager, "get_current_node_num_accelerators", lambda: 8
+    )
+
+    # Default host-level accounting: one TPU resource per physical chip.
+    spec_default = ResourceAndLabelSpec()
+    spec_default.resolve(is_head=False)
+    assert spec_default.to_resource_dict()["TPU"] == 4
+
+    # Opt-in per-device accounting: the mask expands to all 8 logical devices.
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    spec_opt_in = ResourceAndLabelSpec()
+    spec_opt_in.resolve(is_head=False)
+    assert spec_opt_in.to_resource_dict()["TPU"] == 8
+
+    spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
+    spec_override.resolve(is_head=False)
+    assert spec_override.to_resource_dict()["TPU"] == 8
+
+    # A task holding half the node narrows the mask to the chips it owns.
+    # patch.dict restores the bounds the setter writes alongside the mask.
+    with patch.dict("os.environ", {}):
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+            ["0", "1", "2", "3"]
+        )
+        assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0,1"
+
+
+def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
+    """util.tpu reads RAY_TPU_RESOURCE_PER_CHIP through the shared accessor.
+
+    Every call site used to parse the variable itself, so "0" silently produced
+    zero TPU resources per slice instead of being rejected.
+    """
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    # "2x2x1" is a single 4 chip host, so a worker takes all 8 logical devices.
+    assert get_tpu_worker_resources("2x2x1", "v7x")[1]["TPU"] == 8
+    assert (
+        get_tpu_num_slices_for_workers(
+            "2x2x1", "v7x", num_workers=8, resources_per_worker={"TPU": 1}
+        )
+        == 1
+    )
+
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "0")
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        get_tpu_worker_resources("2x2x1", "v7x")
 
 
 if __name__ == "__main__":

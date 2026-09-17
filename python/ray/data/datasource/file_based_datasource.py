@@ -497,9 +497,14 @@ def _add_partitions_to_table(
     for field, value in partitions.items():
         column = pa.array([value] * len(table))
         if field in column_names:
-            # TODO: Handle cast error.
             column_type = table.schema.field(field).type
-            column = column.cast(column_type)
+            try:
+                column = column.cast(column_type)
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
+                raise ValueError(
+                    f"Partition value {value!r} for field {field!r} cannot be cast "
+                    f"to target type {column_type}."
+                ) from e
 
             values_are_equal = pc.all(pc.equal(column, table[field]))
             values_are_equal = values_are_equal.as_py()
