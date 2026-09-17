@@ -890,6 +890,36 @@ def test_reconfigure_rejects_bad_exporter_import_path(ray_shutdown):
     serve.shutdown()
 
 
+def test_serve_tracing_config_checkpoint_cleared_on_shutdown(ray_shutdown):
+    """A runtime tracing change does not leak across serve.shutdown().
+
+    A runtime `reconfigure` checkpoints the config so it survives controller
+    recovery; shutdown must then delete that checkpoint, so a fresh
+    serve.start() in the same cluster is not shadowed by the previous run's
+    config. Regression coverage for #65437 review (the delete had no test).
+    """
+    serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.25))
+    client = _get_global_client()
+    # A runtime change writes the checkpoint (the initial config is not
+    # checkpointed).
+    ray.get(
+        client._controller.reconfigure_global_tracing_config.remote(
+            TracingConfig(enabled=True, sampling_ratio=0.5)
+        )
+    )
+    assert ray.get(client._controller.get_tracing_config.remote()).sampling_ratio == 0.5
+    serve.shutdown()
+
+    # The checkpoint was deleted on shutdown, so the new config wins rather than
+    # the stale 0.5 from the previous run.
+    serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.75))
+    client = _get_global_client()
+    assert (
+        ray.get(client._controller.get_tracing_config.remote()).sampling_ratio == 0.75
+    )
+    serve.shutdown()
+
+
 @pytest.mark.parametrize(
     "controller_options",
     [

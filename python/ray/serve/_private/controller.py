@@ -212,28 +212,19 @@ class ServeController:
             global_logging_config = pickle.loads(log_config_checkpoint)
         self.reconfigure_global_logging_config(global_logging_config)
 
-        # Tracing config: a checkpointed config takes precedence over the one
-        # passed in the constructor. Defaults to an env-var-sourced
-        # TracingConfig so it is never None (single source of truth for
-        # setup_tracing).
+        # Tracing config: a checkpointed config (persisted only for a runtime
+        # change via `serve deploy`) takes precedence over the constructor arg.
+        # Apply it, but do NOT checkpoint it here: Ray replays the constructor
+        # arg on restart, so persisting the initial config buys nothing and
+        # would let a controller killed without shutdown() shadow a later
+        # serve.start(tracing_config=...). Only runtime changes are
+        # checkpointed (see reconfigure_global_tracing_config).
         tracing_config_checkpoint = self.kv_store.get(TRACING_CONFIG_CHECKPOINT_KEY)
         if tracing_config_checkpoint is not None:
             global_tracing_config = pickle.loads(tracing_config_checkpoint)
-        self.global_tracing_config: TracingConfig = _coerce_tracing_config(
-            global_tracing_config
+        self._apply_global_tracing_config(
+            _coerce_tracing_config(global_tracing_config), checkpoint=False
         )
-        if tracing_config_checkpoint is None:
-            self.kv_store.put(
-                TRACING_CONFIG_CHECKPOINT_KEY, pickle.dumps(self.global_tracing_config)
-            )
-        # Publish the initial snapshot so proxies receive it on their first poll.
-        self.long_poll_host.notify_changed(
-            {LongPollNamespace.GLOBAL_TRACING_CONFIG: self.global_tracing_config}
-        )
-        # The tracing config's fields are resolved here (from the checkpoint or
-        # the RAY_SERVE_TRACING_* env vars read controller-side), so log it:
-        # this is the only place the effective, cluster-wide config is visible.
-        logger.info(f"Global tracing config: {self.global_tracing_config}.")
 
         configure_component_memory_profiler(
             component_name="controller", component_id=str(os.getpid())
@@ -393,34 +384,46 @@ class ServeController:
         """Return the global tracing config."""
         return self.global_tracing_config
 
+    def _apply_global_tracing_config(
+        self, global_tracing_config: TracingConfig, *, checkpoint: bool
+    ):
+        """Store, optionally checkpoint, broadcast, and log the tracing config.
+
+        ``global_tracing_config`` must already be coerced. ``checkpoint``
+        persists it so a *runtime* change survives controller recovery; the
+        initial config from the constructor is applied without a checkpoint,
+        since Ray replays the constructor arg on restart. The resolved config
+        is logged because env vars are read controller-side, so this is the
+        only place the effective, cluster-wide config is visible.
+        """
+        self.global_tracing_config = global_tracing_config
+        if checkpoint:
+            self.kv_store.put(
+                TRACING_CONFIG_CHECKPOINT_KEY, pickle.dumps(global_tracing_config)
+            )
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.GLOBAL_TRACING_CONFIG: global_tracing_config}
+        )
+        logger.info(f"Global tracing config: {global_tracing_config}.")
+
     def reconfigure_global_tracing_config(
         self, global_tracing_config: Union[Dict, TracingConfig]
     ):
-        """Apply a new global tracing config: checkpoint it and broadcast it.
+        """Apply a new global tracing config at runtime: checkpoint and broadcast.
 
-        The config is validated/coerced here because it is broadcast to every
-        proxy, which would otherwise fail on a malformed payload.
+        Coerced/validated here because it is broadcast to every proxy (which
+        would otherwise fail on a malformed payload), and the exporter path is
+        resolved eagerly so an invalid `serve deploy` / `apply_config` fails
+        fast instead of persisting a value that only breaks later at each
+        proxy/replica's `setup_tracing` (and reloads on controller recovery).
         """
         global_tracing_config = _coerce_tracing_config(global_tracing_config)
-
-        # Resolve the exporter import path now so an invalid path fails this
-        # `serve deploy` / `apply_config` request fast, instead of being
-        # checkpointed below and only surfacing later at each proxy/replica's
-        # `setup_tracing` (and reloading on controller recovery).
         validate_tracing_exporter_import_path(global_tracing_config)
 
         if self.global_tracing_config == global_tracing_config:
             return
 
-        self.kv_store.put(
-            TRACING_CONFIG_CHECKPOINT_KEY, pickle.dumps(global_tracing_config)
-        )
-        self.global_tracing_config = global_tracing_config
-
-        self.long_poll_host.notify_changed(
-            {LongPollNamespace.GLOBAL_TRACING_CONFIG: global_tracing_config}
-        )
-        logger.info(f"Updated global tracing config to: {global_tracing_config}.")
+        self._apply_global_tracing_config(global_tracing_config, checkpoint=True)
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
