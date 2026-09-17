@@ -14,10 +14,12 @@ from ray.serve._private.deployment_info import DeploymentInfo
     "target_capacity_direction",
     [TargetCapacityDirection.UP, TargetCapacityDirection.DOWN, None],
 )
+@pytest.mark.parametrize("direct_http", [True, False])
 def test_deployment_info_serialization(
     mock_runtime_context,
     target_capacity: Optional[float],
     target_capacity_direction: Optional[TargetCapacityDirection],
+    direct_http: bool,
 ):
     """Checks that deploymet infos can be serialized without losing data."""
     # Mock out the runtime_context call, so Ray doesn't start.
@@ -51,6 +53,7 @@ def test_deployment_info_serialization(
         assert info1.start_time_ms == info2.start_time_ms
         assert info1.target_capacity == info2.target_capacity
         assert info1.target_capacity_direction == info2.target_capacity_direction
+        assert info1.direct_http == info2.direct_http
 
     deployment_info_args = dict(
         version="123",
@@ -58,6 +61,7 @@ def test_deployment_info_serialization(
         replica_config=ReplicaConfig.create(lambda x: x),
         start_time_ms=0,
         deployer_job_id="",
+        direct_http=direct_http,
     )
 
     # Check that serialization works correctly when the DeploymentInfo is
@@ -82,37 +86,8 @@ def test_deployment_info_serialization(
     reconstructed_info = DeploymentInfo.from_proto(serialized_info)
     compare_deployment_info(reconstructed_info, info)
 
-
-@patch("ray.serve._private.deployment_info.ray.get_runtime_context")
-@pytest.mark.parametrize("direct_http", [True, False])
-def test_direct_http_survives_proto_round_trip(mock_runtime_context, direct_http: bool):
-    """`direct_http` must survive to_proto/from_proto.
-
-    The controller reconstructs DeploymentInfo from the proto, so a field missing
-    from either direction is silently dropped and the replica never learns it
-    should start an HTTP server.
-    """
-
-    class MockRuntimeContext:
-        def get_job_id(self) -> str:
-            return ""
-
-    mock_runtime_context.return_value = MockRuntimeContext()
-
-    info = DeploymentInfo(
-        version="123",
-        deployment_config=DeploymentConfig(num_replicas=1),
-        replica_config=ReplicaConfig.create(lambda x: x),
-        start_time_ms=0,
-        deployer_job_id="",
-        direct_http=direct_http,
-    )
-
-    reconstructed = DeploymentInfo.from_proto(info.to_proto())
-    assert reconstructed.direct_http == direct_http
-
     # `update()` rebuilds the object from an explicit field list, so it is a
-    # second place the flag can be silently lost.
+    # second place a field can be silently dropped.
     assert info.update(version="456").direct_http == direct_http
 
 
