@@ -997,5 +997,149 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
     assert "v3" not in responses
 
 
+def _deployment_details(client, deployment: str = "FailOnFlag"):
+    details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    return details.applications["default"].deployments[deployment]
+
+
+def _running_replica_pids(client, deployment: str = "FailOnFlag") -> List[int]:
+    replicas = _deployment_details(client, deployment).replicas
+    return sorted(r.pid for r in replicas if r.state == "RUNNING")
+
+
+def _assert_rollout_stopped(client, old_pids: List[int], seconds: float = 10):
+    """Check that only old_pids serve requests, with no replacements, for seconds."""
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        replica_states = status.deployments["FailOnFlag"].replica_states
+        assert "STARTING" not in replica_states, replica_states
+        assert "STOPPING" not in replica_states, replica_states
+        assert _running_replica_pids(client) == old_pids
+        r = httpx.get("http://localhost:8000/", timeout=10)
+        assert r.status_code == 200 and r.text == "ok"
+        time.sleep(0.5)
+
+
+def _restart_controller(client):
+    """Restart the controller and wait for its replacement.
+
+    Status calls immediately after ray.kill can still reach the old process.
+    """
+    pid = ray.get(client._controller.get_pid.remote())
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+
+
+def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
+    """Health check failures stop a rolling update before it replaces all old replicas."""
+    client = serve_instance
+    deployment = {
+        "name": "FailOnFlag",
+        "num_replicas": 5,
+        "health_check_period_s": 0.1,
+    }
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
+        "deployments": [deployment],
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_running)
+    initial_pids = _running_replica_pids(client)
+    assert len(initial_pids) == 5
+
+    failing_config = copy(app_config)
+    failing_config["deployments"] = [
+        {
+            **deployment,
+            "ray_actor_options": {
+                "runtime_env": {"env_vars": {"FAIL_HEALTH_CHECK": "1"}}
+            },
+        }
+    ]
+    client.deploy_apps(ServeDeploySchema(**{"applications": [failing_config]}))
+
+    def check_deploy_failed():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        assert status.deployments["FailOnFlag"].status == "DEPLOY_FAILED"
+        return True
+
+    wait_for_condition(check_deploy_failed, timeout=60)
+
+    # Let pending replacements settle. A replica of the flapping version passes
+    # its first health check, so it is RUNNING until the next ones fail and it
+    # is stopped; the rollout is terminal, so it is never replaced. Wait until
+    # only old replicas remain rather than sampling mid-flap.
+    def check_settled():
+        replica_states = (
+            serve.status()
+            .applications["default"]
+            .deployments["FailOnFlag"]
+            .replica_states
+        )
+        assert set(replica_states) == {"RUNNING"}, replica_states
+        running = _running_replica_pids(client)
+        assert set(running) <= set(initial_pids), (running, initial_pids)
+        return True
+
+    wait_for_condition(check_settled, timeout=60)
+    surviving_pids = _running_replica_pids(client)
+    # The fixture's threshold of 3 failures bounds how many old replicas the
+    # flapping version could replace before the update stopped.
+    assert set(surviving_pids) <= set(initial_pids)
+    assert len(surviving_pids) >= 2
+    _assert_rollout_stopped(client, surviving_pids)
+
+
+def test_terminally_failed_rolling_update_survives_controller_restart(
+    serve_instance,
+):
+    """A controller restart preserves a failed update and its surviving old replicas."""
+    client = serve_instance
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
+        "deployments": [{"name": "FailOnFlag", "num_replicas": 2}],
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_running)
+
+    failing_config = copy(app_config)
+    failing_config["deployments"] = [
+        {
+            "name": "FailOnFlag",
+            "num_replicas": 2,
+            "ray_actor_options": {"runtime_env": {"env_vars": {"FAIL_ON_INIT": "1"}}},
+        }
+    ]
+    client.deploy_apps(ServeDeploySchema(**{"applications": [failing_config]}))
+
+    def check_deploy_failed():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        deployment = status.deployments["FailOnFlag"]
+        assert deployment.status_trigger == "REPLICA_STARTUP_FAILED"
+        assert set(deployment.replica_states) == {"RUNNING"}
+        assert deployment.replica_states["RUNNING"] == 1
+        return True
+
+    wait_for_condition(check_deploy_failed, timeout=60)
+    old_pids = _running_replica_pids(client)
+    assert len(old_pids) == 1
+
+    _restart_controller(client)
+    wait_for_condition(check_deploy_failed, timeout=60)
+    assert _running_replica_pids(client) == old_pids
+    _assert_rollout_stopped(client, old_pids)
+    # The restarted controller never retried the failed version: the dead
+    # replica list (in memory, empty after the restart) stays empty.
+    assert _deployment_details(client).recent_dead_replicas == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
