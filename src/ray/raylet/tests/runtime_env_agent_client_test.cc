@@ -688,10 +688,10 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   EXPECT_EQ(max_concurrency, 10);
 }
 
-// A raylet that cannot reach a healthy agent for a local, self-clearing reason, in
-// production no free ephemeral port, must fail the request rather than the node.
+// A raylet that cannot reach the agent must fail the request rather than the node. A
+// dead agent is already handled by AgentManager, which fate shares with it.
 // See https://github.com/ray-project/ray/issues/66153.
-TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingWhileAgentIsAlive) {
+TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingRaylet) {
   // Nothing listens here, so every connect fails as it does on an exhausted port range.
   int port = GetFreePort();
   instrumented_io_context ioc;
@@ -705,8 +705,7 @@ TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingWhileAgentIsAlive) {
       [&](const rpc::NodeDeathInfo &) { raylet_shutdown = true; },
       clock,
       /*agent_register_timeout_ms=*/0,
-      /*agent_manager_retry_interval_ms=*/1,
-      /*agent_is_alive=*/[]() { return true; });
+      /*agent_manager_retry_interval_ms=*/1);
 
   size_t called_times = 0;
   client->GetOrCreateRuntimeEnv(JobID::FromInt(123),

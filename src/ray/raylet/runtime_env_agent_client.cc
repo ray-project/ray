@@ -281,7 +281,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       ClockInterface &clock,
       uint32_t agent_register_timeout_ms,
       uint32_t agent_manager_retry_interval_ms,
-      std::function<bool()> agent_is_alive,
       uint32_t session_pool_size = 10)
       : io_context_(io_context),
         session_pool_(session_pool_size),
@@ -291,8 +290,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         clock_(clock),
         agent_register_timeout_ms_(agent_register_timeout_ms),
-        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms),
-        agent_is_alive_(std::move(agent_is_alive)) {}
+        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
   ~HttpRuntimeEnvAgentClient() override = default;
 
   template <typename T>
@@ -300,23 +298,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   using FailCallback = std::function<void(ray::Status)>;
   template <typename T>
   using TryInvokeOnce = std::function<void(SuccCallback<T>, FailCallback)>;
-
-  void ExitImmediately() {
-    RAY_LOG(ERROR)
-        << "The raylet exited immediately because the runtime env agent timed out when "
-           "Raylet try to connect to it. This can happen because the runtime env agent "
-           "was never started, or is listening to the wrong port. Read the log `cat "
-           "/tmp/ray/session_latest/logs/runtime_env_agent.log`. You can find the log "
-           "file structure here "
-           "https://docs.ray.io/en/master/ray-observability/user-guides/"
-           "configure-logging.html#logging-directory-structure.\n";
-    rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    node_death_info.set_reason_message("Raylet could not connect to Runtime Env Agent");
-    shutdown_raylet_gracefully_(node_death_info);
-    // If the process is not terminated within 10 seconds, forcefully kill itself.
-    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
-  }
 
   /// @brief Invokes `try_invoke_once`. If it fails with a network error, retries every
   /// after `agent_manager_retry_interval_ms` up until `deadline` passed. After which,
@@ -346,23 +327,17 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
       } else if (clock_.SteadyNowMillis() > deadline_ms) {
-        if (agent_is_alive_ && agent_is_alive_()) {
-          RAY_LOG(ERROR)
-              << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
-              << "ms. Status: " << status << ", address: " << this->address_
-              << ", port: " << this->port_str_
-              << ". The agent process is still running, so this raylet could not reach "
-                 "it for a local reason, such as having no free ephemeral port left to "
-                 "open the connection from (check `ss -tan state time-wait | wc -l` "
-                 "against `cat /proc/sys/net/ipv4/ip_local_port_range`). Failing this "
-                 "request instead of exiting the raylet.";
-          fail_callback(status);
-          return;
-        }
-        RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
-                       << "ms. Status: " << status << ", address: " << this->address_
-                       << ", port: " << this->port_str_ << ", exiting immediately...";
-        ExitImmediately();
+        RAY_LOG(ERROR)
+            << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
+            << "ms. Status: " << status << ", address: " << this->address_
+            << ", port: " << this->port_str_
+            << ". A raylet cannot start without a runtime env agent, and it fate shares "
+               "with the agent process, so reaching this means the agent is up but "
+               "unreachable. The usual cause is that this raylet has no free ephemeral "
+               "port left to open the connection from (check `ss -tan state time-wait | "
+               "wc -l` against `cat /proc/sys/net/ipv4/ip_local_port_range`), which "
+               "clears on its own. Failing this request.";
+        fail_callback(status);
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
                       << ", the server may be still starting or is already failed. "
@@ -544,7 +519,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   ClockInterface &clock_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
-  const std::function<bool()> agent_is_alive_;
 };
 }  // namespace
 
@@ -557,8 +531,7 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
-    uint32_t agent_manager_retry_interval_ms,
-    std::function<bool()> agent_is_alive) {
+    uint32_t agent_manager_retry_interval_ms) {
   return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
@@ -566,8 +539,7 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
                                                      shutdown_raylet_gracefully,
                                                      clock,
                                                      agent_register_timeout_ms,
-                                                     agent_manager_retry_interval_ms,
-                                                     std::move(agent_is_alive));
+                                                     agent_manager_retry_interval_ms);
 }
 
 }  // namespace raylet
