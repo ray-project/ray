@@ -4584,19 +4584,28 @@ def from_pandas(
     Returns:
         :class:`~ray.data.Dataset` holding data read from the dataframes.
     """
+    import builtins
+
     import pandas as pd
 
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
 
     if override_num_blocks is not None:
+        if override_num_blocks <= 0:
+            raise ValueError("override_num_blocks must be > 0")
         if len(dfs) > 1:
             # I assume most users pass a single DataFrame as input. For simplicity, I'm
             # concatenating DataFrames, even though it's not efficient.
             ary = pd.concat(dfs, axis=0)
         else:
             ary = dfs[0]
-        dfs = np.array_split(ary, override_num_blocks)
+        block_size, remainder = divmod(len(ary), override_num_blocks)
+        dfs = []
+        for i in builtins.range(override_num_blocks):
+            start = i * block_size + min(i, remainder)
+            end = (i + 1) * block_size + min(i + 1, remainder)
+            dfs.append(ary.iloc[start:end])
 
     from ray.data.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
