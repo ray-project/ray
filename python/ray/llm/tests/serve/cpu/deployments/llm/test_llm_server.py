@@ -10,9 +10,9 @@ import numpy as np
 import pytest
 from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
-from vllm.entrypoints.openai.cli_args import make_arg_parser
+from vllm.entrypoints.launchers.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
-from vllm.v1.engine.exceptions import EngineDeadError, EngineGenerateError
+from vllm.v1.engine.exceptions import EngineDeadError
 
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import (

@@ -106,6 +106,7 @@ int main(int argc, char *argv[]) {
   // RPC related field
   grpc::ServerBuilder builder;
   std::unique_ptr<ray::syncer::RaySyncerService> service;
+  std::unique_ptr<ray::syncer::RaySyncerGrpcService> grpc_service;
   std::unique_ptr<grpc::Server> server;
   std::shared_ptr<grpc::Channel> channel;
   syncer.Register(
@@ -114,8 +115,9 @@ int main(int argc, char *argv[]) {
     RAY_LOG(INFO) << "Start server on port " << server_port;
     auto server_address = ray::BuildAddress("0.0.0.0", server_port);
     service = std::make_unique<ray::syncer::RaySyncerService>(syncer);
+    grpc_service = std::make_unique<ray::syncer::RaySyncerGrpcService>(*service);
     builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
-    builder.RegisterService(service.get());
+    builder.RegisterService(grpc_service.get());
     server = builder.BuildAndStart();
   }
   if (leader_port != ".") {
