@@ -465,12 +465,13 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
-    # Pushed-down read constraints, filled in by ``DeriveListFilesPushdown``
-    # from the scanner's accepted pushdowns and forwarded to
-    # ``FileIndexer.list_files``. ``FooterFileIndexer`` uses them to drop row
-    # groups, size only projected columns and stop listing early;
-    # ``NonSamplingFileIndexer`` ignores them. Which one runs is the
-    # datasource's choice of indexer, not a flag here.
+    # Pushed-down read constraints, populated by the optimizer rules
+    # (``predicate_pushdown`` / ``projection_pushdown`` / ``limit_pushdown``).
+    # A metadata-aware indexer (the Parquet ``FooterFileIndexer``) uses them to
+    # prune row groups, size only projected columns, and stop listing early;
+    # the per-file listing path ignores them. Whether footer reads happen is
+    # decided by the indexer type, not a flag here -- this op stays
+    # format-agnostic.
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None
     limit: Optional[int] = None

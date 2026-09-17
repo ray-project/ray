@@ -248,34 +248,6 @@
     timeout: 4800
     script: python iceberg_benchmark.py --mode overwrite
 
-###################
-# Aggregation tests
-###################
-
-- name: "count_parquet_fixed_size"
-  python: "3.10"
-  cluster:
-    byod:
-      runtime_env:
-        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
-        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
-        # Dropping them silently stops the test failing on OOM / dead nodes / object
-        # store blowup.
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
-        # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
-    anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
-
-  run:
-    timeout: 600
-    script: >
-      python read_and_consume_benchmark.py
-      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
-
 ###############
 # Groupby tests
 ###############

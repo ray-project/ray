@@ -315,9 +315,11 @@ class TestJoin:
             join_type="inner",
             num_partitions=2,
         )
+        # Polars exports String as large_string, so join inference uses
+        # that width even when the parquet inputs were pa.string().
         assert _static_schema(ds) == pa.schema(
             [
-                pa.field("k", pa.string()),
+                pa.field("k", pa.large_string()),
                 pa.field("lval", pa.int32()),
                 pa.field("rval", pa.float32()),
             ]

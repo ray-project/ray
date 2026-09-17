@@ -182,9 +182,9 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         ``FileManifest`` blocks.
 
         Abstract rather than defaulted, because a default would commit a new
-        format to whole-file chunking without anyone choosing it. Formats
-        without usable file metadata return ``NonSamplingFileIndexer``; Parquet
-        returns ``FooterFileIndexer``.
+        format to per-file listing without anyone choosing it. Formats without
+        usable file metadata return ``NonSamplingFileIndexer``; Parquet returns
+        ``FooterFileIndexer``.
         """
         ...
 
