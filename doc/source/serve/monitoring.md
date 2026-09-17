@@ -16,7 +16,7 @@ This section helps you debug and monitor your Serve applications by:
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
 
-## Ray Dashboard
+## Ray dashboard
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states. This includes details such as:
 * the number of deployment replicas currently running
@@ -906,4 +906,4 @@ Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexib
 
 [Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
 
-To integrate with Arize, add Arize client code directly into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))
+To integrate with Arize, add Arize client code directly into your Serve deployment code.

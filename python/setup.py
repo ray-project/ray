@@ -284,6 +284,11 @@ if setup_spec.type == SetupType.RAY:
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
             "mmh3",
+            # Autoscaling metric reports are encoded and merged as flat arrays.
+            numpy_dep,
+            # Used by the HAProxy ingress controller to render its config.
+            "jinja2",
+            "grpcio-reflection",
             "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
@@ -382,9 +387,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.26.0",
-                "nixl==1.3.1",
-                "nixl-cu13==1.3.1",
+                "vllm[audio]==0.29.0",
+                "nixl==1.3.2",
+                "nixl-cu13==1.3.2",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",

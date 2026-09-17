@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+from typing import Optional
 
 from ray._common.utils import env_bool, env_float, env_integer  # noqa: F401
 
@@ -182,6 +183,142 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 # Enable profiling endpoints in the dashboard.
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
+# Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
+# browser-originated requests. Set to 0 to return the plaintext values instead.
+RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
+
+# --- Default values for dashboard profiling parameters (py-spy / memray). ---
+# Each applies only when the corresponding request query param is omitted, so
+# behavior is unchanged unless an operator overrides it on the Ray head node.
+# An explicit query param always takes precedence.
+
+# Include native (C/C++) stack frames. Higher overhead; only takes effect on
+# Linux (see CpuProfilingManager in the reporter's profile_manager).
+RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT", False
+)
+# Also profile child processes of the target (py-spy --subprocesses).
+RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_SUBPROCESSES_DEFAULT", False
+)
+# Include off-CPU / sleeping threads (py-spy --idle; CPU profiling only).
+RAY_DASHBOARD_PROFILING_IDLE_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_IDLE_DEFAULT", False
+)
+# Report memory leaks instead of peak usage (memray; memory profiling only).
+# Defaults to False to preserve the pre-existing behavior, where an omitted
+# `leaks` query param meant peak-usage mode rather than leak mode.
+RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_LEAKS_DEFAULT", False
+)
+# Record pymalloc allocations (memray; memory profiling only).
+RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT = env_bool(
+    "RAY_DASHBOARD_PROFILING_TRACE_PYTHON_ALLOCATORS_DEFAULT", False
+)
+# Accepted range for a profiling `duration` (seconds). The dashboard endpoint
+# rejects explicit query values outside this range; the configured defaults below
+# are clamped to it too, so a misconfigured env var can never exceed the cap.
+# The minimum is a hard floor. The maximum is operator-configurable via
+# RAY_DASHBOARD_PROFILING_MAX_DURATION_S and defaults to 60s, the cap the endpoint
+# has always enforced: a synchronous profile blocks the request for its whole
+# duration and py-spy/memray output grows with it, so it is capped rather than
+# left open-ended, but the cap is raised or lowered per cluster.
+MIN_PROFILING_DURATION_S = 1
+MAX_PROFILING_DURATION_S_ENV_KEY = "RAY_DASHBOARD_PROFILING_MAX_DURATION_S"
+
+
+def _profiling_duration_cap() -> int:
+    """Read the operator-configured profiling duration cap (seconds).
+
+    Returns:
+        The configured cap, floored at ``MIN_PROFILING_DURATION_S``. A cap below
+        the minimum would invert the accepted range and reject every duration, so
+        it is floored (with a warning) rather than honored.
+    """
+    configured = env_integer(MAX_PROFILING_DURATION_S_ENV_KEY, 60)
+    if configured < MIN_PROFILING_DURATION_S:
+        logger.warning(
+            "%s=%d is below the minimum profiling duration; using %ds instead.",
+            MAX_PROFILING_DURATION_S_ENV_KEY,
+            configured,
+            MIN_PROFILING_DURATION_S,
+        )
+        return MIN_PROFILING_DURATION_S
+    return configured
+
+
+MAX_PROFILING_DURATION_S = _profiling_duration_cap()
+
+
+def _clamp_profiling_duration(seconds: int, env_key: Optional[str] = None) -> int:
+    """Clamp a profiling duration (seconds) into the accepted range.
+
+    Args:
+        seconds: The configured duration to clamp.
+        env_key: Name of the environment variable ``seconds`` was read from. Used
+            to make the out-of-range warning actionable; omit when the value did
+            not come from the environment.
+
+    Returns:
+        ``seconds`` clamped to
+        ``[MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S]``.
+    """
+    clamped = max(MIN_PROFILING_DURATION_S, min(seconds, MAX_PROFILING_DURATION_S))
+    if clamped != seconds:
+        logger.warning(
+            "%s is outside the accepted profiling duration range [%ds, %ds]; "
+            "clamping to %ds.",
+            f"{env_key}={seconds}" if env_key else f"Profiling duration {seconds}s",
+            MIN_PROFILING_DURATION_S,
+            MAX_PROFILING_DURATION_S,
+            clamped,
+        )
+    return clamped
+
+
+# Duration in seconds for CPU profiling. Clamped to
+# [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT = _clamp_profiling_duration(
+    env_integer("RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT", 5),
+    "RAY_DASHBOARD_PROFILING_CPU_DURATION_DEFAULT",
+)
+# Duration in seconds for memory profiling. Clamped to
+# [MIN_PROFILING_DURATION_S, MAX_PROFILING_DURATION_S].
+RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT = _clamp_profiling_duration(
+    env_integer("RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT", 10),
+    "RAY_DASHBOARD_PROFILING_MEMORY_DURATION_DEFAULT",
+)
+
+# Output format defaults. The valid sets DIFFER by profiler: py-spy (CPU) accepts
+# flamegraph/raw/speedscope while memray (memory) accepts flamegraph/table, so
+# each is validated independently against its own set. `profile_manager` reads
+# these too, so the accepted formats are defined in exactly one place.
+VALID_CPU_PROFILING_FORMATS = ("flamegraph", "raw", "speedscope")
+VALID_MEMORY_PROFILING_FORMATS = ("flamegraph", "table")
+
+
+def _validated_profiling_format(env_key, valid_formats, fallback="flamegraph"):
+    """Read a profiling-format env var, falling back if it's not a valid choice."""
+    value = os.environ.get(env_key, fallback)
+    if value not in valid_formats:
+        logger.warning(
+            "%s=%r is invalid; expected one of %s. Falling back to %r.",
+            env_key,
+            value,
+            valid_formats,
+            fallback,
+        )
+        return fallback
+    return value
+
+
+RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT = _validated_profiling_format(
+    "RAY_DASHBOARD_PROFILING_CPU_FORMAT_DEFAULT", VALID_CPU_PROFILING_FORMATS
+)
+RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT = _validated_profiling_format(
+    "RAY_DASHBOARD_PROFILING_MEMORY_FORMAT_DEFAULT", VALID_MEMORY_PROFILING_FORMATS
+)
+
 DEFAULT_DASHBOARD_PORT = 8265
 DASHBOARD_ADDRESS = "dashboard"
 DASHBOARD_CLIENT_MAX_SIZE = 100 * 1024**2
@@ -301,6 +438,10 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
 RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
+# Skip prepending the "(task/actor name pid=...)" prefix to worker log lines
+# forwarded to the driver's stdout/stderr, without disabling forwarding itself
+# or requiring a job-level LoggingConfig.
+RAY_DISABLE_WORKER_LOG_PREFIX = env_bool("RAY_DISABLE_WORKER_LOG_PREFIX", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 

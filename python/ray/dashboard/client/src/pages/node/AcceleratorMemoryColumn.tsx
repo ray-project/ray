@@ -125,7 +125,11 @@ const AcceleratorMemoryEntry: React.FC<AcceleratorMemoryEntryProps> = ({
   let ratioStr = getMemDisplayRatioNoPercent(utilization, total);
   // When the utilization percentage is present but absolute usage is missing
   // (as is the case on some TPU generations), spoof the bar with just a percentage.
-  if (utilPercent !== undefined && (total === 0 || isNaN(total))) {
+  if (
+    utilPercent !== undefined &&
+    utilPercent !== null &&
+    (total === 0 || isNaN(total))
+  ) {
     ratioStr = `${utilPercent.toFixed(1)}%`;
     utilization = utilPercent;
     total = 100;

@@ -87,10 +87,32 @@ build:
         echo "[global]" > ~/.config/pip/pip.conf
         echo "retries = 10" >> ~/.config/pip/pip.conf
         cat ~/.config/pip/pip.conf
+    # Build with fewer Sphinx workers than there are CPUs.
+    #
+    # doc/Makefile defaults SPHINX_JOBS to auto, one write worker per CPU.
+    # This builder has 4 CPUs and a 7,130,316,800 byte cgroup memory ceiling
+    # (about 6.64 GiB, the documented Business limit), and each worker holds
+    # its own copy of the build environment. At -j auto the build peaked at
+    # 6,503,370,752 bytes on a run that passed and 6,371,254,272 on one that
+    # was OOM-killed, leaving roughly 600 MB of headroom either way. When the
+    # kernel kills a write worker the parent Sphinx process reports only a
+    # bare EOFError from multiprocessing/connection.py, naming no document,
+    # and the document it dies on moves from build to build.
+    #
+    # At SPHINX_JOBS=2 the same build peaked at 5,566,427,136 bytes with
+    # memory.events oom_kill 0, so headroom goes from about 600 MB to about
+    # 1.5 GiB. The cost is wall clock: a paired run measured 349 seconds at
+    # -j auto against 620 seconds at 2 on one builder, and the 2 arm had a
+    # warm cache, so treat that as a lower bound on the slowdown.
+    #
+    # Only this job sets it. Local builds and the Buildkite doc build keep
+    # -j auto, so nothing off this builder pays for the reduced parallelism.
+    # Raising the RtD memory limit would let the parallelism come back; that
+    # is a separate ask to Read the Docs, not a change in this repo.
     build:
       html:
         - |
-          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
+          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

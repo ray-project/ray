@@ -11,6 +11,7 @@ from ray_release.command_runner._anyscale_job_wrapper import (
     main,
     run_bash_command,
     run_obj_store_util_check,
+    run_oom_check,
     run_spilling_check,
 )
 
@@ -235,6 +236,73 @@ def test_run_spilling_check_non_dict_json(tmpdir, payload):
         json.dump(payload, f)
     with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
         assert run_spilling_check() == 1
+
+
+_PROM_TASK_OOM_SAMPLE = {
+    "metric": {
+        "Name": "ReadFiles",
+        "Type": "MemoryManager.TaskEviction.Total",
+    },
+    "values": [[1786542912, "1"], [1786544112, "4"]],
+}
+_PROM_IDLE_WORKER_OOM_SAMPLE = {
+    "metric": {
+        "Name": "idle",
+        "Type": "MemoryManager.IdleWorkerEviction.Total",
+    },
+    "values": [[1786542912, "10"]],
+}
+_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE = {
+    "metric": {
+        "Name": "MapWorker(MapBatches(ExtractImageFeatures)).__init__",
+        "Type": "Raylet.UnexpectedActorFailure.Total",
+    },
+    "values": [[1786542267, "1"], [1786544217, "1"]],
+}
+
+
+def test_run_oom_check_ignores_idle_worker_kills(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {
+                "worker_oom_kills": [_PROM_IDLE_WORKER_OOM_SAMPLE],
+                "unexpected_worker_failures": [],
+            },
+            f,
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_oom_check() == 0
+    assert caplog.records == []
+
+
+def test_run_oom_check_summarizes_metric_series(tmpdir, caplog):
+    metrics_path = str(tmpdir / "metrics.json")
+    with open(metrics_path, "w") as f:
+        json.dump(
+            {
+                "worker_oom_kills": [
+                    _PROM_TASK_OOM_SAMPLE,
+                    _PROM_IDLE_WORKER_OOM_SAMPLE,
+                ],
+                "unexpected_worker_failures": [_PROM_UNEXPECTED_WORKER_FAILURE_SAMPLE],
+            },
+            f,
+        )
+
+    with patch.dict(os.environ, {"METRICS_OUTPUT_JSON": metrics_path}):
+        assert run_oom_check() == 1
+    assert [record.getMessage() for record in caplog.records] == [
+        "Test failed: OOM worker kills detected. "
+        "Latest cumulative counter values by metric:\n"
+        "  - ReadFiles (MemoryManager.TaskEviction.Total): 4",
+        "Test failed: Unexpected worker failures detected "
+        "(potential kernel OOM kills or SIGKILLs not captured by Ray's memory monitor). "
+        "Latest cumulative counter values by metric:\n"
+        "  - MapWorker(MapBatches(ExtractImageFeatures)).__init__ "
+        "(Raylet.UnexpectedActorFailure.Total): 1",
+    ]
 
 
 class TestRunObjStoreUtilCheck:

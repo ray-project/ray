@@ -13,7 +13,7 @@ The example model is a custom reward model composed of Qwen3-0.6B with its vocab
 
 ## How does Ray Serve LLM support custom vLLM models?
 
-Ray Serve LLM serves any architecture that vLLM supports. When your model isn't a [built-in vLLM architecture](https://docs.vllm.ai/en/stable/models/supported_models.html), you add it with a [vLLM plugin](https://docs.vllm.ai/en/stable/design/plugin_system.html): a custom package that registers the architecture in vLLM's model registry without patching vLLM. Ray Serve LLM then serves it through the same OpenAI-compatible API as any other model.
+Ray Serve LLM serves any architecture that vLLM supports. When your model isn't a [built-in vLLM architecture](https://docs.vllm.ai/en/stable/models/supported_models/), you add it with a [vLLM plugin](https://docs.vllm.ai/en/stable/design/plugin_system/): a custom package that registers the architecture in vLLM's model registry without patching vLLM. Ray Serve LLM then serves it through the same OpenAI-compatible API as any other model.
 
 
 ## Prerequisites
@@ -170,6 +170,6 @@ llm_config = LLMConfig(
 
 ## See also
 
-- [vLLM plugin system](https://docs.vllm.ai/en/stable/design/plugin_system.html)
-- [Registering a model to vLLM](https://docs.vllm.ai/en/stable/contributing/model/registration.html)
+- [vLLM plugin system](https://docs.vllm.ai/en/stable/design/plugin_system/)
+- [Registering a model to vLLM](https://docs.vllm.ai/en/stable/contributing/model/registration/)
 - {doc}`Direct streaming <direct-streaming>`: how Ray Serve LLM serves vLLM's native routes.

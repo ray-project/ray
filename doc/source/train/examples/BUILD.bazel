@@ -22,10 +22,9 @@ filegroup(
         "**/ci/aws.yaml",
         "**/ci/gce.yaml",
     ]) + [
+        "//doc/source/train/examples/lightning:lightning_examples_ci_configs",
         "//doc/source/train/examples/pytorch:pytorch_examples_ci_configs",
         "//doc/source/train/examples/transformers:transformers_examples_ci_configs",
-        "//doc/source/train/examples/lightning:lightning_examples_ci_configs",
     ],
     visibility = ["//doc:__pkg__"],
 )
-

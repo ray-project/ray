@@ -1202,6 +1202,54 @@ TEST_F(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
+TEST_F(NormalTaskSubmitterTest, TestLeaseCancellationSentOnlyOnce) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+
+  // Task 1 is pushed and a second lease is requested for task 2.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Task 1 finishes and task 2 is scheduled on the same worker, so the task queue
+  // drains and the second lease request is canceled.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+
+  // Submit task 3 while the second lease request is still in flight. It is not
+  // pruned until its RequestWorkerLease replies, and no new lease is requested
+  // because the pending one already covers the queued task.
+  submitter.SubmitTask(task3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Task 2 finishes and task 3 is scheduled on the same worker, draining the queue
+  // a second time. The still-pending lease request must not be canceled again.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+
+  // Task 3 finishes and the worker is returned.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+  ASSERT_EQ(raylet_client->num_leases_canceled, 1);
+
+  // Drain the single cancellation and the canceled lease reply.
+  ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+  ASSERT_TRUE(raylet_client->GrantWorkerLease(
+      "", 0, local_node_id, NodeID::Nil(), /*cancel=*/true));
+  ASSERT_EQ(task_manager->num_tasks_complete, 3);
+  ASSERT_EQ(task_manager->num_tasks_failed, 0);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
 TEST_F(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));

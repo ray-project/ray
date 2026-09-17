@@ -2,7 +2,7 @@ torch
 torchvision
 torchmetrics
 pytest
-locust==2.44.3
+locust
 openai
 google-api-python-client
 transformers
@@ -11,11 +11,13 @@ daft
 sentence-transformers
 grpcio
 jupytext
-langchain-text-splitters
+# Excluded on 3.11: every langchain-text-splitters release needs a
+# langchain-core requiring jsonpatch>=1.33, and
+# requirements_compiled_py3.11.txt pins jsonpatch 1.32.
+langchain-text-splitters; python_version >= "3.12"
 
-# necessary changes for 3.14
 #vllm==0.21.0 # cuda-tile doesn't have a python 3.14 wheel (21st May)
-cupy-cuda12x==14.0.1
-llvmlite==0.47.0
-numba==0.65.0
-dm-tree==0.1.10
+cupy-cuda12x
+llvmlite
+numba
+dm-tree

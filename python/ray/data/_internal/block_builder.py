@@ -1,4 +1,4 @@
-from typing import Generic
+from typing import Generic, Sequence
 
 from ray.data.block import Block, BlockAccessor, BlockType, T
 
@@ -22,8 +22,13 @@ class BlockBuilder(Generic[T]):
         """Whether building this block will yield a new block copy."""
         raise NotImplementedError
 
-    def build(self) -> Block:
-        """Build the block."""
+    def build(self, *, additional_blocks: Sequence[Block] = ()) -> Block:
+        """Build with optional trailing blocks without adding them to the builder.
+
+        All buffered rows and additional blocks are combined together, preserving
+        type inference across the complete input. Additional blocks must have the
+        same block type as the buffered data.
+        """
         raise NotImplementedError
 
     def num_rows(self) -> int:

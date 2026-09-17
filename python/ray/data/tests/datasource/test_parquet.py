@@ -1483,7 +1483,9 @@ def test_parquet_concurrency(
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
+def test_parquet_read_spread(
+    ray_start_cluster, tmp_path, restore_data_context, monkeypatch
+):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
@@ -1517,8 +1519,11 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     df2.to_parquet(path2)
 
     # Minimize the block size to prevent Ray Data from reading multiple fragments in a
-    # single task.
+    # single task. On the V2 footer path the packer uses
+    # RAY_DATA_PARQUET_BIN_PACKING_BYTES (not target_max_block_size), so pin that
+    # too or both files collapse into one read task on one node.
     ray.data.DataContext.get_current().target_max_block_size = 1
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
@@ -3420,6 +3425,24 @@ def test_parquet_sampling_fails_on_permanent_error(
     with patch(target, new=_raise_permission_error):
         with pytest.raises(Exception, match="Access Denied"):
             ray.data.read_parquet(str(tmp_path)).materialize()
+
+
+@pytest.mark.timeout(30)
+def test_count_parquet_is_fast(ray_start_regular_shared):
+    """This is an E2E test that verifies that we pushdown counts. If Ray Data reads the
+    file contents rather than the metadata, the test will timeout and fail.
+
+    The count should only take a handful of seconds on a laptop.
+    """
+    path = "s3://anonymous@ray-benchmark-data/tpch/parquet/sf100/lineitem"
+
+    num_rows = ray.data.read_parquet(path).count()
+
+    # This is the number of rows measured by PyArrow.
+    assert num_rows == 600_037_902, (
+        "The number of rows returned by Ray Data doesn't match the number of rows "
+        f"returned by PyArrow. Expected 600,037,902 but got {num_rows}"
+    )
 
 
 if __name__ == "__main__":

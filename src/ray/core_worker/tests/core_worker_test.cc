@@ -204,6 +204,8 @@ class CoreWorkerTest : public ::testing::Test {
         fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
         /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+        /*free_stale_unconsumed_generator_objects_async=*/
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         /*clock=*/clock_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
@@ -1320,8 +1322,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
                                      object_size,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
-  // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
-  // bumps the sequence id by 1
+  // No raylet has subscribed to this object yet, so this update is skipped and
+  // consumes no sequence id.
   reference_counter_->AddObjectLocation(object_id, node_id);
 
   rpc::PubsubLongPollingRequest request;
@@ -1385,11 +1387,11 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // Subscribe snapshot is seq 2; coalesced retry snapshot is seq 3.
+    // Subscribe snapshot is seq 1; coalesced retry snapshot is seq 2.
     EXPECT_EQ(msg.sequence_id(), expected_sequence_id);
   };
-  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/2);
-  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/3);
+  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/1);
+  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/2);
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
