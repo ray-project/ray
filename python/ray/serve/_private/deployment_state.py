@@ -3159,10 +3159,10 @@ class DeploymentState:
         self._in_transition = True
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
-        # Set when an ingress replica is permanently removed, so the ingress port
-        # version advances and its port is reclaimed on the next reconcile. See
-        # consume_ingress_membership_removed.
-        self._ingress_membership_removed: bool = False
+        # Set when a replica that may own direct-ingress ports is permanently
+        # removed, so the port version advances and its allocations are reclaimed
+        # on the next reconcile. See consume_direct_ingress_port_owner_removed.
+        self._direct_ingress_port_owner_removed: bool = False
         self._last_broadcasted_availability: Optional[bool] = None
         self._last_broadcasted_deployment_config: Optional[DeploymentConfig] = None
 
@@ -3490,13 +3490,15 @@ class DeploymentState:
     def list_recent_dead_replicas(self) -> List[ReplicaDetails]:
         return list(self._recent_dead_replicas)
 
-    def consume_ingress_membership_removed(self) -> bool:
-        """Return whether an ingress replica was permanently removed from the
-        container since the last call, then clear the flag. Paired with the
-        running-set-change signal to advance the ingress port version on removals
-        (which the running-set comparison misses). See _ingress_membership_removed."""
-        removed = self._ingress_membership_removed
-        self._ingress_membership_removed = False
+    def consume_direct_ingress_port_owner_removed(self) -> bool:
+        """Return whether a possible direct-ingress port owner was removed.
+
+        Clears the flag after reading it. Paired with the running-set-change signal
+        to advance the ingress port version on removals, which the running-set
+        comparison misses.
+        """
+        removed = self._direct_ingress_port_owner_removed
+        self._direct_ingress_port_owner_removed = False
         return removed
 
     def broadcast_running_replicas_if_changed(self) -> bool:
@@ -3516,7 +3518,7 @@ class DeploymentState:
         Returns:
             True if the set of running replicas *changed* since the last broadcast
             (i.e. membership changed), else False. The controller pairs this with
-            ``consume_ingress_membership_removed`` to advance the ingress-port
+            ``consume_direct_ingress_port_owner_removed`` to advance the ingress-port
             membership version, so it deliberately reflects membership change --
             NOT "a broadcast was sent": a routing-info-only change still broadcasts
             but returns False (ports are unaffected), and while any replica is
@@ -5335,7 +5337,7 @@ class DeploymentState:
                     or replica.actor_http_port is not None
                     or replica.actor_grpc_port is not None
                 ):
-                    self._ingress_membership_removed = True
+                    self._direct_ingress_port_owner_removed = True
 
                 # Retain replicas that allocated a log file so the dashboard can
                 # still show their logs after the actor is gone.
@@ -6632,10 +6634,10 @@ class DeploymentStateManager:
             running_set_changed = (
                 deployment_state.broadcast_running_replicas_if_changed()
             )
-            ingress_replica_removed = (
-                deployment_state.consume_ingress_membership_removed()
+            direct_ingress_port_owner_removed = (
+                deployment_state.consume_direct_ingress_port_owner_removed()
             )
-            if ingress_replica_removed or (
+            if direct_ingress_port_owner_removed or (
                 running_set_changed and deployment_state.owns_direct_ingress_ports()
             ):
                 self._ingress_membership_version += 1
