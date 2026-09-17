@@ -31,6 +31,28 @@ def test_trainer_restore():
             pass
 
 
+@pytest.mark.parametrize("migration_warnings_enabled", ["0", "1"])
+def test_trainer_restore_warns_once_unconditionally(
+    monkeypatch, migration_warnings_enabled
+):
+    """`restore`/`can_restore` warn exactly once, regardless of the migration flag."""
+    monkeypatch.setenv(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, migration_warnings_enabled)
+
+    for api in (DataParallelTrainer.restore, DataParallelTrainer.can_restore):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            try:
+                api("dummy")
+            except Exception:
+                pass
+
+        deprecations = [
+            w for w in caught if issubclass(w.category, RayDeprecationWarning)
+        ]
+        assert len(deprecations) == 1, [str(w.message) for w in deprecations]
+        assert "restore" in str(deprecations[0].message)
+
+
 def test_trainer_valid_configs(ray_start_4_cpus, tmp_path):
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")

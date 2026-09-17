@@ -1212,11 +1212,14 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
-    # max_resource_usage: 2 actors * (1 gpu)
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
+    # GPU ops default to 1 CPU per actor.
+    # min_resource_usage: 1 actor * (1 cpu, 1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 cpu, 1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
     assert max_resource_usage_bound == ExecutionResources(
-        gpu=2, object_store_memory=float("inf")
+        cpu=2, gpu=2, object_store_memory=float("inf")
     )
 
 
@@ -1238,10 +1241,12 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # Unbounded pools should return infinite max resources for GPU (which is used),
-    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
-    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
+    # Unbounded pools should return infinite max resources for GPU and CPU (GPU
+    # ops default to 1 CPU), but 0 for memory (not specified) to prevent hoarding.
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
+    assert max_resource_usage_bound == ExecutionResources.for_limits(memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):

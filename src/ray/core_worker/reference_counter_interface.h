@@ -508,9 +508,10 @@ class ReferenceCounterInterface {
   virtual std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
       const ObjectID &object_id) = 0;
 
-  /// Publish the snapshot of the object location for the given object id.
-  /// Publish the empty locations if object is already evicted or not owned by this
-  /// worker.
+  /// Publish the snapshot of the object location for the given object id and
+  /// mark the object as subscribed, so its later location publishes are not
+  /// skipped. Publish the empty locations if object is already evicted or not
+  /// owned by this worker.
   ///
   /// \param[in] object_id The object whose locations we want.
   virtual void PublishObjectLocationSnapshot(const ObjectID &object_id) = 0;

@@ -72,7 +72,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     CustomOpStatsReporter,
     MapTransformer,
-    UDFTimeScope,
+    TransformClock,
 )
 from ray.data._internal.execution.util import (
     memory_string,
@@ -840,7 +840,7 @@ def _map_task(
         # Likewise owned by _map_task: an actor pool shares one transformer
         # across every task the actor runs, and with
         # `max_concurrent_calls_per_actor > 1` several run at once.
-        udf_time_scope = UDFTimeScope()
+        clock = TransformClock()
 
         def transform_iter_factory():
             # Clear any per-task custom stats before each attempt (the reporter
@@ -848,7 +848,7 @@ def _map_task(
             # can't leak into this one. A producing transform repopulates it
             # before the first block is yielded.
             op_stats_reporter.clear()
-            udf_time_scope.drain()
+            clock.drain()
             blocks_iter = (
                 _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
             )
@@ -856,19 +856,24 @@ def _map_task(
                 blocks_iter,
                 ctx,
                 op_stats_reporter.report,
-                udf_time_scope=udf_time_scope,
+                clock=clock,
             )
 
-        if retry_on:
-            block_iter = iterate_with_retry(
-                transform_iter_factory,
-                description="apply UDF transform",
-                match=None if retry_on is True else retry_on,
-                max_attempts=data_context.max_map_retries + 1,
-                unwrap_cause=True,
-            )
-        else:
-            block_iter = transform_iter_factory()
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+
+        block_iter = iterate_with_retry(
+            transform_iter_factory,
+            description="apply UDF transform",
+            match=to_match,
+            max_attempts=data_context.max_map_retries + 1,
+            unwrap_cause=True,
+        )
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
@@ -879,9 +884,13 @@ def _map_task(
                 blk_exec_stats_builder.finish()
 
                 def build_metadata(block_ser_time_s):
+                    phase_times = clock.drain()
                     exec_stats = blk_exec_stats_builder.build(
                         block_ser_time_s=block_ser_time_s,
-                        udf_time_s=udf_time_scope.drain(),
+                        block_transform_time_s=phase_times.total_s,
+                        input_prep_time_s=phase_times.input_prep_s,
+                        function_body_time_s=phase_times.function_body_s,
+                        output_build_time_s=phase_times.output_build_s,
                         task_idx=ctx.task_idx,
                     )
                     # NOTE: This tracks task duration up to this point, though we're
@@ -913,9 +922,10 @@ def _map_task(
 def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
     """Enforce rules on ray remote args for map tasks.
 
-    Namely, args must explicitly specify either CPU or GPU, not both. Disallowing
-    mixed resources avoids potential starvation and deadlock issues during scheduling,
-    and should not be a serious limitation for users.
+    Map tasks default to 1 CPU. GPU map tasks that don't specify ``num_cpus`` also
+    reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+    doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+    explicitly passing ``num_cpus=0``.
     """
     ray_remote_args = ray_remote_args.copy()
 
@@ -929,7 +939,11 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
             "https://github.com/ray-project/ray/issues/new/choose"
         )
 
-    if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
+    if "num_cpus" not in ray_remote_args:
+        # Map tasks default to 1 CPU. GPU map tasks that don't specify num_cpus also
+        # reserve 1 CPU, so the scheduler accounts for the CPU work GPU UDFs always do and
+        # doesn't overpack CPU tasks onto the node hosting them. Users can opt out by
+        # explicitly passing num_cpus=0.
         ray_remote_args["num_cpus"] = 1
 
     return ray_remote_args

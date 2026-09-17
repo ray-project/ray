@@ -33,7 +33,6 @@ def parse_args() -> argparse.Namespace:
     )
 
     consume_group = parser.add_mutually_exclusive_group()
-    consume_group.add_argument("--count", action="store_true")
     consume_group.add_argument("--iter-bundles", action="store_true")
     consume_group.add_argument("--iter-batches", choices=["numpy", "pandas", "pyarrow"])
     consume_group.add_argument("--iter-torch-batches", action="store_true")
@@ -110,12 +109,7 @@ def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
 
 
 def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], None]:
-    if args.count:
-
-        def consume_fn(ds):
-            ds.count()
-
-    elif args.iter_bundles:
+    if args.iter_bundles:
 
         def consume_fn(ds):
             for _ in ds.iter_internal_ref_bundles():
