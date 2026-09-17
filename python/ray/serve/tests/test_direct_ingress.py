@@ -365,10 +365,7 @@ def test_direct_http_non_ingress_deployment_gets_own_server(
     Nothing routes to that port yet (it is absent from the target groups), but the
     replica owns a real socket and the controller tracks its port.
     """
-    serve.run(
-        ParentIngress.bind(DirectChild.options(_direct_http=True).bind()),
-        name=SERVE_DEFAULT_APP_NAME,
-    )
+    serve.run(ParentIngress.bind(DirectChild.options(_direct_http=True).bind()))
 
     child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
     assert child_port is not None
@@ -405,10 +402,7 @@ def test_without_direct_http_non_ingress_has_no_port(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Negative control: the same app without the flag gives the child no port."""
-    serve.run(
-        ParentIngress.bind(DirectChild.bind()),
-        name=SERVE_DEFAULT_APP_NAME,
-    )
+    serve.run(ParentIngress.bind(DirectChild.bind()))
 
     assert _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild") is None
 
