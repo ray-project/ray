@@ -1351,7 +1351,7 @@
 ##############
 
 
-- name: "tpch_{{query}}_fixed_size"
+- name: "tpch_{{query}}"
   python: "3.10"
   frequency: manual
   matrix:
@@ -1372,7 +1372,7 @@
     timeout: 5400
     script: python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_{{query}}_fixed_size"
+- name: "tpch_{{query}}"
   python: "3.10"
   frequency: nightly
   matrix:
