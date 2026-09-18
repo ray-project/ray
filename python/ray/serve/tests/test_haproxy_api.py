@@ -1445,21 +1445,11 @@ def test_ingress_request_router_forward_body_gate_renders(
             lua = f.read()
 
         if forward_body:
-            # Guarded by the app only: the router is consulted for every method,
-            # and a bodiless request is already complete so the wait returns at
-            # once rather than stalling a GET for the router timeout.
             assert (
                 "http-request wait-for-body time "
                 f"{RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S}s "
-                "if has_ingress_request_router_app"
+                "if METH_POST has_ingress_request_router_app"
             ) in cfg, cfg
-            # No *directive* gates on the method any more (the comment
-            # explaining why still names it).
-            assert not [
-                ln
-                for ln in cfg.splitlines()
-                if "METH_POST" in ln and not ln.strip().startswith("#")
-            ], cfg
             bufsize = RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
             assert f"tune.bufsize {bufsize}" in cfg, cfg
             assert "local FORWARD_BODY = true" in lua, lua
@@ -1467,11 +1457,9 @@ def test_ingress_request_router_forward_body_gate_renders(
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
 
-        # The router call itself is rendered for every method either way --
-        # body forwarding decides what is sent, not whether routing happens.
         assert (
             "http-request lua.route_via_ingress_request_router "
-            "if has_ingress_request_router_app"
+            "if METH_POST has_ingress_request_router_app"
         ) in cfg, cfg
 
         # Method and path reach the router regardless of body forwarding: a
@@ -1728,14 +1716,12 @@ async def test_direct_http_deployment_end_to_end(haproxy_api_cleanup):
                 requests.get(f"http://127.0.0.1:{haproxy_port}{own_path}", timeout=5)
             assert len(router_captured["bodies"]) == 3
 
-            # ...but an application path consults the router whatever the
-            # method, and is dispatched to the deployment it names.
+            # Non-POST requests bypass the router until it supports ingress
+            # route ownership, so existing path routing sends this to ingress.
             resp = requests.get(f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5)
             assert resp.status_code == 200, resp.text
-            assert resp.headers.get("x-replica-id") == "MODEL_B"
-            assert len(router_captured["bodies"]) == 4
-            assert router_captured["methods"][-1] == "GET"
-            assert router_captured["paths"][-1] == "/v1/models"
+            assert resp.headers.get("x-replica-id") == "INGRESS"
+            assert len(router_captured["bodies"]) == 3
         finally:
             _shutdown_fake_servers(
                 [ingress, model_a, model_b, router],
@@ -1946,15 +1932,16 @@ async def test_ingress_selection_end_to_end(haproxy_api_cleanup):
                 haproxy_api_cleanup,
             )
 
-            # A GET on a path HAProxy does not own: the router is consulted and
-            # names the ingress, so the response comes from the ingress replica
-            # through the companion backend -- not from the model deployment.
-            resp = requests.get(f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5)
+            # The router can select the ingress for a POST as well as a direct
+            # deployment, and dispatches it through the companion backend.
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5
+            )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "INGRESS"
 
             assert len(router_captured["bodies"]) == 1
-            assert router_captured["methods"] == ["GET"]
+            assert router_captured["methods"] == ["POST"]
             assert router_captured["paths"] == ["/v1/models"]
         finally:
             _shutdown_fake_servers(
@@ -2067,19 +2054,13 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
 
-            # A GET to an application path consults the router too: it is a
-            # deployment decision like any other, and only HAProxy's own
-            # endpoints are answered before routing.
+            # GET bypasses the router until it supports ingress route ownership.
             n_router_calls_before_get = len(router_captured["bodies"])
             resp = requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
             )
-            assert (
-                len(router_captured["bodies"]) == n_router_calls_before_get + 1
-            ), "GET to an app path must invoke /internal/route"
-            assert resp.headers.get("x-replica-id") == "B"
-            assert router_captured["methods"][-1] == "GET"
-            assert router_captured["paths"][-1] == "/health-passthrough"
+            assert len(router_captured["bodies"]) == n_router_calls_before_get
+            assert resp.headers.get("x-replica-id") == "A"
 
             # HAProxy's own endpoints still short-circuit ahead of the router.
             n_router_calls = len(router_captured["bodies"])
