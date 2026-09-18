@@ -236,9 +236,6 @@
 #
 # The SF (scale factor) 1000 lineitem table contains ~6B rows.
 
-# The external (on-disk, file-transport) hash shuffle is the same test with
-# RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1, so it's a ``variations`` suffix rather
-# than a duplicated block.
 - name: aggregate_groups_low_cardinality
   python: "3.10"
   cluster:
