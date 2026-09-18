@@ -146,10 +146,6 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
-        # Bytes an external consumer has taken out of the pipeline and still
-        # holds, e.g. `DataIterator.materialize()` collecting every bundle.
-        # Unlike the prefetch bytes above these do not drain as it reads.
-        self._materialized_consumer_bytes: int = 0
         self._has_external_consumer: bool = False
 
         # Executor sink (DAG root: unique op with no output_dependencies).
@@ -189,17 +185,6 @@ class ResourceManager:
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
         return self._external_consumer_bytes
-
-    def set_materialized_consumer_bytes(self, num_bytes: int) -> None:
-        """Set the bytes external consumers have taken and still hold."""
-        assert (
-            num_bytes >= 0
-        ), f"materialized consumer bytes must be non-negative, got {num_bytes}"
-        self._materialized_consumer_bytes = num_bytes
-
-    def get_materialized_consumer_bytes(self) -> int:
-        """Get the bytes external consumers have taken and still hold."""
-        return self._materialized_consumer_bytes
 
     def _estimate_object_store_memory_usage(
         self, op: "PhysicalOperator", state: "OpState"

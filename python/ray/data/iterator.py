@@ -122,12 +122,13 @@ class DataIterator(abc.ABC):
     ) -> None:
         """Report bytes the caller has taken out of the pipeline and still holds.
 
-        Backpressure counts these as consumer capacity. Left unreported they
-        look like unconsumed blocks piling up, and the producer is throttled to
-        a single task. Subclasses whose executor is not local override this.
+        These count as external consumer bytes. Left unreported they look like
+        unconsumed blocks piling up in the producing operator's ref-counted
+        output, and backpressure throttles it to a single task. Subclasses whose
+        executor is not local override this.
         """
         if executor is not None:
-            executor.set_materialized_consumer_bytes(num_bytes)
+            executor.set_external_consumer_bytes(num_bytes)
 
     def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
         """Hook fired from the consumer's thread when iteration ends.

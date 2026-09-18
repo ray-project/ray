@@ -949,24 +949,6 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
-def test_notify_split_finished_clears_materialized_bytes(
-    ray_start_regular_shared_2_cpus,
-):
-    """A consumer that stops without another `get` still gets cleared."""
-    splits = ray.data.range(20, override_num_blocks=4).streaming_split(2, equal=True)
-    coord = splits[0]._coord_actor
-    # Both splits must reach the barrier before `start_epoch` returns.
-    epoch = ray.get([coord.start_epoch.remote(i) for i in range(2)])[0]
-    for split_idx, held in ((0, 500), (1, 700)):
-        ray.get(coord.get.remote(epoch, split_idx, client_materialized_bytes=held))
-    assert ray.get(coord.get_client_materialized_bytes.remote()) == {0: 500, 1: 700}
-
-    ray.get(coord.notify_split_finished.remote(epoch, 0))
-
-    # Only the finished split is cleared; the other consumer still holds its own.
-    assert ray.get(coord.get_client_materialized_bytes.remote()) == {0: 0, 1: 700}
-
-
 def test_streaming_split_materialize_reports_to_executor(
     ray_start_regular_shared_2_cpus,
 ):
@@ -980,11 +962,11 @@ def test_streaming_split_materialize_reports_to_executor(
     (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
     coord = shard._coord_actor
 
-    def resource_manager_total(coordinator):
+    def external_consumer_bytes(coordinator):
         executor = coordinator._current_executor
         if executor is None:
             return 0
-        return executor._resource_manager.get_materialized_consumer_bytes()
+        return executor._resource_manager.get_external_consumer_bytes()
 
     peak = 0
     original = shard._report_materialized_bytes
@@ -992,17 +974,19 @@ def test_streaming_split_materialize_reports_to_executor(
     def record(num_bytes, executor):
         nonlocal peak
         original(num_bytes, executor)
-        peak = max(peak, ray.get(coord.__ray_call__.remote(resource_manager_total)))
+        peak = max(peak, ray.get(coord.__ray_call__.remote(external_consumer_bytes)))
 
     shard._report_materialized_bytes = record
-    shard.materialize()
+    materialized = shard.materialize()
 
-    # Assert the total reached the resource manager, which is what the
-    # backpressure policy reads. The count rides the *next* `get`, so the last
-    # bundles never arrive; assert it moved, not that it reached the full size.
-    assert peak > 0, "resource manager never saw a materialized total"
+    # Prefetch alone is one bundle; only the materialized total approaches the
+    # whole shard. Half the shard separates the two without depending on how
+    # many bundles the reporting lag costs.
+    assert (
+        peak > materialized.size_bytes() / 2
+    ), "resource manager never saw the materialized bytes"
     # Cleared once the shard finishes, so the next epoch starts from zero.
-    assert ray.get(coord.get_client_materialized_bytes.remote())[0] == 0
+    assert ray.get(coord.get_client_prefetched_bytes.remote())[0] == 0
 
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])

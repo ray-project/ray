@@ -121,15 +121,12 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         downstream eligible operators.
 
         If an output dependency is ineligible, skip it and recurse down to find
-        eligible output dependencies. If there are no output dependencies, the
-        consumer is external and its capacity is what it holds: the prefetch
-        window plus whatever it has taken and kept, e.g. via ``materialize()``.
+        eligible output dependencies. If there are no output dependencies,
+        return external consumer bytes.
         """
         if not op.output_dependencies:
-            return (
-                self._resource_manager.get_external_consumer_bytes()
-                + self._resource_manager.get_materialized_consumer_bytes()
-            )
+            # No output dependencies, return external consumer bytes.
+            return self._resource_manager.get_external_consumer_bytes()
 
         total_capacity_size_bytes = 0
         for output_dependency in op.output_dependencies:

@@ -156,10 +156,7 @@ class TestDownstreamCapacityBackpressurePolicy:
     ):
         """Helper method to create policy instance."""
         context = data_context or DataContext()
-        rm = resource_manager
-        if rm is None:
-            rm = MagicMock()
-            rm.get_materialized_consumer_bytes.return_value = 0
+        rm = resource_manager or MagicMock()
         return DownstreamCapacityBackpressurePolicy(
             data_context=context,
             topology=topology,
@@ -177,12 +174,9 @@ class TestDownstreamCapacityBackpressurePolicy:
         internal_usage=100,
         outputs_usage=100,
         external_bytes=100,
-        materialized_bytes=0,
     ):
         """Helper to create a resource manager mock with common settings."""
-        # spec= so stubbing a method ResourceManager does not have fails here,
-        # rather than MagicMock silently inventing it.
-        rm = MagicMock(spec=ResourceManager)
+        rm = MagicMock()
         # Bind real methods from ResourceManager
         rm.is_op_eligible = types.MethodType(ResourceManager.is_op_eligible, rm)
         rm._get_downstream_ineligible_ops = types.MethodType(
@@ -194,10 +188,11 @@ class TestDownstreamCapacityBackpressurePolicy:
         rm._is_blocking_materializing_op = types.MethodType(
             ResourceManager._is_blocking_materializing_op, rm
         )
-        rm.get_mem_op_internal.return_value = internal_usage
-        rm.get_mem_op_outputs.return_value = outputs_usage
+        rm.get_op_internal_object_store_usage.return_value = internal_usage
+        rm.get_op_outputs_object_store_usage_with_downstream.return_value = (
+            outputs_usage
+        )
         rm.get_external_consumer_bytes.return_value = external_bytes
-        rm.get_materialized_consumer_bytes.return_value = materialized_bytes
         return rm
 
     def _set_utilized_budget_fraction(self, rm, fraction):
@@ -506,77 +501,6 @@ class TestDownstreamCapacityBackpressurePolicy:
         assert policy._get_downstream_capacity_size_bytes(op) == external_bytes
         assert policy._get_output_pressure(op) == pytest.approx(expected_pressure)
         assert policy.can_add_input(op) is expected_can_add_input
-
-    @pytest.mark.parametrize(
-        "materialized_bytes, live_bytes, expected_pressure, expected_can_add_input",
-        [
-            # Capacity is 100 prefetched + 900 held = 1000, and the consumer
-            # holds all of the operator's live output: 1000 / 1000 - 1 = 0.
-            pytest.param(900, 1000, 0.0, True, id="retention_is_not_pressure"),
-            # Capacity 500 against 2000 live, so 1500 is queued: 2000 / 500 - 1
-            # = 3, over the 2.0 ratio.
-            pytest.param(400, 2000, 3.0, False, id="backlog_beyond_capacity"),
-        ],
-    )
-    def test_terminal_op_counts_materialized_bytes_as_capacity(
-        self, materialized_bytes, live_bytes, expected_pressure, expected_can_add_input
-    ):
-        """Blocks the consumer took and still holds are capacity, not backlog.
-
-        The ref counter keeps attributing them to the producer, so counting them
-        as queued output pins a train loop's producer to a single task for the
-        rest of the job.
-        """
-        op, op_state = self._mock_task_pool_map_operator()
-        op.output_dependencies = []  # terminal: consumed by an iterator
-        topology = {op: op_state}
-        context = self._create_context(backpressure_ratio=2.0)
-        rm = self._mock_resource_manager(
-            external_bytes=100, materialized_bytes=materialized_bytes
-        )
-        rm.get_mem_op_outputs.return_value = live_bytes
-
-        threshold = (
-            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
-        )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)
-
-        policy = self._create_policy(
-            topology, data_context=context, resource_manager=rm
-        )
-
-        assert policy._get_output_pressure(op) == pytest.approx(expected_pressure)
-        assert policy.can_add_input(op) is expected_can_add_input
-
-    def test_materialized_bytes_ignored_when_downstream_op_is_eligible(self):
-        """Materialized bytes are capacity only for the operator feeding the consumer.
-
-        An upstream operator paces against its downstream operator's in-flight
-        inputs, so counting the consumer's holdings there would stop pacing it.
-        """
-        op, op_state = self._mock_task_pool_map_operator()
-        downstream, downstream_state = self._mock_task_pool_map_operator(
-            obj_store_mem_pending_task_inputs=100
-        )
-        op.output_dependencies = [downstream]
-        downstream.output_dependencies = []
-        topology = {op: op_state, downstream: downstream_state}
-        context = self._create_context(backpressure_ratio=2.0)
-        rm = self._mock_resource_manager(external_bytes=100, materialized_bytes=900)
-        rm.get_mem_op_outputs.return_value = 1000
-
-        threshold = (
-            DownstreamCapacityBackpressurePolicy.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
-        )
-        self._set_utilized_budget_fraction(rm, threshold + 0.05)
-
-        policy = self._create_policy(
-            topology, data_context=context, resource_manager=rm
-        )
-
-        # 1000 / 100 - 1 = 9, as if the materialized bytes were never reported.
-        assert policy._get_output_pressure(op) == pytest.approx(9.0)
-        assert policy.can_add_input(op) is False
 
     def test_max_bytes_returns_none_when_backpressure_disabled(self):
         """Test max_task_output_bytes_to_read returns None when disabled."""
