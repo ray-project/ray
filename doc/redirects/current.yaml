@@ -530,6 +530,9 @@ redirects:
 - from: /rllib/rllib-*
   to: /rllib/index.html
   type: page
+- from: /rllib/package_ref/env/env/*
+  to: /rllib/package_ref/env/doc/:splat
+  type: page
 - from: /rllib/package_ref/*
   to: /rllib/package_ref/index.html
   type: page

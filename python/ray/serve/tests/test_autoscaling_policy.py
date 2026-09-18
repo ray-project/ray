@@ -1186,7 +1186,9 @@ app = g.bind()
     # Step 3: Verify that it can scale from 0 to 1.
     @ray.remote
     def send_request():
-        return httpx.get("http://localhost:8000/").text
+        # The first call is in flight across the 0->1 cold start, which this test
+        # budgets at 20s below; httpx's 5s default read timeout would fire first.
+        return httpx.get("http://localhost:8000/", timeout=60).text
 
     ref = send_request.remote()
 

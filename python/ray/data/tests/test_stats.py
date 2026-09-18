@@ -30,6 +30,10 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
 )
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
+from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionTracker,
+)
+from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import _map_task
@@ -49,7 +53,9 @@ from ray.data._internal.stats import (
     StatsSummary,
     Timer,
     TimeSpan,
+    _create_prometheus_metric,
     _maybe_time,
+    _record_prometheus_metric,
     _StatsActor,
     get_or_create_stats_actor,
 )
@@ -433,6 +439,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     else:
         metrics = [
@@ -522,6 +529,7 @@ def gen_expected_metrics(
             "'obj_store_mem_used': A",
             "'cpu_usage': Z",
             "'gpu_usage': Z",
+            "'memory_usage': Z",
         ]
     if extra_metrics:
         metrics.extend(extra_metrics)
@@ -1034,6 +1042,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -1203,6 +1212,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      obj_store_mem_used: A,\n"
         "      cpu_usage: Z,\n"
         "      gpu_usage: Z,\n"
+        "      memory_usage: Z,\n"
         "      ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"
         "   },\n"
         "   operators_stats=[\n"
@@ -1325,6 +1335,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            obj_store_mem_used: A,\n"
         "            cpu_usage: Z,\n"
         "            gpu_usage: Z,\n"
+        "            memory_usage: Z,\n"
         "            ray_remote_args: {'num_cpus': N, 'scheduling_strategy': 'SPREAD'},\n"  # noqa: E501
         "         },\n"
         "         operators_stats=[\n"
@@ -2003,6 +2014,154 @@ def test_row_transform_phases_are_opt_in(
     )
 
 
+# How far a stage's measured time may sit from the time its body slept. Covers
+# that stage's own prep and block building plus scheduling noise, none of which
+# scales with the sleep.
+STAGE_TIME_TOLERANCE_S = 0.5
+
+
+def test_per_stage_timing_splits_a_fused_chain(
+    ray_start_regular_shared, restore_data_context
+):
+    """A fused operator can say which of its stages the time went to.
+
+    Fusion is what makes this necessary: two ``map_batches`` calls become one
+    operator, and one figure for both is exactly what leaves you unable to tell
+    which function to optimise. The second stage sleeps 10x longer than the
+    first here, so a correct split is unmistakable.
+    """
+    fast_s, slow_s = 0.02, 0.2
+    num_blocks = 4
+
+    def fast_stage(batch):
+        time.sleep(fast_s)
+        return batch
+
+    def slow_stage(batch):
+        time.sleep(slow_s)
+        return batch
+
+    def run():
+        ds = (
+            ray.data.range(num_blocks, override_num_blocks=num_blocks)
+            .map_batches(fast_stage, batch_size=None)
+            .map_batches(slow_stage, batch_size=None)
+            .materialize()
+        )
+        return get_operator(ds.get_stats_summary(), name_pattern="MapBatches")
+
+    DataContext.get_current().per_stage_map_timing = False
+    off = run()
+    # Not measured at all, rather than measured as zero.
+    assert off.stage_time is None, "per-stage timing should be off by default"
+
+    DataContext.get_current().per_stage_map_timing = True
+    on = run()
+    # The read fuses into the same operator, so it is stage 0.
+    assert (
+        len(on.stage_time) == 3
+    ), f"expected one entry per fused stage, got {len(on.stage_time)}"
+
+    read, fast, slow = on.stage_time
+    # Each stage should land near the time its own body slept, summed over the
+    # blocks. Both bounds are absolute on purpose: a stage's figure is its
+    # sleep plus its own prep and block building, and that overhead is roughly
+    # constant per block rather than a proportion of the sleep. A +-10% band
+    # would be 8ms wide on the fast stage and 80ms on the slow one, for the
+    # same few ms of real overhead, so it would fail on the fast stage alone.
+    for label, stage, sleep_s in (("fast", fast, fast_s), ("slow", slow, slow_s)):
+        expected_s = num_blocks * sleep_s
+        assert (
+            expected_s - STAGE_TIME_TOLERANCE_S
+            <= stage.sum
+            < expected_s + STAGE_TIME_TOLERANCE_S
+        ), f"{label} stage measured {stage.sum:.4f}s, expected ~{expected_s:.2f}s"
+    # The slow stage must also dominate. The ratio is diluted by each stage's
+    # own prep and block building, so assert a wide margin rather than the 10x
+    # the sleeps differ by.
+    assert slow.sum > fast.sum * 3, (
+        f"fast stage {fast.sum:.4f}s vs slow stage {slow.sum:.4f}s; the 10x "
+        "slower stage should dominate"
+    )
+    # Every stage gets an entry, so the split accounts for the whole total.
+    stage_sum = read.sum + fast.sum + slow.sum
+    assert stage_sum == pytest.approx(on.block_transform_time.sum, rel=1e-6)
+
+    # Turning it on must not move the headline figure.
+    assert on.block_transform_time.sum == pytest.approx(
+        off.block_transform_time.sum, rel=0.25
+    )
+
+
+def test_per_stage_timing_is_independent_of_phase_timing(
+    ray_start_regular_shared, restore_data_context
+):
+    """Row transforms can have the per-stage split without the per-phase one.
+
+    A coalesced stage is still one step carrying one stage index, so the two
+    flags buy different things and neither implies the other.
+    """
+    ctx = DataContext.get_current()
+    ctx.per_stage_map_timing = True
+    ctx.accurate_map_phase_timing = False
+
+    sleep_s = 0.01
+    num_rows = 8
+
+    def slow_row(row):
+        time.sleep(sleep_s)
+        return row
+
+    ds = (
+        ray.data.range(num_rows, override_num_blocks=2)
+        .map(lambda row: row)
+        .map(slow_row)
+        .materialize()
+    )
+    op = get_operator(ds.get_stats_summary(), name_pattern="Map")
+
+    assert all(p is None for p in _phase_components(op).values())
+    assert len(op.stage_time) == 3
+
+    # The sleeping stage is the last one, and its figure should land near the
+    # time it actually slept across every row. Absolute bounds, for the reason
+    # given in `test_per_stage_timing_splits_a_fused_chain`.
+    expected_s = num_rows * sleep_s
+    assert (
+        expected_s - STAGE_TIME_TOLERANCE_S
+        <= op.stage_time[-1].sum
+        < expected_s + STAGE_TIME_TOLERANCE_S
+    ), (
+        f"last stage measured {op.stage_time[-1].sum:.4f}s, "
+        f"expected ~{expected_s:.2f}s"
+    )
+
+    # Not a second magnitude check: this asserts the split is a partition of
+    # the total rather than an unrelated set of numbers, which is the property
+    # the whole breakdown rests on.
+    assert sum(s.sum for s in op.stage_time) == pytest.approx(
+        op.block_transform_time.sum, rel=1e-6
+    )
+
+
+def test_single_stage_chain_reports_one_entry(
+    ray_start_regular_shared, restore_data_context
+):
+    """An unfused operator reports one entry, equal to its total.
+
+    Reporting nothing would make the line appear and disappear as fusion
+    changes around an operator, which is harder to read than a figure that
+    repeats the total.
+    """
+    DataContext.get_current().per_stage_map_timing = True
+
+    ds = ray.data.range(8, override_num_blocks=2).materialize()
+    op = get_operator(ds.get_stats_summary(), name_pattern="Read")
+
+    assert len(op.stage_time) == 1
+    assert op.stage_time[0].sum == pytest.approx(op.block_transform_time.sum, rel=1e-6)
+
+
 def test_write_ds_stats(ray_start_regular_shared, tmp_path):
     # Test 1: Basic write_parquet - stats stored in _write_ds
     ds1 = ray.data.range(100, override_num_blocks=100)
@@ -2385,6 +2544,47 @@ def test_stats_actor_iter_metrics():
     assert final_stats == ds_stats
     assert update_fn.call_args_list[-1].args[1] == f"dataset_{ds._uuid}_0"
     assert update_fn.call_args_list[-1].args[2] is None
+
+
+def test_create_distribution_prometheus_metric():
+    from ray.util.metrics import Gauge
+
+    metric = next(
+        metric
+        for metric in OpRuntimeMetrics.get_metrics()
+        if metric.name == "max_uss_bytes"
+    )
+
+    prom_metric = _create_prometheus_metric(metric, ("dataset", "operator"))
+
+    assert isinstance(prom_metric, dict)
+    assert all(isinstance(gauge, Gauge) for gauge in prom_metric.values())
+    assert {name: gauge.info["name"] for name, gauge in prom_metric.items()} == {
+        "mean": "data_max_uss_bytes_mean",
+        "max": "data_max_uss_bytes_max",
+    }
+    assert all(
+        gauge.info["tag_keys"] == ("dataset", "operator")
+        for gauge in prom_metric.values()
+    )
+
+
+def test_record_distribution_prometheus_metric():
+    prom_metric = {"mean": MagicMock(), "max": MagicMock()}
+    distribution = DistributionTracker()
+    tags = {"dataset": "dataset_0", "operator": "MapBatches(foo)"}
+
+    _record_prometheus_metric(prom_metric, distribution.as_dict(), tags)
+
+    prom_metric["mean"].set.assert_not_called()
+    prom_metric["max"].set.assert_not_called()
+
+    distribution.add_sample(100)
+    distribution.add_sample(300)
+    _record_prometheus_metric(prom_metric, distribution.as_dict(), tags)
+
+    prom_metric["mean"].set.assert_called_once_with(200, tags)
+    prom_metric["max"].set.assert_called_once_with(300, tags)
 
 
 @pytest.mark.parametrize(
