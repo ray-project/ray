@@ -507,18 +507,12 @@ class ServerConfig:
 
 @dataclass
 class DirectTargetConfig:
-    """A non-ingress deployment that owns HTTP ports, rendered as its own backend.
+    """A non-ingress deployment that owns HTTP ports, rendered as its own backend."""
 
-    Deployments marked `_direct_http` are reachable directly by HAProxy. Each gets
-    its own backend so HAProxy's retry/redispatch can never move a request from one
-    deployment's replicas onto another's -- which for Serve LLM would mean answering
-    with the wrong model.
-    """
-
-    # Serve deployment name, e.g. "LLMServer:model-a". Unsanitized.
+    # Serve deployment name.
     deployment_name: str
 
-    # Generated HAProxy backend name for this deployment.
+    # Generated HAProxy backend name.
     name: str
 
     # Replicas of this deployment only.
@@ -2284,12 +2278,7 @@ class HAProxyManager(ProxyActorInterface):
 
         backend_name = self._generate_backend_name(target_group)
 
-        # Direct backends are only reachable through the app's ingress request
-        # router (the frontend dispatches to them on a variable the Lua sets), so
-        # an app without one gets none: rendering an unreachable backend would
-        # also make `serving()` wait on servers HAProxy never reports.
-        # Sorted so the rendered config is byte-stable across reconciles;
-        # `_write_if_changed` and reload avoidance depend on that.
+        # Direct backends are only reachable through the app's request router.
         direct_target_configs = (
             [
                 DirectTargetConfig(
