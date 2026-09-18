@@ -71,16 +71,11 @@ class DatasourceCategory(Enum):
 class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
-    The framework touches a datasource in exactly one place,
-    ``ray.data.read_api._read_datasource_v2``, which builds the
-    ``ListFiles -> ReadFiles`` plan and then drops it. Every attribute that
-    function reads is declared here, so implementing the abstract members is
-    enough to work end to end.
-
-    That function always builds a ``ListFiles`` op, which is why ``paths``,
-    ``filesystem`` and ``_get_file_indexer`` live here. A future non-file
-    source (a database scan, say) moves them into a ``FileDataSourceV2``
-    subclass.
+    A datasource answers two questions for a read: where the data is
+    (``paths``, ``filesystem``, ``_get_file_indexer``) and how to read it
+    (``infer_schema``, ``create_scanner``). Everything the read pipeline
+    needs is declared on this class, so implementing the abstract members is
+    enough for a new source to work end to end.
 
     Example::
 
