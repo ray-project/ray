@@ -985,8 +985,9 @@ def test_streaming_split_materialize_reports_to_executor(
     assert (
         peak > materialized.size_bytes() / 2
     ), "resource manager never saw the materialized bytes"
-    # Cleared once the shard finishes, so the next epoch starts from zero.
-    assert ray.get(coord.get_client_prefetched_bytes.remote())[0] == 0
+    # Cleared on the way out. The iterator outlives the epoch, so a stale total
+    # would be re-reported on every `get` of the next one.
+    assert shard._materialized_bytes == 0
 
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])
