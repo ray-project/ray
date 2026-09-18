@@ -1517,6 +1517,30 @@ def test_serve_instance_details_default_controller_health_metrics():
     assert details.controller_health_metrics.last_control_loop_time == 0.0
 
 
+def test_serve_instance_details_restores_unset_config_options_is_opt_in():
+    """An omitted capability field means restoring removed overrides is unsupported."""
+    defaulted = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+    )
+    assert defaulted.restores_unset_config_options is False
+    assert (
+        "restores_unset_config_options"
+        not in defaulted._get_user_facing_json_serializable_dict(exclude_unset=True)
+    )
+
+    reported = ServeInstanceDetails(
+        controller_info={"node_id": "fake_node_id"},
+        proxy_location="EveryNode",
+        proxies={},
+        applications={},
+        restores_unset_config_options=True,
+    )._get_user_facing_json_serializable_dict(exclude_unset=True)
+    assert reported["restores_unset_config_options"] is True
+
+
 def test_serve_instance_details_includes_controller_health_metrics():
     """When controller_health_metrics is explicitly set, it should appear in the
     user-facing JSON-serializable representation."""

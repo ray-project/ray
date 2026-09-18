@@ -10,7 +10,7 @@ import os
 from ray import serve
 
 
-@serve.deployment(max_constructor_retry_count=3)
+@serve.deployment(num_replicas=2, max_ongoing_requests=7, max_constructor_retry_count=3)
 class FailOnFlag:
     def __init__(self, fail: bool):
         if fail or os.environ.get("FAIL_ON_INIT") == "1":
