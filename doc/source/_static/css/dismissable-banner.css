@@ -1,4 +1,15 @@
-#close-banner {
+.ray-banner {
+    position: relative;
+    padding: 0.5rem 2.5rem;
+}
+
+/* Distinguishes a docs notice from the banner above it while staying in the Ray
+   palette. Darker than --ray-blue so white text clears WCAG AA. */
+.ray-banner--notice {
+    background-color: var(--ray-blue-dark);
+}
+
+.ray-banner__close {
     background: none;
     border: none;
     color: inherit;
@@ -8,6 +19,7 @@
     border-radius: 3px;
     transition: background-color 0.2s ease;
     position: absolute;
-    top: 8px;
+    top: 50%;
     right: 12px;
+    transform: translateY(-50%);
 }

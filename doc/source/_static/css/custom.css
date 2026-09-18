@@ -6,6 +6,7 @@
 html {
   --anyscale-blue: #0066FF;
   --ray-blue: #02A0CF; /* Ray blue color - use this for all ray branding */
+  --ray-blue-dark: #017091; /* Darker Ray blue, for banding against --ray-blue */
   --pst-color-primary: var(--ray-blue) !important;
   --pst-color-inline-code-links: var(--ray-blue) !important;
 
@@ -425,6 +426,10 @@ dt.sig .sig-name {
 .bd-header-announcement {
   color: var(--pst-color-light);
   background-color: var(--ray-blue);
+  /* The region stacks one or more `.ray-banner` children, each supplying its own
+     padding, so every banner paints a full-width band. Leaving the padding here
+     would show this background as a gutter around the inner bands. */
+  padding: 0;
 }
 
 .bd-header-announcement a {
