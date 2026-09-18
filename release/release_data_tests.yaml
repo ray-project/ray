@@ -1124,7 +1124,7 @@
   run:
     timeout: 10800
     script: >
-      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
 #######################
