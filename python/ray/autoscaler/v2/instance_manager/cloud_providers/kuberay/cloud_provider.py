@@ -771,7 +771,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         path = f"rayclusters/{self._cluster_name}"
         if self._no_driver_policy == "Delete":
-            # Append the ray.io/no-driver-idle-termination finalizer
+            # Append the IDLE_TERMINATION_CLEANUP_FINALIZER  finalizer
             # using a read-modify-write to preserve existing finalizers.
             finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
             if IDLE_TERMINATION_CLEANUP_FINALIZER not in finalizers:
