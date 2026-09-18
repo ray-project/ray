@@ -11,9 +11,7 @@ from packaging.version import parse as parse_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
-    _get_group_indices_fn,
     _group_indices,
-    _group_indices_fallback,
     _has_unhashable_pandas_types,
     _hash_partition_vectorized,
     concat,
@@ -234,24 +232,16 @@ def _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts):
 
 
 @pytest.mark.parametrize("num_partitions", [1, 2, 7, 64])
-def test_group_indices_implementations_equivalent(num_partitions):
-    # The Numba kernel (also runnable as pure Python) and the Arrow fallback
-    # must produce identical (stable) groupings.
+def test_group_indices_matches_stable_argsort(num_partitions):
+    # The grouping must equal NumPy's stable argsort: contiguous per-partition
+    # ranges, original order preserved within each partition.
     rng = np.random.RandomState(42)
     for size in (0, 1, 5, 1000):
         partition_mask = rng.randint(0, num_partitions, size=size).astype(np.int64)
         counts = np.bincount(partition_mask, minlength=num_partitions).astype(np.int64)
 
-        for fn in (_group_indices, _group_indices_fallback):
-            grouped_indices, offsets = fn(partition_mask.copy(), counts.copy())
-            _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts)
-
-    numba = pytest.importorskip("numba")  # noqa: F841
-    compiled = _get_group_indices_fn()
-    partition_mask = rng.randint(0, num_partitions, size=1000).astype(np.int64)
-    counts = np.bincount(partition_mask, minlength=num_partitions).astype(np.int64)
-    grouped_indices, offsets = compiled(partition_mask, counts)
-    _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts)
+        grouped_indices, offsets = _group_indices(partition_mask, counts)
+        _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts)
 
 
 def test_hash_partition_polars_consistent_across_blocks():
