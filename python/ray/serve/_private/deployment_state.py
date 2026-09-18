@@ -4839,6 +4839,7 @@ class DeploymentState:
         reap pops the whole bucket up front, so a membership test inside it would free
         the PG out from under siblings that are still shutting down.
         """
+        unreclaimed = set()
         for gang_id in self._gang_reclaim_candidates:
             reservation = self._gang_reservations.get(gang_id)
             if reservation is None:
@@ -4849,11 +4850,19 @@ class DeploymentState:
             ):
                 # A surviving member re-flags the gang when it departs.
                 continue
+            try:
+                ActorReplicaWrapper.remove_gang_placement_group(reservation.pg_name)
+            except Exception:
+                # Keep the reservation so a later tick can try again.
+                logger.exception(
+                    f"Failed to remove gang placement group {reservation.pg_name}."
+                )
+                unreclaimed.add(gang_id)
+                continue
             self._gang_reservations.pop(gang_id, None)
             for member_id in reservation.member_ids:
                 self._gang_id_by_member_id.pop(member_id, None)
-            ActorReplicaWrapper.remove_gang_placement_group(reservation.pg_name)
-        self._gang_reclaim_candidates.clear()
+        self._gang_reclaim_candidates = unreclaimed
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has

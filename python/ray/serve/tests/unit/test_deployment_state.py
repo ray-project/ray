@@ -65,6 +65,7 @@ from ray.serve._private.test_utils import (
     MockDeploymentActorWrapper,
     MockKVStore,
     MockPlacementGroup,
+    MockReplicaActorWrapper,
     dead_replicas_context,
     replica_rank_context,
     uninitialized_replicas_context,
@@ -9407,6 +9408,35 @@ class TestGangRollingUpdate:
         self._depart(ds, stopping[1])
         ds._reclaim_empty_gang_placement_groups()
         assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def test_gang_pg_reservation_survives_a_failed_removal(
+        self, mock_deployment_state_manager
+    ):
+        """A failed removal must keep the reservation, or nothing can retry it."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        gang_id = stopping[0].gang_context.gang_id
+        for r in stopping:
+            self._depart(ds, r)
+        REMOVED_GANG_PG_NAMES.clear()
+
+        def boom(pg_name):
+            raise RuntimeError("gcs unavailable")
+
+        with patch.object(MockReplicaActorWrapper, "remove_gang_placement_group", boom):
+            ds._reclaim_empty_gang_placement_groups()
+        assert gang_id in ds._gang_reservations
+        assert gang_id in ds._gang_reclaim_candidates
+
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+        assert gang_id not in ds._gang_reservations
 
     def test_gang_pg_not_blocked_by_another_gang_recovering(
         self, mock_deployment_state_manager
