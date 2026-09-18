@@ -246,17 +246,17 @@ logger = logging.getLogger("ray.rllib")
 :width: 600
 :align: left
 
-**EnvRunner with gym.Env setup:** Environments in RLlib live within the {py:class}`~ray.rllib.envs.env_runner.EnvRunner` actors. Scale their
-number `n` through the `config.env_runners(num_env_runners=..)` setting. Each {py:class}`~ray.rllib.envs.env_runner.EnvRunner` actor
+**EnvRunner with gym.Env setup:** Environments in RLlib live within the {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors. Scale their
+number `n` through the `config.env_runners(num_env_runners=...)` setting. Each {py:class}`~ray.rllib.env.env_runner.EnvRunner` actor
 can hold more than one vectorized [gymnasium](https://gymnasium.farama.org) environment. Set the number
-of individual environment copies per EnvRunner through `config.env_runners(num_envs_per_env_runner=..)`.
+of individual environment copies per EnvRunner through `config.env_runners(num_envs_per_env_runner=...)`.
 ```
 
 There are two methods to scale sample collection with RLlib and [gymnasium](https://gymnasium.farama.org) environments, and you can combine both:
 
-1. **Distribute across multiple processes:** RLlib creates multiple {py:class}`~ray.rllib.envs.env_runner.EnvRunner` instances, each a Ray actor, for experience collection, controlled through your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`: `config.env_runners(num_env_runners=..)`.
+1. **Distribute across multiple processes:** RLlib creates multiple {py:class}`~ray.rllib.env.env_runner.EnvRunner` instances, each a Ray actor, for experience collection, controlled through your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`: `config.env_runners(num_env_runners=...)`.
 
-1. **Vectorization within a single process:** Many environments achieve high frame rates per core, but policy inference latency limits them. To address this limitation, create multiple environments per process to batch the policy forward pass across these vectorized environments. Set `config.env_runners(num_envs_per_env_runner=..)` to create more than one environment copy per {py:class}`~ray.rllib.envs.env_runner.EnvRunner` actor. You can also run the individual sub-environments within a vector as separate processes, using the Python multiprocessing that gymnasium provides. Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes and step them in parallel.
+1. **Vectorization within a single process:** Many environments achieve high frame rates per core, but policy inference latency limits them. To address this limitation, create multiple environments per process to batch the policy forward pass across these vectorized environments. Set `config.env_runners(num_envs_per_env_runner=...)` to create more than one environment copy per {py:class}`~ray.rllib.env.env_runner.EnvRunner` actor. You can also run the individual sub-environments within a vector as separate processes, using the Python multiprocessing that gymnasium provides. Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes and step them in parallel.
 
 :::{note}
 Multi-agent setups aren't vectorizable yet. The Ray team is working on a solution for this restriction by using the `gymnasium >= 1.x` custom vectorization feature.
@@ -268,4 +268,4 @@ See the {ref}`scaling guide <rllib-scaling-guide>` for more on RLlib training at
 
 ### Expensive environments
 
-Some environments might require substantial resources to initialize and run. If your environments require more than 1 CPU per {py:class}`~ray.rllib.envs.env_runner.EnvRunner`, provide more resources for each actor by setting the following config options: `config.env_runners(num_cpus_per_env_runner=.., num_gpus_per_env_runner=..)`
+Some environments might require substantial resources to initialize and run. If your environments require more than 1 CPU per {py:class}`~ray.rllib.env.env_runner.EnvRunner`, provide more resources for each actor by setting the following config options: `config.env_runners(num_cpus_per_env_runner=..., num_gpus_per_env_runner=...)`

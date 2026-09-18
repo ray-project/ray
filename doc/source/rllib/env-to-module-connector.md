@@ -176,7 +176,7 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 config.rl_module(model_config=DefaultModelConfig(use_lstm=True))
 
 # For stateful RLModules, we do need to pass in the RLModule to every call to the
-# connector. so construct an instance here.
+# connector, so construct an instance here.
 rl_module_spec = config.get_rl_module_spec(env=env)
 rl_module = rl_module_spec.build()
 

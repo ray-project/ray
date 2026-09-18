@@ -44,8 +44,8 @@ To assign resources to each {py:class}`~ray.rllib.env.env_runner.EnvRunner`, use
 
 ```python
 config.env_runners(
-    num_cpus_per_env_runner=..,
-    num_gpus_per_env_runner=..,
+    num_cpus_per_env_runner=...,
+    num_gpus_per_env_runner=...,
 )
 ```
 
@@ -117,7 +117,7 @@ config.learners(num_gpus_per_learner=1)
 ```
 
 :::{warning}
-For some algorithms, such as IMPALA and APPO, the performance of a single remote {py:class}`~ray.rllib.core.learner.learner.Learner` actor with `num_learners=1` compared to a single local {py:class}`~ray.rllib.core.learner.learner.Learner` instance with `num_learners=0` depends on whether a GPU is available. With exactly one GPU, run these two algorithms with `num_learners=0, num_gpus_per_learner=1`. With no GPU, set `num_learners=1, num_gpus_per_learner=0`. With more than one GPU, set `num_learners=.., num_gpus_per_learner=1`.
+For some algorithms, such as IMPALA and APPO, the performance of a single remote {py:class}`~ray.rllib.core.learner.learner.Learner` actor with `num_learners=1` compared to a single local {py:class}`~ray.rllib.core.learner.learner.Learner` instance with `num_learners=0` depends on whether a GPU is available. With exactly one GPU, run these two algorithms with `num_learners=0, num_gpus_per_learner=1`. With no GPU, set `num_learners=1, num_gpus_per_learner=0`. With more than one GPU, set `num_learners=..., num_gpus_per_learner=1`.
 :::
 
 The number of GPUs can be fractional, for example 0.5, to allocate only a fraction of a GPU per {py:class}`~ray.rllib.core.learner.learner.Learner`. For example, pack five {py:class}`~ray.rllib.core.learner.learner.Learner` instances onto one GPU by setting `num_learners=1, num_gpus_per_learner=0.2`. See this [fractional GPU example](https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py) for details.
