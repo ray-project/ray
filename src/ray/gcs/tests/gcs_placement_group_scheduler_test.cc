@@ -296,7 +296,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   // Apply a raylet ray-syncer ResourceView broadcast through the same entrypoint
-  // ConsumeSyncMessage uses, updating GCS's view of the node to match the
+  // ConsumeSyncMessages uses, updating GCS's view of the node to match the
   // raylet's reported state.
   void ApplyRayletResourceView(const NodeID &node_id,
                                double available_cpu,
