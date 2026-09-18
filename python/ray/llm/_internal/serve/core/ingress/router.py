@@ -216,10 +216,6 @@ class LLMRouter:
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
 
-        # HAProxy looks the pick up as [deployment][replica_id], so the deployment
-        # is part of the answer rather than something it re-derives. With one
-        # tracked deployment this is always `self._handle`'s; multi-model routing
-        # reports whichever deployment the pick landed in.
         response = {
             "host": host,
             "port": port,
