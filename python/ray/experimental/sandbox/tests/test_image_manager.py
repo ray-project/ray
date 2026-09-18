@@ -7,17 +7,33 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.experimental.sandbox._internal import cdi_lib
+from ray.experimental.sandbox._internal import cdi, cdi_lib
 from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
+    NO_GPU_CDI_SPEC_MESSAGE,
     BaseImageManager,
     ImageManager,
+    _build_gpu_cdi_devices_transform_fn,
     get_default_oci_spec,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+
+def _resolve_gpu_cdi_devices(gpu_ids):
+    """Test-only mirror of the resolve step `prepare_oci_bundle` does
+    inline, so the tests below don't repeat it three times."""
+    cdi_spec = cdi.get_spec("GPU")
+    if cdi_spec is None:
+        raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+    try:
+        return cdi_spec, cdi_spec.select_devices(gpu_ids)
+    except cdi_lib.CDIError as err:
+        raise SandboxCreationError(
+            f"Failed to configure GPU access via CDI: {err}"
+        ) from err
 
 
 def test_image_manager_init(tmp_path):
@@ -181,7 +197,13 @@ def test_create_oci_spec_raises_when_no_cdi_spec_found(tmp_path):
         return_value=None,
     ):
         with pytest.raises(SandboxCreationError, match="nvidia-ctk"):
-            mgr.create_oci_spec(image=str(local_tar), gpu_ids=["0"])
+            cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+            mgr.create_oci_spec(
+                image=str(local_tar),
+                _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                    cdi_spec, cdi_devices
+                ),
+            )
 
 
 def test_create_oci_spec_injects_cdi_devices_for_any_kind(tmp_path):
@@ -211,7 +233,13 @@ def test_create_oci_spec_injects_cdi_devices_for_any_kind(tmp_path):
         "ray.experimental.sandbox.image_manager.cdi.get_spec",
         return_value=cdi_spec,
     ):
-        spec = mgr.create_oci_spec(image=str(local_tar), gpu_ids=["0"])
+        cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+        spec = mgr.create_oci_spec(
+            image=str(local_tar),
+            _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            ),
+        )
         assert spec is not None
 
 
@@ -238,7 +266,13 @@ def test_create_oci_spec_translates_cdi_error(tmp_path):
         with pytest.raises(
             SandboxCreationError, match="Failed to configure GPU access via CDI"
         ):
-            mgr.create_oci_spec(image=str(local_tar), gpu_ids=["0"])
+            cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+            mgr.create_oci_spec(
+                image=str(local_tar),
+                _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                    cdi_spec, cdi_devices
+                ),
+            )
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):

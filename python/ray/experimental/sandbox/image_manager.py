@@ -56,58 +56,70 @@ def get_default_oci_spec() -> Dict[str, Any]:
             return json.load(f)
 
 
-def _apply_gpu_cdi_edits(spec: Dict[str, Any], gpu_ids: List[str]) -> None:
-    """Merge the CDI containerEdits for `gpu_ids` into `spec` in place.
-
-    Generates this node's CDI spec for the "GPU" resource (see
-    ray.experimental.sandbox._internal.cdi — generic across accelerator vendors, not
-    NVIDIA-specific, though NVIDIA is the only one wired up today) and
-    merges the requested devices' containerEdits (device nodes,
-    driver-library mounts, env, hooks) into `spec`. Doesn't pre-create
-    any newly merged bind mount's destination: runsc's own mount setup
-    (runsc/boot/vfs.go's makeMountPoint) already creates a missing
-    mountpoint itself, matching the source's directory-or-not type
-    (confirmed against a real gVisor build) -- doing it here too would
-    just be writing avoidable placeholder files into the (possibly
-    shared, cached) image rootfs before the sandbox even exists.
-
-    Whether the backend actually invoking this spec can act on the
-    resulting CDI kind (e.g. whether runsc supports it) is that backend's
-    own concern, not this generic OCI-spec builder's — see
-    GVisorSandboxBackend's pre-flight check.
+def _chain_transform_fns(
+    *fns: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that applies `fns` (skipping any
+    that are None) in order, each to the previous one's result.
     """
-    cdi_spec = cdi.get_spec("GPU")
-    if cdi_spec is None:
-        raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
-    try:
-        cdi_devices = cdi_spec.select_devices(gpu_ids)
-        cdi_spec.apply_edits(spec, cdi_devices)
-    except cdi_lib.CDIError as err:
-        raise SandboxCreationError(
-            f"Failed to configure GPU access via CDI: {err}"
-        ) from err
+    active_fns = [fn for fn in fns if fn is not None]
 
-    # TODO(klueska): Special case override to allow NVIDIA GPU
-    # CDI-injected libraries to be found, since update-ldcache stays
-    # disabled under gVisor (see --disable-hook=update-ldcache above).
-    # Remove once https://github.com/NVIDIA/nvidia-container-toolkit/pull/2059
-    # lands and is backported to a 1.18.x release, letting that hook run
-    # under gVisor again.
-    env = spec.get("process", {}).get("env", [])
-    libcuda_dir = next(
-        (e.split("=", 1)[1] for e in env if e.startswith("NVIDIA_CTK_LIBCUDA_DIR=")),
-        None,
-    )
-    if libcuda_dir:
-        ld_library_path = next(
-            (e.split("=", 1)[1] for e in env if e.startswith("LD_LIBRARY_PATH=")),
+    def _chained(spec: Dict[str, Any]) -> Dict[str, Any]:
+        for fn in active_fns:
+            result = fn(spec)
+            if result is not None:
+                spec = result
+        return spec
+
+    return _chained
+
+
+def _build_gpu_cdi_devices_transform_fn(
+    cdi_spec: cdi_lib.CDISpec,
+    cdi_devices: List[Dict[str, Any]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that merges `cdi_devices`' CDI
+    edits into whatever spec `create_oci_spec` passes it, then patches
+    LD_LIBRARY_PATH so NVIDIA's CDI-injected libraries can be found.
+    """
+
+    def _transform(spec: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            cdi_spec.apply_edits(spec, cdi_devices)
+        except cdi_lib.CDIError as err:
+            raise SandboxCreationError(
+                f"Failed to configure GPU access via CDI: {err}"
+            ) from err
+
+        # TODO(klueska): Special case override to allow NVIDIA GPU
+        # CDI-injected libraries to be found, since update-ldcache stays
+        # disabled under gVisor (see --disable-hook=update-ldcache above).
+        # Remove once https://github.com/NVIDIA/nvidia-container-toolkit/pull/2059
+        # lands and is backported to a 1.18.x release, letting that hook run
+        # under gVisor again.
+        env = spec.get("process", {}).get("env", [])
+        libcuda_dir = next(
+            (
+                e.split("=", 1)[1]
+                for e in env
+                if e.startswith("NVIDIA_CTK_LIBCUDA_DIR=")
+            ),
             None,
         )
-        new_value = (
-            f"{libcuda_dir}:{ld_library_path}" if ld_library_path else libcuda_dir
-        )
-        env[:] = [e for e in env if not e.startswith("LD_LIBRARY_PATH=")]
-        env.append(f"LD_LIBRARY_PATH={new_value}")
+        if libcuda_dir:
+            ld_library_path = next(
+                (e.split("=", 1)[1] for e in env if e.startswith("LD_LIBRARY_PATH=")),
+                None,
+            )
+            new_value = (
+                f"{libcuda_dir}:{ld_library_path}" if ld_library_path else libcuda_dir
+            )
+            env[:] = [e for e in env if not e.startswith("LD_LIBRARY_PATH=")]
+            env.append(f"LD_LIBRARY_PATH={new_value}")
+
+        return spec
+
+    return _transform
 
 
 class BaseImageManager(ABC):
@@ -226,7 +238,6 @@ class BaseImageManager(ABC):
         resolv_conf_source: Optional[str] = None,
         hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
-        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -251,8 +262,6 @@ class BaseImageManager(ABC):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
-            gpu_ids: GPU device ids/UUIDs to expose via CDI
-                (:mod:`ray.experimental.sandbox._internal.cdi`).
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -441,7 +450,6 @@ class ImageManager(BaseImageManager):
         resolv_conf_source: Optional[str] = None,
         hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
-        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -466,8 +474,6 @@ class ImageManager(BaseImageManager):
                 /etc/hosts (a per-sandbox copy, like the one container
                 engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
-            gpu_ids: GPU device ids/UUIDs to expose via CDI
-                (:mod:`ray.experimental.sandbox._internal.cdi`).
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -633,9 +639,6 @@ class ImageManager(BaseImageManager):
             mem_res = resources.setdefault("memory", {})
             mem_res["limit"] = parsed_mem
 
-        if gpu_ids:
-            _apply_gpu_cdi_edits(spec, gpu_ids)
-
         if _oci_spec_transform_fn:
             result = _oci_spec_transform_fn(spec)
             if result is not None:
@@ -715,6 +718,23 @@ class ImageManager(BaseImageManager):
             if host_entries:
                 f.write(host_entries)
 
+        if gpu_ids:
+            cdi_spec = cdi.get_spec("GPU")
+            if cdi_spec is None:
+                raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+            try:
+                cdi_devices = cdi_spec.select_devices(gpu_ids)
+            except cdi_lib.CDIError as err:
+                raise SandboxCreationError(
+                    f"Failed to configure GPU access via CDI: {err}"
+                ) from err
+            gpu_transform_fn = _build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            )
+            _oci_spec_transform_fn = _chain_transform_fns(
+                gpu_transform_fn, _oci_spec_transform_fn
+            )
+
         spec = self.create_oci_spec(
             image=image,
             container_cwd=container_cwd,
@@ -727,7 +747,6 @@ class ImageManager(BaseImageManager):
             network=network,
             resolv_conf_source=resolv_conf_source,
             hosts_source=hosts_source,
-            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 
