@@ -226,25 +226,6 @@ class _HandleMetricStore:
         return list(self.columnar.values()) + list(self.objects.values())
 
 
-def _mask_running_samples(
-    report: ColumnarHandleReport, running: Set[str]
-) -> List[MetricSamples]:
-    """The handle's running samples for replicas still in `running`, gathered in one
-    pass. Memoized against the running set, so a handle that lags a scale-down pays this
-    once per change rather than once per tick."""
-    keys, samples = report.running_keys, report.running
-    offsets = samples.source_offsets
-    if offsets is None:
-        return [samples] if keys and keys[0] in running else []
-    mask = np.fromiter((k in running for k in keys), dtype=bool, count=len(keys))
-    if not mask.any():
-        return []
-    starts, lengths = offsets[:-1][mask], np.diff(offsets)[mask]
-    kept = np.concatenate((np.zeros(1, dtype=np.int64), np.cumsum(lengths)))
-    gather = np.repeat(starts - kept[:-1], lengths) + np.arange(kept[-1])
-    return [MetricSamples(samples.timestamps[gather], samples.values[gather], kept)]
-
-
 def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str]]:
     """The report's running points as one per-source sample set, plus each source's
     replica key. The encoder lays a metric's points out contiguously, so this is
@@ -539,14 +520,14 @@ class DeploymentAutoscalingState:
             if report.queued
         ]
 
-    def _handle_running_columnar_samples(
-        self, running: Set[str]
-    ) -> List[MetricSamples]:
-        """Each columnar handle's running samples, masked to replicas still in `running`
-        (mirrors _collect_handle_running_requests). Passed through whole while every
-        replica is still running; a stale key costs one masking pass per running-set
-        change, not one per tick, since a handle lags the set for a whole report
-        interval after every scale-down."""
+    def _handle_running_columnar_samples(self) -> List[MetricSamples]:
+        """Each columnar handle's running samples, masked to the replicas still
+        running (mirrors _collect_handle_running_requests). Zero copy throughout: the
+        whole frame passes through while every replica is still running, and the masked
+        case slices. A stale key costs one masking pass per running-set change, not one
+        per tick, since a handle lags the set for a whole report interval after every
+        scale-down."""
+        running = self._cached_running_replica_strs
         samples = []
         for report in self._handle_store.columnar.values():
             keys = report.running_keys
@@ -557,7 +538,12 @@ class DeploymentAutoscalingState:
                 continue
             cached = self._handle_store.masked(report.handle_id, self._running_gen)
             if cached is None:
-                cached = _mask_running_samples(report, running)
+                # Slices, so the masked samples stay views onto the stored frame.
+                cached = [
+                    report.running.source(i)
+                    for i, key in enumerate(keys)
+                    if key in running
+                ]
                 self._handle_store.remember_masked(
                     report.handle_id, self._running_gen, cached
                 )
@@ -977,9 +963,7 @@ class DeploymentAutoscalingState:
         samples = self._replica_running_samples()
         metrics_collected_on_replicas = bool(samples)
         if not metrics_collected_on_replicas:
-            samples += self._handle_running_columnar_samples(
-                self._cached_running_replica_strs
-            )
+            samples += self._handle_running_columnar_samples()
             samples += MetricSamples.per_series(self._collect_handle_running_requests())
         samples += self._queued_columnar_samples()
         samples += MetricSamples.per_series(self._collect_handle_queued_requests())

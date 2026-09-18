@@ -630,6 +630,28 @@ def test_handle_columnar_uses_fast_store():
     assert payload["timestamp"] == rep.timestamp
 
 
+@pytest.mark.parametrize("fmt", ["columnar", "cloudpickle"])
+def test_undecodable_report_is_logged_not_raised(fmt, caplog):
+    """The sender never reads this call's ObjectRef, so a report that cannot be parsed
+    would vanish with no trace on either side. Both formats must log and drop it, and
+    neither may store anything from it."""
+    s = MagicMock()
+    good = (
+        codec.encode(_handle_report())
+        if fmt == "columnar"
+        else compress_metric_report(_handle_report())
+    )
+    # Truncate the payload, keeping any leading magic so it still routes to its own
+    # decoder rather than falling through to the other one.
+    corrupt = good[: len(good) // 2]
+    with caplog.at_level("ERROR"):
+        ServeController.record_autoscaling_metrics_from_handle(s, corrupt)
+    asm = s.autoscaling_state_manager
+    asm.record_columnar_metrics_for_handle.assert_not_called()
+    asm.record_request_metrics_for_handle.assert_not_called()
+    assert "Dropping an undec" in caplog.text
+
+
 def test_handle_cloudpickle_uses_object_store():
     s = MagicMock()
     ServeController.record_autoscaling_metrics_from_handle(
