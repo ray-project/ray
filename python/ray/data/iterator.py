@@ -122,9 +122,9 @@ class DataIterator(abc.ABC):
     ) -> None:
         """Report bytes the caller has taken out of the pipeline and still holds.
 
-        These count as external consumer bytes. Unreported, the ref counter
-        leaves them in the producer's output and backpressure throttles it to a
-        single task. Subclasses whose executor is not local override this.
+        These count as external consumer bytes. If they go unreported, the ref
+        counter leaves them in the producer's output and backpressure throttles
+        it to a single task. Subclasses whose executor is not local override this.
         """
         if executor is not None:
             executor.set_external_consumer_bytes(num_bytes)

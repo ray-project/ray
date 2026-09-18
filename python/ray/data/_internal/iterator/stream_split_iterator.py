@@ -73,7 +73,7 @@ class StreamSplitDataIterator(DataIterator):
         # tasks.
         self._active_epoch: Optional[int] = None
         # Latest total from `_report_materialized_bytes`; `gen_blocks` reads it
-        # when building the next `get`. Plain attribute, as above.
+        # when building the next `get`. Plain attribute, like `_active_epoch`.
         self._reported_materialized_bytes: int = 0
         logger.debug(
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
@@ -84,9 +84,9 @@ class StreamSplitDataIterator(DataIterator):
     ) -> None:
         """Stash the count; `gen_blocks` sends it with the next `get`.
 
-        The executor lives in the `SplitCoordinator` actor, so there is no local
-        handle to call. Riding that `get` costs no extra RPC, but the final
-        total never rides one, since iteration ends first.
+        The executor lives in the `SplitCoordinator` actor, so there is nothing
+        local to call. Piggybacking on `get` avoids an extra RPC. The final
+        count is never sent, because iteration ends before the next `get`.
         """
         self._reported_materialized_bytes = num_bytes
 
