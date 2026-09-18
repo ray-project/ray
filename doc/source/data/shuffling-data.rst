@@ -225,7 +225,6 @@ Example of hash shuffling based on column `id`:
 
     import ray
 
-    # Hash-shuffle, which uses the default `shuffle_v2` strategy
     hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 
 .. tip::
