@@ -2906,6 +2906,132 @@ def test_active_compaction_can_schedule_upscale_to_source_node():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
+def test_active_compaction_does_not_schedule_migration_to_source_node():
+    """With no room elsewhere, a migration replacement waits out the compaction."""
+    dep_id = DeploymentID(name="deployment1")
+    filler_dep_id = DeploymentID(name="filler")
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(node_id_1, {"CPU": 2})
+    cluster_node_info_cache.add_node(node_id_2, {"CPU": 1})
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(dep_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 0})
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), node_id_1)
+    scheduler.on_replica_running(ReplicaID("filler", filler_dep_id), node_id_2)
+
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == node_id_1
+
+    # A concurrent upscale takes the room the migration was planning to use.
+    on_scheduled_mock = Mock()
+    scheduler._on_replica_launching(
+        ReplicaID("migration", dep_id), target_node_id=node_id_2
+    )
+
+    replacement_replica_id = ReplicaID("r1", dep_id)
+    request = ReplicaSchedulingRequest(
+        replica_id=replacement_replica_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+        excluded_node_ids={node_id_1},
+    )
+    scheduler._pending_replicas[dep_id][replacement_replica_id] = request
+
+    all_node_labels = {
+        node_id: cluster_node_info_cache.get_node_labels(node_id)
+        for node_id in cluster_node_info_cache.get_active_node_ids()
+    }
+    target_node = scheduler._pack_schedule_replica(
+        request,
+        all_node_labels,
+        scheduler._get_available_resources_per_node(),
+        scheduler._get_node_to_running_replicas(),
+    )
+
+    assert target_node is None
+    on_scheduled_mock.assert_not_called()
+    assert replacement_replica_id in scheduler._pending_replicas[dep_id]
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node_id_1
+    assert scheduler._num_consecutive_failed_compactions == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+@pytest.mark.parametrize("is_migration", [True, False])
+def test_active_compaction_prefers_idle_node_over_source_node(is_migration):
+    """An idle node beats the node being compacted, for migrations and upscales."""
+    dep_id = DeploymentID(name="deployment1")
+    filler_dep_id = DeploymentID(name="filler")
+    node_id_1 = NodeID.from_random().hex()
+    node_id_2 = NodeID.from_random().hex()
+    idle_node_id = NodeID.from_random().hex()
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(node_id_1, {"CPU": 2})
+    cluster_node_info_cache.add_node(node_id_2, {"CPU": 1})
+    cluster_node_info_cache.add_node(idle_node_id, {"CPU": 2})
+    scheduler = _compaction_scheduler(cluster_node_info_cache, "head-node")
+
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(filler_dep_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(dep_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_deployment_deployed(
+        filler_dep_id, rconfig(ray_actor_options={"num_cpus": 0})
+    )
+    scheduler.on_replica_running(ReplicaID("r0", dep_id), node_id_1)
+    scheduler.on_replica_running(ReplicaID("filler", filler_dep_id), node_id_2)
+
+    node_info = scheduler.get_node_to_compact(allow_new_compaction=True)
+    assert node_info is not None
+    assert node_info[0] == node_id_1
+
+    on_scheduled_mock = Mock()
+    scheduler._on_replica_launching(
+        ReplicaID("migration", dep_id), target_node_id=node_id_2
+    )
+
+    replacement_replica_id = ReplicaID("r1", dep_id)
+    request = ReplicaSchedulingRequest(
+        replica_id=replacement_replica_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=on_scheduled_mock,
+        excluded_node_ids={node_id_1} if is_migration else None,
+    )
+    scheduler._pending_replicas[dep_id][replacement_replica_id] = request
+
+    all_node_labels = {
+        node_id: cluster_node_info_cache.get_node_labels(node_id)
+        for node_id in cluster_node_info_cache.get_active_node_ids()
+    }
+    target_node = scheduler._pack_schedule_replica(
+        request,
+        all_node_labels,
+        scheduler._get_available_resources_per_node(),
+        scheduler._get_node_to_running_replicas(),
+    )
+
+    assert target_node == idle_node_id
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node_id_1
+    assert scheduler._num_consecutive_failed_compactions == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
 def test_get_node_to_compact_skips_gang_deployments():
     gang_dep_id = DeploymentID(name="gang")
     filler_dep_id = DeploymentID(name="filler")
