@@ -28,15 +28,15 @@ from ray.serve.llm.request_router import KVAwareRouter
 
 @pytest.fixture(autouse=True)
 def reset_process_global():
-    set_kv_token_tracker(None)
+    kv_token_tracker._KV_TOKEN_TRACKERS.clear()
     yield
-    set_kv_token_tracker(None)
+    kv_token_tracker._KV_TOKEN_TRACKERS.clear()
 
 
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id):
+    def __init__(self, *, indexer_threads, serve_deployment_id, routing_stage):
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
 
@@ -71,7 +71,7 @@ def test_build_registers_tracker(monkeypatch):
     id and registers it so the same-process router/ingress can reach it."""
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
     tracker = build_kv_token_tracker(_llm_config(), "dep-id")
-    assert get_kv_token_tracker() is tracker
+    assert get_kv_token_tracker("dep-id") is tracker
     assert tracker.serve_deployment_id == "dep-id"
 
 
@@ -85,8 +85,9 @@ def test_indexer_threads_from_config(monkeypatch):
 def test_router_binds_tracker():
     """KVAwareRouter picks up the tracker the LLMRouter registered."""
     sentinel = object()
-    set_kv_token_tracker(sentinel)
+    set_kv_token_tracker(sentinel, "dep-id")
     router = KVAwareRouter.__new__(KVAwareRouter)
+    router._deployment_id = "dep-id"
     router.initialize_state()
     assert router._kv_token_tracker is sentinel
 
@@ -198,10 +199,14 @@ async def test_lifecycle_booking_end_to_end():
         assert _active_requests(tracker, worker_id) == 1
 
         router = LLMRouter.__new__(LLMRouter)
-        router._kv_token_tracker = tracker
-        await router.on_lifecycle_events([("on_prefill_complete", ("req-e2e",))])
+        router._trackers = {"dep-id": tracker}
+        await router.on_lifecycle_events(
+            [("on_prefill_complete", ("req-e2e",))], "dep-id"
+        )
         assert _active_requests(tracker, worker_id) == 1
-        await router.on_lifecycle_events([("on_request_completed", ("req-e2e",))])
+        await router.on_lifecycle_events(
+            [("on_request_completed", ("req-e2e",))], "dep-id"
+        )
         assert "req-e2e" not in tracker._requests
         assert _active_requests(tracker, worker_id) == 0
     finally:
@@ -210,14 +215,22 @@ async def test_lifecycle_booking_end_to_end():
 
 
 @pytest.mark.asyncio
-async def test_peer_trackers_converge_through_request_lifecycle():
+@pytest.mark.parametrize("decode", [False, True])
+async def test_peer_trackers_converge_through_request_lifecycle(decode):
     """One atomic selection is replicated so every selection service books the
     same request, applies prefill completion, and frees it."""
     pytest.importorskip("dynamo.llm")
 
-    routing = _NoLongPollTracker(ingress_replica_rank=0)
-    peer = _NoLongPollTracker(ingress_replica_rank=1)
+    routing = _NoLongPollTracker(ingress_replica_id="router-0")
+    peer = _NoLongPollTracker(ingress_replica_id="router-1")
     trackers = (routing, peer)
+    if decode:
+        for tracker in trackers:
+            tracker._selection_override = {
+                "overlap_score_credit": 0.0,
+                "assume_kv_reuse": False,
+                "track_prefill_tokens": False,
+            }
     worker_id = get_worker_id("engine-replica-0")
     token_ids = list(range(64))
     try:
@@ -259,7 +272,8 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         ]
         assert len(set(loads)) == 1
         assert loads[0][0] == 1
-        assert loads[0][1] > 0
+        assert (loads[0][1] == 0) if decode else (loads[0][1] > 0)
+        assert loads[0][2] > 0
         assert all("req-bcast" in tracker._requests for tracker in trackers)
 
         prefill = [("on_prefill_complete", ("req-bcast",))]
@@ -273,6 +287,18 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         assert all(
             tracker._requests["req-bcast"].prefill_completed for tracker in trackers
         )
+
+        for tracker in trackers:
+            await tracker.on_decode_progress("req-bcast", 32)
+        await async_wait_for_condition(
+            lambda: all(
+                _worker_load(tracker, worker_id, "potential_decode_blocks")
+                < loads[0][2]
+                for tracker in trackers
+            ),
+            timeout=5,
+        )
+        assert all(_active_requests(tracker, worker_id) == 1 for tracker in trackers)
 
         completed = [("on_request_completed", ("req-bcast",))]
         for tracker in trackers:
@@ -291,6 +317,66 @@ async def test_peer_trackers_converge_through_request_lifecycle():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["prefill", "decode"])
+async def test_pd_load_isolation(monkeypatch, stage):
+    """Prefill ignores resident blocks; decode ignores pending prefill work."""
+    monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _NoLongPollTracker)
+    trackers = [
+        build_kv_token_tracker(
+            _llm_config({"pd_routing_stage": stage}), DeploymentID(stage, "app")
+        )
+        for _ in range(2)
+    ]
+    workers = [get_worker_id("long"), get_worker_id("short")]
+    routing, peer = trackers
+    try:
+        for rank, tracker in enumerate(trackers):
+            tracker._ingress_replica_id = f"router-{rank}"
+            tracker._register_block_size(16, "engine")
+            for worker in workers:
+                await tracker._upsert_worker(
+                    worker,
+                    str(worker),
+                    {
+                        "endpoint": "tcp://127.0.0.1:59998",
+                        "block_size": 16,
+                        "max_num_batched_tokens": 8192,
+                        "dp_rank": 0,
+                    },
+                )
+
+        handle = _TrackerBroadcastHandle(*trackers)
+        routing.start_reservation_broadcast(handle)
+        await routing.select_worker("long", list(range(1024)), [workers[0]], 128)
+        await routing.select_worker("short", list(range(64)), [workers[1]], 128)
+        await routing.flush_reservation_broadcast()
+        await handle.flush()
+        await peer.flush_reservation_updates()
+
+        for tracker in trackers:
+            await tracker.on_prefill_complete("long")
+            if stage == "prefill":
+                # Even optional engine progress must not add decode load to P.
+                await tracker.on_decode_progress("long", 32)
+            ignored_load = (
+                "potential_decode_blocks"
+                if stage == "prefill"
+                else "potential_prefill_tokens"
+            )
+            assert all(_worker_load(tracker, w, ignored_load) == 0 for w in workers)
+            pick = await tracker.select_worker(
+                f"probe-{tracker._ingress_replica_id}", list(range(16)), workers, 16
+            )
+            # P chooses the now-idle worker. D chooses the smaller active KV load.
+            assert pick["worker_id"] == workers[0 if stage == "prefill" else 1]
+    finally:
+        for tracker in trackers:
+            tracker.close()
+            for worker in workers:
+                await tracker._svc.delete_worker(worker)
+
+
+@pytest.mark.asyncio
 async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
     """The selecting ingress must ignore its own reservation broadcast even if
     the request completed before that background broadcast is delivered."""
@@ -298,7 +384,7 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
     worker_id = get_worker_id("engine-replica-0")
     token_ids = list(range(64))
 
-    tracker = _NoLongPollTracker(ingress_replica_rank=0)
+    tracker = _NoLongPollTracker(ingress_replica_id="router-0")
     try:
         tracker._register_block_size(16, "engine-replica-0")
         await tracker._upsert_worker(
@@ -316,7 +402,7 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
         )
         descriptor = {
             "request_id": "req-delayed-self",
-            "source_ingress_replica_rank": 0,
+            "source_ingress_replica_id": "router-0",
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
             "sequence_hashes": [1],
@@ -344,8 +430,8 @@ async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
     worker_id = get_worker_id("engine-replica-0")
     token_ids = list(range(64))
 
-    routing = _NoLongPollTracker(ingress_replica_rank=0)
-    peer = _NoLongPollTracker(ingress_replica_rank=1)
+    routing = _NoLongPollTracker(ingress_replica_id="router-0")
+    peer = _NoLongPollTracker(ingress_replica_id="router-1")
     trackers = (routing, peer)
     try:
         for tracker in trackers:
@@ -367,7 +453,7 @@ async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
         peer._svc = _RecordingSelectionService(peer._svc)
         descriptor = {
             "request_id": "req-delayed-peer",
-            "source_ingress_replica_rank": 0,
+            "source_ingress_replica_id": "router-0",
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
             "sequence_hashes": [1],

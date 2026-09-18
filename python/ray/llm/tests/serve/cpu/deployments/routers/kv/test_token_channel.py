@@ -298,6 +298,7 @@ async def test_routes_tokens_to_replica():
 
     sender = TokenSender()
     router = LLMRouter.__new__(LLMRouter)
+    router._pd_coordinator = None
     router._handle = MagicMock()
     router._tokenizer = MagicMock()
     router._tokenizer.tokenize = AsyncMock(return_value=token_ids)

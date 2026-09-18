@@ -35,6 +35,8 @@ def _maybe_setup_kv_aware_routing(
             )
         return
 
+    validate_kv_connector(llm_config)
+
     # Keep the engine's token-tracking gate which reads llm_config consistent
     # with the router resolved here from the merged deployment options.
     llm_config.deployment_config["request_router_config"] = deployment_options[
@@ -42,3 +44,15 @@ def _maybe_setup_kv_aware_routing(
     ]
 
     configure_kv_events_for_kv_routing(llm_config)
+
+
+def validate_kv_connector(llm_config: LLMConfig) -> None:
+    """Reject MoRIIO with KV-aware routing, including nested connectors."""
+    connectors = [llm_config.engine_kwargs.get("kv_transfer_config") or {}]
+    while connectors:
+        config = connectors.pop()
+        if config.get("kv_connector") == "MoRIIOConnector":
+            raise ValueError("KVAwareRouter does not support MoRIIOConnector")
+        connectors.extend(
+            config.get("kv_connector_extra_config", {}).get("connectors", [])
+        )

@@ -838,5 +838,34 @@ class TestBuildPDOpenaiApp:
         assert ingress_deployment._deployment_config.max_ongoing_requests == 300
 
 
+@pytest.mark.parametrize("nested", [False, True])
+def test_kv_aware_pd_rejects_moriio(nested):
+    connector = {"kv_connector": "MoRIIOConnector", "kv_role": "kv_both"}
+    if nested:
+        connector = {
+            "kv_connector": "MultiConnector",
+            "kv_role": "kv_both",
+            "kv_connector_extra_config": {"connectors": [connector]},
+        }
+    config = LLMConfig(
+        model_loading_config={"model_id": "test-model"},
+        deployment_config={
+            "request_router_config": {
+                "request_router_class": "ray.serve.llm.request_router.KVAwareRouter",
+            }
+        },
+        engine_kwargs={"kv_transfer_config": connector},
+    )
+    with pytest.raises(
+        ValueError, match="KVAwareRouter does not support MoRIIOConnector"
+    ):
+        build_pd_openai_app(
+            {
+                "prefill_config": config.model_copy(deep=True),
+                "decode_config": config.model_copy(deep=True),
+            }
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

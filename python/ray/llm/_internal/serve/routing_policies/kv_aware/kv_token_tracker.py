@@ -5,7 +5,19 @@ import math
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypedDict,
+    Union,
+)
+
+from typing_extensions import Unpack
 
 import ray
 from ray import serve
@@ -13,9 +25,11 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
     KV_INDEXER_THREADS_KEY,
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+    PD_ROUTING_STAGE,
     REQUEST_TRACKING_TTL_S,
+    RoutingStage,
 )
-from ray.serve._private.common import DeploymentTargetInfo
+from ray.serve._private.common import DeploymentID, DeploymentTargetInfo
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -23,9 +37,15 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.exceptions import RayServeException
+from ray.serve.handle import DeploymentHandle
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+
+try:
+    from dynamo.llm import SelectionService
+except ImportError:
+    SelectionService = None
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -53,6 +73,14 @@ def get_worker_id(replica_unique_id: str) -> int:
     )
 
 
+LifecycleEvent = Tuple[str, Tuple[Union[str, int], ...]]
+
+
+class CachedLifecycle(TypedDict, total=False):
+    prefill_completed: bool
+    output_tokens: int
+
+
 @dataclass
 class RequestLifecycle:
     """In-flight request load state while the request is served by a replica."""
@@ -69,6 +97,7 @@ class RequestLifecycle:
     total_blocks: int = 0
     # Monotonic admission time, for the TTL eviction sweep.
     created_at: float = field(default_factory=time.monotonic)
+    reservation: Optional["ReservationBroadcast"] = None
 
 
 class WorkerSelection(TypedDict):
@@ -84,11 +113,14 @@ class WorkerSelection(TypedDict):
     effective_prefill_tokens: int
 
 
-class ReservationBroadcast(TypedDict):
+class ReservationBroadcast(TypedDict, total=False):
     """Selected-worker booking state replicated to peer ingress routers."""
 
     request_id: str
-    source_ingress_replica_rank: Optional[int]
+    source_ingress_replica_id: Optional[str]
+    deployment_id: Optional[DeploymentID]
+    completed: bool
+    track_prefill_tokens: bool
     worker_id: int
     dp_rank: int
     sequence_hashes: List[int]
@@ -105,13 +137,13 @@ class ReservationBroadcastForwarder:
     delivery task, off the request's selection and dispatch path.
     """
 
-    def __init__(self, handle: Any):
+    def __init__(self, handle: DeploymentHandle):
         self._handle = handle
         if getattr(handle, "is_initialized", True) is False:
             # Keep broadcast routing off the ingress replica's request loop.
             handle._init(_run_router_in_separate_loop=True)
-        self._reservations: asyncio.Queue = asyncio.Queue()
-        self._delivery_task: Optional[asyncio.Task] = None
+        self._reservations: asyncio.Queue[ReservationBroadcast] = asyncio.Queue()
+        self._delivery_task: Optional[asyncio.Task[None]] = None
 
     def report(self, reservation: ReservationBroadcast) -> None:
         if self._delivery_task is None or self._delivery_task.done():
@@ -171,33 +203,30 @@ class KVTokenTracker:
        mapping each running replica to a Dynamo worker id.
     3. The ``SelectionService`` maintains a global KV index radix tree, fed by
        every replica's KV events; each node records which workers hold that KV block.
-    4. Scoring (``select_worker``) atomically ranks candidate workers by
-       KV-cache overlap and current token load, reserves the chosen worker, and
-       records local lifecycle state. The selected reservation is replicated to
-       peer ingress replicas in the background so every selection service can
-       apply the engine's subsequent lifecycle events. A separate
-       select-then-reserve flow causes herding because concurrent requests can
-       select the same worker from stale load state before any reservation is
-       visible.
+    4. Scoring (``select_worker``) ranks candidates and books the chosen worker
+       before another local selection can run. Reservations are replicated to
+       peer ingress replicas in the background so their selection services can
+       apply the engine's subsequent lifecycle events.
     """
 
     def __init__(
         self,
         indexer_threads: int = DEFAULT_KV_INDEXER_THREADS,
-        serve_deployment_id: Optional[Any] = None,
-        ingress_replica_rank: Optional[int] = None,
+        serve_deployment_id: Optional[DeploymentID] = None,
+        ingress_replica_id: Optional[str] = None,
+        routing_stage: Optional[RoutingStage] = None,
     ):
         # The tracked LLMServer deployment id, passed in by the LLMRouter
         # that builds the tracker.
-        self._serve_deployment_id = serve_deployment_id
-        self._ingress_replica_rank = ingress_replica_rank
-        if self._ingress_replica_rank is None:
+        self._serve_deployment_id: Optional[DeploymentID] = serve_deployment_id
+        self._ingress_replica_id: Optional[str] = ingress_replica_id
+        if self._ingress_replica_id is None:
             try:
-                replica_rank = serve.get_replica_context().rank
+                self._ingress_replica_id = (
+                    serve.get_replica_context().replica_id.unique_id
+                )
             except RayServeException:
-                replica_rank = None
-            if replica_rank is not None:
-                self._ingress_replica_rank = replica_rank.rank
+                self._ingress_replica_id = None
         # KV-cache block size, learned once from the first replica's reported
         # engine config and passed to the selection service, which uses it to
         # track the worker's active load and index its KV blocks for overlap.
@@ -221,11 +250,27 @@ class KVTokenTracker:
         # Request ids whose completion arrived before their reservation broadcast.
         # Ordered oldest-first so the stale sweep can bound memory.
         self._completed_request_ids: "OrderedDict[str, float]" = OrderedDict()
-        self._pending_tasks: Set[asyncio.Task] = set()
+        self._pending_tasks: Set[asyncio.Task[None]] = set()
         self._reservation_forwarder: Optional[ReservationBroadcastForwarder] = None
-        self._reservation_updates: asyncio.Queue = asyncio.Queue()
-        self._reservation_apply_task: Optional[asyncio.Task] = None
+        self._reservation_updates: asyncio.Queue[
+            List[ReservationBroadcast]
+        ] = asyncio.Queue()
+        self._reservation_apply_task: Optional[asyncio.Task[None]] = None
         self._long_poll_client: Optional[LongPollClient] = None
+        self._selection_override: Optional[Dict[str, Union[float, bool]]] = None
+        self._routing_stage = routing_stage
+        if routing_stage == RoutingStage.PREFILL:
+            self._selection_override = {"track_prefill_tokens": True}
+        elif routing_stage == RoutingStage.DECODE:
+            self._selection_override = {
+                "overlap_score_credit": 0.0,
+                "assume_kv_reuse": False,
+                "track_prefill_tokens": False,
+            }
+        self._prefill_selection_lock: asyncio.Lock = asyncio.Lock()
+        self._prefill_workers: Set[int] = set()
+        self._prefill_workers_changed = asyncio.Event()
+        self._lifecycle_cache: OrderedDict[str, CachedLifecycle] = OrderedDict()
         self._create_selection_service()
         self._start_replica_tracking()
 
@@ -233,18 +278,13 @@ class KVTokenTracker:
         """Return the KV-cache block size used for decode-block accounting."""
         return self._block_size
 
-    def start_reservation_broadcast(self, handle: Any) -> None:
+    def start_reservation_broadcast(self, handle: DeploymentHandle) -> None:
         """Configure background reservation replication to this deployment."""
         self._reservation_forwarder = ReservationBroadcastForwarder(handle)
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
-        # Imported here, not at module scope, to keep Dynamo's pyo3 extension off
-        # the import path of every process that imports this module; only the
-        # ingress replica that builds the tracker needs it.
-        try:
-            from dynamo.llm import SelectionService
-        except ImportError:
+        if SelectionService is None:
             self._svc = None
             logger.warning(
                 "ai-dynamo is not installed; KV-aware routing requires ai-dynamo."
@@ -351,6 +391,18 @@ class KVTokenTracker:
                 len(self._replica_id_by_worker),
             )
 
+    def close(self) -> None:
+        if self._long_poll_client is not None:
+            self._long_poll_client.stop()
+        if self._reservation_forwarder is not None:
+            self._reservation_forwarder.close()
+        if self._reservation_apply_task is not None:
+            self._reservation_apply_task.cancel()
+        for task in self._pending_tasks:
+            task.cancel()
+        if self._svc is not None:
+            self._svc.shutdown()
+
     def remove_worker(self, worker_id: int) -> None:
         """Evict a departed replica's worker and its KV blocks from the
         selection service.
@@ -358,8 +410,13 @@ class KVTokenTracker:
         # Drop the departed replica's in-flight requests; their completions can
         # never arrive, so they would otherwise leak. delete_worker below frees
         # their load in the service, so no per-request free_reservation is needed.
+        if self._routing_stage == RoutingStage.PREFILL:
+            self._prefill_workers.discard(worker_id)
         for request_id in self._request_ids_by_worker.pop(worker_id, set()):
             self._requests.pop(request_id, None)
+            if self._routing_stage is not None:
+                self._mark_request_completed(request_id)
+                self._lifecycle_cache.pop(request_id, None)
         if self._svc is None:
             return
         self._schedule(self._svc.delete_worker(worker_id))
@@ -398,6 +455,9 @@ class KVTokenTracker:
                 "replay_endpoint": kv_event_metadata.get("replay_endpoint"),
             }
         )
+        if self._routing_stage == RoutingStage.PREFILL:
+            self._prefill_workers.add(worker_id)
+            self._prefill_workers_changed.set()
         logger.info(
             "Registered KV event worker %d for replica %s at %s.",
             worker_id,
@@ -419,9 +479,8 @@ class KVTokenTracker:
             request_id: Unique identifier for the request being routed.
             token_ids: Prompt token ids used to compute KV-cache overlap.
             allowed_worker_ids: Candidate worker ids the router may select from.
-            expected_output_tokens: The request's output-token cap. With
-                select-time reservation this lets selection service decay decode
-                load without per-token progress events.
+            expected_output_tokens: The request's output-token cap, used to
+                weight output blocks when decode progress is reported.
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -437,6 +496,24 @@ class KVTokenTracker:
                 "installed in the deployment's environment."
             )
         await self._evict_stale_requests()
+        # Serve may retry dispatch within the same P/D routing attempt.
+        existing = self._requests.get(request_id)
+        if (
+            self._routing_stage is not None
+            and existing is not None
+            and existing.reservation is not None
+        ):
+            if existing.worker_id in allowed_worker_ids:
+                booking = existing.reservation
+                return {
+                    "worker_id": existing.worker_id,
+                    "dp_rank": booking["dp_rank"],
+                    "overlap_tokens": len(token_ids)
+                    - booking["effective_prefill_tokens"],
+                    "effective_prefill_tokens": booking["effective_prefill_tokens"],
+                }
+            await self.release_request(request_id)
+            raise RuntimeError("Selected worker became unavailable during routing")
         request = {
             "model_name": _MODEL_NAME,
             "tenant_id": _TENANT_ID,
@@ -445,32 +522,81 @@ class KVTokenTracker:
             "allowed_worker_ids": allowed_worker_ids,
             "expected_output_tokens": expected_output_tokens,
         }
-        selection = await self._svc.select_and_reserve(request)
+        if self._selection_override is not None:
+            request["router_config_override"] = self._selection_override
+        selection = await self._select_and_reserve(request)
+        if (
+            self._routing_stage is not None
+            and request_id in self._completed_request_ids
+        ):
+            await self._svc.free_reservation(request_id)
+            raise RuntimeError("Routing attempt was cancelled during selection")
         self._track_request_state(
             request_id,
             selection["worker_id"],
             len(token_ids),
             expected_output_tokens,
         )
+        reservation: ReservationBroadcast = {
+            "request_id": request_id,
+            "source_ingress_replica_id": self._ingress_replica_id,
+            "deployment_id": self._serve_deployment_id,
+            "worker_id": selection["worker_id"],
+            "dp_rank": selection["dp_rank"],
+            "sequence_hashes": selection["sequence_hashes"],
+            "isl_tokens": selection["isl_tokens"],
+            "expected_output_tokens": expected_output_tokens,
+            "effective_prefill_tokens": selection["effective_prefill_tokens"],
+            "track_prefill_tokens": selection.get("track_prefill_tokens", True),
+        }
+        self._requests[request_id].reservation = reservation
         if self._reservation_forwarder is not None:
-            self._reservation_forwarder.report(
-                {
-                    "request_id": request_id,
-                    "source_ingress_replica_rank": self._ingress_replica_rank,
-                    "worker_id": selection["worker_id"],
-                    "dp_rank": selection["dp_rank"],
-                    "sequence_hashes": selection["sequence_hashes"],
-                    "isl_tokens": selection["isl_tokens"],
-                    "expected_output_tokens": expected_output_tokens,
-                    "effective_prefill_tokens": selection["effective_prefill_tokens"],
-                }
-            )
+            self._reservation_forwarder.report(reservation)
         return {
             "worker_id": selection["worker_id"],
             "dp_rank": selection["dp_rank"],
             "overlap_tokens": selection["overlap"]["longest_matched"],
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
+
+    async def _select_and_reserve(self, request: Dict[str, Any]) -> Dict[str, Any]:
+        if self._routing_stage != RoutingStage.PREFILL:
+            return await self._svc.select_and_reserve(request)
+
+        # Dynamo's prefill router tracks pending tokens but no active KV blocks.
+        # SelectionService cannot disable block tracking per request, so book
+        # explicitly without block hashes. Serialize local selections until booked.
+        async with self._prefill_selection_lock:
+            # Handle membership can arrive before Dynamo's worker registration.
+            while not (
+                workers := self._prefill_workers.intersection(
+                    request["allowed_worker_ids"]
+                )
+            ):
+                self._prefill_workers_changed.clear()
+                await self._prefill_workers_changed.wait()
+            request = {**request, "allowed_worker_ids": list(workers)}
+            selection = await self._svc.select({**request, "selection_id": None})
+            selection.update(
+                sequence_hashes=[],
+                isl_tokens=len(request["token_ids"]),
+                track_prefill_tokens=True,
+            )
+            await self._svc.create_reservation(
+                {
+                    "model_name": _MODEL_NAME,
+                    "tenant_id": _TENANT_ID,
+                    "selection_id": request["selection_id"],
+                    "worker_id": selection["worker_id"],
+                    "dp_rank": selection["dp_rank"],
+                    "sequence_hashes": [],
+                    "isl_tokens": selection["isl_tokens"],
+                    "effective_prefill_tokens": selection["effective_prefill_tokens"],
+                    "expected_output_tokens": request["expected_output_tokens"],
+                    "track_prefill_tokens": True,
+                }
+            )
+            return selection
 
     def _track_request_state(
         self,
@@ -512,7 +638,8 @@ class KVTokenTracker:
             # The selecting ingress receives its own broadcast after it has
             # already booked the atomic reservation. It must skip even if the
             # request already completed locally before the broadcast arrived.
-            if reservation["source_ingress_replica_rank"] == self._ingress_replica_rank:
+            source_id = reservation.get("source_ingress_replica_id")
+            if source_id is not None and source_id == self._ingress_replica_id:
                 continue
             pending.append(reservation)
         if not pending:
@@ -543,6 +670,9 @@ class KVTokenTracker:
         await self._evict_stale_requests()
         for reservation in reservations:
             request_id = reservation["request_id"]
+            if reservation.get("completed"):
+                await self.on_request_completed(request_id)
+                continue
             if (
                 request_id in self._requests
                 or request_id in self._completed_request_ids
@@ -559,16 +689,53 @@ class KVTokenTracker:
                     "isl_tokens": reservation["isl_tokens"],
                     "expected_output_tokens": reservation["expected_output_tokens"],
                     "effective_prefill_tokens": reservation["effective_prefill_tokens"],
+                    "track_prefill_tokens": reservation.get(
+                        "track_prefill_tokens", True
+                    ),
                 }
             )
+            if request_id in self._completed_request_ids:
+                await self._svc.free_reservation(request_id)
+                continue
             self._track_request_state(
                 request_id,
                 reservation["worker_id"],
                 reservation["isl_tokens"],
                 reservation["expected_output_tokens"],
             )
+            self._requests[request_id].reservation = reservation
+            pending = self._lifecycle_cache.pop(request_id, {})
+            if pending.get("prefill_completed"):
+                await self.on_prefill_complete(request_id)
+            output_tokens = pending.get("output_tokens", 0)
+            if output_tokens:
+                await self.on_decode_progress(request_id, output_tokens)
 
-    async def on_lifecycle_events(self, events: List[tuple]) -> None:
+    async def release_request(self, request_id: str) -> None:
+        await self.on_request_completed(request_id)
+        if self._reservation_forwarder is not None:
+            self._reservation_forwarder.report(
+                {
+                    "request_id": request_id,
+                    "source_ingress_replica_id": self._ingress_replica_id,
+                    "deployment_id": self._serve_deployment_id,
+                    "completed": True,
+                }
+            )
+
+    def _cache_lifecycle_event(
+        self, request_id: str, **update: Unpack[CachedLifecycle]
+    ) -> None:
+        # Engine events can arrive before a peer router's reservation broadcast.
+        # Replay these updates once that reservation has been applied.
+        if request_id in self._completed_request_ids:
+            return
+        pending = self._lifecycle_cache.setdefault(request_id, {})
+        pending.update(update)
+        while len(self._lifecycle_cache) > 8192:
+            self._lifecycle_cache.popitem(last=False)
+
+    async def on_lifecycle_events(self, events: List[LifecycleEvent]) -> None:
         """Apply a replica's ``(hook_name, args)`` lifecycle events in order.
 
         The hooks are order-sensitive (e.g. a completion arriving before its
@@ -596,9 +763,16 @@ class KVTokenTracker:
         load in the selection service."""
         state = self._requests.get(request_id)
         if state is None:
+            self._cache_lifecycle_event(request_id, prefill_completed=True)
+            return
+        if state.prefill_completed:
             return
         state.prefill_completed = True
-        await self._svc.prefill_complete(request_id)
+        try:
+            await self._svc.prefill_complete(request_id)
+        except Exception:
+            if self._requests.get(request_id) is state:
+                raise
 
     async def on_decode_progress(
         self, request_id: str, cumulative_output_tokens: int
@@ -606,8 +780,19 @@ class KVTokenTracker:
         """Advance ``request_id`` to an exact cumulative output-token count,
         booking one decode block in the selection service per crossed boundary.
         """
+        if self._routing_stage == RoutingStage.PREFILL:
+            return
         state = self._requests.get(request_id)
         if state is None:
+            pending = self._lifecycle_cache.get(request_id, {})
+            self._cache_lifecycle_event(
+                request_id,
+                output_tokens=max(
+                    pending.get("output_tokens", 0), cumulative_output_tokens
+                ),
+            )
+            return
+        if cumulative_output_tokens <= state.output_tokens:
             return
         state.output_tokens = cumulative_output_tokens
         new_total_blocks = math.ceil(
@@ -623,6 +808,7 @@ class KVTokenTracker:
         local view."""
         state = self._requests.pop(request_id, None)
         self._mark_request_completed(request_id)
+        self._lifecycle_cache.pop(request_id, None)
         if state is None:
             return
         self._untrack_worker_request(request_id, state.worker_id)
@@ -674,16 +860,17 @@ class KVTokenTracker:
         return max(0.0, 1.0 - state.output_tokens / state.expected_output_tokens)
 
 
-_KV_TOKEN_TRACKER: Optional["KVTokenTracker"] = None
+_KV_TOKEN_TRACKERS: Dict[DeploymentID, "KVTokenTracker"] = {}
 
 
-def set_kv_token_tracker(tracker: "KVTokenTracker") -> None:
-    global _KV_TOKEN_TRACKER
-    _KV_TOKEN_TRACKER = tracker
+def set_kv_token_tracker(
+    tracker: "KVTokenTracker", deployment_id: DeploymentID
+) -> None:
+    _KV_TOKEN_TRACKERS[deployment_id] = tracker
 
 
-def get_kv_token_tracker() -> Optional["KVTokenTracker"]:
-    return _KV_TOKEN_TRACKER
+def get_kv_token_tracker(deployment_id: DeploymentID) -> Optional["KVTokenTracker"]:
+    return _KV_TOKEN_TRACKERS.get(deployment_id)
 
 
 # The LLMRouter ingress deployment name (``serve.deployment(LLMRouter)`` with no
@@ -701,17 +888,19 @@ def get_llm_router_handle():
 
 
 def build_kv_token_tracker(
-    llm_config: "LLMConfig", serve_deployment_id: Any
+    llm_config: "LLMConfig", serve_deployment_id: DeploymentID
 ) -> "KVTokenTracker":
     """Build the ``KVTokenTracker`` and register it in this process's global
     so the same-process ``KVAwareRouter`` can reach it. Must be called from the
     ingress replica's event loop (the tracker binds a LongPollClient to it).
     """
+    stage = llm_config.experimental_configs.get(PD_ROUTING_STAGE)
     tracker = KVTokenTracker(
         indexer_threads=llm_config.experimental_configs.get(
             KV_INDEXER_THREADS_KEY, DEFAULT_KV_INDEXER_THREADS
         ),
         serve_deployment_id=serve_deployment_id,
+        routing_stage=RoutingStage(stage) if stage is not None else None,
     )
-    set_kv_token_tracker(tracker)
+    set_kv_token_tracker(tracker, serve_deployment_id)
     return tracker

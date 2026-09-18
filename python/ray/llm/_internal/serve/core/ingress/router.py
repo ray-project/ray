@@ -2,17 +2,26 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.serve.core.protocol import (
+    IngressRoutingResponse,
+    PromptTokenizer,
+    TokenizeError,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
     KV_TOKEN_METADATA_KEY,
     REQUEST_TOKEN_IDS_KWARG,
+    ROUTING_REQUEST_ID_KWARG,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import TokenSender
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
 )
@@ -20,10 +29,16 @@ from ray.serve._private.http_util import _matches_session_id_header
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
-# Type-only import as LLMConfig transitively pulls in vLLM. This file should
-# remain engine-agnostic.
+# Type-only imports keep optional engine dependencies off the router import path.
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+    from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+        KVTokenTracker,
+        ReservationBroadcast,
+    )
+    from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+        PDRequestCoordinator,
+    )
 
 logger = get_logger(__name__)
 
@@ -33,6 +48,7 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 # the namespace; a body without any of them degrades to load-balancing. Extend
 # as routers learn to route additional request types.
 _ROUTING_KEY_FIELDS = ("messages", "prompt")
+
 
 router_app = FastAPI()
 
@@ -122,47 +138,59 @@ class LLMRouter:
         self,
         server: DeploymentHandle,
         llm_config: Optional["LLMConfig"] = None,
+        prefill_server: Optional[DeploymentHandle] = None,
+        prefill_config: Optional["LLMConfig"] = None,
     ):
         self._handle: DeploymentHandle = server
-        self._tokenizer = None
-        self._token_sender = None
-        # Holds the KVTokenTracker (KV-aware deployments only) so the
-        # engine-facing on_lifecycle_events method can book load into it.
-        self._kv_token_tracker = None
+        self._pd_coordinator: Optional["PDRequestCoordinator"] = None
+        self._trackers: Dict["DeploymentID", "KVTokenTracker"] = {}
+        self._tokenizer: Optional[PromptTokenizer] = None
+        self._token_sender: Optional["TokenSender"] = None
         # A non-None llm_config signals pre-routing tokenization, which the
         # builder binds only for a KV-aware request router.
         if llm_config is not None:
-            # Build the tracker before _handle._init() below, which initializes
-            # the KVAwareRouter that looks it up. server.deployment_id is the
-            # tracked LLMServer deployment.
-            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
+            from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
                 build_kv_token_tracker,
                 get_llm_router_handle,
             )
-
-            self._kv_token_tracker = build_kv_token_tracker(
-                llm_config, server.deployment_id
-            )
-            self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
-            # Lazy import: this module pulls in vLLM's renderer;
-            # keep it off the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
                 Tokenizer,
             )
 
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
-            # Lazy import: pyzmq is not a Ray runtime dependency, so keep it off
-            # the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware import (
-                token_channel,
-            )
-
             self._token_sender = token_channel.TokenSender()
-        self._handle._init()
+            # Register trackers before initializing the handles' KVAwareRouters.
+            if prefill_server is None:
+                self._kv_token_tracker = build_kv_token_tracker(
+                    llm_config, server.deployment_id
+                )
+                self._trackers[server.deployment_id] = self._kv_token_tracker
+            else:
+                from ray.llm._internal.serve.routing_policies.kv_aware.pd_router import (
+                    PDRequestCoordinator,
+                )
+
+                self._pd_coordinator = PDRequestCoordinator(
+                    prefill_server,
+                    prefill_config,
+                    server.deployment_id,
+                    llm_config,
+                    self._tokenizer,
+                    self._route_decode,
+                )
+                self._trackers = self._pd_coordinator.trackers
+            for tracker in self._trackers.values():
+                tracker.start_reservation_broadcast(get_llm_router_handle())
+            # Selection and lifecycle callbacks share the tracker's event loop.
+            self._handle._init(_run_router_in_separate_loop=False)
+        else:
+            self._handle._init()
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
         body = await request.body()
+        if self._pd_coordinator is not None:
+            return await self._pd_coordinator.route(request, body)
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         routing_payload = _parse_routing_payload(body)
         if routing_payload is None and not self._warned_no_routing_key:
@@ -180,9 +208,6 @@ class LLMRouter:
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
         if self._tokenizer is not None and routing_payload is not None:
-            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
-                TokenizeError,
-            )
 
             try:
                 request_token_ids = await self._tokenizer.tokenize(
@@ -212,7 +237,11 @@ class LLMRouter:
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
 
-        response = {"host": host, "port": port, "replica_id": replica_id}
+        response: IngressRoutingResponse = {
+            "host": host,
+            "port": port,
+            "replica_id": replica_id,
+        }
         if request_token_ids:
             token_key = self._push_prompt_tokens(
                 token_endpoint=token_endpoint,
@@ -231,22 +260,57 @@ class LLMRouter:
 
     def __del__(self) -> None:
         """Close the token channel ZMQ sockets upon cleanup."""
+        for tracker in getattr(self, "_trackers", {}).values():
+            tracker.close()
         token_sender = getattr(self, "_token_sender", None)
         if token_sender is not None:
             token_sender.close()
 
-    async def on_lifecycle_events(self, batch):
+    async def on_lifecycle_events(self, batch, deployment_id: "DeploymentID"):
         """Engine-facing intake for request lifecycle events.
 
         Engine replicas broadcast each batch to every LLMRouter replica to
         book request load; this applies it to the KVTokenTracker on this
         ingress replica's event loop.
         """
-        return await self._kv_token_tracker.on_lifecycle_events(batch)
+        await self._trackers[deployment_id].on_lifecycle_events(batch)
 
     async def on_reservations_created(self, batch):
-        """Ingress-facing intake for already-selected reservation bookings."""
-        return await self._kv_token_tracker.on_reservations_created(batch)
+        """Apply peer bookings only to the tracker for the same deployment."""
+        by_deployment: Dict["DeploymentID", List["ReservationBroadcast"]] = {}
+        for reservation in batch:
+            by_deployment.setdefault(reservation["deployment_id"], []).append(
+                reservation
+            )
+        for deployment_id, reservations in by_deployment.items():
+            await self._trackers[deployment_id].on_reservations_created(reservations)
+
+    async def _route_decode(
+        self,
+        routing_payload: SimpleNamespace,
+        token_ids: List[int],
+        request_id: str,
+    ) -> IngressRoutingResponse:
+        host, port, replica_id, token_endpoint = await self._pick_replica(
+            self._handle,
+            routing_payload,
+            token_ids,
+            routing_request_id=request_id,
+        )
+        self._push_prompt_tokens(
+            token_endpoint=token_endpoint,
+            replica_id=replica_id,
+            request_token_ids=token_ids,
+            token_key=request_id,
+        )
+        return {
+            "host": host,
+            "port": port,
+            "replica_id": replica_id,
+            RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
+                KV_TOKEN_KEY_HEADER: request_id,
+            },
+        }
 
     def _push_prompt_tokens(
         self,
@@ -254,6 +318,7 @@ class LLMRouter:
         token_endpoint: Optional[str],
         replica_id: str,
         request_token_ids: List[int],
+        token_key: Optional[str] = None,
     ) -> Optional[str]:
         # Only reachable on the KV path, where __init__ built the sender.
         if not token_endpoint or self._token_sender is None:
@@ -266,9 +331,7 @@ class LLMRouter:
                 )
             return None
 
-        from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
-
-        key = uuid.uuid4().hex
+        key = token_key or uuid.uuid4().hex
         try:
             payload = token_channel.encode_prompt_token_ids(request_token_ids)
         except Exception as e:
@@ -288,6 +351,7 @@ class LLMRouter:
         handle: DeploymentHandle,
         routing_payload: Optional[SimpleNamespace] = None,
         request_token_ids: Optional[List[int]] = None,
+        routing_request_id: Optional[str] = None,
     ) -> Tuple[str, int, str, Optional[str]]:
         """Pick a backend HTTP replica via the deployment's request router.
 
@@ -314,6 +378,8 @@ class LLMRouter:
         choose_replica_kwargs = {"_reserve": False}
         if request_token_ids is not None:
             choose_replica_kwargs[REQUEST_TOKEN_IDS_KWARG] = request_token_ids
+        if routing_request_id is not None:
+            choose_replica_kwargs[ROUTING_REQUEST_ID_KWARG] = routing_request_id
         async with handle.choose_replica(
             *route_args, **choose_replica_kwargs
         ) as selection:
