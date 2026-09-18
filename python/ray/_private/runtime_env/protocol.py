@@ -287,9 +287,9 @@ class ProtocolsProvider:
                 host_params, pool_kwargs = super().build_connection_pool_key_attributes(
                     request, verify, cert
                 )
-                # Keep CA stores isolated and require SANs even on older urllib3.
+                # Isolate CA stores; allow CN fallback when no DNS SAN is present.
                 context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-                context.hostname_checks_common_name = False
+                context.hostname_checks_common_name = True
                 pool_kwargs["ssl_context"] = context
                 if verify is True:
                     # Preserve Requests' default CAs when replacing its context.

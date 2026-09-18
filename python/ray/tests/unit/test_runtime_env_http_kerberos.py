@@ -244,6 +244,10 @@ def test_kerberos_failure_does_not_fall_back(
         "unknown_ca",
         "wrong_hostname",
         "cn_only",
+        "cn_wrong_hostname",
+        "cn_unknown_ca",
+        "cn_expired",
+        "cn_redirect_mismatch",
         "expired",
         "redirect_san_mismatch",
     ],
@@ -253,9 +257,20 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
     import trustme
 
     ca = trustme.CA()
-    if certificate == "cn_only":
-        # No SAN identities: only the CN can match localhost.
-        cert = ca.issue_cert(common_name="localhost")
+    if certificate.startswith("cn_"):
+        # No SAN identities: hostname verification must use the CN.
+        cert = ca.issue_cert(
+            common_name=(
+                "other.example.org"
+                if certificate == "cn_wrong_hostname"
+                else "localhost"
+            ),
+            not_after=(
+                datetime.now(timezone.utc) - timedelta(days=1)
+                if certificate == "cn_expired"
+                else None
+            ),
+        )
     elif certificate == "wrong_hostname":
         cert = ca.issue_cert("other.example.org", common_name="localhost")
     elif certificate == "redirect_san_mismatch":
@@ -269,9 +284,9 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
             "localhost", "datanode.example.org", common_name="wrong.example.org"
         )
     ca_path = tmp_path / "ca.pem"
-    (trustme.CA() if certificate == "unknown_ca" else ca).cert_pem.write_to_path(
-        ca_path
-    )
+    (
+        trustme.CA() if certificate in ("unknown_ca", "cn_unknown_ca") else ca
+    ).cert_pem.write_to_path(ca_path)
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(ca_path))
     if certificate == "default_ca":
         # Exercise verify=True as well as an explicit CA bundle. Requests 2.32
@@ -293,24 +308,27 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     cert.configure_cert(context)
     with HTTPServer(host="localhost", ssl_context=context) as server:
-        target = server.url_for("/code.zip").replace(
-            "localhost", "datanode.example.org"
+        target_host = (
+            "localhost" if certificate == "cn_only" else "datanode.example.org"
         )
+        target = server.url_for("/code.zip").replace("localhost", target_host)
         server.expect_request("/redirect.zip").respond_with_data(
             status=307, headers={"Location": target}
         )
         server.expect_request("/code.zip").respond_with_data(b"package")
-        if certificate in ("trusted", "default_ca"):
+        if certificate in ("trusted", "default_ca", "cn_only"):
             assert download(tmp_path, server.url_for("/redirect.zip")) == b"package"
             assert [request.headers["Authorization"] for request, _ in server.log] == [
                 "Negotiate localhost:1",
-                "Negotiate datanode.example.org:2",
+                f"Negotiate {target_host}:2",
             ]
         else:
             with pytest.raises(requests.exceptions.SSLError):
                 download(tmp_path, server.url_for("/redirect.zip"))
             assert len(server.log) == (
-                1 if certificate == "redirect_san_mismatch" else 0
+                1
+                if certificate in ("redirect_san_mismatch", "cn_redirect_mismatch")
+                else 0
             )
 
 
