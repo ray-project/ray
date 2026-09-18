@@ -13,6 +13,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.logging import configure_logging
 from ray.data._internal.random_config import RandomSeedConfig
+from ray.data._internal.stats_collection import collect_stats_summaries
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,
@@ -159,6 +160,7 @@ __all__ = [
     "SinkMode",
     "SaveMode",
     "TaskPoolStrategy",
+    "collect_stats_summaries",
     "from_daft",
     "from_dask",
     "from_items",

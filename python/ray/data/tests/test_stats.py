@@ -20,7 +20,7 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray.data import ActorPoolStrategy
+from ray.data import ActorPoolStrategy, collect_stats_summaries
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
@@ -3486,6 +3486,116 @@ def test_streaming_exec_schedule_percentiles_populated(ray_start_regular_shared)
     # Percentiles are populated, monotonic, and bounded by max.
     assert p90 > 0
     assert 0 <= p50 <= p90 <= schedule_max
+
+
+def _total_output_rows(summary: DatasetStatsSummary) -> int:
+    """Rows emitted by the last operator of the execution `summary` describes."""
+    return summary.operators_stats[-1].output_num_rows.sum
+
+
+def test_collect_stats_summaries_records_each_chained_execution(
+    ray_start_regular_shared, tmp_path
+):
+    # A chained expression ending in a write keeps no reference to its `Dataset`, so
+    # `Dataset.stats()` is unreachable. The row counts differ so that a summary
+    # attributed to the wrong execution fails the assertion.
+    with collect_stats_summaries() as summaries:
+        ray.data.range(7).map_batches(lambda b: b).write_parquet(str(tmp_path / "a"))
+
+    # The `Write` operator emits one row per write task, so its row count varies with
+    # parallelism; assert the captured execution is the write pipeline instead.
+    assert len(summaries) == 1
+    assert summaries[0].operators_stats[-1].operator_name.endswith("Write")
+
+
+def test_collect_stats_summaries_attributes_rows_to_each_execution(
+    ray_start_regular_shared,
+):
+    # Distinct row counts so that a summary attributed to the wrong execution, or a
+    # single execution reported twice, fails the assertion.
+    with collect_stats_summaries() as summaries:
+        ray.data.range(7).map_batches(lambda b: b).materialize()
+        ray.data.range(13).map_batches(lambda b: b).materialize()
+
+    assert [_total_output_rows(s) for s in summaries] == [7, 13]
+
+
+def test_collect_stats_summaries_ignores_executions_outside_block(
+    ray_start_regular_shared,
+):
+    ray.data.range(7).materialize()
+
+    with collect_stats_summaries() as summaries:
+        ray.data.range(13).materialize()
+
+    ray.data.range(21).materialize()
+
+    assert [_total_output_rows(s) for s in summaries] == [13]
+
+
+def test_collect_stats_summaries_records_failed_execution(ray_start_regular_shared):
+    def _boom(batch):
+        raise ValueError("boom")
+
+    with collect_stats_summaries() as summaries:
+        with pytest.raises(Exception):
+            ray.data.range(7).map_batches(_boom).materialize()
+
+    assert len(summaries) == 1
+
+
+def test_collect_stats_summaries_rejects_nesting():
+    with pytest.raises(RuntimeError, match="already active"):
+        with collect_stats_summaries():
+            with collect_stats_summaries():
+                pass
+
+
+def test_collect_stats_summaries_rejects_concurrent_block_on_another_thread():
+    # Only one block can be active per process, so a second thread must be rejected
+    # rather than have its executions mixed into the first block's list.
+    entered = threading.Event()
+    release = threading.Event()
+    outcome = {}
+
+    def hold_block():
+        with collect_stats_summaries():
+            entered.set()
+            release.wait(30)
+
+    def enter_from_other_thread():
+        entered.wait(30)
+        try:
+            with collect_stats_summaries():
+                outcome["result"] = "entered"
+        except RuntimeError as e:
+            outcome["result"] = type(e).__name__
+        release.set()
+
+    holder = threading.Thread(target=hold_block)
+    other = threading.Thread(target=enter_from_other_thread)
+    holder.start()
+    other.start()
+    holder.join(60)
+    other.join(60)
+
+    assert outcome["result"] == "RuntimeError"
+
+
+def test_collect_stats_summaries_usable_after_error_in_block(ray_start_regular_shared):
+    # The context var has to be restored even when the block raises; otherwise every
+    # later block in the process would fail the nesting check.
+    with pytest.raises(ValueError):
+        with collect_stats_summaries() as interrupted:
+            ray.data.range(7).materialize()
+            raise ValueError("boom")
+
+    assert [_total_output_rows(s) for s in interrupted] == [7]
+
+    with collect_stats_summaries() as subsequent:
+        ray.data.range(13).materialize()
+
+    assert [_total_output_rows(s) for s in subsequent] == [13]
 
 
 if __name__ == "__main__":
