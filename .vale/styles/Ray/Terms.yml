@@ -23,4 +23,10 @@ swap:
   prior to: before
   in order to: to
   due to the fact that: because
-  refer to: see
+  # Only the "please refer to" form, which is unambiguously a reference. Bare
+  # "refer to" is deliberately NOT swapped: it collides with the "pertain to"
+  # sense ("these examples refer to the old API stack"), where "see" is wrong.
+  # No literal string separates imperative "Refer to X" from "Y refers to X",
+  # and this file's swaps auto-apply (scripts/ray_style_autofix.py), so a broad
+  # "refer to" swap silently corrupts prose. Leave the bare form to the LLM pass.
+  please refer to: see
