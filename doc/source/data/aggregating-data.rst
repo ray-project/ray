@@ -162,10 +162,9 @@ Here's an example of creating a custom aggregator that calculates the Mean of va
 
 
 .. note::
-    Internally, aggregations support both the :ref:`hash-shuffle backend <hash-shuffle>` and the :ref:`range based backend <range-partitioning-shuffle>`. Hash-shuffle (``ShuffleStrategy.HASH_SHUFFLE``) is the default.
 
-    Hash-shuffling can provide better performance for aggregations in certain cases. For more information see `comparison between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
+    Hash-based shuffling can provide better performance for aggregations in certain cases. For more information see `comparison between hash based shuffling and Range Based shuffling approach <https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/>`_ .
 
-    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a shuffle strategy in alpha. To use it for aggregations, set the strategy before creating a ``Dataset``:
-    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2``. See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
+    To use the previous hash-shuffle implementation for aggregations, set the strategy before creating a ``Dataset``:
+    ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE``.
 
