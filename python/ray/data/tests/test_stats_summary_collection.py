@@ -12,13 +12,6 @@ def enable_stats_summary_collection(restore_data_context):
     clear_stats_summaries()
 
 
-def _output_rows(summary) -> int:
-    """Rows emitted by the last operator of the execution `summary` describes."""
-    output_num_rows = summary.operators_stats[-1].output_num_rows
-    assert output_num_rows is not None
-    return output_num_rows.sum
-
-
 def test_list_stats_summaries_ordered_by_completion(
     ray_start_regular_shared, enable_stats_summary_collection, tmp_path
 ):
@@ -28,8 +21,10 @@ def test_list_stats_summaries_ordered_by_completion(
     # Use row counts to identify datasets
     summaries = list_stats_summaries()
     assert len(summaries) == 2
-    assert _output_rows(summaries[-1]) == 2
-    assert _output_rows(summaries[-2]) == 1
+    # pyrefly: ignore[missing-attribute]  # `output_num_rows` is set for map operators
+    assert summaries[-1].operators_stats[-1].output_num_rows.sum == 2
+    # pyrefly: ignore[missing-attribute]  # `output_num_rows` is set for map operators
+    assert summaries[-2].operators_stats[-1].output_num_rows.sum == 1
 
 
 def test_list_stats_summaries_records_failed_execution(

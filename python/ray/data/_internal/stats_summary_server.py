@@ -1,11 +1,10 @@
 import logging
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import ray
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    from ray.actor import ActorHandle
     from ray.data._internal.stats import DatasetStatsSummary
 
 logger = logging.getLogger(__name__)
@@ -16,6 +15,7 @@ STATS_SUMMARY_SERVER_NAMESPACE = "_dataset_stats_summary_server"
 REPORT_STATS_SUMMARY_TIMEOUT_S = 30
 
 
+@ray.remote(num_cpus=0)
 class _StatsSummaryServer:
     """Retains the stats summaries of finished executions."""
 
@@ -32,7 +32,7 @@ class _StatsSummaryServer:
         self._summaries.clear()
 
 
-def _get_or_create_stats_summary_server() -> "ActorHandle[_StatsSummaryServer]":
+def _get_or_create_stats_summary_server() -> ray.actor.ActorHandle:
     """Return the server for this cluster, creating it if it doesn't exist yet."""
     # Pin to the caller's node so the server fate-shares with the driver, matching
     # `_StatsActor`.
@@ -40,20 +40,14 @@ def _get_or_create_stats_summary_server() -> "ActorHandle[_StatsSummaryServer]":
         # pyrefly: ignore[missing-attribute]  # constant lives in the Cython ext
         ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
     }
-    # ``ray.remote``'s overloads widen the inferred type to include the undecorated
-    # class, so name the handle type we know we get back.
-    return cast(
-        "ActorHandle[_StatsSummaryServer]",
-        ray.remote(num_cpus=0)(_StatsSummaryServer)
-        .options(
-            name=STATS_SUMMARY_SERVER_NAME,
-            namespace=STATS_SUMMARY_SERVER_NAMESPACE,
-            get_if_exists=True,
-            lifetime="detached",
-            label_selector=label_selector,
-        )
-        .remote(),
-    )
+    # pyrefly: ignore[missing-attribute]  # `.options` comes from the `ray.remote` decorator
+    return _StatsSummaryServer.options(
+        name=STATS_SUMMARY_SERVER_NAME,
+        namespace=STATS_SUMMARY_SERVER_NAMESPACE,
+        get_if_exists=True,
+        lifetime="detached",
+        label_selector=label_selector,
+    ).remote()
 
 
 def report_stats_summary(stats_summary: "DatasetStatsSummary") -> None:
