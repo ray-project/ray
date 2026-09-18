@@ -6650,7 +6650,7 @@ class Dataset:
         batch_size: int = 256,
         distance: str = "Cosine",
         client_kwargs: Optional[Dict[str, Any]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to `Qdrant <https://qdrant.tech/>`_.
