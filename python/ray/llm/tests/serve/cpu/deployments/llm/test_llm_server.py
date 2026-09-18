@@ -4,11 +4,12 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import AsyncGenerator, Optional
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from starlette.datastructures import State
 from vllm.entrypoints.launchers.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
@@ -818,13 +819,9 @@ class TestBuildAsgiApp:
         engine._vllm_args = vllm_args
         engine._engine_client = SimpleNamespace(model_config=None)
         engine._token_receiver = None
+        engine._app_state = State()
 
-        # init_app_state needs a live engine; supply only what the handler reads.
-        with patch(
-            "vllm.entrypoints.openai.api_server.init_app_state",
-            new_callable=AsyncMock,
-        ):
-            app = await engine.build_asgi_app()
+        app = await engine.build_asgi_app()
         app.state.args = vllm_args
         app.state.engine_client = SimpleNamespace(errored=True, is_running=False)
 
