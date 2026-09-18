@@ -731,9 +731,15 @@ class TestLocalWorkingDir:
 
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_used_in_place_without_upload(
-        self, start_cluster, tmp_working_dir, option: str
+        self, tmp_working_dir, start_cluster, option: str
     ):
-        """cwd, imports and relative file IO all resolve against the directory."""
+        """cwd, imports and relative file IO all resolve against the directory.
+
+        `tmp_working_dir` is requested before `start_cluster` so that pytest tears
+        the cluster down first. A `local://` working_dir becomes the worker's cwd,
+        and Windows refuses to remove a directory that a live process sits in, so
+        the workers have to be gone before the temporary directory is removed.
+        """
         _, address = start_cluster
         uri = _local_uri(tmp_working_dir)
         if option == "working_dir":
