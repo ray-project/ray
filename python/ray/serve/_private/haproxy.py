@@ -2112,32 +2112,14 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
 
     def _desired_backend_servers(self) -> Dict[str, Set[str]]:
-        """Backend name -> server names that `serving()` waits to see UP.
-
-        Must agree with what `_create_backend_config` renders: a backend listed
-        here that HAProxy never reports keeps `serving()` waiting forever and
-        wedges the proxy. In particular, `_direct_http` deployments render their
-        own backends only for apps with an ingress request router, so they are
-        included only then. With them, `serving()` would otherwise report ready
-        while a model backend still has no UP server and the first request to
-        that model 503s.
-        """
-        desired: Dict[str, Set[str]] = {
-            self._generate_backend_name(tg): {
-                self._generate_server_name(target) for target in tg.targets
-            }
-            for tg in self._target_groups
-        }
+        """Backend name -> server names that `serving()` waits to see UP."""
+        desired: Dict[str, Set[str]] = {}
         for tg in self._target_groups:
-            if not tg.ingress_request_router_targets:
-                continue
-            app_backend_name = self._generate_backend_name(tg)
-            for deployment_name, targets in tg.direct_http_targets.items():
-                desired[
-                    self._generate_direct_backend_name(
-                        app_backend_name, deployment_name
-                    )
-                ] = {self._generate_server_name(target) for target in targets}
+            backend = self._create_backend_config(tg, fallback_target=None)
+            desired[backend.name] = {server.name for server in backend.servers}
+            for direct in backend.direct_target_configs:
+                desired[direct.name] = {server.name for server in direct.servers}
+
         return desired
 
     def _is_draining(self) -> bool:
