@@ -617,6 +617,105 @@ def test_count_pushdown_declines_row_reducing_reads(tmp_path, restore_ctx, case)
     assert any(isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag))
 
 
+def _write_hive_partitions(root, sizes):
+    """Write one file per ``year=<key>`` directory, ``sizes[key]`` rows each.
+
+    Sizes are deliberately caller-supplied and expected to differ: a
+    partition-pruning bug sums the files it should have dropped, so equal-sized
+    partitions can return the right total by coincidence.
+    """
+    for year, num_rows in sizes.items():
+        part = root / f"year={year}"
+        part.mkdir(parents=True, exist_ok=True)
+        _write(part / "data.parquet", pa.table({"v": list(range(num_rows))}))
+
+
+def test_count_pushdown_over_partition_filter(tmp_path, restore_ctx):
+    """A partition predicate no longer forces a full read pass.
+
+    It drops whole files rather than rows within a file, so ``count_rows``
+    can apply it to the manifest and keep the footer counts exact.
+    """
+    from ray.data.expressions import col
+
+    _write_hive_partitions(tmp_path, {"2023": 10, "2024": 20})
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") == "2023")
+
+    assert not any(
+        isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag)
+    )
+
+
+def test_count_over_partition_filter_matches_rows(tmp_path, restore_ctx):
+    """The counted total is the filtered total, not the whole table.
+
+    Asserted on an unmaterialized dataset: a materialized one answers
+    ``count()`` from cached block metadata instead of re-optimizing, which
+    would not exercise the rewrite at all.
+
+    Partition sizes differ so that summing the pruned-away file is visible --
+    before the fix this returned 30.
+    """
+    from ray.data.expressions import col
+
+    _write_hive_partitions(tmp_path, {"2023": 10, "2024": 20})
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.filter(expr=col("year") == "2023").count() == 10
+    assert ds.filter(expr=col("year") == "2024").count() == 20
+    assert ds.filter(expr=col("year") == "1999").count() == 0
+
+
+def test_count_pushdown_declines_partition_filter_without_partitioning(
+    tmp_path, restore_ctx
+):
+    """No partitioning spec means ``prune_manifest`` cannot prune.
+
+    It no-ops and returns the manifest whole, so summing every footer would
+    over-count. The rule must keep declining rather than trust a predicate it
+    has no way to apply.
+    """
+    from dataclasses import replace
+
+    from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
+        ArrowFileScanner,
+    )
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.count_operator import Count
+    from ray.data._internal.logical.operators.map_operator import Project
+    from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.expressions import col
+
+    _write_hive_partitions(tmp_path, {"2023": 10, "2024": 20})
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+    read_files = next(
+        op for op in _walk(ds._logical_plan.dag) if isinstance(op, ReadFiles)
+    )
+
+    # Push the predicate onto the scanner, then take the partitioning away --
+    # the one state the optimizer cannot produce on its own, since a scanner
+    # with no partitioning reports no partition columns to split on.
+    base_scanner = read_files.scanner
+    assert isinstance(base_scanner, ArrowFileScanner), base_scanner
+    scanner = base_scanner.prune_partitions(col("year") == "2023")
+    scanner = replace(scanner, partitioning=None)
+    assert scanner.partition_predicate is not None
+
+    stripped = replace(read_files, scanner=scanner)
+    count_op = Count(
+        input_dependencies=[Project(exprs=[], input_dependencies=[stripped])]
+    )
+    plan = LogicalOptimizer().optimize(LogicalPlan(count_op, ds.context))
+
+    assert any(isinstance(op, ReadFiles) for op in _walk(plan.dag))
+
+
 @pytest.mark.parametrize(
     "num_files,rows_per_file,row_group_size",
     [(1, 10, None), (3, 100, 10), (4, 1000, 250)],
@@ -668,6 +767,61 @@ def test_count_pushdown_skip_paths_tolerates_missing_path(tmp_path, restore_ctx)
     ds = ray.data.read_parquet([str(a), missing], skip_paths=[missing])
 
     assert ds.count() == 2
+
+
+# ---------------------------------------------------------------------------
+# count_ships_whole_manifest: listing ships only the surviving files
+# ---------------------------------------------------------------------------
+
+
+def test_pruned_listing_emits_only_the_surviving_files(tmp_path, restore_ctx):
+    """The manifest that crosses to the count task holds the kept files only.
+
+    This is the whole point of the item: the saving is manifest rows, not file
+    opens -- the count rewrite's whole-file indexer reads no footers during
+    listing, so an open counter shows nothing either way.
+
+    Executed with ``take_all``, not ``count``: a ``Count`` over a bare
+    ``ListFiles`` is itself a non-``ReadFiles`` consumer, so counting the
+    manifest would clear the pruner and measure the probe's own interference.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators.read_operator import ListFiles
+    from ray.data._internal.stats import DatasetStats
+    from ray.data.dataset import Dataset
+    from ray.data.expressions import col
+
+    _write_hive_partitions(tmp_path, {"2023": 10, "2024": 20, "2025": 30})
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") == "2023")
+
+    plan = _optimized_count_plan(ds)
+    list_files = next(op for op in _walk(plan.dag) if isinstance(op, ListFiles))
+    manifest = Dataset(
+        LogicalPlan(list_files, ds.context),
+        ds.context,
+        DatasetStats(metadata={}, parent=None),
+    )
+    assert len(manifest.take_all()) == 1
+
+
+def test_count_answer_is_unchanged_by_the_listing_pruner(tmp_path, restore_ctx):
+    """Pruning earlier must not change what is counted.
+
+    ``count_rows`` prunes the manifest again inside the task, so the two
+    prunings have to agree -- listing dropping a file first must give the same
+    total as pruning only in the task.
+    """
+    from ray.data.expressions import col
+
+    _write_hive_partitions(tmp_path, {"2023": 10, "2024": 20, "2025": 30})
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert ds.filter(expr=col("year") == "2023").count() == 10
+    assert ds.filter(expr=col("year") == "2024").count() == 20
+    assert ds.filter(expr=col("year") == "1999").count() == 0
+    assert ds.count() == 60
 
 
 if __name__ == "__main__":
