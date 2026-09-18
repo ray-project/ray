@@ -1,0 +1,746 @@
+import hashlib
+import json
+import logging
+import posixpath
+import uuid
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+
+import pyarrow as pa
+from pyarrow.fs import FileSelector, FileType
+
+from ray.data._internal.datasource.iceberg_datasink import (
+    IcebergDatasink,
+    IcebergWriteResult,
+)
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data._internal.savemode import SaveMode
+from ray.data._internal.util import call_with_retry
+from ray.data.block import Block, BlockAccessor
+from ray.data.checkpoint.checkpoint_writer import BatchBasedCheckpointWriter
+from ray.data.context import DataContext
+from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.data.datasource.path_util import _unwrap_protocol
+
+if TYPE_CHECKING:
+    from pyiceberg.manifest import DataFile
+
+    from ray.data._internal.execution.interfaces import TaskContext
+    from ray.data.checkpoint.interfaces import CheckpointConfig
+
+logger = logging.getLogger(__name__)
+
+_FORMAT_VERSION = 1
+_METADATA_DIR = "_iceberg"
+_MANIFEST_FILE = "manifest.json"
+_OPERATION_PROPERTY = "ray.data.checkpoint.operation-id"
+
+_PAYLOAD_SCHEMA = pa.schema(
+    [
+        pa.field("record_type", pa.string(), nullable=False),
+        pa.field("content", pa.int32()),
+        pa.field("file_path", pa.string()),
+        pa.field("file_format", pa.string()),
+        pa.field("partition_values", pa.list_(pa.binary())),
+        pa.field("record_count", pa.int64()),
+        pa.field("file_size_in_bytes", pa.int64()),
+        pa.field("column_sizes", pa.map_(pa.int32(), pa.int64())),
+        pa.field("value_counts", pa.map_(pa.int32(), pa.int64())),
+        pa.field("null_value_counts", pa.map_(pa.int32(), pa.int64())),
+        pa.field("nan_value_counts", pa.map_(pa.int32(), pa.int64())),
+        pa.field("lower_bounds", pa.map_(pa.int32(), pa.binary())),
+        pa.field("upper_bounds", pa.map_(pa.int32(), pa.binary())),
+        pa.field("key_metadata", pa.binary()),
+        pa.field("split_offsets", pa.list_(pa.int64())),
+        pa.field("equality_ids", pa.list_(pa.int64())),
+        pa.field("sort_order_id", pa.int32()),
+        pa.field("spec_id", pa.int32()),
+        pa.field("payload", pa.binary()),
+    ]
+)
+
+
+def _enum_value(value: Any) -> Any:
+    return value.value if hasattr(value, "value") else value
+
+
+def _map_value(value: Optional[Dict[int, Any]]) -> Optional[List[Tuple[int, Any]]]:
+    if value is None:
+        return None
+    return list(value.items())
+
+
+def _serialize_arrow_table(table: pa.Table) -> bytes:
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return sink.getvalue().to_pybytes()
+
+
+def _deserialize_arrow_table(data: bytes) -> pa.Table:
+    with pa.ipc.open_stream(pa.py_buffer(data)) as reader:
+        table = reader.read_all()
+    raise_on_pickle_object_columns(table)
+    return table
+
+
+def _serialize_scalar(value: Any) -> bytes:
+    return _serialize_arrow_table(pa.table({"value": [value]}))
+
+
+def _deserialize_scalar(data: bytes) -> Any:
+    table = _deserialize_arrow_table(data)
+    if table.column_names != ["value"] or table.num_rows != 1:
+        raise ValueError("Invalid Iceberg partition value in checkpoint payload")
+    return table["value"][0].as_py()
+
+
+def _serialize_schema(schema: pa.Schema) -> bytes:
+    return _serialize_arrow_table(pa.Table.from_batches([], schema=schema))
+
+
+def _deserialize_schema(data: bytes) -> pa.Schema:
+    return _deserialize_arrow_table(data).schema
+
+
+def _data_file_to_row(data_file: "DataFile") -> Dict[str, Any]:
+    try:
+        spec_id = data_file.spec_id
+    except AttributeError:
+        # PyIceberg 0.11's Arrow writer doesn't attach a spec ID to newly
+        # produced DataFiles. Preserve that state rather than inventing one.
+        spec_id = None
+    return {
+        "record_type": "data_file",
+        "content": int(_enum_value(data_file.content)),
+        "file_path": str(data_file.file_path),
+        "file_format": str(_enum_value(data_file.file_format)),
+        "partition_values": [_serialize_scalar(value) for value in data_file.partition],
+        "record_count": data_file.record_count,
+        "file_size_in_bytes": data_file.file_size_in_bytes,
+        "column_sizes": _map_value(data_file.column_sizes),
+        "value_counts": _map_value(data_file.value_counts),
+        "null_value_counts": _map_value(data_file.null_value_counts),
+        "nan_value_counts": _map_value(data_file.nan_value_counts),
+        "lower_bounds": _map_value(data_file.lower_bounds),
+        "upper_bounds": _map_value(data_file.upper_bounds),
+        "key_metadata": data_file.key_metadata,
+        "split_offsets": data_file.split_offsets,
+        "equality_ids": data_file.equality_ids,
+        "sort_order_id": data_file.sort_order_id,
+        "spec_id": spec_id,
+        "payload": None,
+    }
+
+
+def _serialize_write_result(write_result: IcebergWriteResult) -> bytes:
+    if write_result.upsert_keys is not None:
+        raise ValueError("Checkpointed Iceberg UPSERT is not supported")
+    rows = [_data_file_to_row(data_file) for data_file in write_result.data_files]
+    rows.extend(
+        {
+            "record_type": "schema",
+            "payload": _serialize_schema(schema),
+        }
+        for schema in write_result.schemas
+    )
+    table = pa.Table.from_pylist(rows, schema=_PAYLOAD_SCHEMA)
+    return _serialize_arrow_table(table)
+
+
+def _pairs_to_dict(value: Any) -> Optional[Dict[int, Any]]:
+    return dict(value) if value is not None else None
+
+
+def _row_to_data_file(row: Dict[str, Any]) -> "DataFile":
+    from pyiceberg.manifest import DataFile
+    from pyiceberg.typedef import Record
+
+    data_file = DataFile.from_args(
+        content=row["content"],
+        file_path=row["file_path"],
+        file_format=row["file_format"],
+        partition=Record(
+            *[_deserialize_scalar(value) for value in row["partition_values"]]
+        ),
+        record_count=row["record_count"],
+        file_size_in_bytes=row["file_size_in_bytes"],
+        column_sizes=_pairs_to_dict(row["column_sizes"]),
+        value_counts=_pairs_to_dict(row["value_counts"]),
+        null_value_counts=_pairs_to_dict(row["null_value_counts"]),
+        nan_value_counts=_pairs_to_dict(row["nan_value_counts"]),
+        lower_bounds=_pairs_to_dict(row["lower_bounds"]),
+        upper_bounds=_pairs_to_dict(row["upper_bounds"]),
+        key_metadata=row["key_metadata"],
+        split_offsets=row["split_offsets"],
+        equality_ids=row["equality_ids"],
+        sort_order_id=row["sort_order_id"],
+    )
+    if row["spec_id"] is not None:
+        data_file.spec_id = row["spec_id"]
+    return data_file
+
+
+def _deserialize_write_result(data: bytes) -> IcebergWriteResult:
+    table = _deserialize_arrow_table(data)
+    if not table.schema.equals(_PAYLOAD_SCHEMA):
+        raise ValueError("Unsupported Iceberg checkpoint Arrow schema")
+
+    data_files = []
+    schemas = []
+    for row in table.to_pylist():
+        if row["record_type"] == "data_file":
+            data_files.append(_row_to_data_file(row))
+        elif row["record_type"] == "schema" and row["payload"] is not None:
+            schemas.append(_deserialize_schema(row["payload"]))
+        else:
+            raise ValueError("Invalid record in Iceberg checkpoint Arrow payload")
+    return IcebergWriteResult(data_files=data_files, schemas=schemas)
+
+
+class IcebergCheckpointCoordinator:
+    def __init__(self, config: "CheckpointConfig", sink: IcebergDatasink):
+        self._config = config
+        self._filesystem = config.filesystem
+        self._root = _unwrap_protocol(config.checkpoint_path)
+        self._metadata_root = posixpath.join(self._root, _METADATA_DIR)
+        self._sink = sink
+        self._retried_io_errors = DataContext.get_current().retried_io_errors
+        self._table_uuid: Optional[str] = None
+        self._operation_id: Optional[str] = None
+
+    @property
+    def operation_id(self) -> str:
+        if self._operation_id is None:
+            raise RuntimeError("Iceberg checkpoint generation has not been initialized")
+        return self._operation_id
+
+    def _read_bytes(self, path: str) -> bytes:
+        def _read() -> bytes:
+            with self._filesystem.open_input_file(path) as source:
+                return source.read()
+
+        return call_with_retry(
+            _read,
+            description=f"read Iceberg checkpoint artifact {path}",
+            match=self._retried_io_errors,
+        )
+
+    def _write_bytes(self, path: str, data: bytes, *, immutable: bool) -> None:
+        def _publish() -> None:
+            parent = posixpath.dirname(path)
+            self._filesystem.create_dir(parent, recursive=True)
+            temporary_path = f"{path}.tmp.{uuid.uuid4().hex}"
+            with self._filesystem.open_output_stream(temporary_path) as output:
+                output.write(data)
+
+            existing = self._filesystem.get_file_info(path)
+            if existing.type != FileType.NotFound:
+                if immutable:
+                    if self._read_bytes(path) != data:
+                        self._filesystem.delete_file(temporary_path)
+                        raise RuntimeError(
+                            "Conflicting Iceberg checkpoint artifact already exists: "
+                            f"{path}"
+                        )
+                    self._filesystem.delete_file(temporary_path)
+                    return
+                self._filesystem.delete_file(path)
+
+            try:
+                self._filesystem.move(temporary_path, path)
+            except Exception:
+                final = self._filesystem.get_file_info(path)
+                if final.type != FileType.NotFound and self._read_bytes(path) == data:
+                    temporary = self._filesystem.get_file_info(temporary_path)
+                    if temporary.type != FileType.NotFound:
+                        self._filesystem.delete_file(temporary_path)
+                    return
+                raise
+            if self._read_bytes(path) != data:
+                raise RuntimeError(
+                    f"Failed to publish Iceberg checkpoint artifact: {path}"
+                )
+
+        call_with_retry(
+            _publish,
+            description=f"write Iceberg checkpoint artifact {path}",
+            match=self._retried_io_errors,
+        )
+
+    def _manifest_path(self) -> str:
+        return posixpath.join(self._metadata_root, _MANIFEST_FILE)
+
+    def _generation_root(self, operation_id: Optional[str] = None) -> str:
+        return posixpath.join(
+            self._metadata_root, "generations", operation_id or self.operation_id
+        )
+
+    def _load_json(self, path: str) -> Dict[str, Any]:
+        try:
+            value = json.loads(self._read_bytes(path))
+        except Exception as exc:
+            raise ValueError(
+                f"Invalid Iceberg checkpoint JSON artifact: {path}"
+            ) from exc
+        if not isinstance(value, dict):
+            raise ValueError(f"Invalid Iceberg checkpoint JSON artifact: {path}")
+        return value
+
+    def _write_json(self, path: str, value: Dict[str, Any], *, immutable: bool) -> None:
+        data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+        self._write_bytes(path, data, immutable=immutable)
+
+    def initialize(self, table_uuid: str) -> None:
+        self._table_uuid = table_uuid
+        self._filesystem.create_dir(self._root, recursive=True)
+        manifest_path = self._manifest_path()
+        manifest_info = self._filesystem.get_file_info(manifest_path)
+
+        root_files = self._filesystem.get_file_info(
+            FileSelector(self._root, recursive=True, allow_not_found=True)
+        )
+        committed_row_files = [
+            entry.path
+            for entry in root_files
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(".pending.parquet")
+        ]
+
+        if manifest_info.type == FileType.NotFound:
+            if committed_row_files:
+                raise ValueError(
+                    "Checkpointed Iceberg writes cannot restore a row-only checkpoint "
+                    "directory because destination file metadata is missing. Use a new "
+                    "checkpoint path."
+                )
+            operation_id = uuid.uuid4().hex
+            manifest = {
+                "format_version": _FORMAT_VERSION,
+                "table_identifier": self._sink.table_identifier,
+                "table_uuid": table_uuid,
+                "mode": SaveMode.APPEND.value,
+                "active_generation": operation_id,
+                "generations": {operation_id: "active"},
+            }
+            self._write_json(manifest_path, manifest, immutable=True)
+            self._operation_id = operation_id
+            return
+
+        manifest = self._load_manifest()
+        self._validate_identity(manifest, table_uuid)
+        active = manifest["active_generation"]
+        if active is None:
+            active = uuid.uuid4().hex
+            manifest["active_generation"] = active
+            manifest["generations"][active] = "active"
+            self._write_json(manifest_path, manifest, immutable=False)
+        elif manifest["generations"].get(active) != "active":
+            raise ValueError("Invalid active Iceberg checkpoint generation")
+        self._operation_id = active
+
+    def _load_manifest(self) -> Dict[str, Any]:
+        manifest = self._load_json(self._manifest_path())
+        required = {
+            "format_version",
+            "table_identifier",
+            "table_uuid",
+            "mode",
+            "active_generation",
+            "generations",
+        }
+        if (
+            set(manifest) != required
+            or not isinstance(manifest["table_identifier"], str)
+            or not isinstance(manifest["table_uuid"], str)
+            or not isinstance(manifest["mode"], str)
+            or not isinstance(manifest["generations"], dict)
+            or not all(
+                isinstance(key, str) and value in {"active", "terminal"}
+                for key, value in manifest["generations"].items()
+            )
+            or (
+                manifest["active_generation"] is not None
+                and not isinstance(manifest["active_generation"], str)
+            )
+        ):
+            raise ValueError("Invalid Iceberg checkpoint namespace manifest")
+        if manifest["format_version"] != _FORMAT_VERSION:
+            raise ValueError(
+                "Unsupported Iceberg checkpoint namespace format version: "
+                f"{manifest['format_version']}"
+            )
+        return manifest
+
+    def _validate_identity(self, manifest: Dict[str, Any], table_uuid: str) -> None:
+        expected = (self._sink.table_identifier, table_uuid, SaveMode.APPEND.value)
+        actual = (
+            manifest["table_identifier"],
+            manifest["table_uuid"],
+            manifest["mode"],
+        )
+        if actual != expected:
+            raise ValueError(
+                "Checkpoint path belongs to a different Iceberg table or write mode: "
+                f"expected {expected}, found {actual}"
+            )
+
+    def persist_task_result(
+        self,
+        artifact_id: str,
+        checkpoint_path: str,
+        write_result: IcebergWriteResult,
+    ) -> None:
+        if not write_result.data_files:
+            raise ValueError(
+                "Iceberg write produced rows without recoverable destination files"
+            )
+        payload = _serialize_write_result(write_result)
+        task_root = posixpath.join(self._generation_root(), "tasks")
+        payload_path = posixpath.join(task_root, f"{artifact_id}.arrow")
+        envelope_path = posixpath.join(task_root, f"{artifact_id}.json")
+        self._write_bytes(payload_path, payload, immutable=False)
+        self._write_json(
+            envelope_path,
+            {
+                "format_version": _FORMAT_VERSION,
+                "operation_id": self.operation_id,
+                "table_uuid": self._table_uuid,
+                "checkpoint_file": posixpath.basename(checkpoint_path),
+                "payload_file": posixpath.basename(payload_path),
+                "payload_sha256": hashlib.sha256(payload).hexdigest(),
+            },
+            immutable=False,
+        )
+
+    def row_checkpoint_exists(self, checkpoint_path: str) -> bool:
+        return self._filesystem.get_file_info(checkpoint_path).type == FileType.File
+
+    def load_task_result(self, checkpoint_path: str) -> IcebergWriteResult:
+        checkpoint_file = posixpath.basename(checkpoint_path)
+        envelope = self._load_task_envelope(checkpoint_file)
+        payload_path = posixpath.join(
+            self._generation_root(), "tasks", envelope["payload_file"]
+        )
+        payload = self._read_bytes(payload_path)
+        if hashlib.sha256(payload).hexdigest() != envelope["payload_sha256"]:
+            raise ValueError(f"Corrupt Iceberg checkpoint payload: {payload_path}")
+        return _deserialize_write_result(payload)
+
+    def _selected_row_checkpoint_paths(self) -> List[str]:
+        entries = self._filesystem.get_file_info(
+            FileSelector(
+                self._root,
+                recursive=self._config.checkpoint_path_partition_filter is not None,
+                allow_not_found=True,
+            )
+        )
+        paths = [
+            entry.path
+            for entry in entries
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(".pending.parquet")
+            and not entry.path.startswith(f"{self._metadata_root}/")
+        ]
+        partition_filter = self._config.checkpoint_path_partition_filter
+        return partition_filter(paths) if partition_filter is not None else paths
+
+    def _load_task_envelope(self, checkpoint_file: str) -> Dict[str, Any]:
+        artifact_id = checkpoint_file[: -len(".parquet")]
+        envelope_path = posixpath.join(
+            self._generation_root(), "tasks", f"{artifact_id}.json"
+        )
+        if self._filesystem.get_file_info(envelope_path).type == FileType.NotFound:
+            raise ValueError(
+                "Iceberg row checkpoint is missing its destination metadata: "
+                f"{checkpoint_file}"
+            )
+        envelope = self._load_json(envelope_path)
+        required = {
+            "format_version",
+            "operation_id",
+            "table_uuid",
+            "checkpoint_file",
+            "payload_file",
+            "payload_sha256",
+        }
+        if (
+            set(envelope) != required
+            or not all(
+                isinstance(envelope[key], str)
+                for key in (
+                    "operation_id",
+                    "table_uuid",
+                    "checkpoint_file",
+                    "payload_file",
+                    "payload_sha256",
+                )
+            )
+            or envelope["checkpoint_file"] != checkpoint_file
+            or posixpath.basename(envelope["payload_file"]) != envelope["payload_file"]
+            or envelope["payload_file"] != f"{artifact_id}.arrow"
+            or len(envelope["payload_sha256"]) != 64
+        ):
+            raise ValueError(
+                f"Invalid Iceberg checkpoint task envelope: {envelope_path}"
+            )
+        if (
+            envelope["format_version"] != _FORMAT_VERSION
+            or envelope["operation_id"] != self.operation_id
+            or envelope["table_uuid"] != self._table_uuid
+        ):
+            raise ValueError(f"Incompatible Iceberg checkpoint task: {envelope_path}")
+        return envelope
+
+    def load_active_results(self) -> List[IcebergWriteResult]:
+        manifest = self._load_manifest()
+        self._validate_identity(manifest, self._table_uuid)
+        if manifest["active_generation"] != self.operation_id:
+            raise ValueError(
+                "Iceberg checkpoint active generation changed concurrently"
+            )
+
+        selected = self._selected_row_checkpoint_paths()
+        known_generations = manifest["generations"]
+        results = []
+        for checkpoint_path in selected:
+            checkpoint_file = posixpath.basename(checkpoint_path)
+            generation_id = checkpoint_file.split("-", 1)[0]
+            status = known_generations.get(generation_id)
+            if status == "terminal":
+                continue
+            if generation_id != self.operation_id or status != "active":
+                raise ValueError(
+                    "Found an Iceberg row checkpoint without a known recoverable "
+                    f"generation: {checkpoint_file}"
+                )
+            results.append(self.load_task_result(checkpoint_path))
+        return results
+
+    def mark_terminal(self) -> None:
+        manifest = self._load_manifest()
+        if manifest["active_generation"] != self.operation_id:
+            raise ValueError(
+                "Iceberg checkpoint active generation changed concurrently"
+            )
+        manifest["generations"][self.operation_id] = "terminal"
+        manifest["active_generation"] = None
+        self._write_json(self._manifest_path(), manifest, immutable=False)
+
+    def discard_empty_generation(self) -> None:
+        manifest = self._load_manifest()
+        if manifest["active_generation"] != self.operation_id:
+            raise ValueError(
+                "Iceberg checkpoint active generation changed concurrently"
+            )
+        manifest["generations"].pop(self.operation_id, None)
+        manifest["active_generation"] = None
+        self._write_json(self._manifest_path(), manifest, immutable=False)
+        generation_root = self._generation_root()
+        if self._filesystem.get_file_info(generation_root).type != FileType.NotFound:
+            self._filesystem.delete_dir(generation_root)
+
+    def delete_namespace(self) -> None:
+        if self._filesystem.get_file_info(self._root).type != FileType.NotFound:
+            self._filesystem.delete_dir(self._root)
+
+
+class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
+    def __init__(self, sink: IcebergDatasink, config: "CheckpointConfig"):
+        self._sink = sink
+        self._config = config
+        self._coordinator = IcebergCheckpointCoordinator(config, sink)
+        self._checkpointing_active = False
+
+    def enable_checkpointing(self) -> None:
+        if self._checkpointing_active:
+            return
+        if self._config.checkpoint_manager_cls is not None:
+            raise ValueError(
+                "Checkpointed Iceberg writes require the default checkpoint manager"
+            )
+        if self._config.checkpoint_filter_cls is not None:
+            raise ValueError(
+                "Checkpointed Iceberg writes require the default checkpoint filter"
+            )
+        if self._sink._mode != SaveMode.APPEND:
+            raise ValueError(
+                "Checkpointed Iceberg writes currently support only APPEND mode; "
+                f"got {self._sink._mode.value}"
+            )
+        if _OPERATION_PROPERTY in self._sink._snapshot_properties:
+            raise ValueError(
+                f"Snapshot property {_OPERATION_PROPERTY!r} is reserved by Ray Data "
+                "checkpointing"
+            )
+        self._sink._reload_table()
+        self._coordinator.initialize(str(self._sink._table.metadata.table_uuid))
+        self._checkpointing_active = True
+
+    @property
+    def checkpointing_active(self) -> bool:
+        return self._checkpointing_active
+
+    @property
+    def coordinator(self) -> IcebergCheckpointCoordinator:
+        return self._coordinator
+
+    def on_write_start(self, schema: Optional[pa.Schema] = None) -> None:
+        self._sink.on_write_start(schema)
+
+    def write(self, blocks: Iterable[Block], ctx: "TaskContext") -> IcebergWriteResult:
+        return self._sink.write(blocks, ctx)
+
+    def _find_operation_snapshot(self) -> Optional[Any]:
+        self._sink._reload_table()
+        for snapshot in self._sink._table.snapshots():
+            if (
+                snapshot.summary is not None
+                and snapshot.summary.get(_OPERATION_PROPERTY)
+                == self._coordinator.operation_id
+            ):
+                return snapshot
+        return None
+
+    @staticmethod
+    def _merge_results(
+        recovered: List[IcebergWriteResult], current: List[IcebergWriteResult]
+    ) -> List[IcebergWriteResult]:
+        merged = []
+        seen: Dict[str, bytes] = {}
+        for result in [*recovered, *current]:
+            unique_files = []
+            for data_file in result.data_files:
+                path = str(data_file.file_path)
+                fingerprint = hashlib.sha256(
+                    _serialize_write_result(
+                        IcebergWriteResult(
+                            data_files=[data_file], schemas=result.schemas
+                        )
+                    )
+                ).digest()
+                previous = seen.get(path)
+                if previous is not None:
+                    if previous != fingerprint:
+                        raise ValueError(
+                            "Conflicting Iceberg checkpoint metadata for data file "
+                            f"{path}"
+                        )
+                    continue
+                seen[path] = fingerprint
+                unique_files.append(data_file)
+            if unique_files:
+                merged.append(
+                    IcebergWriteResult(data_files=unique_files, schemas=result.schemas)
+                )
+        return merged
+
+    def on_write_complete(self, write_result: WriteResult[IcebergWriteResult]) -> None:
+        if not self._checkpointing_active:
+            self._sink.on_write_complete(write_result)
+            return
+
+        if self._find_operation_snapshot() is not None:
+            self._coordinator.mark_terminal()
+            self._cleanup_after_success()
+            return
+
+        recovered = self._coordinator.load_active_results()
+        current = [
+            result for result in write_result.write_returns if result is not None
+        ]
+        merged = self._merge_results(recovered, current)
+        if not merged:
+            self._coordinator.discard_empty_generation()
+            return
+
+        original_properties = self._sink._snapshot_properties
+        self._sink._snapshot_properties = {
+            **original_properties,
+            _OPERATION_PROPERTY: self._coordinator.operation_id,
+        }
+        try:
+            self._sink.on_write_complete(
+                WriteResult(
+                    num_rows=write_result.num_rows,
+                    size_bytes=write_result.size_bytes,
+                    write_returns=merged,
+                )
+            )
+        finally:
+            self._sink._snapshot_properties = original_properties
+
+        if self._find_operation_snapshot() is None:
+            raise RuntimeError(
+                "Iceberg commit succeeded without the expected Ray checkpoint marker"
+            )
+        self._coordinator.mark_terminal()
+        self._cleanup_after_success()
+
+    def _cleanup_after_success(self) -> None:
+        if not self._config.delete_checkpoint_on_success:
+            return
+        try:
+            self._coordinator.delete_namespace()
+        except Exception:
+            logger.warning("Failed to delete Iceberg checkpoint data.", exc_info=True)
+
+    def on_write_failed(self, error: Exception) -> None:
+        self._sink.on_write_failed(error)
+
+    def get_name(self) -> str:
+        return self._sink.get_name()
+
+    @property
+    def supports_distributed_writes(self) -> bool:
+        return self._sink.supports_distributed_writes
+
+    @property
+    def min_rows_per_write(self) -> Optional[int]:
+        return self._sink.min_rows_per_write
+
+
+def wrap_iceberg_datasink(
+    datasink: Datasink, config: Optional["CheckpointConfig"]
+) -> Datasink:
+    if (
+        config is not None
+        and isinstance(datasink, IcebergDatasink)
+        and not isinstance(datasink, IcebergCheckpointDatasink)
+    ):
+        return IcebergCheckpointDatasink(datasink, config)
+    return datasink
+
+
+def write_task_checkpoint(
+    datasink: IcebergCheckpointDatasink,
+    checkpoint_writer: BatchBasedCheckpointWriter,
+    block: BlockAccessor,
+    ctx: "TaskContext",
+) -> None:
+    write_result = ctx.kwargs.get("_datasink_write_return")
+    if not isinstance(write_result, IcebergWriteResult):
+        raise TypeError("Iceberg write task did not return IcebergWriteResult")
+
+    write_uuid = ctx.kwargs.get("write_uuid")
+    if not write_uuid:
+        raise RuntimeError("Iceberg checkpoint write is missing the write UUID")
+    artifact_id = f"{datasink.coordinator.operation_id}-{write_uuid}-{ctx.task_idx}"
+    id_column_data = BlockAccessor.for_block(
+        block.select(columns=[datasink._config.id_column])
+    ).to_arrow()[datasink._config.id_column]
+    pending = checkpoint_writer.write_pending_checkpoint(
+        id_column_data, checkpoint_id=artifact_id
+    )
+    if pending is None:
+        return
+    if datasink.coordinator.row_checkpoint_exists(pending.committed_path):
+        ctx.kwargs["_datasink_write_return"] = datasink.coordinator.load_task_result(
+            pending.committed_path
+        )
+    else:
+        datasink.coordinator.persist_task_result(
+            artifact_id, pending.committed_path, write_result
+        )
+    checkpoint_writer.commit_checkpoint(pending)

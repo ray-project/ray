@@ -256,7 +256,14 @@ class CheckpointManager(abc.ABC):
                 allow_not_found=True,
             )
         )
-        if not any(f.type == FileType.File for f in entries):
+        committed_checkpoint_paths = [
+            entry.path
+            for entry in entries
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(f"{PENDING_CHECKPOINT_SUFFIX}.parquet")
+        ]
+        if not committed_checkpoint_paths:
             return None, 0
 
         # Load the checkpoint data
