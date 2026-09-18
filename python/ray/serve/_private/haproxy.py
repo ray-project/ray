@@ -1603,12 +1603,7 @@ class HAProxyApi(ProxyApi):
             raise
 
     def _configured_backend_names(self) -> Set[str]:
-        """Every backend name this config renders, including direct-HTTP backends.
-
-        `backend_configs` holds one entry per application, but an app with
-        `_direct_http` deployments renders an extra backend per deployment. Stats
-        and readiness logic keyed only on `backend_configs` would drop those.
-        """
+        """Every backend name this config renders, including direct-HTTP backends."""
         names = set(self.backend_configs)
         for backend_config in self.backend_configs.values():
             names.update(direct.name for direct in backend_config.direct_target_configs)
@@ -1617,10 +1612,9 @@ class HAProxyApi(ProxyApi):
     async def get_all_stats(self) -> Dict[str, Dict[str, ServerStats]]:
         """Get statistics for all servers in all backends (implements abstract method).
 
-        Returns only application backends configured in self.backend_configs,
+        Returns backends for all configured application backend servers,
         excluding HAProxy internal components (frontends, default_backend, stats).
         Also excludes BACKEND aggregate entries, returning only individual servers.
-        TODO (celinaky): update docstring to reflect changes
         """
         try:
             stats_output = await self._send_socket_command("show stat")
