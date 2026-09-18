@@ -152,6 +152,8 @@ class TensorTransportManager(ABC):
         src_actor: "ray.actor.ActorHandle",
         dst_actor: "ray.actor.ActorHandle",
         backend: Optional[str] = None,
+        tensor_transport_meta: Optional[TensorTransportMetadata] = None,
+        obj_id: Optional[str] = None,
     ) -> CommunicatorMetadata:
         """
         Gets the CommunicatorMetadata for a send/recv. Ray calls this on the owner/driver process before
