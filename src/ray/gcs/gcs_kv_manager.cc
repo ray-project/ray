@@ -77,6 +77,17 @@ void GcsInternalKVManager::HandleInternalKVPut(
   auto status = ValidateKey(request.key());
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  } else if (request.has_expected_value()) {
+    auto callback = [reply,
+                     send_reply_callback = std::move(send_reply_callback)](bool updated) {
+      reply->set_updated(updated);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    };
+    kv_instance_->PutIfMatch(request.namespace_(),
+                             request.key(),
+                             std::move(*request.mutable_expected_value()),
+                             std::move(*request.mutable_value()),
+                             {std::move(callback), io_context_});
   } else {
     auto callback =
         [reply, send_reply_callback = std::move(send_reply_callback)](bool newly_added) {
