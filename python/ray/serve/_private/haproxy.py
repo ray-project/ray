@@ -140,27 +140,12 @@ def _load_lua_template() -> string.Template:
 
 @dataclass
 class _DeploymentTargets:
-    """One deployment's replicas and the HAProxy backend that holds them.
+    """HAProxy backend and replica lookup for one Serve deployment."""
 
-    The Lua replica map is keyed `[app][deployment][replica_id]`, mirroring the
-    two-level decision `/internal/route` reports: which deployment, then which of
-    its replicas. Keeping the levels distinct lets the Lua tell "this deployment is
-    not in my config" (`unknown_deployment`, e.g. a model added since the last
-    reload) apart from "this deployment's replica set moved under me"
-    (`unknown_replica_id`, e.g. autoscaling).
-
-    Every router-selectable deployment of the app appears, not just the
-    `_direct_http` ones: the ingress is a target the router may name like any
-    other, and its replicas live in the app's `-via-ingress-request-router`
-    companion backend. An app whose only replicas are its ingress's is therefore
-    still routed through its router rather than plain path-based balancing.
-    """
-
-    # Generated HAProxy backend holding these replicas.
+    # HAProxy backend containing the deployment's replicas.
     backend_name: str
 
-    # replica_id (raw actor name, as `/internal/route` returns it) -> HAProxy
-    # server name (sanitized, as `use-server` matches on).
+    # Raw replica ID returned by the router -> HAProxy server name.
     replicas: Dict[str, str] = field(default_factory=dict)
 
 
@@ -168,26 +153,20 @@ def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
 ) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, Dict[str, _DeploymentTargets]]]":
-    """Per-backend router pool and replica map, restricted to backends with both.
+    """Build the router pools and deployment target maps used by Lua.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
-    is co-located.
-
-    The replica map is `{backend_name: {deployment_name: _DeploymentTargets}}`,
-    built by `BackendConfig.get_deployment_targets()` -- the single source for
-    which deployments are router-selectable and which backend holds each one's
-    replicas. A router-bearing backend whose deployments have no replica IDs yet
-    contributes nothing, and if no backend contributes anything the caller writes
-    no Lua at all.
+    is co-located. Applications without both a router and deployment targets are
+    omitted.
     """
     routers: Dict[str, List[ServerConfig]] = {}
-    targets: Dict[str, Dict[str, _DeploymentTargets]] = {}
+    deployment_targets_by_backend: Dict[str, Dict[str, _DeploymentTargets]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
             continue
-        by_deployment = backend.get_deployment_targets()
-        if not by_deployment:
+        deployment_targets = backend.get_deployment_targets()
+        if not deployment_targets:
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
@@ -196,8 +175,8 @@ def _routers_and_targets_by_backend(
         else:
             pool = [min(candidates, key=lambda s: (s.host, s.port))]
         routers[backend.name] = pool
-        targets[backend.name] = by_deployment
-    return routers, targets
+        deployment_targets_by_backend[backend.name] = deployment_targets
+    return routers, deployment_targets_by_backend
 
 
 def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
@@ -217,29 +196,28 @@ def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
 
 
 def _format_replica_targets_lua(
-    targets: "Dict[str, Dict[str, _DeploymentTargets]]",
+    deployment_targets_by_backend: "Dict[str, Dict[str, _DeploymentTargets]]",
 ) -> str:
-    """Render {backend_name: {deployment_name: targets}} as nested Lua tables.
+    """Render application, deployment, and replica lookups as a Lua table."""
 
-    Each deployment entry is `{ b = "<backend name>", r = { [replica_id] = "<server
-    name>" } }`. The backend name sits on the deployment, not on every replica row,
-    so it is written once however many replicas the deployment has.
-    """
-
-    def _deployment_lua(name: str, dep: _DeploymentTargets) -> str:
+    def _deployment_lua(
+        deployment_name: str, deployment_targets: _DeploymentTargets
+    ) -> str:
         replicas = ",\n".join(
             f"            [{json.dumps(rid)}] = {json.dumps(sname)}"
-            for rid, sname in dep.replicas.items()
+            for rid, sname in deployment_targets.replicas.items()
         )
         return (
-            f"        [{json.dumps(name)}] = {{ b = {json.dumps(dep.backend_name)}, "
+            f"        [{json.dumps(deployment_name)}] = "
+            f"{{ b = {json.dumps(deployment_targets.backend_name)}, "
             "r = {\n" + replicas + "\n        } }"
         )
 
     backends_lua = []
-    for backend_name, by_deployment in targets.items():
+    for backend_name, deployment_targets in deployment_targets_by_backend.items():
         inner = ",\n".join(
-            _deployment_lua(name, dep) for name, dep in by_deployment.items()
+            _deployment_lua(deployment_name, target_config)
+            for deployment_name, target_config in deployment_targets.items()
         )
         backends_lua.append(
             f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
