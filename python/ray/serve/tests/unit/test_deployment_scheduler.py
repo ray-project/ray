@@ -2906,8 +2906,8 @@ def test_active_compaction_can_schedule_upscale_to_source_node():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-def test_active_compaction_does_not_schedule_migration_to_source_node():
-    """With no room elsewhere, a migration replacement waits out the compaction."""
+def test_active_compaction_cancelled_when_migration_has_nowhere_to_go():
+    """With no room elsewhere, the compaction is cancelled instead of timing out."""
     dep_id = DeploymentID(name="deployment1")
     filler_dep_id = DeploymentID(name="filler")
     node_id_1 = NodeID.from_random().hex()
@@ -2959,11 +2959,13 @@ def test_active_compaction_does_not_schedule_migration_to_source_node():
         scheduler._get_node_to_running_replicas(),
     )
 
+    # Cancelled on the spot, so the node stops draining without the timeout.
     assert target_node is None
     on_scheduled_mock.assert_not_called()
     assert replacement_replica_id in scheduler._pending_replicas[dep_id]
-    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node_id_1
-    assert scheduler._num_consecutive_failed_compactions == 0
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
 
 
 @pytest.mark.skipif(

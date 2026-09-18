@@ -1196,14 +1196,15 @@ class DeploymentScheduler:
         replica_id = scheduling_request.replica_id
 
         if target_node is None and self._excludes_compacting_node(scheduling_request):
-            # Only the compacting node has room, so wait rather than land there.
-            if replica_id not in self._logged_pack_placement_failures:
-                self._logged_pack_placement_failures.add(replica_id)
-                logger.info(
-                    f"Pack scheduling could not place {replica_id} "
-                    f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
-                    f"off the node being compacted. Waiting for room elsewhere."
-                )
+            # The migration has nowhere to go, so the plan is already infeasible.
+            assert self._compacting_node is not None
+            logger.info(
+                f"Canceling compaction of {self._compacting_node.target_node_id} "
+                f"because {replica_id} "
+                f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
+                f"cannot be placed off that node."
+            )
+            self._fail_compaction()
             return None
 
         if target_node is None:
