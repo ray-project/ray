@@ -10845,7 +10845,12 @@ def _fail_starting_replica(dsm, ds, version):
     starting = ds._replicas.get(states=[ReplicaState.STARTING])
     assert len(starting) == 1 and starting[0].version == version
     starting[0]._actor.set_failed_to_start()
-    dsm.update()
+    with patch.object(
+        starting[0]._actor,
+        "check_ready",
+        return_value=(ReplicaStartupStatus.FAILED, "constructor failed"),
+    ):
+        dsm.update()
     starting[0]._actor.set_done_stopping()
     dsm.update()
 
@@ -10916,6 +10921,8 @@ class TestRollingUpdateTerminalFailure:
         assert not ds._target_state.terminally_failed
         assert ds._target_state.rolling_update
         assert not ds._terminally_failed()
+        assert ds._replica_constructor_retry_counter == 0
+        assert ds._replica_constructor_error_msg is None
         dsm.update()
         # The missing replica is started on the new version; the rollout
         # budget (one at a time) is consumed by it, so no old replica is
@@ -10928,6 +10935,33 @@ class TestRollingUpdateTerminalFailure:
                 (ReplicaState.STARTING, 1, v3),
             ],
         )
+
+    def test_successful_retry_clears_constructor_error(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds, _ = _deploy_version_running(dsm, 3, "1")
+
+        info_2, v2 = deployment_info(num_replicas=3, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        _fail_starting_replica(dsm, ds, v2)
+        assert ds._replica_constructor_retry_counter == 1
+        assert ds._replica_constructor_error_msg is not None
+
+        for _ in range(3):
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+                replica._actor.set_ready()
+            dsm.update()
+
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._replica_constructor_retry_counter == 0
+        assert ds._replica_constructor_error_msg is None
 
     def test_fresh_deploy_and_scale_from_zero_are_unchanged(
         self, mock_deployment_state_manager, mock_max_per_replica_retry_count
