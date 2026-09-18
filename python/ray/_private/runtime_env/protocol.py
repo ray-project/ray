@@ -228,7 +228,7 @@ class ProtocolsProvider:
         return headers
 
     @classmethod
-    def _http_kerberos_hosts(cls):
+    def _http_kerberos_hosts(cls, hostname):
         hosts = {
             host.strip().lower()
             for host in os.environ.get(
@@ -236,6 +236,8 @@ class ProtocolsProvider:
             ).split(",")
             if host.strip()
         }
+        if hostname not in hosts:
+            return set()
         if any(
             not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", host)
             for host in hosts
@@ -341,9 +343,13 @@ class ProtocolsProvider:
             }
             if transport_params:
                 params.update(transport_params)
-            hosts = cls._http_kerberos_hosts()
             parsed = urlparse(uri)
-            if parsed.scheme == "https" and parsed.hostname in hosts:
+            hosts = (
+                cls._http_kerberos_hosts(parsed.hostname)
+                if parsed.scheme == "https"
+                else set()
+            )
+            if hosts:
                 if os.environ.get(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR):
                     raise ValueError(
                         "Kerberos and Bearer Token authentication cannot be used "

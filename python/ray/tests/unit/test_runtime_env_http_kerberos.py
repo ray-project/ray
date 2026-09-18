@@ -105,6 +105,13 @@ def download(tmp_path, uri=PACKAGE_URI):
         ("files.example.org", PACKAGE_URI.replace("https:", "http:"), None),
         ("", PACKAGE_URI, "test-token"),
         ("elsewhere.example.org", PACKAGE_URI, "test-token"),
+        ("https://elsewhere.example.org", PACKAGE_URI, None),
+        ("elsewhere.example.org,*.example.org", PACKAGE_URI, "test-token"),
+        (
+            "files.example.org,*.example.org",
+            PACKAGE_URI.replace("https:", "http:"),
+            None,
+        ),
     ],
 )
 def test_download_without_kerberos(
@@ -192,7 +199,7 @@ def test_missing_or_old_dependency(tmp_path, monkeypatch, kerberos, dependency):
     ],
 )
 def test_invalid_host_configuration(tmp_path, monkeypatch, http_transport, hosts):
-    monkeypatch.setenv(KERBEROS_HOSTS, hosts)
+    monkeypatch.setenv(KERBEROS_HOSTS, f"files.example.org,{hosts}")
     with pytest.raises(ValueError, match=KERBEROS_HOSTS):
         download(tmp_path)
     assert http_transport[1] == []

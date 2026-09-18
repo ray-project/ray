@@ -978,14 +978,14 @@ Kerberos-authenticated HTTPS packages
 -------------------------------------
 
 To download ``working_dir`` or ``py_modules`` from a Kerberos/SPNEGO-protected
-HTTPS service, install ``smart_open[http]>=7.1.0``, ``requests>=2.32.3``, and
-``requests-kerberos`` on every node. Before starting Ray, make an existing
-Kerberos credential cache available to the Ray processes (for example through
+HTTPS service such as HttpFS, install ``smart_open[http]>=7.1.0``,
+``requests>=2.32.3``, and ``requests-kerberos`` on every node. Before starting Ray,
+make an existing Kerberos credential cache available to its processes (for example through
 ``KRB5CCNAME``) and configure the allowed hosts and any enterprise CA bundle:
 
 .. code-block:: bash
 
-   export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=files.example.org,datanode.example.org
+   export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=files.example.org
    export REQUESTS_CA_BUNDLE=/etc/company-ca/ca.pem
 
 .. code-block:: python
@@ -997,8 +997,10 @@ Kerberos credential cache available to the Ray processes (for example through
 Kerberos is disabled by default and enabled only for listed HTTPS hosts.
 Use exact, comma-separated DNS names (case-insensitive), without ports or
 wildcards; IP addresses are not supported. Every redirect must also use HTTPS
-and a listed host, without credentials in the URL. Include WebHDFS DataNode
-hosts when needed. Each hop gets a fresh authentication context. Combining
+and a listed host, without credentials in the URL. Each hop must support
+Kerberos mutual authentication; native WebHDFS redirects that authenticate
+DataNodes using delegation tokens are not supported. Use an HttpFS gateway
+for this case. Each hop gets a fresh authentication context. Combining
 Kerberos with ``RAY_RUNTIME_ENV_BEARER_TOKEN`` for the same download is an error.
 
 Server certificates must have matching Subject Alternative Names (SANs);
