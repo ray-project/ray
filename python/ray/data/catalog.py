@@ -45,6 +45,10 @@ _AWS_REGION = "AWS_REGION"
 _AWS_DEFAULT_REGION = "AWS_DEFAULT_REGION"
 _AZURE_STORAGE_SAS_TOKEN = "AZURE_STORAGE_SAS_TOKEN"
 
+# deltalake's object_store config key for a SAS, passed via `storage_options`
+# rather than the environment so it pickles into the read tasks.
+_AZURE_STORAGE_SAS_TOKEN_OPTION = "azure_storage_sas_token"
+
 
 def _normalize_host(host: str) -> str:
     host = host.rstrip("/")
@@ -249,12 +253,26 @@ class DatabricksUnityCatalog(Catalog):
                 creds.gcp_oauth_token, creds.expiration_time
             )
 
-        # Deliver vended credentials via environment variables. This is the
-        # mechanism the underlying libraries read uniformly: pyarrow (Parquet
+        # Azure gets neither of the above: there is no picklable pyarrow Azure
+        # filesystem to build a SAS into (pyarrow's `AzureFileSystem` accepts
+        # only an account key). Hand the SAS to the reader through
+        # `storage_options` instead -- a plain dict, so it pickles into the read
+        # tasks for free and each worker authenticates with the vended
+        # credential rather than whatever its own environment happens to hold.
+        # The env var below reaches only the driver on a running cluster, which
+        # is every case where a Dataset already exists.
+        storage_options = None
+        if creds.azure_user_delegation_sas is not None:
+            storage_options = self._azure_storage_options(
+                creds.azure_user_delegation_sas
+            )
+
+        # Deliver vended credentials via environment variables as well. This is
+        # the mechanism the underlying libraries read uniformly: pyarrow (Parquet
         # data, and S3/Azure/GCS auto-filesystems) and deltalake's object_store
-        # (the Delta transaction *log* read in `DeltaTable(...)`, which neither
-        # a pyarrow `filesystem` nor `storage_options` keyed for pyarrow would
-        # satisfy). See `_apply_env` for the worker-propagation note.
+        # (the Delta transaction *log* read in `DeltaTable(...)`). Still needed
+        # for the readers that take no `storage_options` at all -- notably
+        # `read_parquet`, which is filesystem-only.
         #
         # TODO: remove the env-var + ray.init mechanism once credential vending
         # is performed inside the read tasks themselves (worker-side).
@@ -263,6 +281,7 @@ class DatabricksUnityCatalog(Catalog):
         return ResolvedSource(
             path=table_url,
             filesystem=filesystem,
+            storage_options=storage_options,
             data_format=self._infer_format(table_info, table_url),
         )
 
@@ -443,11 +462,33 @@ class DatabricksUnityCatalog(Catalog):
         )
 
     @staticmethod
-    def _parse_azure_creds(sas: "AzureUserDelegationSas") -> Dict[str, Optional[str]]:
+    def _azure_sas_token(sas: "AzureUserDelegationSas") -> str:
         sas_token = sas.sas_token
+        # Unity Catalog may return the SAS as a full query string ("?sv=..."),
+        # but every consumer wants it bare.
         if sas_token and sas_token.startswith("?"):
             sas_token = sas_token[1:]
         if not sas_token:
             raise ValueError("Azure UC credentials missing a SAS token.")
-        creds: Dict[str, Optional[str]] = {_AZURE_STORAGE_SAS_TOKEN: sas_token}
+        return sas_token
+
+    @classmethod
+    def _parse_azure_creds(
+        cls, sas: "AzureUserDelegationSas"
+    ) -> Dict[str, Optional[str]]:
+        creds: Dict[str, Optional[str]] = {
+            _AZURE_STORAGE_SAS_TOKEN: cls._azure_sas_token(sas)
+        }
         return creds
+
+    @classmethod
+    def _azure_storage_options(cls, sas: "AzureUserDelegationSas") -> Dict[str, str]:
+        """Vended SAS in the form deltalake's object_store reads.
+
+        `azure_storage_sas_token` is one of object_store's accepted aliases for
+        the SAS config key. The account name is not included: it is already in
+        the `abfss://<container>@<account>.dfs.core.windows.net/...` URL that
+        accompanies these options, and duplicating it here would let the two
+        disagree.
+        """
+        return {_AZURE_STORAGE_SAS_TOKEN_OPTION: cls._azure_sas_token(sas)}
