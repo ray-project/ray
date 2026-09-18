@@ -109,6 +109,111 @@ async def test_report_handler(
     worker_group.shutdown()
 
 
+def _make_handler(num_workers, report_callback):
+    """A ReportCallbackHandler wired to a started dummy worker group."""
+    handler = ReportCallbackHandler(report_callbacks=[report_callback])
+    worker_group = DummyWorkerGroup(
+        train_run_context=MagicMock(spec=TrainRunContext),
+        worker_group_context=WorkerGroupContext(
+            run_attempt_id="test_run_attempt_id",
+            train_fn_ref=DummyObjectRefWrapper(lambda: None),
+            num_workers=num_workers,
+            resources_per_worker={"CPU": 1},
+        ),
+    )
+    worker_group._start()
+    handler.after_worker_group_start(worker_group)
+    return handler, worker_group
+
+
+def _poll_status(reporting_ranks, num_workers):
+    """A poll where only `reporting_ranks` reported a checkpoint."""
+    statuses = {}
+    for rank in range(num_workers):
+        report = (
+            _TrainingReport(
+                metrics={"rank": rank},
+                checkpoint=Checkpoint("mock://bucket/path"),
+                validation=False,
+            )
+            if rank in reporting_ranks
+            else None
+        )
+        statuses[rank] = WorkerStatus(running=True, error=None, training_report=report)
+    return WorkerGroupPollStatus(statuses)
+
+
+@pytest.mark.asyncio
+async def test_relaxed_gate_consolidates_without_preempted_rank():
+    """With the gate relaxed, survivors' reports commit without rank 3."""
+    num_workers = 4
+    callback = MagicMock()
+    handler, worker_group = _make_handler(num_workers, callback)
+
+    # Strict gate: rank 3 never reports, so nothing is consolidated.
+    handler.after_worker_group_poll_status(_poll_status({0, 1, 2}, num_workers))
+    callback.after_report.assert_not_called()
+
+    # Relax to the survivors and replay: now it commits.
+    handler.set_expected_ranks([0, 1, 2])
+    handler.after_worker_group_poll_status(_poll_status({0, 1, 2}, num_workers))
+
+    callback.after_report.assert_called_once()
+    kwargs = callback.after_report.call_args.kwargs
+    assert kwargs["training_report"].checkpoint is not None
+    # One entry per *expected* rank, and rank 0's metrics lead.
+    assert kwargs["metrics"] == [{"rank": 0}, {"rank": 1}, {"rank": 2}]
+
+    handler.before_worker_group_shutdown(worker_group)
+    worker_group.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_relaxed_gate_drops_skipped_ranks_stale_reports():
+    """A skipped rank's queued report must not be paired with a later round."""
+    num_workers = 3
+    callback = MagicMock()
+    handler, worker_group = _make_handler(num_workers, callback)
+
+    # Rank 2 reported before it was preempted; the round is still incomplete.
+    handler.after_worker_group_poll_status(_poll_status({2}, num_workers))
+    assert len(handler._training_report_queues[2]) == 1
+
+    handler.set_expected_ranks([0, 1])
+    handler.after_worker_group_poll_status(_poll_status({0, 1}, num_workers))
+
+    callback.after_report.assert_called_once()
+    # Rank 2's stale report was consumed with its round, not carried forward.
+    assert not handler._training_report_queues[2]
+
+    handler.before_worker_group_shutdown(worker_group)
+    worker_group.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_expected_ranks_reset_on_worker_group_restart():
+    """A relaxed gate belongs to the preemption, not to the next worker group."""
+    num_workers = 3
+    callback = MagicMock()
+    handler, worker_group = _make_handler(num_workers, callback)
+
+    handler.set_expected_ranks([0, 1])
+    assert handler._get_expected_indices() == [0, 1]
+
+    handler.before_worker_group_shutdown(worker_group)
+    assert handler._expected_ranks is None
+
+    handler.after_worker_group_start(worker_group)
+    assert handler._get_expected_indices() == [0, 1, 2]
+
+    # And the strict gate really is back: rank 2 must report again.
+    handler.after_worker_group_poll_status(_poll_status({0, 1}, num_workers))
+    callback.after_report.assert_not_called()
+
+    handler.before_worker_group_shutdown(worker_group)
+    worker_group.shutdown()
+
+
 if __name__ == "__main__":
     import sys
 

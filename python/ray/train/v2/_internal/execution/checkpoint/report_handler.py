@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Deque, List, Optional
+from typing import Collection, Deque, List, Optional, Set
 
 from ray.train.v2._internal.execution.callback import (
     ReplicaGroupCallback,
@@ -25,6 +25,9 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
         self._worker_group: Optional[WorkerGroup] = None
         # A list of queues holding training reports from workers.
         self._training_report_queues: Optional[List[Deque[_TrainingReport]]] = None
+        # Ranks whose reports gate consolidation. Default to None means barrier should be hold for all ranks.
+        # Otherwise means the survivor ranks during a preemption.
+        self._expected_ranks: Optional[Set[int]] = None
 
         self._report_callbacks = report_callbacks
 
@@ -32,6 +35,16 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
         assert (
             self._worker_group and self._training_report_queues
         ), "Need to call initialize state with `after_worker_group_start` first."
+
+    def set_expected_ranks(self, ranks: Optional[Collection[int]]) -> None:
+        """Consolidate reports from `ranks` only, instead of from every rank."""
+        self._expected_ranks = set(ranks) if ranks is not None else None
+
+    def _get_expected_indices(self) -> List[int]:
+        """Worker indices whose reports gate consolidation, ascending."""
+        if self._expected_ranks is None:
+            return list(range(len(self._worker_group)))
+        return sorted(self._expected_ranks)
 
     # --------------------------
     # WorkerGroupCallback
@@ -59,11 +72,21 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
             if training_report:
                 self._training_report_queues[i].append(training_report)
 
-        # Directly return if any of the worker result queues are empty.
-        if not all(self._training_report_queues):
+        # Directly return if any of the expected worker result queues are empty.
+        expected_indices = self._get_expected_indices()
+        if not all(self._training_report_queues[i] for i in expected_indices):
             return
 
-        training_reports = [q.popleft() for q in self._training_report_queues]
+        training_reports = [
+            self._training_report_queues[i].popleft() for i in expected_indices
+        ]
+        # Drop this round from the skipped ranks' queues too, so a straggler
+        # report can't be paired with a later round if the barrier goes back to
+        # being strict.
+        skipped = set(range(len(self._worker_group))) - set(expected_indices)
+        for i in skipped:
+            if self._training_report_queues[i]:
+                self._training_report_queues[i].popleft()
 
         # Step 3: Consolidate a list of checkpoints to single checkpoint.
         # Use the first checkpoint as the consolidated checkpoint.
@@ -91,6 +114,8 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
             validation = checkpoint_results[0].validation
 
         # Step 4: Invoke all dependent `ReportCallback`s.
+        # NOTE: when the barrier is relaxed this list holds one entry per
+        # expected rank, not per world rank.
         metrics_per_worker = [
             training_report.metrics for training_report in training_reports
         ]
@@ -108,6 +133,7 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
         """Handle worker group start. Initialize internal states."""
         self._worker_group = worker_group
         self._training_report_queues = [deque() for _ in range(len(self._worker_group))]
+        self._expected_ranks = None
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup) -> None:
         """Handle worker group shutdown. Clear internal states.
@@ -116,6 +142,7 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
         """
         self._worker_group = None
         self._training_report_queues = None
+        self._expected_ranks = None
 
     # --------------------------
     # ReplicaGroupCallback
