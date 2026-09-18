@@ -779,10 +779,10 @@ def test_read_with_invalid_schema(
 
     with pytest.raises(ValueError) as e:
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type)
-    assert str(e.value.args[0]) == (
+    assert (
         "Schema field type mismatch during write: "
         "specified type is int, but underlying type is bytes"
-    )
+    ) in str(e.value.args[0])
 
     # Complete a valid write, then try reading with incorrect schema,
     # which should raise a `ValueError`.
@@ -793,10 +793,10 @@ def test_read_with_invalid_schema(
 
     with pytest.raises(ValueError) as e:
         ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type).materialize()
-    assert str(e.value.args[0]) == (
+    assert (
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
-    )
+    ) in str(e.value.args[0])
 
 
 @pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])

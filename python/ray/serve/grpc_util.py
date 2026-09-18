@@ -164,6 +164,10 @@ class RayServegRPCContext:
         """
         return self._invocation_metadata_dict.get("application")
 
+    def multiplexed_model_id(self) -> Optional[str]:
+        """Accesses the multiplexed model ID for the RPC, if provided."""
+        return self._invocation_metadata_dict.get("multiplexed_model_id")
+
     def traceparent(self) -> Optional[str]:
         """Accesses the traceparent for the RPC.
 

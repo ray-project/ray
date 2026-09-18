@@ -15,7 +15,11 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
+)
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
@@ -24,6 +28,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_call_method,
     skip_if_haproxy,
 )
+from ray.serve._private.utils import format_actor_name
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
@@ -39,6 +44,8 @@ from ray.serve.tests.test_metrics import (
 METRICS_FIRST_EXPORT_TIMEOUT_S = 90
 METRICS_WAIT_TIMEOUT_S = 45
 METRICS_RETRY_INTERVAL_MS = 1000
+# Comfortably longer than the metric waits a held-open request has to survive.
+QUEUED_REQUEST_TIMEOUT_S = 300
 
 
 def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
@@ -807,7 +814,9 @@ class TestHandleMetrics:
 
         @ray.remote(num_cpus=0)
         def do_request():
-            r = httpx.get("http://localhost:8000/", timeout=10)
+            # These requests are torn down by the ray.cancel below, so the client
+            # timeout only has to outlast the metric waits between here and there.
+            r = httpx.get("http://localhost:8000/", timeout=QUEUED_REQUEST_TIMEOUT_S)
             r.raise_for_status()
             return r
 
@@ -1020,7 +1029,8 @@ class TestProxyStateMetrics:
         )
 
     def test_proxy_shutdown_duration_metric(self, metrics_start_shutdown):
-        """Test that proxy shutdown duration metric is recorded when proxy shuts down."""
+        """Test that the shutdown duration is recorded when a proxy is stopped and
+        replaced, which is the path where the controller outlives the proxy."""
 
         @serve.deployment
         def f():
@@ -1039,8 +1049,14 @@ class TestProxyStateMetrics:
             expected_tags={},
         )
 
-        # Shutdown serve, which will trigger proxy shutdown
-        serve.shutdown()
+        # Kill the proxy so the controller stops it and starts a replacement. Going
+        # through serve.shutdown() races the controller against its own exit: it
+        # records the duration in the tick that kills itself, too late to export.
+        node_id = ray.get_runtime_context().get_node_id()
+        proxy = ray.get_actor(
+            format_actor_name(SERVE_PROXY_NAME, node_id), namespace=SERVE_NAMESPACE
+        )
+        ray.kill(proxy, no_restart=True)
 
         # Wait for the shutdown duration metric to be recorded
         # The histogram metric will have _sum and _count suffixes

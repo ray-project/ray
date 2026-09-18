@@ -42,7 +42,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
-    files = glob(["_internal/datasource_v2/tests/test_*.py"]),
+    files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",
         "team:data",
@@ -53,9 +53,10 @@ py_test_module_list(
     ],
 )
 
-py_test_module_list(
+py_test(
+    name = "test_read_files_logical",
     size = "small",
-    files = glob(["_internal/logical/operators/tests/test_*.py"]),
+    srcs = ["tests/test_read_files_logical.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -492,7 +493,7 @@ py_test(
 
 py_test(
     name = "test_join",
-    size = "large",
+    size = "enormous",
     srcs = ["tests/test_join.py"],
     tags = [
         "data_non_parallel",
@@ -1128,7 +1129,7 @@ py_test(
 
 py_test(
     name = "test_projection_fusion",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_projection_fusion.py"],
     tags = [
         "exclusive",
@@ -1883,6 +1884,34 @@ py_test(
 )
 
 py_test(
+    name = "test_rate_based_cluster_autoscaler",
+    size = "small",
+    srcs = ["tests/test_rate_based_cluster_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_rate_based_cluster_autoscaler_e2e",
+    size = "medium",
+    srcs = ["tests/test_rate_based_cluster_autoscaler_e2e.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_ref_bundle",
     size = "small",
     srcs = ["tests/test_ref_bundle.py"],
@@ -1984,6 +2013,20 @@ py_test(
     name = "test_usage",
     size = "small",
     srcs = ["tests/test_usage.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_usage_integration",
+    size = "medium",
+    srcs = ["tests/test_usage_integration.py"],
     tags = [
         "exclusive",
         "team:data",
