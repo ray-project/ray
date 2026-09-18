@@ -133,24 +133,17 @@ SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
 def _coerce_tracing_config(
-    tracing_config: Union[None, Dict, TracingConfig],
+    tracing_config: Optional[TracingConfig],
 ) -> TracingConfig:
-    """Normalize an optional dict / model into a validated TracingConfig.
+    """Default an optional TracingConfig to an env-var-sourced one.
 
-    Defaults to an env-var-sourced ``TracingConfig`` so the global tracing
-    config is never None, and validates eagerly because the config is
-    broadcast to every proxy.
+    The global tracing config must never be None -- it is the single source of
+    truth for ``setup_tracing`` and its fields default from the
+    RAY_SERVE_TRACING_* env vars. Callers pass a validated model or None:
+    ``api.py`` coerces a user-supplied dict to a TracingConfig before the
+    controller starts, and ``apply_config`` passes the schema-validated model.
     """
-    if tracing_config is None:
-        return TracingConfig()
-    if isinstance(tracing_config, TracingConfig):
-        return tracing_config
-    if isinstance(tracing_config, dict):
-        return TracingConfig(**tracing_config)
-    raise TypeError(
-        "tracing_config must be a dict, TracingConfig, or None; got "
-        f"{type(tracing_config).__name__}."
-    )
+    return tracing_config if tracing_config is not None else TracingConfig()
 
 
 class ServeController:
@@ -407,7 +400,7 @@ class ServeController:
         logger.info(f"Global tracing config: {global_tracing_config}.")
 
     def reconfigure_global_tracing_config(
-        self, global_tracing_config: Union[Dict, TracingConfig]
+        self, global_tracing_config: Optional[TracingConfig]
     ):
         """Apply a new global tracing config at runtime: checkpoint and broadcast.
 
