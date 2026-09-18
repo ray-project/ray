@@ -6,16 +6,11 @@ myst:
 
 # Install RLlib for Development
 
-You can develop RLlib locally without needing to compile Ray by using the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py).
-This sets up symlinks between the `ray/rllib` dir in your local git clone and the respective directory bundled with the pip-installed `ray` package.
-This way, every change you make in the source files in your local git clone will immediately be reflected in your installed `ray` as well.
+You can develop RLlib locally without needing to compile Ray by using the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py). This sets up symlinks between the `ray/rllib` dir in your local git clone and the respective directory bundled with the pip-installed `ray` package. This way, every change you make in the source files in your local git clone will immediately be reflected in your installed `ray` as well.
 
-However if you have installed ray from source using [these instructions](https://docs.ray.io/en/master/ray-overview/installation.html) then don't use this,
-as these steps should have already created the necessary symlinks.
+However if you have installed ray from source using [these instructions](https://docs.ray.io/en/master/ray-overview/installation.html) then don't use this, as these steps should have already created the necessary symlinks.
 
-When using the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py),
-make sure that your git branch is in sync with the installed Ray binaries, meaning you are up-to-date on [master](https://github.com/ray-project/ray)
-and have the latest [wheel](https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies) installed.
+When using the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py), make sure that your git branch is in sync with the installed Ray binaries, meaning you are up-to-date on [master](https://github.com/ray-project/ray) and have the latest [wheel](https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies) installed.
 
 ```bash
 # Clone your fork onto your local machine, e.g.:
@@ -32,17 +27,11 @@ python python/ray/setup-dev.py
 
 ## Contributing Fixes and Enhancements
 
-Feel free to file new RLlib-related PRs through [Ray's github repo](https://github.com/ray-project/ray/pulls).
-The RLlib team is very grateful for any external help they can get from the open-source community. If you are unsure about how to structure your
-bug-fix or enhancement-PRs, create a small PR first, then ask us questions within its conversation section.
-[See here for an example of a good first community PR](https://github.com/ray-project/ray/pull/46317).
+Feel free to file new RLlib-related PRs through [Ray's github repo](https://github.com/ray-project/ray/pulls). The RLlib team is very grateful for any external help they can get from the open-source community. If you are unsure about how to structure your bug-fix or enhancement-PRs, create a small PR first, then ask us questions within its conversation section. [See here for an example of a good first community PR](https://github.com/ray-project/ray/pull/46317).
 
 ## Contributing Algorithms
 
-These are the guidelines for merging new algorithms into RLlib.
-We distinguish between two levels of contributions: As an [example script](https://github.com/ray-project/ray/tree/master/rllib/examples)
-(possibly with additional classes in other files)
-or as a fully-integrated RLlib Algorithm in [rllib/algorithms](https://github.com/ray-project/ray/tree/master/rllib/algorithms).
+These are the guidelines for merging new algorithms into RLlib. We distinguish between two levels of contributions: As an [example script](https://github.com/ray-project/ray/tree/master/rllib/examples) (possibly with additional classes in other files) or as a fully-integrated RLlib Algorithm in [rllib/algorithms](https://github.com/ray-project/ray/tree/master/rllib/algorithms).
 
 * Example Algorithms:
     - must subclass Algorithm and implement the `training_step()` method
@@ -59,16 +48,13 @@ Both integrated and contributed algorithms ship with the `ray` PyPI package, and
 
 ## New Features
 
-New feature developments, discussions, and upcoming priorities are tracked on the [GitHub issues page](https://github.com/ray-project/ray/issues)
-(note that this may not include all development efforts).
+New feature developments, discussions, and upcoming priorities are tracked on the [GitHub issues page](https://github.com/ray-project/ray/issues) (note that this may not include all development efforts).
 
 # API Stability
 
 ## API Decorators in the Codebase
 
-Objects and methods annotated with `@PublicAPI` (new API stack),
-`@DeveloperAPI` (new API stack), or `@OldAPIStack` (old API stack)
-have the following API compatibility guarantees:
+Objects and methods annotated with `@PublicAPI` (new API stack), `@DeveloperAPI` (new API stack), or `@OldAPIStack` (old API stack) have the following API compatibility guarantees:
 
 ```{eval-rst}
 .. autofunction:: ray.util.annotations.PublicAPI
@@ -87,9 +73,7 @@ have the following API compatibility guarantees:
 
 # Benchmarks
 
-A number of training run results are available in the [rl-experiments repo](https://github.com/ray-project/rl-experiments),
-and there is also a list of working hyperparameter configurations in [examples/algorithms](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms), sorted by algorithm.
-Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
+A number of training run results are available in the [rl-experiments repo](https://github.com/ray-project/rl-experiments), and there is also a list of working hyperparameter configurations in [examples/algorithms](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms), sorted by algorithm. Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
 
 # Debugging RLlib
 
@@ -108,12 +92,6 @@ The objects with the top 20 memory usage in the workers are added as custom metr
 
 ## Troubleshooting
 
-If you encounter errors like
-`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
-try setting `OMP_NUM_THREADS=1`. Similarly, check configured system limits with
-`ulimit -a` for other resource limit errors.
+If you encounter errors like `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers, try setting `OMP_NUM_THREADS=1`. Similarly, check configured system limits with `ulimit -a` for other resource limit errors.
 
-For debugging unexpected hangs or performance problems, you can run `ray stack` to dump
-the stack traces of all Ray workers on the current node, `ray timeline` to dump
-a timeline visualization of tasks to a file, and `ray memory` to list all object
-references in the cluster.
+For debugging unexpected hangs or performance problems, you can run `ray stack` to dump the stack traces of all Ray workers on the current node, `ray timeline` to dump a timeline visualization of tasks to a file, and `ray memory` to list all object references in the cluster.
