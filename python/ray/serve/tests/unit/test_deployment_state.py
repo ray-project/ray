@@ -11064,6 +11064,40 @@ class TestRollingUpdateTerminalFailure:
         )
         _assert_rollout_frozen(dsm, ds, v1, num_old=running_v1)
 
+    @pytest.mark.parametrize("num_unhealthy_members", [1, 2])
+    def test_gang_health_failure_counts_once_per_restart(
+        self, mock_deployment_state_manager, num_unhealthy_members
+    ):
+        gang = TestGangRollingUpdate()
+        gang_size, num_replicas = 2, 6
+        dsm, ds = gang._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        v2 = gang._deploy_new_version(
+            dsm, gang_size, num_replicas, "v2", max_constructor_retry_count=2
+        )
+        dsm.update()
+        gang._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        new_gang = [
+            r
+            for r in ds._replicas.get(states=[ReplicaState.RUNNING])
+            if r.version == v2
+        ]
+        assert len(new_gang) == gang_size
+        assert ds._target_state.rolling_update
+        _advance_until(dsm, lambda: all(r._actor.health_check_called for r in new_gang))
+        for replica in new_gang[:num_unhealthy_members]:
+            replica._actor.set_unhealthy()
+        dsm.update()
+
+        assert all(r._actor.force_stopped_counter == 1 for r in new_gang)
+        assert ds._replica_constructor_retry_counter == 1
+        assert not ds._terminally_failed()
+        assert not ds._target_state.terminally_failed
+        assert ds._replicas.count(exclude_version=v2, states=[ReplicaState.RUNNING]) > 0
+
     def test_terminal_while_some_new_replicas_running(
         self, mock_deployment_state_manager
     ):
