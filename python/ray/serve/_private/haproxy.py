@@ -1438,6 +1438,7 @@ class HAProxyApi(ProxyApi):
                     "config": self.cfg,
                     "backends": http_backends,
                     "health_info": health_route_info,
+                    "has_ingress_request_router": has_ingress_request_router,
                 }
             )
             grpc_healthz_template = env.from_string(HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE)

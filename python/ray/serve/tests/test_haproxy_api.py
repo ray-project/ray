@@ -966,6 +966,9 @@ def test_direct_http_deployments_get_isolated_backends(haproxy_api_cleanup):
         assert "srv_a1" not in backend_b and "srv_a2" not in backend_b
         # The ingress replica stays out of both.
         assert "ingress1" not in backend_a and "ingress1" not in backend_b
+        # Direct backends also contribute to the node's health response.
+        assert "nbsrv(llm-direct-0) ge 1" in cfg
+        assert "nbsrv(llm-direct-1) ge 1" in cfg
 
 
 def test_direct_http_backends_are_dispatched_by_txn_var(haproxy_api_cleanup):
@@ -1062,20 +1065,10 @@ def test_direct_http_replicas_are_grouped_by_deployment_in_lua_map(
             assert foreign not in model_b_row
 
 
-def test_router_lookup_miss_is_never_recoverable(haproxy_api_cleanup):
-    """No lookup miss recovers, whichever deployment the router named.
-
-    A miss means the replica the router chose is absent from this HAProxy's
-    config snapshot, so there is nothing here to pin it to. Recovering an
-    *ingress* miss through the app's fallback Serve proxy would be possible in
-    principle -- see the TODO on the 503 rule -- but a `_direct_http` miss never
-    could be, and until the two are told apart both fail closed. The `recoverable`
-    escape hatch that used to arm this is gone, so the 503 rule is unguarded.
-    """
+def test_only_ingress_lookup_miss_is_recoverable(haproxy_api_cleanup):
+    """Only a stale ingress replica can recover through the fallback proxy."""
     with tempfile.TemporaryDirectory() as temp_dir:
         backend = _direct_http_backend({"LLMServer:model-a": [("srv_a1", "rid_a1")]})
-        # A fallback proxy and an ingress identity are exactly the conditions
-        # under which a miss would have recovered. It still must not.
         assert backend.ingress_deployment_name == "Ingress"
         backend.fallback_server = ServerConfig(
             name="fallback", host="10.0.0.99", port=8000
@@ -1083,28 +1076,24 @@ def test_router_lookup_miss_is_never_recoverable(haproxy_api_cleanup):
         cfg = _render(_make_api(temp_dir, {"llm": backend}))
 
         assert "lua.route_via_ingress_request_router" in cfg
-        # Directives only -- the TODO explaining the follow-up says "recoverable"
-        # and "unknown_replica_id" in prose.
         directives = [
             ln.strip() for ln in cfg.splitlines() if not ln.strip().startswith("#")
         ]
-        assert not [ln for ln in directives if "recoverable" in ln], cfg
+        assert [ln for ln in directives if "set-var" in ln and "recoverable" in ln]
 
-        # The 503 fires on any failure, with nothing exempting a pin miss.
         failure_503 = next(
             ln.strip()
             for ln in cfg.splitlines()
             if "status 503" in ln and "ingress_request_router_failed" in ln
         )
-        assert failure_503.endswith(
-            "if { var(txn.ingress_request_router_failed) -m found }"
-        ), failure_503
+        assert (
+            "!{ var(txn.ingress_request_router_recoverable) -m found }" in failure_503
+        )
 
-        # No rule routes a pin miss anywhere: not into the companion backend,
-        # and not onto the fallback server inside it.
-        assert not [ln for ln in directives if "unknown_replica_id" in ln], cfg
-        # The fallback stays available as an ordinary backup server for when
-        # every primary replica is DOWN -- a different mechanism.
+        assert any(
+            line.startswith("use-server fallback") and "recoverable" in line
+            for line in directives
+        )
         assert "server fallback 10.0.0.99:8000" in cfg
 
 
@@ -1756,43 +1745,46 @@ async def test_direct_http_deployment_end_to_end(haproxy_api_cleanup):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "returned_deployment,returned_replica,expected_reason",
+    "returned_deployment,returned_replica,expected_status,expected_reason,expected_replica",
     [
         # Known deployment, replica not in its map: e.g. it scaled in since the
         # last HAProxy reload.
         (
             "LLMServer:model-a",
             "SERVE_REPLICA::app#LLMServer:model-a#zzz",
+            503,
             "unknown_replica_id",
+            None,
         ),
         # Deployment absent from this HAProxy's config entirely: e.g. a model
         # added since the last reload. No sibling replica exists to recover onto.
         (
             "LLMServer:model-gone",
             "SERVE_REPLICA::app#LLMServer:model-gone#zzz",
+            503,
             "unknown_deployment",
+            None,
         ),
         # The app's own ingress, with a replica that has moved. This app has a
-        # fallback Serve proxy that *could* re-pin ingress traffic, so this is
-        # the case that would recover if any did -- it must 503 like the rest
-        # until the ingress and direct misses are told apart.
+        # fallback Serve proxy that re-pins ingress traffic.
         (
             "Ingress",
             "SERVE_REPLICA::app#Ingress#stale",
-            "unknown_replica_id",
+            200,
+            None,
+            "FALLBACK",
         ),
     ],
 )
-async def test_router_lookup_miss_fails_closed(
-    haproxy_api_cleanup, returned_deployment, returned_replica, expected_reason
+async def test_router_lookup_miss_fails_closed_or_recovers_ingress(
+    haproxy_api_cleanup,
+    returned_deployment,
+    returned_replica,
+    expected_status,
+    expected_reason,
+    expected_replica,
 ):
-    """Every lookup miss 503s, whichever deployment the router named.
-
-    The app here has a fallback Serve proxy, so each case has somewhere it could
-    plausibly have fallen through to -- and must not. The misses carry distinct
-    reasons because they mean different things operationally, but none of them
-    recovers today.
-    """
+    """Ingress misses recover; direct and unknown deployment misses fail closed."""
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -1822,10 +1814,8 @@ async def test_router_lookup_miss_fails_closed(
                 path_prefix="/",
                 app_name="llm",
                 http_health_check_path="/-/healthz",
-                # The app has both an ingress identity and a fallback proxy, so
-                # an *ingress* pin miss here would be recoverable. That is what
-                # makes this the discriminating case: the miss below names a
-                # direct deployment, and must 503 regardless.
+                # The fallback may recover a stale ingress replica, but not a
+                # direct or unknown deployment.
                 ingress_deployment_name="Ingress",
                 servers=[
                     ServerConfig(
@@ -1870,10 +1860,9 @@ async def test_router_lookup_miss_fails_closed(
                 json={"prompt": "hello"},
                 timeout=5,
             )
-            assert resp.status_code == 503, resp.text
+            assert resp.status_code == expected_status, resp.text
             assert resp.headers.get("x-serve-reason") == expected_reason
-            # Crucially, it did not quietly answer from the fallback or ingress.
-            assert resp.headers.get("x-replica-id") is None
+            assert resp.headers.get("x-replica-id") == expected_replica
         finally:
             _shutdown_fake_servers(
                 [ingress, model_a, fallback, router],

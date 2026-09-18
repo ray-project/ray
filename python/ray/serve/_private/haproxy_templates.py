@@ -15,10 +15,20 @@ HAPROXY_HEALTHZ_RULES_TEMPLATE = """    # Health check endpoint
     # 200 if any backend has at least one server UP
 {%-   for backend in backends %}
     acl backend_{{ backend.name or 'unknown' }}_server_up nbsrv({{ backend.name or 'unknown' }}) ge 1
+{%-     if has_ingress_request_router and backend.ingress_request_router_servers %}
+{%-     for direct in backend.direct_target_configs %}
+    acl backend_{{ direct.name }}_server_up nbsrv({{ direct.name }}) ge 1
+{%-     endfor %}
+{%-     endif %}
 {%-   endfor %}
     # Any backend with a server UP passes the health check (OR logic)
 {%-   for backend in backends %}
     http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck backend_{{ backend.name or 'unknown' }}_server_up
+{%-     if has_ingress_request_router and backend.ingress_request_router_servers %}
+{%-     for direct in backend.direct_target_configs %}
+    http-request return status {{ health_info.status }} content-type text/plain string "{{ health_info.health_message }}" if healthcheck backend_{{ direct.name }}_server_up
+{%-     endfor %}
+{%-     endif %}
 {%-   endfor %}
     http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
 {%- elif config.is_head %}
@@ -233,20 +243,15 @@ frontend http_frontend
     # HAProxy-owned /-/healthz and /-/routes responses above already returned, so
     # they never reach this.
     http-request lua.route_via_ingress_request_router if has_ingress_request_router_app
-    # 503 on any router failure, whichever deployment it named. Must precede the
-    # use_backend rules so failures never fall through to the primary backend.
-    #
-    # TODO: recover a stale *ingress* pin through the app's fallback Serve proxy
-    # instead of 503-ing. A miss means the replica the router named is absent
-    # from this HAProxy's config snapshot (e.g. the deployment scaled since the
-    # last reload), not that it is unhealthy -- a known-but-DOWN server is
-    # handled by `option redispatch`. The fallback proxy can re-pin ingress
-    # traffic through its own router, but it cannot serve a `_direct_http` model
-    # deployment's traffic, so only the ingress case is ever recoverable and the
-    # two misses have to be told apart first. Not worth the machinery yet: the
-    # recovery path has been unreachable since router apps without direct
-    # targets stopped getting a Lua map.
-    http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found }
+    # A stale ingress replica can be re-routed by the fallback Serve proxy. A
+    # direct deployment miss cannot, so it continues to fail closed.
+    {%- for backend in backends %}
+    {%- if backend.ingress_request_router_servers and backend.fallback_server %}
+    http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_backend) -m str "{{ backend.via_ingress_request_router_backend_name }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
+    {%- endif %}
+    {%- endfor %}
+    # Other router failures must not fall through to ordinary path routing.
+    http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found } !{ var(txn.ingress_request_router_recoverable) -m found }
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
@@ -336,6 +341,9 @@ backend {{ backend.via_ingress_request_router_backend_name }}
     {%- for server in backend.servers %}
     use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
     {%- endfor %}
+    {%- if backend.fallback_server %}
+    use-server {{ backend.fallback_server.name }} if { var(txn.ingress_request_router_recoverable) -m found }
+    {%- endif %}
     # `track` allows us to mirror primary-backend health and avoid double-checking.
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}

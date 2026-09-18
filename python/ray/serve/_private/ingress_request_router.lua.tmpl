@@ -261,6 +261,11 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
+    -- Record the deployment backend before resolving the replica so the
+    -- frontend can recover an ingress replica miss without recovering a miss
+    -- for a direct deployment.
+    txn:set_var("txn.ingress_request_router_backend", deployment_targets.b)
+
     local server_name = deployment_targets.r[replica_id]
     if not server_name then
         -- The deployment is known but this replica is not in its server map: a
@@ -272,7 +277,6 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
 
     set_router_response_headers(txn, response_body)
     txn:set_var("txn.ingress_request_router_target", server_name)
-    txn:set_var("txn.ingress_request_router_backend", deployment_targets.b)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
@@ -281,13 +285,8 @@ end
 -- rule fires instead of letting the request silently fall through to the
 -- primary backend. The product invariant is: requests to a router-bearing app
 -- are served via the router or fail; there is no quiet alternative path.
--- Every lookup miss 503s, whichever deployment the router named:
--- `unknown_deployment` because the deployment is absent from this config
--- entirely, `unknown_replica_id` because the replica it named is not in our
--- snapshot of that deployment. The two keep distinct labels since they mean
--- different things operationally, but neither recovers today -- see the TODO on
--- the frontend's 503 rule for why an ingress miss could and a `_direct_http`
--- miss could not.
+-- An ingress `unknown_replica_id` may recover through the fallback Serve proxy.
+-- Direct deployment misses and all other failures return 503.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.
