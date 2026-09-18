@@ -278,74 +278,21 @@
 # The SF (scale factor) 1000 lineitem table contains ~6B rows.
 
 
-- name: "aggregate_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
+- name: "aggregate_groups_fixed_size_shuffle_v2_{{columns}}"
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: []
       columns: []
-      # The 84-group key is read-bound, so it wants large bins: small bins
-      # shatter the read into short tasks the executor cannot dispatch fast
-      # enough, and the cluster idles. The 7M-group key is shuffle-bound and
-      # measured best at 32 MiB. A matrix cannot vary ``byod.runtime_env``
-      # per value, so the budget rides as a matrix dimension. Rendered test
-      # names are unchanged.
+      # The 84-group key is read-bound and wants large bins, the 7M-group
+      # key is shuffle-bound and measured best at 64 MiB. A matrix cannot
+      # vary ``byod.runtime_env`` per value, so the budget rides as a matrix
+      # dimension. Rendered test names are unchanged.
       bin_packing_bytes: []
     adjustments:
       - with:
-          shuffle_strategy: sort_shuffle_pull_based
-          columns: "column08 column13 column14"   # 84 groups
-          bin_packing_bytes: 268435456
-      - with:
-          shuffle_strategy: sort_shuffle_pull_based
-          columns: "column02 column14"  # 7M groups
-          bin_packing_bytes: 33554432
-      - with:
-          shuffle_strategy: hash_shuffle
-          columns: "column08 column13 column14"   # 84 groups
-          bin_packing_bytes: 134217728
-      - with:
-          shuffle_strategy: hash_shuffle
-          columns: "column02 column14"  # 7M groups
-          bin_packing_bytes: 33554432
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
-        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES={{bin_packing_bytes}}
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python groupby_benchmark.py --sf 100 --aggregate --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}}
-
-- name: "aggregate_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
-  python: "3.10"
-  matrix:
-    setup:
-      shuffle_strategy: []
-      columns: []
-      # Same split as the block above: the 84-group key is read-bound and
-      # wants large bins, the 7M-group key is shuffle-bound and measured
-      # best at 64 MiB. A matrix cannot vary ``byod.runtime_env`` per value,
-      # so the budget rides as a matrix dimension. Rendered test names are
-      # unchanged.
-      bin_packing_bytes: []
-    adjustments:
-      - with:
-          shuffle_strategy: shuffle_v2
           columns: "column08 column13 column14"   # 84 groups
           bin_packing_bytes: 536870912
       - with:
-          shuffle_strategy: shuffle_v2
           columns: "column02 column14"  # 7M groups
           bin_packing_bytes: 67108864
 
@@ -366,24 +313,21 @@
     timeout: 7200
     script: >
       python groupby_benchmark.py --sf 1000 --aggregate --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+      --shuffle-strategy shuffle_v2 --num-partitions 500
 
 # Aggregations through the external (on-disk, file-transport) hash shuffle:
 # the SF1000 shuffle_v2 variants above with RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1.
-- name: "aggregate_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+- name: "aggregate_groups_fixed_size_shuffle_v2_external_{{columns}}"
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: []
       columns: []
       bin_packing_bytes: []
     adjustments:
       - with:
-          shuffle_strategy: shuffle_v2
           columns: "column08 column13 column14"   # 84 groups
           bin_packing_bytes: 536870912
       - with:
-          shuffle_strategy: shuffle_v2
           columns: "column02 column14"  # 7M groups
           bin_packing_bytes: 67108864
 
@@ -405,40 +349,12 @@
     timeout: 7200
     script: >
       python groupby_benchmark.py --sf 1000 --aggregate --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+      --shuffle-strategy shuffle_v2 --num-partitions 500
 
-- name: "map_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
+- name: "map_groups_fixed_size_shuffle_v2_{{columns}}"
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [sort_shuffle_pull_based, hash_shuffle]
-      columns:
-        - "column08 column13 column14"   # 84 groups
-        - "column02 column14"  # 7M groups
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
-        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}}
-
-- name: "map_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
-  python: "3.10"
-  matrix:
-    setup:
-      shuffle_strategy: [shuffle_v2]
       columns:
         - "column02 column14"  # 7M groups
 
@@ -459,14 +375,13 @@
     timeout: 7200
     script: >
       python groupby_benchmark.py --sf 1000 --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+      --shuffle-strategy shuffle_v2 --num-partitions 500
 
 # map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
-- name: "map_groups_fixed_size_{{shuffle_strategy}}_{{columns}}"
+- name: "map_groups_fixed_size_shuffle_v2_{{columns}}"
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [shuffle_v2]
       columns:
         - "column08 column13 column14"   # 84 groups
 
@@ -487,17 +402,16 @@
     timeout: 3600
     script: >
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}}
+      --shuffle-strategy shuffle_v2
 
 # map_groups (keyed repartition under the hood) through the external
 # hash shuffle: the shuffle_v2 map_groups variants above with the flag on.
 # Separate entries (rather than a matrix axis on the blocks above) keep the
 # existing tests' perf-history names intact.
-- name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+- name: "map_groups_fixed_size_shuffle_v2_external_{{columns}}"
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [shuffle_v2]
       columns:
         - "column02 column14"  # 7M groups
 
@@ -517,13 +431,12 @@
     timeout: 7200
     script: >
       python groupby_benchmark.py --sf 1000 --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}} --num-partitions 500
+      --shuffle-strategy shuffle_v2 --num-partitions 500
 
-- name: "map_groups_fixed_size_{{shuffle_strategy}}_external_{{columns}}"
+- name: "map_groups_fixed_size_shuffle_v2_external_{{columns}}"
   python: "3.10"
   matrix:
     setup:
-      shuffle_strategy: [shuffle_v2]
       columns:
         - "column08 column13 column14"   # 84 groups
 
@@ -543,7 +456,7 @@
     timeout: 3600
     script: >
       python groupby_benchmark.py --sf 100 --map-groups --group-by {{columns}}
-      --shuffle-strategy {{shuffle_strategy}}
+      --shuffle-strategy shuffle_v2
 
 ###############
 # Join tests
@@ -1626,38 +1539,8 @@
 ##############
 
 
-- name: "tpch_q1_fixed_size_{{shuffle_strategy}}"
+- name: "tpch_q1_fixed_size_shuffle_v2"
   python: "3.10"
-  matrix:
-    setup:
-      shuffle_strategy: [hash_shuffle]
-
-  cluster:
-    byod:
-      runtime_env:
-        # Declaring a ``runtime_env`` REPLACES the DEFAULTS list rather than extending
-        # it (``deep_update`` overwrites lists), so those guards are re-listed here.
-        # Dropping them silently stops the test failing on OOM / dead nodes / object
-        # store blowup.
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
-        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-        - RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT=100
-        # Footer read tuning.
-        - RAY_DATA_PARQUET_BIN_PACKING_BYTES=201326592
-    anyscale_sdk_2026: true
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q1.py --sf 1000
-
-- name: "tpch_q1_fixed_size_{{shuffle_strategy}}"
-  python: "3.10"
-  matrix:
-    setup:
-      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1677,55 +1560,14 @@
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_q1.py --sf 1000
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2 python tpch/tpch_q1.py --sf 1000
 
-- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      query: [q2, q4, q5, q6, q7, q10, q11, q12, q14, q17, q18, q20]
-      shuffle_strategy: [hash_shuffle]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 100
-
-# q3 and q9 drop the DEFAULTS object-store-utilization check, which these
-# shuffle-heavy queries can exceed.
-- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: manual
-  matrix:
-    setup:
-      query: [q3, q9]
-      shuffle_strategy: [hash_shuffle]
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
-        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 100
-
-- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_fixed_size_shuffle_v2"
   python: "3.10"
   frequency: manual
   matrix:
     setup:
       query: [q2, q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q17, q18, q20]
-      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1740,31 +1582,14 @@
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2 python tpch/tpch_{{query}}.py --sf 1000
 
-- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
+- name: "tpch_{{query}}_fixed_size_shuffle_v2"
   python: "3.10"
   frequency: nightly
   matrix:
     setup:
       query: [q8, q13, q15, q21, q22]
-      shuffle_strategy: [hash_shuffle]
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 100
-
-- name: "tpch_{{query}}_fixed_size_{{shuffle_strategy}}"
-  python: "3.10"
-  frequency: nightly
-  matrix:
-    setup:
-      query: [q8, q13, q15, q21, q22]
-      shuffle_strategy: [shuffle_v2]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1779,7 +1604,7 @@
 
   run:
     timeout: 5400
-    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY={{shuffle_strategy}} python tpch/tpch_{{query}}.py --sf 1000
+    script: RAY_DATA_DEFAULT_SHUFFLE_STRATEGY=shuffle_v2 python tpch/tpch_{{query}}.py --sf 1000
 
 #################################################
 # Cross-AZ RPC fault tolerance test
