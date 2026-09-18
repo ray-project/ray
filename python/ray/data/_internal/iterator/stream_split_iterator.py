@@ -16,6 +16,7 @@ from ray.util.debug import log_once
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
@@ -71,21 +72,23 @@ class StreamSplitDataIterator(DataIterator):
         # picklable, since users pass split iterators to ``@ray.remote``
         # tasks.
         self._active_epoch: Optional[int] = None
-        # Folded into the prefetched bytes sent on the next `get`. Plain
-        # attribute for the same picklability reason as `_active_epoch`.
-        self._materialized_bytes: int = 0
+        # Latest total from `_report_materialized_bytes`; `gen_blocks` reads it
+        # when building the next `get`. Plain attribute, as above.
+        self._reported_materialized_bytes: int = 0
         logger.debug(
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
         )
 
-    def _report_materialized_bytes(self, num_bytes: int, executor) -> None:
+    def _report_materialized_bytes(
+        self, num_bytes: int, executor: Optional["StreamingExecutor"]
+    ) -> None:
         """Stash the count; `gen_blocks` sends it with the next `get`.
 
         The executor lives in the `SplitCoordinator` actor, so there is no local
-        handle to call. Riding the existing per-bundle `get` avoids an extra RPC,
-        at the cost of the last bundle's count never being sent.
+        handle to call. Riding that `get` costs no extra RPC, but the final
+        total never rides one, since iteration ends first.
         """
-        self._materialized_bytes = num_bytes
+        self._reported_materialized_bytes = num_bytes
 
     def _to_ref_bundle_iterator(
         self,
@@ -116,7 +119,7 @@ class StreamSplitDataIterator(DataIterator):
                     prefetched_bytes = (
                         self._iter_stats.iter_prefetched_bytes
                         + block_ref_and_md.size_bytes()
-                        + self._materialized_bytes
+                        + self._reported_materialized_bytes
                     )
                     future = self._coord_actor.get.remote(
                         cur_epoch,
@@ -141,7 +144,7 @@ class StreamSplitDataIterator(DataIterator):
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted")
 
         # Return None for executor since StreamSplitDataIterator has its own
-        # mechanism for reporting prefetched bytes via SplitCoordinator.
+        # mechanism for reporting consumer bytes via SplitCoordinator.
         return gen_blocks(), self._iter_stats, None
 
     def _on_iteration_end(self, executor) -> None:

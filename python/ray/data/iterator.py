@@ -122,10 +122,9 @@ class DataIterator(abc.ABC):
     ) -> None:
         """Report bytes the caller has taken out of the pipeline and still holds.
 
-        These count as external consumer bytes. Left unreported they look like
-        unconsumed blocks piling up in the producing operator's ref-counted
-        output, and backpressure throttles it to a single task. Subclasses whose
-        executor is not local override this.
+        These count as external consumer bytes. Unreported, the ref counter
+        leaves them in the producer's output and backpressure throttles it to a
+        single task. Subclasses whose executor is not local override this.
         """
         if executor is not None:
             executor.set_external_consumer_bytes(num_bytes)
@@ -1263,8 +1262,8 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, executor = self._to_ref_bundle_iterator()
 
-        # Every bundle collected here stays alive for the rest of the job, so
-        # the producer needs to know it is not queue backlog.
+        # These bundles stay alive for the rest of the job, so the producer
+        # needs to know they are not queue backlog.
         ref_bundles = []
         materialized_bytes = 0
         try:
@@ -1273,8 +1272,7 @@ class DataIterator(abc.ABC):
                 self._report_materialized_bytes(materialized_bytes, executor)
                 ref_bundles.append(ref_bundle)
         finally:
-            # The next execution produces its own blocks; this total does not
-            # carry over to it.
+            # The next execution produces its own blocks.
             self._report_materialized_bytes(0, executor)
         context = self.get_context()
         logical_plan = LogicalPlan(
