@@ -179,8 +179,6 @@ number of files and their sizes, because every block can carry rows for any part
 .. testcode::
     import ray
     import pandas as pd
-    from ray.data import DataContext
-    from ray.data.context import ShuffleStrategy
 
     def print_directory_tree(start_path: str) -> None:
         """
@@ -204,8 +202,6 @@ number of files and their sizes, because every block can carry rows for any part
     )
 
     ds = ray.data.from_pandas(df)
-    # Key-based repartitioning requires a hash-shuffle strategy such as Shuffle v2.
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     # Partitioned write:
     # 1. Repartition so all rows with the same (city, year) land in the same
