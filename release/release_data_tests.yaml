@@ -1104,11 +1104,11 @@
     script: python heterogeneous_memory_batch_inference.py --set-memory
 
 
-########################
-# Sort and shuffle tests
-########################
+######################
+# Random shuffle tests
+######################
 
-- name: "random_shuffle_fixed_size"
+- name: "random_shuffle"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -1124,23 +1124,7 @@
   run:
     timeout: 10800
     script: >
-      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
-
-
-- name: "sort_fixed_size"
-  python: "3.10"
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 10800
-    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+      python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
 #######################
