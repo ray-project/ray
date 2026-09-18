@@ -240,8 +240,6 @@ class ReplicaSchedulingRequest:
     # If set, schedule this replica onto this node with hard node affinity. The
     # ingress request router sets it to co-locate a replica with each proxy.
     target_node_id: Optional[str] = None
-    # Nodes this replica must never be placed on, set for migration replacements.
-    excluded_node_ids: Optional[Set[str]] = None
 
     @property
     def requested_resources(self) -> RequestedResources:
@@ -1188,21 +1186,26 @@ class DeploymentScheduler:
                 node_to_assigned_replicas,
                 required_labels_list=required_labels,
                 node_labels=all_node_labels,
-                excluded_node_ids=scheduling_request.excluded_node_ids,
             )
             if target_node:
                 break
 
         replica_id = scheduling_request.replica_id
 
-        if target_node is None and self._excludes_compacting_node(scheduling_request):
-            # The migration has nowhere to go, so the plan is already infeasible.
+        if target_node is None and self._only_fits_on_compacting_node(
+            scheduling_request,
+            placement_candidates,
+            available_resources_per_node,
+            all_node_labels,
+        ):
+            # The node being compacted is the only one with room, so the plan is
+            # already infeasible. Cancel now and place the replica next update.
             assert self._compacting_node is not None
             logger.info(
                 f"Canceling compaction of {self._compacting_node.target_node_id} "
                 f"because {replica_id} "
                 f"({_format_resources_for_scheduling_log(scheduling_request.requested_resources)}) "
-                f"cannot be placed off that node."
+                f"fits on no other node."
             )
             self._fail_compaction()
             return None
@@ -1411,16 +1414,43 @@ class DeploymentScheduler:
             if node_labels_match_selector(node_labels.get(node_id, {}), required_labels)
         }
 
-    def _excludes_compacting_node(
-        self, scheduling_request: ReplicaSchedulingRequest
+    def _only_fits_on_compacting_node(
+        self,
+        scheduling_request: ReplicaSchedulingRequest,
+        placement_candidates: List[Tuple[RequestedResources, List[Dict[str, str]]]],
+        available_resources_per_node: Dict[str, AvailableNodeResources],
+        node_labels: Dict[str, Dict[str, str]],
     ) -> bool:
-        """Whether this request must stay off the node being compacted."""
-        return (
-            self._compacting_node is not None
-            and scheduling_request.excluded_node_ids is not None
-            and self._compacting_node.target_node_id
-            in scheduling_request.excluded_node_ids
-        )
+        """Whether a request that fits nowhere would fit on the compacting node.
+
+        Only asked of requests whose node the pack decision actually picks: a
+        pinned replica follows its proxy and a gang member follows its reserved
+        placement group, so neither says anything about the compaction.
+        """
+        if self._compacting_node is None:
+            return False
+        if (
+            scheduling_request.target_node_id is not None
+            or scheduling_request.gang_placement_group is not None
+        ):
+            return False
+
+        target_node = self._compacting_node.target_node_id
+        if target_node not in available_resources_per_node:
+            return False
+
+        for required_resources, required_labels_list in placement_candidates:
+            candidate = {target_node: available_resources_per_node[target_node]}
+            for required_labels in required_labels_list or []:
+                candidate = self._filter_nodes_by_label_selector(
+                    candidate, required_labels, node_labels
+                )
+                if not candidate:
+                    break
+            if candidate and self._best_fit_node(required_resources, candidate):
+                return True
+
+        return False
 
     def _find_best_fit_node_for_pack(
         self,
@@ -1429,7 +1459,6 @@ class DeploymentScheduler:
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         required_labels_list: Optional[List[Dict[str, str]]] = None,
         node_labels: Optional[Dict[str, Dict[str, str]]] = None,
-        excluded_node_ids: Optional[Set[str]] = None,
     ) -> Optional[str]:
         """Chooses best available node to schedule the required resources.
 
@@ -1444,7 +1473,6 @@ class DeploymentScheduler:
                 (both running and newly scheduled in this batch).
             required_labels_list: Label selectors to filter nodes.
             node_labels: Labels for each node.
-            excluded_node_ids: Nodes this replica must never be placed on.
 
         Returns:
             The target node ID if scheduling succeeded, None otherwise.
@@ -1458,15 +1486,6 @@ class DeploymentScheduler:
                 )
                 if not available_resources_per_node:
                     return None
-
-        if excluded_node_ids:
-            available_resources_per_node = {
-                node_id: res
-                for node_id, res in available_resources_per_node.items()
-                if node_id not in excluded_node_ids
-            }
-            if not available_resources_per_node:
-                return None
 
         target_compact = (
             self._compacting_node.target_node_id if self._compacting_node else None
@@ -1489,19 +1508,10 @@ class DeploymentScheduler:
         if chosen_node:
             return chosen_node
 
-        # 2. Then idle nodes, which keep a compaction in flight alive
+        # 2. Then idle nodes. The node being compacted is never a candidate.
         chosen_node = self._best_fit_node(required_resources, idle_nodes)
         if chosen_node:
             return chosen_node
-
-        # 3. Last, the compacting node, which cancels the compaction next update
-        if target_compact and target_compact in available_resources_per_node:
-            chosen_node = self._best_fit_node(
-                required_resources,
-                {target_compact: available_resources_per_node[target_compact]},
-            )
-            if chosen_node:
-                return chosen_node
 
         return None
 

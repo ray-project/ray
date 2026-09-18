@@ -4289,17 +4289,6 @@ class DeploymentState:
         """
         upscale: List[ReplicaSchedulingRequest] = []
         logger.info(f"Adding {to_add} replica{'s' * (to_add > 1)} to {self._id}.")
-
-        # The first `num_replacements` replace migrating replicas and avoid their
-        # nodes; the rest are ordinary upscale and may go anywhere.
-        migrating_replicas = self._replicas.get(states=[ReplicaState.PENDING_MIGRATION])
-        num_replacements = len(migrating_replicas)
-        excluded_node_ids = {
-            replica.actor_node_id
-            for replica in migrating_replicas
-            if replica.actor_node_id is not None
-        }
-
         for i in range(to_add):
             replica_id = ReplicaID(get_random_string(), deployment_id=self._id)
 
@@ -4320,8 +4309,6 @@ class DeploymentState:
                 assign_rank_callback=self._rank_manager.assign_rank,
                 target_node_id=target_node_id,
             )
-            if excluded_node_ids and target_node_id is None and i < num_replacements:
-                scheduling_request.excluded_node_ids = excluded_node_ids
             upscale.append(scheduling_request)
 
             self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
