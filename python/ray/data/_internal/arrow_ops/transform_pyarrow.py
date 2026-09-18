@@ -194,8 +194,8 @@ def _group_indices_fallback(
     partition_mask: np.ndarray, counts: np.ndarray
 ) -> Tuple["pyarrow.Array", np.ndarray]:
     """Same contract as :func:`_group_indices`, grouping via Arrow's
-    (stable, multi-threaded) ``sort_indices``. Used when Numba is not
-    available. Considerably faster than NumPy's stable ``argsort``."""
+    ``sort_indices``. Used when Numba is not available. Considerably
+    faster than NumPy's stable ``argsort``."""
     import pyarrow.compute as pac
 
     offsets = np.concatenate((np.zeros(1, dtype=counts.dtype), counts)).cumsum()[:-1]
@@ -203,8 +203,6 @@ def _group_indices_fallback(
     return grouped_indices, offsets
 
 
-# Resolved lazily by `_get_group_indices_fn` so that importing this module
-# doesn't pay Numba's import/JIT cost (or require it to be installed).
 _group_indices_fn = None
 
 
