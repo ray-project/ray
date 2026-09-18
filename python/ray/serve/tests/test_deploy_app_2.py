@@ -1,6 +1,7 @@
 import logging
 import re
 import sys
+import threading
 import time
 from copy import copy
 from functools import partial
@@ -841,6 +842,159 @@ def test_update_config_graceful_shutdown_timeout(serve_instance):
     # Replica should be dead within 10 second timeout, which means
     # graceful_shutdown_timeout_s was successfully updated lightweightly
     wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
+
+
+@pytest.mark.parametrize("rebuild", [True, False])
+def test_failed_rolling_update_keeps_serving_from_old_replicas(serve_instance, rebuild):
+    """A failed rolling update keeps serving through surviving old replicas."""
+    client = serve_instance
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
+        "deployments": [{"name": "FailOnFlag", "num_replicas": 2}],
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_running)
+    assert httpx.get("http://localhost:8000/").text == "ok"
+
+    failing_config = app_config.copy()
+    if rebuild:
+        # A new app argument changes the code version: rebuild, then rolling
+        # restart of every replica.
+        failing_config["args"] = {"fail": True}
+    else:
+        # A new runtime_env changes the actor options: rolling restart without
+        # a rebuild.
+        failing_config["deployments"] = [
+            {
+                "name": "FailOnFlag",
+                "num_replicas": 2,
+                "ray_actor_options": {
+                    "runtime_env": {"env_vars": {"FAIL_ON_INIT": "1"}}
+                },
+            }
+        ]
+    client.deploy_apps(ServeDeploySchema(**{"applications": [failing_config]}))
+
+    def check_deploy_failed():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        deployment = status.deployments["FailOnFlag"]
+        assert deployment.status == "DEPLOY_FAILED"
+        assert deployment.status_trigger == "REPLICA_STARTUP_FAILED"
+        assert deployment.replica_states.get("RUNNING") == 1
+        return True
+
+    wait_for_condition(check_deploy_failed, timeout=120)
+
+    # The surviving old replica keeps returning 200.
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        r = httpx.get("http://localhost:8000/", timeout=10)
+        assert r.status_code == 200 and r.text == "ok"
+        time.sleep(0.1)
+
+
+@pytest.mark.parametrize("rebuild", [True, False])
+def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
+    """Traffic survives a healthy update, a downstream failure, and rollback."""
+    client = serve_instance
+
+    def config(version, fail=False):
+        app = {
+            "name": "default",
+            "import_path": "ray.serve.tests.test_config_files.rolling_update_chain.build",
+            "deployments": [{"name": name, "num_replicas": 2} for name in ("D1", "D2")],
+        }
+        if rebuild:
+            app["args"] = {"version": version, "fail": fail}
+        else:
+            for deployment in app["deployments"]:
+                deployment["ray_actor_options"] = {
+                    "runtime_env": {
+                        "env_vars": {
+                            "TEST_VERSION": version,
+                            "FAIL_ON_INIT": "1"
+                            if fail and deployment["name"] == "D2"
+                            else "0",
+                        }
+                    }
+                }
+        return ServeDeploySchema(applications=[app])
+
+    def check_healthy(version):
+        app = serve.status().applications["default"]
+        assert app.status == ApplicationStatus.RUNNING
+        assert set(app.deployments) == {"D1", "D2"}
+        for deployment in app.deployments.values():
+            assert deployment.status == "HEALTHY"
+            assert deployment.replica_states.get("RUNNING") == 2
+        response = httpx.get("http://localhost:8000/", timeout=10)
+        assert response.status_code == 200 and response.text == version
+        return True
+
+    client.deploy_apps(config("v1"))
+    wait_for_condition(check_healthy, version="v1", timeout=120)
+
+    stop = threading.Event()
+    started = threading.Event()
+    errors = []
+    responses = []
+
+    def send_requests():
+        with httpx.Client(timeout=10) as http:
+            while not stop.is_set():
+                try:
+                    response = http.get("http://localhost:8000/")
+                    assert response.status_code == 200, response.text
+                    assert response.text in {"v1", "v2"}, response.text
+                    responses.append(response.text)
+                except Exception as exc:
+                    errors.append(repr(exc))
+                finally:
+                    started.set()
+                stop.wait(0.005)
+
+    traffic = threading.Thread(target=send_requests, daemon=True)
+    traffic.start()
+    try:
+        assert started.wait(timeout=15)
+        healthy_config = config("v2")
+        client.deploy_apps(healthy_config)
+        wait_for_condition(check_healthy, version="v2", timeout=120)
+
+        client.deploy_apps(config("v3", fail=True))
+
+        def check_failed():
+            app = serve.status().applications["default"]
+            assert app.status == ApplicationStatus.DEPLOY_FAILED
+            downstream = app.deployments["D2"]
+            assert downstream.status == "DEPLOY_FAILED"
+            assert downstream.status_trigger == "REPLICA_STARTUP_FAILED"
+            assert downstream.replica_states.get("RUNNING") == 1
+            return True
+
+        wait_for_condition(check_failed, timeout=120)
+        # Keep traffic running after failure, before an external caller rolls back.
+        before = len(responses)
+        time.sleep(5)
+        assert len(responses) > before
+        assert not errors, errors
+
+        client.deploy_apps(healthy_config)
+        wait_for_condition(check_healthy, version="v2", timeout=120)
+        before = len(responses)
+        time.sleep(5)
+        assert len(responses) > before
+    finally:
+        stop.set()
+        traffic.join(timeout=15)
+
+    assert not traffic.is_alive()
+    assert not errors, errors
+    assert {"v1", "v2"}.issubset(responses)
+    # The faulty version's downstream never starts, so it must never answer.
+    assert "v3" not in responses
 
 
 if __name__ == "__main__":
