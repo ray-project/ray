@@ -106,6 +106,12 @@ The language has updated. Now the returned text is in German instead of French.
 ## Code Updates
 
 Changing the following values in a deployment's config will trigger redeployment and restart all the deployment's replicas.
+
+:::{note}
+Code updates use a rolling restart rather than stopping all replicas at once. Ray replaces up to `max(int(rolling_update_percentage * num_replicas), 1)` replicas per rollout wave. The default `rolling_update_percentage` is `0.2`.
+
+With multiple replicas, replicas that aren't currently being restarted can continue serving traffic during the rollout. A deployment with a single replica must restart its only replica during a code update.
+:::
 - `ray_actor_options`
 - `placement_group_bundles`
 - `placement_group_strategy`
