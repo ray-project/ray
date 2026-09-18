@@ -286,7 +286,7 @@ Shuffling can be challenging to scale to large data sizes and clusters, especial
 Ray Data provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort_benchmark.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`.
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/random_shuffle_benchmark.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`.
 To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10 TB of data on 20 machines - m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64 GB RAM.
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
@@ -296,8 +296,8 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
 
 .. code-block:: bash
 
-    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort_benchmark.py
-    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort_benchmark.py --num-partitions=10 --partition-size=1e7
+    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/random_shuffle_benchmark.py
+    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python random_shuffle_benchmark.py --num-partitions=10 --partition-size=1e7
 
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
     # [dataset]: Run `pip install tqdm` to enable progress reporting.
