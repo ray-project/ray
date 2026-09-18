@@ -66,6 +66,7 @@ from ray.train.v2._internal.state.util import (
     _DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
     construct_data_config,
     execution_options_to_model,
+    is_actor_alive,
 )
 from ray.train.v2.api.config import (
     CheckpointConfig,
@@ -1031,6 +1032,27 @@ def test_get_framework_version():
             assert versions["ray"] == ray.__version__
             for module_name in framework.module_names():
                 assert versions[module_name] == mock_versions[module_name]
+
+
+@patch("ray.train.v2._internal.state.util.get_actor", autospec=True)
+def test_is_actor_alive_scopes_query_only_when_address_is_provided(mock_get_actor):
+    mock_get_actor.return_value = create_mock_actor_state(state="ALIVE")
+
+    assert is_actor_alive("actor", timeout=10)
+    mock_get_actor.assert_called_once_with("actor", timeout=10)
+
+    mock_get_actor.reset_mock()
+    assert is_actor_alive("actor", timeout=10, address="cluster-address")
+    mock_get_actor.assert_called_once_with(
+        "actor", timeout=10, address="cluster-address"
+    )
+
+
+@patch("ray.train.v2._internal.state.util.get_actor", autospec=True)
+def test_is_actor_alive_returns_none_when_actor_is_missing(mock_get_actor):
+    mock_get_actor.return_value = None
+
+    assert is_actor_alive("actor", timeout=10) is None
 
 
 def test_execution_options_to_model_defaults_and_custom():
