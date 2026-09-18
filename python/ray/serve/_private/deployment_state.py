@@ -3811,6 +3811,7 @@ class DeploymentState:
             f"(initial target replicas: {target_num_replicas})."
         )
         self._replica_constructor_retry_counter = 0
+        self._replica_constructor_error_msg = None
         self._replica_has_started = False
         self._deployment_actor_failed = None
         self._deployment_actor_retry_counter = 0
@@ -4583,6 +4584,7 @@ class DeploymentState:
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
                 self._replica_constructor_retry_counter = 0
+                self._replica_constructor_error_msg = None
                 if self._target_state.rolling_update:
                     # The rolling update converged; later failures follow the
                     # steady state rules again.
