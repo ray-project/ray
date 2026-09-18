@@ -25,7 +25,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    TENSOR_TAKE_SCRATCH_CAP_BYTES,
+    FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES,
     _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
 )
@@ -34,7 +34,7 @@ from ray.data._internal.tensor_extensions.chunked_tensor_take import (
 @pytest.fixture
 def take_calls(monkeypatch):
     calls = []
-    original = chunked_tensor_take.PreparedChunkedTensorTake.take
+    original = chunked_tensor_take.PreparedFixedShapedTensorTake.take
 
     def record_take(plan, indices):
         # Do not retain the plan or source buffers: lifetime tests must release them.
@@ -43,7 +43,7 @@ def take_calls(monkeypatch):
         return result
 
     monkeypatch.setattr(
-        chunked_tensor_take.PreparedChunkedTensorTake, "take", record_take
+        chunked_tensor_take.PreparedFixedShapedTensorTake, "take", record_take
     )
     return calls
 
@@ -236,7 +236,7 @@ def test_chunked_tensor_take(tensor_cls, chunks):
     row_bytes = math.prod(column.type.shape) * np.dtype(np.float32).itemsize
     assert plan.subbatch_rows == max(
         1,
-        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
+        FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
     )
     output = plan.take(indices)
     np.testing.assert_array_equal(output.to_numpy(), values[indices])
@@ -346,7 +346,8 @@ def test_chunked_tensor_take_allows_one_row_to_exceed_scratch_cap():
     assert plan is not None
     assert plan.subbatch_rows == 1
     assert (
-        plan.values_per_row * plan.value_dtype.itemsize > TENSOR_TAKE_SCRATCH_CAP_BYTES
+        plan.values_per_row * plan.value_dtype.itemsize
+        > FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES
     )
     output = plan.take(np.array([1], dtype=np.int64))
     assert output.storage.values[0].as_py() == pytest.approx(math.prod(shape))
@@ -641,7 +642,7 @@ def test_chunked_tensor_take_respects_nonzero_logical_offsets(monkeypatch):
 
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_passes_size_gates",
+        "_passes_fixed_size_gates",
         lambda *args, **kwargs: True,
     )
     plan = try_prepare_chunked_tensor_take(column, max_output_rows=2)
@@ -659,7 +660,7 @@ def test_chunked_tensor_take_rejects_invalid_logical_offsets(monkeypatch):
     )
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_passes_size_gates",
+        "_passes_fixed_size_gates",
         lambda *args, **kwargs: True,
     )
     assert try_prepare_chunked_tensor_take(irregular, max_output_rows=2) is None
@@ -741,7 +742,7 @@ def test_chunked_tensor_take_rejects_output_offset_overflow_before_chunk_views(
 
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_prepare_zero_copy_chunk_view",
+        "_prepare_fixed_chunk_view",
         fail_chunk_view,
     )
 
@@ -906,7 +907,7 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
     )
     monkeypatch.setattr(
         chunked_tensor_take,
-        "_passes_size_gates",
+        "_passes_fixed_size_gates",
         lambda *args, **kwargs: True,
     )
 
@@ -960,7 +961,7 @@ def test_shuffling_batcher_reuses_prepared_chunked_tensor_take(monkeypatch):
     [RuntimeError, TypeError, ValueError, pa.ArrowMemoryError, pa.ArrowCapacityError],
 )
 @pytest.mark.parametrize(
-    "helper", ["_prepare_tensor_layout", "_prepare_zero_copy_chunk_view"]
+    "helper", ["_prepare_fixed_tensor_layout", "_prepare_fixed_chunk_view"]
 )
 def test_unexpected_chunked_tensor_take_errors_propagate(
     monkeypatch, error_type, helper
@@ -1075,7 +1076,7 @@ def test_shuffle_recovery_combines_source_only_once(monkeypatch):
         return original_combine(column)
 
     monkeypatch.setattr(
-        chunked_tensor_take.PreparedChunkedTensorTake, "take", fail_take
+        chunked_tensor_take.PreparedFixedShapedTensorTake, "take", fail_take
     )
     monkeypatch.setattr(transform_pyarrow, "combine_chunked_array", record_combine)
     for start in range(0, 24, 8):
@@ -1102,7 +1103,7 @@ def test_take_table_recovers_unexpected_errors(stage, monkeypatch, caplog):
     target, name = {
         "prepare": (transform_pyarrow, "try_prepare_chunked_tensor_take"),
         "normalize": (transform_pyarrow, "_try_normalize_take_indices"),
-        "take": (chunked_tensor_take.PreparedChunkedTensorTake, "take"),
+        "take": (chunked_tensor_take.PreparedFixedShapedTensorTake, "take"),
     }[stage]
     monkeypatch.setattr(target, name, fail)
     assert take_table(table, indices).equals(expected)
@@ -1170,7 +1171,9 @@ def test_shuffle_recovery_preserves_generation(stage, monkeypatch, caplog):
         monkeypatch.setattr(batcher_module, "try_prepare_chunked_tensor_take", fail)
     prepared, plans = _prepare_local_shuffle_arrow_table(table)
     if stage == "take":
-        monkeypatch.setattr(chunked_tensor_take.PreparedChunkedTensorTake, "take", fail)
+        monkeypatch.setattr(
+            chunked_tensor_take.PreparedFixedShapedTensorTake, "take", fail
+        )
     indices = np.random.default_rng(12).permutation(len(table)).astype(np.int64)
     state = batcher_module._ShuffleBufferState(prepared, indices, plans)
     first = state.take_next(128)
@@ -1200,7 +1203,7 @@ def test_shuffle_standard_failure_does_not_advance_cursor(monkeypatch):
         raise RuntimeError("standard failed")
 
     monkeypatch.setattr(
-        chunked_tensor_take.PreparedChunkedTensorTake, "take", fail_take
+        chunked_tensor_take.PreparedFixedShapedTensorTake, "take", fail_take
     )
     with monkeypatch.context() as patch:
         patch.setattr(transform_pyarrow, "combine_chunked_array", fail_standard)
@@ -1265,7 +1268,7 @@ def test_shuffle_failed_column_does_not_disable_other_plans(monkeypatch):
     table = table.append_column("other_tensor", table.column("tensor"))
     prepared, plans = _prepare_local_shuffle_arrow_table(table)
     failed_plan = plans[1]
-    original_take = chunked_tensor_take.PreparedChunkedTensorTake.take
+    original_take = chunked_tensor_take.PreparedFixedShapedTensorTake.take
     healthy_calls = []
 
     def take(plan, indices):
@@ -1275,7 +1278,7 @@ def test_shuffle_failed_column_does_not_disable_other_plans(monkeypatch):
         healthy_calls.append(1)
         return result
 
-    monkeypatch.setattr(chunked_tensor_take.PreparedChunkedTensorTake, "take", take)
+    monkeypatch.setattr(chunked_tensor_take.PreparedFixedShapedTensorTake, "take", take)
     state = batcher_module._ShuffleBufferState(
         prepared, np.arange(1024, dtype=np.int64), plans
     )

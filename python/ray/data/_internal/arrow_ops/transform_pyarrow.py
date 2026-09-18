@@ -17,7 +17,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    PreparedChunkedTensorTake,
+    PreparedTensorTake,
     _log_take_fallback,
     _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
@@ -255,7 +255,7 @@ def _try_normalize_take_indices(
 def _prepare_chunked_tensor_takes(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
-) -> Dict[int, PreparedChunkedTensorTake]:
+) -> Dict[int, PreparedTensorTake]:
     """Prepare eligible tensor columns for one table take request.
 
     The index length is the exact output-size bound required by column
