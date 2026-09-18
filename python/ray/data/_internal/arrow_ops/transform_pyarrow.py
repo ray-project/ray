@@ -109,6 +109,25 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+def _has_unhashable_polars_types(schema: "pyarrow.Schema") -> bool:
+    """Return True if this schema must not be hashed with Polars.
+
+    Two kinds of columns are unsafe:
+
+    - Union types: ``pl.from_arrow`` fails on them.
+    - Extension types (Ray's tensor / Python-object): Polars does NOT fail,
+      it silently hashes the raw storage. For pickled Python objects that's
+      wrong: equal objects can pickle to different bytes in different
+      processes, so the same key could land in different partitions.
+    """
+    for field in schema:
+        if isinstance(field.type, pyarrow.ExtensionType):
+            return True
+        if pyarrow.types.is_union(field.type):
+            return True
+    return False
+
+
 def _hash_partition_vectorized(
     projected_table: "pyarrow.Table",
     num_partitions: int,
@@ -131,10 +150,28 @@ def _hash_partition_vectorized(
     except ImportError:
         return _hash_partition(projected_table, num_partitions=num_partitions)
 
+    if _has_unhashable_polars_types(projected_table.schema):
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+    # Polars hashes dictionary (Categorical) values differently from the same
+    # values plainly encoded, so a dict-encoded block would partition a key
+    # differently from a plain-encoded block of the same dataset. Decode to
+    # the value type before hashing.
+    if any(pyarrow.types.is_dictionary(f.type) for f in projected_table.schema):
+        projected_table = projected_table.cast(
+            pyarrow.schema(
+                [
+                    f.with_type(f.type.value_type)
+                    if pyarrow.types.is_dictionary(f.type)
+                    else f
+                    for f in projected_table.schema
+                ]
+            )
+        )
+
     try:
         df: "pl.DataFrame" = pl.from_arrow(projected_table, rechunk=False)
-        hashes = df.hash_rows(seed=0)
-        return (hashes.to_numpy() % num_partitions).astype(np.int64)
+        return (df.hash_rows(seed=0) % num_partitions).cast(pl.Int64).to_numpy()
     except (PolarsError, TypeError, ValueError, NotImplementedError) as e:
         logger.warning(
             f"Polars-based hash partitioning failed, falling back to the "
@@ -165,16 +202,14 @@ def _group_indices(
         partition_mask=[1,0,1,0], counts=[2,2] returns
         grouped_indices=[1,3,0,2] and offsets=[0,2].
     """
-    # Convert cumulative sums to exclusive start offsets. This replicates
+    # Exclusive prefix sum of counts. This replicates
     # `np.concatenate(([0], counts)).cumsum()[:-1]` with a manual loop: when
     # JIT-compiled it is faster and allocates less than the NumPy expression.
-    offsets = counts.cumsum()
-    total_prev = 0
-    for j in range(offsets.size - 1):
-        tmp = offsets[j]
-        offsets[j] = total_prev
-        total_prev = tmp
-    offsets[-1] = total_prev
+    offsets = np.empty(counts.size, dtype=np.int64)
+    total = 0
+    for j in range(counts.size):
+        offsets[j] = total
+        total += counts[j]
 
     grouped_indices = np.empty(partition_mask.size, dtype=np.int64)
 
@@ -213,8 +248,9 @@ def _get_group_indices_fn():
             import numba as nb
             from numba import int64, types
 
+            readonly_i64 = types.Array(int64, 1, "C", readonly=True)
             _group_indices_fn = nb.njit(
-                types.UniTuple(int64[:], 2)(int64[:], int64[:]),
+                types.UniTuple(int64[:], 2)(readonly_i64, readonly_i64),
                 cache=True,
                 nogil=True,
                 fastmath=True,
