@@ -99,36 +99,6 @@ def _get_peak_head_node_memory_used_bytes(
     return peak_memory_bytes
 
 
-def _get_max_sched_loop_duration_s(
-    start_unix_time: float, end_unix_time: float
-) -> Dict[str, float]:
-    """Return the peak scheduling loop duration per dataset from Prometheus.
-
-    The returned mapping only contains datasets Prometheus scraped during the window,
-    so short cases may report nothing at all.
-    """
-    assert start_unix_time <= end_unix_time, (start_unix_time, end_unix_time)
-
-    session_name = ray.get_runtime_context().get_session_name()
-    metric_selector = (
-        f"ray_data_sched_loop_duration_s{{SessionName={json.dumps(session_name)}}}"
-    )
-    duration_ms = max(1, math.ceil((end_unix_time - start_unix_time) * 1000))
-    results = _query_prometheus(
-        f"max_over_time({metric_selector}[{duration_ms}ms])",
-        end_unix_time,
-    )
-    if results is None:
-        raise RuntimeError(
-            "Failed to query Prometheus for the dataset scheduling loop duration."
-        )
-
-    # Prometheus returns an instant value as [timestamp, value].
-    return {
-        result["metric"]["dataset"]: float(result["value"][1]) for result in results
-    }
-
-
 def _get_spilled_bytes_total(state) -> float:
     """Get the total number of spilled bytes across the cluster."""
     return get_memory_info_reply(state).store_stats.spilled_bytes_total
@@ -301,9 +271,8 @@ class Benchmark:
     Args:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
-        max_sched_loop_duration_s: If set, query Prometheus after each case and fail if
-            any dataset that executed during the case had a scheduling loop iteration
-            longer than this limit.
+        max_sched_loop_duration_s: If set, fail if any dataset that executed during
+            the case had a scheduling loop iteration longer than this limit.
 
     Here's an example of typical usage:
 
@@ -376,7 +345,8 @@ class Benchmark:
             start_spilled_bytes = _get_spilled_bytes_total(state)
 
             try:
-                fn_output = fn(*fn_args, **fn_kwargs)
+                with ray.data.collect_stats_summaries() as stats_summaries:
+                    fn_output = fn(*fn_args, **fn_kwargs)
             finally:
                 duration = time.perf_counter() - start_time
                 end_unix_time = time.time()
@@ -433,20 +403,19 @@ class Benchmark:
             )
 
         if self._max_sched_loop_duration_s is not None:
-            # Maps execution ID to the max scheduling loop duration for that execution.
-            sched_loop_durations = _get_max_sched_loop_duration_s(
-                start_unix_time, end_unix_time
-            )
-            slow_datasets = {
-                dataset: duration_s
-                for dataset, duration_s in sched_loop_durations.items()
-                if duration_s > self._max_sched_loop_duration_s
+            # Maps dataset UUID to the longest scheduling loop iteration it observed.
+            datasets_exceeding_limit = {
+                summary.dataset_uuid: summary.streaming_exec_schedule_max_s
+                for summary in stats_summaries
+                if summary.streaming_exec_schedule_max_s
+                > self._max_sched_loop_duration_s
             }
-            if slow_datasets:
+            if datasets_exceeding_limit:
                 raise AssertionError(
                     f"Benchmark case {name!r} had datasets whose scheduling loop "
                     f"exceeded the configured limit of "
-                    f"{self._max_sched_loop_duration_s} seconds: {slow_datasets}."
+                    f"{self._max_sched_loop_duration_s} seconds: "
+                    f"{datasets_exceeding_limit}."
                 )
 
     def write_result(self):
