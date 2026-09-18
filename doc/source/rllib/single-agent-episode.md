@@ -28,7 +28,7 @@ Another advantage of episodes over batches is a more efficient memory footprint.
 
 This page explains in detail how to work with RLlib's Episode APIs.
 
-# SingleAgentEpisode
+## SingleAgentEpisode
 
 This page describes the single-agent case only.
 
@@ -36,7 +36,7 @@ This page describes the single-agent case only.
 The Ray team is working on a detailed description of the multi-agent case, analogous to this page but for {py:class}`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode`.
 :::
 
-## Creating a SingleAgentEpisode
+### Creating a SingleAgentEpisode
 
 RLlib normally creates {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and moves them around, for example from {py:class}`~ray.rllib.env.env_runner.EnvRunner` to {py:class}`~ray.rllib.core.learner.learner.Learner`. To manually generate and fill an initially empty episode with dummy data, follow this example:
 
@@ -60,7 +60,7 @@ See below for a detailed description of the {py:class}`~ray.rllib.env.single_age
 APIs.
 ```
 
-## Using the getter APIs of SingleAgentEpisode
+### Using the getter APIs of SingleAgentEpisode
 
 With a {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` to work with, you can explore and extract information from it using its different getter methods:
 
@@ -84,7 +84,7 @@ The following code snippet summarizes the capabilities of the getter methods:
 :end-before: rllib-sa-episode-02-end
 ```
 
-## Numpy'ized and non-numpy'ized episodes
+### Numpy'ized and non-numpy'ized episodes
 
 The data in a {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can exist in two states: non-numpy'ized and numpy'ized. A non-numpy'ized episode stores its data items in plain Python lists and appends new timestep data to these. A numpy'ized episode converts these lists into possibly complex structures with NumPy arrays at their leaves. A numpy'ized episode isn't necessarily terminated or truncated: the underlying RL environment need not have declared the episode over or reached a maximum number of timesteps.
 
@@ -120,7 +120,7 @@ gymnasium environment's observation space. At the leaves of the structure are `N
 These `NDArrays` have an extra batch dim at axis 0, whose length matches the length of the stored episode, here three.
 ```
 
-## Episode.cut() and lookback buffers
+### Episode.cut() and lookback buffers
 
 During sample collection from an RL environment, the {py:class}`~ray.rllib.env.env_runner.EnvRunner` sometimes has to stop appending data to an ongoing {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` and return the data collected so far. The `EnvRunner` then calls {py:meth}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode.cut` on the {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` object, which returns a new episode chunk. Collection continues with this chunk in the next round of sampling.
 
@@ -152,7 +152,7 @@ config = AlgorithmConfig()
 config.env_runners(episode_lookback_horizon=10)
 ```
 
-### Lookback buffers and getters in more detail
+#### Lookback buffers and getters in more detail
 
 The following code demonstrates more options for accessing information further in the past, inside the lookback buffers, through the {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` getter APIs. Imagine writing a connector piece that adds the last five rewards to the tensor batch that your model's action-computing forward pass uses:
 

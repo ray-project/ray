@@ -23,13 +23,13 @@ cd ray
 python python/ray/setup-dev.py
 ```
 
-# Contributing to RLlib
+## Contributing to RLlib
 
-## Contributing fixes and enhancements
+### Contributing fixes and enhancements
 
 File new RLlib-related PRs through [Ray's GitHub repo](https://github.com/ray-project/ray/pulls). The RLlib team welcomes external help from the open-source community. If you're unsure how to structure a bug-fix or enhancement PR, create a small PR first, then ask questions in its conversation section. For an example of a good first community PR, see [this pull request](https://github.com/ray-project/ray/pull/46317).
 
-## Contributing algorithms
+### Contributing algorithms
 
 These guidelines cover merging new algorithms into RLlib. RLlib accepts contributions at two levels. The first is an [example script](https://github.com/ray-project/ray/tree/master/rllib/examples), possibly with additional classes in other files. The second is a fully integrated RLlib algorithm in [rllib/algorithms](https://github.com/ray-project/ray/tree/master/rllib/algorithms).
 
@@ -46,13 +46,13 @@ These guidelines cover merging new algorithms into RLlib. RLlib accepts contribu
 
 Both integrated and contributed algorithms ship with the `ray` PyPI package, and Ray's automated tests cover them.
 
-## New features
+### New features
 
 The [GitHub issues page](https://github.com/ray-project/ray/issues) tracks new feature development, discussions, and priorities. It might not include every development effort.
 
-# API stability
+## API stability
 
-## API decorators in the codebase
+### API decorators in the codebase
 
 Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new API stack, or `@OldAPIStack` on the old API stack, have the following API compatibility guarantees:
 
@@ -71,13 +71,13 @@ Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new AP
     :noindex:
 ```
 
-# Benchmarks
+## Benchmarks
 
 The [rl-experiments repo](https://github.com/ray-project/rl-experiments) holds many training-run results, and [examples/algorithms](https://github.com/ray-project/ray/tree/master/rllib/examples/algorithms) lists working hyperparameter configurations sorted by algorithm. Benchmark results help the community. If you have results that might interest others, open a pull request to either repo.
 
-# Debugging RLlib
+## Debugging RLlib
 
-## Finding memory leaks in workers
+### Finding memory leaks in workers
 
 Keeping the memory usage of long-running workers stable can be challenging. Use the `MemoryTrackingCallbacks` class to track worker memory usage.
 
@@ -90,7 +90,7 @@ The callback adds the 20 objects with the highest memory usage in the workers as
 ```{image} images/MemoryTrackingCallbacks.png
 ```
 
-## Troubleshooting
+### Troubleshooting
 
 If you encounter errors such as `blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers, set `OMP_NUM_THREADS=1`. For other resource-limit errors, check the configured system limits with `ulimit -a`.
 

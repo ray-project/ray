@@ -19,7 +19,7 @@ The {py:class}`~ray.rllib.core.learner.learner.Learner` class supports data-dist
 
 The {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` also supports asynchronous training and distributed checkpointing for durability during training.
 
-# Enable the Learner API in RLlib experiments
+## Enable the Learner API in RLlib experiments
 
 Adjust the training resources through the `num_gpus_per_learner`, `num_cpus_per_learner`, and `num_learners` arguments in {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
 
@@ -69,11 +69,11 @@ The following algorithms support {py:class}`~ray.rllib.core.learner.learner.Lear
 
 :::
 
-# Basic usage
+## Basic usage
 
 Use the {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` utility to interact with multiple learners.
 
-## Construction
+### Construction
 
 If you enable the {ref}`RLModule <rlmodule-guide>` and {py:class}`~ray.rllib.core.learner.learner.Learner` APIs through {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, then calling {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` constructs a {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` for you. If you use these APIs standalone, construct the {py:class}`~ray.rllib.core.learner.learner_group.LearnerGroup` as follows:
 
@@ -154,7 +154,7 @@ learner.build()
 
 ::::
 
-## Updates
+### Updates
 
 ```{testcode}
 :hide:
@@ -239,7 +239,7 @@ When updating a {py:class}`~ray.rllib.core.learner.learner.Learner`, you can onl
 
 ::::
 
-## Getting and setting state
+### Getting and setting state
 
 ::::{tab-set}
 
@@ -295,7 +295,7 @@ LEARNER_CKPT_DIR = tempfile.mkdtemp()
 LEARNER_GROUP_CKPT_DIR = tempfile.mkdtemp()
 ```
 
-## Checkpointing
+### Checkpointing
 
 ::::{tab-set}
 
@@ -323,7 +323,7 @@ Checkpoint the state of a {py:class}`~ray.rllib.core.learner.learner.Learner` th
 
 ::::
 
-# Implementation
+## Implementation
 
 The {py:class}`~ray.rllib.core.learner.learner.Learner` class has many APIs for flexible implementation. The core ones you need to implement are:
 
@@ -343,7 +343,7 @@ The {py:class}`~ray.rllib.core.learner.learner.Learner` class has many APIs for 
   - Do non-gradient-based updates to an RLModule after the gradient-based ones, such as updating a loss coefficient based on a schedule.
 ```
 
-## Starter example
+### Starter example
 
 A {py:class}`~ray.rllib.core.learner.learner.Learner` that implements behavior cloning could look like the following:
 

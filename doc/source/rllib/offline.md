@@ -981,7 +981,7 @@ To choose an appropriate `input_read_batch_size`, look at the length of your rec
 
 (actor-pool-size)=
 
-### Actor pool size
+#### Actor pool size
 
 RLlib scales {py:class}`~ray.rllib.core.learner.learner.Learner` instances through the `num_learners` parameter. When this value is `0`, RLlib uses a Learner instance in the local process. For values greater than `0`, RLlib scales out with a {py:class}`~ray.train._internal.backend_executor.BackendExecutor`. This executor spawns your specified number of {py:class}`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training, and aggregates intermediate results across {py:class}`~ray.rllib.core.learner.learner.Learner` actors. Scaling {py:class}`~ray.rllib.core.learner.learner.Learner` instances increases training throughput. Apply it only when the upstream components in your Offline Data pipeline can supply data fast enough to match the increased training capacity. RLlib's Offline API scales at its final layer with {py:class}`~ray.data.Dataset.streaming_split`, which divides the data stream into multiple substreams. Individual {py:class}`~ray.rllib.core.learner.learner.Learner` instances then process these substreams, which enables efficient parallel consumption and improves overall throughput.
 
