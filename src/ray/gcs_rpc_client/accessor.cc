@@ -556,6 +556,13 @@ void NodeResourceInfoAccessor::AsyncGetDrainingNodes(
       });
 }
 
+Status NodeResourceInfoAccessor::GetDrainingNodes(int64_t timeout_ms,
+                                                  rpc::GetDrainingNodesReply &reply) {
+  rpc::GetDrainingNodesRequest request;
+  return client_impl_->GetGcsRpcClient().SyncGetDrainingNodes(
+      std::move(request), &reply, timeout_ms);
+}
+
 void NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
     const rpc::ItemCallback<rpc::ResourceUsageBatchData> &callback) {
   rpc::GetAllResourceUsageRequest request;
