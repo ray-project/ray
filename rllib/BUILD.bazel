@@ -2502,6 +2502,20 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_learner_group_update_plan",
+    size = "medium",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupUpdatePlan"],
+    main = "core/learner/tests/test_learner_group.py",
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # Learner
 py_test(
     name = "test_learner",
