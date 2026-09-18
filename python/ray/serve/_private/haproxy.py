@@ -601,41 +601,12 @@ class BackendConfig:
     protocol: RequestProtocol = RequestProtocol.HTTP
 
     @property
-    def haproxy_name(self) -> str:
-        """This backend's name as the config renders it (never empty)."""
-        return self.name or "unknown"
-
-    @property
     def via_ingress_request_router_backend_name(self) -> str:
-        """Companion backend holding this app's ingress replicas.
-
-        The router may name the ingress deployment like any other target, and
-        the frontend then dispatches here. Both the Jinja template and the Lua
-        replica map have to spell this name identically -- if they drift, an
-        ingress selection matches no `use_backend`, falls through to the
-        path-routed backend and silently loses the pin -- so neither writes the
-        suffix out itself.
-        """
-        # TODO (celinaky): this doesn't seem like the best way to do it, try to
-        # fix later. also idk why these are @property.
-        return f"{self.haproxy_name}-via-ingress-request-router"
+        """Backend used for replica-pinned ingress requests."""
+        return f"{self.name or 'unknown'}-via-ingress-request-router"
 
     def get_deployment_targets(self) -> Dict[str, "_DeploymentTargets"]:
-        """Router-selectable deployments of this app, keyed by deployment name.
-
-        The single source for the Lua map's `[deployment][replica_id]` level:
-        which deployments `/internal/route` may name, and which HAProxy backend
-        holds each one's replicas. The ingress comes first, then the
-        `_direct_http` deployments in the order `direct_target_configs` already
-        holds them (sorted by deployment name), so the rendered Lua is
-        byte-stable for `_write_if_changed`.
-
-        A deployment is included only when at least one of its replicas carries
-        a `replica_id`: that is what the router returns and what the map is
-        keyed on. The ingress is skipped entirely when `ingress_deployment_name`
-        is empty -- a proxy-backed target group has no ingress deployment
-        identity for the router to name.
-        """
+        """Map router-selectable deployments to their HAProxy backends and servers."""
         targets: "Dict[str, _DeploymentTargets]" = {}
 
         if self.ingress_deployment_name:
@@ -1376,10 +1347,7 @@ class HAProxyApi(ProxyApi):
         """Render the ingress-request-router Lua action and write it to disk.
 
         Returns the script path, or None if no backend has both ingress request
-        routers AND a router-selectable deployment with replica IDs. An app whose
-        only replicas are its ingress's does get a Lua map: the ingress is a
-        target the router may name, so such an app is routed through its router
-        rather than load-balanced by path.
+        routers AND a router-selectable deployment with replica IDs.
         """
         routers, targets = _routers_and_targets_by_backend(
             backends, local_host=get_localhost_ip()
