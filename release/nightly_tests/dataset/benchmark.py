@@ -273,8 +273,7 @@ class Benchmark:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
         max_sched_loop_duration_s: If set, fail if any dataset that executed during
-            the case had a scheduling loop iteration longer than this limit. Enables
-            ``DataContext.enable_stats_summary_collection``.
+            the run had a scheduling loop iteration longer than this limit.
 
     Here's an example of typical usage:
 
@@ -317,8 +316,9 @@ class Benchmark:
         self._max_head_node_memory_bytes = max_head_node_memory_bytes
         self._max_sched_loop_duration_s = max_sched_loop_duration_s
 
-        if max_sched_loop_duration_s is not None:
-            DataContext.get_current().enable_stats_summary_collection = True
+        # Stats summaries are required for the scheduling loop duration assertion
+        # in `run_fn`.
+        DataContext.get_current().enable_stats_summary_collection = True
 
     def run_fn(
         self,
@@ -348,11 +348,6 @@ class Benchmark:
             start_unix_time = time.time()
             start_time = time.perf_counter()
             start_spilled_bytes = _get_spilled_bytes_total(state)
-
-            # `list_stats_summaries` accumulates across cases, so remember where this
-            # case starts to read back only its own summaries.
-            if self._max_sched_loop_duration_s is not None:
-                num_summaries_before_case = len(ray.data.list_stats_summaries())
 
             try:
                 fn_output = fn(*fn_args, **fn_kwargs)
@@ -412,20 +407,22 @@ class Benchmark:
             )
 
         if self._max_sched_loop_duration_s is not None:
-            # Maps dataset UUID to the longest scheduling loop iteration it observed.
-            case_summaries = ray.data.list_stats_summaries()[num_summaries_before_case:]
-            datasets_exceeding_limit = {
-                summary.dataset_uuid: summary.streaming_exec_schedule_max_s
-                for summary in case_summaries
+            # This includes executions that finished before `run_fn` was called.
+            # The code assumes this isn't an issue to simplify the implementation.
+            stats_summaries = ray.data.list_stats_summaries()
+            datasets_exceeding_limit = [
+                f"{summary.dataset_uuid} "
+                f"({summary.streaming_exec_schedule_max_s} seconds)"
+                for summary in stats_summaries
                 if summary.streaming_exec_schedule_max_s
                 > self._max_sched_loop_duration_s
-            }
+            ]
             if datasets_exceeding_limit:
                 raise AssertionError(
-                    f"Benchmark case {name!r} had datasets whose scheduling loop "
-                    f"exceeded the configured limit of "
+                    f"Benchmark case {name!r} had datasets whose max scheduling loop "
+                    f"duration exceeded the configured limit of "
                     f"{self._max_sched_loop_duration_s} seconds: "
-                    f"{datasets_exceeding_limit}."
+                    f"{', '.join(datasets_exceeding_limit)}."
                 )
 
     def write_result(self):
