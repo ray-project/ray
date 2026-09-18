@@ -9,6 +9,7 @@ uses, including lifecycle states, free-form tags and pagination.
 import copy
 import os
 import sys
+import threading
 import types
 from typing import Any, Dict, List
 
@@ -31,6 +32,7 @@ COMPARTMENT = "ocid1.compartment.oc1..testcompartment"
 TENANCY = "ocid1.tenancy.oc1..testtenancy"
 REGION = "us-phoenix-1"
 AD = "Uocm:PHX-AD-1"
+AD2 = "Uocm:PHX-AD-2"
 
 # ---------------------------------------------------------------------------
 # Fake OCI SDK
@@ -108,6 +110,7 @@ class FakeState:
         self.conflicts: Dict[str, int] = {}
         self.launch_error = None
         self.deny_iam = False
+        self.deny_get_compartment = False
         self.counter = 0
 
     def new_id(self, kind):
@@ -115,7 +118,7 @@ class FakeState:
         return f"ocid1.{kind}.oc1.phx.fake{self.counter:04d}"
 
     def add_instance(
-        self, tags, state="RUNNING", name="node", shape="VM.Standard.E4.Flex"
+        self, tags, state="RUNNING", name="node", shape="VM.Standard.E4.Flex", ad=AD
     ):
         instance_id = self.new_id("instance")
         self.instances[instance_id] = FakeModel(
@@ -124,7 +127,7 @@ class FakeState:
             lifecycle_state=state,
             freeform_tags=dict(tags),
             shape=shape,
-            availability_domain=AD,
+            availability_domain=ad,
             compartment_id=COMPARTMENT,
         )
         return instance_id
@@ -155,9 +158,17 @@ class FakeComputeClient:
             )
 
     def list_instances(self, compartment_id, **kwargs):
-        self.state.calls.append("list_instances")
+        ad = kwargs.get("availability_domain")
+        self.state.calls.append(f"list_instances:{ad}")
         assert compartment_id == COMPARTMENT
-        return Response(list(self.state.instances.values()))
+        # Like the real API, an availability_domain filter hides other ADs.
+        return Response(
+            [
+                inst
+                for inst in self.state.instances.values()
+                if ad is None or inst.availability_domain == ad
+            ]
+        )
 
     def get_instance(self, instance_id, **kwargs):
         instance = self.state.instances.get(instance_id)
@@ -222,7 +233,18 @@ class FakeComputeClient:
         return Response(images)
 
     def list_shapes(self, compartment_id, **kwargs):
-        return Response(list(self.state.shapes))
+        ad = kwargs.get("availability_domain")
+        self.state.calls.append(f"list_shapes:{ad}")
+        # Shapes may be restricted to some ADs (``availability_domains``).
+        return Response(
+            [
+                shape
+                for shape in self.state.shapes
+                if ad is None
+                or not shape.availability_domains
+                or ad in shape.availability_domains
+            ]
+        )
 
 
 class FakeNetworkClient:
@@ -334,6 +356,8 @@ class FakeIdentityClient:
         return Response(FakeModel(id=tenancy_id, home_region_key="IAD"))
 
     def get_compartment(self, compartment_id, **kwargs):
+        if self.state.deny_get_compartment:
+            raise FakeServiceError(404, "NotAuthorizedOrNotFound", message="denied")
         return Response(FakeModel(id=compartment_id, compartment_id=TENANCY))
 
     def list_dynamic_groups(self, compartment_id, **kwargs):
@@ -588,6 +612,11 @@ def test_validate_freeform_tags_limits():
 def test_non_terminated_nodes_filters_by_tags_and_state(fake_oci):
     head = fake_oci.add_instance(_cluster_tags(kind=NODE_KIND_HEAD, node_type="head"))
     worker = fake_oci.add_instance(_cluster_tags())
+    # A node type may override the AD; such nodes must still be visible even
+    # though the provider itself is configured with AD.
+    other_ad_worker = fake_oci.add_instance(
+        _cluster_tags(node_type="gpu_worker"), ad=AD2
+    )
     fake_oci.add_instance(_cluster_tags(), state="TERMINATED")
     fake_oci.add_instance(_cluster_tags(), state="TERMINATING")
     stopped = fake_oci.add_instance(_cluster_tags(), state="STOPPED")
@@ -595,7 +624,18 @@ def test_non_terminated_nodes_filters_by_tags_and_state(fake_oci):
     fake_oci.add_instance({"unrelated": "instance"})
 
     provider = _provider(fake_oci)
-    assert sorted(provider.non_terminated_nodes({})) == sorted([head, worker])
+    assert sorted(provider.non_terminated_nodes({})) == sorted(
+        [head, worker, other_ad_worker]
+    )
+    assert provider.non_terminated_nodes({TAG_RAY_USER_NODE_TYPE: "gpu_worker"}) == [
+        other_ad_worker
+    ]
+    # Instances are listed compartment-wide, never filtered by AD.
+    assert "list_instances:None" in fake_oci.calls
+    assert not any(
+        c.startswith("list_instances:") and c != "list_instances:None"
+        for c in fake_oci.calls
+    )
     assert provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD}) == [head]
     assert provider.non_terminated_nodes({TAG_RAY_USER_NODE_TYPE: "cpu_worker"}) == [
         worker
@@ -739,6 +779,74 @@ def test_terminate_nodes(fake_oci):
     assert fake_oci.instances[b].lifecycle_state == "TERMINATED"
     assert fake_oci.calls.count("terminate_instance:False") == 2
     assert provider.non_terminated_nodes({}) == []
+
+
+def test_cache_stopped_nodes_skips_stopping_instances(fake_oci):
+    """A STOPPING instance is neither waited for nor reused; a fresh node is
+    launched instead (the instance becomes eligible once it is STOPPED)."""
+    stopping = fake_oci.add_instance(_cluster_tags(), state="STOPPING")
+    provider = _provider(fake_oci, cache_stopped_nodes=True)
+    created = provider.create_node(_node_config(), _tags(), count=1)
+    assert stopping not in created
+    assert fake_oci.calls.count("launch_instance") == 1
+    assert "instance_action:START" not in fake_oci.calls
+    assert fake_oci.instances[stopping].lifecycle_state == "STOPPING"
+
+
+def test_claim_stopped_nodes_is_exclusive(fake_oci):
+    a = fake_oci.add_instance(_cluster_tags(), state="STOPPED")
+    b = fake_oci.add_instance(_cluster_tags(), state="STOPPED")
+    provider = _provider(fake_oci, cache_stopped_nodes=True)
+    first = provider._claim_stopped_nodes(_cluster_tags(), count=1)
+    second = provider._claim_stopped_nodes(_cluster_tags(), count=5)
+    third = provider._claim_stopped_nodes(_cluster_tags(), count=5)
+    assert {inst.id for inst in first} | {inst.id for inst in second} == {a, b}
+    assert third == []
+    assert provider._claimed_for_reuse == {a, b}
+
+
+def test_concurrent_create_node_reuses_each_stopped_instance_once(
+    fake_oci, monkeypatch
+):
+    """Two concurrent create_node() calls with one STOPPED instance: exactly
+    one caller restarts it, the other launches a new instance."""
+    stopped = fake_oci.add_instance(_cluster_tags(), state="STOPPED")
+    provider = _provider(fake_oci, cache_stopped_nodes=True)
+
+    start_entered = threading.Event()
+    release_start = threading.Event()
+    original_action = FakeComputeClient.instance_action
+
+    def slow_start(self, instance_id, action, **kwargs):
+        start_entered.set()
+        assert release_start.wait(10)
+        return original_action(self, instance_id, action, **kwargs)
+
+    monkeypatch.setattr(FakeComputeClient, "instance_action", slow_start)
+
+    results: Dict[str, Dict[str, Any]] = {}
+
+    def run(name):
+        results[name] = provider.create_node(_node_config(), _tags(), count=1)
+
+    first = threading.Thread(target=run, args=("first",))
+    first.start()
+    # The first caller has claimed the instance and is blocked in START (no
+    # lock held); the second caller must not pick the same instance.
+    assert start_entered.wait(10)
+    second = threading.Thread(target=run, args=("second",))
+    second.start()
+    second.join(10)
+    assert not second.is_alive(), "second create_node() must not block on the first"
+    release_start.set()
+    first.join(10)
+
+    assert list(results["first"]) == [stopped]
+    assert stopped not in results["second"]
+    assert len(results["second"]) == 1
+    assert fake_oci.calls.count("launch_instance") == 1
+    assert fake_oci.calls.count("instance_action:START") == 1
+    assert provider._claimed_for_reuse == set()
 
 
 def test_cache_stopped_nodes_stops_and_reuses(fake_oci):
@@ -992,10 +1100,8 @@ def test_bootstrap_aborts_when_no_image_matches(fake_oci):
         bootstrap_oci(_cluster_config(fake_oci))
 
 
-def test_fillout_resources_from_shape(fake_oci):
-    from ray.autoscaler._private._oci.config import fillout_resources
-
-    fake_oci.shapes = [
+def _add_shapes(state):
+    state.shapes = [
         FakeModel(
             shape="VM.Standard.E4.Flex",
             ocpus=1,
@@ -1008,10 +1114,51 @@ def test_fillout_resources_from_shape(fake_oci):
             processor_description="3.0 GHz Ampere Altra",
             gpus=0,
         ),
+        # GPU shapes are typically offered in a single AD.
         FakeModel(
-            shape="VM.GPU.A10.1", ocpus=15, processor_description="Intel Xeon", gpus=1
+            shape="VM.GPU.A10.1",
+            ocpus=15,
+            processor_description="Intel Xeon",
+            gpus=1,
+            availability_domains={AD2},
         ),
     ]
+
+
+def test_fillout_resources_uses_each_node_types_availability_domain(fake_oci):
+    from ray.autoscaler._private._oci.config import fillout_resources
+
+    _add_shapes(fake_oci)
+    config = _cluster_config(fake_oci, availability_domain=AD)
+    # The GPU node type runs in AD2, where the A10 shape exists.
+    config["available_node_types"]["gpu_worker"]["node_config"][
+        "availability_domain"
+    ] = AD2
+    out = fillout_resources(copy.deepcopy(config))
+    resources = {k: v["resources"] for k, v in out["available_node_types"].items()}
+    assert resources["ray.head.default"] == {"CPU": 4}
+    assert resources["gpu_worker"] == {"CPU": 30, "GPU": 1}
+    assert f"list_shapes:{AD}" in fake_oci.calls
+    assert f"list_shapes:{AD2}" in fake_oci.calls
+
+    # With no AD configured anywhere, every AD of the region is consulted.
+    fake_oci.calls.clear()
+    config = _cluster_config(fake_oci)
+    out = fillout_resources(copy.deepcopy(config))
+    assert out["available_node_types"]["gpu_worker"]["resources"] == {
+        "CPU": 30,
+        "GPU": 1,
+    }
+    assert f"list_shapes:{AD}" in fake_oci.calls
+    assert f"list_shapes:{AD2}" in fake_oci.calls
+
+
+def test_fillout_resources_from_shape(fake_oci):
+    from ray.autoscaler._private._oci.config import fillout_resources
+
+    _add_shapes(fake_oci)
+    for shape in fake_oci.shapes:
+        shape.availability_domains = None
     config = _cluster_config(fake_oci)
     config["available_node_types"]["arm_worker"] = {
         "resources": {"custom": 3},
@@ -1024,6 +1171,52 @@ def test_fillout_resources_from_shape(fake_oci):
     assert resources["arm_worker"] == {"CPU": 4, "custom": 3}
     # GPU detected from the shape; the user's CPU override is kept.
     assert resources["gpu_worker"] == {"CPU": 8, "GPU": 1}
+
+
+def test_tenancy_of_compartment_walks_parents(fake_oci):
+    provider = _provider(fake_oci)
+    assert provider.client.tenancy_of_compartment(COMPARTMENT) == TENANCY
+    assert provider.client.tenancy_of_compartment(TENANCY) == TENANCY
+
+
+def test_tenancy_of_compartment_falls_back_to_caller_tenancy(fake_oci, caplog):
+    """Principals without `inspect compartments` on the ancestors get 404
+    from get_compartment; the caller's own tenancy is used instead."""
+    fake_oci.deny_get_compartment = True
+    provider = _provider(fake_oci)
+    with caplog.at_level("WARNING"):
+        assert provider.client.tenancy_of_compartment(COMPARTMENT) == TENANCY
+    assert "assuming it belongs to the caller's tenancy" in caplog.text
+
+    # Instance principals know their tenancy through the signer.
+    provider = _provider(
+        fake_oci, oci_config_file=str(fake_oci.tmp_path / "does-not-exist")
+    )
+    assert provider.client.tenancy_of_compartment(COMPARTMENT) == TENANCY
+
+
+def test_tenancy_of_compartment_errors_without_any_tenancy(fake_oci):
+    fake_oci.deny_get_compartment = True
+    CONFIG_FILE_CONTENT["NOTENANCY"] = {
+        "user": "ocid1.user.oc1..u",
+        "fingerprint": "aa:bb",
+        "key_file": str(fake_oci.tmp_path / "key.pem"),
+        "region": "us-ashburn-1",
+    }
+    provider = _provider(fake_oci, oci_config_profile="NOTENANCY")
+    with pytest.raises(RuntimeError, match="create_iam_resources: false"):
+        provider.client.tenancy_of_compartment(COMPARTMENT)
+
+
+def test_bootstrap_iam_works_without_compartment_read_access(fake_oci):
+    from ray.autoscaler._private._oci.config import bootstrap_oci
+
+    _add_images(fake_oci)
+    fake_oci.deny_get_compartment = True
+    out = bootstrap_oci(_cluster_config(fake_oci))
+    group = next(iter(fake_oci.dynamic_groups.values()))
+    assert group.compartment_id == TENANCY
+    assert out["provider"]["dynamic_group_name"] == group.name
 
 
 def test_provider_is_registered():

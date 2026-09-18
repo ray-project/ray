@@ -281,12 +281,36 @@ class OCIClient:
             return self.region
 
     def tenancy_of_compartment(self, compartment_id: str) -> str:
-        """Walk up the compartment tree to find the owning tenancy OCID."""
+        """Return the OCID of the tenancy that owns ``compartment_id``.
+
+        Walks up the compartment tree, which needs read access to every
+        ancestor compartment. Principals scoped to a single compartment lack
+        that, so on failure the caller's own tenancy is used instead (correct
+        whenever the caller and the compartment live in the same tenancy).
+        """
         current = compartment_id
-        for _ in range(32):
-            if current.startswith("ocid1.tenancy."):
-                return current
-            current = self.identity().get_compartment(current).data.compartment_id
+        try:
+            for _ in range(32):
+                if current.startswith("ocid1.tenancy."):
+                    return current
+                current = self.identity().get_compartment(current).data.compartment_id
+        except Exception as e:  # noqa: BLE001
+            fallback = self.caller_tenancy_id
+            if fallback:
+                logger.warning(
+                    "Could not walk the parent compartments of ...%s (%s); "
+                    "assuming it belongs to the caller's tenancy ...%s.",
+                    short_id(compartment_id),
+                    e,
+                    short_id(fallback),
+                )
+                return fallback
+            raise RuntimeError(
+                f"Could not resolve the tenancy of compartment "
+                f"...{short_id(compartment_id)} ({e}) and the credentials do not "
+                "name a tenancy. Grant `inspect compartments` on the parent "
+                "compartments, or set `create_iam_resources: false`."
+            ) from e
         raise RuntimeError(
             f"Could not resolve the tenancy of compartment ...{short_id(compartment_id)}"
         )
