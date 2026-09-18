@@ -16,6 +16,14 @@ from ray.dashboard.modules.reporter.gpu_providers import (
     NvidiaGpuProvider,
     ProcessGPUInfo,
 )
+from ray.util.debug import reset_log_once
+
+# Logger name used by gpu_providers, for assertLogs.
+GPU_PROVIDERS_LOGGER = "ray.dashboard.modules.reporter.gpu_providers"
+
+# NVML return codes (mirrors ray._private.thirdparty.pynvml).
+NVML_ERROR_NOT_SUPPORTED = 3
+NVML_ERROR_GPU_IS_LOST = 15
 
 
 class TestProcessGPUInfo(unittest.TestCase):
@@ -114,6 +122,9 @@ class TestNvidiaGpuProvider(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.provider = NvidiaGpuProvider()
+        # `log_once` dedupes by key across the whole process, so tests asserting
+        # on log output must start from a clean slate.
+        reset_log_once()
 
     def _configure_nvidia_collection(self, mock_pynvml, gpu_names):
         class MockNVMLError(Exception):
@@ -767,6 +778,61 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["index"], 0)
         self.assertEqual(gpu_info["name"], "NVIDIA A100-SXM4-40GB MIG 1g.5gb")
         self.assertEqual(gpu_info["utilization_gpu"], 80)
+
+    def _memory_info_error_provider(self, mock_pynvml, error_value):
+        """Wire up a GPU whose memory query fails with `error_value`."""
+
+        class MockNVMLError(Exception):
+            def __init__(self, value):
+                super().__init__(f"nvml error {value}")
+                self.value = value
+
+        mock_pynvml.NVMLError = MockNVMLError
+        mock_pynvml.NVML_ERROR_NOT_SUPPORTED = NVML_ERROR_NOT_SUPPORTED
+
+        mock_utilization_info = Mock()
+        mock_utilization_info.gpu = 42
+
+        mock_pynvml.nvmlInit.return_value = None
+        mock_pynvml.nvmlDeviceGetCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetHandleByIndex.return_value = Mock()
+        mock_pynvml.nvmlDeviceGetMigMode.return_value = (False, False)
+        mock_pynvml.nvmlDeviceGetMemoryInfo.side_effect = MockNVMLError(error_value)
+        mock_pynvml.nvmlDeviceGetUtilizationRates.return_value = mock_utilization_info
+        mock_pynvml.nvmlDeviceGetComputeRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetGraphicsRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA GB10"
+        mock_pynvml.nvmlDeviceGetUUID.return_value = b"GPU-abc"
+        mock_pynvml.nvmlShutdown.return_value = None
+
+        self.provider._pynvml = mock_pynvml
+        self.provider._initialized = True
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_memory_info_unsupported_logs_info(self, mock_pynvml):
+        """An expected NVML_ERROR_NOT_SUPPORTED is logged at info, not warning."""
+        self._memory_info_error_provider(mock_pynvml, NVML_ERROR_NOT_SUPPORTED)
+
+        with self.assertLogs(GPU_PROVIDERS_LOGGER, level="INFO") as captured:
+            result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["memory_used"])
+        levels = [r.levelname for r in captured.records]
+        self.assertIn("INFO", levels)
+        self.assertNotIn("WARNING", levels)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_memory_info_other_error_logs_warning(self, mock_pynvml):
+        """Any other NVML error code is a fault and is logged at warning."""
+        self._memory_info_error_provider(mock_pynvml, NVML_ERROR_GPU_IS_LOST)
+
+        with self.assertLogs(GPU_PROVIDERS_LOGGER, level="INFO") as captured:
+            result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["memory_used"])
+        self.assertIn("WARNING", [r.levelname for r in captured.records])
 
 
 class TestAmdGpuProvider(unittest.TestCase):

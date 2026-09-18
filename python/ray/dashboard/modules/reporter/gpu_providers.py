@@ -345,8 +345,16 @@ class NvidiaGpuProvider(GpuProvider):
             try:
                 memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
             except self._pynvml.NVMLError as e:
-                if log_once("mig_memory_info"):
-                    logger.info(
+                # See the note in `_get_gpu_info`: NVML_ERROR_NOT_SUPPORTED is
+                # expected, anything else is a fault.
+                if getattr(e, "value", None) == self._pynvml.NVML_ERROR_NOT_SUPPORTED:
+                    if log_once("mig_memory_info_unsupported"):
+                        logger.info(
+                            "MIG device does not report a separate memory pool via "
+                            f"`nvmlDeviceGetMemoryInfo`: {e}"
+                        )
+                elif log_once("mig_memory_info_error"):
+                    logger.warning(
                         "Failed to retrieve MIG device memory info via "
                         f"`nvmlDeviceGetMemoryInfo`: {e}"
                     )
@@ -432,8 +440,16 @@ class NvidiaGpuProvider(GpuProvider):
             try:
                 memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
             except self._pynvml.NVMLError as e:
-                if log_once("gpu_memory_info"):
-                    logger.info(
+                # NVML_ERROR_NOT_SUPPORTED is expected on devices with no separate
+                # GPU memory pool; any other code is a fault worth surfacing.
+                if getattr(e, "value", None) == self._pynvml.NVML_ERROR_NOT_SUPPORTED:
+                    if log_once("gpu_memory_info_unsupported"):
+                        logger.info(
+                            "GPU does not report a separate memory pool via "
+                            f"`nvmlDeviceGetMemoryInfo`: {e}"
+                        )
+                elif log_once("gpu_memory_info_error"):
+                    logger.warning(
                         "Failed to retrieve GPU memory info via "
                         f"`nvmlDeviceGetMemoryInfo`: {e}"
                     )

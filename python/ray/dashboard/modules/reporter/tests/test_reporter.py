@@ -882,10 +882,22 @@ def test_report_stats_gpu_without_memory_info(tmp_path):
 
     # Regression test: the stats payload is validated against a pydantic model,
     # so a None memory value must not break serialization for the whole node.
+    # Assert against the model itself rather than the serialized string -- without
+    # pydantic installed `_generate_stats_payload` takes the `jsonify_asdict`
+    # fallback, which would let a string-only assertion pass vacuously.
     stats_payload = agent._generate_stats_payload(stats)
-    assert stats_payload is not None
     assert isinstance(stats_payload, str)
-    assert json.loads(stats_payload)["gpus"][0]["memoryTotal"] is None
+
+    from ray._common.pydantic_compat import PYDANTIC_INSTALLED
+
+    if PYDANTIC_INSTALLED:
+        from ray.dashboard.modules.reporter.reporter_models import StatsPayload
+
+        parsed = StatsPayload.parse_obj(json.loads(stats_payload))
+        assert parsed.gpus[0].memoryUsed is None
+        assert parsed.gpus[0].memoryTotal is None
+    else:
+        assert json.loads(stats_payload)["gpus"][0]["memoryTotal"] is None
 
 
 def test_get_tpu_usage(tmp_path):
