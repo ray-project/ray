@@ -231,12 +231,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
         config = self._create_actor_pool_config(compute_strategy)
-        pool_cls = (
-            _NodeAwareActorPool
-            if self.data_context.enable_node_aware_actor_pool
-            else _ActorPool
-        )
-        return pool_cls(
+        return _NodeAwareActorPool(
             create_actor_fn=self._start_actor,
             config=config,
             map_worker_cls_name=self._map_worker_cls_name,
@@ -682,9 +677,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         This shouldn't include resources used by actors that haven't been reconstructed,
         even if they're running retried tasks.
         """
-        if not self.data_context.enable_node_aware_actor_pool:
-            return ExecutionResources.zero()
-
         num_actors = self._num_lineage_reconstructed_actors(self._actor_pool)
         per_actor_resources = self._actor_pool.per_actor_resource_usage()
         return per_actor_resources.scale(num_actors)
@@ -1434,6 +1426,25 @@ class _NodeAwareActorPool(_ActorPool):
         self._draining_nodes_snapshot: Dict[NodeIdStr, int] = get_draining_nodes()
 
         super().refresh_actor_state()
+
+    @override
+    def pending_to_running(self, ready_ref: ray.ObjectRef) -> Optional[ActorHandle]:
+        actor = super().pending_to_running(ready_ref)
+        if actor is None:
+            return None
+
+        # The base class makes every newly ready actor schedulable. Actor-ready
+        # callbacks are processed before dispatch, so without this an actor that
+        # came up on a draining node takes tasks until the next refresh.
+        node_id = self._running_actors[actor].actor_location
+        if node_id in get_draining_nodes():
+            if actor in self._alive_actors_to_in_flight_tasks_heap:
+                del self._alive_actors_to_in_flight_tasks_heap[actor]
+            node_heap = self._alive_node_to_actor_heap.get(node_id)
+            if node_heap is not None and actor in node_heap:
+                del node_heap[actor]
+
+        return actor
 
     @override
     def _update_rank(self, actor: ActorHandle, state: _ActorState, died: bool):

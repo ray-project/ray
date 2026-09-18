@@ -10,6 +10,9 @@ R = TypeVar("R")
 
 _IS_TIMED_CACHE_ENABLED = True
 
+# Sweep expired entries once a cache grows past this many keys.
+_CACHE_SWEEP_THRESHOLD = 128
+
 
 def enable_timed_cache():
     global _IS_TIMED_CACHE_ENABLED
@@ -68,10 +71,18 @@ def timed_cache(
                 if now - cached_time < ttl:
                     return value
 
+            # Keys are unbounded for some callers (a tuple of actor IDs changes
+            # on every autoscale), so drop expired entries before adding another.
+            if len(cache) >= _CACHE_SWEEP_THRESHOLD:
+                for expired in [k for k, (t, _) in cache.items() if now - t >= ttl]:
+                    del cache[expired]
+
             result = fn(*args, **kwargs)
             cache[key] = (now, result)
             return result
 
+        # Exposed so tests can assert on eviction.
+        wrapper._cache = cache  # pyrefly: ignore[missing-attribute]
         return wrapper
 
     return decorator

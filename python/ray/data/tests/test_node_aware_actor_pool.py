@@ -323,6 +323,31 @@ class TestNodeAwareActorPool(oss_test_module.TestActorPool):
         assert pool.select_actors() is None
         assert not pool.can_schedule_task()
 
+    @patch(f"{_MODULE}.get_draining_nodes", return_value={"node1"})
+    def test_ready_actor_on_draining_node_is_not_schedulable(
+        self, mock_get_draining_nodes
+    ):
+        """An actor that becomes ready on a draining node never becomes schedulable.
+
+        Actor-ready callbacks run before dispatch, so relying on the next
+        `refresh_actor_state()` would leave a one-iteration window where the
+        actor can take tasks.
+        """
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+
+        # Note there is no refresh_actor_state() here: this is the
+        # pending_to_running() path on its own.
+        draining = self._add_ready_actor(pool, node_id="node1")
+        assert pool.num_running_actors() == 1
+        assert not pool.can_schedule_task()
+        assert pool.select_actors() is None
+
+        # An actor on an active node is still schedulable via the same path.
+        active = self._add_ready_actor(pool, node_id="node2")
+        assert pool.can_schedule_task()
+        assert pool.select_actors() == active
+        assert draining not in pool._alive_actors_to_in_flight_tasks_heap
+
     @patch.object(
         RefBundle,
         "get_preferred_object_locations",

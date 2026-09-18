@@ -28,11 +28,9 @@ from ray.data.tests.conftest import *  # noqa: F403
 from ray.tests.conftest import *  # noqa: F403
 
 
-def test_removed_nodes_not_added_back(ray_start_cluster, restore_data_context):
+def test_removed_nodes_not_added_back(ray_start_cluster):
     """Test that a dataset with actor pools can finish, when some
     nodes in the cluster are removed and not added back."""
-    DataContext.get_current().enable_node_aware_actor_pool = True
-
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()
@@ -114,12 +112,11 @@ def test_removed_nodes_not_added_back(ray_start_cluster, restore_data_context):
 
 
 def test_map_operator_counts_lineage_reconstruction_tasks(
-    ray_start_cluster_enabled, disable_timed_cache_fixture, restore_data_context
+    ray_start_cluster_enabled, disable_timed_cache_fixture
 ):
-    # the `disable_timed_cache_fixture` is neccessary because this test relies on
+    # the `disable_timed_cache_fixture` is necessary because this test relies on
     # the most up-to-date values from `get_local_ongoing_lineage_reconstruction_tasks`
     data_context = DataContext.get_current()
-    data_context.enable_node_aware_actor_pool = True
 
     # Create a cluster with a head node and a single worker node.
     cluster = ray_start_cluster_enabled
@@ -200,10 +197,8 @@ def test_map_operator_counts_lineage_reconstruction_tasks(
 
 
 def test_map_operator_does_not_launch_actor_tasks_on_draining_nodes(
-    ray_start_cluster_enabled, disable_timed_cache_fixture, restore_data_context
+    ray_start_cluster_enabled, disable_timed_cache_fixture
 ):
-    DataContext.get_current().enable_node_aware_actor_pool = True
-
     # Create a cluster with a head node and two worker nodes.
     cluster = ray_start_cluster_enabled
     cluster.add_node(resources={"head": 1})

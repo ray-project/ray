@@ -1,6 +1,7 @@
 import pytest
 
 from ray.data._internal.utils.cache import (
+    _CACHE_SWEEP_THRESHOLD,
     _disable_timed_cache_for_tests,
     timed_cache,
 )
@@ -145,6 +146,43 @@ def test_disable_timed_cache_restored_on_error():
     from ray.data._internal.utils import cache
 
     assert cache._IS_TIMED_CACHE_ENABLED
+
+
+def test_cache_evicts_expired_entries():
+    now = 0
+
+    @timed_cache(ttl=10, get_time_fn=lambda: now)
+    def get_value(x):
+        return x
+
+    cache = get_value._cache  # pyrefly: ignore[missing-attribute]
+
+    for i in range(_CACHE_SWEEP_THRESHOLD):
+        get_value(i)
+    assert len(cache) == _CACHE_SWEEP_THRESHOLD
+
+    # Every entry is now expired, so the next miss sweeps them all.
+    now += 11
+    get_value(-1)
+    assert len(cache) == 1
+
+
+def test_cache_sweep_keeps_live_entries():
+    now = 0
+
+    @timed_cache(ttl=10, get_time_fn=lambda: now)
+    def get_value(x):
+        return x
+
+    cache = get_value._cache  # pyrefly: ignore[missing-attribute]
+
+    for i in range(_CACHE_SWEEP_THRESHOLD):
+        get_value(i)
+
+    # Nothing has expired, so the sweep must not drop anything.
+    now += 1
+    get_value(-1)
+    assert len(cache) == _CACHE_SWEEP_THRESHOLD + 1
 
 
 if __name__ == "__main__":
