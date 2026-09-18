@@ -107,7 +107,6 @@ class LLMRouter:
             when prompt token IDs were enqueued to the selected
             replica's best-effort ZMQ side channel; the engine falls back to
             tokenization when it is absent or missing at consume time.
-            # TODO (celinaky): clean up host and port, not needed.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
             a pre-routing ``/tokenize`` rejection is surfaced here.

@@ -133,10 +133,18 @@ local function truncated_full_length(txn, body)
     end
 end
 
--- Route to replica_map[deployment][replica_id], recording either the selected
--- backend and server or a failure reason on the transaction.
+-- Core routing decision. Sets txn.selected_deployment_backend +
+-- txn.selected_replica_server + txn.via_ingress_request_router on success, or
+-- txn.ingress_request_router_failed on failure. Both outcomes are timed by the
+-- caller; only the silent early returns in the action handler skip timing
+-- because no routing was attempted.
 local function _route_via_ingress_request_router(txn, app, pool, replica_map)
-    -- Policies that need the request body must opt in to body forwarding.
+    -- FORWARD_BODY=false: don't read or forward the body; call the router
+    -- with body="" so a Content-Length: 0 POST still goes through routing
+    -- (any policy that needs the body must opt in via FORWARD_BODY=true).
+    -- Empty body in FORWARD_BODY=true mode is treated the same -- a
+    -- legitimate input the router can accept or reject on its own terms;
+    -- we don't synthesize a sentinel for it here.
     local body = ""
     local truncated = nil
     if FORWARD_BODY then
@@ -240,7 +248,10 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
 
     local server_name = deployment_targets.r[replica_id]
     if not server_name then
-        -- The replica is absent from this deployment's config snapshot.
+        -- Pin-miss: router named a replica not in HAProxy's server map, a
+        -- transient gap between the router view and HAProxy's config snapshot.
+        -- Arm `failed`. The frontend recovers it via the fallback proxy only
+        -- for ingress; direct deployment misses fail closed.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
@@ -250,9 +261,22 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
--- Routing failures must not silently fall through to default path routing.
--- An ingress `unknown_replica_id` may recover through the fallback Serve proxy.
--- Direct deployment misses and all other failures return 503.
+-- Failure semantics: every path that reaches a router decision but cannot pin
+-- a replica must arm txn.ingress_request_router_failed so the frontend's 503
+-- rule fires instead of letting the request silently fall through to the
+-- primary backend. The product invariant is: requests to a router-bearing app
+-- are served via the router or fail; there is no quiet alternative path.
+-- Exception: an ingress `unknown_replica_id` is recovered via the fallback
+-- proxy when the app has one, otherwise 503ed. A direct deployment miss always
+-- fails closed. The fallback re-pins via its own router so the policy is not
+-- bypassed. While the fallback is DOWN, the request load-balances onto an
+-- ingress replica instead of 503ing, so affinity lapses for that window. It is
+-- still counted as a failure.
+-- Two silent returns are correct: (1) the request didn't target a
+-- router-bearing app (no txn var set, no app entry in our maps), and
+-- (2) the controller hasn't pushed router/replica state for this app yet.
+-- Failure-mode bucketing belongs in observability (response header label,
+-- metric label), not in the data plane.
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
     -- Time the routing attempt regardless of outcome: both successful pins
     -- and explicit failures (router_unreachable, router_non_200,
