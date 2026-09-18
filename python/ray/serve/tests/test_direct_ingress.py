@@ -2761,6 +2761,7 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "direct_http_targets": {},
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
@@ -2780,6 +2781,7 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "gRPC",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "direct_http_targets": {},
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
