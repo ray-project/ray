@@ -50,7 +50,10 @@ from ray._private.runtime_env.packaging import (
     upload_package_if_needed,
     upload_package_to_gcs,
 )
-from ray._private.runtime_env.protocol import ProtocolsProvider
+from ray._private.runtime_env.protocol import (
+    ProtocolsProvider,
+    file_uri_to_path,
+)
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -843,6 +846,45 @@ class TestParseUri:
         protocol, package_name = parse_uri(gcs_uri)
         assert protocol == Protocol.GCS
         assert package_name == gcs_uri.split("/")[-1]
+
+
+class TestFileProtocol:
+    """A ``file://`` URI must convert to a path the local OS can open."""
+
+    def test_download_from_file_uri(self, tmp_path):
+        package = tmp_path / "pkg.zip"
+        package.write_bytes(b"package-bytes")
+        dest_file = tmp_path / "downloaded.zip"
+
+        ProtocolsProvider.download_remote_uri(
+            protocol="file",
+            source_uri=package.as_uri(),
+            dest_file=str(dest_file),
+        )
+
+        assert dest_file.read_bytes() == b"package-bytes"
+
+    def test_download_from_percent_encoded_file_uri(self, tmp_path):
+        """``as_uri()`` escapes a space, so the scheme cannot just be sliced off."""
+        directory = tmp_path / "a dir"
+        directory.mkdir()
+        package = directory / "pkg.zip"
+        package.write_bytes(b"package-bytes")
+        dest_file = tmp_path / "downloaded.zip"
+
+        ProtocolsProvider.download_remote_uri(
+            protocol="file",
+            source_uri=package.as_uri(),
+            dest_file=str(dest_file),
+        )
+
+        assert dest_file.read_bytes() == b"package-bytes"
+
+    def test_file_uri_to_path_round_trips(self, tmp_path):
+        """On Windows this is what restores the drive letter at the front."""
+        package = tmp_path / "a dir" / "pkg.zip"
+
+        assert file_uri_to_path(package.as_uri()) == str(package)
 
 
 class TestAbfssProtocol:
