@@ -72,7 +72,7 @@ pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
 pytest-mock==3.14.0
 redis==4.5.4
 scikit-learn>=1.5.2
-smart_open[s3]==6.2.0
+smart_open[s3]==7.1.0
 tqdm==4.67.1
 trustme==0.9.0
 testfixtures==7.0.0
