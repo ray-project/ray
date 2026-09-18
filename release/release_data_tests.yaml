@@ -1108,7 +1108,7 @@
 # Random shuffle tests
 ######################
 
-- name: "random_shuffle_fixed_size"
+- name: "random_shuffle"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
