@@ -102,16 +102,18 @@ Shuffle algorithms
 In data processing, *shuffling* is the process of redistributing a dataset's partitions. Ray Data calls these partitions
 :ref:`blocks <data_key_concepts>`.
 
-Ray Data provides several shuffle backends. The newest, :ref:`shuffle v2 <shuffle-v2>`, is in alpha
-and is the intended replacement for the classical :ref:`hash-shuffling <hash-shuffle>` and
-:ref:`range-partitioning <range-partitioning-shuffle>` backends.
+Ray Data provides several shuffle backends. :ref:`Shuffle v2 <shuffle-v2>` is the default for
+key-based operations and is the intended replacement for the classical
+:ref:`hash-shuffling <hash-shuffle>` and :ref:`range-partitioning <range-partitioning-shuffle>`
+backends.
 
 .. _shuffle-v2:
 
 Shuffle v2
 ~~~~~~~~~~
 
-.. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is in alpha.
+.. note:: Shuffle v2 (``ShuffleStrategy.SHUFFLE_V2``) is the default shuffle strategy for
+    key-based operations: aggregations, group-by operations, key-based repartitioning, and joins.
 
 Shuffle v2 is the intended replacement for the other shuffle backends. Today it provides an updated
 hash-shuffle implementation. Unlike the aggregator-actor model used by the previous
@@ -136,21 +138,6 @@ Shuffle v2 supports the following operations:
 Shuffle v2 doesn't yet support :meth:`Dataset.sort <ray.data.Dataset.sort>` or
 :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which use the
 :ref:`range-partitioning shuffle <range-partitioning-shuffle>`.
-
-To enable shuffle v2 for the whole cluster, set ``RAY_DATA_DEFAULT_SHUFFLE_STRATEGY`` before
-starting your application:
-
-.. code-block:: bash
-
-    export RAY_DATA_DEFAULT_SHUFFLE_STRATEGY="shuffle_v2"
-
-To enable it at runtime, set the shuffle strategy before creating a ``Dataset``:
-
-.. code-block:: python
-
-    from ray.data.context import DataContext, ShuffleStrategy
-
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
 .. _tuning-shuffle-v2:
 
@@ -204,9 +191,8 @@ Hash-shuffling is a classical hash-partitioning based shuffling where:
 Hash-shuffling is particularly useful for operations that require deterministic partitioning based on keys, such as joins, group-by operations, and key-based repartitioning, because it
 ensures that rows with the same key values land in the same partition.
 
-.. note:: Hash-shuffle (``ShuffleStrategy.HASH_SHUFFLE``) is the default shuffle strategy for
-    key-based operations: aggregations, group-by operations, key-based repartitioning, and joins.
-    To select it explicitly, set
+.. note:: Hash-shuffle (``ShuffleStrategy.HASH_SHUFFLE``) was the default shuffle strategy for
+    key-based operations before :ref:`shuffle v2 <shuffle-v2>` replaced it. To opt back in, set
     ``ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`` before
     creating a ``Dataset``.
 
