@@ -424,6 +424,18 @@ class GcsTaskManagerProfileEventsLimitTest : public GcsTaskManagerTest {
   }
 };
 
+class GcsTaskManagerUnlimitedProfileEventsTest : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerUnlimitedProfileEventsTest() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_profile_events_per_task": -1
+}
+  )");
+  }
+};
+
 class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
  public:
   GcsTaskManagerDroppedTaskAttemptsLimit() : GcsTaskManagerTest() {
@@ -1745,6 +1757,25 @@ TEST_F(GcsTaskManagerProfileEventsLimitTest, TestProfileEventsNoLeak) {
     EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
   }
+}
+
+TEST_F(GcsTaskManagerUnlimitedProfileEventsTest, TestUnlimitedProfileEvents) {
+  auto task = GenTaskIDs(1)[0];
+  for (int i = 0; i < 2; i++) {
+    auto events = GenTaskEvents({task},
+                                /* attempt_number */ 0,
+                                /* job_id */ 0,
+                                GenProfileEvents("event", i, i));
+    SyncAddTaskEventData(GenTaskEventsData(events));
+  }
+
+  auto reply = SyncGetTaskEvents({});
+  ASSERT_EQ(reply.events_by_task_size(), 1);
+  const auto &profile_events = reply.events_by_task(0).profile_events().events();
+  ASSERT_EQ(profile_events.size(), 2);
+  EXPECT_EQ(profile_events[0].start_time(), 0);
+  EXPECT_EQ(profile_events[1].start_time(), 1);
+  EXPECT_EQ(reply.num_profile_task_events_dropped(), 0);
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {
