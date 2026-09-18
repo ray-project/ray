@@ -61,6 +61,7 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
+    REMOVED_GANG_PG_NAMES,
     MockDeploymentActorWrapper,
     MockKVStore,
     MockPlacementGroup,
@@ -9343,30 +9344,13 @@ class TestGangRollingUpdate:
         dsm.update()
         self._finish_starting(ds)
 
-    def test_gang_pg_kept_while_a_replica_is_recovering(
-        self, mock_deployment_state_manager
-    ):
-        """A recovering replica has not re-registered its gang membership yet, so
-        an empty member set is not proof the gang is gone."""
-        gang_size, num_replicas = 2, 4
-        dsm, ds = self._deploy_gang(
-            mock_deployment_state_manager, gang_size, num_replicas
-        )
-        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
-        dsm.update()
-
-        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
-        assert len(stopping) == gang_size
-        ds._replicas.add(ReplicaState.RECOVERING, replica())
-
-        for r in stopping:
-            ds._unregister_gang_replica(r.replica_id, r)
-        assert all(r._actor.remove_placement_group_counter == 0 for r in stopping)
+    def _gang_pg_names(self, ds):
+        return {r.pg_name for r in ds._gang_reservations.values()}
 
     def test_gang_pg_removed_only_after_last_member_stops(
         self, mock_deployment_state_manager
     ):
-        """One gang shares one PG, so only the last member out may remove it."""
+        """One gang shares one PG, so it is freed only once every member is gone."""
         gang_size, num_replicas = 2, 4
         dsm, ds = self._deploy_gang(
             mock_deployment_state_manager, gang_size, num_replicas
@@ -9377,17 +9361,77 @@ class TestGangRollingUpdate:
         stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
         assert len(stopping) == gang_size
         first, last = stopping[0], stopping[1]
+        REMOVED_GANG_PG_NAMES.clear()
 
-        # First member finishes while its sibling is still draining: removing the
-        # shared PG here would destroy the sibling mid-request.
+        # The first member out must not tear the PG from a sibling still draining.
         first._actor.set_done_stopping()
         dsm.update()
-        assert first._actor.remove_placement_group_counter == 0
+        assert REMOVED_GANG_PG_NAMES == []
 
         last._actor.set_done_stopping()
         dsm.update()
-        assert last._actor.remove_placement_group_counter == 1
-        assert first._actor.remove_placement_group_counter == 0
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def _depart(self, ds, replica):
+        """Fully reap a replica: gone from the container and from bookkeeping."""
+        ds._replicas.remove([replica.replica_id])
+        ds._unregister_gang_replica(replica.replica_id)
+
+    def test_gang_pg_kept_while_any_member_of_that_gang_remains(
+        self, mock_deployment_state_manager
+    ):
+        """Registered membership going empty is not proof the gang is gone: a
+        recovering member is unregistered but still holding the PG."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # Drop registered membership to empty while both members are still tracked,
+        # which is the state recovery leaves behind.
+        for r in stopping:
+            ds._unregister_gang_replica(r.replica_id)
+        ds._reclaim_empty_gang_placement_groups()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        self._depart(ds, stopping[0])
+        ds._reclaim_empty_gang_placement_groups()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        self._depart(ds, stopping[1])
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def test_gang_pg_not_blocked_by_another_gang_recovering(
+        self, mock_deployment_state_manager
+    ):
+        """A recovering replica of a different gang must not hold this gang's PG."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # Park a member of the OTHER gang in RECOVERING.
+        other = ds._replicas.get(states=[ReplicaState.RUNNING])[0]
+        ds._replicas.remove([other.replica_id])
+        ds._replicas.add(ReplicaState.RECOVERING, other)
+
+        for r in stopping:
+            self._depart(ds, r)
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
 
     def test_stop_gang_atomically(self, mock_deployment_state_manager):
         """Stops one complete gang per wave, never partially tearing down a gang."""
