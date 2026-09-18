@@ -9434,7 +9434,10 @@ class TestGangRollingUpdate:
         assert gang_id in ds._gang_reservations
         assert gang_id in ds._gang_reclaim_candidates
 
-        ds._reclaim_empty_gang_placement_groups()
+        # The retry has to survive the deployment going quiet, which is when the
+        # transitioning path that used to own this sweep stops running.
+        ds._in_transition = False
+        ds.check_and_update_replicas()
         assert len(REMOVED_GANG_PG_NAMES) == 1
         assert gang_id not in ds._gang_reservations
 

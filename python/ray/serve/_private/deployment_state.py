@@ -5198,6 +5198,11 @@ class DeploymentState:
         if self._in_transition:
             self._check_and_update_transitioning_replicas()
 
+        # After the reap above, so a membership test never races replicas the reap
+        # popped, and outside the `_in_transition` guard, so a removal that failed on
+        # an earlier tick is still retried once the deployment goes quiet.
+        self._reclaim_empty_gang_placement_groups()
+
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             # When the replica tag is disabled, this is a single
             # deployment/application series. Emit the count of replicas that
@@ -5449,8 +5454,6 @@ class DeploymentState:
                     )
                 self._autoscaling_state_manager.on_replica_stopped(replica.replica_id)
                 self._unregister_gang_replica(replica.replica_id)
-
-        self._reclaim_empty_gang_placement_groups()
 
     def _reconfigure_replicas_with_new_ranks(
         self, replicas_to_reconfigure: List["DeploymentReplica"]
