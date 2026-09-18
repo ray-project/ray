@@ -432,6 +432,13 @@ dt.sig .sig-name {
   padding: 0;
 }
 
+/* The theme wraps the announcement HTML in this element and centers it as a flex
+   item, so it shrink-wraps to its widest child. A banner with its own background
+   would then paint a narrow centered strip instead of a full-width band. */
+.bd-header-announcement__content {
+  width: 100%;
+}
+
 .bd-header-announcement a {
   color: var(--pst-color-light);
   text-decoration: underline;
