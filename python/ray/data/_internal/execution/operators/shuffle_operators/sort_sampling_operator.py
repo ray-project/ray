@@ -1,4 +1,5 @@
 import functools
+import math
 from typing import Dict, List, Optional
 
 import ray
@@ -26,13 +27,8 @@ from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
-# Keeping the sample size independent of the final number of input blocks lets
-# sampling pipeline with upstream execution. Adaptive sampling can be added
-# separately if large block counts make the total sample set too expensive.
 SORT_SAMPLE_ROWS_PER_BLOCK = 20
 
-# Each sampling task reads a handful of rows from one block, so a single CPU is
-# enough; this also drives the per-task budget the resource allocator applies.
 SORT_SAMPLE_TASK_NUM_CPUS = 1.0
 
 
@@ -54,6 +50,7 @@ class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
         *,
         num_partitions: int,
         sort_key: SortKey,
+        estimated_num_input_blocks: Optional[int] = None,
         name: str = "SortSample",
     ):
         if num_partitions <= 0:
@@ -67,6 +64,15 @@ class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         self._num_partitions = num_partitions
         self._sort_key = sort_key
+        if estimated_num_input_blocks:
+            rows_per_block = math.ceil(
+                SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
+                * num_partitions
+                / estimated_num_input_blocks
+            )
+        else:
+            rows_per_block = SORT_SAMPLE_ROWS_PER_BLOCK
+        self._sample_rows_per_block = max(1, rows_per_block)
         self._input_buffer = FIFOBundleQueue()
         self._output_buffer = FIFOBundleQueue()
 
@@ -112,7 +118,7 @@ class SortSamplingOp(InternalQueueOperatorMixin, PhysicalOperator):
         resources = ExecutionResources(cpu=SORT_SAMPLE_TASK_NUM_CPUS)
         sample_ref = sample_block.remote(
             block_ref,
-            SORT_SAMPLE_ROWS_PER_BLOCK,
+            self._sample_rows_per_block,
             self._sort_key,
         )
         self._sample_tasks[task_idx] = MetadataOpTask(

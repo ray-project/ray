@@ -115,26 +115,35 @@ def test_sort_sampling_starts_with_upstream_and_forwards_original_inputs(
         bundle.destroy_if_owned()
 
 
-def test_sort_sampling_uses_fixed_rows_per_block(
+@pytest.mark.parametrize(
+    "num_partitions, estimated_num_input_blocks, expected_rows",
+    [
+        (2, None, SORT_SAMPLE_ROWS_PER_BLOCK),
+        (5, 1, 5 * SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION),
+        (4, 8, 4 * SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION // 8),
+    ],
+)
+def test_sort_sampling_rows_per_block(
     ray_start_regular_shared_2_cpus,
+    num_partitions,
+    estimated_num_input_blocks,
+    expected_rows,
 ):
     ctx = DataContext.get_current()
     bundle = make_ref_bundles([list(range(100))])[0]
     op = SortSamplingOp(
         InputDataBuffer(ctx, []),
         ctx,
-        num_partitions=2,
+        num_partitions=num_partitions,
         sort_key=SortKey("id"),
+        estimated_num_input_blocks=estimated_num_input_blocks,
     )
     op.start(ExecutionOptions(), noop_counter())
 
     op.add_input(bundle, 0)
     run_op_tasks_sync(op, only_existing=True)
     assert len(op._sample_results) == 1
-    assert (
-        BlockAccessor.for_block(op._sample_results[0]).num_rows()
-        == SORT_SAMPLE_ROWS_PER_BLOCK
-    )
+    assert BlockAccessor.for_block(op._sample_results[0]).num_rows() == expected_rows
 
     op.all_inputs_done()
     run_op_tasks_sync(op)
@@ -280,7 +289,7 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     ctx = DataContext.get_current()
     ds = ray.data.range(10, override_num_blocks=2).sort("id")
 
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.default_hash_shuffle_parallelism = 4
     dag = get_execution_plan(ds._logical_plan)[0].dag
     assert isinstance(dag, ShuffleReduceOp)
@@ -290,6 +299,10 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     sampling_op = map_op.input_dependencies[0]
     assert isinstance(sampling_op, SortSamplingOp)
     assert not sampling_op.supports_fusion()
+    assert (
+        sampling_op._sample_rows_per_block
+        == SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
+    )
     assert map_op._num_partitions == 2
 
     read_op_cls = type(ds._logical_plan.dag.input_dependencies[0])
@@ -317,7 +330,7 @@ def test_sort_shuffle_v2_end_to_end(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     rows = [{"a": i % 4, "b": i} for i in range(40)]
     random.Random(0).shuffle(rows)
@@ -347,7 +360,7 @@ def test_sort_shuffle_v2_validates_sort_key(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     with pytest.raises(
         ValueError,
@@ -361,7 +374,7 @@ def test_sort_shuffle_v2_promotes_compatible_block_schemas(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     # Aggregations can produce a null-typed block for an all-null group and an
     # int64-typed block for non-null groups. Sort shuffle may merge these blocks
@@ -399,7 +412,7 @@ def test_sort_shuffle_v2_samples_all_blocks_to_avoid_skew(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     num_input_blocks = 32
     num_output_partitions = 32
@@ -426,7 +439,7 @@ def test_sort_shuffle_v2_with_user_boundaries(
     restore_data_context,
 ):
     ctx = DataContext.get_current()
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE_V2
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
 
     result = (
         ray.data.range(20, override_num_blocks=4)

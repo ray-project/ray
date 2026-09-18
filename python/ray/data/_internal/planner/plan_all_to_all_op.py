@@ -184,12 +184,14 @@ def _plan_sort_v2(
 ) -> PhysicalOperator:
     sort_key = logical_op.sort_key
     user_boundaries = sort_key.boundaries
+    estimated_num_input_blocks = logical_op.input_dependencies[
+        0
+    ].estimated_num_outputs()
     if user_boundaries:
         num_partitions = len(user_boundaries) + 1
     else:
         num_partitions = (
-            logical_op.input_dependencies[0].estimated_num_outputs()
-            or data_context.default_hash_shuffle_parallelism
+            estimated_num_input_blocks or data_context.default_hash_shuffle_parallelism
         )
 
     map_input_op = input_physical_op
@@ -199,6 +201,7 @@ def _plan_sort_v2(
             data_context,
             num_partitions=num_partitions,
             sort_key=sort_key,
+            estimated_num_input_blocks=estimated_num_input_blocks,
             name=f"SortSample(partitions={num_partitions})",
         )
 
@@ -418,7 +421,7 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Sort):
-        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+        if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
             return _plan_sort_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
             "debug_limit_shuffle_execution_to_num_blocks", None
