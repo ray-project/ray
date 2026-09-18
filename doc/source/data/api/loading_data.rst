@@ -83,6 +83,9 @@ CSV
 ClickHouse
 ^^^^^^^^^^
 
+.. deprecated::
+   ``read_clickhouse`` is deprecated. Use the `ray-clickhouse <https://github.com/jiangxt2/ray-clickhouse>`_ package instead.
+
 .. autosummary::
    :nosignatures:
    :toctree: doc/

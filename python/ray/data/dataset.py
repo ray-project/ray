@@ -6373,6 +6373,13 @@ class Dataset:
             concurrency=concurrency,
         )
 
+    @Deprecated(
+        message=(
+            "``write_clickhouse`` is deprecated and will be removed in a future "
+            "version of Ray."
+        ),
+        warning=True,
+    )
     @ConsumptionAPI
     def write_clickhouse(
         self,
