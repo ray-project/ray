@@ -988,11 +988,11 @@ def test_direct_http_backends_are_dispatched_by_txn_var(haproxy_api_cleanup):
 
         direct_dispatch = (
             "use_backend llm-direct-0 if is_llm "
-            '{ var(txn.ingress_request_router_backend) -m str "llm-direct-0" }'
+            '{ var(txn.selected_deployment_backend) -m str "llm-direct-0" }'
         )
         ingress_dispatch = (
             "use_backend llm-via-ingress-request-router if is_llm "
-            "{ var(txn.ingress_request_router_backend) -m str "
+            "{ var(txn.selected_deployment_backend) -m str "
             '"llm-via-ingress-request-router" }'
         )
         assert direct_dispatch in cfg

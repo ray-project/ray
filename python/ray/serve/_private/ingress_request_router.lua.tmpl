@@ -236,7 +236,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- Record the deployment backend before resolving the replica so the
     -- frontend can recover an ingress replica miss without recovering a miss
     -- for a direct deployment.
-    txn:set_var("txn.ingress_request_router_backend", deployment_targets.b)
+    txn:set_var("txn.selected_deployment_backend", deployment_targets.b)
 
     local server_name = deployment_targets.r[replica_id]
     if not server_name then
@@ -246,7 +246,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     end
 
     set_router_response_headers(txn, response_body)
-    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.selected_replica_server", server_name)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 

@@ -172,7 +172,7 @@ frontend http_frontend
     # metrics are also enabled, the router-specific fields are appended to the same
     # line.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
-    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.selected_replica_server)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
     {%- endif %}
     {%- if config.root_path %}
     # Strip the configured global root_path so the health/routes endpoints, the
@@ -240,7 +240,7 @@ frontend http_frontend
     # direct deployment miss cannot, so it continues to fail closed.
     {%- for backend in backends %}
     {%- if backend.ingress_request_router_servers and backend.fallback_server %}
-    http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_backend) -m str "{{ backend.via_ingress_request_router_backend_name }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
+    http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.selected_deployment_backend) -m str "{{ backend.via_ingress_request_router_backend_name }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
     {%- endif %}
     {%- endfor %}
     # Other router failures must not fall through to ordinary path routing.
@@ -250,10 +250,10 @@ frontend http_frontend
 {%- for backend in backends %}
     {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
     {%- for direct in backend.direct_target_configs %}
-    use_backend {{ direct.name }} if is_{{ backend.name or 'unknown' }} { var(txn.ingress_request_router_backend) -m str "{{ direct.name }}" }
+    use_backend {{ direct.name }} if is_{{ backend.name or 'unknown' }} { var(txn.selected_deployment_backend) -m str "{{ direct.name }}" }
     {%- endfor %}
     # Dispatch ingress selections to the pinned companion backend.
-    use_backend {{ backend.via_ingress_request_router_backend_name }} if is_{{ backend.name or 'unknown' }} { var(txn.ingress_request_router_backend) -m str "{{ backend.via_ingress_request_router_backend_name }}" }
+    use_backend {{ backend.via_ingress_request_router_backend_name }} if is_{{ backend.name or 'unknown' }} { var(txn.selected_deployment_backend) -m str "{{ backend.via_ingress_request_router_backend_name }}" }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
@@ -322,7 +322,7 @@ backend {{ backend.via_ingress_request_router_backend_name }}
     timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
     {%- endif %}
     {%- for server in backend.servers %}
-    use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
+    use-server {{ server.name }} if { var(txn.selected_replica_server) -m str "{{ server.name }}" }
     {%- endfor %}
     {%- if backend.fallback_server %}
     use-server {{ backend.fallback_server.name }} if { var(txn.ingress_request_router_recoverable) -m found }
@@ -357,7 +357,7 @@ backend {{ direct.name }}
     {%- endif %}
     {{ hc.default_server_directive }}
     {%- for server in direct.servers %}
-    use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
+    use-server {{ server.name }} if { var(txn.selected_replica_server) -m str "{{ server.name }}" }
     {%- endfor %}
     {%- for server in direct.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }}{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
