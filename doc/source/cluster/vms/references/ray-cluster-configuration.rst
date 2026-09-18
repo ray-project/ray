@@ -1,5 +1,5 @@
 .. meta::
-   :description: Reference for every field in the Ray cluster launcher YAML: docker, auth, provider, security groups, and vSphere config.
+   :description: Reference for every field in the Ray cluster launcher YAML: docker, auth, provider, security groups, OCI and vSphere config.
 
 .. _cluster-config:
 
@@ -99,6 +99,14 @@ Auth
             :ref:`ssh_user <cluster-configuration-ssh-user>`: str
             :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
 
+    .. tab-item:: OCI
+
+        .. parsed-literal::
+
+            :ref:`ssh_user <cluster-configuration-ssh-user>`: str
+            :ref:`ssh_private_key <cluster-configuration-ssh-private-key>`: str
+            :ref:`ssh_public_key <cluster-configuration-ssh-public-key>`: str
+
     .. tab-item:: vSphere
 
         .. parsed-literal::
@@ -154,6 +162,22 @@ Provider
             :ref:`region <cluster-configuration-region>`: str
             :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`project_id <cluster-configuration-project-id>`: str
+            :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+
+    .. tab-item:: OCI
+
+        .. parsed-literal::
+
+            :ref:`type <cluster-configuration-type>`: str
+            :ref:`region <cluster-configuration-region>`: str
+            :ref:`compartment_id <cluster-configuration-oci-compartment-id>`: str
+            :ref:`availability_domain <cluster-configuration-oci-availability-domain>`: str
+            :ref:`subnet_id <cluster-configuration-oci-subnet-id>`: str
+            :ref:`oci_config_file <cluster-configuration-oci-config-file>`: str
+            :ref:`oci_config_profile <cluster-configuration-oci-config-file>`: str
+            :ref:`use_instance_principal <cluster-configuration-oci-use-instance-principal>`: bool
+            :ref:`create_iam_resources <cluster-configuration-oci-use-instance-principal>`: bool
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
 
@@ -940,6 +964,14 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** High
         * **Type:** String
 
+    .. tab-item:: OCI
+
+        The cloud service provider. For OCI, this must be set to ``oci``.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
+
     .. tab-item:: vSphere
 
         The cloud service provider. For vSphere and VCF, this must be set to ``vsphere``.
@@ -1149,6 +1181,14 @@ The user that Ray will authenticate with when launching new nodes.
         * **Importance:** High
         * **Type:** String
         * **Default:** us-west1
+
+    .. tab-item:: OCI
+
+        The OCI region identifier (for example ``us-ashburn-1``) to use for deployment of the Ray cluster.
+
+        * **Required:** Yes
+        * **Importance:** High
+        * **Type:** String
 
     .. tab-item:: vSphere
 
@@ -1471,6 +1511,63 @@ controlled by your cloud provider's configuration.
     .. tab-item:: vSphere
 
         Not available.
+
+.. _cluster-configuration-oci-compartment-id:
+
+``provider.compartment_id``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The OCID of the compartment in which the nodes (and, when not provided, the default VCN, dynamic group and policy) are created.
+
+* **Required:** Yes
+* **Importance:** High
+* **Type:** String
+
+.. _cluster-configuration-oci-availability-domain:
+
+``provider.availability_domain``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The availability domain in which the nodes are launched. Defaults to the first availability domain of the region.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+
+.. _cluster-configuration-oci-subnet-id:
+
+``provider.subnet_id``
+~~~~~~~~~~~~~~~~~~~~~~
+
+The OCID of the subnet to attach the nodes to. If not provided, ``ray up`` creates a VCN named ``ray-autoscaler-vcn`` with a public subnet, an internet gateway and a security list allowing SSH from anywhere and all traffic inside the VCN, and reuses it on later runs. Override the address ranges with ``vcn_cidr`` (default ``10.77.0.0/16``) and ``subnet_cidr`` (default ``10.77.0.0/24``).
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** String
+
+.. _cluster-configuration-oci-config-file:
+
+``provider.oci_config_file`` and ``provider.oci_config_profile``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The OCI config file and profile used for authentication on the machine running ``ray up``. Both API-key profiles and session-token profiles (``oci session authenticate``) are supported. When the file does not exist, for example on the head node, the provider falls back to instance principals (see below).
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+* **Default:** ``~/.oci/config`` and ``DEFAULT``
+
+.. _cluster-configuration-oci-use-instance-principal:
+
+``provider.use_instance_principal`` and ``provider.create_iam_resources``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When ``use_instance_principal`` is ``true`` (the default), the autoscaler on the head node authenticates with instance principals, and ``ray up`` creates a dynamic group matching the instances in the compartment plus a policy granting it ``manage instance-family``, ``use virtual-network-family``, ``manage volume-family`` and ``read app-catalog-listing`` in the compartment. Set ``create_iam_resources: false`` if an administrator has already created these resources, or ``use_instance_principal: false`` to provide credentials to the head node through ``file_mounts`` instead.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** Boolean
+* **Default:** ``true``
 
 .. _cluster-configuration-vsphere-config:
 
