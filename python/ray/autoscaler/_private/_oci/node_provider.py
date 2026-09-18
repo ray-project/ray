@@ -388,9 +388,10 @@ class OCINodeProvider(NodeProvider):
         return claimed
 
     def _reuse_stopped_nodes(self, tags: Dict[str, str], count: int) -> Dict[str, Any]:
+        claimed = self._claim_stopped_nodes(tags, count)
         reused = {}
-        for inst in self._claim_stopped_nodes(tags, count):
-            try:
+        try:
+            for inst in claimed:
                 cli_logger.print("Restarting stopped instance ...{}", short_id(inst.id))
                 # The START call runs outside the lock: it is a network call.
                 started = self._retry_on_conflict(
@@ -402,9 +403,12 @@ class OCINodeProvider(NodeProvider):
                     self.ip_cache.pop(inst.id, None)
                 self.set_node_tags(inst.id, tags)
                 reused[inst.id] = started
-            finally:
-                with self.lock:
-                    self._claimed_for_reuse.discard(inst.id)
+        finally:
+            # Release the whole batch, including instances never reached
+            # because START or the tag update raised for an earlier one;
+            # otherwise they would stay reserved for the life of the process.
+            with self.lock:
+                self._claimed_for_reuse.difference_update(inst.id for inst in claimed)
         return reused
 
     def create_node(

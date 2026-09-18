@@ -700,6 +700,25 @@ def test_create_node_respects_internal_ips_and_node_subnet(fake_oci):
     assert details.create_vnic_details.assign_public_ip is False
 
 
+def test_create_node_honours_node_type_availability_domain(fake_oci):
+    """A node type may override the provider's AD; nodes launched in another
+    AD are listed alongside the rest of the cluster (else the autoscaler would
+    keep launching replacements for nodes it cannot see)."""
+    provider = _provider(fake_oci)
+    (cpu,) = provider.create_node(
+        _node_config(), _tags(node_type="cpu_worker"), count=1
+    ).values()
+    (gpu,) = provider.create_node(
+        _node_config(availability_domain=AD2), _tags(node_type="gpu_worker"), count=1
+    ).values()
+    assert cpu.launch_details.availability_domain == AD
+    assert gpu.launch_details.availability_domain == AD2
+    assert set(provider.non_terminated_nodes({})) == {cpu.id, gpu.id}
+    assert provider.non_terminated_nodes({TAG_RAY_USER_NODE_TYPE: "gpu_worker"}) == [
+        gpu.id
+    ]
+
+
 def test_create_node_out_of_capacity(fake_oci):
     fake_oci.launch_error = FakeServiceError(
         500, "InternalError", message="Out of host capacity."
@@ -846,6 +865,49 @@ def test_concurrent_create_node_reuses_each_stopped_instance_once(
     assert len(results["second"]) == 1
     assert fake_oci.calls.count("launch_instance") == 1
     assert fake_oci.calls.count("instance_action:START") == 1
+    assert provider._claimed_for_reuse == set()
+
+
+@pytest.mark.parametrize("failing_call", ["instance_action", "update_instance"])
+def test_reuse_releases_every_claim_when_a_restart_fails(
+    fake_oci, monkeypatch, failing_call
+):
+    """Claims are released for the whole batch: when START (or the tag update
+    after it) fails for the first instance, the instances never reached must
+    not stay reserved, or later create_node() calls would launch new nodes
+    while the stopped ones keep being billed."""
+    a = fake_oci.add_instance(
+        _cluster_tags(**{TAG_RAY_NODE_STATUS: "up-to-date"}), state="STOPPED"
+    )
+    b = fake_oci.add_instance(
+        _cluster_tags(**{TAG_RAY_NODE_STATUS: "up-to-date"}), state="STOPPED"
+    )
+    provider = _provider(fake_oci, cache_stopped_nodes=True)
+
+    failures = {"remaining": 1}
+    original = getattr(FakeComputeClient, failing_call)
+
+    def flaky(self, *args, **kwargs):
+        if failures["remaining"]:
+            failures["remaining"] -= 1
+            raise FakeServiceError(500, "InternalError", message="boom")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(FakeComputeClient, failing_call, flaky)
+    with pytest.raises(FakeServiceError):
+        provider.create_node(_node_config(), _tags(), count=2)
+    assert provider._claimed_for_reuse == set()
+    assert "launch_instance" not in fake_oci.calls
+    # The second instance was never reached and is still there to be reused.
+    assert fake_oci.instances[b].lifecycle_state == "STOPPED"
+
+    created = provider.create_node(_node_config(), _tags(), count=2)
+    assert b in created
+    assert len(created) == 2
+    if failing_call == "instance_action":
+        # Nothing was started the first time round, so both are reused.
+        assert a in created
+        assert "launch_instance" not in fake_oci.calls
     assert provider._claimed_for_reuse == set()
 
 
