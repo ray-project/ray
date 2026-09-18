@@ -853,8 +853,8 @@ Remote URIs
 
 The ``working_dir`` and ``py_modules`` arguments in the ``runtime_env`` dictionary can specify either local path(s) or remote URI(s).
 
-A local path can specify a directory. ``working_dir`` can also specify a local ``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz`` archive, while ``py_modules`` can specify a local ``.py`` or ``.whl`` file. Uncompressed ``.tar`` files are supported only through remote ``working_dir`` URIs.
-A remote URI must link directly to a supported archive, or to a wheel file for ``py_modules``. ``working_dir`` supports ``.zip``, ``.tar``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archives. ``py_modules`` supports ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archives, as well as ``.whl`` files. **The archive must contain only a single top-level directory.**
+A local path can specify a directory. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
+A remote URI must link directly to an archive (``.zip``, ``.tar.gz``, ``.tgz``, or ``.tar.xz``), a ``.tar`` file (only for ``working_dir``), or a wheel file (only for ``py_modules``). **The archive must contain only a single top-level directory.**
 The contents of this directory will be directly accessed as the ``working_dir`` or a ``py_module``.
 
 For example, suppose you want to use the contents in your local ``/some_path/example_dir`` directory as your ``working_dir``.
