@@ -40,7 +40,7 @@ def _get_or_create_stats_summary_server() -> ray.actor.ActorHandle:
         # pyrefly: ignore[missing-attribute]  # constant lives in the Cython ext
         ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
     }
-    # pyrefly: ignore[missing-attribute]  # `.options` comes from the `ray.remote` decorator
+    # pyrefly: ignore[missing-attribute]
     return _StatsSummaryServer.options(
         name=STATS_SUMMARY_SERVER_NAME,
         namespace=STATS_SUMMARY_SERVER_NAMESPACE,
