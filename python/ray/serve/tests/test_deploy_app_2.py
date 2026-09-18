@@ -1203,5 +1203,49 @@ def test_sparse_config_rollback_restores_code_defined_options(
         assert r.status_code == 200 and r.text == "ok"
 
 
+def test_surge_rolling_update_failure_keeps_capacity(serve_instance):
+    """A failed surge update preserves all old replicas, and rollback reuses them."""
+    client = serve_instance
+    app_config = {
+        "name": "default",
+        "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
+        "deployments": [
+            {"name": "FailOnFlag", "num_replicas": 3, "max_surge_percent": 34}
+        ],
+    }
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_running)
+    initial_pids = _running_replica_pids(client)
+    assert len(initial_pids) == 3
+
+    failing_config = copy(app_config)
+    failing_config["deployments"] = [
+        {
+            "name": "FailOnFlag",
+            "num_replicas": 3,
+            "max_surge_percent": 34,
+            "ray_actor_options": {"runtime_env": {"env_vars": {"FAIL_ON_INIT": "1"}}},
+        }
+    ]
+    client.deploy_apps(ServeDeploySchema(**{"applications": [failing_config]}))
+
+    def check_deploy_failed():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        deployment_status = status.deployments["FailOnFlag"]
+        assert deployment_status.status_trigger == "REPLICA_STARTUP_FAILED"
+        assert set(deployment_status.replica_states) == {"RUNNING"}
+        return True
+
+    wait_for_condition(check_deploy_failed, timeout=60)
+    # Failed replacements leave every old replica serving.
+    assert _running_replica_pids(client) == initial_pids
+    _assert_rollout_stopped(client, initial_pids)
+
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(check_running)
+    assert _running_replica_pids(client) == initial_pids
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
