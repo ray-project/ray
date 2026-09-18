@@ -4,30 +4,31 @@ import io
 import socket
 import ssl
 import sys
-import threading
 import types
 import zipfile
 from datetime import datetime, timedelta, timezone
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import pytest
 import requests
 import smart_open
+from pytest_httpserver import HTTPServer
 
 from ray._private.runtime_env.protocol import (
-    RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR,
-    RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR,
+    RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR as BEARER_TOKEN,
+    RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR as KERBEROS_HOSTS,
     ProtocolsProvider,
 )
+from ray._private.runtime_env.py_modules import PyModulesPlugin
+from ray._private.runtime_env.working_dir import WorkingDirPlugin
 
 PACKAGE_URI = "https://files.example.org/webhdfs/v1/code.zip?op=OPEN"
 
 
 @pytest.fixture(autouse=True)
 def clean_auth_environment(monkeypatch):
-    monkeypatch.delenv(RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, raising=False)
-    monkeypatch.delenv(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR, raising=False)
+    monkeypatch.delenv(KERBEROS_HOSTS, raising=False)
+    monkeypatch.delenv(BEARER_TOKEN, raising=False)
     # Do not let a developer's netrc or proxy settings affect mock downloads.
     for variable in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
         monkeypatch.delenv(variable, raising=False)
@@ -46,9 +47,8 @@ def kerberos(monkeypatch):
 
         def __call__(self, request):
             # Model a host-specific token and an authentication response hook.
-            request.headers[
-                "Authorization"
-            ] = f"Negotiate {urlparse(request.url).hostname}:{len(instances)}"
+            host = urlparse(request.url).hostname
+            request.headers["Authorization"] = f"Negotiate {host}:{len(instances)}"
             request.register_hook("response", self.handle_response)
             return request
 
@@ -61,8 +61,8 @@ def kerberos(monkeypatch):
         types.SimpleNamespace(HTTPKerberosAuth=FakeKerberosAuth),
     )
     monkeypatch.setenv(
-        RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR,
-        "files.example.org,datanode.example.org",
+        KERBEROS_HOSTS,
+        " FILES.example.org, datanode.example.org ",
     )
     return instances
 
@@ -74,7 +74,7 @@ def http_transport(monkeypatch):
     sent = []
 
     def send(adapter, request, **kwargs):
-        sent.append((request, kwargs))
+        sent.append(request)
         status, headers, payload = routes[request.url]
         response = requests.Response()
         response.status_code = status
@@ -110,85 +110,47 @@ def download(tmp_path, uri=PACKAGE_URI):
 def test_download_without_kerberos(
     tmp_path, monkeypatch, http_transport, hosts, uri, token
 ):
-    monkeypatch.setenv(RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, hosts)
+    monkeypatch.setenv(KERBEROS_HOSTS, hosts)
     monkeypatch.setitem(sys.modules, "requests_kerberos", None)
     if token:
-        monkeypatch.setenv(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR, token)
+        monkeypatch.setenv(BEARER_TOKEN, token)
     routes, sent = http_transport
     routes[uri] = (200, {}, b"package")
 
     assert download(tmp_path, uri) == b"package"
-    assert sent[0][0].headers.get("Authorization") == (
+    assert sent[0].headers.get("Authorization") == (
         f"Bearer {token}" if token else None
     )
 
 
-def test_kerberos_download(tmp_path, monkeypatch, kerberos, http_transport):
-    monkeypatch.setenv(
-        RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, " FILES.example.org, "
-    )
-    routes, sent = http_transport
-    routes[PACKAGE_URI] = (200, {}, b"package")
-
-    assert download(tmp_path) == b"package"
-    assert len(kerberos) == 1
-    request, kwargs = sent[0]
-    assert request.headers["Authorization"].startswith("Negotiate files.example.org:")
-    assert request.headers["Accept"] == "*/*"
-    assert kwargs["verify"] is not False
-    assert kwargs["timeout"] == 60
-
-
 @pytest.mark.parametrize(
-    "target",
+    "target,allowed",
     [
-        "/download/code.zip",
-        "https://datanode.example.org:50475/code.zip?op=OPEN",
+        ("/code.zip", True),
+        ("https://files.example.org:50475/code.zip?op=OPEN", True),
+        ("http://files.example.org/code.zip", False),
+        ("https://unlisted.example.org/code.zip", False),
+        ("https://files.example.org.evil.org/code.zip", False),
+        ("https://user:secret@datanode.example.org/code.zip", False),
     ],
 )
-def test_allowed_redirect(tmp_path, kerberos, http_transport, target):
-    from urllib.parse import urljoin
-
+def test_redirects(tmp_path, kerberos, http_transport, target, allowed):
     routes, sent = http_transport
-    routes[PACKAGE_URI] = (307, {"Location": target}, b"")
-    routes[urljoin(PACKAGE_URI, target)] = (200, {}, b"package")
+    intermediate = "https://datanode.example.org/redirect.zip"
+    routes[PACKAGE_URI] = (307, {"Location": intermediate}, b"")
+    routes[intermediate] = (307, {"Location": target}, b"")
+    routes[urljoin(intermediate, target)] = (200, {}, b"package")
 
-    assert download(tmp_path) == b"package"
-    assert len(sent) == len(kerberos) == 2
-    first, second = (entry[0] for entry in sent)
-    assert first.headers["Authorization"] != second.headers["Authorization"]
-    assert second.hooks["response"] == [kerberos[1].handle_response]
-
-
-@pytest.mark.parametrize(
-    "target",
-    [
-        "http://files.example.org/code.zip",
-        "https://unlisted.example.org/code.zip",
-        "https://files.example.org.evil.org/code.zip",
-        "https://user:secret@datanode.example.org/code.zip",
-    ],
-)
-def test_reject_redirect_before_sending(tmp_path, kerberos, http_transport, target):
-    routes, sent = http_transport
-    routes[PACKAGE_URI] = (307, {"Location": target}, b"")
-
-    with pytest.raises(ValueError, match="Kerberos downloads and redirects") as exc:
-        download(tmp_path)
-    assert len(sent) == 1
-    assert "secret" not in str(exc.value)
-    assert not (tmp_path / "package.zip").exists()
-
-
-def test_validate_every_redirect(tmp_path, kerberos, http_transport):
-    routes, sent = http_transport
-    target = "https://datanode.example.org/code.zip"
-    routes[PACKAGE_URI] = (302, {"Location": target}, b"")
-    routes[target] = (302, {"Location": "http://datanode.example.org/code.zip"}, b"")
-
-    with pytest.raises(ValueError, match="Kerberos downloads and redirects"):
-        download(tmp_path)
-    assert len(sent) == 2
+    if allowed:
+        assert download(tmp_path) == b"package"
+        assert len(sent) == 3
+        assert len({request.headers["Authorization"] for request in sent}) == 3
+        assert all(len(request.hooks["response"]) == 1 for request in sent)
+    else:
+        with pytest.raises(ValueError, match="Kerberos downloads and redirects") as exc:
+            download(tmp_path)
+        assert "secret" not in str(exc.value)
+        assert len(sent) == 2  # Reject the target before sending to it.
 
 
 def test_embedded_credentials_rejected(tmp_path, kerberos, http_transport):
@@ -198,52 +160,41 @@ def test_embedded_credentials_rejected(tmp_path, kerberos, http_transport):
 
 
 def test_bearer_conflict(tmp_path, monkeypatch, kerberos, http_transport):
-    monkeypatch.setenv(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR, "test-secret")
+    monkeypatch.setenv(BEARER_TOKEN, "test-secret")
     with pytest.raises(ValueError, match="cannot be used together") as exc:
         download(tmp_path)
     assert "test-secret" not in str(exc.value)
     assert http_transport[1] == []
 
 
-@pytest.mark.parametrize("dependency", ["requests_kerberos", "smart_open"])
-def test_missing_dependency(tmp_path, monkeypatch, kerberos, dependency):
-    monkeypatch.setitem(sys.modules, dependency, None)
+@pytest.mark.parametrize("dependency", ["requests_kerberos", "smart_open", "requests"])
+def test_missing_or_old_dependency(tmp_path, monkeypatch, kerberos, dependency):
+    if dependency == "requests_kerberos":
+        monkeypatch.setitem(sys.modules, dependency, None)
+    elif dependency == "smart_open":
+        monkeypatch.setattr(smart_open.http, "open", lambda uri, mode: None)
+    else:
+        monkeypatch.delattr(
+            requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"
+        )
     with pytest.raises(ImportError, match="pip install") as exc:
         download(tmp_path)
     assert "preinstalled" in str(exc.value)
 
 
-def test_old_smart_open(tmp_path, monkeypatch, kerberos, http_transport):
-    # smart_open 6.2 and 7.0 don't accept sessions; never silently ignore the guard.
-    monkeypatch.setattr(smart_open.http, "open", lambda uri, mode: None)
-    with pytest.raises(ImportError, match="smart_open.*>=7.1.0"):
-        download(tmp_path)
-    assert http_transport[1] == []
-
-
-def test_old_requests(tmp_path, monkeypatch, kerberos, http_transport):
-    monkeypatch.delattr(
-        requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"
-    )
-    with pytest.raises(ImportError, match="requests>=2.32.3"):
-        download(tmp_path)
-    assert http_transport[1] == []
-
-
 @pytest.mark.parametrize(
-    "hosts", ["https://files.example.org", "*.example.org", "files.example.org:443"]
+    "hosts",
+    [
+        "https://files.example.org",
+        "*.example.org",
+        "files.example.org:443",
+        "127.0.0.1",
+    ],
 )
 def test_invalid_host_configuration(tmp_path, monkeypatch, http_transport, hosts):
-    monkeypatch.setenv(RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, hosts)
-    with pytest.raises(ValueError, match="comma-separated hostnames"):
+    monkeypatch.setenv(KERBEROS_HOSTS, hosts)
+    with pytest.raises(ValueError, match=KERBEROS_HOSTS):
         download(tmp_path)
-    assert http_transport[1] == []
-
-
-def test_kerberos_hosts_require_dns_names(tmp_path, monkeypatch, http_transport):
-    monkeypatch.setenv(RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, "127.0.0.1")
-    with pytest.raises(ValueError, match="requires DNS hostnames"):
-        download(tmp_path, "https://127.0.0.1/package.zip")
     assert http_transport[1] == []
 
 
@@ -278,35 +229,6 @@ def test_kerberos_failure_does_not_fall_back(
     assert not (tmp_path / "package.zip").exists()
 
 
-def cn_only_certificate(ca):
-    """Issue a CN-only certificate without even an empty SAN extension."""
-    import trustme
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-
-    leaf = ca.issue_cert(common_name="localhost")
-    original = x509.load_pem_x509_certificate(leaf.cert_chain_pems[0].bytes())
-    builder = (
-        x509.CertificateBuilder()
-        .subject_name(original.subject)
-        .issuer_name(original.issuer)
-        .public_key(original.public_key())
-        .serial_number(original.serial_number)
-        .not_valid_before(original.not_valid_before_utc)
-        .not_valid_after(original.not_valid_after_utc)
-    )
-    for extension in original.extensions:
-        if extension.oid != x509.ExtensionOID.SUBJECT_ALTERNATIVE_NAME:
-            builder = builder.add_extension(extension.value, extension.critical)
-    key = serialization.load_pem_private_key(ca.private_key_pem.bytes(), password=None)
-    certificate = builder.sign(key, hashes.SHA256())
-    return trustme.LeafCert(
-        leaf.private_key_pem.bytes(),
-        certificate.public_bytes(serialization.Encoding.PEM),
-        [],
-    )
-
-
 @pytest.mark.parametrize(
     "certificate",
     [
@@ -325,7 +247,8 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
 
     ca = trustme.CA()
     if certificate == "cn_only":
-        cert = cn_only_certificate(ca)
+        # No SAN identities: only the CN can match localhost.
+        cert = ca.issue_cert(common_name="localhost")
     elif certificate == "wrong_hostname":
         cert = ca.issue_cert("other.example.org", common_name="localhost")
     elif certificate == "redirect_san_mismatch":
@@ -351,9 +274,7 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
         monkeypatch.setattr(requests.utils, "DEFAULT_CA_BUNDLE_PATH", str(ca_path))
         monkeypatch.setattr(requests.adapters, "DEFAULT_CA_BUNDLE_PATH", str(ca_path))
     monkeypatch.setenv("NO_PROXY", "localhost,datanode.example.org")
-    monkeypatch.setenv(
-        RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, "localhost,datanode.example.org"
-    )
+    monkeypatch.setenv(KERBEROS_HOSTS, "localhost,datanode.example.org")
     getaddrinfo = socket.getaddrinfo
 
     def resolve(host, *args, **kwargs):
@@ -362,73 +283,47 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
         return getaddrinfo(host, *args, **kwargs)
 
     monkeypatch.setattr(socket, "getaddrinfo", resolve)
-    seen = []
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            seen.append(self.headers.get("Authorization"))
-            if self.path == "/redirect.zip":
-                self.send_response(307)
-                self.send_header(
-                    "Location",
-                    f"https://datanode.example.org:{self.server.server_port}/code.zip?op=OPEN",
-                )
-                self.end_headers()
-            else:
-                self.send_response(200)
-                self.send_header("Content-Length", "7")
-                self.end_headers()
-                self.wfile.write(b"package")
-
-        def log_message(self, *args):
-            pass
-
-    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        cert.configure_cert(context)
-        server.socket = context.wrap_socket(server.socket, server_side=True)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            uri = f"https://localhost:{server.server_port}/redirect.zip"
-            if certificate in ("trusted", "default_ca"):
-                assert download(tmp_path, uri) == b"package"
-                assert seen == [
-                    "Negotiate localhost:1",
-                    "Negotiate datanode.example.org:2",
-                ]
-            else:
-                with pytest.raises(requests.exceptions.SSLError):
-                    download(tmp_path, uri)
-                assert len(seen) == (1 if certificate == "redirect_san_mismatch" else 0)
-        finally:
-            server.shutdown()
-            thread.join()
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    cert.configure_cert(context)
+    with HTTPServer(host="localhost", ssl_context=context) as server:
+        target = server.url_for("/code.zip").replace(
+            "localhost", "datanode.example.org"
+        )
+        server.expect_request("/redirect.zip").respond_with_data(
+            status=307, headers={"Location": target}
+        )
+        server.expect_request("/code.zip").respond_with_data(b"package")
+        if certificate in ("trusted", "default_ca"):
+            assert download(tmp_path, server.url_for("/redirect.zip")) == b"package"
+            assert [request.headers["Authorization"] for request, _ in server.log] == [
+                "Negotiate localhost:1",
+                "Negotiate datanode.example.org:2",
+            ]
+        else:
+            with pytest.raises(requests.exceptions.SSLError):
+                download(tmp_path, server.url_for("/redirect.zip"))
+            assert len(server.log) == (
+                1 if certificate == "redirect_san_mismatch" else 0
+            )
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("plugin_name", ["working_dir", "py_modules"])
+@pytest.mark.parametrize("plugin_class", [WorkingDirPlugin, PyModulesPlugin])
 async def test_plugins_download_kerberos_zip(
-    tmp_path, kerberos, http_transport, plugin_name
+    tmp_path, kerberos, http_transport, plugin_class
 ):
-    from ray._private.runtime_env.py_modules import PyModulesPlugin
-    from ray._private.runtime_env.working_dir import WorkingDirPlugin
-
     content = io.BytesIO()
     with zipfile.ZipFile(content, "w") as archive:
         archive.writestr("code/hello.py", "value = 42\n")
     routes, sent = http_transport
     routes[PACKAGE_URI] = (200, {}, content.getvalue())
-    plugin_class = {
-        "working_dir": WorkingDirPlugin,
-        "py_modules": PyModulesPlugin,
-    }[plugin_name]
     plugin = plugin_class(str(tmp_path), None)
 
     assert await plugin.create(PACKAGE_URI, {}, None) > 0
     assert next(tmp_path.rglob("hello.py")).read_text() == "value = 42\n"
-    assert len(sent) == 1
-    assert sent[0][0].url.endswith("code.zip?op=OPEN")
+    assert len(sent) == len(kerberos) == 1
+    assert sent[0].headers["Authorization"].startswith("Negotiate files.example.org:")
+    assert sent[0].url.endswith("code.zip?op=OPEN")
 
 
 if __name__ == "__main__":

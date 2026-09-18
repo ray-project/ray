@@ -974,67 +974,39 @@ Remote URIs support ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archive for
 Note that the ``smart_open``, ``boto3``, ``google-cloud-storage``, ``azure-storage-blob``, and ``azure-identity`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
 The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
-Downloading packages from Kerberos-protected HTTPS services
------------------------------------------------------------
+Kerberos-authenticated HTTPS packages
+------------------------------------
 
-``working_dir`` and ``py_modules`` can download packages from HTTPS services
-that use Kerberos/SPNEGO, including HttpFS and WebHDFS HTTPS endpoints.
-Kerberos authentication is disabled by default. To enable it:
+To download ``working_dir`` or ``py_modules`` from a Kerberos/SPNEGO-protected
+HTTPS service, install ``smart_open[http]>=7.1.0``, ``requests>=2.32.3``, and
+``requests-kerberos`` on every node. Before starting Ray, make an existing
+Kerberos credential cache available to the Ray processes (for example through
+``KRB5CCNAME``) and configure the allowed hosts and any enterprise CA bundle:
 
-1. Install ``smart_open[http]>=7.1.0``, ``requests>=2.32.3``, and
-   ``requests-kerberos`` in the Python
-   environment used by Ray on every node, before starting Ray. Your operating
-   system may also require Kerberos client libraries and development headers
-   to install ``requests-kerberos``.
-2. Make an existing Kerberos credential cache available to each node's Ray
-   processes, for example through ``KRB5CCNAME``. Ray uses those credentials;
-   it does not accept passwords or keytabs through ``runtime_env``, acquire
-   tickets, or renew them.
-3. Set ``RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS`` before starting Ray on the head
-   and worker nodes. Use comma-separated, exact DNS hostnames (case-insensitive),
-   without schemes, ports, paths, IP addresses, or wildcards. Use DNS names in
-   the download URLs and redirect targets as well. Hostnames apply to all HTTPS
-   ports on that host. For example:
+.. code-block:: bash
 
-   .. code-block:: bash
+   export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=files.example.org,datanode.example.org
+   export REQUESTS_CA_BUNDLE=/etc/company-ca/ca.pem
 
-      export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=files.example.org,datanode.example.org
+.. code-block:: python
 
-4. Submit a runtime environment using the HTTPS package URL:
+   runtime_env = {
+       "working_dir": "https://files.example.org/webhdfs/v1/artifacts/code.zip?op=OPEN"
+   }
 
-   .. code-block:: python
+Kerberos is disabled by default and enabled only for listed HTTPS hosts.
+Use exact, comma-separated DNS names (case-insensitive), without ports or
+wildcards; IP addresses are not supported. Every redirect must also use HTTPS
+and a listed host, without credentials in the URL. Include WebHDFS DataNode
+hosts when needed. Each hop gets a fresh authentication context. Combining
+Kerberos with ``RAY_RUNTIME_ENV_BEARER_TOKEN`` for the same download is an error.
 
-      runtime_env = {
-          "working_dir": "https://files.example.org/webhdfs/v1/artifacts/code.zip?op=OPEN"
-      }
-
-Only HTTPS URLs whose initial hostname is listed enable Kerberos. Other
-downloads retain their existing authentication behavior and do not require
-the Kerberos dependencies. Setting ``RAY_RUNTIME_ENV_BEARER_TOKEN`` while
-downloading from a listed HTTPS host raises an error; choose one authentication
-method for that download.
-
-For a Kerberos download, every redirect must also use HTTPS and a listed
-hostname, without credentials embedded in the URL. Ray rejects other redirects
-before contacting their targets, and establishes a new Kerberos authentication
-context for each allowed redirect. Include any WebHDFS DataNode hostnames in
-the list. Server certificates must identify the requested host in their
-Subject Alternative Name (SAN) extension, including at redirect targets.
-Kerberos downloads do not fall back to the legacy Common Name (CN) field;
-replace CN-only server certificates with certificates containing the appropriate
-SANs. TLS certificate and hostname verification remain enabled, as does the
-authentication library's default mutual authentication. Configure trusted
-certificate authorities, for example with ``REQUESTS_CA_BUNDLE``, in the Ray
-process environment before startup. Authentication and certificate errors fail
-the download without falling back to anonymous access.
-
-These dependencies, credentials, trusted CAs, and environment variables must
-be available to the processes downloading the package. Specifying them only
-in ``runtime_env["pip"]`` or ``runtime_env["env_vars"]`` is too late for package
-download. All nodes must be able to reach both the initial endpoint and any
-redirect targets. A highly available HttpFS endpoint can handle backend
-NameNode failover; Ray does not implement HDFS discovery, failover, ticket
-renewal, or native ``hdfs://`` / ``webhdfs://`` protocols.
+Server certificates must have matching Subject Alternative Names (SANs);
+CN-only certificates are rejected. CA, hostname, and Kerberos mutual
+verification remain enabled. Dependencies, credentials, and configuration must
+be available before package download; setting them in ``runtime_env["pip"]``
+or ``runtime_env["env_vars"]`` is too late. Ray does not acquire or renew tickets
+or implement HDFS discovery and failover.
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------

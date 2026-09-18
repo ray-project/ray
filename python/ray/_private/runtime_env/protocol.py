@@ -269,27 +269,20 @@ class ProtocolsProvider:
                 + cls._MISSING_DEPENDENCIES_WARNING
             ) from exc
 
-        # Older smart_open versions silently ignore the session parameter, which
-        # would bypass the redirect policy below.
-        if "session" not in signature(http.open).parameters:
-            raise ImportError(
-                "Kerberos downloads require `pip install 'smart_open[http]>=7.1.0'` "
-                "for redirect validation. " + cls._MISSING_DEPENDENCIES_WARNING
-            )
-
-        if not hasattr(
+        # Require session injection and per-request TLS configuration. Older
+        # smart_open versions would silently ignore our redirect policy.
+        if "session" not in signature(http.open).parameters or not hasattr(
             requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"
         ):
             raise ImportError(
-                "Kerberos downloads require `pip install 'requests>=2.32.3'` "
-                "for TLS configuration. " + cls._MISSING_DEPENDENCIES_WARNING
+                "Kerberos downloads require `pip install 'smart_open[http]>=7.1.0' "
+                "'requests>=2.32.3'` for redirect and TLS validation. "
+                + cls._MISSING_DEPENDENCIES_WARNING
             )
 
         class HTTPSAdapter(requests.adapters.HTTPAdapter):
             def __init__(self):
-                # Explicitly require SANs on older urllib3 versions as well.
-                # Leave CA loading to Requests so REQUESTS_CA_BUNDLE continues
-                # to replace, rather than extend, its default trust store.
+                # Require SANs even on older urllib3; Requests supplies the CAs.
                 self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
                 self._ssl_context.hostname_checks_common_name = False
                 super().__init__()
@@ -300,9 +293,7 @@ class ProtocolsProvider:
                 )
                 pool_kwargs["ssl_context"] = self._ssl_context
                 if verify is True:
-                    # Some Requests versions use a preloaded context for the
-                    # default CA bundle. Preserve that trust source when
-                    # replacing the context with our SAN-only policy.
+                    # Preserve Requests' default CAs when replacing its context.
                     pool_kwargs["ca_certs"] = requests.utils.DEFAULT_CA_BUNDLE_PATH
                 return host_params, pool_kwargs
 
