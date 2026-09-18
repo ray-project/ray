@@ -4995,12 +4995,16 @@ class DeploymentState:
             )
 
     def _stop_replica_mark_unhealthy_if_target_version(
-        self, replica: DeploymentReplica, graceful_stop: bool
+        self,
+        replica: DeploymentReplica,
+        graceful_stop: bool,
+        *,
+        count_failure: bool = True,
     ):
         """Stop the replica and mark deployment as UNHEALTHY if the replica is the target version."""
         self._stop_replica(replica, graceful_stop=graceful_stop)
         if replica.version == self._target_state.version:
-            if self._target_state.rolling_update:
+            if self._target_state.rolling_update and count_failure:
                 # Count health check failures too, so an unstable new version
                 # eventually stops replacing old replicas.
                 self._replica_constructor_retry_counter += 1
@@ -5088,11 +5092,14 @@ class DeploymentState:
                     "unhealthy or missing member. Forcefully stopping it "
                     "because RESTART_GANG runtime failure policy is enabled."
                 )
-                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+                self._stop_replica_mark_unhealthy_if_target_version(
+                    replica, False, count_failure=False
+                )
             else:
                 remaining_healthy.append(replica)
 
         remaining_unhealthy: List[DeploymentReplica] = []
+        counted_gang_ids: Set[str] = set()
         for replica in unhealthy_replicas:
             if (
                 replica.gang_context is not None
@@ -5103,7 +5110,13 @@ class DeploymentState:
                     "forcefully stopping it as part of gang restart "
                     f"(gang_id={replica.gang_context.gang_id})."
                 )
-                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+                # Match startup failures: count once per failed gang, not once
+                # per member. Healthy siblings stopped above do not count.
+                gang_id = replica.gang_context.gang_id
+                self._stop_replica_mark_unhealthy_if_target_version(
+                    replica, False, count_failure=gang_id not in counted_gang_ids
+                )
+                counted_gang_ids.add(gang_id)
             else:
                 remaining_unhealthy.append(replica)
 
