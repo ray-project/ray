@@ -17,6 +17,7 @@ from ray.experimental.sandbox.image_manager import (
     BaseImageManager,
     ImageManager,
     _build_gpu_cdi_devices_transform_fn,
+    _build_gpu_cdi_private_mounts_transform_fn,
     get_default_oci_spec,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
@@ -273,6 +274,58 @@ def test_create_oci_spec_translates_cdi_error(tmp_path):
                     cdi_spec, cdi_devices
                 ),
             )
+
+
+def test_privatize_gpu_cdi_mount_dirs_handles_nested_dirs(tmp_path):
+    """A nested pair of at-risk directories (e.g. .../vdpau under
+    .../x86_64-linux-gnu, common in real nvidia-ctk specs) must not raise,
+    and the shallower directory's clone must be complete (not just an
+    empty ancestor of the nested one's clone) regardless of which order
+    `parent_dirs_of_mounts`' set happens to yield them in."""
+    rootfs = tmp_path / "rootfs"
+    lib_dir = rootfs / "usr" / "lib" / "x86_64-linux-gnu"
+    vdpau_dir = lib_dir / "vdpau"
+    vdpau_dir.mkdir(parents=True)
+    (lib_dir / "libfoo.so").write_bytes(b"foo")
+    (vdpau_dir / "libbar.so").write_bytes(b"bar")
+
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "containerEdits": {
+                "mounts": [
+                    {
+                        "hostPath": "/host/libfoo.so",
+                        "containerPath": "/usr/lib/x86_64-linux-gnu/libfoo.so",
+                    },
+                    {
+                        "hostPath": "/host/libbar.so",
+                        "containerPath": "/usr/lib/x86_64-linux-gnu/vdpau/libbar.so",
+                    },
+                ]
+            },
+            "devices": [],
+        },
+    )
+
+    transform_fn = _build_gpu_cdi_private_mounts_transform_fn(
+        cdi_spec, [], str(tmp_path / "bundle")
+    )
+    spec = transform_fn({"root": {"path": str(rootfs)}})
+
+    dests = {m["source"]: m["destination"] for m in spec["mounts"]}
+    assert "/usr/lib/x86_64-linux-gnu" in dests.values()
+    assert "/usr/lib/x86_64-linux-gnu/vdpau" in dests.values()
+
+    lib_source = next(
+        m["source"]
+        for m in spec["mounts"]
+        if m["destination"] == "/usr/lib/x86_64-linux-gnu"
+    )
+    with open(os.path.join(lib_source, "libfoo.so"), "rb") as f:
+        assert f.read() == b"foo"
+    with open(os.path.join(lib_source, "vdpau", "libbar.so"), "rb") as f:
+        assert f.read() == b"bar"
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):

@@ -147,6 +147,43 @@ class CDISpec:
         for device in devices:
             _apply_container_edits(oci_spec, device.get("containerEdits", {}))
 
+    def mounts(self, devices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """The `mounts` entries from this spec's shared `containerEdits`
+        and `devices`' own, in the same order `apply_edits` would merge
+        them.
+
+        Args:
+            devices: CDI device entries (see `select_devices`) to include.
+
+        Returns:
+            The raw CDI mount entries (each with at least
+            "containerPath"; see the CDI spec's Mount object).
+        """
+        result = []
+        edits = [self._spec.get("containerEdits", {})] + [
+            d.get("containerEdits", {}) for d in devices
+        ]
+        for edit in edits:
+            result.extend(edit.get("mounts") or [])
+        return result
+
+    def parent_dirs_of_mounts(self, devices: List[Dict[str, Any]]) -> List[str]:
+        """Container-side parent directories of `mounts(devices)`'
+        containerPaths (e.g. "/usr/lib/x86_64-linux-gnu"), deduplicated.
+
+        Args:
+            devices: CDI device entries (see `select_devices`) to include.
+
+        Returns:
+            Deduplicated container-side directory paths.
+        """
+        all_dirs = set()
+        for mount in self.mounts(devices):
+            container_path = mount.get("containerPath")
+            if container_path:
+                all_dirs.add(os.path.dirname(container_path))
+        return list(all_dirs)
+
 
 def _require_field(entry: Dict[str, Any], key: str, kind: str) -> Any:
     if key not in entry:

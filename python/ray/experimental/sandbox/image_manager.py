@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
@@ -74,6 +75,43 @@ def _chain_transform_fns(
     return _chained
 
 
+def _clone_private_mount_dir(
+    shared_rootfs: str, root_dir: str, container_dir: str
+) -> Optional[str]:
+    """Hardlink-clone `container_dir` (a path relative to root, e.g.
+    "/usr/lib/x86_64-linux-gnu") from `shared_rootfs` into a private copy
+    under `root_dir`, returning the private copy's path.
+
+    Hardlinking shares file content (no data copy, same disk usage) but
+    gives every directory its own entries, so a write into the private
+    copy can't collide with one into `shared_rootfs` or another
+    sandbox's own private copy.
+
+    Args:
+        shared_rootfs: The shared, cached image rootfs to clone from.
+        root_dir: This sandbox's own bundle directory to stage the
+            private copy under.
+        container_dir: The directory to clone, as a container-side path
+            relative to root (e.g. "/usr/lib/x86_64-linux-gnu").
+
+    Returns:
+        The private copy's path, or None if `container_dir` doesn't
+        exist under `shared_rootfs`.
+    """
+    shared_dir = os.path.join(shared_rootfs, container_dir.lstrip("/"))
+    if not os.path.isdir(shared_dir):
+        return None
+    private_dir = os.path.join(root_dir, "cdi_mounts", container_dir.lstrip("/"))
+    if os.path.isdir(private_dir):
+        # If it's already cloned, e.g. as part of a shallower directory's
+        # clone (this one nested inside it), re-cloning would hit an
+        # existing destination.
+        return private_dir
+    os.makedirs(os.path.dirname(private_dir), exist_ok=True)
+    shutil.copytree(shared_dir, private_dir, symlinks=True, copy_function=os.link)
+    return private_dir
+
+
 def _build_gpu_cdi_devices_transform_fn(
     cdi_spec: cdi_lib.CDISpec,
     cdi_devices: List[Dict[str, Any]],
@@ -116,6 +154,73 @@ def _build_gpu_cdi_devices_transform_fn(
             )
             env[:] = [e for e in env if not e.startswith("LD_LIBRARY_PATH=")]
             env.append(f"LD_LIBRARY_PATH={new_value}")
+
+        return spec
+
+    return _transform
+
+
+def _build_gpu_cdi_private_mounts_transform_fn(
+    cdi_spec: cdi_lib.CDISpec,
+    cdi_devices: List[Dict[str, Any]],
+    root_dir: str,
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that gives the sandbox bundled at
+    `root_dir` a private copy of the directories its GPU CDI mounts land
+    files into, instead of pointing at the shared, cached image rootfs
+    there.
+
+    A CDI-aware runtime's createContainer-stage hooks run against
+    root.path once the container's mounts are attached, and commonly
+    write compatibility symlinks/adjustments into those same
+    directories (e.g. nvidia-cdi-hook's CDI symlink injection,
+    alongside the driver libraries CDI just mounted in). Since these
+    directories are only ever a handful, and are cheap regardless of
+    the image's overall size (the clone cost is bounded by how many
+    files already live in them, not by the image's file count), this
+    only privatizes those specific directories rather than the whole
+    rootfs -- concurrent sandboxes booting off the same cached image no
+    longer share the directories those writes land in, without paying
+    for a full private rootfs.
+    """
+
+    def _transform(spec: Dict[str, Any]) -> Dict[str, Any]:
+        shared_rootfs = spec["root"]["path"]
+        mounts = spec.setdefault("mounts", [])
+        existing_dests = {m.get("destination") for m in mounts}
+
+        # Shallowest-first, so a directory's clone is always complete
+        # before any directory nested inside it is touched.
+        all_dirs = sorted(
+            cdi_spec.parent_dirs_of_mounts(cdi_devices),
+            key=lambda d: d.count(os.sep),
+        )
+        for container_dir in all_dirs:
+            if container_dir in existing_dests:
+                continue
+            private_dir = _clone_private_mount_dir(
+                shared_rootfs, root_dir, container_dir
+            )
+            if private_dir is None:
+                continue
+            mounts.append(
+                {
+                    "destination": container_dir,
+                    "type": "bind",
+                    "source": private_dir,
+                    "options": ["rbind", "rw"],
+                }
+            )
+            existing_dests.add(container_dir)
+
+        # Mounts apply in array order, and a later mount can shadow an
+        # earlier one at the same or a deeper path. CDI's own mounts are
+        # already shallowest-first, so appending the directory mounts here
+        # without re-sorting would let them land after -- and shadow -- the
+        # individual driver-library file mounts CDI placed inside them.
+        mounts.sort(
+            key=lambda m: os.path.normpath(m.get("destination", "/")).count(os.sep)
+        )
 
         return spec
 
@@ -728,11 +833,16 @@ class ImageManager(BaseImageManager):
                 raise SandboxCreationError(
                     f"Failed to configure GPU access via CDI: {err}"
                 ) from err
-            gpu_transform_fn = _build_gpu_cdi_devices_transform_fn(
+            gpu_cdi_devices_fn = _build_gpu_cdi_devices_transform_fn(
                 cdi_spec, cdi_devices
             )
+            gpu_cdi_mounts_fn = _build_gpu_cdi_private_mounts_transform_fn(
+                cdi_spec, cdi_devices, root_dir
+            )
             _oci_spec_transform_fn = _chain_transform_fns(
-                gpu_transform_fn, _oci_spec_transform_fn
+                gpu_cdi_devices_fn,
+                _oci_spec_transform_fn,
+                gpu_cdi_mounts_fn,
             )
 
         spec = self.create_oci_spec(
