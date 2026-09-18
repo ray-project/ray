@@ -74,6 +74,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data._internal.usage import create_usage_callback
+from ray.data.checkpoint._iceberg_checkpoint import IcebergCheckpointDatasink
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -289,10 +290,16 @@ class Planner:
             logical_plan
         ):
             self._supports_checkpointing = True
+            datasink = self._get_write_datasink(logical_plan)
+            if isinstance(datasink, IcebergCheckpointDatasink):
+                datasink.enable_checkpointing()
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config,
+                delete_on_execution_success=not isinstance(
+                    datasink, IcebergCheckpointDatasink
+                ),
             )
 
             callbacks.append(checkpoint_callback)
@@ -378,6 +385,8 @@ class Planner:
     def _create_checkpoint_callback(
         self,
         checkpoint_config,
+        *,
+        delete_on_execution_success: bool = True,
     ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
@@ -385,7 +394,15 @@ class Planner:
         """
         return LoadCheckpointCallback(
             checkpoint_config,
+            delete_on_execution_success=delete_on_execution_success,
         )
+
+    @staticmethod
+    def _get_write_datasink(logical_plan: LogicalPlan):
+        last_op = logical_plan.dag
+        if isinstance(last_op, Write):
+            return last_op.datasink_or_legacy_datasource
+        return None
 
     @staticmethod
     def _get_data_file_info(logical_plan: LogicalPlan):

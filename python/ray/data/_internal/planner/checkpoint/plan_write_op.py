@@ -15,7 +15,12 @@ from ray.data._internal.planner.plan_write_op import (
     generate_collect_write_stats_fn,
 )
 from ray.data.block import Block, BlockAccessor
+from ray.data.checkpoint._iceberg_checkpoint import (
+    IcebergCheckpointDatasink,
+    write_task_checkpoint,
+)
 from ray.data.checkpoint.checkpoint_writer import (
+    BatchBasedCheckpointWriter,
     CheckpointWriter,
     PendingCheckpoint,
 )
@@ -114,7 +119,20 @@ def plan_write_op_with_checkpoint_writer(
     checkpoint_writer = CheckpointWriter.create(data_context.checkpoint_config)
     collect_stats_fn = generate_collect_write_stats_fn()
 
-    if isinstance(datasink, _FileDatasink):
+    if isinstance(datasink, IcebergCheckpointDatasink):
+        if not isinstance(checkpoint_writer, BatchBasedCheckpointWriter):
+            raise TypeError(
+                "Checkpointed Iceberg writes require a batch-based checkpoint writer"
+            )
+        write_checkpoint_fn = _generate_iceberg_write_checkpoint_transform(
+            data_context, datasink, checkpoint_writer
+        )
+        post_transformations = [
+            write_checkpoint_fn,
+            collect_stats_fn,
+        ]
+        pre_transformations = []
+    elif isinstance(datasink, _FileDatasink):
         # File-based datasink: use 2-phase commit for atomicity
         # Pre-write transform: compute expected paths and write pending checkpoints
         prepare_checkpoint_fn = _generate_prepare_checkpoint_transform(
@@ -301,6 +319,27 @@ def _generate_commit_checkpoint_transform(
 
     return BlockMapTransformFn(
         commit_checkpoints,
+        disable_block_shaping=True,
+    )
+
+
+def _generate_iceberg_write_checkpoint_transform(
+    data_context: DataContext,
+    datasink: IcebergCheckpointDatasink,
+    checkpoint_writer: BatchBasedCheckpointWriter,
+) -> BlockMapTransformFn:
+    def write_checkpoint(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        block_list, combined_block = _combine_blocks(blocks)
+        block_accessor = BlockAccessor.for_block(combined_block)
+        if block_accessor.num_rows() > 0:
+            _validate_id_column_exists(
+                data_context.checkpoint_config.id_column, combined_block
+            )
+            write_task_checkpoint(datasink, checkpoint_writer, block_accessor, ctx)
+        return iter(block_list)
+
+    return BlockMapTransformFn(
+        write_checkpoint,
         disable_block_shaping=True,
     )
 

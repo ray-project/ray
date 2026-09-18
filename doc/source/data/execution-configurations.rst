@@ -92,3 +92,28 @@ To configure job-level checkpointing, specify a
         checkpoint_path="s3://my-bucket/ray-data-checkpoints",  # Must be accessible by all nodes
         delete_checkpoint_on_success=False,  # Preserves checkpoints after successful runs
     )
+
+The ID column must contain a unique, stable value for every input row and must
+remain present through all operators. Reusing a checkpoint path for a different
+job can otherwise cause rows to be skipped incorrectly.
+
+Checkpointed Iceberg writes support ``APPEND`` mode. Ray stores the Iceberg data
+file metadata needed to finish the driver-side catalog commit alongside the row
+checkpoints. If a retry finds that the catalog commit already succeeded, it uses
+a Ray operation marker in the Iceberg snapshot summary rather than appending the
+files again. ``UPSERT`` and ``OVERWRITE`` modes, and custom checkpoint manager or
+filter classes, aren't currently supported for checkpointed Iceberg writes and
+fail before write tasks start.
+
+An Iceberg checkpoint path belongs to one destination table and supports one
+logical writer at a time. Ray validates the table identity when restoring, but
+doesn't provide cross-job locking for concurrent writers that share a path.
+Legacy row-only checkpoint directories don't contain enough information to
+recover an uncommitted Iceberg write and are rejected; use a new checkpoint path.
+
+With ``delete_checkpoint_on_success=True``, Iceberg checkpoints are removed only
+after the catalog commit is confirmed. With ``False``, completed generations
+and row IDs remain available for future filtering, but completed data-file
+metadata isn't committed again. Data files created by task attempts that fail
+before publishing recovery metadata can remain as unreferenced Iceberg files;
+manage these with the usual Iceberg orphan-file maintenance procedures.
