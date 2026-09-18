@@ -1,7 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -109,6 +109,124 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+def _hash_partition_polars(
+    projected_table: "pyarrow.Table",
+    num_partitions: int,
+) -> Optional[np.ndarray]:
+    """
+    For each row, calculates hash(row_values) % num_partitions in a vectorized manner using Polars.
+
+    Args:
+        projected_table: Arrow table containing rows to hash.
+        num_partitions: Number of target partitions (must be > 0).
+
+    Returns:
+        np.ndarray: Array of hashed values for each row.
+    """
+    try:
+        import polars as pl
+        from polars.exceptions import PolarsError
+    except ImportError:
+        return None
+
+    if any(_is_pa_extension_type(field.type) for field in projected_table.schema):
+        return None
+
+    try:
+        df: "pl.DataFrame" = pl.from_arrow(projected_table, rechunk=False)
+        hashes = df.hash_rows(seed=0)
+        return (hashes.to_numpy() % num_partitions).astype(np.int64)
+    except (PolarsError, TypeError, ValueError, NotImplementedError) as e:
+        logger.warning(
+            f"Polars-based hash partitioning failed, falling back to the "
+            f"default implementation: {e}"
+        )
+        return None
+
+
+def _group_indices(
+    partition_mask: np.ndarray, counts: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Groups row indices by their partition assignment (Numba kernel).
+
+    Args:
+        partition_mask: Array where partition_mask[i] is the partition of row i.
+        counts: Histogram array where counts[j] is the number of rows assigned
+            to partition j.
+
+    Returns:
+        Tuple of:
+        - grouped_indices: Row indices grouped by partition (all indices of
+          partition 0 first, then partition 1, etc.), stable within each
+          partition.
+        - offsets: offsets[j] is the starting position of partition j's indices
+          in ``grouped_indices`` (exclusive prefix sums of ``counts``).
+
+    Example:
+        partition_mask=[1,0,1,0], counts=[2,2] returns
+        grouped_indices=[1,3,0,2] and offsets=[0,2].
+    """
+    # Convert cumulative sums to exclusive start offsets. This replicates
+    # `np.concatenate(([0], counts)).cumsum()[:-1]` with a manual loop: when
+    # JIT-compiled it is faster and allocates less than the NumPy expression.
+    offsets = counts.cumsum()
+    total_prev = 0
+    for j in range(offsets.size - 1):
+        tmp = offsets[j]
+        offsets[j] = total_prev
+        total_prev = tmp
+    offsets[-1] = total_prev
+
+    grouped_indices = np.empty(partition_mask.size, dtype=np.int64)
+
+    # Stable counting sort by partition id. This replicates
+    # `np.argsort(partition_mask, kind="stable")` (which Numba doesn't support)
+    # and, compiled, is ~15% faster with fewer allocations.
+    write = offsets.copy()
+    for i in range(partition_mask.size):
+        p = partition_mask[i]
+        pos = write[p]
+        grouped_indices[pos] = i
+        write[p] = pos + 1
+    return grouped_indices, offsets
+
+
+def _group_indices_fallback(
+    partition_mask: np.ndarray, counts: np.ndarray
+) -> Tuple["pyarrow.Array", np.ndarray]:
+    """Same contract as :func:`_group_indices`, grouping via Arrow's
+    (stable, multi-threaded) ``sort_indices``. Used when Numba is not
+    available. Considerably faster than NumPy's stable ``argsort``."""
+    import pyarrow.compute as pac
+
+    offsets = np.concatenate((np.zeros(1, dtype=counts.dtype), counts)).cumsum()[:-1]
+    grouped_indices = pac.sort_indices(pyarrow.array(partition_mask))
+    return grouped_indices, offsets
+
+
+# Resolved lazily by `_get_group_indices_fn` so that importing this module
+# doesn't pay Numba's import/JIT cost (or require it to be installed).
+_group_indices_fn = None
+
+
+def _get_group_indices_fn():
+    global _group_indices_fn
+    if _group_indices_fn is None:
+        try:
+            import numba as nb
+            from numba import int64, types
+
+            _group_indices_fn = nb.njit(
+                types.UniTuple(int64[:], 2)(int64[:], int64[:]),
+                cache=True,
+                nogil=True,
+                fastmath=True,
+            )(_group_indices)
+        except ImportError:
+            _group_indices_fn = _group_indices_fallback
+    return _group_indices_fn
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -156,9 +274,6 @@ def hash_partition(
           dictionary, rather than a list
     """
 
-    import numpy as np
-    import pyarrow.compute as pac
-
     assert num_partitions > 0
 
     if table.num_rows == 0:
@@ -167,28 +282,29 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = _hash_partition_polars(projected_table, num_partitions)
+    if partitions_array is None:
+        partitions_array = _hash_partition(
+            projected_table, num_partitions=num_partitions
+        )
+    # bincount/Numba need signed int; the pandas hash path returns uint64.
     partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # Sort rows by partition id so each partition occupies a contiguous range
-    # of the result, then carve out partitions with zero-copy slices. The N
-    # output partitions together form a permutation of `table`, so one big
+    # Group row indices by partition id so each partition occupies a contiguous
+    # range of the result, then carve out partitions with zero-copy slices. The
+    # N output partitions together form a permutation of `table`, so one big
     # take + N slices is equivalent to N independent takes and pays the take
     # fixed cost once.
-    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
-    counts = np.bincount(partitions_array, minlength=num_partitions)
-    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
-    offsets[1:] = np.cumsum(counts)
+    counts = np.bincount(partitions_array, minlength=num_partitions).astype(np.int64)
+    grouped_indices, offsets = _get_group_indices_fn()(partitions_array, counts)
 
-    sorted_table = take_table(table, sort_indices)
+    sorted_table = take_table(table, grouped_indices)
     return {
-        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
+        int(p): sorted_table.slice(int(offsets[p]), int(counts[p]))  # noqa
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p in range(num_partitions)
-        if counts[p] > 0
+        for p in np.nonzero(counts)[0]
     }
 
 
