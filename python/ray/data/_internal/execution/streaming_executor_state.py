@@ -43,9 +43,10 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
-from ray.exceptions import UserCodeException
+from ray.exceptions import ObjectLostError, UserCodeException
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data.block import Schema
 
@@ -595,6 +596,7 @@ def build_streaming_topology(
     dag: PhysicalOperator,
     options: ExecutionOptions,
     block_ref_counter: BlockRefCounter,
+    lineage_tracker: Optional["LineageTracker"] = None,
 ) -> Topology:
     """Instantiate the streaming operator state topology for the given DAG.
 
@@ -607,6 +609,9 @@ def build_streaming_topology(
         options: The execution options to use to start operators.
         block_ref_counter: The executor-wide shared counter for tracking
             object-store memory.
+        lineage_tracker: Optional tracker for experimental object-loss recovery.
+            Attached to every operator so they can record task lineage as they
+            execute. ``None`` disables tracking.
 
     Returns:
         The topology dict holding the streaming execution state.
@@ -629,10 +634,155 @@ def build_streaming_topology(
         op_state = OpState(op, inqueues)
         topology[op] = op_state
         op.start(options, block_ref_counter)
+        # Attach the (optional) lineage tracker without widening every operator's
+        # start() signature. Defaults to None in PhysicalOperator.__init__.
+        op._lineage_tracker = lineage_tracker
         return op_state
 
     setup_state(dag)
     return topology
+
+
+def _clear_downstream_completion_state(
+    topology: Topology, start_op: PhysicalOperator
+) -> None:
+    """Clear the completion state of ``start_op`` and everything downstream so a
+    re-injected seed input can flow through again.
+
+    A finished op clears its external input queue every tick and is filtered out
+    of dispatch (see ``update_operator_states`` / ``get_eligible_operators``), and
+    ``_is_execution_marked_finished`` / ``inputs_done_called`` are one-way latches.
+    Walk the operator subgraph downstream of ``start_op`` and clear them; normal
+    completion re-fires once the recovered partition finishes draining.
+    """
+    stack = [start_op]
+    seen = set()
+    while stack:
+        op = stack.pop()
+        if op in seen:
+            continue
+        seen.add(op)
+        op._is_execution_marked_finished = False
+        op._inputs_complete = False
+        op_state = topology[op]
+        op_state.inputs_done_called = False
+        op_state.input_done_called = [False] * len(op.input_dependencies)
+        stack.extend(op.output_dependencies)
+
+    logger.info(
+        "[lineage-recovery] Cleared completion state for operators: "
+        + ", ".join(f'"{op.name}"' for op in seen)
+    )
+
+
+def _recover_lost_object(
+    topology: Topology,
+    lineage_tracker: "LineageTracker",
+    state: "OpState",
+    task: OpTask,
+    lost_error: ObjectLostError,
+) -> bool:
+    """Plan a reconstruction for a lost task output.
+
+    Walks the failed task's ancestry to its seed tasks, re-injects their retained
+    inputs, and opens the plan so re-produced outputs get classified as they are
+    generated (see ``MapOperator._output_ready_callback``). Only the branches on the
+    path to the lost object are re-executed -- outputs the plan does not need are
+    dropped as ``OBJECT_PRUNED`` rather than re-emitted.
+
+    Returns True if recovery was initiated, False to fall back to the error path.
+    Every "cannot recover" path must return False rather than raise: this runs on
+    the executor thread, where an exception tears down the whole dataset.
+    """
+    if not isinstance(task, DataOpTask) or task.data_task_id is None:
+        logger.info(
+            "[lineage-recovery] Lost object for task %s on operator %r is not "
+            "tracked by the lineage graph; cannot recover.",
+            task.task_index(),
+            state.op.name,
+        )
+        return False
+
+    # A reconstruction that re-fails stays in the plan it serves; a fresh failure
+    # opens its own. Plans keep separate buckets on shared ancestors, so concurrent
+    # plans do not interfere.
+    try:
+        traced_seed_ids, plan_id = lineage_tracker.register_task_failed(
+            task.data_task_id, task.plan_id
+        )
+    except ValueError:
+        logger.info(
+            "[lineage-recovery] Lost object for task %s on operator %r is not "
+            "registered with the lineage graph; cannot recover.",
+            task.data_task_id,
+            state.op.name,
+        )
+        return False
+
+    seed_task_ids = sorted(traced_seed_ids)
+
+    if not seed_task_ids:
+        logger.info(
+            "[lineage-recovery] Reconstruction of %s is already under way "
+            "(plan %s); nothing further to resubmit.",
+            task.data_task_id,
+            plan_id,
+        )
+        return False
+
+    # Resolve each seed id back to the operator that retained its input. The seed's
+    # own operator is the one holding it, so no id parsing is needed.
+    resubmissions = []
+    for seed_id in seed_task_ids:
+        seed_op, seed_input = None, None
+        for op in topology:
+            seed_input = op.retained_seed_input(seed_id)
+            if seed_input is not None:
+                seed_op = op
+                break
+        if seed_input is None:
+            logger.info(
+                "[lineage-recovery] No retained input for seed task %s; cannot "
+                "recover.",
+                seed_id,
+            )
+            return False
+        resubmissions.append((seed_id, seed_op, seed_input))
+
+    # Mark the task as aborted so the operator releases every resource it reserved.
+    task.mark_aborted(lost_error)
+
+    for seed_id, seed_op, seed_input in resubmissions:
+        # Clear the completion state of the seed op and everything downstream so a
+        # re-injected seed input can flow through again.
+        _clear_downstream_completion_state(topology, seed_op)
+        # `OpState.output_queue` of the source *is* the seed op's `input_queues[0]`
+        # (same object, wired in `build_streaming_topology`), and `add_output`
+        # maintains the external queue counters that a bare append would leave
+        # unbalanced. Going through the normal queue also means the resubmission
+        # clears `get_eligible_operators`' backpressure gates like any other input.
+        # Carry the seed's identity across to its resubmission; without it the
+        # re-injected bundle is minted a fresh id and the plan never resolves.
+        seed_op.stamp_seed_reinjection(seed_id, plan_id, seed_input)
+        source_op = seed_op.input_dependencies[0]
+        topology[source_op].add_output(seed_input)
+        logger.info(
+            "[lineage-recovery] Re-injected seed task %s on operator %r "
+            "(~%s bytes) for plan %s.",
+            seed_id,
+            seed_op.name,
+            seed_input.size_bytes(),
+            plan_id,
+        )
+
+    logger.warning(
+        "Recovering lost object for task %s: reconstructing via plan %s from "
+        "seed task(s) %s.",
+        task.data_task_id,
+        plan_id,
+        ", ".join(seed_task_ids),
+    )
+    return True
 
 
 def process_completed_tasks(
@@ -641,6 +791,7 @@ def process_completed_tasks(
     max_errored_blocks: int,
     output_backpressure_guard: OutputBackpressureGuard,
     metadata_fetcher: "MetadataFetcher",
+    lineage_tracker: Optional["LineageTracker"] = None,
 ) -> int:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
@@ -657,6 +808,10 @@ def process_completed_tasks(
             emitted RefBundles. The threaded fetcher defers metadata fetches to
             a background thread (emitting in per-op order as they become ready);
             the inline fetcher emits synchronously.
+        lineage_tracker: Optional tracker for experimental object-loss recovery.
+            When set, a lost task output is reconstructed from its lineage instead
+            of counting as an errored block. ``None`` disables recovery.
+
     Returns:
         The number of errored blocks.
     """
@@ -800,6 +955,29 @@ def process_completed_tasks(
                                 remaining_output_budget[state] = max(
                                     remaining_output_budget[state] - bytes_read, 0
                                 )
+                        except ObjectLostError as e:
+                            # Experimental object-loss recovery: if we can trace
+                            # the lost output back to a tracked seed input,
+                            # resubmit that seed input's chain instead of
+                            # counting an error.
+                            logger.info(
+                                "[lineage-recovery] Detected lost object while "
+                                f"reading output of task {task.task_index()} on "
+                                f'operator "{state.op.name}"; attempting lineage '
+                                "recovery (lineage_tracker="
+                                f"{'on' if lineage_tracker else 'off'})."
+                            )
+                            if lineage_tracker is not None and _recover_lost_object(
+                                topology, lineage_tracker, state, task, e
+                            ):
+                                continue
+                            logger.info(
+                                "[lineage-recovery] Recovery did not fire for "
+                                f"task {task.task_index()} on operator "
+                                f'"{state.op.name}"; falling back to the error path.'
+                            )
+                            # Untracked / unrecoverable: fall through to error path.
+                            _record_errored_block(e, state.op.name)
                         except Exception as e:
                             _record_errored_block(e, state.op.name)
                     else:
@@ -839,7 +1017,6 @@ def update_operator_states(topology: Topology) -> None:
     Should be called after `process_completed_tasks()`."""
 
     for op, op_state in topology.items():
-
         # Call inputs_done() on ops where no more inputs are coming.
         if op_state.inputs_done_called:
             continue
@@ -860,7 +1037,6 @@ def update_operator_states(topology: Topology) -> None:
     # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
-
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
