@@ -12,6 +12,7 @@ from ray._raylet import NodeID
 from ray.serve._private.application_state import ApplicationState
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
@@ -4293,6 +4294,46 @@ def test_resource_requirements_none():
 
     # resource_requirements() should not error
     replica.resource_requirements()
+
+
+def test_gang_pg_leak_detection_survives_state_api_failure(
+    mock_deployment_state_manager,
+):
+    """The controller must still start when the state API is unreachable.
+
+    get_active_placement_group_ids() calls the dashboard, which Serve does not
+    otherwise need, so a failure there must not drop a live gang reservation.
+    """
+    create_deployment_state_manager, _, _, _ = mock_deployment_state_manager
+    gang_pg_name = f"{GANG_PG_NAME_PREFIX}app_D_abc123"
+    pg_table = {"pg-id-1": {"name": gang_pg_name}}
+
+    with patch("ray.util.placement_group_table", return_value=pg_table), patch(
+        "ray.util.get_placement_group"
+    ), patch("ray.util.remove_placement_group") as mock_remove, patch.object(
+        ds_mod,
+        "get_active_placement_group_ids",
+        side_effect=ConnectionError("state API unavailable"),
+    ):
+        create_deployment_state_manager(placement_group_names=[gang_pg_name])
+
+    mock_remove.assert_not_called()
+
+
+def test_gang_pg_leak_detection_removes_unoccupied_pg(mock_deployment_state_manager):
+    """Control for the test above: a gang PG with no live actors is still removed."""
+    create_deployment_state_manager, _, _, _ = mock_deployment_state_manager
+    gang_pg_name = f"{GANG_PG_NAME_PREFIX}app_D_abc123"
+    pg_table = {"pg-id-1": {"name": gang_pg_name}}
+
+    with patch("ray.util.placement_group_table", return_value=pg_table), patch(
+        "ray.util.get_placement_group"
+    ), patch("ray.util.remove_placement_group") as mock_remove, patch.object(
+        ds_mod, "get_active_placement_group_ids", return_value=set()
+    ):
+        create_deployment_state_manager(placement_group_names=[gang_pg_name])
+
+    mock_remove.assert_called_once()
 
 
 class TestActorReplicaWrapper:

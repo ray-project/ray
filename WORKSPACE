@@ -41,11 +41,10 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# Please keep this in sync with the .bazelversion file.
-versions.check(
-    maximum_bazel_version = "7.5.0",
-    minimum_bazel_version = "7.5.0",
-)
+# Floor only: .bazelversion is the exact pin, and bazelisk applies it before this
+# file is evaluated. A maximum here is a second, redundant gate that additionally
+# blocks running a newer Bazel against the tree to find out what it breaks.
+versions.check(minimum_bazel_version = "7.5.0")
 
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 

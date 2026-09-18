@@ -224,6 +224,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: data-tests-location
+        name: Ray Data tests must live in python/ray/data/tests
+        entry: >-
+          Ray Data test files must live under python/ray/data/tests/ for consistency.
+        language: fail
+        files: '^python/ray/data/(?!tests/)(.*/)?test_[^/]*\.py$'
+
       - id: docstyle
         name: Check for Ray docstyle violations
         entry: ci/lint/check-docstyle.sh
