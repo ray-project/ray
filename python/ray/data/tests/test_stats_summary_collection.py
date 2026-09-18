@@ -1,6 +1,7 @@
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
 from ray.data import list_stats_summaries
 from ray.data._internal.stats_summary_server import clear_stats_summaries
 
@@ -41,15 +42,14 @@ def test_list_stats_summaries_records_streaming_split_execution(
 ):
     # `streaming_split` runs its executor inside the `SplitCoordinator` actor, so the
     # summary is reported from a different process than the one reading it back.
-    splits = ray.data.range(1).streaming_split(2)
+    # Consume in the driver: a remote consumer would hold the CPU that the read task
+    # needs to make progress.
+    it = ray.data.range(1).streaming_split(1)[0]
+    list(it.iter_batches())
 
-    @ray.remote
-    def consume(it):
-        return list(it.iter_batches())
-
-    ray.get([consume.remote(split) for split in splits])
-
-    assert len(list_stats_summaries()) > 0
+    # The coordinator reports when its executor shuts down, which can trail the
+    # iterator being exhausted here.
+    wait_for_condition(lambda: len(list_stats_summaries()) == 1)
 
 
 if __name__ == "__main__":
