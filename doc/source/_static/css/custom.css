@@ -427,9 +427,11 @@ dt.sig .sig-name {
   color: var(--pst-color-light);
   background-color: var(--ray-blue);
   /* The region stacks one or more `.ray-banner` children, each supplying its own
-     padding, so every banner paints a full-width band. Leaving the padding here
-     would show this background as a gutter around the inner bands. */
+     padding and height, so every banner paints a full-width band. Leaving the
+     theme's padding and min-height here would show this background as a gutter
+     around the inner bands whenever they are shorter than the region. */
   padding: 0;
+  min-height: 0;
 }
 
 /* The theme wraps the announcement HTML in this element and centers it as a flex

@@ -1,6 +1,8 @@
+/* 0.75rem of vertical padding around a 1.5rem line gives each band the 3rem
+   height the theme otherwise enforces with min-height on the region. */
 .ray-banner {
     position: relative;
-    padding: 0.5rem 3rem;
+    padding: 0.75rem 3rem;
 }
 
 /* Distinguishes a docs notice from the banner above it while staying in the Ray
