@@ -631,8 +631,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self.ras_history: Deque[RASReport] = deque(
             maxlen=self._confirm_poll_counts + _RAS_HISTORY_MARGIN_POLLS
         )
-        # Reports polled since the last reset, to number the history's files.
-        self._ras_poll_count: int = 0
         # Per-communicator consecutive frozen-poll streaks ({comm_id: polls}).
         # As a deadlock requires the whole comm to be frozen (no op advancing),
         # any op progressing would indicate the comm overall isn't deadlocked.
@@ -645,7 +643,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
         self.ras_history.clear()
-        self._ras_poll_count = 0
         self.reset_hang_counters()
 
     def reset_hang_counters(self):
@@ -691,7 +688,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 return
 
             self.ras_history.append(result)
-            self._ras_poll_count += 1
 
             if result.mismatched_comms:
                 self.evaluate_comm_mismatch(result)
@@ -939,7 +935,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         }
         if human_report:
             files["ncclras_report.txt"] = human_report
-        return self.upload_diagnostics(_NCCL_RAS_TOOL, files)
+
+        if files:
+            return self.upload_diagnostics(_NCCL_RAS_TOOL, files)
+        return None
 
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.

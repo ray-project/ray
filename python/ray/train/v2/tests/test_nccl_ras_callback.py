@@ -1170,7 +1170,6 @@ def test_ras_history_records_every_poll_and_evicts_the_oldest(monkeypatch):
         callback.after_worker_group_poll_status(MagicMock())
 
     assert list(callback.ras_history) == reports[-3:]
-    assert callback._ras_poll_count == len(reports)
 
 
 def test_ras_history_ignores_polls_that_produced_no_report(monkeypatch):
@@ -1182,7 +1181,7 @@ def test_ras_history_ignores_polls_that_produced_no_report(monkeypatch):
 
     callback.after_worker_group_poll_status(MagicMock())
 
-    assert not callback.ras_history and callback._ras_poll_count == 0
+    assert len(callback.ras_history) == 0
 
 
 def test_ras_history_resets_with_the_worker_group(monkeypatch):
@@ -1198,7 +1197,7 @@ def test_ras_history_resets_with_the_worker_group(monkeypatch):
     assert len(callback.ras_history) == 2
 
     callback.reset_detection_state()
-    assert not callback.ras_history and callback._ras_poll_count == 0
+    assert len(callback.ras_history) == 0
 
 
 def test_ras_history_uploads_one_file_per_retained_poll(uploads):
@@ -1210,8 +1209,6 @@ def test_ras_history_uploads_one_file_per_retained_poll(uploads):
         parse_ras_schema(ras_json)
         for ras_json in (HEALTHY_RAS_JSON, DEAD_RANK_RAS_JSON, MULTI_COMM_RAS_JSON)
     )
-    # The buffer already wrapped once: these are polls 7, 8 and 9.
-    callback._ras_poll_count = 10
 
     fs_path = callback.dump_ras_query_history("human readable report")
 
@@ -1219,15 +1216,15 @@ def test_ras_history_uploads_one_file_per_retained_poll(uploads):
     ((uploaded_path, files),) = uploads
     assert uploaded_path == fs_path
     assert sorted(files) == [
-        "poll_00007_2026-06-19-06-51-56.json",
-        "poll_00008_2026-06-19-06-55-57.json",
-        "poll_00009_2026-06-19-06-56-24.json",
-        "report.txt",
+        "ncclras_2026-06-19-06-51-56.json",
+        "ncclras_2026-06-19-06-55-57.json",
+        "ncclras_2026-06-19-06-56-24.json",
+        "ncclras_report.txt",
     ]
     # The polls are the raw `ncclras` output, not what the detector parsed out
     # of it, so hosts, pids and missing ranks survive into the history.
-    assert files["poll_00007_2026-06-19-06-51-56.json"] == HEALTHY_RAS_JSON
-    assert files["report.txt"] == "human readable report"
+    assert files["ncclras_2026-06-19-06-51-56.json"] == HEALTHY_RAS_JSON
+    assert files["ncclras_report.txt"] == "human readable report"
 
 
 def test_ras_history_upload_without_a_text_report(uploads):
@@ -1235,18 +1232,17 @@ def test_ras_history_upload_without_a_text_report(uploads):
     # controller already holds is still worth writing.
     callback = make_diagnostics_callback()
     callback.ras_history.append(parse_ras_schema(HEALTHY_RAS_JSON))
-    callback._ras_poll_count = 1
 
     callback.dump_ras_query_history(None)
 
     ((_, files),) = uploads
-    assert list(files) == ["poll_00000_2026-06-19-06-51-56.json"]
+    assert list(files) == ["ncclras_2026-06-19-06-51-56.json"]
 
 
 def test_ras_history_upload_skipped_when_empty(uploads):
     # Nothing polled yet (the hang was confirmed on another signal): there is no
     # empty directory to leave behind in the user's experiment directory.
-    assert make_diagnostics_callback().dump_ras_query_history("report") is None
+    assert make_diagnostics_callback().dump_ras_query_history() is None
     assert uploads == []
 
 
