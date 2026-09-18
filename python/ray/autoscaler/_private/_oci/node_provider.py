@@ -13,14 +13,13 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from threading import RLock
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from ray.autoscaler._private._oci.config import bootstrap_oci, fillout_resources
 from ray.autoscaler._private._oci.utils import (
     RUNNING,
     STOPPED,
     STOPPED_STATES,
-    STOPPING,
     TERMINATED_STATES,
     OCIClient,
     is_not_found_or_not_authorized,
@@ -59,8 +58,6 @@ _REUSE_TAGS = (
     TAG_RAY_LAUNCH_CONFIG,
 )
 
-STOP_WAIT_INTERVAL_S = 5
-STOP_WAIT_TIMEOUT_S = 300
 # OCI answers 409 Conflict ("instance is currently being modified") while an
 # instance is provisioning or changing state; the SDK's default retry strategy
 # does not retry it, so the provider does, with backoff, for up to this long.
@@ -105,6 +102,9 @@ class OCINodeProvider(NodeProvider):
         self.cached_nodes: Dict[str, Any] = {}
         # node id -> {"internal": ip, "external": ip}
         self.ip_cache: Dict[str, Dict[str, Optional[str]]] = {}
+        # Stopped instances claimed by an in-flight create_node() so that
+        # concurrent callers never restart the same instance.
+        self._claimed_for_reuse: Set[str] = set()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -132,11 +132,11 @@ class OCINodeProvider(NodeProvider):
     # Listing and state
     # ------------------------------------------------------------------
     def _list_instances(self) -> List[Any]:
-        kwargs = {}
-        if self.provider_config.get("availability_domain"):
-            kwargs["availability_domain"] = self.provider_config["availability_domain"]
+        # Compartment-wide on purpose: node types may override
+        # `availability_domain`, so nodes of one cluster can live in several
+        # ADs. The Ray tags, not the AD, identify the cluster's nodes.
         return self.client.list_all(
-            self.client.compute.list_instances, self.compartment_id, **kwargs
+            self.client.compute.list_instances, self.compartment_id
         )
 
     @staticmethod
@@ -368,39 +368,44 @@ class OCINodeProvider(NodeProvider):
                 "`shape`, `shape_config`, `image_id`, `metadata`, `fault_domain`)."
             ) from e
 
-    def _reuse_stopped_nodes(self, tags: Dict[str, str], count: int) -> Dict[str, Any]:
-        filters = {k: tags[k] for k in _REUSE_TAGS if k in tags}
-        candidates = [
-            inst
-            for inst in self._get_filtered_nodes(filters, include_stopped=True).values()
-            if inst.lifecycle_state in STOPPED_STATES
-        ][:count]
-        reused = {}
-        for inst in candidates:
-            if inst.lifecycle_state == STOPPING:
-                self._wait_for_state(inst.id, STOPPED)
-            cli_logger.print("Restarting stopped instance ...{}", short_id(inst.id))
-            started = self._retry_on_conflict(
-                self.client.compute.instance_action, inst.id, "START"
-            ).data
-            with self.lock:
-                self.cached_nodes[inst.id] = started
-                # The ephemeral public IP may change across stop/start.
-                self.ip_cache.pop(inst.id, None)
-            self.set_node_tags(inst.id, tags)
-            reused[inst.id] = started
-        return reused
+    @synchronized
+    def _claim_stopped_nodes(self, tags: Dict[str, str], count: int) -> List[Any]:
+        """Pick up to ``count`` STOPPED instances matching ``tags`` and mark
+        them as claimed, atomically, so concurrent callers get disjoint sets.
 
-    def _wait_for_state(self, node_id: str, state: str) -> None:
-        deadline = time.time() + STOP_WAIT_TIMEOUT_S
-        while time.time() < deadline:
-            instance = self._get_node(node_id)
-            if instance is None or instance.lifecycle_state == state:
-                return
-            time.sleep(STOP_WAIT_INTERVAL_S)
-        raise TimeoutError(
-            f"Instance ...{short_id(node_id)} did not reach {state} in time."
-        )
+        Instances that are still STOPPING are skipped rather than waited for:
+        the autoscaler must not block, and they become eligible once stopped.
+        """
+        filters = {k: tags[k] for k in _REUSE_TAGS if k in tags}
+        claimed = []
+        for inst in self._get_filtered_nodes(filters, include_stopped=True).values():
+            if len(claimed) >= count:
+                break
+            if inst.lifecycle_state != STOPPED or inst.id in self._claimed_for_reuse:
+                continue
+            self._claimed_for_reuse.add(inst.id)
+            claimed.append(inst)
+        return claimed
+
+    def _reuse_stopped_nodes(self, tags: Dict[str, str], count: int) -> Dict[str, Any]:
+        reused = {}
+        for inst in self._claim_stopped_nodes(tags, count):
+            try:
+                cli_logger.print("Restarting stopped instance ...{}", short_id(inst.id))
+                # The START call runs outside the lock: it is a network call.
+                started = self._retry_on_conflict(
+                    self.client.compute.instance_action, inst.id, "START"
+                ).data
+                with self.lock:
+                    self.cached_nodes[inst.id] = started
+                    # The ephemeral public IP may change across stop/start.
+                    self.ip_cache.pop(inst.id, None)
+                self.set_node_tags(inst.id, tags)
+                reused[inst.id] = started
+            finally:
+                with self.lock:
+                    self._claimed_for_reuse.discard(inst.id)
+        return reused
 
     def create_node(
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int

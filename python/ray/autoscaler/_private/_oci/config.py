@@ -611,6 +611,37 @@ def _configure_images(config: Dict[str, Any], client: OCIClient) -> None:
 # ----------------------------------------------------------------------
 # Resource autodetection
 # ----------------------------------------------------------------------
+def _list_shapes(
+    client: OCIClient,
+    compartment_id: str,
+    availability_domain: Optional[str],
+    cache: Dict[Optional[str], Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Return the shapes available in ``availability_domain`` keyed by name.
+
+    With no AD configured, the union over every AD of the region is returned.
+    """
+    if availability_domain in cache:
+        return cache[availability_domain]
+    if availability_domain:
+        shapes = {
+            s.shape: s
+            for s in client.list_all(
+                client.compute.list_shapes,
+                compartment_id,
+                availability_domain=availability_domain,
+            )
+        }
+    else:
+        shapes = {}
+        for ad in client.list_all(
+            client.identity().list_availability_domains, compartment_id
+        ):
+            shapes.update(_list_shapes(client, compartment_id, ad.name, cache))
+    cache[availability_domain] = shapes
+    return shapes
+
+
 def fillout_resources(config: Dict[str, Any]) -> Dict[str, Any]:
     """Fill in ``resources`` (CPU/GPU) for node types from their shape.
 
@@ -623,17 +654,17 @@ def fillout_resources(config: Dict[str, Any]) -> Dict[str, Any]:
     config = copy.deepcopy(config)
     provider = config["provider"]
     client = OCIClient(provider)
-    kwargs = {}
-    if provider.get("availability_domain"):
-        kwargs["availability_domain"] = provider["availability_domain"]
-    shapes = {
-        s.shape: s
-        for s in client.list_all(
-            client.compute.list_shapes, provider["compartment_id"], **kwargs
-        )
-    }
+    shape_cache: Dict[Optional[str], Dict[str, Any]] = {}
     for node_type in config["available_node_types"].values():
         node_config = node_type.get("node_config", {})
+        # Shapes differ per AD (GPU shapes often exist in one AD only), so
+        # look them up where this node type will actually launch.
+        availability_domain = node_config.get("availability_domain") or provider.get(
+            "availability_domain"
+        )
+        shapes = _list_shapes(
+            client, provider["compartment_id"], availability_domain, shape_cache
+        )
         shape = shapes.get(node_config.get("shape"))
         if shape is None:
             continue
