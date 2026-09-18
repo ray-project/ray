@@ -9,24 +9,19 @@ actor, which owns the buffer and is the only writer of the ``DATA_USAGE`` tag.
 """
 
 import json
-import threading
 from collections import OrderedDict
 from dataclasses import asdict
 from typing import TYPE_CHECKING, cast
 
-import ray
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
+from ray.data._internal.singleton_actor import get_or_create_singleton_actor
 
 if TYPE_CHECKING:
     from ray.data._internal.usage.collector import ExecutionId, UsageInfo
 
 # Bounded buffer of recent executions.
 _MAX_EXECUTIONS_TO_TRACK = 100
-
-# Ray Core doesn't allow creating the same named actor from multiple threads
-# simultaneously, and executions start on per-dataset executor threads.
-_get_or_create_lock = threading.Lock()
 
 
 class _UsageCollectionActor:
@@ -66,22 +61,7 @@ def get_or_create_usage_collection_actor() -> "ActorHandle[_UsageCollectionActor
     Pinned to the calling process's node so it fate-shares with the driver
     (the same placement the stats actor and actor-location tracker use).
     """
-    label_selector = {
-        # pyrefly: ignore[missing-attribute]  # constant lives in the Cython ext
-        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-    }
-    with _get_or_create_lock:
-        # ``ray.remote``'s overloads widen the inferred type to include the
-        # undecorated class, so name the handle type we know we get back.
-        return cast(
-            "ActorHandle[_UsageCollectionActor]",
-            ray.remote(num_cpus=0)(_UsageCollectionActor)
-            .options(
-                name="DataUsageCollectionActor",
-                namespace="DataUsageCollectionActor",
-                get_if_exists=True,
-                lifetime="detached",
-                label_selector=label_selector,
-            )
-            .remote(),
-        )
+    return cast(
+        "ActorHandle[_UsageCollectionActor]",
+        get_or_create_singleton_actor(_UsageCollectionActor),
+    )

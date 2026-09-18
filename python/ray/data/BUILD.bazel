@@ -1842,6 +1842,20 @@ py_test(
 )
 
 py_test(
+    name = "test_singleton_actor",
+    size = "medium",
+    srcs = ["tests/test_singleton_actor.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_stats",
     size = "large",
     srcs = ["tests/test_stats.py"],

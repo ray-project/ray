@@ -4,6 +4,7 @@ import time
 from typing import Dict, List
 
 import ray
+from ray.data._internal.singleton_actor import get_or_create_singleton_actor
 
 # Resource requests are considered stale after this number of seconds, and
 # will be purged.
@@ -17,7 +18,6 @@ PURGE_INTERVAL = RESOURCE_REQUEST_TIMEOUT * 2
 ARTIFICIAL_CPU_SCALING_FACTOR = 1.2
 
 
-@ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
     """Actor to make resource requests to autoscaler for the datasets.
 
@@ -104,23 +104,5 @@ class AutoscalingRequester:
         self._timeout = ttl
 
 
-# Creating/getting an actor from multiple threads is not safe.
-# https://github.com/ray-project/ray/issues/41324
-_autoscaling_requester_lock: threading.RLock = threading.RLock()
-
-
 def get_or_create_autoscaling_requester_actor():
-    # Pin the autoscaling requester actor to the local node so it fate-shares with the driver.
-    # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
-    # point to the head node.
-    label_selector = {
-        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-    }
-    with _autoscaling_requester_lock:
-        return AutoscalingRequester.options(
-            name="AutoscalingRequester",
-            namespace="AutoscalingRequester",
-            get_if_exists=True,
-            lifetime="detached",
-            label_selector=label_selector,
-        ).remote()
+    return get_or_create_singleton_actor(AutoscalingRequester)
