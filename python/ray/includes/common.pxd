@@ -597,6 +597,14 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             const OptionalItemPyCallback[c_bool] &callback)
 
+        void AsyncInternalKVPutIfMatch(
+            const c_string &ns,
+            const c_string &key,
+            const c_string &expected_value,
+            const c_string &value,
+            int64_t timeout_ms,
+            const OptionalItemPyCallback[c_bool] &callback)
+
         void AsyncInternalKVExists(
             const c_string &ns,
             const c_string &key,

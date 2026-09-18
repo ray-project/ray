@@ -74,6 +74,8 @@ TEST_F(RocksDbStoreClientParityTest, AsyncPutAndAsyncGetTest) {
   TestAsyncPutAndAsyncGet();
 }
 
+TEST_F(RocksDbStoreClientParityTest, AsyncPutIfMatchTest) { TestAsyncPutIfMatch(); }
+
 TEST_F(RocksDbStoreClientParityTest, AsyncGetAllAndBatchDeleteTest) {
   TestAsyncGetAllAndBatchDelete();
 }

@@ -333,16 +333,21 @@ class JobInfoStorageClient:
         )
         self._export_submission_job_event_logger.send_event(submission_event_data)
 
-    async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
+    async def _get_info_with_raw(
+        self, job_id: str, timeout: int = 30
+    ) -> Tuple[Optional[JobInfo], Optional[bytes]]:
         serialized_info = await self._gcs_client.async_internal_kv_get(
             self.JOB_DATA_KEY.format(job_id=job_id).encode(),
             namespace=ray_constants.KV_NAMESPACE_JOB,
             timeout=timeout,
         )
         if serialized_info is None:
-            return None
-        else:
-            return JobInfo.from_json(json.loads(serialized_info))
+            return None, None
+        return JobInfo.from_json(json.loads(serialized_info)), serialized_info
+
+    async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
+        info, _ = await self._get_info_with_raw(job_id, timeout)
+        return info
 
     async def delete_info(self, job_id: str, timeout: int = 30):
         await self._gcs_client.async_internal_kv_del(
@@ -361,10 +366,30 @@ class JobInfoStorageClient:
         error_type: Optional[JobErrorType] = None,
         jobinfo_replace_kwargs: Optional[Dict[str, Any]] = None,
         timeout: Optional[int] = 30,
-    ):
-        """Puts or updates job status.  Sets end_time if status is terminal."""
+        jobinfo_must_exist: bool = False,
+        expected_status: Optional[JobStatus] = None,
+    ) -> bool:
+        """Put or update job status and set end_time for terminal statuses.
 
-        old_info = await self.get_info(job_id, timeout=timeout)
+        Guarded updates compare the raw record and write it atomically. They
+        return false for a missing or changed record, but a retried RPC can
+        also return false after an earlier attempt succeeded. Callers must
+        re-read the state on conflict. Other status updates retain their
+        existing unconditional-write behavior.
+        """
+
+        guarded = jobinfo_must_exist or expected_status is not None
+        if guarded:
+            old_info, old_raw = await self._get_info_with_raw(job_id, timeout=timeout)
+        else:
+            old_info = await self.get_info(job_id, timeout=timeout)
+
+        if jobinfo_must_exist and old_info is None:
+            return False
+        if expected_status is not None and (
+            old_info is None or old_info.status != expected_status
+        ):
+            return False
 
         if jobinfo_replace_kwargs is None:
             jobinfo_replace_kwargs = dict()
@@ -389,7 +414,26 @@ class JobInfoStorageClient:
         if status.is_terminal():
             new_info.end_time = int(time.time() * 1000)
 
+        if guarded:
+            key = self.JOB_DATA_KEY.format(job_id=job_id).encode()
+            new_raw = json.dumps(new_info.to_json()).encode()
+            # A later read matching new_raw cannot identify which monitor wrote it.
+            updated = await self._gcs_client.async_internal_kv_put_if_match(
+                key,
+                old_raw,
+                new_raw,
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=timeout,
+            )
+            if updated:
+                try:
+                    self._write_submission_job_export_event(job_id, new_info)
+                except Exception:
+                    logger.exception("Error while writing job submission export event.")
+            return updated
+
         await self.put_info(job_id, new_info, timeout=timeout)
+        return True
 
     async def get_status(self, job_id: str, timeout: int = 30) -> Optional[JobStatus]:
         job_info = await self.get_info(job_id, timeout)

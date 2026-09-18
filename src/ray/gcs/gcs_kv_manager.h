@@ -67,6 +67,20 @@ class InternalKVInterface {
                    bool overwrite,
                    Postable<void(bool)> callback) = 0;
 
+  /// Atomically replace an existing value if it matches the expected value.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param key The key for the pair.
+  /// \param expected_value The value that must currently be stored.
+  /// \param value The replacement value.
+  /// \param callback Called with true if the replacement was applied, or false if the
+  /// key is missing or its value does not match.
+  virtual void PutIfMatch(const std::string &ns,
+                          const std::string &key,
+                          std::string expected_value,
+                          std::string value,
+                          Postable<void(bool)> callback) = 0;
+
   /// Delete the key from the store.
   ///
   /// \param ns The namespace of the key.
