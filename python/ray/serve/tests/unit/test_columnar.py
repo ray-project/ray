@@ -5,6 +5,7 @@ columnar, and decode rejection), then the plumbing that decodes frames into the 
 stores and aggregates them.
 """
 
+import logging
 import random
 import sys
 from functools import partial
@@ -29,7 +30,10 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TimeStampedValue,
 )
-from ray.serve._private.constants import RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S
+from ray.serve._private.constants import (
+    RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.controller import ServeController
 from ray.serve._private.utils import compress_metric_report, decompress_metric_report
 from ray.serve.config import AggregationFunction, AutoscalingConfig
@@ -631,7 +635,7 @@ def test_handle_columnar_uses_fast_store():
 
 
 @pytest.mark.parametrize("fmt", ["columnar", "cloudpickle"])
-def test_undecodable_report_is_logged_not_raised(fmt, caplog):
+def test_undecodable_report_is_logged_not_raised(fmt):
     """The sender never reads this call's ObjectRef, so a report that cannot be parsed
     would vanish with no trace on either side. Both formats must log and drop it, and
     neither may store anything from it."""
@@ -644,12 +648,25 @@ def test_undecodable_report_is_logged_not_raised(fmt, caplog):
     # Truncate the payload, keeping any leading magic so it still routes to its own
     # decoder rather than falling through to the other one.
     corrupt = good[: len(good) // 2]
-    with caplog.at_level("ERROR"):
+    # Serve's logger sets propagate=False, so caplog (which handles the root logger)
+    # sees nothing; attach to the logger the controller actually writes to.
+    records = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    handler = _Capture(level=logging.ERROR)
+    logger.addHandler(handler)
+    try:
         ServeController.record_autoscaling_metrics_from_handle(s, corrupt)
+    finally:
+        logger.removeHandler(handler)
     asm = s.autoscaling_state_manager
     asm.record_columnar_metrics_for_handle.assert_not_called()
     asm.record_request_metrics_for_handle.assert_not_called()
-    assert "Dropping an undec" in caplog.text
+    assert any("Dropping an undec" in m for m in records), records
 
 
 def test_handle_cloudpickle_uses_object_store():
