@@ -294,26 +294,50 @@
       python groupby_benchmark.py --sf 1000 --aggregate --group-by {{columns}}
       --shuffle-strategy shuffle_v2 --num-partitions 500
 
-# map_groups (keyed repartition under the hood). ``run.timeout`` has to be an
-# integer, so it can't be a matrix dimension; that's why the two cardinalities
-# stay separate blocks while external/non-external dedupe into one.
+# map_groups (keyed repartition under the hood). The 84-group key stays at SF100
+# because data skew in a partition makes the task unschedulable at SF1000; that
+# variant used to sit in its own block for a 3600s timeout, and now shares the
+# larger 7200s one.
 - name: "map_groups_{{suffix}}"
   python: "3.10"
   matrix:
     setup:
       suffix: []
       enable_external_shuffle: []
+      columns: []
       bin_packing_bytes: []
+      sf: []
+      num_partitions_arg: []
     adjustments:
+      - with:
+          suffix: "low_cardinality"
+          enable_external_shuffle: "0"
+          columns: "column08 column13 column14"   # 84 groups
+          bin_packing_bytes: 1342177280
+          sf: 100
+          num_partitions_arg: ""
+      - with:
+          suffix: "low_cardinality_external"
+          enable_external_shuffle: "1"
+          columns: "column08 column13 column14"   # 84 groups
+          # The external variants have always run at the 128 MiB default.
+          bin_packing_bytes: 134217728
+          sf: 100
+          num_partitions_arg: ""
       - with:
           suffix: "high_cardinality"
           enable_external_shuffle: "0"
+          columns: "column02 column14"  # 7M groups
           bin_packing_bytes: 1342177280
+          sf: 1000
+          num_partitions_arg: "--num-partitions 500"
       - with:
           suffix: "high_cardinality_external"
           enable_external_shuffle: "1"
-          # The external variant has always run at the 128 MiB default.
+          columns: "column02 column14"  # 7M groups
           bin_packing_bytes: 134217728
+          sf: 1000
+          num_partitions_arg: "--num-partitions 500"
 
   cluster:
     anyscale_sdk_2026: true
@@ -331,48 +355,8 @@
   run:
     timeout: 7200
     script: >
-      python groupby_benchmark.py --sf 1000 --map-groups
-      --group-by column02 column14
-      --shuffle-strategy shuffle_v2 --num-partitions 500
-
-# map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
-- name: "map_groups_{{suffix}}"
-  python: "3.10"
-  matrix:
-    setup:
-      suffix: []
-      enable_external_shuffle: []
-      bin_packing_bytes: []
-    adjustments:
-      - with:
-          suffix: "low_cardinality"
-          enable_external_shuffle: "0"
-          bin_packing_bytes: 1342177280
-      - with:
-          suffix: "low_cardinality_external"
-          enable_external_shuffle: "1"
-          # The external variant has always run at the 128 MiB default.
-          bin_packing_bytes: 134217728
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        RAY_max_direct_call_object_size: "8192"
-        RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "{{enable_external_shuffle}}"
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "{{bin_packing_bytes}}"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python groupby_benchmark.py --sf 100 --map-groups
-      --group-by column08 column13 column14
-      --shuffle-strategy shuffle_v2
+      python groupby_benchmark.py --sf {{sf}} --map-groups --group-by {{columns}}
+      --shuffle-strategy shuffle_v2 {{num_partitions_arg}}
 
 ###############
 # Join tests
