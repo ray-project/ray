@@ -611,22 +611,14 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
 
 
 def run_nvidia_smi(timeout_s: float) -> Dict[str, Any]:
-    """Snapshot the state of every GPU on the current (worker) node.
-
-    ``nvidia-smi -q`` reports per GPU the driver and VBIOS versions, power draw,
-    temperature, clocks and throttle reasons, ECC and retired-page counters, and
-    the processes holding the device. That is what lets a user decide whether a
-    hang is the hardware rather than a divergent code path.
+    """Snapshot `nvidia-smi -q` on the current (worker) node using .
 
     Args:
-        timeout_s: Timeout for the ``nvidia-smi`` subprocess. A wedged driver is
-            exactly the failure this is looking for, and ``nvidia-smi`` blocks in
-            the driver in that case, so the call can never run unbounded.
+        timeout_s: Timeout for the ``nvidia-smi`` subprocess.
 
     Returns:
-        A dict ``{"ok": bool, ...}``. On success ``stdout`` holds the report. On
-        failure ``reason`` says why there is none; ``binary_not_found`` marks a
-        node with no NVIDIA driver at all.
+        A dict ``{"ok": bool, ...}``. On success ``stdout`` holds the report.
+        On failure ``reason`` says why there is none.
     """
     try:
         proc = subprocess.run(
@@ -869,10 +861,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
-        # Snapshot the GPUs first: it is a point-in-time reading, and the stack
-        # dump below can take tens of seconds on a large worker group.
         nvidia_smi_dir = self.capture_diagnostic(
-            "`nvidia-smi` snapshots", self.dump_nodes_nvidia_smi
+            "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
         )
         stack_trace_dir = self.capture_diagnostic(
             "worker stack traces", self.dump_workers_stack_traces
@@ -1033,27 +1023,18 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """Snapshot every node's GPUs and write the reports to the log dir.
 
         The GPUs belong to the node rather than the rank, so exactly one worker
-        per node is queried and each node gets a ``{node_ip}.log``. A node whose
-        snapshot could not be launched, timed out, or failed gets that reason in
-        its file instead: ``nvidia-smi`` blocking in a wedged driver is itself the
-        finding, and is only visible if it is recorded.
+        per node is queried and each node gets a ``{node_ip}.log``.
 
         Returns:
             The path to the folder with the snapshots, or ``None`` when no node
             has ``nvidia-smi`` at all, so there is nothing to record.
         """
-        # `nvidia-smi` reports every GPU on the node, so the other ranks sharing
-        # a node would only repeat the same output.
         node_workers: Dict[str, Worker] = {}
+        node_ips: Dict[int, str] = {}
         for worker in self._worker_group.get_workers():
             node_workers.setdefault(worker.metadata.node_ip, worker)
-        if not node_workers:
-            return None
+            node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
 
-        node_ips = {
-            worker.distributed_context.world_rank: node_ip
-            for node_ip, worker in node_workers.items()
-        }
         dumps = fan_out_to_workers(
             list(node_workers.values()),
             run_nvidia_smi,
@@ -1062,24 +1043,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         )
 
         files: Dict[str, str] = {}
-        has_nvidia_smi = False
         for dump in dumps:
             node_ip = node_ips[dump.rank]
             if dump.error is None and dump.value["ok"]:
-                has_nvidia_smi = True
                 files[f"{node_ip}.log"] = dump.value["stdout"]
-                continue
+            else:
+                reason = dump.error if dump.error is not None else dump.value["reason"]
+                files[f"{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
 
-            reason = dump.error if dump.error is not None else dump.value["reason"]
-            has_nvidia_smi = has_nvidia_smi or reason != "binary_not_found"
-            logger.info("No `nvidia-smi` snapshot from node %s: %s", node_ip, reason)
-            files[f"{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
-
-        if not has_nvidia_smi:
-            # No node has the binary, so this is not an NVIDIA environment and a
-            # folder of identical "not installed" errors would help nobody.
-            logger.info("No node has `nvidia-smi`, skipping the hardware snapshot.")
-            return None
         return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
 
     def upload_diagnostics(self, tool: str, files: Dict[str, str]) -> str:

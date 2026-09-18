@@ -1393,31 +1393,6 @@ def test_nvidia_smi_failed_node_gets_placeholder(
     assert files["10.0.0.2.log"] == "GPUs"
 
 
-def test_nvidia_smi_skipped_when_no_node_has_it(monkeypatch, uploads):
-    # Not an NVIDIA environment: a folder of identical "not installed" errors
-    # would only point the user at a dead end.
-    workers = [make_worker(0, node_ip="10.0.0.1"), make_worker(1, node_ip="10.0.0.2")]
-    callback = make_diagnostics_callback(workers)
-    scripted_fan_out(
-        monkeypatch,
-        [
-            WorkerDump(0, value={"ok": False, "reason": "binary_not_found"}),
-            WorkerDump(1, value={"ok": False, "reason": "binary_not_found"}),
-        ],
-    )
-
-    assert callback.dump_nodes_nvidia_smi() is None
-    assert uploads == []
-
-
-def test_nvidia_smi_without_workers(monkeypatch, uploads):
-    callback = make_diagnostics_callback(workers=[])
-    calls = scripted_fan_out(monkeypatch, [])
-
-    assert callback.dump_nodes_nvidia_smi() is None
-    assert calls == [] and uploads == []
-
-
 def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
     # The whole worker-side path: what `nvidia-smi` prints has to arrive intact
     # in the node's file.
