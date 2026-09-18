@@ -260,6 +260,7 @@ proto_library(
     srcs = ["export_event.proto"],
     deps = [
         ":export_actor_event_proto",
+        ":export_annotation_event_proto",
         ":export_dataset_metadata_proto",
         ":export_dataset_operator_event_proto",
         ":export_dataset_operator_schema_proto",
@@ -274,6 +275,16 @@ proto_library(
 cc_proto_library(
     name = "export_event_cc_proto",
     deps = [":export_event_proto"],
+)
+
+proto_library(
+    name = "export_annotation_event_proto",
+    srcs = ["export_annotation_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_annotation_event_cc_proto",
+    deps = [":export_annotation_event_proto"],
 )
 
 proto_library(

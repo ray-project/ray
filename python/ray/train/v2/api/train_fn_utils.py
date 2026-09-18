@@ -471,11 +471,11 @@ def annotate(
             ``ray_train_worker_world_rank`` for LogQL to distinguish ranks.
         **fields: Arbitrary additional key-value pairs to include in the emitted
             JSON payload, such as ``epoch=3`` or ``loss=0.1``. Ray serializes
-            them together into a single JSON string under the ``fields`` key, so
-            the dashboard annotation displays them as one JSON tag. Because
-            ``fields`` parses as a single string label, LogQL can't filter on
-            individual keys within it. Filter on the reserved fields, such as
-            ``severity``, or on the run and rank tags instead.
+            them together into a single JSON string under the ``custom_fields``
+            key, so the dashboard annotation displays them as one JSON tag.
+            Because ``custom_fields`` parses as a single string label, LogQL
+            can't filter on individual keys within it. Filter on ``severity``,
+            or on the run and rank tags, instead.
     """
     if severity not in {"info", "warning", "error"}:
         raise ValueError(
@@ -492,12 +492,13 @@ def annotate(
     if rank_zero_only and train_context.get_world_rank() != 0:
         return
 
-    annotation_fields = {"message": message}
-    if fields:
-        annotation_fields["fields"] = json.dumps(fields, default=str)
+    # Serialized into a single field rather than one per key, so that the
+    # dashboard can show them as one tag without knowing their names.
+    custom_fields = {"custom_fields": json.dumps(fields, default=str)} if fields else {}
 
     train_context.annotation.annotate(
         event=TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE,
+        message=message,
         severity=severity,
-        **annotation_fields,
+        **custom_fields,
     )

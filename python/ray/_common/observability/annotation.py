@@ -1,115 +1,53 @@
 import json
 import logging
-import logging.handlers
-import os
-import threading
 import time
 from typing import Any, Dict, Optional
 
-from ray._common.utils import env_integer
+from ray._private.event.export_event_logger import (
+    EventLogType,
+    ExportEventLoggerAdapter,
+    get_export_event_logger,
+)
+from ray.core.generated.export_annotation_event_pb2 import ExportAnnotationEventData
 
 logger = logging.getLogger(__name__)
-_logger_lock = threading.Lock()
 
-# Annotation files are size-bounded and rotated for long-running processes
-RAY_ANNOTATION_MAX_FILE_SIZE_BYTES = env_integer(
-    "RAY_ANNOTATION_MAX_FILE_SIZE_BYTES", 100 * 1000 * 1000
-)
-RAY_ANNOTATION_MAX_BACKUP_COUNT = env_integer("RAY_ANNOTATION_MAX_BACKUP_COUNT", 5)
+_SEVERITY_BY_NAME = {
+    "info": ExportAnnotationEventData.Severity.INFO,
+    "warning": ExportAnnotationEventData.Severity.WARNING,
+    "error": ExportAnnotationEventData.Severity.ERROR,
+}
 
 
-def _get_session_name() -> str:
-    """Return the current Ray session name, or "" before Ray is initialized.
+def _stringify(value: Any) -> str:
+    """Render a tag or field value as the string a log backend stores it as.
 
-    ``_global_node`` is set both in processes that called ``ray.init`` and in
-    worker processes (see ``default_worker.py``), so this resolves in drivers,
-    actors and tasks alike. Records emitted before Ray is up are dropped by
-    :class:`_AnnotationFileHandler`, so in practice a written record always
-    carries a session name.
+    Non-string values go through ``json.dumps`` rather than ``str``, so that a
+    bool renders as ``"true"`` rather than ``"True"`` and a query can compare it
+    against the JSON spelling it sees for every other Ray field.
     """
-    from ray._private.worker import _global_node
-
-    if _global_node is None:
-        return ""
-    return _global_node.session_name
+    return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
-class _AnnotationFileHandler(logging.Handler):
-    """Write annotation records to a per-process file in the Ray session logs dir.
+def _to_severity(severity: Optional[str]) -> "ExportAnnotationEventData.Severity":
+    """Map a severity name to its enum value, defaulting to unspecified."""
+    if severity is None:
+        return ExportAnnotationEventData.Severity.SEVERITY_UNSPECIFIED
 
-    The session logs directory is only known once Ray is initialized and
-    rotated once it reaches ``RAY_ANNOTATION_MAX_FILE_SIZE_BYTES``,
-    keeping ``RAY_ANNOTATION_MAX_BACKUP_COUNT`` previous files.
-    """
-
-    def __init__(self):
-        super().__init__()
-        self._handler: Optional[logging.handlers.RotatingFileHandler] = None
-        self._logs_dir: Optional[str] = None
-
-        self._setup_failure_reported: bool = False
-
-    def emit(self, record: logging.LogRecord) -> None:
-        from ray._private.worker import _global_node
-
-        if _global_node is None:
-            # Ray is not initialized yet; retry on the next emit.
-            return
-
-        try:
-            logs_dir = _global_node.get_logs_dir_path()
-
-            if self._handler is None or self._logs_dir != logs_dir:
-                # The session logs dir changed (e.g. after a shutdown/restart).
-                if self._handler is not None:
-                    # Flush and close the previous handler
-                    self._handler.close()
-                    self._handler = None
-
-                os.makedirs(logs_dir, exist_ok=True)
-                filename = f"annotations_{os.getpid()}.log"
-                self._handler = logging.handlers.RotatingFileHandler(
-                    os.path.join(logs_dir, filename),
-                    maxBytes=RAY_ANNOTATION_MAX_FILE_SIZE_BYTES,
-                    backupCount=RAY_ANNOTATION_MAX_BACKUP_COUNT,
-                    encoding="utf-8",
-                )
-                self._handler.setFormatter(self.formatter)
-                self._logs_dir = logs_dir
-
-            # Snapshot the handler so a concurrent `close()` (e.g. from
-            # `logging.shutdown()` at interpreter exit) can't null it out
-            # between here and the `emit` below.
-            handler = self._handler
-        except Exception:
-            if not self._setup_failure_reported:
-                self._setup_failure_reported = True
-                logger.warning(
-                    "Failed to open the annotation log file, so annotations will not be "
-                    "written. Emitting will keep being retried, but further failures "
-                    "will not be logged.",
-                    exc_info=True,
-                )
-            return
-
-        if handler is not None:
-            handler.emit(record)
-
-    def flush(self) -> None:
-        if self._handler is not None:
-            self._handler.flush()
-        super().flush()
-
-    def close(self) -> None:
-        if self._handler is not None:
-            self._handler.close()
-            self._handler = None
-            self._logs_dir = None
-        super().close()
+    value = _SEVERITY_BY_NAME.get(severity.lower())
+    if value is None:
+        logger.warning(
+            "Unknown annotation severity %r, expected one of %s. The annotation "
+            "is emitted without one.",
+            severity,
+            sorted(_SEVERITY_BY_NAME),
+        )
+        return ExportAnnotationEventData.Severity.SEVERITY_UNSPECIFIED
+    return value
 
 
 class Annotation:
-    """Emits structured JSON annotation events for Grafana and Loki.
+    """Emits structured annotation events for Grafana and Loki.
 
     Unlike numeric metrics recorded to a Prometheus ``Gauge``, an ``Annotation``
     emits a single JSON line per event to a file under the Ray session logs dir.
@@ -118,6 +56,13 @@ class Annotation:
     annotation datasource over that backend. See
     :ref:`Overlay event annotations on the dashboards
     <grafana-dashboard-annotations>`.
+
+    Events are written through the export event pipeline as
+    :class:`~ray.core.generated.export_annotation_event_pb2.ExportAnnotationEventData`,
+    which owns the schema, so the emitted line is the export event envelope with
+    the annotation under its ``event_data`` key. Unlike the rest of that
+    pipeline, annotations are not gated on ``RAY_enable_export_api_write``: a
+    dashboard renders them out of the box.
 
     .. note::
 
@@ -134,66 +79,60 @@ class Annotation:
             uses it to select annotation lines out of the log stream.
         base_tags: Tags attached to every emitted event, such as the run name,
             run ID, and world rank. These identify the run and the worker, so
-            you can filter annotations per run in LogQL. Keys must not collide
-            with the reserved fields ``ray_annotations``, ``annotation_source``,
-            ``timestamp_s``, ``event``, and ``session_name``, which they would
-            silently shadow.
-
-    Raises:
-        ValueError: If ``base_tags`` contains a reserved field name.
+            you can filter annotations per run in LogQL. They are emitted under
+            their own ``tags`` key, so a tag can never shadow an envelope field.
     """
-
-    _RESERVED_FIELDS = frozenset(
-        {"ray_annotations", "annotation_source", "timestamp_s", "event", "session_name"}
-    )
 
     def __init__(
         self,
         source: str,
         base_tags: Dict[str, str],
     ):
-        # Unlike the per-emit `**fields`, which come from user code and are
-        # dropped with a warning, a colliding base tag is a programming error:
-        # it would shadow a reserved field on *every* emitted event.
-        reserved_tags = sorted(self._RESERVED_FIELDS.intersection(base_tags))
-        if reserved_tags:
-            raise ValueError(
-                f"Annotation base_tags contains reserved field(s) {reserved_tags}. "
-                f"Reserved fields are {sorted(self._RESERVED_FIELDS)}."
-            )
-
         self._source = source
-        self._base_tags = base_tags
-        self._logger = self._get_logger()
+        self._base_tags = {key: _stringify(value) for key, value in base_tags.items()}
 
         self._emit_failure_reported = False
 
     @staticmethod
-    def _get_logger() -> logging.Logger:
-        """Lazily configure and return the dedicated file-based annotation logger.
+    def _get_logger() -> Optional[ExportEventLoggerAdapter]:
+        """Return the export event logger to write annotations to.
+
+        Resolved per emit rather than in ``__init__``, because the session logs
+        dir is only known once Ray is initialized, and because a process can
+        outlive a session and has to follow it to the next one. ``_global_node``
+        is set both in processes that called ``ray.init`` and in worker processes
+        (see ``default_worker.py``), so this resolves in drivers, actors and
+        tasks alike.
 
         Returns:
-            The shared ``ray.annotations`` logger.
+            The logger, or ``None`` before Ray is initialized, in which case
+            there is nowhere to write the event and it is dropped.
         """
-        annotation_logger = logging.getLogger("ray.annotations")
-        with _logger_lock:
-            annotation_logger.setLevel(logging.INFO)
-            # Disable propagating to the root logger echoed to the terminal.
-            annotation_logger.propagate = False
+        from ray._private.worker import _global_node
 
-            if not any(
-                isinstance(handler, _AnnotationFileHandler)
-                for handler in annotation_logger.handlers
-            ):
-                handler = _AnnotationFileHandler()
-                # Emit the raw message (a JSON line) with no extra formatting.
-                handler.setFormatter(logging.Formatter("%(message)s"))
-                annotation_logger.addHandler(handler)
+        if _global_node is None:
+            return None
+        return get_export_event_logger(
+            EventLogType.ANNOTATION, _global_node.get_logs_dir_path()
+        )
 
-        return annotation_logger
+    @staticmethod
+    def _get_session_name() -> str:
+        from ray._private.worker import _global_node
 
-    def annotate(self, event: str, **fields: Any) -> None:
-        """Emit a single annotation event as one JSON line to the annotation log file.
+        if _global_node is None:
+            return ""
+        return _global_node.session_name
+
+    def annotate(
+        self,
+        event: str,
+        *,
+        message: str = "",
+        severity: Optional[str] = None,
+        **fields: Any,
+    ) -> None:
+        """Emit a single annotation event to the annotation log file.
 
         Annotations are best-effort observability and never on the critical
         path, so this method swallows any failure rather than propagating it to
@@ -202,38 +141,35 @@ class Annotation:
         Args:
             event: The event name, such as ``"controller_state_change"``. LogQL
                 uses it to filter annotations by type.
-            **fields: Arbitrary key-value pairs to include in the emitted JSON.
-                The caller and the dashboard queries that consume the event
-                define which fields it carries, such as ``message``,
-                ``severity``, or event-specific data.
+            message: Human-readable description of the event, which Grafana
+                shows as the annotation text.
+            severity: How important the event is, one of ``"info"``,
+                ``"warning"`` or ``"error"``. Grafana colors annotations by
+                severity. Omit it for an event that has no notion of one.
+            **fields: Arbitrary key-value pairs specific to this event, such as
+                the metrics of a ``ray.train.report`` call. Values are
+                stringified, because a log backend stores them as string labels.
         """
         try:
-            # Drop colliding fields
-            emitted_fields = {}
-            for key, value in fields.items():
-                if key in self._RESERVED_FIELDS or key in self._base_tags:
-                    logger.warning(
-                        "Annotation field %r collides with a reserved annotation field or "
-                        "with an annotation tag and was dropped. Rename it for it to appear "
-                        "in the emitted annotation.",
-                        key,
-                    )
-                    continue
-                emitted_fields[key] = value
+            export_event_logger = self._get_logger()
+            if export_event_logger is None:
+                # Ray is not initialized yet, so there is no session logs dir to
+                # write to. Retried on the next emit.
+                return
 
-            record = {
-                # The stream-label contract with the log collector
-                # Keep in sync with ``DEFAULT_ANNOTATION_STREAM_SELECTOR``
-                "ray_annotations": "true",
-                "annotation_source": self._source,
-                "timestamp_s": time.time(),
-                "event": event,
-                # Identifies the cluster that emitted the event
-                "session_name": _get_session_name(),
-                **emitted_fields,
-                **self._base_tags,
-            }
-            self._logger.info(json.dumps(record, default=str))
+            export_event_logger.send_event(
+                ExportAnnotationEventData(
+                    annotation_source=self._source,
+                    event=event,
+                    timestamp_s=time.time(),
+                    # Identifies the cluster that emitted the event
+                    session_name=self._get_session_name(),
+                    message=message,
+                    severity=_to_severity(severity),
+                    tags=self._base_tags,
+                    fields={key: _stringify(value) for key, value in fields.items()},
+                )
+            )
         except Exception:
             if not self._emit_failure_reported:
                 self._emit_failure_reported = True

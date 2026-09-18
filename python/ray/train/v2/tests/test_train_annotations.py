@@ -84,8 +84,8 @@ def test_report_emits_annotation(in_train_worker, captured_annotations):
     assert len(captured_annotations) == 1
     record = captured_annotations[0]
     assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_REPORT
-    assert json.loads(record["metrics"]) == {"loss": 0.5}
-    assert record["has_checkpoint"] is False
+    assert json.loads(record["fields"]["metrics"]) == {"loss": 0.5}
+    assert record["fields"]["has_checkpoint"] == "false"
 
 
 def test_annotate_emits_annotation(in_train_worker, captured_annotations):
@@ -96,7 +96,8 @@ def test_annotate_emits_annotation(in_train_worker, captured_annotations):
     record = captured_annotations[0]
     assert record["event"] == TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
     assert record["message"] == "finished epoch"
-    assert json.loads(record["fields"]) == {"epoch": 3}
+    assert record["severity"] == "INFO"
+    assert json.loads(record["fields"]["custom_fields"]) == {"epoch": 3}
 
 
 def test_annotate_rejects_invalid_severity(in_train_worker, captured_annotations):

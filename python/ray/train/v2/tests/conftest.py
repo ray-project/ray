@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 
@@ -7,7 +6,8 @@ import pytest
 import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
-from ray._common.observability.annotation import _AnnotationFileHandler
+from ray._common.observability.annotation import Annotation
+from ray._private.protobuf_compat import message_to_dict
 from ray.cluster_utils import Cluster
 from ray.train.v2._internal.constants import (
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
@@ -75,36 +75,27 @@ def disable_state_actor_polling(monkeypatch):
 
 
 @pytest.fixture
-def captured_annotations():
-    """Capture the annotations emitted through the ``ray.annotations`` logger.
+def captured_annotations(monkeypatch):
+    """Capture the annotations Train emits, without needing a Ray session.
 
-    Yields the list of emitted annotations, each parsed from its JSON line.
+    Yields the list of emitted annotation payloads, each as the dict the export
+    event pipeline serializes it to. The pipeline itself, including the file it
+    writes to, is covered by ``test_observability_annotation.py``.
     """
     records = []
 
-    class _CaptureHandler(logging.Handler):
-        def emit(self, record):
-            records.append(json.loads(record.getMessage()))
+    class _RecordingLogger:
+        def send_event(self, event_data):
+            records.append(
+                message_to_dict(
+                    event_data,
+                    always_print_fields_with_no_presence=True,
+                    preserving_proto_field_name=True,
+                )
+            )
 
-    annotation_logger = logging.getLogger("ray.annotations")
-    handler = _CaptureHandler()
-    original_level = annotation_logger.level
-    original_handlers = list(annotation_logger.handlers)
-    annotation_logger.addHandler(handler)
-    annotation_logger.setLevel(logging.INFO)
-    try:
-        yield records
-    finally:
-        annotation_logger.removeHandler(handler)
-        annotation_logger.setLevel(original_level)
-        # Emitting an annotation installs a process-global file handler on this shared logger
-        for installed_handler in list(annotation_logger.handlers):
-            if (
-                isinstance(installed_handler, _AnnotationFileHandler)
-                and installed_handler not in original_handlers
-            ):
-                annotation_logger.removeHandler(installed_handler)
-                installed_handler.close()
+    monkeypatch.setattr(Annotation, "_get_logger", staticmethod(_RecordingLogger))
+    yield records
 
 
 @pytest.fixture
