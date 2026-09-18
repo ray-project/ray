@@ -102,14 +102,12 @@ class LLMRouter:
         200 ``{"host": str, "port": int, "deployment": str, "replica_id": str,
         "request_headers"?: dict}``:
             pick succeeded. ``deployment`` and ``replica_id`` together address
-            the chosen replica; HAProxy's Lua map is keyed
-            ``[deployment][replica_id]``, so both are required. ``host`` and
-            ``port`` are informational -- HAProxy resolves the endpoint from its
-            own config rather than trusting them.
+            the chosen replica;
             ``request_headers["x-serve-router-kv-token-key"]`` is present only
             when prompt token IDs were enqueued to the selected
             replica's best-effort ZMQ side channel; the engine falls back to
             tokenization when it is absent or missing at consume time.
+            # TODO (celinaky): clean up host and port, not needed.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
             treats any non-200 as a routing failure. When using KV aware routing,
             a pre-routing ``/tokenize`` rejection is surfaced here.
