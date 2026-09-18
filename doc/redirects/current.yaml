@@ -39,7 +39,7 @@ redirects:
   to: /ray-observability/index.html
   type: page
 - from: /data/dataset.html
-  to: /en/master/data/api/dataset.html
+  to: /data/api/dataset.html
   type: page
 - from: /en/releases-0.8.7/cluster/launcher.html
   to: /en/latest/cluster/getting-started.html
