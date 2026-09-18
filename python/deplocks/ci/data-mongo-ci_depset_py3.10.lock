@@ -4614,9 +4614,9 @@ six==1.17.0 \
     #   tensorboard
     #   tensorflow
     #   tensorflow-probability
-smart-open==6.2.0 \
-    --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
-    --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
+smart-open==7.1.0 \
+    --hash=sha256:4b8489bb6058196258bafe901730c7db0dcf4f083f316e97269c66f45502055b \
+    --hash=sha256:a4f09f84f0f6d3637c6543aca7b5487438877a21360e7368ccf1f704789752ba
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 snowflake-connector-python==4.3.0 \
     --hash=sha256:08f5167a10d380fe66330d5b19d19bd8b4f4af27e9648e3b254e61da025646bf \
@@ -5363,6 +5363,7 @@ wrapt==1.17.3 \
     #   aiobotocore
     #   deprecated
     #   dm-tree
+    #   smart-open
     #   tensorflow
     #   tensorflow-datasets
     #   testcontainers
