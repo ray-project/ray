@@ -5413,6 +5413,17 @@ def read_iceberg(
         ... ).filter(col("column_name") == "literal_value")
         >>> # Select specific columns
         >>> ds = ds.select_columns(["col1", "col2"])  #doctest: +SKIP
+        >>> # Read through an Iceberg REST catalog
+        >>> ds = ray.data.read_iceberg( #doctest: +SKIP
+        ...     table_identifier="db_name.table_name",
+        ...     catalog_kwargs={
+        ...         "name": "rest",
+        ...         "type": "rest",
+        ...         "uri": "https://catalog.example.com/api/catalog",
+        ...         "warehouse": "warehouse_name",
+        ...         "token": "<bearer-token>",
+        ...     },
+        ... )
 
     Args:
         table_identifier: Fully qualified table identifier (``db_name.table_name``)
@@ -5429,9 +5440,7 @@ def read_iceberg(
              (e.g., case_sensitive, limit, etc.)
         catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
              function (e.g., name, type, etc.). For the function definition, see
-             `pyiceberg catalog
-             <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-             #pyiceberg.catalog.load_catalog>`_.
+             `pyiceberg catalog <https://py.iceberg.apache.org/reference/pyiceberg/catalog/#pyiceberg.catalog.load_catalog>`_.
         catalog: An optional :class:`~ray.data.Catalog` (e.g.
             :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
             When provided, the catalog supplies ``catalog_kwargs`` pointing at its
