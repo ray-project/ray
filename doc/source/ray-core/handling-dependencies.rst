@@ -975,7 +975,7 @@ Note that the ``smart_open``, ``boto3``, ``google-cloud-storage``, ``azure-stora
 The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
 Kerberos-authenticated HTTPS packages
-------------------------------------
+-------------------------------------
 
 To download ``working_dir`` or ``py_modules`` from a Kerberos/SPNEGO-protected
 HTTPS service, install ``smart_open[http]>=7.1.0``, ``requests>=2.32.3``, and

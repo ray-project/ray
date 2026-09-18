@@ -307,6 +307,24 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
             )
 
 
+def test_ca_bundles_are_isolated(tmp_path, kerberos):
+    import trustme
+
+    ca = trustme.CA()
+    trusted, unrelated = tmp_path / "trusted.pem", tmp_path / "unrelated.pem"
+    ca.cert_pem.write_to_path(trusted)
+    trustme.CA().cert_pem.write_to_path(unrelated)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ca.issue_cert("localhost").configure_cert(context)
+    with HTTPServer(host="localhost", ssl_context=context) as server:
+        server.expect_request("/code.zip").respond_with_data(b"package")
+        with ProtocolsProvider._http_kerberos_session({"localhost"}) as session:
+            uri = server.url_for("/code.zip")
+            assert session.get(uri, verify=str(trusted)).content == b"package"
+            with pytest.raises(requests.exceptions.SSLError):
+                session.get(uri, verify=str(unrelated))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("plugin_class", [WorkingDirPlugin, PyModulesPlugin])
 async def test_plugins_download_kerberos_zip(

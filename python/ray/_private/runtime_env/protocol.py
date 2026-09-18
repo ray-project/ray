@@ -281,17 +281,14 @@ class ProtocolsProvider:
             )
 
         class HTTPSAdapter(requests.adapters.HTTPAdapter):
-            def __init__(self):
-                # Require SANs even on older urllib3; Requests supplies the CAs.
-                self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-                self._ssl_context.hostname_checks_common_name = False
-                super().__init__()
-
             def build_connection_pool_key_attributes(self, request, verify, cert=None):
                 host_params, pool_kwargs = super().build_connection_pool_key_attributes(
                     request, verify, cert
                 )
-                pool_kwargs["ssl_context"] = self._ssl_context
+                # Keep CA stores isolated and require SANs even on older urllib3.
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                context.hostname_checks_common_name = False
+                pool_kwargs["ssl_context"] = context
                 if verify is True:
                     # Preserve Requests' default CAs when replacing its context.
                     pool_kwargs["ca_certs"] = requests.utils.DEFAULT_CA_BUNDLE_PATH
