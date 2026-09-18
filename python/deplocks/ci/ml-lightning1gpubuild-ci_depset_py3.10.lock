@@ -5245,9 +5245,9 @@ requests==2.33.1 \
     #   ray
     #   tensorflow
     #   torch-geometric
-restrictedpython==8.5 ; python_full_version < '3.12' \
-    --hash=sha256:4ed1269dbe3caa88db650d1af325198a952aeb1451eca05df0cfa65db4466215 \
-    --hash=sha256:6c70e0a3af13e830d37225788cdc8ab5804a8df4b500c135086eaef34b5c01e0
+restrictedpython==8.4 ; python_full_version < '3.12' \
+    --hash=sha256:68e463c22396fd94606043795ac7dbee05072725f38d0db7e1748da3f54fb274 \
+    --hash=sha256:ae89a3a4f0eeab314714004117bc49b63b0362ca5bf6a318236c6533fc46de67
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
     #   aim
