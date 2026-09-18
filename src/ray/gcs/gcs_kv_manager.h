@@ -67,6 +67,12 @@ class InternalKVInterface {
                    bool overwrite,
                    Postable<void(bool)> callback) = 0;
 
+  virtual void PutIfMatch(const std::string &ns,
+                          const std::string &key,
+                          std::string expected_value,
+                          std::string value,
+                          Postable<void(bool)> callback) = 0;
+
   /// Delete the key from the store.
   ///
   /// \param ns The namespace of the key.
