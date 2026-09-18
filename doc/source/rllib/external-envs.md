@@ -130,7 +130,7 @@ send_rllink_message(
 
   - Purpose: Provide the client with the current state, such as model weights.
   - Body:
-    - `state`: A dict with two keys. `rl_module` holds the `RLModule` state, as returned by the module's `get_state()` method. `weights_seq_no` is a monotonically increasing version number for the weights, which lets the client and server detect and skip redundant weight updates.
+    - `state`: A dict with two keys. `rl_module` holds the `RLModule` state, as returned by the module's `get_state()` method. `weights_seq_no` is the version number of the model weights. Comparing it across messages tells you how on-policy the collected data is, that is, whether the client sampled with the latest weights or an older set.
 
   Example shape:
 
