@@ -109,12 +109,14 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
-def _hash_partition_polars(
+def _hash_partition_vectorized(
     projected_table: "pyarrow.Table",
     num_partitions: int,
-) -> Optional[np.ndarray]:
+) -> np.ndarray:
     """
-    For each row, calculates hash(row_values) % num_partitions in a vectorized manner using Polars.
+    For each row, calculates hash(row_values) % num_partitions in a vectorized
+    manner using Polars, falling back to :func:`_hash_partition` when Polars is
+    unavailable or cannot handle the input.
 
     Args:
         projected_table: Arrow table containing rows to hash.
@@ -127,10 +129,7 @@ def _hash_partition_polars(
         import polars as pl
         from polars.exceptions import PolarsError
     except ImportError:
-        return None
-
-    if any(_is_pa_extension_type(field.type) for field in projected_table.schema):
-        return None
+        return _hash_partition(projected_table, num_partitions=num_partitions)
 
     try:
         df: "pl.DataFrame" = pl.from_arrow(projected_table, rechunk=False)
@@ -141,7 +140,7 @@ def _hash_partition_polars(
             f"Polars-based hash partitioning failed, falling back to the "
             f"default implementation: {e}"
         )
-        return None
+        return _hash_partition(projected_table, num_partitions=num_partitions)
 
 
 def _group_indices(
@@ -282,11 +281,7 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-    partitions_array = _hash_partition_polars(projected_table, num_partitions)
-    if partitions_array is None:
-        partitions_array = _hash_partition(
-            projected_table, num_partitions=num_partitions
-        )
+    partitions_array = _hash_partition_vectorized(projected_table, num_partitions)
     # bincount/Numba need signed int; the pandas hash path returns uint64.
     partitions_array = np.asarray(partitions_array, dtype=np.int64)
 

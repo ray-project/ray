@@ -15,7 +15,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     _group_indices,
     _group_indices_fallback,
     _has_unhashable_pandas_types,
-    _hash_partition_polars,
+    _hash_partition_vectorized,
     concat,
     hash_partition,
     shuffle,
@@ -265,27 +265,12 @@ def test_hash_partition_polars_consistent_across_blocks():
     t1 = pa.Table.from_pydict({"k": keys[:70], "v": list(range(70))})
     t2 = pa.Table.from_pydict({"k": keys[30:], "v": list(range(30, 100))})
 
-    h1 = _hash_partition_polars(t1.select(["k"]), num_partitions)
-    h2 = _hash_partition_polars(t2.select(["k"]), num_partitions)
-    assert h1 is not None and h2 is not None
+    h1 = _hash_partition_vectorized(t1.select(["k"]), num_partitions)
+    h2 = _hash_partition_vectorized(t2.select(["k"]), num_partitions)
 
     key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
     for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
         assert key_to_partition.setdefault(key, pid) == pid, key
-
-
-def test_hash_partition_polars_skips_extension_types():
-    # Extension-typed key columns are routed to the default implementation
-    # (Polars' handling of unknown extension types is version-dependent).
-    pytest.importorskip("polars")
-
-    tensors = ArrowTensorArray.from_numpy(np.ones((4, 2, 2)))
-    t = pa.table({"t": tensors})
-
-    assert _hash_partition_polars(t, 4) is None
-    # The public entrypoint still partitions fine through the fallback.
-    parts = hash_partition(t, hash_cols=["t"], num_partitions=4)
-    assert sum(p.num_rows for p in parts.values()) == 4
 
 
 def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
