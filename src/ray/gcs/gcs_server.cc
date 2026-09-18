@@ -384,9 +384,19 @@ void GcsServer::GetOrGenerateClusterId(
              kClusterIdKey,
              cluster_id.Binary(),
              false,
-             {[cluster_id,
-               continuation = std::move(continuation)](bool added_entry) mutable {
-                RAY_CHECK(added_entry) << "Failed to persist new cluster ID.";
+             {[this, cluster_id, continuation = std::move(continuation)](
+                  bool added_entry) mutable {
+                // overwrite=false makes this a compare-and-set, so losing it means
+                // another head persisted an ID between our Get and this Put. Any ID
+                // will do as long as the cluster agrees on one, so adopt the winner's
+                // rather than treating the race as fatal.
+                if (!added_entry) {
+                  RAY_LOG(INFO).WithField(cluster_id)
+                      << "Another GCS persisted a cluster ID first. Discarding the one "
+                         "generated here and adopting theirs.";
+                  GetOrGenerateClusterId(std::move(continuation));
+                  return;
+                }
                 std::move(continuation)
                     .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
                               cluster_id);
