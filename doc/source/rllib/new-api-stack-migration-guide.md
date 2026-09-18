@@ -38,7 +38,7 @@ The {py:class}`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` and {py:cl
 
 
 :::{note}
-Even though the new API stack still provides rudimentary support for [TensorFlow](https://tensorflow.org), RLlib supports a single deep learning framework, [PyTorch](https://pytorch.org), and drops TensorFlow support entirely. The Ray team continues to design RLlib to be framework-agnostic and might add support for other frameworks.
+RLlib supports a single deep learning framework, [PyTorch](https://pytorch.org), and drops TensorFlow support entirely. The Ray team continues to design RLlib to be framework-agnostic and might add support for other frameworks.
 :::
 
 
@@ -62,7 +62,7 @@ There are a few other differences between configuring an old API stack algorithm
 
 ### AlgorithmConfig.framework()
 
-Even though the new API stack still provides rudimentary support for [TensorFlow](https://tensorflow.org), RLlib supports a single deep learning framework, the [PyTorch](https://pytorch.org) framework.
+RLlib supports a single deep learning framework, [PyTorch](https://pytorch.org).
 
 The new API stack deprecates the following framework-related settings:
 

@@ -38,47 +38,43 @@ RLlink is a simple, stateful protocol for communication between a reinforcement 
 - **Strict request-response design**: Every exchange goes from a client request to a server response. Because the client simulation runs in its own execution loop, the server never sends unsolicited messages to clients.
 - **RL-specific capabilities**: Tailored for RL workflows, including episode handling, model weight updates, and configuration management.
 - **Flexible sampling**: Supports both on-policy and off-policy data collection modes.
-- **JSON**: To simplify debugging and speed up iteration, the first versions of RLlink are entirely JSON-based, unencrypted, and insecure.
+- **msgpack**: RLlink encodes message bodies with [msgpack](https://msgpack.org/). The first versions of RLlink are unencrypted and insecure.
 
 ### Message structure
 
 RLlink messages consist of a header and a body:
 
-  - **Header**: An 8-byte length field giving the size of the body. For example, `00000016` indicates a body of length 16, and thus the total message size.
-  - **Body**: JSON-encoded content with a `type` field indicating the message type.
+  - **Header**: 8-byte length field holding the size of the body in bytes as an ASCII decimal number, left-padded with zeros. For example, `00000011` indicates a body of 11 bytes. The header isn't included in this count, so the total frame is 8 bytes plus the body length.
+  - **Body**: msgpack-encoded dict with a mandatory `type` field indicating the message type.
 
 #### Example messages: PING and EPISODES_AND_GET_STATE
 
-Here is a complete example of the `PING` message. The 8-byte header encodes the size of the following body as length `16`, followed by the message body with the mandatory "type" field.
+Here is a complete example frame for the `PING` message. The body is the msgpack encoding of the dict `{"type": "PING"}`, which is 11 bytes long, hence the header `00000011`:
 
-```
-00000016{"type": "PING"}
+```text
+b"00000011" + b"\x81\xa4type\xa4PING"
 ```
 
 The client sends the `PING` message after initiating a new connection. The server then responds with:
 
-```
-00000016{"type": "PONG"}
+```text
+b"00000011" + b"\x81\xa4type\xa4PONG"
 ```
 
 Here is an example `EPISODES_AND_GET_STATE` message that the client sends to the server, carrying a batch of sampling data. With the same message, the client asks the server to send back the updated model weights.
 
 (example-rllink-episode-and-get-state-msg)=
 
-```javascript
-{
-  "type": "EPISODES_AND_GET_STATE",
-  "episodes": [
+```python
+send_rllink_message(
+    sock,
     {
-      "obs": [[...]],  // List of observations
-      "actions": [...],  // List of actions
-      "rewards": [...],  // List of rewards
-      "is_terminated": false,
-      "is_truncated": false
-    }
-  ],
-  "env_steps": 128
-}
+        "type": "EPISODES_AND_GET_STATE",
+        # One `SingleAgentEpisode.get_state()` dict per episode chunk.
+        "episodes": [episode.get_state() for episode in episodes],
+        "timesteps": 128,
+    },
+)
 ```
 
 ### Overview of all message types
@@ -103,7 +99,7 @@ Here is an example `EPISODES_AND_GET_STATE` message that the client sends to the
   - Purpose: Combine `EPISODES` and `GET_STATE` into a single request. This helps workflows that require on-policy, synchronous updates to model weights after data collection.
   - Body:
 
-    - `episodes`: A list of JSON objects, each with the mandatory keys "obs" (list of observations in the episode), "actions" (list of actions in the episode), "rewards" (list of rewards in the episode), "is_terminated" (bool), and "is_truncated" (bool). The "obs" list has one more item than the "actions" and "rewards" lists because of the initial reset observation.
+    - `episodes`: A list of dicts, each with the mandatory keys "obs" (list of observations in the episode), "actions" (list of actions in the episode), "rewards" (list of rewards in the episode), "is_terminated" (bool), and "is_truncated" (bool). The "obs" list has one more item than the "actions" and "rewards" lists because of the initial reset observation.
     - `weights_seq_no`: Sequence number for the model weights version, ensuring synchronization.
 
   - Expected response: `{"type": "SET_STATE", "weights_seq_no": 123, "mlir_file": ".. [b64 encoded string of the binary .mlir file with the model in it] .."}`.

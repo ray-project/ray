@@ -353,7 +353,7 @@ For a runnable example, see [logging inside training_step()](https://github.com/
 
 ## Migrating to Ray 2.53
 
-If you used the MetricsLogger API before Ray 2.52, review the following changes.
+If you used the MetricsLogger API before Ray 2.53, review the following changes.
 
 The most important changes are the following:
 - Metrics clear once per `MetricsLogger.reduce()` call. Peeking them afterward returns the zero-element for the reduce type, such as `np.nan`, `None`, or an empty list.
@@ -366,7 +366,7 @@ The following changes affect MetricsLogger's logging methods, such as `log_value
 - The `reduce_per_index_on_aggregate` argument is deprecated. RLlib aggregates all metrics over all values collected from the leaves of any reduction cycle.
 
 Other changes include the following:
-- Many metrics look noisier after you upgrade to 2.52, mostly because RLlib no longer smooths them. Do any smoothing downstream if you want it.
+- Many metrics look noisier after you upgrade to 2.53, mostly because RLlib no longer smooths them. Do any smoothing downstream if you want it.
 - {py:meth}`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.aggregate` is the only way to aggregate metrics.
 - You can pass a custom stats class through `AlgorithmConfig.reporting(custom_stats_cls_lookup={...})`. You can then write your own stats class with its own reduction logic. If your stats class fixes a bug or adds value to RLlib, consider contributing it to the project through a PR.
 - When aggregating metrics, you can peek only the ones that RLlib merged in the most recent reduction cycle by passing the `latest_merged_only=True` argument to {py:meth}`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger.peek`.

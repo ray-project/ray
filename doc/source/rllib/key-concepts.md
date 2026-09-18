@@ -13,19 +13,9 @@ This page introduces the key concepts and overall architecture of RLlib.
 ```{figure} images/rllib_key_concepts.svg
 :width: 750
 :align: left
-
-**RLlib overview:** The central component of RLlib is the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`
-class, which acts as a runtime for your RL experiments.
-Your gateway into an {ref}`Algorithm <rllib-key-concepts-algorithms>` is the
-{py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (cyan) class, where you
-manage configuration settings such as the learning rate or model architecture.
-Most {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` objects have
-{py:class}`~ray.rllib.env.env_runner.EnvRunner` actors (blue) to collect training samples
-from the {ref}`RL environment <rllib-key-concepts-environments>` and
-{py:class}`~ray.rllib.core.learner.learner.Learner` actors (yellow)
-to compute gradients and update your {ref}`models <rllib-key-concepts-rl-modules>`.
-The algorithm synchronizes model weights after an update.
 ```
+
+The central component of RLlib is the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` class, which acts as a runtime for your RL experiments. Your gateway into an {ref}`Algorithm <rllib-key-concepts-algorithms>` is the {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (cyan) class, where you manage configuration settings such as the learning rate or model architecture. Most {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` objects have {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors (blue) to collect training samples from the {ref}`RL environment <rllib-key-concepts-environments>` and {py:class}`~ray.rllib.core.learner.learner.Learner` actors (yellow) to compute gradients and update your {ref}`models <rllib-key-concepts-rl-modules>`. The algorithm synchronizes model weights after an update.
 
 (rllib-key-concepts-algorithms)=
 
@@ -319,11 +309,7 @@ This section is a quick overview of RLlib Learners. See the {ref}`detailed descr
 
 Given the {ref}`RLModule <rllib-key-concepts-rl-modules>` and one or more optimizers and loss functions, a {py:class}`~ray.rllib.core.learner.learner.Learner` computes losses and gradients, then updates the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
-The input data for such an update step comes in as a list of {ref}`episodes <rllib-key-concepts-episodes>`, which either the Learner's own connector pipeline or an external one converts into the final train batch.
-
-:::{note}
-{py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is in progress. The Ray team adds a link here once it's complete.
-:::
+The input data for such an update step comes in as a list of {ref}`episodes <rllib-key-concepts-episodes>`, which either the Learner's own connector pipeline or an external one converts into the final train batch. For how these connector pipelines work, see {ref}`ConnectorV2 <connector-v2-docs>`.
 
 {py:class}`~ray.rllib.core.learner.learner.Learner` instances are algorithm-specific, mostly due to the various loss functions used by different RL algorithms.
 
