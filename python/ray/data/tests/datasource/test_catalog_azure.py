@@ -90,6 +90,36 @@ already past that. AWS gets away with the environment because its vended
 ``test_vended_credentials_reach_read_tasks`` asserts that channel-agnostically
 -- the credential must be reachable from a read task by *some* route that
 survives pickling -- so it stays honest if the delivery mechanism changes again.
+
+Parquet takes the other channel
+-------------------------------
+``read_parquet`` is filesystem-only: it ignores ``storage_options`` entirely, so
+the SAS has to reach it through a ``pyarrow.fs.AzureFileSystem``. ``resolve()``
+builds one, which needs pyarrow >= 20.0.0 -- that is when ``sas_token`` was
+added (apache/arrow#45705). Below it the credential cannot arrive by any route
+and ``resolve()`` raises ``ImportError`` rather than letting pyarrow fall
+through to ``DefaultAzureCredential``.
+``test_resolve_conveys_parquet_credentials_to_reader`` asserts whichever of
+those two outcomes matches the installed pyarrow.
+
+Two details in that filesystem are easy to get wrong and both fail as an
+unauthenticated 404 rather than anything descriptive:
+
+* the ``sas_token`` keeps its leading ``?``. pyarrow appends the value to the
+  service URL verbatim, so without it the whole token is taken as a path
+  segment. deltalake's ``storage_options`` and ``AZURE_STORAGE_SAS_TOKEN`` both
+  want it stripped -- the channels genuinely disagree.
+* the ``<container>@<account>.dfs.core.windows.net`` authority is dropped from
+  the path. pyarrow parses that Hadoop-style form only when it builds the
+  filesystem from the URI itself; handed a filesystem, it treats the authority
+  as part of the path.
+
+The live half of that test only runs on the real backend: ``resolve()`` builds
+the filesystem for the real Azure endpoint and knows nothing about Azurite's
+authority/scheme overrides, so the emulator checks structure only.
+``test_parquet_count_min_max_via_catalog`` needs an actual ``USING PARQUET``
+table -- which in Unity Catalog must be *external*, since managed tables are
+Delta-only -- so set ``RAY_TEST_AZURE_UC_PARQUET_TABLE`` to run it.
 """
 
 import os
@@ -103,6 +133,7 @@ from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 from ray.data.tests.conftest import *  # noqa: F401,F403
@@ -157,6 +188,9 @@ _REAL_ENV = {
     "token": "RAY_TEST_AZURE_DATABRICKS_TOKEN",
     "delta_table": "RAY_TEST_AZURE_UC_DELTA_TABLE",
 }
+# Optional: only `test_parquet_count_min_max_via_catalog` needs it, and only
+# real Azure can serve it (see the module docstring).
+_REAL_PARQUET_TABLE_ENV = "RAY_TEST_AZURE_UC_PARQUET_TABLE"
 
 # Every env var the catalog or the emulator plumbing might set, cleared between
 # tests so one test's vended SAS can never satisfy the next one's read.
@@ -346,6 +380,13 @@ class _AzuriteBackend:
     def table_identifier(self) -> str:
         return "main.ray_test.delta"
 
+    def parquet_table_identifier(self):
+        # Azurite cannot serve the Parquet reader: pointing it at a custom
+        # endpoint needs a pyarrow filesystem, which resolve() does not build
+        # for Azure. The table identifier is still useful for the credential
+        # contract test, which never reads.
+        return "main.ray_test.parquet"
+
     def reader_storage_options(self):
         """Emulator plumbing -- endpoint and scheme, deliberately no credential.
 
@@ -393,12 +434,37 @@ class _RealAzureBackend:
     def table_identifier(self) -> str:
         return self._config["delta_table"]
 
+    def parquet_table_identifier(self):
+        # Falls back to the Delta table when no Parquet table is provisioned.
+        # `test_resolve_conveys_parquet_credentials_to_reader` never reads -- it
+        # asserts what `resolve()` hands back -- and Azure's credential channel
+        # does not depend on the table's actual format, so the contract still
+        # holds. Only `test_parquet_count_min_max_via_catalog` reads Parquet
+        # data, and it skips unless a real Parquet table is configured.
+        return os.environ.get(_REAL_PARQUET_TABLE_ENV) or self._config["delta_table"]
+
     def reader_storage_options(self):
         return {}
 
 
 def _real_azure_configured() -> bool:
     return all(os.environ.get(name) for name in _REAL_ENV.values())
+
+
+def _real_parquet_table_configured() -> bool:
+    return _real_azure_configured() and bool(os.environ.get(_REAL_PARQUET_TABLE_ENV))
+
+
+_real_parquet_table_only = pytest.mark.skipif(
+    not _real_parquet_table_configured(),
+    reason=(
+        "Needs a real Azure Parquet table. Unity Catalog managed tables are "
+        "Delta-only, so this needs an external table on an external location; "
+        "and Azurite cannot serve it, because resolve() builds the filesystem "
+        "for the real Azure endpoint. Set "
+        f"{', '.join(_REAL_ENV.values())} and {_REAL_PARQUET_TABLE_ENV}."
+    ),
+)
 
 
 @pytest.fixture(autouse=True)
@@ -625,6 +691,108 @@ def test_vended_credentials_reach_read_tasks(ray_start_10_cpus_shared, azure_bac
         "on a running cluster the credential stops at the driver and every read "
         "task authenticates with nothing."
     )
+
+
+# ---------------------------------------------------------------------------
+# Parquet: a pyarrow version floor, and a path that is still incomplete
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_conveys_parquet_credentials_to_reader(
+    azure_backend, suppress_ray_init
+):
+    """Resolving an Azure Parquet table either vends a usable credential or
+    refuses outright -- never silently returns one the reader cannot use.
+
+    ``read_parquet`` is filesystem-only, and ``pyarrow.fs.AzureFileSystem``
+    gained its ``sas_token`` parameter in pyarrow 20.0.0 (apache/arrow#45705).
+    So which outcome is correct depends on the installed pyarrow, and both are
+    asserted here against the version actually present:
+
+    - below 20, an up-front ``ImportError``. Silently proceeding is much worse
+      than failing: pyarrow reports a missing Azure credential by falling
+      through to ``DefaultAzureCredential``, which stalls on the
+      instance-metadata endpoint or, over a plain-HTTP endpoint, calls
+      ``abort()`` in C++ and kills the process with SIGABRT -- uncatchable from
+      Python, and it would take the rest of this file down with it.
+    - at 20 or above, resolution proceeds and the SAS is present in the
+      resolved source.
+
+    Asserted at the ``resolve()`` boundary rather than by attempting a read, for
+    the SIGABRT reason above.
+    """
+    from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+
+    catalog = azure_backend.catalog()
+    table = azure_backend.parquet_table_identifier()
+    pyarrow_version = get_pyarrow_version()
+
+    if pyarrow_version is not None and pyarrow_version < parse_version("20.0.0"):
+        with pytest.raises(ImportError, match="requires pyarrow >= 20.0.0"):
+            catalog.resolve(
+                table, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.READ
+            )
+        return
+
+    resolved = catalog.resolve(
+        table, reader=ReaderFormat.PARQUET, mode=CatalogAccessMode.READ
+    )
+
+    sas = os.environ.get("AZURE_STORAGE_SAS_TOKEN")
+    assert sas, "precondition: resolve() should have vended a SAS"
+
+    import pyarrow.fs as pafs
+
+    assert isinstance(resolved.filesystem, pafs.AzureFileSystem), (
+        "read_parquet is filesystem-only, so resolve() must return an "
+        f"AzureFileSystem carrying the SAS; got {resolved.filesystem!r}."
+    )
+    # The `<container>@<account>.dfs.core.windows.net` authority must be gone --
+    # see `_azure_url_without_authority`. Left in, pyarrow treats it as part of
+    # the path and every request 404s.
+    assert resolved.path.startswith("abfs://")
+    assert "@" not in resolved.path, (
+        f"path still carries the account authority ({resolved.path!r}); pyarrow "
+        "would read it as a path segment and 404."
+    )
+
+    if azure_backend.is_emulator:
+        # `resolve()` builds the filesystem for the real Azure endpoint, and
+        # rightly knows nothing about `blob_storage_authority` / scheme
+        # overrides, so it cannot be aimed at Azurite. The structural assertions
+        # above are all the emulator can check; the live listing below needs the
+        # real backend.
+        return
+
+    # A credential is only proven usable by using it: list the table prefix
+    # through the returned filesystem. Stops at listing rather than reading, so
+    # it runs even where no Parquet *table* exists -- the aggregation test does
+    # the reading.
+    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+
+    paths, fs = _resolve_paths_and_filesystem(resolved.path, resolved.filesystem)
+    infos = fs.get_file_info(pafs.FileSelector(paths[0], recursive=True))
+    assert infos, f"listing {paths[0]!r} through the vended filesystem returned nothing"
+
+
+@_real_parquet_table_only
+def test_parquet_count_min_max_via_catalog(ray_start_10_cpus_shared, azure_backend):
+    """A catalog-resolved Azure Parquet table reads back correctly.
+
+    Same contract as the Delta case. This is the path a vended SAS cannot
+    currently reach on its own (see
+    ``test_resolve_conveys_parquet_credentials_to_reader``); against real Azure
+    it fails with an authentication error rather than wrong data.
+    """
+    catalog = azure_backend.catalog()
+
+    ds = ray.data.read_parquet(
+        azure_backend.parquet_table_identifier(), catalog=catalog
+    )
+
+    assert ds.count() == _EXPECTED_COUNT
+    assert ds.min("id") == _EXPECTED_MIN
+    assert ds.max("id") == _EXPECTED_MAX
 
 
 if __name__ == "__main__":

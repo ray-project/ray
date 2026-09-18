@@ -6,9 +6,9 @@ depends_on:
   - ray-dashboard-build
 steps:
   # builds
-  - name: data17build-multipy
-    label: "wanda: data17build-py{{array.python}}"
-    wanda: ci/docker/data17.build.wanda.yaml
+  - name: data20build-multipy
+    label: "wanda: data20build-py{{array.python}}"
+    wanda: ci/docker/data20.build.wanda.yaml
     array:
       python:
         - "3.10"
@@ -62,11 +62,11 @@ steps:
     instance_type: small
     commands:
       - bash ci/lint/pyrefly-check.sh
-    depends_on: data17build-multipy(python=3.10)
-    job_env: data17build-py3.10
+    depends_on: data20build-multipy(python=3.10)
+    job_env: data20build-py3.10
 
   # tests
-  - label: ":database: data: arrow v17 tests"
+  - label: ":database: data: arrow v20 tests"
     tags:
       - data
     instance_type: large
@@ -75,9 +75,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data17build-py3.10 --python-version 3.10
+        --build-name data20build-py3.10 --python-version 3.10
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
-    depends_on: data17build-multipy(python=3.10)
+    depends_on: data20build-multipy(python=3.10)
 
   - label: ":database: data: tensorflow-datasets tests"
     key: data_tensorflow_datasets_tests
@@ -90,7 +90,7 @@ steps:
         --only-tags tensorflow_datasets
     depends_on: datatfdsbuild-multipy
 
-  - label: ":database: data: arrow v17 tests (data_non_parallel)"
+  - label: ":database: data: arrow v20 tests (data_non_parallel)"
     tags:
       - data
       - data_non_parallel
@@ -100,10 +100,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name data17build-py3.10 --python-version 3.10
+        --build-name data20build-py3.10 --python-version 3.10
         --only-tags data_non_parallel
         --except-tags data_non_parallel_postmerge_only,cudf
-    depends_on: data17build-multipy(python=3.10)
+    depends_on: data20build-multipy(python=3.10)
 
   - label: ":database: data: arrow v23 tests"
     tags:
@@ -198,16 +198,16 @@ steps:
     depends_on: datanbuild-multipy
     soft_fail: true
 
-  - label: ":database: data: postmerge arrow v17 tests"
+  - label: ":database: data: postmerge arrow v20 tests"
     tags:
       - data
       - skip-on-premerge
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --build-name data17build-py3.10 --python-version 3.10
+        --build-name data20build-py3.10 --python-version 3.10
         --only-tags data_non_parallel_postmerge_only
-    depends_on: data17build-multipy(python=3.10)
+    depends_on: data20build-multipy(python=3.10)
 
   - label: ":database: data: postmerge arrow v23 tests"
     tags:
