@@ -1104,9 +1104,9 @@
     script: python heterogeneous_memory_batch_inference.py --set-memory
 
 
-########################
-# Shuffle tests
-########################
+######################
+# Random shuffle tests
+######################
 
 - name: "random_shuffle_fixed_size"
   python: "3.10"
