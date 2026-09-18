@@ -16,6 +16,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
@@ -798,7 +799,9 @@ def test_logs_list(ray_start_with_dashboard):
     node_id = list_nodes()[0]["node_id"]
 
     def verify():
-        response = requests.get(webui_url + f"/api/v0/logs?node_id={node_id}")
+        response = request_with_auth_token(
+            "GET", webui_url + f"/api/v0/logs?node_id={node_id}"
+        )
         response.raise_for_status()
         result = json.loads(response.text)
         assert result["result"]
@@ -827,8 +830,8 @@ def test_logs_list(ray_start_with_dashboard):
 
     def verify_filter():
         # Test that logs/list can be filtered
-        response = requests.get(
-            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*gcs*"
+        response = request_with_auth_token(
+            "GET", webui_url + f"/api/v0/logs?node_id={node_id}&glob=*gcs*"
         )
         response.raise_for_status()
         result = json.loads(response.text)
@@ -843,8 +846,8 @@ def test_logs_list(ray_start_with_dashboard):
     wait_for_condition(verify_filter)
 
     def verify_worker_logs():
-        response = requests.get(
-            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*worker*"
+        response = request_with_auth_token(
+            "GET", webui_url + f"/api/v0/logs?node_id={node_id}&glob=*worker*"
         )
         response.raise_for_status()
         result = json.loads(response.text)
@@ -881,7 +884,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     node_id = list_nodes()[0]["node_id"]
 
     def verify_basic():
-        stream_response = requests.get(
+        stream_response = request_with_auth_token(
+            "GET",
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out&lines=5",
             stream=True,
@@ -910,7 +914,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
     # Test stream and fetching by actor id
-    stream_response = requests.get(
+    stream_response = request_with_auth_token(
+        "GET",
         webui_url
         + "/api/v0/logs/stream?&lines=-1"
         + f"&actor_id={actor._ray_actor_id.hex()}",
@@ -941,7 +946,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
     # Test tailing log by actor id
     LINES = 150
-    file_response = requests.get(
+    file_response = request_with_auth_token(
+        "GET",
         webui_url
         + f"/api/v0/logs/file?&lines={LINES}"
         + "&actor_id="
@@ -954,7 +960,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # Test query by pid & node_ip instead of actor id.
     node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
     pid = ray.get(actor.getpid.remote())
-    file_response = requests.get(
+    file_response = request_with_auth_token(
+        "GET",
         webui_url
         + f"/api/v0/logs/file?node_ip={node_ip}&lines={LINES}"
         + f"&pid={pid}",
@@ -978,7 +985,8 @@ def test_log_download_filename(ray_start_with_dashboard):
     download_filename = "dummy.out"
 
     def verify():
-        stream_response = requests.get(
+        stream_response = request_with_auth_token(
+            "GET",
             webui_url
             + (
                 f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
@@ -1120,10 +1128,11 @@ def test_log_get_subdir(ray_start_with_dashboard):
     # HTTP endpoint
     def verify():
         # Direct logs stream
-        response = requests.get(
+        response = request_with_auth_token(
+            "GET",
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}"
-            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}"
+            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}",
         )
         assert response.status_code == 200, response.reason
         assert "test log" in response.text
