@@ -237,29 +237,15 @@
 # The SF (scale factor) 1000 lineitem table contains ~6B rows.
 
 # The external (on-disk, file-transport) hash shuffle is the same test with
-# RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1, so it rides as a matrix dimension rather
-# than a duplicated block. "0" is what ``env_bool`` already reads for the
-# feature being off, so the non-external variants are unchanged.
-- name: "aggregate_groups_low_cardinality{{suffix}}"
+# RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1, so it's a ``variations`` suffix rather
+# than a duplicated block.
+- name: aggregate_groups_low_cardinality
   python: "3.10"
-  matrix:
-    setup:
-      suffix: []
-      enable_external_shuffle: []
-    adjustments:
-      - with:
-          suffix: ""
-          enable_external_shuffle: "0"
-      - with:
-          suffix: "_external"
-          enable_external_shuffle: "1"
-
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "{{enable_external_shuffle}}"
         # Footer read tuning. The 84-group key is read-bound and wants large bins.
         RAY_DATA_PARQUET_BIN_PACKING_BYTES: "536870912"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -274,26 +260,22 @@
       --group-by column08 column13 column14
       --shuffle-strategy shuffle_v2 --num-partitions 500
 
-- name: "aggregate_groups_high_cardinality{{suffix}}"
-  python: "3.10"
-  matrix:
-    setup:
-      suffix: []
-      enable_external_shuffle: []
-    adjustments:
-      - with:
-          suffix: ""
-          enable_external_shuffle: "0"
-      - with:
-          suffix: "_external"
-          enable_external_shuffle: "1"
+  variations:
+    - __suffix__: regular
 
+    - __suffix__: external
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+
+- name: aggregate_groups_high_cardinality
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "{{enable_external_shuffle}}"
         # Footer read tuning. The 7M-group key is shuffle-bound and measured
         # best at 64 MiB.
         RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
@@ -309,33 +291,23 @@
       --group-by column02 column14
       --shuffle-strategy shuffle_v2 --num-partitions 500
 
-# map_groups (keyed repartition under the hood).
-- name: "map_groups_high_cardinality{{suffix}}"
-  python: "3.10"
-  matrix:
-    setup:
-      suffix: []
-      enable_external_shuffle: []
-      bin_packing_bytes: []
-    adjustments:
-      - with:
-          suffix: ""
-          enable_external_shuffle: "0"
-          bin_packing_bytes: 1342177280
-      - with:
-          suffix: "_external"
-          enable_external_shuffle: "1"
-          # The external variant has always run at the 128 MiB default.
-          bin_packing_bytes: 134217728
+  variations:
+    - __suffix__: regular
 
+    - __suffix__: external
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+
+# map_groups (keyed repartition under the hood).
+- name: map_groups_high_cardinality
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "{{enable_external_shuffle}}"
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "{{bin_packing_bytes}}"
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
@@ -348,33 +320,29 @@
       --group-by column02 column14
       --shuffle-strategy shuffle_v2 --num-partitions 500
 
-# map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
-- name: "map_groups_low_cardinality{{suffix}}"
-  python: "3.10"
-  matrix:
-    setup:
-      suffix: []
-      enable_external_shuffle: []
-      bin_packing_bytes: []
-    adjustments:
-      - with:
-          suffix: ""
-          enable_external_shuffle: "0"
-          bin_packing_bytes: 1342177280
-      - with:
-          suffix: "_external"
-          enable_external_shuffle: "1"
-          # The external variant has always run at the 128 MiB default.
-          bin_packing_bytes: 134217728
+  variations:
+    - __suffix__: regular
+      cluster:
+        byod:
+          runtime_env:
+            # Footer read tuning. The external variant leaves this at the
+            # 128 MiB default.
+            RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
 
+    - __suffix__: external
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+
+# map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
+- name: map_groups_low_cardinality
+  python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "{{enable_external_shuffle}}"
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "{{bin_packing_bytes}}"
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
@@ -386,6 +354,21 @@
       python groupby_benchmark.py --sf 100 --map-groups
       --group-by column08 column13 column14
       --shuffle-strategy shuffle_v2
+
+  variations:
+    - __suffix__: regular
+      cluster:
+        byod:
+          runtime_env:
+            # Footer read tuning. The external variant leaves this at the
+            # 128 MiB default.
+            RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
+
+    - __suffix__: external
+      cluster:
+        byod:
+          runtime_env:
+            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
 
 ###############
 # Join tests
