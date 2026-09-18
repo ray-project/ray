@@ -232,17 +232,10 @@ frontend http_frontend
     # Lua then applies trusted metadata returned by /internal/route.
     http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
     {%- if ingress_request_router_forward_body %}
-    # Not gated on METH_POST: the router decides for every method now, and a
-    # request with no body is already a complete message, so this returns
-    # immediately rather than waiting out the timeout.
-    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if has_ingress_request_router_app
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
-    # Every request to a router-bearing app consults its router, whatever the
-    # method: the router names both the deployment and the replica, so a GET the
-    # app's ingress owns is as much a routing decision as a POST to a model. The
-    # HAProxy-owned /-/healthz and /-/routes responses above already returned, so
-    # they never reach this.
-    http-request lua.route_via_ingress_request_router if has_ingress_request_router_app
+    # TODO: Route all methods after the router supports ingress route ownership.
+    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     # A stale ingress replica can be re-routed by the fallback Serve proxy. A
     # direct deployment miss cannot, so it continues to fail closed.
     {%- for backend in backends %}
@@ -259,11 +252,7 @@ frontend http_frontend
     {%- for direct in backend.direct_target_configs %}
     use_backend {{ direct.name }} if is_{{ backend.name or 'unknown' }} { var(txn.ingress_request_router_backend) -m str "{{ direct.name }}" }
     {%- endfor %}
-    # Compare the backend the Lua resolved by name rather than testing the
-    # boolean txn.via_ingress_request_router: a successful *direct* selection
-    # sets that flag too, and would otherwise also be eligible for the ingress
-    # companion here. The name comes from BackendConfig, which is what the Lua
-    # map carries, so the two cannot drift.
+    # Dispatch ingress selections to the pinned companion backend.
     use_backend {{ backend.via_ingress_request_router_backend_name }} if is_{{ backend.name or 'unknown' }} { var(txn.ingress_request_router_backend) -m str "{{ backend.via_ingress_request_router_backend_name }}" }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
@@ -319,14 +308,8 @@ backend {{ backend.name or 'unknown' }}
 {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 backend {{ backend.via_ingress_request_router_backend_name }}
     log global
-    # Keep the pinned data-plane path on the same connection policy as the
-    # primary backend. For streamed responses, forcing server-close can leave
-    # HAProxy holding unread server-side FINs under a burst while worker
-    # threads are still routing other requests.
+    # Match the default backend's connection-reuse policy.
     http-reuse always
-    # Inherits the defaults block's `option redispatch 1` + retry-on, so a
-    # DOWN/slow pinned server falls through to a different replica instead of
-    # head-of-line-blocking on the original pick. One retry policy everywhere.
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
@@ -344,27 +327,18 @@ backend {{ backend.via_ingress_request_router_backend_name }}
     {%- if backend.fallback_server %}
     use-server {{ backend.fallback_server.name }} if { var(txn.ingress_request_router_recoverable) -m found }
     {%- endif %}
-    # `track` allows us to mirror primary-backend health and avoid double-checking.
+    # Mirror health from the default backend.
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} track {{ backend.name or 'unknown' }}/{{ backend.fallback_server.name }} backup
     {%- endif %}
-{%- endif %}
-{%- if has_ingress_request_router and backend.ingress_request_router_servers %}
 {%- for direct in backend.direct_target_configs %}
 backend {{ direct.name }}
     log global
     http-reuse always
-    # One backend per `_direct_http` deployment, holding only that deployment's
-    # replicas. Keeping them separate is the point: a retry or redispatch must
-    # never move a request onto a different deployment's replica, which for
-    # Serve LLM would mean answering with the wrong model.
-    #
-    # Unlike the `-via-ingress-request-router` companion there is no `track`
-    # here, because these replicas appear in no other backend -- this one owns
-    # their health checks.
+    # Isolate retries and redispatch within this deployment.
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
@@ -376,8 +350,7 @@ backend {{ direct.name }}
     {%- if backend.timeout_http_keep_alive_s is not none %}
     timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
     {%- endif %}
-    # Same health-check policy as the app's own backend; `default-server ... check`
-    # is what actually arms the checks on the server lines below.
+    # Direct backends own their health checks.
     {%- if hc.health_path %}
     option httpchk GET {{ hc.health_path }}
     http-check expect status 200

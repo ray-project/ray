@@ -18,11 +18,8 @@ local REQUEST_ID_HEADER = "x-request-id"
 -- same name to /internal/route so session-aware routers (e.g.
 -- ConsistentHashRouter) can use it.
 local SESSION_HEADER = "${SESSION_HEADER}"
--- The router is consulted for every method now, and it selects a deployment as
--- well as a replica, so it needs to know what was asked for: a path the app's
--- ingress owns (e.g. /v1/models) is a different decision from a completion
--- request. Sent on every call, independent of FORWARD_BODY -- routing by method
--- and path must not depend on the body-forwarding escape hatch.
+-- Method and path let the router prioritize ingress-owned routes. They are
+-- always forwarded because they do not depend on body forwarding.
 local REQUEST_METHOD_HEADER = "X-Serve-Request-Method"
 local REQUEST_PATH_HEADER = "X-Serve-Request-Path"
 
@@ -136,24 +133,10 @@ local function truncated_full_length(txn, body)
     end
 end
 
--- Core routing decision. Sets either txn.ingress_request_router_target +
--- txn.ingress_request_router_backend + txn.via_ingress_request_router (success)
--- or txn.ingress_request_router_failed (failure). Both outcomes are timed by the
--- caller; only the silent early returns in the action handler skip timing
--- because no routing was attempted.
---
--- `replica_map` is keyed [deployment][replica_id], matching the two-level
--- decision the router reports: which deployment, then which of its replicas.
--- The app's ingress is one of those deployments -- it is reached by the router
--- naming it, not by path -- so its replicas are in the map like any other
--- deployment's, under the app's `-via-ingress-request-router` backend.
+-- Route to replica_map[deployment][replica_id], recording either the selected
+-- backend and server or a failure reason on the transaction.
 local function _route_via_ingress_request_router(txn, app, pool, replica_map)
-    -- FORWARD_BODY=false: don't read or forward the body; call the router
-    -- with body="" so a Content-Length: 0 POST still goes through routing
-    -- (any policy that needs the body must opt in via FORWARD_BODY=true).
-    -- Empty body in FORWARD_BODY=true mode is treated the same -- a
-    -- legitimate input the router can accept or reject on its own terms;
-    -- we don't synthesize a sentinel for it here.
+    -- Policies that need the request body must opt in to body forwarding.
     local body = ""
     local truncated = nil
     if FORWARD_BODY then
@@ -203,9 +186,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- Round-robin over the app's routers, one cursor step per request. On a
     -- connection failure try the next router. A non-200 is the router's answer
     -- and is not retried.
-    -- `path` is the normalized path with the query string excluded (that is
-    -- `query`), and reflects any root_path rewrite the frontend already applied,
-    -- so the router sees the same path the replica will.
+    -- `path` is the normalized path with the query string excluded.
     local method = txn.sf:method()
     local path = txn.sf:path()
 
@@ -242,21 +223,12 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
-    -- Relabel before resolving, so a failure below is attributed in the metrics
-    -- line to the deployment whose routing broke rather than to the app's
-    -- ingress (the frontend's default for txn.serve_deployment). This var feeds
-    -- observability only; no routing rule reads it. This is the router's own
-    -- claim, not a value we have validated -- deliberately, since a 503 for a
-    -- deployment missing from our config is exactly the case worth seeing under
-    -- its own name. The router is a first-party Serve deployment and the
-    -- log-format's %{+Q,+E} escaping covers the string.
+    -- Attribute metrics to the deployment named by the router, including misses.
     txn:set_var("txn.serve_deployment", deployment)
 
     local deployment_targets = replica_map[deployment]
     if not deployment_targets then
-        -- The router named a deployment this HAProxy has no config for, e.g. a
-        -- model added since the last reload. The whole deployment is absent, so
-        -- there is no sibling replica to recover onto.
+        -- The deployment is absent from this HAProxy config snapshot.
         txn:set_var("txn.ingress_request_router_failed", "unknown_deployment")
         return
     end
@@ -268,9 +240,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
 
     local server_name = deployment_targets.r[replica_id]
     if not server_name then
-        -- The deployment is known but this replica is not in its server map: a
-        -- transient gap between the router view and HAProxy's config snapshot,
-        -- e.g. autoscaling since the last reload.
+        -- The replica is absent from this deployment's config snapshot.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
@@ -280,18 +250,9 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
--- Failure semantics: every path that reaches a router decision but cannot pin
--- a replica must arm txn.ingress_request_router_failed so the frontend's 503
--- rule fires instead of letting the request silently fall through to the
--- primary backend. The product invariant is: requests to a router-bearing app
--- are served via the router or fail; there is no quiet alternative path.
+-- Routing failures must not silently fall through to default path routing.
 -- An ingress `unknown_replica_id` may recover through the fallback Serve proxy.
 -- Direct deployment misses and all other failures return 503.
--- Two silent returns are correct: (1) the request didn't target a
--- router-bearing app (no txn var set, no app entry in our maps), and
--- (2) the controller hasn't pushed router/replica state for this app yet.
--- Failure-mode bucketing belongs in observability (response header label,
--- metric label), not in the data plane.
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
     -- Time the routing attempt regardless of outcome: both successful pins
     -- and explicit failures (router_unreachable, router_non_200,
