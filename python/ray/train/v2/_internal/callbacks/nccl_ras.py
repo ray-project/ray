@@ -213,9 +213,7 @@ class RASReport:
             majority logic).
         comm_rank_status: Maps each communicator and their ranks with their
             status. A hang requires that the rank to be RUNNING.
-        raw_json: The ``ncclras`` output this report was parsed from, kept so
-            the query history written at hang time holds everything RAS said
-            (hosts, pids, missing ranks) and not just what the detector reads.
+        raw_json: The ``ncclras`` output this report was parsed from
     """
 
     timestamp: str
@@ -580,9 +578,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     expresses how long that run should take and is converted to a poll count
     with the poll interval.
 
-    Every poll's report is also kept in a circular buffer that outlives the
-    confirmation window, so a confirmed hang can write out how the collective
-    counts drifted on the way into it, not just the final stalled state.
+    Every poll is added to a circular buffer so users have a history of ncclras
+    queries and for improving the detection.
     """
 
     def __init__(self):
@@ -625,18 +622,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 f"got {self._action!r}."
             )
 
-        # The train worker group (for stack dumps) and the poller fetching its
-        # RAS reports in the background; both live for one worker group.
         self._worker_group: Optional[WorkerGroup] = None
         self._ras_poller: Optional[RASPoller] = None
 
         # The previous successful poll's report
         self.prev_report: Optional[RASReport] = None
-        # Circular buffer of the most recent reports, written to the run's
-        # storage on a confirmed hang. It holds every poll a confirmation
-        # consumes plus a margin, so the saved history starts while the
-        # communicator was still healthy. Costs one report (a few KB per
-        # communicator) per retained poll on the controller.
+        # Circular buffer of ncclras json queries
         self.ras_history: Deque[RASReport] = deque(
             maxlen=self._confirm_poll_counts + _RAS_HISTORY_MARGIN_POLLS
         )
@@ -653,8 +644,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
-        # A new worker group is a new set of communicators, so the reports of
-        # the old one say nothing about it.
         self.ras_history.clear()
         self._ras_poll_count = 0
         self.reset_hang_counters()
@@ -686,9 +675,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             return
 
         # This hook runs on the controller's poll loop, so any error here must
-        # never crash training. A confirmed hang (NCCLHangError) is the intended
-        # fail action and must propagate; every other exception is a detector bug
-        # -- log it and disable detection for the rest of the run.
+        # never crash training.
         try:
             result = self._ras_poller.next_result()
             if result is None:
@@ -938,12 +925,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     ) -> Optional[str]:
         """Write the retained RAS polls to the run's storage.
 
-        Each poll is written verbatim as ``poll_<n>_<ras timestamp>.json``, ``n``
-        counting polls since the worker group started so the files read in poll
-        order, alongside ``report.txt`` for the human-readable report taken at
-        confirmation. The buffer reaches back past the confirmation window, so
-        the first files show the communicator before it stalled.
-
         Args:
             human_report: The ``ncclras -f text`` report fetched at confirmation,
                 or ``None`` if no worker could produce one.
@@ -952,17 +933,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             The path to the folder with the history, or ``None`` if no poll has
             been recorded yet.
         """
-        if not self.ras_history:
-            return None
-
-        first_poll = self._ras_poll_count - len(self.ras_history)
         files = {
-            f"poll_{first_poll + offset:05d}_"
-            f"{_UNSAFE_FILENAME_CHARS.sub('-', report.timestamp)}.json": report.raw_json
-            for offset, report in enumerate(self.ras_history)
+            f"ncclras_{_UNSAFE_FILENAME_CHARS.sub('-', report.timestamp)}.json": report.raw_json
+            for report in self.ras_history
         }
         if human_report:
-            files["report.txt"] = human_report
+            files["ncclras_report.txt"] = human_report
         return self.upload_diagnostics(_NCCL_RAS_TOOL, files)
 
     def dump_workers_stack_traces(self) -> Optional[str]:
