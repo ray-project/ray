@@ -150,11 +150,7 @@ def init(*, enable_docs: bool = True) -> FastAPI:
     """Build the FastAPI app shared by every Serve LLM ingress deployment.
 
     ``enable_docs=False`` drops FastAPI's own ``/docs``, ``/redoc`` and
-    ``/openapi.json`` routes. The direct-streaming control ingress needs that:
-    its route inventory is what the ingress request router uses to decide which
-    requests belong to the ingress rather than to a model deployment, so every
-    route it declares is a path it claims away from the models. An interactive
-    schema browser for two discovery endpoints is not worth that.
+    ``/openapi.json`` routes.
     """
     docs_options = (
         {}
@@ -195,14 +191,13 @@ def init(*, enable_docs: bool = True) -> FastAPI:
     return _fastapi_router_app
 
 
-def make_direct_streaming_control_ingress() -> Tuple[Type, List[RoutePattern]]:
+def make_direct_streaming_control_ingress() -> Tuple[
+    Type["DirectStreamingIngress"], List[RoutePattern]
+]:
     """Build the direct-streaming ingress class and its routing metadata.
 
-    The endpoint map is passed explicitly rather than defaulted so the route
-    inventory is stated in one place, and the FastAPI app drops the docs routes
-    -- see ``init``. Route patterns are extracted from that exact app at build
-    time and passed to ``LLMRouter``, so route ownership cannot drift from the
-    routes served by the ingress.
+    Route patterns are extracted from the same FastAPI app passed to
+    ``serve.ingress`` so the router's route ownership matches the deployed app.
     """
     app = init(enable_docs=False)
     ingress_cls = make_fastapi_ingress(
@@ -291,18 +286,7 @@ async def router_request_timeout(timeout_duration: float):
 
 
 class _ModelDiscovery:
-    """Model-discovery state and behavior shared by the ingress classes.
-
-    ``OpenAiIngress`` and ``DirectStreamingIngress`` answer the same two
-    discovery routes in the same way; they differ only in what else they do.
-    Discovery reads nothing but the model cards and the LoRA paths -- it never
-    calls a model deployment -- so it factors out cleanly and both ingresses
-    are guaranteed to report the same models rather than drifting apart.
-
-    Owns its copies of ``model_cards`` and ``lora_paths``: they are the
-    discovery answer, and an ingress holding a second copy is a chance for the
-    two to disagree.
-    """
+    """Model-discovery state and behavior shared by the ingress classes."""
 
     def __init__(
         self,
@@ -349,14 +333,12 @@ class _ModelDiscovery:
                     f'"{model_id}". Omitting it from list of available models. '
                     "Check that adapter config file exists in cloud bucket."
                 )
+        return None
 
     async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
-        all_models = dict()
+        all_models = dict(self.model_cards)
         for base_model_id in self.model_cards:
-            # Add the base model.
-            all_models[base_model_id] = await self.model(base_model_id)
-
             base_path = self.lora_paths.get(base_model_id)
             if base_path is not None:
                 # Add all the fine-tuned models.
@@ -793,31 +775,10 @@ class OpenAiIngress(DeploymentProtocol):
 
 
 class DirectStreamingIngress(DeploymentProtocol):
-    """Control-plane ingress for multi-model direct streaming.
+    """Control-plane ingress for direct streaming.
 
-    Deliberately **not** an ``OpenAiIngress`` subclass. Under direct streaming
-    the ingress and the ingress request router split the application's traffic
-    by route: every route this deployment declares is claimed by the ingress,
-    and everything else is routed by the ``model`` field to an ``LLMServer``
-    deployment whose replicas HAProxy talks to directly. Inheriting the OpenAI
-    endpoints would therefore claim ``/v1/chat/completions`` for the ingress and
-    put the proxy hop this feature exists to remove straight back onto the
-    inference path.
-
-    So this class exposes model discovery and nothing else:
-
-    * ``GET /v1/models``
-    * ``GET /v1/models/{model:path}``
-
-    It holds the model deployment handles but never calls them. Keeping them in
-    the constructor is what puts the model deployments in the application graph
-    (Serve builds an app by walking the bound arguments), and it gives future
-    control-plane operations -- LoRA registration, sleep/wake -- a handle to
-    reach. Discovery itself reads only the model cards.
-
-    Internal for the direct-streaming MVP: not exported from ``ray.serve.llm``,
-    not user-subclassable, and the builder rejects a custom ingress class while
-    direct streaming is on.
+    Only model-discovery methods are registered as HTTP routes. Inference routes
+    are owned by direct-HTTP model deployments and bypass this deployment.
     """
 
     def __init__(
@@ -837,10 +798,9 @@ class DirectStreamingIngress(DeploymentProtocol):
                 f"model_cards={sorted(model_cards)}."
             )
 
-        # Retained so the model deployments stay in the application graph and so
-        # later control-plane work has somewhere to call. Never invoked for
-        # discovery: a model listing must answer while a replica is busy
-        # streaming, and must not fail because one model is unhealthy.
+        # The bound constructor arguments place the model deployments in the
+        # application graph. Retain their runtime handles for future control-plane
+        # operations; discovery itself does not call them.
         self._llm_deployments: Dict[str, DeploymentHandle] = dict(llm_deployments)
         self._discovery = _ModelDiscovery(
             model_cards,
@@ -875,13 +835,8 @@ class DirectStreamingIngress(DeploymentProtocol):
     ) -> Dict[str, Any]:
         """Get the deployment options for the control-plane ingress.
 
-        The lightweight-ingress defaults, minus ``OpenAiIngress``'s
-        scale-to-zero behavior. That rule exists so an all-``min_replicas=0``
-        app can release its GPU node entirely, but under direct streaming the
-        ingress is also the only deployment that can answer ``GET /v1/models``,
-        and the ingress request router needs a live ingress replica to resolve
-        the discovery routes at all. Scaling it to zero would make model
-        discovery -- the thing that tells a client which models exist before it
-        wakes one -- the first casualty of an idle app.
+        Unlike ``OpenAiIngress``, this does not inherit scale-to-zero settings
+        from the models. The controller currently publishes an application's
+        HAProxy target group only while an ingress replica is running.
         """
         return copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
