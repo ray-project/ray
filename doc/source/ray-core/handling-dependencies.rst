@@ -974,6 +974,43 @@ Remote URIs support ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archive for
 Note that the ``smart_open``, ``boto3``, ``google-cloud-storage``, ``azure-storage-blob``, and ``azure-identity`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
 The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
+Kerberos-authenticated HTTPS packages
+-------------------------------------
+
+To download ``working_dir`` or ``py_modules`` from a Kerberos/SPNEGO-protected
+HTTPS service such as HttpFS, install ``smart_open[http]>=7.1.0``,
+``requests>=2.32.3``, and ``requests-kerberos`` on every node. Before starting Ray,
+make an existing Kerberos credential cache available to its processes (for
+example through ``KRB5CCNAME``) and configure the allowed hosts and any enterprise
+CA bundle:
+
+.. code-block:: bash
+
+   export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=files.example.org
+   export REQUESTS_CA_BUNDLE=/etc/company-ca/ca.pem
+
+.. code-block:: python
+
+   runtime_env = {
+       "working_dir": "https://files.example.org/webhdfs/v1/artifacts/code.zip?op=OPEN"
+   }
+
+Kerberos is disabled by default and enabled only for listed HTTPS hosts.
+Use exact, comma-separated DNS names (case-insensitive), without ports or
+wildcards; IP addresses are not supported. Every redirect must also use HTTPS
+and a listed host, without credentials in the URL. Each hop must support
+Kerberos mutual authentication; native WebHDFS redirects that authenticate
+DataNodes using delegation tokens are not supported. Use an HttpFS gateway
+for this case. Each hop gets a fresh authentication context. Combining
+Kerberos with ``RAY_RUNTIME_ENV_BEARER_TOKEN`` for the same download is an error.
+
+Server hostnames are checked against DNS Subject Alternative Names (SANs),
+falling back to the Common Name (CN) when no DNS SAN is present. CA, hostname,
+and Kerberos mutual verification remain enabled. Dependencies, credentials, and
+configuration must be available before package download; setting them in
+``runtime_env["pip"]`` or ``runtime_env["env_vars"]`` is too late. Ray does not
+acquire or renew tickets or implement HDFS discovery and failover.
+
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
 

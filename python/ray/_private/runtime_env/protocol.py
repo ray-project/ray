@@ -1,10 +1,16 @@
 import os
+import re
+import ssl
+from contextlib import contextmanager
+from inspect import signature
+from ipaddress import ip_address
 from urllib.parse import urlparse
 
 from ray._common.runtime_env_uri import Protocol
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
 RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
+RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS"
 _DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
 
 
@@ -222,6 +228,102 @@ class ProtocolsProvider:
         return headers
 
     @classmethod
+    def _http_kerberos_hosts(cls, hostname):
+        hosts = {
+            host.strip().lower()
+            for host in os.environ.get(
+                RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, ""
+            ).split(",")
+            if host.strip()
+        }
+        if hostname not in hosts:
+            return set()
+        if any(
+            not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", host)
+            for host in hosts
+        ):
+            raise ValueError(
+                f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR} must contain "
+                "comma-separated hostnames, without schemes, ports or wildcards."
+            )
+        for host in hosts:
+            try:
+                ip_address(host)
+            except ValueError:
+                continue
+            raise ValueError(
+                f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR} requires DNS "
+                "hostnames, not IP addresses. Use the server's DNS name in "
+                "both the HTTPS URL and the host list."
+            )
+        return hosts
+
+    @classmethod
+    def _http_kerberos_session(cls, hosts):
+        try:
+            import requests
+            import requests_kerberos
+            from smart_open import http
+        except ImportError as exc:
+            raise ImportError(
+                "You must `pip install 'smart_open[http]>=7.1.0' requests-kerberos` "
+                "to fetch Kerberos-protected HTTPS URIs. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            ) from exc
+
+        # Require session injection and per-request TLS configuration. Older
+        # smart_open versions would silently ignore our redirect policy.
+        if "session" not in signature(http.open).parameters or not hasattr(
+            requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"
+        ):
+            raise ImportError(
+                "Kerberos downloads require `pip install 'smart_open[http]>=7.1.0' "
+                "'requests>=2.32.3'` for redirect and TLS validation. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        class HTTPSAdapter(requests.adapters.HTTPAdapter):
+            def build_connection_pool_key_attributes(self, request, verify, cert=None):
+                host_params, pool_kwargs = super().build_connection_pool_key_attributes(
+                    request, verify, cert
+                )
+                # Isolate CA stores; allow CN fallback when no DNS SAN is present.
+                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                context.hostname_checks_common_name = True
+                pool_kwargs["ssl_context"] = context
+                if verify is True:
+                    # Preserve Requests' default CAs when replacing its context.
+                    pool_kwargs["ca_certs"] = requests.utils.DEFAULT_CA_BUNDLE_PATH
+                return host_params, pool_kwargs
+
+        class KerberosSession(requests.Session):
+            def send(self, request, **kwargs):
+                parsed = urlparse(request.url)
+                if (
+                    parsed.scheme != "https"
+                    or parsed.hostname not in hosts
+                    or parsed.username is not None
+                    or parsed.password is not None
+                ):
+                    raise ValueError(
+                        "Kerberos downloads and redirects require HTTPS URLs "
+                        "without embedded credentials and hosts listed in "
+                        f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR}."
+                    )
+                return super().send(request, **kwargs)
+
+            def rebuild_auth(self, prepared_request, response):
+                # Never forward a previous hop's token. Use a fresh Kerberos
+                # context (including mutual authentication) for each redirect.
+                prepared_request.headers.pop("Authorization", None)
+                prepared_request.hooks = {"response": []}
+                prepared_request.prepare_auth(requests_kerberos.HTTPKerberosAuth())
+
+        session = KerberosSession()
+        session.mount("https://", HTTPSAdapter())
+        return session
+
+    @classmethod
     def _handle_http_protocol(cls):
         """Set up HTTP/HTTPS protocol handling with curl-like headers."""
 
@@ -233,6 +335,7 @@ class ProtocolsProvider:
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
 
+        @contextmanager
         def open_file(uri, mode, *, transport_params=None):
             params = {
                 "headers": cls._http_headers(),
@@ -240,7 +343,27 @@ class ProtocolsProvider:
             }
             if transport_params:
                 params.update(transport_params)
-            return smart_open_open(uri, mode, transport_params=params)
+            parsed = urlparse(uri)
+            hosts = (
+                cls._http_kerberos_hosts(parsed.hostname)
+                if parsed.scheme == "https"
+                else set()
+            )
+            if hosts:
+                if os.environ.get(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR):
+                    raise ValueError(
+                        "Kerberos and Bearer Token authentication cannot be used "
+                        "together for the same download. Unset "
+                        f"{RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR} or remove the host "
+                        f"from {RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR}."
+                    )
+                with cls._http_kerberos_session(hosts) as session:
+                    params.update(kerberos=True, session=session)
+                    with smart_open_open(uri, mode, transport_params=params) as stream:
+                        yield stream
+            else:
+                with smart_open_open(uri, mode, transport_params=params) as stream:
+                    yield stream
 
         return open_file, None
 

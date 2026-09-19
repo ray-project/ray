@@ -2202,7 +2202,7 @@ six==1.17.0
     #   triad
 skops==0.14.0
     # via mlflow
-smart-open==6.2.0
+smart-open==7.1.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -2676,6 +2676,7 @@ wrapt==1.17.3
     #   deprecated
     #   dm-tree
     #   opentelemetry-instrumentation
+    #   smart-open
     #   tensorflow
     #   tensorflow-datasets
     #   testcontainers

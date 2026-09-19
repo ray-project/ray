@@ -5779,9 +5779,9 @@ six==1.17.0 \
     #   python-dateutil
     #   rfc3339-validator
     #   vllm
-smart-open==6.2.0 \
-    --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
-    --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
+smart-open==7.1.0 \
+    --hash=sha256:4b8489bb6058196258bafe901730c7db0dcf4f083f316e97269c66f45502055b \
+    --hash=sha256:a4f09f84f0f6d3637c6543aca7b5487438877a21360e7368ccf1f704789752ba
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements/cloud-requirements.txt
@@ -6606,6 +6606,7 @@ wrapt==1.17.3 \
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements/cloud-requirements.txt
     #   dm-tree
+    #   smart-open
 xgrammar==0.2.3 ; platform_machine == 'aarch64' or platform_machine == 'arm64' or platform_machine == 'ppc64le' or platform_machine == 's390x' or platform_machine == 'x86_64' \
     --hash=sha256:00f6ba916fe84552f303b1b576061296ff8bea1e24d065efec49543489dd5217 \
     --hash=sha256:07d4c238c4545741573653fbfa66072ae208a85926c3a3f4d57c99fd67fde886 \
