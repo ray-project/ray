@@ -825,6 +825,19 @@ def test_query_local_tpu_chip_coordinates(monkeypatch):
         coordinator_address="h0:8476", num_processes=4, process_id=2
     )
 
+    # 3. GCE v7x (where TPU_ACCELERATOR_TYPE is unset and type is in metadata) also skips libtpu.
+    mock_sdk.slice.get_chip_coordinates.reset_mock()
+    monkeypatch.delenv("TPU_ACCELERATOR_TYPE", raising=False)
+    monkeypatch.setattr(tpu, "_get_tpu_metadata", lambda key: "tpu7x-16")
+    assert tpu._query_local_tpu_chip_coordinates(
+        parent_topology="2x2x4",
+        worker_hostnames="h0,h1,h2,h3",
+        coordinator_address="h0:8476",
+        num_hosts=4,
+        worker_id=1,
+    ) == [[0, 0, 2]]
+    mock_sdk.slice.get_chip_coordinates.assert_not_called()
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

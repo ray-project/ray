@@ -1279,6 +1279,16 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
                 "TPU_WORKER_ID": "0",
             },
         ),
+        (
+            ["[2001:db8::1]:8471", "[2001:db8::2]:8471"],
+            0,
+            {},
+            {
+                "TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2",
+                "TPU_PROCESS_ADDRESSES": "[2001:db8::1]:8471,[2001:db8::2]:8471",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
     ],
 )
 def test_get_jax_env_vars_free_function(
@@ -2993,7 +3003,7 @@ def test_physical_worker_ordering_in_subslice_and_slice_pg(monkeypatch):
     }
 
 
-def test_subslice_placement_group_jax_env_vars():
+def test_subslice_placement_group_jax_env_vars(monkeypatch):
     """SubslicePlacementGroup.get_jax_env_vars populates subslice bounds and port offset."""
     sg = ray.util.tpu.SubslicePlacementGroup(
         placement_group=MagicMock(id="mock_subslice_pg"),
@@ -3005,9 +3015,7 @@ def test_subslice_placement_group_jax_env_vars():
         chips_per_host=4,
         bundle_resources={"TPU": 4},
     )
-    assert sg.get_jax_env_vars(
-        worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"]
-    ) == {
+    expected = {
         "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
         "TPU_PROCESS_ADDRESSES": "10.0.0.10:8472,10.0.0.11:8472",
         "TPU_WORKER_ID": "1",
@@ -3017,6 +3025,17 @@ def test_subslice_placement_group_jax_env_vars():
         "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
         "TPU_TOPOLOGY": "2x4",
     }
+    assert (
+        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
+        == expected
+    )
+    # Even when kuberay-tpu-webhook sets TPU_PROCESS_PORT=8471 in os.environ,
+    # subslice_index=1 must still offset the port to 8472.
+    monkeypatch.setenv("TPU_PROCESS_PORT", "8471")
+    assert (
+        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
+        == expected
+    )
 
 
 def test_build_slice_worker_to_node_ignores_dead_nodes():

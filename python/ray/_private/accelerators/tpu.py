@@ -68,9 +68,6 @@ TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
-DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S: float = float(
-    os.environ.get("RAY_TPU_SLICE_DISCOVERY_TIMEOUT_S", "180.0")
-)
 
 # PCI vendor ID for Google TPUs (used to validate VFIO devices).
 # See https://cloud.google.com/tpu/docs/custom-os-image.
@@ -499,7 +496,7 @@ def _query_local_tpu_chip_coordinates(
                 if (host := _strip_endpoint_port(h))
             ]
             env_overrides[TPU_PROCESS_ADDRESSES_ENV_VAR] = ",".join(
-                f"{h}:{port}" for h in clean_hosts
+                ray._common.network_utils.build_address(h, port) for h in clean_hosts
             )
     if parent_topology:
         env_overrides[GKE_TPU_TOPOLOGY_ENV_VAR] = parent_topology
@@ -519,7 +516,8 @@ def _query_local_tpu_chip_coordinates(
         # libtpu's tpunetd does not support v7x: worker 0 raises Invalid accelerator
         # type immediately while workers 1..N-1 hang waiting for the session master.
         raw_accel = normalize_tpu_accelerator_type(
-            os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, "")
+            os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR)
+            or _get_tpu_metadata(key=GCE_TPU_ACCELERATOR_KEY)
         )
         is_v7x = raw_accel.startswith("v7x")
         if has_all_hostnames and not is_v7x:
