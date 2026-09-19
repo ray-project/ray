@@ -1773,6 +1773,9 @@ class HAProxyManager(ProxyActorInterface):
             },
             call_in_event_loop=self.event_loop,
             client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
+            host_actor_resolver=functools.partial(
+                ray.get_actor, SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+            ),
         )
 
         is_head = self._node_id == get_head_node_id()
@@ -1846,6 +1849,15 @@ class HAProxyManager(ProxyActorInterface):
         This method should be called before the actor is killed to ensure
         the HAProxy subprocess is properly terminated.
         """
+        self.long_poll_client.stop()
+        self._update_pending = False
+        if self._coalesce_task is not None and not self._coalesce_task.done():
+            self._coalesce_task.cancel()
+            try:
+                await self._coalesce_task
+            except asyncio.CancelledError:
+                pass
+
         try:
             logger.info(
                 f"Shutting down HAProxyManager on node {self._node_id}.",
