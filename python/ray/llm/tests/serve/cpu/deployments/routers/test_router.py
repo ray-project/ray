@@ -335,23 +335,9 @@ class TestDirectStreamingLLMRouter:
 _PICK = ("127.0.0.1", 9001, "SERVE_REPLICA::app#dep#r", None)
 
 
-def _fake_ingress_handle(routes=None, error=None):
-    """Ingress handle whose ``__serve_route_patterns__.remote()`` is stubbed.
-
-    Set through ``setattr``: ``MagicMock`` auto-creates ordinary attributes but
-    raises for dunder names, so the route-fetch method has to be attached by
-    hand.
-    """
-    handle = _fake_handle("DirectStreamingIngress")
-    remote = AsyncMock(
-        side_effect=error,
-        return_value=_INGRESS_ROUTES if routes is None else routes,
-    )
-    handle.__serve_route_patterns__ = MagicMock(remote=remote)
-    return handle
-
-
-async def _init_router(servers, llm_config=None, ingress=None):
+async def _init_router(
+    servers, llm_config=None, ingress=None, ingress_route_patterns=None
+):
     """Run the real ``__init__`` on a bare instance.
 
     ``__new__`` skips the Serve actor setup the other helpers avoid, but these
@@ -359,7 +345,11 @@ async def _init_router(servers, llm_config=None, ingress=None):
     """
     router = LLMRouter.__new__(LLMRouter)
     await LLMRouter.__init__(
-        router, servers=servers, llm_config=llm_config, ingress=ingress
+        router,
+        servers=servers,
+        llm_config=llm_config,
+        ingress=ingress,
+        ingress_route_patterns=ingress_route_patterns,
     )
     return router
 
@@ -702,39 +692,54 @@ class TestDirectStreamingRouterInit:
             handle._init.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_ingress_is_initialized_and_routes_fetched_once(self):
-        """Routes are read from the running replica, not build metadata, and
-        cached for this replica's life."""
-        ingress = _fake_ingress_handle()
+    async def test_ingress_is_initialized_with_build_time_routes(self):
+        ingress = _fake_handle("DirectStreamingIngress")
 
         router = await _init_router(
-            servers={"model-a": _fake_handle("LLMServer:model-a")}, ingress=ingress
+            servers={"model-a": _fake_handle("LLMServer:model-a")},
+            ingress=ingress,
+            ingress_route_patterns=_INGRESS_ROUTES,
         )
 
         ingress._init.assert_called_once()
-        ingress.__serve_route_patterns__.remote.assert_awaited_once()
         assert router._ingress_routes.matches("GET", "/v1/models")
 
     @pytest.mark.asyncio
-    async def test_route_fetch_failure_fails_initialization(self):
-        """Deliberately not tolerated: a router with no idea which paths the
-        ingress owns would answer control requests from a model deployment."""
-        ingress = _fake_ingress_handle(error=RuntimeError("replica unreachable"))
-
-        with pytest.raises(RuntimeError, match="replica unreachable"):
+    @pytest.mark.parametrize(
+        "ingress,patterns",
+        [
+            (_fake_handle("DirectStreamingIngress"), None),
+            (None, _INGRESS_ROUTES),
+        ],
+    )
+    async def test_ingress_and_routes_must_be_provided_together(
+        self, ingress, patterns
+    ):
+        with pytest.raises(ValueError, match="must be provided together"):
             await _init_router(
-                servers={"model-a": _fake_handle("LLMServer:model-a")}, ingress=ingress
+                servers={"model-a": _fake_handle("LLMServer:model-a")},
+                ingress=ingress,
+                ingress_route_patterns=patterns,
+            )
+
+    @pytest.mark.asyncio
+    async def test_empty_ingress_routes_fail_initialization(self):
+        with pytest.raises(ValueError, match="at least one HTTP route"):
+            await _init_router(
+                servers={"model-a": _fake_handle("LLMServer:model-a")},
+                ingress=_fake_handle("DirectStreamingIngress"),
+                ingress_route_patterns=[],
             )
 
     @pytest.mark.asyncio
     async def test_invalid_ingress_routes_fail_initialization(self):
-        ingress = _fake_ingress_handle(
-            routes=[RoutePattern(methods=["GET"], path="no-leading-slash")]
-        )
-
         with pytest.raises(AssertionError):
             await _init_router(
-                servers={"model-a": _fake_handle("LLMServer:model-a")}, ingress=ingress
+                servers={"model-a": _fake_handle("LLMServer:model-a")},
+                ingress=_fake_handle("DirectStreamingIngress"),
+                ingress_route_patterns=[
+                    RoutePattern(methods=["GET"], path="no-leading-slash")
+                ],
             )
 
     @pytest.mark.asyncio
