@@ -433,6 +433,27 @@ class TestDirectStreamingModelSelection:
         router._pick_replica.assert_not_called()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "body",
+        [
+            b'{"model":123,"prompt":"hi"}',
+            b'{"model":true,"prompt":"hi"}',
+            b'{"model":["model-a"],"prompt":"hi"}',
+            b'{"model":{"id":"model-a"},"prompt":"hi"}',
+        ],
+    )
+    async def test_non_string_model_is_400(self, body):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(body))
+
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.detail == "Model parameter must be a string."
+        router._pick_replica.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_exact_model_id_wins_over_base_model_id(self):
         """A configured id that itself contains ':' must resolve exactly, not be
         stripped to a base id that maps to a different deployment."""

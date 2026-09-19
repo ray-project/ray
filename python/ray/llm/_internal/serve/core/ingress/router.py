@@ -111,7 +111,7 @@ class LLMRouter:
           server is selected.
         * If ``model`` is omitted and multiple servers are configured, the
           router returns 400 rather than selecting an arbitrary server.
-        * An unknown ``model`` returns 404.
+        * An unknown or non-string ``model`` returns 404.
 
         HAProxy treats any non-200 from this endpoint as a routing failure and
         responds to the client with 503. The status codes above are visible to
@@ -245,7 +245,7 @@ class LLMRouter:
         if self._ingress is not None:
             self._ingress._init()
 
-    def _select_handle(self, model: Optional[str]) -> DeploymentHandle:
+    def _select_handle(self, model: Any) -> DeploymentHandle:
         """Resolve the request's ``model`` to a deployment handle or raises."""
         if model is None:
             if (
@@ -259,6 +259,11 @@ class LLMRouter:
                     "Model parameter is required when multiple models are "
                     f"configured. Available models: {sorted(self._servers)}"
                 ),
+            )
+        if not isinstance(model, str):
+            raise HTTPException(
+                status_code=400,
+                detail="Model parameter must be a string.",
             )
         handle = self._servers.get(model)
         if handle is None:
