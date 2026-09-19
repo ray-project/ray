@@ -387,7 +387,7 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 
 DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
-    1,
+    None,
 )
 
 
@@ -524,7 +524,8 @@ class AutoscalingConfig:
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
         actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
             This limits how many actors can be added at once to prevent resource contention
-            and scheduling pressure. Defaults to 1 for conservative scaling.
+            and scheduling pressure. Defaults to ``None``, leaving the delta bounded only by
+            the operator's resource budget and the pool's ``max_size``.
     """
 
     actor_pool_util_upscaling_threshold: float = (

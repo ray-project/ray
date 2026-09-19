@@ -1,4 +1,3 @@
-import logging
 import math
 from typing import TYPE_CHECKING
 
@@ -7,8 +6,6 @@ from .default_actor_autoscaler import DefaultActorAutoscaler
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import OpState
-
-logger = logging.getLogger(__name__)
 
 
 class BacklogAwareActorAutoscaler(DefaultActorAutoscaler):
@@ -19,10 +16,6 @@ class BacklogAwareActorAutoscaler(DefaultActorAutoscaler):
     up proportionally to its current size. This variant instead sizes the pool
     to the work it can already see (in-flight tasks plus the tasks the enqueued
     blocks will turn into), which lets it reach the required size in one step.
-
-    NOTE: ``AutoscalingConfig.actor_pool_max_upscaling_delta`` defaults to 1 and
-    truncates the delta computed here, so enabling this autoscaler alone is a
-    no-op. Raise (or unset) that cap alongside it.
     """
 
     def _compute_upscale_delta(
@@ -48,7 +41,7 @@ class BacklogAwareActorAutoscaler(DefaultActorAutoscaler):
 
 def _estimate_expected_tasks(
     op_state: "OpState",
-) -> float:
+) -> int:
     # Each task consumes `average_num_inputs_per_task` input blocks on average,
     # so the total expected number of tasks:
     #

@@ -481,14 +481,14 @@ class TestActorPoolAutoscaling:
 @pytest.mark.parametrize(
     "env_value, expected_type",
     (
-        [None, DefaultActorAutoscaler],
+        [None, BacklogAwareActorAutoscaler],
         ["DEFAULT", DefaultActorAutoscaler],
         ["BACKLOG_AWARE", BacklogAwareActorAutoscaler],
     ),
 )
 def test_create_actor_autoscaler_selection(monkeypatch, env_value, expected_type):
     """``RAY_DATA_ACTOR_AUTOSCALER`` selects the implementation, defaulting to
-    ``DefaultActorAutoscaler`` when unset."""
+    ``BacklogAwareActorAutoscaler`` when unset."""
     if env_value is None:
         monkeypatch.delenv(ACTOR_AUTOSCALER_ENV_KEY, raising=False)
     else:
