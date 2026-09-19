@@ -365,7 +365,15 @@ def test_zero_min_actor_pool_wakes_for_queued_input_and_stays_idle_without_deman
 
     assert autoscaler._derive_target_scaling_config(
         actor_pool, op, op_state
-    ) == ActorPoolScalingRequest.no_op(reason="no inputs received")
+    ) == ActorPoolScalingRequest.no_op(reason="no queued inputs")
+
+    # A pool that processed work previously must stay at zero while there is no
+    # new queued demand. Otherwise the empty pool's infinite utilization would
+    # immediately scale it back up.
+    op.metrics.num_inputs_received = 1
+    assert autoscaler._derive_target_scaling_config(
+        actor_pool, op, op_state
+    ) == ActorPoolScalingRequest.no_op(reason="no queued inputs")
 
     input_queue.num_blocks = 1
 

@@ -95,6 +95,12 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     "but cannot scale below min size",
                 )
 
+        # A zero-min pool that is already empty should stay idle until new
+        # work is queued. Otherwise get_pool_util() returns infinity for an empty
+        # pool and would make it oscillate between 0 and 1 actors.
+        if actor_pool.current_size() == 0 and queued_input_blocks == 0:
+            return ActorPoolScalingRequest.no_op(reason="no queued inputs")
+
         # To prevent unexpected downscaling from the initial size, short-circuit if
         # the operator hasn't received any inputs. A zero-min pool is the exception:
         # its first input can still be waiting in OpState because can_add_input()
