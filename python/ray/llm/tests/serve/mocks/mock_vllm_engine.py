@@ -171,6 +171,11 @@ class MockVLLMEngine(LLMEngine):
             ctx = _get_internal_replica_context()
             if ctx is not None:
                 response.headers["x-replica-id"] = ctx.replica_id.unique_id
+                # Multi-model tests assert *which* model deployment served the
+                # request, which the replica's unique id alone doesn't say.
+                response.headers[
+                    "x-deployment-name"
+                ] = ctx.replica_id.deployment_id.name
             response.headers[
                 "x-serve-session-id"
             ] = _get_serve_request_context().session_id

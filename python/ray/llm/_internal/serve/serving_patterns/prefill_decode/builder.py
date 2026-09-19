@@ -19,7 +19,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     _build_direct_streaming_llm_deployment,
     _build_openai_ingress_request_router,
-    _validate_direct_streaming_ingress_config,
+    _validate_direct_streaming_server_as_ingress_config,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
@@ -148,7 +148,7 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     pd_config = PDServingArgs.model_validate(pd_serving_args)
 
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-        _validate_direct_streaming_ingress_config(
+        _validate_direct_streaming_server_as_ingress_config(
             pd_config.ingress_deployment_config,
             pd_config.ingress_cls_config,
         )
@@ -187,7 +187,8 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
-                server=decode_deployment, llm_config=pd_config.decode_config
+                servers={pd_config.decode_config.model_id: decode_deployment},
+                llm_config=pd_config.decode_config,
             )
         )
 
