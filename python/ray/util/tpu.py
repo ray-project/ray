@@ -2462,10 +2462,18 @@ def _build_subslice_pg(
     *resources_per_bundle* defaults to ``{"CPU": 1, "TPU": chips_per_vm}``.
     """
     if resources_per_bundle is None:
+        subslice_chips_per_host = min(
+            chips_per_vm,
+            max(
+                1,
+                get_num_chips_from_topology(subslice_topology)
+                // max(1, len(worker_ids)),
+            ),
+        )
         tpu_resource_per_chip = get_tpu_resource_per_chip()
         resources_per_bundle = {
             "CPU": 1,
-            "TPU": chips_per_vm * tpu_resource_per_chip,
+            "TPU": subslice_chips_per_host * tpu_resource_per_chip,
         }
 
     bundle_label_selectors = [

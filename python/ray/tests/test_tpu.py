@@ -2892,6 +2892,30 @@ def test_build_subslice_pg_respects_tpu_resource_per_chip(monkeypatch):
         bundles = mock_pg.call_args.kwargs["bundles"]
         assert bundles == [{"CPU": 1, "TPU": 8}, {"CPU": 1, "TPU": 8}]
 
+        # On an 8-chip v6e-8 parent (2x4, chips_per_vm=8) with RAY_TPU_RESOURCE_PER_CHIP=1,
+        # a 2x2 subslice must allocate 4 TPUs (not 8) and produce TORCH_TPU_TOPOLOGY="2,2,1".
+        monkeypatch.setenv("RAY_TPU_RESOURCE_PER_CHIP", "1")
+        sub_pg_v6e8 = ray.util.tpu._build_subslice_pg(
+            worker_ids=["0"],
+            subslice_index=0,
+            slice_name="slice-v6e8",
+            subslice_topology="2x2",
+            parent_topology="2x4",
+            chips_per_vm=8,
+            resources_per_bundle=None,
+            strategy="STRICT_SPREAD",
+            name="",
+            lifetime=None,
+            accelerator_version="v6e",
+        )
+        assert sub_pg_v6e8.bundle_resources == {"CPU": 1, "TPU": 4}
+        assert (
+            sub_pg_v6e8.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
+                "TORCH_TPU_TOPOLOGY"
+            ]
+            == "2,2,1"
+        )
+
 
 def test_normalize_torchtpu_topology_type_validation():
     """Verify normalize_torchtpu_topology rejects boolean or non-integer tpu_resource_per_chip."""
