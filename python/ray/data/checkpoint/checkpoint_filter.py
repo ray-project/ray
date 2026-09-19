@@ -266,9 +266,12 @@ class CheckpointManager(abc.ABC):
         if not committed_checkpoint_paths:
             return None, 0
 
-        # Load the checkpoint data
+        # Load only committed checkpoint files. Reading the checkpoint directory
+        # would also discover pending files when cleanup is unavailable (for
+        # example, sinks such as Iceberg that don't expose a data-file directory),
+        # causing uncommitted IDs to be filtered from a retry.
         checkpoint_ds: ray.data.Dataset = ray.data.read_parquet(
-            self.checkpoint_path,
+            committed_checkpoint_paths,
             filesystem=self.filesystem,
             partition_filter=self.checkpoint_path_partition_filter,
         )
