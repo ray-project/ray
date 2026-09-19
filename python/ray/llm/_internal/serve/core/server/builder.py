@@ -58,11 +58,7 @@ def build_llm_deployment(
             default options.
         deployment_cls: The deployment class to use. Defaults to LLMServer.
         direct_http: Give every replica its own HTTP listener that HAProxy can
-            address, without making this deployment the application's ingress.
-            Set by the multi-model direct-streaming builder, where a separate
-            control-plane ingress owns the route prefix and the ingress request
-            router hands HAProxy a specific model replica. Not a `serve.deployment`
-            option, so it is applied with `.options()` below.
+            address directly.
 
     Returns:
         The Ray Serve Application for the LLMServer deployment.
