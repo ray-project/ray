@@ -25,6 +25,7 @@ from ray.train.torch import TorchTrainer
 from ray.train.torch.config import (
     TorchConfig,
     _set_torch_distributed_env_vars,
+    _set_tpu_multislice_env_vars,
     _TorchBackend,
     _validate_tpu_resources,
 )
@@ -197,7 +198,6 @@ def test_torch_backend_with_v1_worker_group():
 )
 def test_tpu_device_manager(ray_tpu_cluster, num_workers, topology, accelerator_type):
     def train_fn():
-
         assert isinstance(get_torch_device_manager_by_context(), TPUTorchDeviceManager)
 
         # Verify distributed environment variables injected correctly by TorchTrainer.
@@ -273,11 +273,39 @@ def test_tpu_torch_multi_tpu_warning():
     not is_v2_enabled(),
     reason="TPU device manager and backend are V2-only features.",
 )
-def test_tpu_torch_multislice_validation_error(ray_tpu_cluster):
-    # PyTorch TPU currently does not support training across multiple slices.
-    # We specify a topology that requires 8 workers, but request 16 workers, which implies 2 slices.
+def test_tpu_torch_multislice(ray_tpu_cluster):
+    def train_fn():
+        assert isinstance(get_torch_device_manager_by_context(), TPUTorchDeviceManager)
+
+        # Verify distributed environment variables injected correctly by TorchTrainer.
+        assert "TPU_VISIBLE_CHIPS" in os.environ
+        world_size = int(os.environ["WORLD_SIZE"])
+        assert world_size == 16
+        rank = int(os.environ["RANK"])
+        assert 0 <= rank < world_size
+        local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+        assert 0 <= local_rank < int(os.environ.get("LOCAL_WORLD_SIZE", "16"))
+        master_addr = os.environ["MASTER_ADDR"]
+        assert master_addr
+
+        # Verify multi-slice coordination variables injected correctly.
+        assert os.environ.get("MEGASCALE_NUM_SLICES") == "2"
+        assert os.environ.get("MEGASCALE_COORDINATOR_ADDRESS") == f"{master_addr}:8081"
+        assert os.environ.get("MEGASCALE_PORT") == str(8081 + local_rank)
+        # 16 workers with 2x4 topology implies 2 slices with 8 workers each.
+        assert int(os.environ.get("MEGASCALE_SLICE_ID")) == rank // 8
+
+        assert dist.is_initialized()
+        assert dist.get_backend() == "tpu_dist"
+
+        # Verify distributed setup works by running a basic collective
+        tensor = torch.ones(1, device="tpu")
+        dist.all_reduce(tensor)
+        assert tensor.item() == world_size
+
+    # Multi-slice TPU training: 16 workers with 2x4 topology implies 2 slices of 8 workers.
     trainer = TorchTrainer(
-        train_loop_per_worker=lambda: None,
+        train_loop_per_worker=train_fn,
         scaling_config=ScalingConfig(
             num_workers=16,
             use_tpu=True,
@@ -287,13 +315,61 @@ def test_tpu_torch_multislice_validation_error(ray_tpu_cluster):
         ),
     )
 
-    with pytest.raises(TrainingFailedError) as exc_info:
+    if TPUTorchDeviceManager().is_available():
         trainer.fit()
+    else:
+        # A RuntimeError is triggered during process group initialization when
+        # torch_tpu is not available in the environment.
+        with pytest.raises(TrainingFailedError) as exc_info:
+            trainer.fit()
 
-    assert (
-        "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported"
-        in str(exc_info.value)
-    )
+        assert (
+            "PyTorch TPU training across multiple slices (num_slices > 1) is not currently supported"
+            not in str(exc_info.value)
+        )
+
+
+def test_setup_tpu_multislice():
+    worker_group = MagicMock(spec=WorkerGroup)
+    num_workers = 16
+    num_slices = 2
+    worker_group.__len__.return_value = num_workers
+
+    backend = _TorchBackend()
+    with patch.object(ray, "get"):
+        backend._setup_tpu_multislice(
+            worker_group=worker_group,
+            master_addr="10.0.0.1",
+            num_slices=num_slices,
+        )
+
+    assert worker_group.execute_single_async.call_count == num_workers
+    for rank, call_args in enumerate(worker_group.execute_single_async.call_args_list):
+        worker_idx, func = call_args.args[0], call_args.args[1]
+        tpu_env_vars = call_args.kwargs["tpu_env_vars"]
+        assert worker_idx == rank
+        assert func == _set_tpu_multislice_env_vars
+        expected_slice_id = str(rank // (num_workers // num_slices))
+        assert tpu_env_vars["MEGASCALE_COORDINATOR_ADDRESS"] == "10.0.0.1:8081"
+        assert tpu_env_vars["MEGASCALE_PORT"] == "8081"
+        assert tpu_env_vars["MEGASCALE_NUM_SLICES"] == "2"
+        assert tpu_env_vars["MEGASCALE_SLICE_ID"] == expected_slice_id
+
+
+def test_set_tpu_multislice_env_vars():
+    with patch.dict(os.environ, {"LOCAL_RANK": "2"}):
+        _set_tpu_multislice_env_vars(
+            {
+                "MEGASCALE_COORDINATOR_ADDRESS": "10.0.0.1:8081",
+                "MEGASCALE_PORT": "8081",
+                "MEGASCALE_NUM_SLICES": "2",
+                "MEGASCALE_SLICE_ID": "1",
+            }
+        )
+        assert os.environ["MEGASCALE_COORDINATOR_ADDRESS"] == "10.0.0.1:8081"
+        assert os.environ["MEGASCALE_PORT"] == "8083"
+        assert os.environ["MEGASCALE_NUM_SLICES"] == "2"
+        assert os.environ["MEGASCALE_SLICE_ID"] == "1"
 
 
 def test_tpu_torch_import_error():

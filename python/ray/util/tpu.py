@@ -245,10 +245,10 @@ def get_tpu_coordinator_env_vars(
     coordinator_address: str,
     num_slices: int,
     slice_id: int,
-    coordinator_port: str = "8081",
+    coordinator_port: str = ray._private.accelerators.tpu.DEFAULT_MEGASCALE_PORT,
 ) -> Dict[str, str]:
     """
-    Returns the environment variables required for JAX multi-slice coordination.
+    Returns the environment variables required for TPU multi-slice coordination.
 
     Args:
         coordinator_address: The IP address or hostname of the coordinator.
