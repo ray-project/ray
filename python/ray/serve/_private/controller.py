@@ -1505,6 +1505,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    direct_http_targets={},
                     ingress_deployment_name="",
                 )
             )
@@ -1518,6 +1519,7 @@ class ServeController:
                         ),
                         app_name="",
                         ingress_request_router_targets=[],
+                        direct_http_targets={},
                         ingress_deployment_name="",
                     )
                 )
@@ -1652,6 +1654,9 @@ class ServeController:
         bypass), its replicas go into ``ingress_request_router_targets`` for Lua
         routing decisions and the app's ingress replicas remain the main
         targets for data plane traffic.
+
+        Non-ingress deployments marked ``_direct_http`` own their own HTTP port;
+        their replicas go into ``direct_http_targets``, keyed by deployment name.
         """
         ingress_request_router_deployment_name = (
             self.application_state_manager.get_ingress_request_router_deployment_name(
@@ -1665,12 +1670,12 @@ class ServeController:
         )
 
         # Get running replicas for the ingress deployment
-        replica_details = self._get_running_replica_details_for_ingress_deployment(
-            app_name
+        ingress_replica_details = (
+            self._get_running_replica_details_for_ingress_deployment(app_name)
         )
         # Without ingress replicas, HAProxy has no data-plane targets to route to,
         # so suppress router targets too — the app is effectively unreachable.
-        if not replica_details:
+        if not ingress_replica_details:
             return []
 
         ingress_request_router_targets = []
@@ -1682,37 +1687,53 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        direct_http_deployment_names = (
+            self.application_state_manager.get_direct_http_deployment_names(app_name)
+        )
+        direct_http_targets = {}
+        for deployment_name in direct_http_deployment_names:
+            targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
+            if targets:
+                direct_http_targets[deployment_name] = targets
+
         target_groups = []
 
         # Create targets for each protocol
-        http_targets = self._get_targets_for_protocol(
-            replica_details, RequestProtocol.HTTP
+        ingress_http_targets = self._get_targets_for_protocol(
+            ingress_replica_details, RequestProtocol.HTTP
         )
-        if http_targets:
+        if ingress_http_targets:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
-                    targets=http_targets,
+                    targets=ingress_http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    direct_http_targets=direct_http_targets,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
 
         # Add gRPC targets if enabled
         if is_grpc_enabled(self.get_grpc_config()):
-            grpc_targets = self._get_targets_for_protocol(
-                replica_details, RequestProtocol.GRPC
+            ingress_grpc_targets = self._get_targets_for_protocol(
+                ingress_replica_details, RequestProtocol.GRPC
             )
-            if grpc_targets:
+            if ingress_grpc_targets:
                 target_groups.append(
                     TargetGroup(
                         protocol=RequestProtocol.GRPC,
                         route_prefix=route_prefix,
-                        targets=grpc_targets,
+                        targets=ingress_grpc_targets,
                         app_name=app_name,
                         ingress_request_router_targets=[],
+                        direct_http_targets={},
                         ingress_deployment_name=ingress_deployment_name,
                     )
                 )
@@ -1753,6 +1774,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    direct_http_targets={},
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )
@@ -1764,6 +1786,7 @@ class ServeController:
                     targets=grpc_targets,
                     app_name=app_name,
                     ingress_request_router_targets=[],
+                    direct_http_targets={},
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )

@@ -360,20 +360,30 @@ class ParentIngress:
 def test_direct_http_non_ingress_deployment_gets_own_server(
     _skip_if_ff_not_enabled, serve_instance
 ):
-    """A non-ingress deployment marked `_direct_http` serves HTTP on its own port.
-
-    Nothing routes to that port yet (it is absent from the target groups), but the
-    replica owns a real socket and the controller tracks its port.
-    """
+    """A `_direct_http` deployment owns a server advertised in target groups."""
     serve.run(ParentIngress.bind(DirectChild.options(_direct_http=True).bind()))
 
     child_port = _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild")
     assert child_port is not None
 
-    # The child answers directly on its own socket, bypassing the ingress.
-    r = httpx.get(f"http://localhost:{child_port}/")
+    http_target_group = next(
+        tg
+        for tg in get_target_groups(
+            app_name=SERVE_DEFAULT_APP_NAME, from_proxy_manager=True
+        )
+        if tg.protocol == RequestProtocol.HTTP
+    )
+    assert set(http_target_group.direct_http_targets) == {"DirectChild"}
+    [direct_child_target] = http_target_group.direct_http_targets["DirectChild"]
+    assert direct_child_target.port == child_port
+
+    # The published target reaches the child directly, bypassing the ingress.
+    r = httpx.get(f"http://localhost:{direct_child_target.port}/")
     r.raise_for_status()
     assert r.text == "from-direct-child"
+
+    # The child's port is not a data-plane target of the app itself.
+    assert child_port not in [target.port for target in http_target_group.targets]
 
     # The app's front door still routes to the ingress deployment.
     for http_url in get_application_urls("HTTP"):
@@ -385,10 +395,14 @@ def test_direct_http_non_ingress_deployment_gets_own_server(
 def test_without_direct_http_non_ingress_has_no_port(
     _skip_if_ff_not_enabled, serve_instance
 ):
-    """Negative control: the same app without the flag gives the child no port."""
+    """Without `_direct_http`, the child has no port or published target."""
     serve.run(ParentIngress.bind(DirectChild.bind()))
 
     assert _replica_http_port(SERVE_DEFAULT_APP_NAME, "DirectChild") is None
+    for target_group in get_target_groups(
+        app_name=SERVE_DEFAULT_APP_NAME, from_proxy_manager=True
+    ):
+        assert target_group.direct_http_targets == {}
 
 
 def test_internal_server_error(_skip_if_ff_not_enabled, serve_instance):
@@ -2747,6 +2761,7 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "direct_http_targets": {},
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
@@ -2766,6 +2781,7 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "gRPC",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "direct_http_targets": {},
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
