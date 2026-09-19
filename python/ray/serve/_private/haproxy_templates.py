@@ -224,7 +224,30 @@ frontend http_frontend
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
+    {%- if dynamic_servers %}
+    # The longest-prefix app always claims the request, as in a static config;
+    # its router only runs once it has replicas. Until then no router vars are
+    # set and the request takes the app's primary backend (and its fallback).
+    acl ingress_request_router_app_has_replicas var(txn.ingress_request_router_app),map({{ router_apps_map_path }}) -m found
+    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app ingress_request_router_app_has_replicas
+    {%- else %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    {%- endif %}
+    {%- if dynamic_servers %}
+    # Resolve the router-selected replica to its server slot. The maps are
+    # updated through the Runtime API as replicas come and go; a replica that is
+    # not in its app's map is a pin-miss, handled below as in a static config.
+    {%- for backend in backends %}
+    {%- if backend.ingress_request_router_servers %}
+    http-request set-var(txn.ingress_request_router_target) var(txn.ingress_request_router_replica_key),map({{ replica_map_paths[backend.name] }}) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_replica_key) -m found }
+    {%- endif %}
+    {%- endfor %}
+    http-request set-var(txn.via_ingress_request_router) bool(true) if { var(txn.ingress_request_router_target) -m found }
+    http-request set-var(txn.ingress_request_router_failed) str(unknown_replica_id) if { var(txn.ingress_request_router_replica_key) -m found } !{ var(txn.ingress_request_router_target) -m found }
+    # Lua applies the router's headers before the slot lookup. A pin-miss goes to
+    # the fallback proxy, which routes again, so it must not carry them.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
+    {%- endif %}
     # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
     # per app so the 503 below fails loud for apps with none.
     {%- for backend in backends %}
@@ -287,10 +310,16 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
+    {%- if dynamic_servers %}
+    # Replica slots. Membership is assigned through the Runtime API, so scaling
+    # replicas does not change this file or reload HAProxy.
+    server-template {{ slot_name_prefix }} {{ slot_capacity[backend.name] }} {{ slot_placeholder }} check disabled{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
+    {%- else %}
     # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
+    {%- endif %}
     {%- if backend.fallback_server %}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
@@ -317,9 +346,15 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- if backend.timeout_http_keep_alive_s is not none %}
     timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
     {%- endif %}
+    {%- if dynamic_servers %}
+    {%- for name in slot_names[backend.name] %}
+    use-server {{ name }} if { var(txn.ingress_request_router_target) -m str "{{ name }}" }
+    {%- endfor %}
+    {%- else %}
     {%- for server in backend.servers %}
     use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
     {%- endfor %}
+    {%- endif %}
     {%- if backend.fallback_server %}
     # Pin-miss: route to the fallback Serve proxy, which re-pins via its own
     # router. If the fallback is DOWN this use-server is skipped and the request
@@ -330,9 +365,17 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     use-server {{ backend.fallback_server.name }} if { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
     {%- endif %}
     # `track` allows us to mirror primary-backend health and avoid double-checking.
+    {%- if dynamic_servers %}
+    # One tracking server per primary slot. server-template cannot express a
+    # per-slot `track`, so these are rendered explicitly with the same names.
+    {%- for name in slot_names[backend.name] %}
+    server {{ name }} {{ slot_placeholder }} track {{ backend.name or 'unknown' }}/{{ name }} disabled
+    {%- endfor %}
+    {%- else %}
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}
     {%- endfor %}
+    {%- endif %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} track {{ backend.name or 'unknown' }}/{{ backend.fallback_server.name }} backup
     {%- endif %}
@@ -434,9 +477,13 @@ backend {{ backend.name or 'unknown' }}
     tcp-check expect binary {{ hc.grpc_healthcheck_expect_hex }}
     {{ hc.default_server_directive }}
     # `proto h2` makes HAProxy speak HTTP/2 cleartext to backend gRPC servers.
+    {%- if dynamic_servers %}
+    server-template {{ slot_name_prefix }} {{ slot_capacity[backend.name] }} {{ slot_placeholder }} proto h2 check disabled{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
+    {%- else %}
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} proto h2 check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
     {%- endfor %}
+    {%- endif %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} proto h2 check backup
     {%- endif %}

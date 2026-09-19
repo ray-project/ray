@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S,
     RAY_SERVE_HAPROXY_CLOSE_SPREAD_TIME_S,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
+    RAY_SERVE_HAPROXY_DYNAMIC_SERVERS_ENABLED,
     RAY_SERVE_HAPROXY_H2_BE_INITIAL_WINDOW_SIZE,
     RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS,
     RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE,
@@ -54,11 +55,13 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
+    RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_METRICS_REPORT_INTERVAL_S,
     RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_MIN_SERVER_SLOTS,
     RAY_SERVE_HAPROXY_NBTHREAD,
     RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT,
     RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED,
@@ -83,6 +86,23 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
 )
+from ray.serve._private.haproxy_server_slots import (
+    SLOT_NAME_PREFIX,
+    SLOT_PLACEHOLDER_HOST,
+    SLOT_PLACEHOLDER_PORT,
+    ServerSlotTable,
+    SlotServer,
+    get_safe_name,
+    idle_slot_names,
+    is_slot_name,
+    map_sync_commands,
+    parse_map_entries,
+    parse_server_idleness,
+    parse_servers_state,
+    required_slot_capacity,
+    runtime_serves_slot,
+    server_sync_commands,
+)
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
     HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE,
@@ -104,6 +124,14 @@ from ray.serve.schema import (
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Suffix of the per-app backend that serves requests pinned by the ingress
+# request router.
+INGRESS_REQUEST_ROUTER_BACKEND_SUFFIX = "-via-ingress-request-router"
+
+# Runtime API commands sent per admin-socket connection, joined with ";". Kept
+# well under the smallest CLI line buffer HAProxy allocates (tune.bufsize).
+_RUNTIME_COMMAND_BATCH_CHARS = 4096
 
 
 @functools.cache
@@ -140,12 +168,17 @@ def _load_lua_template() -> string.Template:
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
+    require_targets: bool = True,
 ) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
     """Per-backend router pool and replica map, restricted to backends with both.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
     is co-located.
+
+    With `require_targets=False` (dynamic servers), every backend with routers
+    is included: replica membership is resolved at runtime rather than rendered,
+    so it must not decide whether the router is configured.
     """
     routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
@@ -155,7 +188,7 @@ def _routers_and_targets_by_backend(
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
         ]
-        if not entries:
+        if not entries and require_targets:
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
@@ -222,6 +255,64 @@ def _tail_file(path: str, n_bytes: int = 4096) -> str:
             return f.read().decode("utf-8", errors="ignore").strip()
     except OSError:
         return ""
+
+
+@dataclass
+class MasterProcState:
+    """Processes reported by the master CLI's `show proc`."""
+
+    master_pid: Optional[int] = None
+    # Failed reloads since the master started, when HAProxy reports it.
+    failed_reloads: Optional[int] = None
+    # Workers serving the current configuration.
+    workers: List[int] = field(default_factory=list)
+    # Soft-stopping workers from previous reloads.
+    old_workers: List[int] = field(default_factory=list)
+
+
+def parse_show_proc(output: str) -> MasterProcState:
+    """Parse the master CLI's `show proc`.
+
+    Example output::
+
+        #<PID>          <type>          <reloads>       <uptime>        <version>
+        1162            master          5 [failed: 0]   0d00h02m07s     2.8.25
+        # workers
+        1271            worker          1               0d00h00m00s     2.8.25
+        # old workers
+        1233            worker          3               0d00h00m43s     2.8.25
+        # programs
+
+    Args:
+        output: Raw `show proc` response.
+
+    Returns:
+        The parsed state. `master_pid` is None when the output is not a
+        `show proc` response.
+    """
+    state = MasterProcState()
+    section = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            header = stripped.lstrip("#").strip().lower()
+            if header in ("workers", "old workers", "programs"):
+                section = header
+            continue
+        parts = stripped.split()
+        if len(parts) < 2 or not parts[0].isdigit():
+            continue
+        pid, kind = int(parts[0]), parts[1]
+        if kind == "master":
+            state.master_pid = pid
+            failed = re.search(r"\[failed:\s*(\d+)\]", stripped)
+            if failed:
+                state.failed_reloads = int(failed.group(1))
+        elif kind == "worker" and section == "workers":
+            state.workers.append(pid)
+        elif kind == "worker" and section == "old workers":
+            state.old_workers.append(pid)
+    return state
 
 
 def get_haproxy_binary() -> str:
@@ -655,6 +746,12 @@ class HAProxyConfig:
     # See RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED.
     observe_mark_down_enabled: bool = RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED
     observe_error_limit: int = RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT
+    # See RAY_SERVE_HAPROXY_DYNAMIC_SERVERS_ENABLED.
+    dynamic_servers_enabled: bool = RAY_SERVE_HAPROXY_DYNAMIC_SERVERS_ENABLED
+    # See RAY_SERVE_HAPROXY_MIN_SERVER_SLOTS.
+    min_server_slots: int = RAY_SERVE_HAPROXY_MIN_SERVER_SLOTS
+    # See RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED.
+    master_worker_enabled: bool = RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
@@ -735,6 +832,11 @@ class HAProxyConfig:
     h2_be_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
     h2_fe_initial_window_size: int = RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE
     h2_fe_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS
+
+    @property
+    def master_socket_path(self) -> str:
+        """Master CLI socket, used in master-worker mode."""
+        return f"{self.socket_path}.master"
 
     @property
     def frontend_host(self) -> str:
@@ -889,6 +991,26 @@ class HAProxyApi(ProxyApi):
         self._retired_logs: "deque[Tuple[str, str]]" = deque()
         self._max_retained_logs: int = 10
 
+        # Dynamic servers only: per-backend slot assignments (the source of truth
+        # pushed to HAProxy's Runtime API) and the names of backends rendered with
+        # an ingress-request-router tracking backend.
+        self._slot_tables: Dict[str, ServerSlotTable] = {}
+        self._router_backend_names: Set[str] = set()
+        # Rendered config + Lua for the last generated file, and for the running
+        # HAProxy. A reload is only needed when they differ.
+        self._rendered_config_fingerprint: Optional[str] = None
+        self._running_config_fingerprint: Optional[str] = None
+        self._rendered_lua_content: Optional[str] = None
+        # Slots per backend in the last rendered config and in the running one.
+        self._rendered_slot_capacity: Dict[str, int] = {}
+        self._running_slot_capacity: Dict[str, int] = {}
+
+        # Master-worker mode only: `_proc` is the long-lived master. These track
+        # the worker serving the current config and soft-stopping workers from
+        # earlier reloads, which are the master's children rather than ours.
+        self._worker_pid: Optional[int] = None
+        self._old_worker_pids: List[int] = []
+
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
 
@@ -959,6 +1081,10 @@ class HAProxyApi(ProxyApi):
                 continue
             self._retire_log_files(p)
         self._old_procs = still_alive
+        # Master-worker old workers are reaped by the master; drop exited ones.
+        self._old_worker_pids = [
+            pid for pid in self._old_worker_pids if self._is_our_haproxy(pid)
+        ]
 
     def _soft_stop_old_procs(self) -> None:
         """Send SIGUSR1 to displaced workers so they close their listeners and
@@ -968,12 +1094,13 @@ class HAProxyApi(ProxyApi):
         lost, so the manager sends the signal itself where it is reliable.
         """
         self._prune_old_procs()
-        for proc in self._old_procs:
-            if not self._is_our_haproxy(proc.pid):
+        old_pids = [proc.pid for proc in self._old_procs] + self._old_worker_pids
+        for pid in old_pids:
+            if not self._is_our_haproxy(pid):
                 continue
             try:
                 # This is a no-op if the worker is already draining
-                os.kill(proc.pid, signal.SIGUSR1)
+                os.kill(pid, signal.SIGUSR1)
             except OSError:
                 pass
 
@@ -997,19 +1124,31 @@ class HAProxyApi(ProxyApi):
         Scans /proc for processes whose cmdline references our config file, so
         the count spans the live worker, draining workers from prior reloads,
         and any leaked/orphaned workers — making it a signal for process leaks.
-        Returns 0 on non-Linux / no-/proc platforms where /proc is unavailable.
+        In master-worker mode the master is excluded, so a steady state is still
+        one process. Returns 0 on non-Linux / no-/proc platforms where /proc is
+        unavailable.
+        """
+        master_pid = (
+            self._proc.pid
+            if self.cfg.master_worker_enabled and self._proc is not None
+            else None
+        )
+        return len(self._our_haproxy_pids() - {master_pid})
+
+    def _our_haproxy_pids(self) -> Set[int]:
+        """Pids of processes whose cmdline references our config file.
+
+        Empty on non-Linux / no-/proc platforms.
         """
         try:
             entries = os.listdir("/proc")
         except OSError:
-            return 0
-
-        processes = {
-            entry
+            return set()
+        return {
+            int(entry)
             for entry in entries
             if entry.isdigit() and self._is_our_haproxy(int(entry))
         }
-        return len(processes)
 
     async def compute_target_mismatch(self) -> int:
         """Cardinality of the mismatch between the controller's broadcasted
@@ -1103,6 +1242,12 @@ class HAProxyApi(ProxyApi):
         # Build command args
         haproxy_bin = get_haproxy_binary()
         args = [haproxy_bin, "-db", "-f", self.config_file_path]
+        if self.cfg.master_worker_enabled:
+            # `-W` keeps a master in the foreground that owns the workers; `-S`
+            # exposes its CLI for `show proc`. The master passes listening
+            # sockets to new workers itself (the admin socket exposes them).
+            args[1:1] = ["-W"]
+            args.extend(["-S", self.cfg.master_socket_path])
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
@@ -1133,10 +1278,21 @@ class HAProxyApi(ProxyApi):
         )
 
         try:
-            await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
+            if self.cfg.master_worker_enabled:
+                self._worker_pid = await self._wait_for_worker_takeover(
+                    proc,
+                    previous_workers=set(),
+                    failed_before=None,
+                    timeout_s=timeout_s,
+                )
+                self._old_worker_pids = []
+            else:
+                await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
         except Exception:
             # If startup fails, ensure the process is killed to avoid orphaned processes
-            if proc.returncode is None:
+            if self.cfg.master_worker_enabled:
+                await self._cleanup_failed_master_start(proc)
+            elif proc.returncode is None:
                 proc.kill()
                 await proc.wait()
             # The proc has exited; retire its log files so a failed start/reload
@@ -1146,14 +1302,191 @@ class HAProxyApi(ProxyApi):
 
         return proc
 
+    async def _cleanup_failed_master_start(
+        self, master: asyncio.subprocess.Process
+    ) -> None:
+        """Stop a master that failed to start, including any worker it forked.
+
+        The takeover can fail after the master has already started a worker, and
+        a SIGKILLed master cannot stop its children, which would keep holding
+        the listening and admin sockets. On a fresh start no other process uses
+        our config file, so every remaining match is left over from this spawn.
+        """
+        await self._stop_master_worker(master)
+        for pid in self._our_haproxy_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.warning(f"Killed HAProxy worker {pid} left by a failed start.")
+            except OSError:
+                pass
+
     async def _save_server_state(self) -> None:
         """Save the server state to the file."""
         server_state = await self._send_socket_command("show servers state")
         with open(self.cfg.server_state_file, "w") as f:
             f.write(server_state)
 
+    async def _get_master_proc_state(self) -> Optional[MasterProcState]:
+        """`show proc` from the master CLI, or None if it is unavailable (for
+        example while the master re-executes during a reload)."""
+        try:
+            # Unlike the admin socket, the master CLI keeps the connection open
+            # after answering; `quit` makes it close so the read ends.
+            output = await self._send_socket_command(
+                "show proc;quit", socket_path=self.cfg.master_socket_path
+            )
+        except Exception:
+            return None
+        state = parse_show_proc(output)
+        return state if state.master_pid is not None else None
+
+    async def _wait_for_worker_takeover(
+        self,
+        master: asyncio.subprocess.Process,
+        previous_workers: Set[int],
+        failed_before: Optional[int],
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
+    ) -> int:
+        """Wait for a master-worker (re)load to hand the admin socket to a new
+        worker.
+
+        A worker only counts once the admin socket answers from it, mirroring
+        the pid-verified takeover of standalone reloads.
+
+        Args:
+            master: The HAProxy master process.
+            previous_workers: Worker pids that existed before the (re)load.
+            failed_before: The master's failed-reload count before a reload, or
+                None when starting.
+            timeout_s: How long to wait for the takeover.
+
+        Returns:
+            The pid of the worker now answering the admin socket.
+
+        Raises:
+            RuntimeError: If the master exits, reports a failed reload (it then
+                keeps the previous workers serving), or times out.
+        """
+        start_time = time.time()
+        while time.time() - start_time < timeout_s:
+            if master.returncode is not None:
+                output = _tail_file(master._stderr_path) or _tail_file(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                    master._stdout_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                )
+                raise RuntimeError(
+                    "HAProxy master exited: "
+                    f"{output or f'exit code {master.returncode}'}"
+                )
+
+            state = await self._get_master_proc_state()
+            if state is not None:
+                if (
+                    failed_before is not None
+                    and state.failed_reloads is not None
+                    and state.failed_reloads > failed_before
+                ):
+                    raise RuntimeError(
+                        "HAProxy master failed to load the new configuration and "
+                        "kept the previous workers: "
+                        f"{_tail_file(master._stderr_path)}"  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                    )
+                new_workers = [
+                    pid for pid in state.workers if pid not in previous_workers
+                ]
+                if new_workers:
+                    running_pid = await self._get_running_pid()
+                    if running_pid is not None and running_pid in new_workers:
+                        return running_pid
+
+            await asyncio.sleep(0.5)
+
+        raise RuntimeError(
+            f"No new HAProxy worker took over the admin socket within {timeout_s} "
+            f"seconds. stderr: {_tail_file(master._stderr_path)}"  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        )
+
+    async def _track_workers_after_failed_reload(
+        self, previous_workers: List[int]
+    ) -> None:
+        """Re-read the master's workers when a reload was not confirmed.
+
+        The master may have replaced the worker even though the takeover was not
+        verified (for example the admin socket answered too late). Every worker
+        it now reports as old, including a displaced previous worker, is tracked
+        so draining still waits for its in-flight requests. After a rejected
+        config the previous worker is still current and stays untracked.
+        """
+        state = await self._get_master_proc_state()
+        if state is None:
+            logger.warning(
+                "HAProxy master CLI unavailable after a failed reload; worker "
+                "tracking was not refreshed."
+            )
+            return
+        displaced = set(state.old_workers) | {
+            pid for pid in previous_workers if pid not in state.workers
+        }
+        self._old_worker_pids.extend(
+            pid for pid in sorted(displaced) if pid not in self._old_worker_pids
+        )
+        if state.workers:
+            self._worker_pid = state.workers[0]
+
+    async def _master_worker_reload(self) -> None:
+        """Reload by signaling the master, which re-reads the config, starts a
+        new worker, and soft-stops the current one."""
+        master = self._proc
+        assert master is not None
+        state = await self._get_master_proc_state()
+        if state is None:
+            raise RuntimeError(
+                "HAProxy master CLI is unavailable at "
+                f"{self.cfg.master_socket_path}; cannot reload."
+            )
+
+        # The new worker loads this through `load-server-state-from-file`.
+        if self.cfg.enable_hap_optimization:
+            await self._save_server_state()
+
+        previous_workers = set(state.workers) | set(state.old_workers)
+        os.kill(master.pid, signal.SIGUSR2)
+        try:
+            new_worker = await self._wait_for_worker_takeover(
+                master, previous_workers, failed_before=state.failed_reloads
+            )
+        except Exception:
+            await self._track_workers_after_failed_reload(state.workers)
+            raise
+
+        self._prune_old_procs()
+        self._old_worker_pids.extend(
+            pid
+            for pid in state.workers
+            if pid != new_worker and pid not in self._old_worker_pids
+        )
+        self._worker_pid = new_worker
+        self._mark_rendered_config_running()
+        # The master soft-stops old workers; re-signal as standalone reloads do
+        # in case a signal was lost.
+        self._soft_stop_old_procs()
+        logger.info(
+            f"Reloaded HAProxy master (pid={master.pid}); worker {new_worker} took "
+            f"over from {state.workers}."
+        )
+
     async def _graceful_reload(self) -> None:
-        """Perform a graceful reload of HAProxy by starting a new process with -sf."""
+        """Perform a graceful reload of HAProxy by starting a new process with -sf.
+
+        In master-worker mode the master performs the reload instead.
+        """
+        if self.cfg.master_worker_enabled:
+            try:
+                await self._master_worker_reload()
+            except Exception as e:
+                logger.error(f"HAProxy graceful reload failed: {e}")
+                raise
+            return
+
         try:
             old_proc = self._proc
             # _graceful_reload only runs with a live proc; None would already
@@ -1183,6 +1516,7 @@ class HAProxyApi(ProxyApi):
                 reload_args.extend(["-x", self.cfg.socket_path])
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
+            self._mark_rendered_config_running()
 
             # Track for shutdown cleanup; pruned at the next reload.
             if old_proc is not None:
@@ -1240,10 +1574,12 @@ class HAProxyApi(ProxyApi):
         """Render the ingress-request-router Lua action and write it to disk.
 
         Returns the script path, or None if no backend has both ingress
-        request routers AND replicas with replica IDs.
+        request routers AND replicas with replica IDs. With dynamic servers,
+        replicas are not required and the replica map is resolved at runtime.
         """
+        dynamic = self.cfg.dynamic_servers_enabled
         routers, targets = _routers_and_targets_by_backend(
-            backends, local_host=get_localhost_ip()
+            backends, local_host=get_localhost_ip(), require_targets=not dynamic
         )
         if not routers:
             return None
@@ -1276,11 +1612,13 @@ class HAProxyApi(ProxyApi):
             # forwarding entirely.
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
             ROUTERS=_format_routers_lua(routers),
-            REPLICA_TARGETS=_format_replica_targets_lua(targets),
+            REPLICA_TARGETS=_format_replica_targets_lua({} if dynamic else targets),
+            DYNAMIC_REPLICA_TARGETS=str(dynamic).lower(),
             METRICS_PRE_CALL_ROUTER=metrics_pre,
             METRICS_POST_CALL_ROUTER=metrics_post,
             METRICS_SET_TRUNCATED=metrics_set_truncated,
         )
+        self._rendered_lua_content = content
 
         lua_path = os.path.join(
             os.path.dirname(self.config_file_path), "ingress_request_router.lua"
@@ -1288,6 +1626,256 @@ class HAProxyApi(ProxyApi):
         if _write_if_changed(lua_path, content):
             logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
+
+    def _mark_rendered_config_running(self) -> None:
+        """Record that the running HAProxy loaded the last rendered config."""
+        self._running_config_fingerprint = self._rendered_config_fingerprint
+        self._running_slot_capacity = dict(self._rendered_slot_capacity)
+
+    def _replica_map_path(self, backend_name: str) -> str:
+        """Map file resolving router-selected replicas to slots of a backend."""
+        return os.path.join(
+            os.path.dirname(self.config_file_path), f"{backend_name}.replicas.map"
+        )
+
+    def _router_apps_map_path(self) -> str:
+        """Map file listing router-bearing backends that have replicas."""
+        return os.path.join(
+            os.path.dirname(self.config_file_path),
+            "ingress_request_router_apps.map",
+        )
+
+    def _desired_router_apps_map(self) -> Dict[str, str]:
+        # Mirrors the static config, where the router only runs for an app once
+        # it has replicas; until then requests take the primary backend (and its
+        # fallback server).
+        return {
+            name: "1"
+            for name in sorted(self._router_backend_names)
+            if name in self._slot_tables
+            and self._slot_tables[name].replica_map_entries()
+        }
+
+    def _write_router_map_files(self) -> None:
+        """Write the router map files HAProxy loads at startup.
+
+        Runtime updates only change the running process, so each render seeds the
+        files for the next (re)load, with only the pins that are routable as soon
+        as it loads them: slots the running config already has, when the
+        server-state file restores their assignments. A pin to any other slot
+        would find a disabled placeholder and silently load-balance; those are
+        added by the post-reload sync once the slot is ready, and until then
+        requests take the fallback path of a pin-miss.
+        """
+
+        def _render(entries: Dict[str, str]) -> str:
+            return "".join(f"{key} {value}\n" for key, value in sorted(entries.items()))
+
+        loaded_apps = {}
+        for name in self._router_backend_names:
+            table = self._slot_tables.get(name)
+            entries = (
+                table.replica_map_entries(
+                    max_index=self._running_slot_capacity.get(name, 0)
+                )
+                if table is not None and self.cfg.enable_hap_optimization
+                else {}
+            )
+            _write_if_changed(self._replica_map_path(name), _render(entries))
+            if entries:
+                loaded_apps[name] = "1"
+        if self._router_backend_names:
+            _write_if_changed(self._router_apps_map_path(), _render(loaded_apps))
+
+    def _assign_server_slots(
+        self, idleness: Optional[Dict[Tuple[str, str], bool]] = None
+    ) -> None:
+        """Reconcile slot tables with `backend_configs` (dynamic servers only).
+
+        Removed replicas start draining, new replicas take a FREE slot, and
+        draining slots that `idleness` (parsed `show stat`) reports idle become
+        FREE. A backend without enough FREE slots grows, which changes the
+        rendered config and therefore reloads HAProxy.
+        """
+        idleness = idleness or {}
+        # gRPC backends are only rendered when the gRPC frontend is enabled.
+        rendered = {
+            name: backend
+            for name, backend in self.backend_configs.items()
+            if backend.protocol != RequestProtocol.GRPC or self.cfg.grpc_enabled
+        }
+        for name in list(self._slot_tables):
+            if name not in rendered:
+                del self._slot_tables[name]
+
+        for name, backend in rendered.items():
+            desired = [
+                SlotServer(
+                    name=server.name,
+                    host=server.host,
+                    port=server.port,
+                    replica_id=server.replica_id,
+                )
+                for server in backend.servers
+            ]
+            table = self._slot_tables.get(name)
+            if table is None:
+                table = ServerSlotTable(
+                    required_slot_capacity(len(desired), self.cfg.min_server_slots)
+                )
+                self._slot_tables[name] = table
+
+            tracking_backend = (
+                f"{name}{INGRESS_REQUEST_ROUTER_BACKEND_SUFFIX}"
+                if name in self._router_backend_names
+                else None
+            )
+            assignment = table.assign(
+                desired, idle_slot_names(idleness, name, tracking_backend)
+            )
+            if assignment.unplaced:
+                capacity = required_slot_capacity(
+                    table.occupied_count + len(assignment.unplaced),
+                    self.cfg.min_server_slots,
+                )
+                logger.info(
+                    f"Backend '{name}' needs {len(assignment.unplaced)} more "
+                    f"server slot(s); growing from {table.capacity} to {capacity}. "
+                    "HAProxy will reload."
+                )
+                table.grow(capacity)
+                placed = table.assign(desired)
+                assignment.activated.extend(placed.activated)
+
+            if assignment.activated or assignment.deactivated or assignment.released:
+                logger.info(
+                    f"Backend '{name}' slots: activated "
+                    f"{[s.name for s in assignment.activated]}, draining "
+                    f"{[s.name for s in assignment.deactivated]}, released "
+                    f"{[s.name for s in assignment.released]}."
+                )
+
+    async def _get_server_idleness(self) -> Dict[Tuple[str, str], bool]:
+        try:
+            return parse_server_idleness(await self._send_socket_command("show stat"))
+        except Exception as e:
+            # Without stats no draining slot can be confirmed idle, so none are
+            # reused this round. New replicas take FREE slots or grow capacity.
+            logger.warning(f"Could not read HAProxy stats to release slots: {e}")
+            return {}
+
+    async def _runtime_sync_plan(self) -> Tuple[List[str], List[str]]:
+        """Runtime API commands that bring HAProxy to the slot tables' state.
+
+        Returns (commands, missing) where `missing` lists slot servers and map
+        files absent from the running config, which commands cannot fix.
+        """
+        states = parse_servers_state(
+            await self._send_socket_command("show servers state")
+        )
+        map_removals: List[str] = []
+        server_commands: List[str] = []
+        map_additions: List[str] = []
+        missing: List[str] = []
+
+        async def _map_sync(path: str, desired: Dict[str, str]) -> None:
+            output = await self._send_socket_command(f"show map {path}")
+            if output.startswith("Unknown map identifier"):
+                missing.append(f"map {path}")
+                return
+            removals, additions = map_sync_commands(
+                path, parse_map_entries(output), desired
+            )
+            map_removals.extend(removals)
+            map_additions.extend(additions)
+
+        for name, table in sorted(self._slot_tables.items()):
+            backends = [(name, True)]
+            if name in self._router_backend_names:
+                # Tracking servers have no checks of their own; they mirror the
+                # primary slot, which is synced first.
+                backends.append(
+                    (f"{name}{INGRESS_REQUEST_ROUTER_BACKEND_SUFFIX}", False)
+                )
+            for backend_name, has_health_check in backends:
+                for slot in table.slots:
+                    runtime = states.get((backend_name, slot.name))
+                    if runtime is None:
+                        missing.append(f"{backend_name}/{slot.name}")
+                        continue
+                    server_commands.extend(
+                        server_sync_commands(
+                            backend_name,
+                            slot,
+                            runtime,
+                            has_health_check=has_health_check,
+                        )
+                    )
+
+            if name in self._router_backend_names:
+                # Only map replicas to slots the running process has. Before a
+                # capacity-growth reload a new slot does not exist yet, and a
+                # pin to it would silently load-balance instead of pinning; it
+                # is added once the reloaded process has the slot.
+                await _map_sync(
+                    self._replica_map_path(name),
+                    {
+                        key: slot
+                        for key, slot in table.replica_map_entries().items()
+                        if (name, slot) in states
+                    },
+                )
+
+        if self._router_backend_names:
+            # An app loses its router entry before its last slot drains and gains
+            # it only after a slot is ready.
+            replica_map_removals = map_removals
+            map_removals = []
+            await _map_sync(
+                self._router_apps_map_path(), self._desired_router_apps_map()
+            )
+            map_removals.extend(replica_map_removals)
+
+        return map_removals + server_commands + map_additions, missing
+
+    async def _sync_runtime_servers(self, require_complete: bool = True) -> None:
+        """Push slot assignments to the running HAProxy and verify them.
+
+        Idempotent: after a reload the new process usually restores assignments
+        from the server-state file, so this only corrects what differs.
+
+        Args:
+            require_complete: Whether every slot server and map file must exist
+                in the running config. Pass False to sync a process whose config
+                predates the current render (just before a reload).
+
+        Raises:
+            RuntimeError: If HAProxy still differs from the slot tables after the
+                commands are applied.
+        """
+        commands, missing = await self._runtime_sync_plan()
+        if commands:
+            logger.debug(f"Applying {len(commands)} HAProxy runtime command(s).")
+            batch: List[str] = []
+            batch_chars = 0
+            for command in commands:
+                if batch and batch_chars + len(command) > _RUNTIME_COMMAND_BATCH_CHARS:
+                    await self._send_socket_command(";".join(batch))
+                    batch, batch_chars = [], 0
+                batch.append(command)
+                batch_chars += len(command) + 1
+            if batch:
+                await self._send_socket_command(";".join(batch))
+            commands, missing = await self._runtime_sync_plan()
+
+        if not require_complete:
+            missing = []
+        if commands or missing:
+            raise RuntimeError(
+                "HAProxy runtime server state did not converge: "
+                f"{len(commands)} pending command(s) {commands[:5]}, "
+                f"{len(missing)} missing server(s) {missing[:5]}."
+            )
 
     def _generate_config_file_internal(self) -> None:
         """Internal config generation without locking (for use within locked sections)."""
@@ -1315,13 +1903,30 @@ class HAProxyApi(ProxyApi):
             http_backends = [b for b in backends if b.protocol == RequestProtocol.HTTP]
             grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
 
+            dynamic_servers = self.cfg.dynamic_servers_enabled
+            if dynamic_servers:
+                # Idempotent when callers already assigned with fresh stats; this
+                # ensures every backend has a slot table to render.
+                self._assign_server_slots()
+
             # Derive from the write result: returns None when no backend has
             # both routers and replicas with IDs (transient during scaling).
             # The ingress request router is HTTP-only.
+            self._rendered_lua_content = None
             ingress_request_router_lua_path = self._write_ingress_request_router_lua(
                 http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
+            self._router_backend_names = (
+                {b.name for b in http_backends if b.ingress_request_router_servers}
+                if dynamic_servers and has_ingress_request_router
+                else set()
+            )
+            if dynamic_servers:
+                self._write_router_map_files()
+            self._rendered_slot_capacity = {
+                name: table.capacity for name, table in self._slot_tables.items()
+            }
 
             # Enrich HTTP backends with precomputed health check configuration strings
             http_backends_with_health_config = [
@@ -1411,12 +2016,31 @@ class HAProxyApi(ProxyApi):
                     "metrics_socket_path": self.cfg.metrics_socket_path,
                     "grpc_fallback_backend_with_health_config": grpc_fallback_backend_with_health_config,
                     "healthy_message": HEALTHY_MESSAGE,  # the message in the response body for healthy replicas
+                    "dynamic_servers": dynamic_servers,
+                    "slot_name_prefix": SLOT_NAME_PREFIX,
+                    "slot_placeholder": f"{SLOT_PLACEHOLDER_HOST}:{SLOT_PLACEHOLDER_PORT}",
+                    "slot_capacity": {
+                        name: table.capacity
+                        for name, table in self._slot_tables.items()
+                    },
+                    "slot_names": {
+                        name: [slot.name for slot in table.slots]
+                        for name, table in self._slot_tables.items()
+                    },
+                    "replica_map_paths": {
+                        name: self._replica_map_path(name)
+                        for name in self._router_backend_names
+                    },
+                    "router_apps_map_path": self._router_apps_map_path(),
                 }
             )
 
             # Ensure the config ends with a newline
             if not config_content.endswith("\n"):
                 config_content += "\n"
+            self._rendered_config_fingerprint = (
+                config_content + "\0" + (self._rendered_lua_content or "")
+            )
 
             # Use file locking to prevent concurrent writes from multiple processes
             # This is important in test environments where multiple nodes may run
@@ -1457,6 +2081,9 @@ class HAProxyApi(ProxyApi):
                 logger.info("Successfully generated HAProxy config file.")
 
             self._proc = await self._start_and_wait_for_haproxy()
+            self._mark_rendered_config_running()
+            if self.cfg.dynamic_servers_enabled:
+                await self._sync_runtime_servers()
             logger.info("HAProxy started successfully.")
         except Exception as e:
             logger.error(f"Failed to initialize and start HAProxy configuration: {e}")
@@ -1468,7 +2095,25 @@ class HAProxyApi(ProxyApi):
         Returns only application backends configured in self.backend_configs,
         excluding HAProxy internal components (frontends, default_backend, stats).
         Also excludes BACKEND aggregate entries, returning only individual servers.
+
+        With dynamic servers, ACTIVE slots are reported under the replica server
+        name they serve and unassigned or draining slots are omitted, so callers
+        see the same server names as with a static config.
         """
+        return await self._get_backend_server_stats(translate_slots=True)
+
+    async def get_haproxy_stats(self) -> HAProxyStats:
+        """Get complete HAProxy statistics including both individual and aggregate data.
+
+        Unlike get_all_stats, draining slots are included so that in-flight
+        requests to removed replicas still count toward load.
+        """
+        server_stats = await self._get_backend_server_stats(translate_slots=False)
+        return HAProxyStats(backend_to_servers=server_stats)
+
+    async def _get_backend_server_stats(
+        self, translate_slots: bool
+    ) -> Dict[str, Dict[str, ServerStats]]:
         try:
             stats_output = await self._send_socket_command("show stat")
             all_stats = self._parse_haproxy_csv_stats(stats_output)
@@ -1476,40 +2121,71 @@ class HAProxyApi(ProxyApi):
             # Filter to only return application backends (ones in backend_configs)
             # Exclude HAProxy internal components like frontends, default_backend, stats
             # Also exclude BACKEND aggregate entries, keep only individual servers
-            return {
-                backend_name: {
-                    server_name: stats
-                    for server_name, stats in servers.items()
-                    if server_name != "BACKEND"
-                }
-                for backend_name, servers in all_stats.items()
-                if backend_name in self.backend_configs
-            }
+            translate = translate_slots and self.cfg.dynamic_servers_enabled
+            # Translate from what HAProxy actually has, not the desired slot
+            # table, so a replica whose assignment has not been applied (or
+            # failed to apply) is reported missing rather than served.
+            runtime_states = (
+                parse_servers_state(
+                    await self._send_socket_command("show servers state")
+                )
+                if translate
+                else {}
+            )
+            result: Dict[str, Dict[str, ServerStats]] = {}
+            for backend_name, servers in all_stats.items():
+                if backend_name not in self.backend_configs:
+                    continue
+                table = self._slot_tables.get(backend_name)
+                backend_stats = {}
+                for server_name, stats in servers.items():
+                    if server_name == "BACKEND":
+                        continue
+                    if translate and is_slot_name(server_name):
+                        slot = (
+                            table.slot_by_name(server_name)
+                            if table is not None
+                            else None
+                        )
+                        runtime = runtime_states.get((backend_name, server_name))
+                        if (
+                            slot is None
+                            or runtime is None
+                            or not runtime_serves_slot(slot, runtime)
+                        ):
+                            continue
+                        assert slot.server is not None
+                        server_name = slot.server.name
+                    backend_stats[server_name] = stats
+                result[backend_name] = backend_stats
+            return result
         except Exception as e:
             logger.error(f"Failed to get HAProxy stats: {e}")
             return {}
 
-    async def get_haproxy_stats(self) -> HAProxyStats:
-        """Get complete HAProxy statistics including both individual and aggregate data."""
-        server_stats = await self.get_all_stats()
-        return HAProxyStats(backend_to_servers=server_stats)
+    async def _send_socket_command(
+        self, command: str, socket_path: Optional[str] = None
+    ) -> str:
+        """Send a command to an HAProxy CLI socket via Unix domain socket.
 
-    async def _send_socket_command(self, command: str) -> str:
-        """Send a command to the HAProxy stats socket via Unix domain socket."""
+        Defaults to the admin (stats) socket; pass `socket_path` for the master
+        CLI.
+        """
+        socket_path = socket_path or self.cfg.socket_path
         try:
-            if not os.path.exists(self.cfg.socket_path):
+            if not os.path.exists(socket_path):
                 raise RuntimeError(
-                    f"HAProxy socket file does not exist: {self.cfg.socket_path}."
+                    f"HAProxy socket file does not exist: {socket_path}."
                 )
 
             try:
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_unix_connection(self.cfg.socket_path),
+                    asyncio.open_unix_connection(socket_path),
                     timeout=5.0,
                 )
             except asyncio.TimeoutError:
                 raise RuntimeError(
-                    f"Timeout connecting to HAProxy socket: {self.cfg.socket_path}"
+                    f"Timeout connecting to HAProxy socket: {socket_path}"
                 )
 
             try:
@@ -1577,6 +2253,10 @@ class HAProxyApi(ProxyApi):
             return
 
         try:
+            if self.cfg.master_worker_enabled:
+                await self._stop_master_worker(proc)
+                return
+
             # Kill the current process
             if proc.returncode is None:
                 proc.kill()
@@ -1599,17 +2279,94 @@ class HAProxyApi(ProxyApi):
         except RuntimeError as e:
             logger.error(f"Error during HAProxy shutdown: {e}")
 
+    async def _stop_master_worker(self, master: asyncio.subprocess.Process) -> None:
+        """Stop the master and every worker it started.
+
+        SIGTERM makes the master hard-stop its workers before exiting. Workers
+        are the master's children, so any that outlive it are killed by pid.
+        """
+        worker_pids = [
+            pid for pid in [self._worker_pid, *self._old_worker_pids] if pid is not None
+        ]
+        if master.returncode is None:
+            master.terminate()
+            try:
+                await asyncio.wait_for(master.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"HAProxy master (pid={master.pid}) did not exit after SIGTERM; "
+                    "killing it."
+                )
+                master.kill()
+                await master.wait()
+
+        for pid in worker_pids:
+            if not self._is_our_haproxy(pid):
+                continue
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.info(f"Killed HAProxy worker (PID: {pid}) left by the master.")
+            except OSError:
+                pass
+
+        self._proc = None
+        self._worker_pid = None
+        self._old_worker_pids = []
+        logger.info("Stopped HAProxy master and workers.")
+
+    async def _reload_with_runtime_state(self) -> None:
+        """Reload HAProxy so the new process starts with current membership.
+
+        A reload hands the new process a snapshot of the running process's
+        server state. With dynamic servers, the current slot assignments are
+        pushed to the running process first, so the snapshot already has removed
+        replicas in maintenance and new ones ready. Slots or maps the running
+        config does not have yet (capacity growth, a newly router-bearing app)
+        are skipped there and synced once the new process is up.
+        """
+        if self.cfg.dynamic_servers_enabled and self._is_running():
+            await self._sync_runtime_servers(require_complete=False)
+        await self._graceful_reload()
+        if self.cfg.dynamic_servers_enabled:
+            await self._sync_runtime_servers()
+
     async def reload(self) -> None:
         try:
+            if self.cfg.dynamic_servers_enabled:
+                self._assign_server_slots(await self._get_server_idleness())
             self._generate_config_file_internal()
-            await self._graceful_reload()
+            await self._reload_with_runtime_state()
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
+
+    async def apply(self) -> None:
+        """Apply `backend_configs` to the running HAProxy.
+
+        With a static config this is a reload. With dynamic servers, replica
+        membership goes through the Runtime API and HAProxy only reloads when the
+        rendered config or Lua changed (routes, health, router pools, or a backend
+        outgrowing its slots). There is then no soft-stopping worker keeping stale
+        backends and client keep-alive connections until hard-stop-after.
+        """
+        if not self.cfg.dynamic_servers_enabled:
+            await self.reload()
+            return
+
+        try:
+            self._assign_server_slots(await self._get_server_idleness())
+            self._generate_config_file_internal()
+            if self._rendered_config_fingerprint != self._running_config_fingerprint:
+                logger.info("HAProxy config changed; reloading.")
+                await self._reload_with_runtime_state()
+            else:
+                await self._sync_runtime_servers()
+        except Exception as e:
+            raise RuntimeError(f"Failed to apply HAProxy backend update: {e}")
 
     def has_alive_old_procs(self) -> bool:
         """True if any soft-stopping HAProxy workers from prior reloads remain."""
         self._prune_old_procs()
-        return len(self._old_procs) > 0
+        return len(self._old_procs) > 0 or len(self._old_worker_pids) > 0
 
     async def disable(self) -> None:
         """Force haproxy health checks to fail."""
@@ -1621,7 +2378,7 @@ class HAProxyApi(ProxyApi):
             self._generate_config_file_internal()
 
             # Perform a graceful reload to apply changes
-            await self._graceful_reload()
+            await self._reload_with_runtime_state()
             logger.info("Successfully disabled health checks.")
         except Exception as e:
             logger.error(f"Failed to disable health checks: {e}")
@@ -1634,7 +2391,7 @@ class HAProxyApi(ProxyApi):
 
             self._generate_config_file_internal()
             # Perform a graceful reload to apply changes
-            await self._graceful_reload()
+            await self._reload_with_runtime_state()
             logger.info("Successfully enabled health checks.")
         except Exception as e:
             logger.error(f"Failed to disable health checks: {e}")
@@ -1695,6 +2452,10 @@ class HAProxyApi(ProxyApi):
         return None
 
     async def is_running(self) -> bool:
+        if self.cfg.master_worker_enabled and not self._is_running():
+            # Workers may outlive a dead master, but without it no reload can
+            # happen, so report unhealthy and let the proxy be replaced.
+            return False
         try:
             await self._send_socket_command("show info")
             return True
@@ -1757,8 +2518,9 @@ class HAProxyManager(ProxyActorInterface):
             "serve_haproxy_update_latency_s",
             description=(
                 "Seconds from the first coalesced controller broadcast to the "
-                "HAProxy reload completing. Includes the coalesce window, time "
-                "queued behind an in-flight reload, and the reload itself."
+                "HAProxy update completing. Includes the coalesce window, time "
+                "queued behind an in-flight update, and the update itself (a "
+                "reload, or Runtime API changes when dynamic servers are enabled)."
             ),
             boundaries=RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
             tag_keys=("node_id",),
@@ -2108,7 +2870,9 @@ class HAProxyManager(ProxyActorInterface):
         # Use lock to serialize reloads and prevent race conditions with SO_REUSEPORT
         async with self._reload_lock:
             await self._haproxy_start_task
-            await self._haproxy.reload()
+            # Reloads with a static config; with dynamic servers, membership-only
+            # changes go through the Runtime API without a reload.
+            await self._haproxy.apply()
 
     async def _update_haproxy_backends(self) -> None:
         backend_configs = []
@@ -2212,9 +2976,7 @@ class HAProxyManager(ProxyActorInterface):
     @staticmethod
     def get_safe_name(name: str) -> str:
         """Get a safe label name for the haproxy config."""
-        name = name.replace("#", "-").replace("/", ".")
-        # replace all remaining non-alphanumeric and non-{".", "_", "-"} with "_"
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+        return get_safe_name(name)
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         """Return the set of replica IDs for targets matching the given route.

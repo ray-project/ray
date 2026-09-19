@@ -24,6 +24,20 @@ local SESSION_HEADER = "${SESSION_HEADER}"
 -- routers and replicas here. ROUTERS[app] is a list we round-robin over.
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
+-- With dynamic servers, replica membership is not rendered here. Lua exports the
+-- selected replica as txn.ingress_request_router_replica_key and the frontend
+-- resolves it to a server slot through a map updated at runtime.
+local DYNAMIC_REPLICA_TARGETS = ${DYNAMIC_REPLICA_TARGETS}
+
+-- Mirrors haproxy_server_slots.get_safe_name so the key matches the map entries
+-- written by HAProxyApi. Collapses each run of disallowed bytes into one "_",
+-- as Python does for each run of disallowed characters.
+local function safe_name(name)
+    local s = name:gsub("#", "-")
+    s = s:gsub("/", ".")
+    s = s:gsub("[^A-Za-z0-9._%-]+", "_")
+    return s
+end
 
 -- Per-app round-robin cursor, one Lua state per worker thread under
 -- lua-load-per-thread, so rotation needs no cross-thread synchronization.
@@ -202,6 +216,14 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         return
     end
 
+    if DYNAMIC_REPLICA_TARGETS then
+        -- The frontend resolves the key to a slot, or arms unknown_replica_id
+        -- and strips these headers on a pin-miss.
+        set_router_response_headers(txn, response_body)
+        txn:set_var("txn.ingress_request_router_replica_key", safe_name(replica_id))
+        return
+    end
+
     local server_name = replica_map[replica_id]
     if not server_name then
         -- Pin-miss: router named a replica not in HAProxy's server map, a
@@ -244,7 +266,7 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
     end
     local pool = ROUTERS[app]
     local replica_map = REPLICA_TARGETS[app]
-    if not pool or not replica_map then
+    if not pool or (not replica_map and not DYNAMIC_REPLICA_TARGETS) then
         return
     end
 
