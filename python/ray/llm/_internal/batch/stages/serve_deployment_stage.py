@@ -40,6 +40,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         deployment_name: str,
         app_name: str,
         dtype_mapping: Dict[str, Type[Any]],
+        stream: bool = True,
         should_continue_on_error: bool = False,
         request_timeout_s: Optional[float] = None,
     ):
@@ -52,6 +53,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             deployment_name: The name of the deployment.
             app_name: The name of the deployment app.
             dtype_mapping: The mapping of the request class name to the request class.
+            stream: Whether the deployment returns a streaming response.
             should_continue_on_error: If True, continue processing when inference
                 fails for a row instead of raising. Failed rows will have
                 '__inference_error__' set to the error message.
@@ -63,14 +65,14 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         """
         super().__init__(data_column, expected_input_keys)
         self._dtype_mapping = dtype_mapping
+        self.stream = stream
         self.should_continue_on_error = should_continue_on_error
         self.request_timeout_s = request_timeout_s
 
-        # Using stream=True as LLM serve deployments return async generators.
-        # TODO (Kourosh): Generalize this to support non-streaming deployments.
-        self._dh = serve.get_deployment_handle(deployment_name, app_name).options(
-            stream=True
-        )
+        self._dh = serve.get_deployment_handle(deployment_name, app_name)
+        if self.stream:
+            # LLM serve deployments return async generators.
+            self._dh = self._dh.options(stream=True)
         self.request_id = 0
 
     def _prepare_request(
@@ -129,11 +131,12 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
 
         t = time.perf_counter()
         # Directly using anext() requires python3.10 and above
-        response_gen = getattr(self._dh, method).remote(request_obj)
+        response = getattr(self._dh, method).remote(request_obj)
+        response_awaitable = response.__anext__() if self.stream else response
         if self.request_timeout_s is not None:
             try:
                 output_data = await asyncio.wait_for(
-                    response_gen.__anext__(), timeout=self.request_timeout_s
+                    response_awaitable, timeout=self.request_timeout_s
                 )
             except asyncio.TimeoutError as e:
                 raise TimeoutError(
@@ -141,7 +144,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
                     f"for deployment '{method}' to return a response."
                 ) from e
         else:
-            output_data = await response_gen.__anext__()
+            output_data = await response_awaitable
         time_taken = time.perf_counter() - t
 
         # Convert the output data to a dict if it is a Pydantic model.
