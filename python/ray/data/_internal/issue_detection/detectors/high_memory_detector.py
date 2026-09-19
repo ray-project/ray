@@ -90,7 +90,7 @@ class HighMemoryIssueDetector(IssueDetector):
             if not isinstance(op, MapOperator):
                 continue
 
-            if op.is_shut_down() or op.has_completed():
+            if op.has_completed():
                 issue = self._detect_issue_from_final_metrics(
                     op, self._initial_memory_requests[op]
                 )
@@ -129,6 +129,14 @@ class HighMemoryIssueDetector(IssueDetector):
                     )
                 )
 
+        return issues
+
+    def detect_on_execution_end(self) -> List[Issue]:
+        issues = []
+        for op, memory_request in self._initial_memory_requests.items():
+            issue = self._detect_issue_from_final_metrics(op, memory_request)
+            if issue is not None:
+                issues.append(issue)
         return issues
 
     def _detect_issue_from_final_metrics(

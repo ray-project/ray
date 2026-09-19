@@ -14,7 +14,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
-from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -26,10 +25,6 @@ from ray.data._internal.issue_detection.detectors.hanging_detector import (
     DEFAULT_OP_TASK_STATS_STD_FACTOR,
     HangingExecutionIssueDetector,
     HangingExecutionIssueDetectorConfig,
-)
-from ray.data._internal.issue_detection.detectors.hash_shuffle_detector import (
-    HashShuffleAggregatorIssueDetector,
-    HashShuffleAggregatorIssueDetectorConfig,
 )
 from ray.data._internal.issue_detection.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
@@ -206,21 +201,6 @@ class TestHangingExecutionIssueDetector:
         assert "has been running or stuck in scheduling for" in issues[0].message
         assert "longer than the average task duration" in issues[0].message
 
-        with patch.object(type(op), "is_shut_down", return_value=True):
-            assert detector.detect() == []
-
-
-def test_hash_shuffle_detector_skips_shutdown_operator():
-    hash_shuffle_operator = MagicMock(spec=HashShuffleOperator)
-    hash_shuffle_operator.is_shut_down.return_value = True
-    hash_shuffle_detector = HashShuffleAggregatorIssueDetector(
-        dataset_id="id",
-        operators=[hash_shuffle_operator],
-        config=HashShuffleAggregatorIssueDetectorConfig(),
-    )
-
-    assert hash_shuffle_detector.detect() == []
-
 
 @pytest.mark.parametrize(
     "configured_memory, actual_memory, should_return_issue",
@@ -268,28 +248,25 @@ def test_high_memory_detection(
 
 
 @pytest.mark.parametrize(
-    "configured_memory, max_memory, expected_memory_configuration, expected_memory, operator_termination",
+    "configured_memory, max_memory, expected_memory_configuration, expected_memory",
     [
-        (10 * GiB, 8 * GiB, None, None, "completed"),
+        (10 * GiB, 8 * GiB, None, None),
         (
             10 * GiB - 1,
             8 * GiB,
             "The configured logical memory was 10.0GiB.",
             10 * GiB,
-            "completed",
         ),
-        (None, 8 * GiB, None, None, "completed"),
-        (0, 1, "The configured logical memory was 0.0B.", 2, "completed"),
-        (1, None, None, None, "completed"),
-        (1, 1, "The configured logical memory was 1.0B.", 2, "shutdown"),
+        (None, 8 * GiB, None, None),
+        (0, 1, "The configured logical memory was 0.0B.", 2),
+        (1, None, None, None),
     ],
 )
-def test_high_memory_detection_on_operator_termination(
+def test_high_memory_detection_on_operator_completion(
     configured_memory,
     max_memory,
     expected_memory_configuration,
     expected_memory,
-    operator_termination,
     restore_data_context,
 ):
     ctx = DataContext.get_current()
@@ -303,10 +280,7 @@ def test_high_memory_detection_on_operator_termination(
     if max_memory is not None:
         map_operator.metrics.max_uss_bytes.add_sample(max_memory // 2)
         map_operator.metrics.max_uss_bytes.add_sample(max_memory)
-    if operator_termination == "completed":
-        map_operator.has_completed = MagicMock(return_value=True)
-    else:
-        map_operator.is_shut_down = MagicMock(return_value=True)
+    map_operator.has_completed = MagicMock(return_value=True)
 
     detector = HighMemoryIssueDetector(
         dataset_id="id",
@@ -324,6 +298,38 @@ def test_high_memory_detection_on_operator_termination(
         assert f"`memory={expected_memory}`" in normalized_message
     # Completion checks are one-shot to avoid duplicate warnings.
     assert detector.detect() == []
+    assert detector.detect_on_execution_end() == []
+
+
+def test_high_memory_detection_on_execution_end(restore_data_context):
+    ctx = DataContext.get_current()
+    input_data_buffer = InputDataBuffer(ctx, input_data=[])
+    map_operator = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=input_data_buffer,
+        data_context=ctx,
+        ray_remote_args={"memory": 1},
+    )
+    map_operator.has_completed = MagicMock(return_value=False)
+    map_operator.metrics.max_uss_bytes.add_sample(1)
+
+    detector = HighMemoryIssueDetector(
+        dataset_id="id",
+        operators=[input_data_buffer, map_operator],
+        config=ctx.issue_detectors_config.high_memory_detector_config,
+    )
+
+    # Periodic detection doesn't perform the final check for an incomplete operator.
+    assert detector.detect() == []
+
+    issues = detector.detect_on_execution_end()
+    assert len(issues) == 1
+    normalized_message = " ".join(issues[0].message.split())
+    assert map_operator.name in normalized_message
+    assert "The configured logical memory was 1.0B." in normalized_message
+    assert "`memory=2`" in normalized_message
+    # Execution-end checks are one-shot to avoid duplicate warnings.
+    assert detector.detect_on_execution_end() == []
 
 
 if __name__ == "__main__":
