@@ -31,7 +31,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -59,7 +59,13 @@ logger = logging.getLogger(__name__)
 
 # Query timeout lengths
 _STACK_DUMP_TIMEOUT_S: float = 30.0
+_NVIDIA_SMI_TIMEOUT_S: float = 30.0
 _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
+
+# Every diagnostic is uploaded to `<experiment_fs_path>/hang_detector/<tool>/`.
+_DIAGNOSTICS_DIR: str = "hang_detector"
+_STACK_TRACES_TOOL: str = "stack_traces"
+_NVIDIA_SMI_TOOL: str = "nvidia_smi"
 
 # User-facing escalation milestones
 _FIRST_SUSPICION_AFTER_S: float = 60.0
@@ -138,45 +144,6 @@ def run_ncclras(
         }
 
     return {"ok": True, "stdout": proc.stdout}
-
-
-def dump_stack_trace(pyspy_timeout_s: float) -> str:
-    """Dump native + Python stacks of the current (worker) process.
-
-    Args:
-        pyspy_timeout_s: Timeout for the ``py-spy dump`` subprocess.
-
-    Returns:
-        The captured stack trace, or a Python-only traceback (prefixed with the
-        reason py-spy was skipped) when py-spy is unavailable.
-    """
-    pid = os.getpid()
-    try:
-        proc = subprocess.run(
-            ["py-spy", "dump", "--pid", str(pid), "--native"],
-            capture_output=True,
-            text=True,
-            timeout=pyspy_timeout_s,
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            return proc.stdout
-        stderr = (proc.stderr or "").strip() or f"py-spy exited {proc.returncode}"
-    except FileNotFoundError:
-        stderr = "py-spy not installed"
-    except subprocess.TimeoutExpired:
-        stderr = "py-spy timed out"
-    except Exception as e:  # noqa: BLE001
-        stderr = f"py-spy error: {e}"
-
-    # Python-only fallback: dump every thread's stack (cannot show C/C++ trace).
-    import sys
-    import traceback
-
-    lines = [f"[py-spy unavailable: {stderr}; Python-only traceback follows]"]
-    for thread_id, frame in sys._current_frames().items():
-        lines.append(f"\n# Thread {thread_id}")
-        lines.append("".join(traceback.format_stack(frame)))
-    return "\n".join(lines)
 
 
 @dataclass
@@ -539,6 +506,147 @@ class RASPoller:
         return result["stdout"]
 
 
+@dataclass
+class WorkerDump:
+    """One worker's answer to a fan-out diagnostic call.
+
+    Attributes:
+        rank: The worker's world rank.
+        value: What the worker-side function returned, or ``None`` if it didn't.
+        error: Why this rank has no value, or ``None`` when it does.
+    """
+
+    rank: int
+    value: Optional[Any] = None
+    error: Optional[str] = None
+
+
+def fan_out_to_workers(
+    workers: List[Worker], fn: Callable[..., Any], *fn_args, timeout_s: float
+) -> List[WorkerDump]:
+    """Run ``fn`` on every worker in parallel and collect what each returned.
+
+    Args:
+        workers: The train workers to run ``fn`` on.
+        fn: The worker-side function, called with ``fn_args``.
+        *fn_args: Positional arguments forwarded to ``fn`` on every worker.
+        timeout_s: Budget for the whole fan-out, shared by every worker.
+
+    Returns:
+        The worker dumps collected, not necessarily in order.
+    """
+    dumps: Dict[int, WorkerDump] = {}
+    refs: Dict[ray.ObjectRef, int] = {}
+
+    for worker in workers:
+        rank = worker.distributed_context.world_rank
+        try:
+            refs[worker.execute_async(fn, *fn_args)] = rank
+        except Exception as e:  # noqa: BLE001
+            logger.info("Failed to launch %s on rank %d: %s", fn.__name__, rank, e)
+            dumps[rank] = WorkerDump(rank, error=f"failed to launch: {e}")
+
+    if refs:
+        _, not_ready = ray.wait(list(refs), num_returns=len(refs), timeout=timeout_s)
+        for ref, rank in refs.items():
+            if ref in not_ready:
+                logger.warning(
+                    "%s on rank %d did not finish within %.0fs. It will be missing "
+                    "from the hang diagnostics.",
+                    fn.__name__,
+                    rank,
+                    timeout_s,
+                )
+                dumps[rank] = WorkerDump(
+                    rank, error=f"timed out after {timeout_s:.0f}s"
+                )
+                continue
+
+            try:
+                dumps[rank] = WorkerDump(rank, value=ray.get(ref))
+            except Exception as e:  # noqa: BLE001
+                logger.info("Failed to collect %s on rank %d: %s", fn.__name__, rank, e)
+                dumps[rank] = WorkerDump(rank, error=f"failed to collect: {e}")
+
+    return list(dumps.values())
+
+
+def dump_stack_trace(pyspy_timeout_s: float) -> str:
+    """Dump native + Python stacks of the current (worker) process.
+
+    Args:
+        pyspy_timeout_s: Timeout for the ``py-spy dump`` subprocess.
+
+    Returns:
+        The captured stack trace, or a Python-only traceback (prefixed with the
+        reason py-spy was skipped) when py-spy is unavailable.
+    """
+    pid = os.getpid()
+    try:
+        proc = subprocess.run(
+            ["py-spy", "dump", "--pid", str(pid), "--native"],
+            capture_output=True,
+            text=True,
+            timeout=pyspy_timeout_s,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout
+        stderr = (proc.stderr or "").strip() or f"py-spy exited {proc.returncode}"
+    except FileNotFoundError:
+        stderr = "py-spy not installed"
+    except subprocess.TimeoutExpired:
+        stderr = "py-spy timed out"
+    except Exception as e:  # noqa: BLE001
+        stderr = f"py-spy error: {e}"
+
+    # Python-only fallback: dump every thread's stack (cannot show C/C++ trace).
+    import sys
+    import traceback
+
+    lines = [f"[py-spy unavailable: {stderr}; Python-only traceback follows]"]
+    for thread_id, frame in sys._current_frames().items():
+        lines.append(f"\n# Thread {thread_id}")
+        lines.append("".join(traceback.format_stack(frame)))
+    return "\n".join(lines)
+
+
+def run_nvidia_smi(timeout_s: float) -> Dict[str, Any]:
+    """Snapshot `nvidia-smi -q` on the current (worker) node using .
+
+    Args:
+        timeout_s: Timeout for the ``nvidia-smi`` subprocess.
+
+    Returns:
+        A dict ``{"ok": bool, ...}``. On success ``stdout`` holds the report.
+        On failure ``reason`` says why there is none.
+    """
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "-q"], capture_output=True, text=True, timeout=timeout_s
+        )
+    except FileNotFoundError:
+        return {"ok": False, "reason": "binary_not_found"}
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "reason": (
+                f"`nvidia-smi -q` timed out after {timeout_s:.0f}s, which usually "
+                "means the driver is itself stuck"
+            ),
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "reason": f"error: {e}"}
+
+    if proc.returncode != 0:
+        stderr = (proc.stderr or "").strip()
+        return {
+            "ok": False,
+            "reason": f"`nvidia-smi -q` exited {proc.returncode} (stderr: {stderr[:500]})",
+        }
+
+    return {"ok": True, "stdout": proc.stdout}
+
+
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     """Detects NCCL hangs via the RAS subsystem (see module docstring for the
     topology and the hard/soft model).
@@ -753,11 +861,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
-        try:
-            dump_dir = self.dump_workers_stack_traces()
-        except Exception:
-            logger.exception("Trying to dump worker stack traces failed.")
-            dump_dir = None
+        nvidia_smi_dir = self.capture_diagnostic(
+            "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
+        )
+        stack_trace_dir = self.capture_diagnostic(
+            "worker stack traces", self.dump_workers_stack_traces
+        )
 
         message = (
             f"{len(confirmed_comm_hangs)} of "
@@ -771,8 +880,18 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             "collective was launched with a mismatched shape, dtype, or call order.\n"
             "To debug:\n"
             "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
-            f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n"
         )
+        if stack_trace_dir:
+            message += (
+                "  - Your experiment directory contains the per-rank stack traces "
+                f"({stack_trace_dir})\n"
+            )
+        if nvidia_smi_dir:
+            message += (
+                "  - The per-node `nvidia-smi` snapshots show every GPU's power, "
+                "temperature, clocks and ECC state at the moment of the hang, to "
+                f"rule hardware in or out ({nvidia_smi_dir})\n"
+            )
         if self._action == NCCL_RAS_ACTION_FAIL:
             raise NCCLHangError(message, worker_failures={})
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
@@ -855,13 +974,31 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.info("Could not fetch the `ncclras` text report (%s).", e)
             return None
 
+    @staticmethod
+    def capture_diagnostic(
+        name: str, capture: Callable[[], Optional[str]]
+    ) -> Optional[str]:
+        """Run one diagnostic capture, logging rather than raising on failure.
+
+        Args:
+            name: What is being captured, for the log message.
+            capture: The capture, returning where it was uploaded.
+
+        Returns:
+            Where the diagnostic was uploaded, or ``None`` if it failed.
+        """
+        try:
+            return capture()
+        except Exception:  # noqa: BLE001
+            logger.exception("Trying to capture the %s failed.", name)
+            return None
+
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.
 
         Every rank gets a ``rank_<world_rank>.log`` in the uploaded folder. A rank
         whose dump could not be launched, timed out, or failed to collect gets a
-        one-line placeholder saying so, so a missing trace is visible rather than
-        silently absent.
+        one-line placeholder saying so users know why it failed.
 
         Returns:
             The path to the folder with the stack traces.
@@ -870,55 +1007,68 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if not workers:
             return None
 
-        dump_refs: Dict[ray.ObjectRef, int] = {}
-        launch_failures: Dict[int, str] = {}
-        for worker in workers:
-            rank = worker.distributed_context.world_rank
-            try:
-                ref = worker.execute_async(dump_stack_trace, _STACK_DUMP_TIMEOUT_S - 5)
-                dump_refs[ref] = rank
-            except Exception as e:  # noqa: BLE001
-                logger.info("Failed to launch stack dump on rank %d: %s", rank, e)
-                launch_failures[rank] = f"failed to launch stack dump: {e}\n"
+        dumps = fan_out_to_workers(
+            workers,
+            dump_stack_trace,
+            _STACK_DUMP_TIMEOUT_S - 5,
+            timeout_s=_STACK_DUMP_TIMEOUT_S,
+        )
+        files = {
+            f"rank_{dump.rank}.log": dump.value if dump.error is None else dump.error
+            for dump in dumps
+        }
+        return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
 
-        if not dump_refs:
-            logger.info("Could not launch a stack dump on any worker.")
-            return None
+    def dump_nodes_nvidia_smi(self) -> Optional[str]:
+        """Snapshot every node's GPUs and write the reports to the log dir.
 
-        _, not_ready = ray.wait(
-            list(dump_refs), num_returns=len(dump_refs), timeout=_STACK_DUMP_TIMEOUT_S
+        The GPUs belong to the node rather than the rank, so exactly one worker
+        per node is queried and each node gets a ``{node_ip}.log``.
+
+        Returns:
+            The path to the folder with the snapshots, or ``None`` when no node
+            has ``nvidia-smi`` at all, so there is nothing to record.
+        """
+        node_workers: Dict[str, Worker] = {}
+        node_ips: Dict[int, str] = {}
+        for worker in self._worker_group.get_workers():
+            node_workers.setdefault(worker.metadata.node_ip, worker)
+            node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
+
+        dumps = fan_out_to_workers(
+            list(node_workers.values()),
+            run_nvidia_smi,
+            _NVIDIA_SMI_TIMEOUT_S - 5,
+            timeout_s=_NVIDIA_SMI_TIMEOUT_S,
         )
 
+        files: Dict[str, str] = {}
+        for dump in dumps:
+            node_ip = node_ips[dump.rank]
+            if dump.error is None and dump.value["ok"]:
+                files[f"{node_ip}.log"] = dump.value["stdout"]
+            else:
+                reason = dump.error if dump.error is not None else dump.value["reason"]
+                files[f"{node_ip}.log"] = f"no `nvidia-smi` snapshot: {reason}\n"
+
+        return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
+
+    def upload_diagnostics(self, tool: str, files: Dict[str, str]) -> str:
+        """Upload one tool's files to the run's storage filesystem.
+
+        Args:
+            tool: The sub-directory of ``hang_detector/`` to write to.
+            files: ``{filename: contents}`` to write into that directory.
+
+        Returns:
+            The path the files were uploaded to, which survives cluster teardown.
+        """
+        storage_context = self._worker_group._storage_context
+        fs_path = os.path.join(
+            storage_context.experiment_fs_path, _DIAGNOSTICS_DIR, tool
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
-            for rank, text in launch_failures.items():
-                (Path(temp_dir) / f"rank_{rank}.log").write_text(text)
-
-            for ref, rank in dump_refs.items():
-                file = Path(temp_dir) / f"rank_{rank}.log"
-                if ref in not_ready:
-                    logger.warning(
-                        "Stack dump on rank %d did not finish within %.0fs. "
-                        "Its trace will be missing from the hang diagnostics.",
-                        rank,
-                        _STACK_DUMP_TIMEOUT_S,
-                    )
-                    file.write_text(
-                        f"stack dump timed out after {_STACK_DUMP_TIMEOUT_S:.0f}s"
-                    )
-                else:
-                    try:
-                        file.write_text(ray.get(ref))
-                    except Exception as e:  # noqa: BLE001
-                        logger.info("Failed to collect stack on rank %d: %s", rank, e)
-                        file.write_text(f"failed to collect stack trace: {e}")
-
-            stack_trace_folder = os.path.join(
-                self._worker_group._storage_context.experiment_fs_path,
-                "nccl_ras_hang_stack_traces",
-            )
-            _upload_to_fs_path(
-                temp_dir,
-                self._worker_group._storage_context.storage_filesystem,
-                stack_trace_folder,
-            )
-            return stack_trace_folder
+            for name, contents in files.items():
+                (Path(temp_dir) / name).write_text(contents)
+            _upload_to_fs_path(temp_dir, storage_context.storage_filesystem, fs_path)
+        return fs_path
