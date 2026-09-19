@@ -319,6 +319,118 @@ def test_actor_pool_scaling():
                 )
 
 
+def test_zero_min_actor_pool_wakes_for_queued_input_and_stays_idle_without_demand():
+    resource_manager = MagicMock(
+        spec=ResourceManager,
+        get_budget=MagicMock(return_value=None),
+        get_allocation=MagicMock(return_value=None),
+    )
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=None,
+        ),
+    )
+    actor_pool: _ActorPool = MagicMock(
+        spec=_ActorPool,
+        min_size=MagicMock(return_value=0),
+        max_size=MagicMock(return_value=4),
+        current_size=MagicMock(return_value=0),
+        num_active_actors=MagicMock(return_value=0),
+        num_running_actors=MagicMock(return_value=0),
+        num_pending_actors=MagicMock(return_value=0),
+        num_tasks_in_flight=MagicMock(return_value=0),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
+        max_tasks_in_flight_per_actor=MagicMock(return_value=2),
+        max_actor_concurrency=MagicMock(return_value=1),
+    )
+    actor_pool.get_pool_util = MagicMock(
+        side_effect=lambda: MethodType(_ActorPool.get_pool_util, actor_pool)()
+    )
+    op = MagicMock(
+        spec=InternalQueueOperatorMixin,
+        has_completed=MagicMock(return_value=False),
+        _inputs_complete=False,
+        input_dependencies=[MagicMock()],
+        internal_input_queue_num_blocks=MagicMock(return_value=0),
+        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=0),
+        num_output_splits=MagicMock(return_value=1),
+    )
+    input_queue = MagicMock(__len__=MagicMock(return_value=0), num_blocks=0)
+    op_state = OpState(op, inqueues=[input_queue])
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
+
+    assert autoscaler._derive_target_scaling_config(
+        actor_pool, op, op_state
+    ) == ActorPoolScalingRequest.no_op(reason="no inputs received")
+
+    input_queue.num_blocks = 1
+
+    assert autoscaler._derive_target_scaling_config(
+        actor_pool, op, op_state
+    ) == ActorPoolScalingRequest.upscale(
+        delta=1, reason="no running actors, scale up immediately"
+    )
+
+
+def test_zero_min_actor_pool_keeps_last_actor_while_input_is_queued():
+    resource_manager = MagicMock(
+        spec=ResourceManager,
+        get_budget=MagicMock(return_value=None),
+        get_allocation=MagicMock(return_value=None),
+    )
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=None,
+        ),
+    )
+    actor_pool: _ActorPool = MagicMock(
+        spec=_ActorPool,
+        min_size=MagicMock(return_value=0),
+        max_size=MagicMock(return_value=4),
+        current_size=MagicMock(return_value=1),
+        num_active_actors=MagicMock(return_value=0),
+        num_running_actors=MagicMock(return_value=1),
+        num_pending_actors=MagicMock(return_value=0),
+        num_tasks_in_flight=MagicMock(return_value=0),
+        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
+        max_tasks_in_flight_per_actor=MagicMock(return_value=2),
+        max_actor_concurrency=MagicMock(return_value=1),
+    )
+    actor_pool.get_pool_util = MagicMock(
+        side_effect=lambda: MethodType(_ActorPool.get_pool_util, actor_pool)()
+    )
+    op = MagicMock(
+        spec=InternalQueueOperatorMixin,
+        has_completed=MagicMock(return_value=False),
+        _inputs_complete=False,
+        input_dependencies=[MagicMock()],
+        internal_input_queue_num_blocks=MagicMock(return_value=0),
+        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        num_output_splits=MagicMock(return_value=1),
+    )
+    input_queue = MagicMock(__len__=MagicMock(return_value=1), num_blocks=1)
+    op_state = OpState(op, inqueues=[input_queue])
+    op_state._scheduling_status = MagicMock(under_resource_limits=True)
+
+    assert autoscaler._derive_target_scaling_config(
+        actor_pool, op, op_state
+    ) == ActorPoolScalingRequest.no_op(reason="queued inputs require an actor")
+
+    input_queue.num_blocks = 0
+
+    assert autoscaler._derive_target_scaling_config(
+        actor_pool, op, op_state
+    ) == ActorPoolScalingRequest.downscale(delta=-1, reason="utilization of 0.0 <= 0.5")
+
+
 @pytest.fixture
 def autoscaler_max_upscaling_delta_setup():
     resource_manager = MagicMock(

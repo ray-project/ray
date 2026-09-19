@@ -39,9 +39,10 @@ class AutoscalingActorConfig:
     """
     per_actor_resource_usage: The resource usage per actor.
     min_size: The minimum number of running actors to be maintained
-        in the pool. Note, that this constraint could be violated when
-        no new work is available for scheduling in the actor pool (ie
-        when operator completes execution).
+        in the pool. A value of 0 allows the pool to scale to zero when idle.
+        Note, that this constraint could be violated when no new work is
+        available for scheduling in the actor pool (ie when operator
+        completes execution).
     max_size: The maximum number of running actors to be maintained
         in the pool.
     initial_size: The initial number of actors to start with.
@@ -60,7 +61,7 @@ class AutoscalingActorConfig:
     per_actor_resource_usage: ExecutionResources
 
     def __post_init__(self):
-        assert self.min_size >= 1
+        assert self.min_size >= 0
         assert self.max_size >= self.min_size
         assert self.initial_size <= self.max_size
         assert self.initial_size >= self.min_size

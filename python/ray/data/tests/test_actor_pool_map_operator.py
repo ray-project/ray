@@ -979,6 +979,47 @@ def test_setting_initial_size_for_actor_pool():
     ray.shutdown()
 
 
+def test_actor_pool_strategy_allows_scale_to_zero():
+    default_strategy = ActorPoolStrategy()
+    assert default_strategy.min_size == 1
+    assert default_strategy.initial_size == 1
+
+    strategy = ActorPoolStrategy(min_size=0, max_size=4)
+
+    assert strategy.min_size == 0
+    assert strategy.max_size == 4
+    assert strategy.initial_size == 0
+
+    with pytest.raises(ValueError, match="max_size must be >= 1"):
+        ActorPoolStrategy(min_size=0, max_size=0)
+
+
+def test_actor_pool_operator_can_start_at_zero():
+    data_context = DataContext.get_current()
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=ActorPoolStrategy(min_size=0, max_size=4),
+        ray_remote_args={"num_cpus": 1},
+    )
+
+    op.start(ExecutionOptions(), noop_counter())
+
+    assert op._actor_pool.get_actor_info() == ActorPoolInfo(
+        running=0,
+        pending=0,
+        restarting=0,
+        active=0,
+        idle=0,
+        pool_utilization=0.0,
+        tasks_in_flight=0,
+    )
+    min_resources, max_resources = op.min_max_resource_requirements()
+    assert min_resources == ExecutionResources.zero()
+    assert max_resources.cpu == 4
+
+
 def test_max_concurrent_calls_per_actor_raises_on_invalid():
     # The value must be positive.
     with pytest.raises(ValueError, match="max_concurrent_calls_per_actor"):

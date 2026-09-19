@@ -55,10 +55,10 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         op: "PhysicalOperator",
         op_state: "OpState",
     ) -> ActorPoolScalingRequest:
+        queued_input_blocks = op_state.total_enqueued_input_blocks()
+
         # If all inputs have been consumed, short-circuit
-        if op.has_completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
-        ):
+        if op.has_completed() or (op._inputs_complete and queued_input_blocks == 0):
             num_to_scale_down = self._compute_downscale_delta(actor_pool)
             return ActorPoolScalingRequest.downscale(
                 delta=-num_to_scale_down, force=True, reason="consumed all inputs"
@@ -96,8 +96,15 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 )
 
         # To prevent unexpected downscaling from the initial size, short-circuit if
-        # the operator hasn't received any inputs.
-        if op.metrics.num_inputs_received == 0:
+        # the operator hasn't received any inputs. A zero-min pool is the exception:
+        # its first input can still be waiting in OpState because can_add_input()
+        # requires a running actor. Let that queued demand wake the pool.
+        zero_min_pool_has_queued_demand = (
+            actor_pool.min_size() == 0
+            and actor_pool.current_size() == 0
+            and queued_input_blocks > 0
+        )
+        if op.metrics.num_inputs_received == 0 and not zero_min_pool_has_queued_demand:
             return ActorPoolScalingRequest.no_op(reason="no inputs received")
 
         # Determine whether to scale up based on the actor pool utilization.
@@ -155,10 +162,23 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 return ActorPoolScalingRequest.no_op(
                     reason="no downscaling while actors are pending"
                 )
-            if actor_pool.current_size() <= actor_pool.min_size():
-                return ActorPoolScalingRequest.no_op(reason="reached min size")
 
-            max_can_release = actor_pool.current_size() - actor_pool.min_size()
+            effective_min_size = actor_pool.min_size()
+            if effective_min_size == 0 and queued_input_blocks > 0:
+                # Keep one actor available while input is already waiting. Scaling
+                # the last actor down here would immediately require scaling it back
+                # up on the next autoscaler pass.
+                effective_min_size = 1
+
+            if actor_pool.current_size() <= effective_min_size:
+                reason = (
+                    "queued inputs require an actor"
+                    if effective_min_size > actor_pool.min_size()
+                    else "reached min size"
+                )
+                return ActorPoolScalingRequest.no_op(reason=reason)
+
+            max_can_release = actor_pool.current_size() - effective_min_size
             num_to_scale_down = min(
                 self._compute_downscale_delta(actor_pool), max_can_release
             )
