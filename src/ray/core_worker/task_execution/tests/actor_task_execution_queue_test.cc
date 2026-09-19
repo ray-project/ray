@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <string>
@@ -549,6 +550,67 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   queue.Stop();
 }
 
+TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTasks) {
+  // Later arrivals must not restart the reorder deadline: a client that keeps submitting
+  // would otherwise hold the gap open forever and this group would stop making progress.
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       /*reorder_wait_seconds=*/1,
+                                       execute_task,
+                                       cancel_task);
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+
+  // seq_no 0 runs, 1 never arrives, so the group blocks on 1 and arms the timer.
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
+  ASSERT_EQ(n_canceled, 0);
+
+  // Keep tasks arriving more often than the 1s deadline. Each arrival used to re-arm the
+  // timer, so it never fired. restart() is defensive: run_for leaves the context stopped
+  // if the work queue ever drains, which this loop's exit condition otherwise hides.
+  const auto give_up_at = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  int seq_no = 3;
+  while (n_canceled == 0 && std::chrono::steady_clock::now() < give_up_at) {
+    io_service.restart();
+    io_service.run_for(std::chrono::milliseconds(100));
+    EnqueueWithFetch(queue, waiter, seq_no++, -1, MakeTaskToExecute(task_spec));
+  }
+
+  // The deadline expired despite the stream of arrivals, so the gap was skipped and the
+  // queued tasks were cancelled rather than waiting on seq_no 1 forever. EXPECT rather
+  // than ASSERT: returning early here would skip the Join() below, and a joinable
+  // std::thread destructor terminates the process instead of reporting the failure.
+  EXPECT_GT(n_canceled, 0);
+  // Skipping the gap is what lets the actor run again, which is the point of the
+  // timeout. Without it n_executed stays at 1 forever.
+  EXPECT_TRUE(WaitForCondition([&n_executed]() { return n_executed >= 2; }, 1000));
+
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+  queue.Stop();
+}
+
 TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -721,15 +783,17 @@ TEST(OrderedActorTaskExecutionQueueTest, TestPerConcurrencyGroupOrdering) {
   EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_b0));
   EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_b1));
 
-  io_service.run_one();
-  io_service.run_one();
+  // Tasks reach execute_task through the executor, not this io_service; the only io work
+  // the queue posts is the reorder timer. poll() rather than run_one() so the wait for
+  // that timer does not block: it must not fire here, and the cancel_task above FAILs if
+  // it does.
+  io_service.poll();
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
   ASSERT_EQ(n_accept, 2);
 
   // Now enqueue group "a" seq 0, which unblocks group "a".
   EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_a0));
-  io_service.run_one();
-  io_service.run_one();
+  io_service.poll();
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 4; }, 1000));
 
   ASSERT_EQ(n_accept, 4);
