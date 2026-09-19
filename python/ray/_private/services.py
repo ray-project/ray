@@ -894,6 +894,7 @@ def start_ray_process(
     stdout_file: Optional[IO[AnyStr]] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
+    use_posix_spawn: bool = False,
 ):
     """Start one of the Ray processes.
 
@@ -908,6 +909,11 @@ def start_ray_process(
             (e.g., "raylet").
         fate_share: If true, the child will be killed if its parent (us) dies.
             True must only be passed after detection of this functionality.
+        use_posix_spawn: If true, skip preexec_fn so CPython can use
+            posix_spawn() instead of fork(). This avoids a race condition
+            where fork() in a multi-threaded gRPC process copies corrupted
+            poller state into the child (see #63202). Cannot be combined
+            with fate_share.
         env_updates: A dictionary of additional environment variables to
             run the command with (in addition to the caller's environment
             variables).
@@ -1037,6 +1043,15 @@ def start_ray_process(
         # version, and tmux 2.1)
         command = ["tmux", "new-session", "-d", f"{' '.join(command)}"]
 
+    if use_posix_spawn and fate_share:
+        raise ValueError(
+            "'use_posix_spawn' cannot be combined with 'fate_share' because "
+            "posix_spawn skips preexec_fn which is needed for fate-sharing."
+        )
+
+    # On non-Linux or Windows, posix_spawn offers no benefit.
+    use_posix_spawn = use_posix_spawn and sys.platform.startswith("linux")
+
     if fate_share:
         assert ray._private.utils.detect_fate_sharing_support(), (
             "kernel-level fate-sharing must only be specified if "
@@ -1068,6 +1083,16 @@ def start_ray_process(
                 f"got {total_chrs}"
             )
 
+    # When use_posix_spawn is set, we pass preexec_fn=None so that CPython
+    # can use posix_spawn() instead of fork(). This avoids a gRPC poller
+    # race condition in multi-threaded processes (see #63202).
+    if use_posix_spawn:
+        popen_preexec_fn = None
+    elif sys.platform != "win32":
+        popen_preexec_fn = preexec_fn
+    else:
+        popen_preexec_fn = None
+
     process = ConsolePopen(
         command,
         env=modified_env,
@@ -1075,7 +1100,7 @@ def start_ray_process(
         stdout=stdout_file,
         stderr=stderr_file,
         stdin=subprocess.PIPE if pipe_stdin else None,
-        preexec_fn=preexec_fn if sys.platform != "win32" else None,
+        preexec_fn=popen_preexec_fn,
         creationflags=CREATE_SUSPENDED if win32_fate_sharing else 0,
     )
 
@@ -2491,13 +2516,21 @@ def start_ray_client_server(
     if node_id:
         command.append(f"--node-id={node_id}")
 
+    # The proxier is a multi-threaded gRPC server. Spawning specific-server
+    # children via fork() races with gRPC's poller threads, causing ~7%
+    # crash rate (see #63202). Skip preexec_fn for specific-server so
+    # CPython can use posix_spawn() instead of fork(). The proxier already
+    # monitors and cleans up specific-server processes, so kernel-level
+    # fate-sharing is not required.
+    is_specific_server = server_type == "specific-server"
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER,
         stdout_file=stdout_file,
         stderr_file=stderr_file,
-        fate_share=fate_share,
+        fate_share=False if is_specific_server else fate_share,
         env_updates=env_updates,
+        use_posix_spawn=is_specific_server,
     )
     return process_info
 
