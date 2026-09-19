@@ -954,10 +954,9 @@ def test_streaming_split_materialize_reports_to_executor(
 ):
     """`materialize()` on a split shard tells the executor what it is holding.
 
-    The shard's executor lives in the ``SplitCoordinator`` actor, so the count
-    rides the ``get`` call the iterator already makes per bundle. Without that
-    the block ref counter counts the held blocks as unconsumed output and
-    backpressures the producer down to a single task.
+    Those blocks stay alive for the rest of the job, so without the report the
+    block ref counter counts them as unconsumed output and backpressures the
+    producer down to a single task.
     """
     (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
     coord = shard._coord_actor
@@ -969,25 +968,33 @@ def test_streaming_split_materialize_reports_to_executor(
         return executor._resource_manager.get_external_consumer_bytes()
 
     peak = 0
-    original = shard._report_materialized_bytes
+    original = shard._to_ref_bundle_iterator
 
-    def record(num_bytes, executor):
-        nonlocal peak
-        original(num_bytes, executor)
-        peak = max(peak, ray.get(coord.__ray_call__.remote(external_consumer_bytes)))
+    def sampling_iterator():
+        bundles, stats, executor = original()
 
-    shard._report_materialized_bytes = record
+        def sampled():
+            nonlocal peak
+            for bundle in bundles:
+                yield bundle
+                peak = max(
+                    peak,
+                    ray.get(coord.__ray_call__.remote(external_consumer_bytes)),
+                )
+
+        return sampled(), stats, executor
+
+    shard._to_ref_bundle_iterator = sampling_iterator
     materialized = shard.materialize()
 
-    # Prefetch alone is one bundle; only the materialized total approaches the
-    # whole shard. Half the shard separates the two without depending on how
+    # One bundle is in flight at any time; only the accumulated total approaches
+    # the whole shard. Half the shard separates the two without depending on how
     # many bundles the reporting lag costs.
     assert (
         peak > materialized.size_bytes() / 2
     ), "resource manager never saw the materialized bytes"
-    # Cleared on the way out. The iterator outlives the epoch, so a stale total
-    # would be re-reported on every `get` of the next one.
-    assert shard._reported_materialized_bytes == 0
+    # Cleared on the way out; nothing else on this path resets it.
+    assert shard._iter_stats.iter_prefetched_bytes == 0
 
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])

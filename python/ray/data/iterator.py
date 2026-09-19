@@ -117,18 +117,6 @@ class DataIterator(abc.ABC):
         """
         ...
 
-    def _report_materialized_bytes(
-        self, num_bytes: int, executor: Optional["StreamingExecutor"]
-    ) -> None:
-        """Report bytes the caller has taken out of the pipeline and still holds.
-
-        These count as external consumer bytes. If they go unreported, the ref
-        counter leaves them in the producer's output and backpressure throttles
-        it to a single task. Subclasses whose executor is not local override this.
-        """
-        if executor is not None:
-            executor.set_external_consumer_bytes(num_bytes)
-
     def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
         """Hook fired from the consumer's thread when iteration ends.
 
@@ -1260,20 +1248,18 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, executor = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
-        # These bundles stay alive for the rest of the job, so the producer
-        # needs to know they are not queue backlog.
+        # Materialized blocks stay alive, so count them as consumer-held bytes;
+        # otherwise backpressure reads them as producer backlog and throttles it.
         ref_bundles = []
-        materialized_bytes = 0
         try:
             for ref_bundle in ref_bundles_iter:
-                materialized_bytes += ref_bundle.size_bytes()
-                self._report_materialized_bytes(materialized_bytes, executor)
+                stats.iter_prefetched_bytes += ref_bundle.size_bytes()
                 ref_bundles.append(ref_bundle)
         finally:
-            # The next execution produces its own blocks.
-            self._report_materialized_bytes(0, executor)
+            # Nothing else on this path resets the field.
+            stats.iter_prefetched_bytes = 0
         context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
