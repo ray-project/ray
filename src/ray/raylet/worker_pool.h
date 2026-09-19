@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/time/time.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner_interface.h"
@@ -54,8 +55,46 @@ namespace raylet {
 using WorkerCommandMap =
     absl::flat_hash_map<Language, std::vector<std::string>, std::hash<int>>;
 
+constexpr int64_t kWorkerGrpcThreadsWarningThreshold = 16;
+
+/**
+ * @brief Return a warning when a high-CPU node uses gRPC's default worker thread sizing.
+ *
+ * @param detected_cpus The number of CPUs detected on the node.
+ * @param configured_threads The configured worker gRPC thread count.
+ * @return A warning when the node exceeds the threshold and the thread count isn't
+ * configured to a positive value; otherwise, std::nullopt.
+ */
+std::optional<std::string> GetWorkerGrpcThreadsWarning(int64_t detected_cpus,
+                                                       int64_t configured_threads);
+
 // TODO(#54703): Put this type in a separate target.
 using AddProcessToCgroupHook = std::function<void(const std::string &)>;
+
+/// Build the list of ports that workers on this raylet may bind on.
+///
+/// \param worker_ports The explicit port list (--worker-port-list). Takes
+/// precedence over the port range when non-empty.
+/// \param min_worker_port The lower bound of the port range (--min-worker-port).
+/// 0 means no port range is configured.
+/// \param max_worker_port The upper bound of the port range (--max-worker-port).
+/// 0 means the range extends to the maximum valid port.
+/// \param gen The random bit generator used to shuffle the ports.
+/// \return The configured ports in a random order, or an empty vector if no port
+/// pool is configured, in which case workers bind port 0 and let the OS pick.
+///
+/// Explicit list values are preserved as configured. Port ranges retain the
+/// existing WorkerPool validation that their bounds are within [1, 65535].
+///
+/// The order is randomized so that raylets sharing a network namespace and the
+/// same port range don't all start from the low end of the range and
+/// deterministically contend for the same ports. This lowers the odds of a
+/// collision; it is not a cross-raylet port reservation protocol, and two
+/// raylets can still pick the same port.
+std::vector<int> BuildWorkerPortPool(const std::vector<int> &worker_ports,
+                                     int min_worker_port,
+                                     int max_worker_port,
+                                     absl::BitGenRef gen);
 
 enum PopWorkerStatus {
   // OK.

@@ -19,12 +19,59 @@ import { HelpInfo } from "../components/Tooltip";
 import { get } from "../service/requestHandlers";
 import { ClassNameProps } from "./props";
 
+// Cluster-wide defaults for the profiling parameters, configurable by the
+// operator via RAY_DASHBOARD_PROFILING_*_DEFAULT env vars and returned by
+// /api/profiling_enabled. The profiling dialogs seed their initial state from
+// these so a user sees the same defaults the backend would apply.
+export type ProfilingDefaults = {
+  native: boolean;
+  subprocesses: boolean;
+  idle: boolean;
+  leaks: boolean;
+  tracePythonAllocators: boolean;
+  cpuDuration: number;
+  memoryDuration: number;
+  // Upper bound the backend enforces on `duration` (operator-configurable via
+  // RAY_DASHBOARD_PROFILING_MAX_DURATION_S). The lower bound is always 1.
+  maxDuration: number;
+  cpuFormat: string;
+  memoryFormat: string;
+  // Whether py-spy `--native` takes effect on the dashboard head's platform
+  // (Linux-only). Not a configurable default -- reported by the backend so the
+  // CPU/stack-trace dialogs can warn that Native may be a silent no-op. It is
+  // only a hint: py-spy applies `--native` on the node it profiles, which need
+  // not share the head's platform. memray (memory) native is cross-platform and
+  // is unaffected.
+  pyspyNativeSupported: boolean;
+};
+
+// Fallback used before /api/profiling_enabled resolves or if it fails. These
+// mirror the backend's shipped defaults so behavior is unchanged offline.
+export const DEFAULT_PROFILING_DEFAULTS: ProfilingDefaults = {
+  native: false,
+  subprocesses: false,
+  idle: false,
+  leaks: false,
+  tracePythonAllocators: false,
+  cpuDuration: 5,
+  memoryDuration: 10,
+  maxDuration: 60,
+  cpuFormat: "flamegraph",
+  memoryFormat: "flamegraph",
+  // Assume supported until the backend says otherwise, so an unreachable
+  // /api/profiling_enabled never spuriously disables the Native checkbox.
+  pyspyNativeSupported: true,
+};
+
 let cachedProfilingEnabled: boolean | null = null;
+let cachedProfilingDefaults: ProfilingDefaults | null = null;
 let fetchPromise: Promise<void> | null = null;
 
-// Exported for tests: reset the module-level cache so each test starts fresh.
+// Exported for tests: reset the module-level cache so each test starts fresh
+// and can control the mocked /api/profiling_enabled response independently.
 export const _resetProfilingEnabledCache = () => {
   cachedProfilingEnabled = null;
+  cachedProfilingDefaults = null;
   fetchPromise = null;
 };
 
@@ -36,6 +83,12 @@ const fetchProfilingEnabled = (): Promise<void> => {
     fetchPromise = get("/api/profiling_enabled")
       .then((res) => {
         cachedProfilingEnabled = res.data?.data?.profilingEnabled ?? false;
+        // Merge onto the fallback so a partial/older payload still yields a
+        // complete, well-typed defaults object.
+        cachedProfilingDefaults = {
+          ...DEFAULT_PROFILING_DEFAULTS,
+          ...(res.data?.data?.profilingDefaults ?? {}),
+        };
       })
       .catch(() => {
         cachedProfilingEnabled = false;
@@ -56,6 +109,20 @@ const useProfilingEnabled = () => {
   return enabled;
 };
 
+const useProfilingDefaults = (): ProfilingDefaults => {
+  const [defaults, setDefaults] = useState(
+    cachedProfilingDefaults ?? DEFAULT_PROFILING_DEFAULTS,
+  );
+
+  useEffect(() => {
+    fetchProfilingEnabled().then(() =>
+      setDefaults(cachedProfilingDefaults ?? DEFAULT_PROFILING_DEFAULTS),
+    );
+  }, []);
+
+  return defaults;
+};
+
 const PROFILING_DISABLED_TOOLTIP =
   "Profiling is disabled by default for security. " +
   "Set RAY_DASHBOARD_ENABLE_PROFILING=1 environment variable on the Ray head node to enable. " +
@@ -72,6 +139,209 @@ const DisabledProfilingLabel = ({
     </Typography>
   </Tooltip>
 );
+
+// A single boolean profiling parameter rendered as a labelled checkbox.
+type ProfilingFlag = {
+  // Query-param name, e.g. "native". Used as the React key.
+  key: string;
+  label: string;
+  help: string;
+  initial: boolean;
+};
+
+// Optional numeric "duration" field.
+type ProfilingDurationField = {
+  initial: number;
+  // Inclusive upper bound accepted by the backend (lower bound is always 1).
+  max: number;
+};
+
+// Optional "format" select over a fixed set of allowed values.
+type ProfilingFormatField = {
+  initial: string;
+  options: { value: string; label: string }[];
+};
+
+type ProfilingParamsDialogProps = {
+  // Trigger link text (e.g. "Stack Trace") and dialog heading.
+  label: React.ReactNode;
+  dialogTitle: string;
+  triggerTitle: string;
+  submitLabel: string;
+  duration?: ProfilingDurationField;
+  format?: ProfilingFormatField;
+  flags: ProfilingFlag[];
+  // Build the final profiling URL from the values chosen in the dialog. The
+  // `flags` map is keyed by each flag's `key`.
+  buildUrl: (values: {
+    duration: number;
+    format: string;
+    flags: Record<string, boolean>;
+  }) => string;
+};
+
+// A reusable profiling dialog: a trigger link that opens a config dialog with an
+// optional format select, an optional duration field, and a set of boolean
+// flags, then links to the URL produced by `buildUrl`. All profiling actions
+// (stack trace, CPU flame graph, memory profiling) render this same component
+// with different fields so the UX stays consistent.
+export const ProfilingParamsDialog = ({
+  label,
+  dialogTitle,
+  triggerTitle,
+  submitLabel,
+  duration,
+  format,
+  flags,
+  buildUrl,
+}: ProfilingParamsDialogProps) => {
+  const [open, setOpen] = useState(false);
+  const [durationValue, setDurationValue] = useState(duration?.initial ?? 0);
+  const [formatValue, setFormatValue] = useState(format?.initial ?? "");
+  const [flagValues, setFlagValues] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(flags.map((f) => [f.key, f.initial])),
+  );
+
+  // Reseed state from the latest props each time the dialog opens, so it always
+  // reflects the current operator-configured defaults (which arrive
+  // asynchronously from /api/profiling_enabled) rather than whatever was
+  // captured at first mount.
+  const handleOpen = () => {
+    setDurationValue(duration?.initial ?? 0);
+    setFormatValue(format?.initial ?? "");
+    setFlagValues(Object.fromEntries(flags.map((f) => [f.key, f.initial])));
+    setOpen(true);
+  };
+  const handleClose = () => setOpen(false);
+
+  // Duration must be an integer in [1, duration.max] (matches the backend
+  // validation, whose upper bound is operator-configurable). Only relevant when
+  // the dialog shows a duration field.
+  const durationInvalid =
+    duration !== undefined &&
+    (Number.isNaN(durationValue) ||
+      durationValue < 1 ||
+      durationValue > duration.max);
+
+  // The trigger stays inline: call sites separate the profiling actions with
+  // `<br />`, so a block-level wrapper here would add a blank row per action.
+  // `Dialog` renders through a portal, so it needs no wrapper element.
+  return (
+    <React.Fragment>
+      <Link
+        onClick={handleOpen}
+        aria-label={dialogTitle}
+        sx={{ cursor: "pointer" }}
+        title={triggerTitle}
+      >
+        {label}
+      </Link>
+
+      <Dialog open={open} onClose={handleClose}>
+        <DialogTitle>{dialogTitle}</DialogTitle>
+        <DialogContent>
+          {format && (
+            <React.Fragment>
+              <InputLabel id="format-label">Format</InputLabel>
+              <Select
+                labelId="format-label"
+                id="format"
+                value={formatValue}
+                aria-label={formatValue}
+                onChange={(e) => setFormatValue(e.target.value as string)}
+                fullWidth
+                style={{ marginBottom: "12px" }}
+              >
+                {format.options.map((o) => (
+                  <MenuItem key={o.value} value={o.value}>
+                    {o.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </React.Fragment>
+          )}
+          {duration && (
+            <React.Fragment>
+              <TextField
+                label="Duration (seconds)"
+                type="number"
+                value={Number.isNaN(durationValue) ? "" : durationValue}
+                onChange={(e) => setDurationValue(parseInt(e.target.value, 10))}
+                error={durationInvalid}
+                helperText={
+                  durationInvalid
+                    ? `Duration must be between 1 and ${duration?.max}`
+                    : ""
+                }
+                required
+              />
+              <br />
+            </React.Fragment>
+          )}
+          {flags.map((flag) => (
+            <React.Fragment key={flag.key}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={flagValues[flag.key]}
+                    onChange={(e) =>
+                      setFlagValues((prev) => ({
+                        ...prev,
+                        [flag.key]: e.target.checked,
+                      }))
+                    }
+                  />
+                }
+                label={
+                  <div style={{ display: "flex", alignItems: "center" }}>
+                    <span style={{ marginRight: "4px" }}>{flag.label}</span>
+                    <HelpInfo>
+                      <Typography>{flag.help}</Typography>
+                    </HelpInfo>
+                  </div>
+                }
+              />
+              <br />
+            </React.Fragment>
+          ))}
+        </DialogContent>
+        <Box
+          sx={{ padding: "12px", display: "flex", justifyContent: "flex-end" }}
+        >
+          <Button
+            onClick={handleClose}
+            variant="text"
+            sx={(theme) => ({
+              textTransform: "capitalize",
+              color: theme.palette.text.secondary,
+            })}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="primary"
+            variant="text"
+            onClick={handleClose}
+            style={{ textTransform: "capitalize" }}
+            // Render the button itself as the anchor rather than nesting a
+            // <Link> inside it (nesting interactive elements is invalid HTML).
+            component="a"
+            href={buildUrl({
+              duration: durationValue,
+              format: formatValue,
+              flags: flagValues,
+            })}
+            disabled={durationInvalid}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {submitLabel}
+          </Button>
+        </Box>
+      </Dialog>
+    </React.Fragment>
+  );
+};
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -104,7 +374,77 @@ type TaskMemoryProfilingProps = {
 type MemoryProfilingButtonProps = {
   profilerUrl: string;
   type?: string | null;
+  // Defaults to seed the dialog. Optional so the component can be rendered
+  // standalone (e.g. in tests) without wiring up the profiling-defaults fetch.
+  defaults?: ProfilingDefaults;
 };
+
+// CPU profiling accepts flamegraph/raw/speedscope (py-spy); memory accepts
+// flamegraph/table (memray).
+const CPU_FORMAT_OPTIONS = [
+  { value: "flamegraph", label: "Flamegraph" },
+  { value: "raw", label: "Raw" },
+  { value: "speedscope", label: "Speedscope" },
+];
+
+const flag = (key: string, label: string, help: string, initial: boolean) => ({
+  key,
+  label,
+  help,
+  initial,
+});
+
+const NATIVE_HELP =
+  "Include native (C/C++) stack frames. Adds significant profiling overhead " +
+  "and is only supported on Linux.";
+const NATIVE_HELP_OFF_LINUX =
+  NATIVE_HELP +
+  " This dashboard isn't running on Linux, so the flag is a no-op unless the " +
+  "profiled node is.";
+
+const SUBPROCESSES_HELP = "Also profile child processes of the target process.";
+const IDLE_HELP = "Include off-CPU (sleeping) threads in the profile.";
+
+// py-spy decides whether to pass `--native` on the node it profiles, which is
+// not necessarily the node serving the dashboard. `pyspyNativeSupported`
+// reports the dashboard head's platform, so it can only be a hint -- surface it
+// as help text rather than forcing the checkbox off, which would override an
+// operator-configured RAY_DASHBOARD_PROFILING_NATIVE_DEFAULT on a cluster whose
+// workers do run Linux.
+const nativeFlag = (defaults: ProfilingDefaults) =>
+  flag(
+    "native",
+    "Native",
+    defaults.pyspyNativeSupported ? NATIVE_HELP : NATIVE_HELP_OFF_LINUX,
+    defaults.native,
+  );
+
+// Serialize a set of boolean flags into `&name=1|0` query fragments.
+const flagQuery = (flags: Record<string, boolean>): string =>
+  Object.entries(flags)
+    .map(([k, v]) => `&${k}=${v ? "1" : "0"}`)
+    .join("");
+
+const stackTraceFlags = (defaults: ProfilingDefaults) => [
+  nativeFlag(defaults),
+  flag(
+    "subprocesses",
+    "Subprocesses",
+    SUBPROCESSES_HELP,
+    defaults.subprocesses,
+  ),
+];
+
+const cpuProfileFlags = (defaults: ProfilingDefaults) => [
+  nativeFlag(defaults),
+  flag("idle", "Idle", IDLE_HELP, defaults.idle),
+  flag(
+    "subprocesses",
+    "Subprocesses",
+    SUBPROCESSES_HELP,
+    defaults.subprocesses,
+  ),
+];
 
 export const TaskCpuProfilingLink = ({
   taskId,
@@ -112,6 +452,7 @@ export const TaskCpuProfilingLink = ({
   nodeId,
 }: TaskProfilingStackTraceProps) => {
   const profilingEnabled = useProfilingEnabled();
+  const defaults = useProfilingDefaults();
   if (!taskId) {
     return null;
   }
@@ -121,14 +462,20 @@ export const TaskCpuProfilingLink = ({
     );
   }
   return (
-    <Link
-      href={`task/cpu_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`}
-      target="_blank"
-      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-      rel="noreferrer"
-    >
-      CPU&nbsp;Flame&nbsp;Graph
-    </Link>
+    <ProfilingParamsDialog
+      label={<React.Fragment>CPU&nbsp;Flame&nbsp;Graph</React.Fragment>}
+      dialogTitle="CPU Profiling Config"
+      triggerTitle="Profile the Python worker and display a CPU flame graph."
+      submitLabel="Generate report"
+      duration={{ initial: defaults.cpuDuration, max: defaults.maxDuration }}
+      format={{ initial: defaults.cpuFormat, options: CPU_FORMAT_OPTIONS }}
+      flags={cpuProfileFlags(defaults)}
+      buildUrl={({ duration, format, flags }) =>
+        `task/cpu_profile?task_id=${taskId}&attempt_number=${attemptNumber}` +
+        `&node_id=${nodeId}&duration=${duration}&format=${format}` +
+        flagQuery(flags)
+      }
+    />
   );
 };
 
@@ -138,6 +485,7 @@ export const TaskCpuStackTraceLink = ({
   nodeId,
 }: TaskProfilingStackTraceProps) => {
   const profilingEnabled = useProfilingEnabled();
+  const defaults = useProfilingDefaults();
   if (!taskId) {
     return null;
   }
@@ -145,14 +493,17 @@ export const TaskCpuStackTraceLink = ({
     return <DisabledProfilingLabel>Stack&nbsp;Trace</DisabledProfilingLabel>;
   }
   return (
-    <Link
-      href={`task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`}
-      target="_blank"
-      title="Sample the current Python stack trace for this worker."
-      rel="noreferrer"
-    >
-      Stack&nbsp;Trace
-    </Link>
+    <ProfilingParamsDialog
+      label={<React.Fragment>Stack&nbsp;Trace</React.Fragment>}
+      dialogTitle="Stack Trace Config"
+      triggerTitle="Sample the current stack trace for this worker."
+      submitLabel="Get stack trace"
+      flags={stackTraceFlags(defaults)}
+      buildUrl={({ flags }) =>
+        `task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}` +
+        `&node_id=${nodeId}${flagQuery(flags)}`
+      }
+    />
   );
 };
 
@@ -162,6 +513,7 @@ export const CpuStackTraceLink = ({
   type = "",
 }: CpuProfilingLinkProps) => {
   const profilingEnabled = useProfilingEnabled();
+  const defaults = useProfilingDefaults();
   if (
     !pid ||
     !nodeId ||
@@ -178,14 +530,20 @@ export const CpuStackTraceLink = ({
     );
   }
   return (
-    <Link
-      href={`worker/traceback?pid=${pid}&node_id=${nodeId}&native=0`}
-      target="_blank"
-      title="Sample the current Python stack trace for this worker."
-      rel="noreferrer"
-    >
-      Stack&nbsp;Trace{type ? ` (${type})` : ""}
-    </Link>
+    <ProfilingParamsDialog
+      label={
+        <React.Fragment>
+          Stack&nbsp;Trace{type ? ` (${type})` : ""}
+        </React.Fragment>
+      }
+      dialogTitle="Stack Trace Config"
+      triggerTitle="Sample the current stack trace for this worker."
+      submitLabel="Get stack trace"
+      flags={stackTraceFlags(defaults)}
+      buildUrl={({ flags }) =>
+        `worker/traceback?pid=${pid}&node_id=${nodeId}${flagQuery(flags)}`
+      }
+    />
   );
 };
 
@@ -195,6 +553,7 @@ export const CpuProfilingLink = ({
   type = "",
 }: CpuProfilingLinkProps) => {
   const profilingEnabled = useProfilingEnabled();
+  const defaults = useProfilingDefaults();
   if (!pid || !nodeId) {
     return <div></div>;
   }
@@ -206,167 +565,82 @@ export const CpuProfilingLink = ({
     );
   }
   return (
-    <Link
-      href={`worker/cpu_profile?pid=${pid}&node_id=${nodeId}&duration=5&native=0`}
-      target="_blank"
-      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-      rel="noreferrer"
-    >
-      CPU&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
-    </Link>
+    <ProfilingParamsDialog
+      label={
+        <React.Fragment>
+          CPU&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
+        </React.Fragment>
+      }
+      dialogTitle="CPU Profiling Config"
+      triggerTitle="Profile the Python worker and display a CPU flame graph."
+      submitLabel="Generate report"
+      duration={{ initial: defaults.cpuDuration, max: defaults.maxDuration }}
+      format={{ initial: defaults.cpuFormat, options: CPU_FORMAT_OPTIONS }}
+      flags={cpuProfileFlags(defaults)}
+      buildUrl={({ duration, format, flags }) =>
+        `worker/cpu_profile?pid=${pid}&node_id=${nodeId}` +
+        `&duration=${duration}&format=${format}${flagQuery(flags)}`
+      }
+    />
   );
 };
+
+const MEMORY_FORMAT_OPTIONS = [
+  { value: "flamegraph", label: "Flamegraph" },
+  { value: "table", label: "Table" },
+];
 
 export const ProfilerButton = ({
   profilerUrl,
   type,
+  defaults = DEFAULT_PROFILING_DEFAULTS,
 }: MemoryProfilingButtonProps) => {
-  const [duration, setDuration] = useState(5);
-  const [leaks, setLeaks] = useState(true);
-  const [native, setNative] = useState(false);
-  const [allocator, setAllocator] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [format, setFormat] = useState("flamegraph");
-
-  const handleOpen = () => {
-    setOpen(true);
-  };
-
-  const handleClose = () => {
-    setOpen(false);
-  };
-
   return (
-    <div>
-      <Link
-        onClick={handleOpen}
-        aria-label="Memory Profiling"
-        sx={{ cursor: "pointer" }}
-      >
-        Memory&nbsp;Profiling{type ? ` (${type})` : ""}
-      </Link>
-
-      <Dialog open={open} onClose={handleClose}>
-        <DialogTitle>Memory Profiling Config</DialogTitle>
-        <DialogContent>
-          <InputLabel id="format-label">Format</InputLabel>
-          <Select
-            labelId="format-label"
-            id="format"
-            value={format}
-            aria-label={format}
-            onChange={(e) => setFormat(e.target.value as string)}
-            fullWidth
-            style={{ marginBottom: "12px" }}
-          >
-            <MenuItem value="flamegraph">Flamegraph</MenuItem>
-            <MenuItem value="table">Table</MenuItem>
-          </Select>
-          <TextField
-            label="Duration (seconds)"
-            type="number"
-            value={duration !== null ? duration : ""}
-            onChange={(e) => setDuration(parseInt(e.target.value, 10))}
-            required
-          />
-          <br />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={leaks}
-                onChange={(e) => setLeaks(e.target.checked)}
-              />
-            }
-            label={
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ marginRight: "4px" }}>Leaks</span>
-                <HelpInfo>
-                  <Typography>
-                    Enable memory leaks, instead of peak memory usage. Refer to
-                    Memray documentation for more details.
-                  </Typography>
-                </HelpInfo>
-              </div>
-            }
-          />
-          <br />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={native}
-                onChange={(e) => setNative(e.target.checked)}
-              />
-            }
-            label={
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ marginRight: "4px" }}>Native</span>
-                <HelpInfo>
-                  <Typography>
-                    Track native (C/C++) stack frames. Refer to Memray
-                    documentation for more details.
-                  </Typography>
-                </HelpInfo>
-              </div>
-            }
-          />
-          <br />
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={allocator}
-                onChange={(e) => setAllocator(e.target.checked)}
-              />
-            }
-            label={
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={{ marginRight: "4px" }}>
-                  Python Allocator Tracing
-                </span>
-                <HelpInfo>
-                  <Typography>
-                    Record allocations made by the pymalloc allocator. Refer to
-                    Memray documentation for more details.
-                  </Typography>
-                </HelpInfo>
-              </div>
-            }
-          />
-        </DialogContent>
-        <Box
-          sx={{ padding: "12px", display: "flex", justifyContent: "flex-end" }}
-        >
-          <Button
-            onClick={handleClose}
-            variant="text"
-            sx={(theme) => ({
-              textTransform: "capitalize",
-              color: theme.palette.text.secondary,
-            })}
-          >
-            Cancel
-          </Button>
-          <Button
-            color="primary"
-            variant="text"
-            onClick={handleClose}
-            style={{ textTransform: "capitalize" }}
-          >
-            <Link
-              href={
-                `${profilerUrl}&format=${format}&duration=${duration}` +
-                `&leaks=${leaks ? "1" : "0"}` +
-                `&native=${native ? "1" : "0"}` +
-                `&trace_python_allocators=${allocator ? "1" : "0"}`
-              }
-              rel="noreferrer"
-              target="_blank"
-            >
-              Generate&nbsp;report
-            </Link>
-          </Button>
-        </Box>
-      </Dialog>
-    </div>
+    <ProfilingParamsDialog
+      label={
+        <React.Fragment>
+          Memory&nbsp;Profiling{type ? ` (${type})` : ""}
+        </React.Fragment>
+      }
+      dialogTitle="Memory Profiling Config"
+      triggerTitle="Profile the memory usage of this worker."
+      submitLabel="Generate report"
+      duration={{ initial: defaults.memoryDuration, max: defaults.maxDuration }}
+      format={{
+        initial: defaults.memoryFormat,
+        options: MEMORY_FORMAT_OPTIONS,
+      }}
+      // Flag order matches the historical query string:
+      // leaks, native, trace_python_allocators.
+      flags={[
+        flag(
+          "leaks",
+          "Leaks",
+          "Enable memory leaks, instead of peak memory usage. Refer to Memray " +
+            "documentation for more details.",
+          defaults.leaks,
+        ),
+        flag(
+          "native",
+          "Native",
+          "Track native (C/C++) stack frames. Refer to Memray documentation " +
+            "for more details.",
+          defaults.native,
+        ),
+        flag(
+          "trace_python_allocators",
+          "Python Allocator Tracing",
+          "Record allocations made by the pymalloc allocator. Refer to Memray " +
+            "documentation for more details.",
+          defaults.tracePythonAllocators,
+        ),
+      ]}
+      buildUrl={({ duration, format, flags }) =>
+        `${profilerUrl}&format=${format}&duration=${duration}${flagQuery(
+          flags,
+        )}`
+      }
+    />
   );
 };
 
@@ -376,6 +650,7 @@ export const MemoryProfilingButton = ({
   type = "",
 }: MemoryProfilingProps) => {
   const profilingEnabled = useProfilingEnabled();
+  const defaults = useProfilingDefaults();
   if (!pid || !nodeId) {
     return <div></div>;
   }
@@ -388,7 +663,9 @@ export const MemoryProfilingButton = ({
   }
   const profilerUrl = `memory_profile?pid=${pid}&node_id=${nodeId}`;
 
-  return <ProfilerButton profilerUrl={profilerUrl} type={type} />;
+  return (
+    <ProfilerButton profilerUrl={profilerUrl} type={type} defaults={defaults} />
+  );
 };
 
 export const TaskMemoryProfilingButton = ({
@@ -397,6 +674,7 @@ export const TaskMemoryProfilingButton = ({
   nodeId,
 }: TaskMemoryProfilingProps) => {
   const profilingEnabled = useProfilingEnabled();
+  const defaults = useProfilingDefaults();
   if (!taskId) {
     return null;
   }
@@ -407,5 +685,5 @@ export const TaskMemoryProfilingButton = ({
   }
   const profilerUrl = `memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
-  return <ProfilerButton profilerUrl={profilerUrl} />;
+  return <ProfilerButton profilerUrl={profilerUrl} defaults={defaults} />;
 };

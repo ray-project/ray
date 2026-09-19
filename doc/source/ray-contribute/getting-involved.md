@@ -293,12 +293,6 @@ cd python
 python setup.py check --restructuredtext --strict --metadata
 ```
 
-* Python and docs banned words check
-
-```shell
-./ci/lint/check-banned-words.sh
-```
-
 * Bazel format:
 
 ```shell

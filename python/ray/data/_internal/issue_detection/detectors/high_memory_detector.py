@@ -81,19 +81,20 @@ class HighMemoryIssueDetector(IssueDetector):
             if not isinstance(op, MapOperator):
                 continue
 
-            if op.metrics.average_max_uss_per_task is None:
+            max_uss_bytes = op.metrics.max_uss_bytes
+            if max_uss_bytes.num_samples == 0:
                 continue
 
             remote_args = op._get_dynamic_ray_remote_args()
             safe_memory_per_task = get_safe_default_logical_memory(remote_args)
 
             if (
-                op.metrics.average_max_uss_per_task > self._initial_memory_requests[op]
-                and op.metrics.average_max_uss_per_task >= safe_memory_per_task
+                max_uss_bytes.mean > self._initial_memory_requests[op]
+                and max_uss_bytes.mean >= safe_memory_per_task
             ):
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
-                    memory_per_task=memory_string(op.metrics.average_max_uss_per_task),
+                    memory_per_task=memory_string(max_uss_bytes.mean),
                     initial_memory_request=memory_string(
                         self._initial_memory_requests[op]
                     ),

@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Observe KubeRay and Ray on Kubernetes: operator logs, custom resource status and events, the Ray Dashboard, and the State CLI."
+    description: "Observe KubeRay and Ray on Kubernetes: operator logs, custom resource status and events, the Ray dashboard, and the State CLI."
 ---
 
 (kuberay-observability)=
@@ -112,13 +112,13 @@ kubectl describe rayclusters.ray.io raycluster-kuberay
 
 ## Ray Observability
 
-### Ray Dashboard
+### Ray dashboard
 
 * To view the [Ray dashboard](observability-getting-started) running on the head Pod, follow [these instructions](kuberay-port-forward-dashboard).
 * To integrate the Ray dashboard with Prometheus and Grafana, see [Using Prometheus and Grafana](kuberay-prometheus-grafana) for more details.
 * To enable the "CPU Flame Graph" and "Stack Trace" features, see [Profiling with py-spy](kuberay-pyspy-integration).
 
-### Check logs of Ray Pods
+### Check logs of the head and worker Pods
 
 Check the Ray logs directly by accessing the log files on the Pods. See [Ray Logging](configure-logging) for more details.
 
@@ -128,7 +128,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 ```
 
 (kuberay-port-forward-dashboard)=
-### Check Dashboard
+### Check the dashboard
 
 ```bash
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)

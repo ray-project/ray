@@ -1,0 +1,186 @@
+"""Diff a Read the Docs PR preview against /en/master, page by page.
+
+An RST-to-MyST conversion is meant to be format-only, so the rendered HTML
+should be equivalent. A green build proves every reference resolved; it does not
+prove the page still renders the same thing. Several ways to change the render
+leave the build green and emit no warning at all:
+
+  - `.. title::` does not set the document title from inside an {eval-rst}
+    block, so a page whose title came from that directive silently loses it.
+  - An RST `.. image::` with no `:alt:` takes its alt text from the URI and
+    emits a bare <img>; Markdown `![]()` emits alt="" wrapped in a <p>.
+  - A directive that builds RST into a ViewList and hands it to `nested_parse`
+    degrades to literal visible text under MyST, losing every domain object,
+    anchor, and cross-reference it would have created.
+
+This catches all of them, because it compares output rather than source.
+
+Usage:
+    python3 render_diff.py <preview_base_url> <page.html> [<page.html> ...]
+
+    python3 render_diff.py https://anyscale-ray--12345.com.readthedocs.build/en/12345/ \\
+        index.html ray-core/key-concepts.html
+
+Exit status is the number of pages with an unexplained diff. Read the diffs
+rather than trusting the count: byte-identical is not always the right bar, and
+a legitimate markup change (a caption-less {figure}, say) shows up here too.
+
+Requires beautifulsoup4, which the docs toolchain already installs.
+"""
+
+import argparse
+import difflib
+import re
+import sys
+import urllib.request
+
+from bs4 import BeautifulSoup
+
+MASTER = "https://docs.ray.io/en/master/"
+
+# Differences every MyST page shows against an RST page, carrying no rendered
+# consequence. Filtered out so a real regression is not buried in nine copies of
+# the same benign line. Stripped from the parse tree rather than the serialized
+# HTML, so a change in class order or an extra class can't silently stop the
+# filter from matching and resurrect the noise it exists to remove.
+#
+#   tex2jax_ignore / mathjax_ignore: myst-parser stamps these on the root
+#     <section> of every MyST document. Present on every already-Markdown page.
+#   code: `default_role = "code"` makes a single-backtick RST literal render as
+#     <code class="code docutils literal notranslate">; a Markdown single-backtick
+#     drops the `code` class. That class carries no styling in either Ray's CSS
+#     or pydata-sphinx-theme, so plain backticks are correct and this diff is
+#     expected. Only stripped alongside the full inline-literal class set, so a
+#     `code` class meaning something else elsewhere is left alone.
+BENIGN_CLASSES = frozenset({"tex2jax_ignore", "mathjax_ignore"})
+INLINE_LITERAL_CLASSES = frozenset({"docutils", "literal", "notranslate"})
+
+# Release strings drift between a preview and master whenever a version bump
+# lands in between. Applied to the <title> as well as the body: Sphinx builds
+# titles as "… — Ray {release}" from html_title, so without this every page
+# reports a title difference on a bump alone.
+RELEASE_RE = re.compile(r"\bRay \d+\.\d+\.\d+[\w.]*")
+
+# Pages whose body is randomized at build time and so differ between any two
+# builds of the same commit. `custom_directives.py` picks the example-gallery
+# icons with random.randint / random.choice.
+NONDETERMINISTIC = {"ray-overview/examples.html"}
+
+
+def fetch(url: str) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "render-diff"})
+    with urllib.request.urlopen(req, timeout=60) as response:
+        return response.read().decode("utf-8", "replace")
+
+
+def strip_benign_classes(body) -> None:
+    """Remove the classes a MyST page carries that its RST original didn't."""
+    for tag in body.find_all(class_=True):
+        classes = tag.get("class")
+        if not isinstance(classes, list):
+            continue
+        kept = [c for c in classes if c not in BENIGN_CLASSES]
+        if "code" in kept and INLINE_LITERAL_CLASSES <= set(kept):
+            kept = [c for c in kept if c != "code"]
+        if kept:
+            tag["class"] = kept
+        else:
+            # An emptied class attribute must go entirely, or the MyST side
+            # serializes class="" where the RST side has no attribute at all.
+            del tag["class"]
+
+
+def normalize(html: str, base: str, keep_benign: bool):
+    """Reduce a page to its comparable body plus its title.
+
+    Strips what legitimately differs between two builds: the host in absolute
+    links, the release string in version-pinned URLs, and the search-highlight
+    query parameters Sphinx appends. Collapses whitespace so a re-indented
+    directive body does not read as a content change, then puts one tag per
+    line so difflib reports a tight hunk.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    title = soup.title.get_text(strip=True) if soup.title else "(no <title>)"
+    title = RELEASE_RE.sub("Ray VERSION", title)
+
+    body = soup.find("article") or soup.find("body")
+    if body is None:
+        return title, []
+
+    if not keep_benign:
+        strip_benign_classes(body)
+
+    text = str(body).replace(base, "/").replace(MASTER, "/")
+    text = re.sub(r"/en/(master|latest|[\w.-]+)/", "/en/VERSION/", text)
+    text = RELEASE_RE.sub("Ray VERSION", text)
+    text = re.sub(r"\?highlight=[^\"'&]*", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return title, re.sub(r">\s*<", ">\n<", text).splitlines()
+
+
+def compare(page: str, preview_base: str, keep_benign: bool, context: int) -> bool:
+    """Print one page's diff. Returns True when the page differs."""
+    page = page.lstrip("/")
+    try:
+        master_html = fetch(MASTER + page)
+        preview_html = fetch(preview_base + page)
+    except OSError as exc:
+        # A typo'd page path or a preview that has not finished publishing
+        # should read as "not verified", never as "verified clean".
+        # OSError rather than urllib.error.URLError: URLError subclasses it, and
+        # a read timeout surfaces from response.read() as a bare TimeoutError,
+        # which is an OSError but not a URLError. Catching only URLError lets a
+        # stalled preview traceback instead of printing this line.
+        print(f"ERROR      {page}  (fetch failed: {exc})")
+        return True
+
+    master_title, master_lines = normalize(master_html, MASTER, keep_benign)
+    preview_title, preview_lines = normalize(preview_html, preview_base, keep_benign)
+
+    title_note = ""
+    if master_title != preview_title:
+        title_note = f"  TITLE master={master_title!r} preview={preview_title!r}"
+
+    diff = list(
+        difflib.unified_diff(
+            master_lines, preview_lines, "master", "preview", n=context, lineterm=""
+        )
+    )
+    if not diff and not title_note:
+        print(f"IDENTICAL  {page}  (title: {master_title!r})")
+        return False
+
+    note = "  [known nondeterministic]" if page in NONDETERMINISTIC else ""
+    added = sum(1 for d in diff if d.startswith("+") and not d.startswith("+++"))
+    removed = sum(1 for d in diff if d.startswith("-") and not d.startswith("---"))
+    print(f"\nDIFFERS    {page}  (+{added} -{removed}){title_note}{note}")
+    for line in diff:
+        print("   ", line)
+    return True
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("preview_base", help="RtD PR preview base URL")
+    parser.add_argument("pages", nargs="+", help="page paths, e.g. ray-core/index.html")
+    parser.add_argument(
+        "--keep-benign",
+        action="store_true",
+        help="do not filter the known-benign MyST markup differences",
+    )
+    parser.add_argument("-n", "--context", type=int, default=1)
+    args = parser.parse_args()
+
+    preview_base = args.preview_base.rstrip("/") + "/"
+    differing = sum(
+        compare(page, preview_base, args.keep_benign, args.context)
+        for page in args.pages
+    )
+    print(f"\n{len(args.pages) - differing}/{len(args.pages)} pages render identically")
+    # Capped: an exit status is masked to 8 bits, so an uncapped count would
+    # wrap to 0 (success) on a run of exactly 256 differing pages.
+    return min(differing, 125)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -4,7 +4,7 @@
 .. _shuffling_data:
 
 ==============
-Shuffling Data
+Shuffling data
 ==============
 
 When consuming or iterating over Ray :class:`Datasets <ray.data.dataset.Dataset>`, it can be useful to
@@ -224,13 +224,22 @@ Example of hash shuffling based on column `id`:
 .. testcode::
 
     import ray
-    from ray.data.context import DataContext, ShuffleStrategy
 
-    # First enable hash-shuffle as shuffling strategy
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-
-    # Hash-shuffle
     hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
+
+.. tip::
+
+    Key-based repartitioning uses :ref:`shuffle v2 <shuffle-v2>`
+    (``ShuffleStrategy.SHUFFLE_V2``) by default. See
+    :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
+
+    To fall back to the previous :ref:`hash-shuffle <hash-shuffle>` implementation:
+
+    .. code-block:: python
+
+        from ray.data.context import DataContext, ShuffleStrategy
+
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
 .. _optimizing_shuffles:
 
@@ -264,6 +273,10 @@ shuffle quality higher until you reach this threshold.
 Enabling push-based shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. note:: ``DataContext.use_push_based_shuffle`` and the ``RAY_DATA_PUSH_BASED_SHUFFLE`` environment
+    variable are deprecated. Configure the shuffle strategy through ``DataContext.shuffle_strategy``
+    (for example, ``ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED``) instead.
+
 Some Dataset operations require a *shuffle* operation, meaning that the system shuffles data from all of the input partitions to all of the output partitions.
 These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
 :meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
@@ -273,7 +286,7 @@ Shuffling can be challenging to scale to large data sizes and clusters, especial
 Ray Data provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance.
 Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
 
-To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/sort_benchmark.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` and :meth:`Dataset.sort <ray.data.Dataset.sort>`.
+To try this out locally or on a cluster, you can start with the `nightly release test <https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/random_shuffle_benchmark.py>`_ that Ray runs for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`.
 To get an idea of the performance you can expect, here are some run time results for :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10 TB of data on 20 machines - m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64 GB RAM.
 
 .. image:: https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
@@ -283,8 +296,8 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
 
 .. code-block:: bash
 
-    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/sort_benchmark.py
-    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python sort_benchmark.py --num-partitions=10 --partition-size=1e7
+    $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/random_shuffle_benchmark.py
+    $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python random_shuffle_benchmark.py --num-partitions=10 --partition-size=1e7
 
     # Dataset size: 10 partitions, 0.01GB partition size, 0.1GB total
     # [dataset]: Run `pip install tqdm` to enable progress reporting.

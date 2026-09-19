@@ -36,3 +36,11 @@ fi
 
 RAYCI_CHECKOUT_DIR="$(pwd)"
 export RAYCI_CHECKOUT_DIR
+
+# Point this agent's pip and uv at the CI package mirror, for the steps no image can
+# cover: the release pipeline's init step and every wanda image build run directly on the
+# agent, never entering a container, so the profile.d hook in forge and manylinux does not
+# reach them. Sourced, because it exports. `|| true` under `set -e`: a package mirror must
+# never be the reason a job fails, and every path inside falls back to public PyPI.
+# shellcheck source=ci/pypi_proxy_agent.sh
+source ./ci/pypi_proxy_agent.sh || true

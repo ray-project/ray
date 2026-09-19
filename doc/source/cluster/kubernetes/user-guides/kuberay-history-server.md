@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray Dashboard for RayCluster, RayJob, and RayService workloads after they terminate."
+    description: "Set up the Ray History Server with KubeRay to access logs, events, and the Ray dashboard for RayCluster, RayJob, and RayService workloads after they terminate."
 ---
 
 (kuberay-history-server)=
@@ -10,7 +10,7 @@ myst:
 
 This guide covers how to set up and configure the Ray History Server with KubeRay.
 
-The Ray History Server powers the Ray Dashboard's backend. For information about how to use the Ray Dashboard, see [Ray Dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html).
+The Ray History Server powers the Ray dashboard's backend. For information about how to use the Ray dashboard, see [Ray dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html).
 
 :::{note}
 The Ray History Server is in beta and ready for testing. We welcome feedback and contributions from the community.
@@ -23,7 +23,7 @@ The Ray History Server is a KubeRay component for accessing and debugging Ray wo
 The Ray History Server has two parts:
 
 1. **Collector**: runs as a sidecar container on Ray nodes and exports events and logs to object storage, compressing event streams before upload.
-1. **History Server**: a standalone deployment that serves the Ray Dashboard API. It parses a stored cluster session only when you open that session, so memory use stays bounded and startup time doesn't grow with the number of stored sessions.
+1. **History Server**: a standalone deployment that serves the Ray dashboard API. It parses a stored cluster session only when you open that session, so memory use stays bounded and startup time doesn't grow with the number of stored sessions.
 
 ## Prerequisites
 
@@ -115,18 +115,99 @@ export HISTORY_SERVER_IMAGE=quay.io/kuberay/historyserver:nightly
 curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/historyserver-gcs.yaml | envsubst | kubectl apply -f -
 ```
 
-## Deploy an example RayCluster with collector sidecar
+### History Server configuration
+
+Configure the History Server with the following environment variables and command-line flags. Where a setting supports both, a non-empty environment variable takes precedence over the flag. The example manifest sets the storage options through environment variables and tunes the session cache through flags.
+
+:::{list-table} History Server variables
+:header-rows: 1
+
+* - Environment variable
+  - CLI flag
+  - Default
+  - Description
+* - `GCS_BUCKET`
+  - 
+  - `""`
+  - Object storage bucket or container name, the same value the collector uses. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_CONTAINER`.
+* - `STORAGE_BACKEND`
+  - `--storage-backend`
+  - `""`
+  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`, or `localtest`). Required: the History Server exits if you set neither the variable nor the flag.
+* - `STORAGE_ROOT_DIR`
+  - `--storage-root-dir`
+  - `""`
+  - Root path prefix inside the object storage bucket. Must match the collector's `STORAGE_ROOT_DIR`, otherwise the History Server can't find the uploaded sessions.
+* - 
+  - `--storage-backend-config-path`
+  - `""`
+  - Path to a JSON file with additional storage backend configuration, passed to the storage reader for the selected backend.
+* - 
+  - `--dashboard-dir`
+  - `/dashboard`
+  - Directory containing the Ray dashboard static assets inside the image.
+* - 
+  - `--kubeconfigs`
+  - `""`
+  - Path to kubeconfig files for accessing Kubernetes clusters. Empty means use the in-cluster configuration.
+* - 
+  - `--use-kubernetes-proxy`
+  - `false`
+  - Use a local kubeconfig instead of the in-cluster configuration. Intended for running the History Server outside the cluster during development.
+* -
+  - `--enable-live-clusters`
+  - `false`
+  - Serve Ray clusters that are still running by reverse-proxying requests to their head dashboards.
+* - 
+  - `--use-auth-token-mode`
+  - `false`
+  - Enable Ray dashboard token authentication mode for proxying to live RayClusters that have auth enabled. This flag only has an effect when `--enable-live-clusters` is enabled. When enabled, the History Server reads each cluster's auth token from its Kubernetes Secret and injects it as an `x-ray-authorization` header on proxied requests, stripping any client-supplied value. This requires extra RBAC to read those Secrets. See [`service_account_auth_token_mode.yaml`](https://github.com/ray-project/kuberay/blob/master/historyserver/config/service_account_auth_token_mode.yaml). Kubernetes-delegated token auth (`enableK8sTokenAuth`) isn't supported.
+* - 
+  - `--kube-api-qps`
+  - `100`
+  - QPS limit for requests to the Kubernetes API server.
+* - 
+  - `--kube-api-burst`
+  - `200`
+  - Maximum burst for throttling requests to the Kubernetes API server.
+* - 
+  - `--session-process-timeout`
+  - `2m`
+  - Timeout for parsing and loading a single Ray cluster session. Sessions with large log or event volumes may need a higher value.
+* - 
+  - `--session-cache-size`
+  - `100`
+  - Maximum number of terminated session snapshots held in the LRU cache.
+* - 
+  - `--session-cache-max-memory`
+  - `2Gi`
+  - Soft cap on the memory held by cached session snapshots, as a Kubernetes quantity such as `8Gi`. Set to `"0"` to disable the bound. The History Server evicts cached sessions when their memory usage exceeds this cap.
+* - 
+  - `--session-cache-ttl`
+  - `0`
+  - Duration that a terminated session snapshot stays cached after its last access. A value of `0` disables TTL-based eviction, so sessions leave the cache only through LRU or memory-cap eviction.
+:::
+
+:::{warning}
+The History Server does not authenticate its own callers, and a client-supplied cookie determines which RayCluster it proxies to. When `--enable-live-clusters` is enabled, anyone who can reach the History Server can reach the Ray Dashboard API of every RayCluster that the History Server can access. Only enable live cluster access when you restrict access to the History Server by other means.
+:::
+
+:::{note}
+**Sizing the session cache**: the cap that `--session-cache-max-memory` sets is a soft bound on cached snapshots, not on total Pod memory. Set the Pod memory limit above it to leave headroom for decoding sessions the History Server hasn't cached yet. The example manifest pairs `--session-cache-max-memory=8Gi` with a `12Gi` memory limit for this reason.
+:::
+
+## Deploy an example RayJob with collector sidecar
 
 The collector runs on every RayCluster Pod, where it collects logs and events and exports them to object storage.
 
-Create a RayCluster with the collector sidecar using the [`raycluster-gcs.yaml` example manifest](https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/raycluster-gcs.yaml):
+Create a RayJob with the collector sidecar using the [`rayjob-gcs.yaml` example manifest](https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml):
 
 ```sh
 export GCS_BUCKET=<GCS_BUCKET>
 export COLLECTOR_IMAGE=quay.io/kuberay/collector:nightly
-export RAY_CLUSTER=raycluster-historyserver
+export RAY_JOB=rayjob-historyserver-gcs
 
-curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/raycluster-gcs.yaml | envsubst | kubectl apply -f -
+curl https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/historyserver/config/rayjob-gcs.yaml | envsubst | kubectl apply -n ${NAMESPACE} -f -
 ```
 
 ### Environment variables in the example manifest
@@ -141,7 +222,7 @@ To enable event streaming to the collector sidecar, set these environment variab
 * `RAY_enable_ray_event`: Enables the Ray event export subsystem (`"true"`).
 * `RAY_enable_core_worker_ray_event_to_aggregator`: Enables Core Worker event forwarding to the agent aggregator (`"true"`).
 * `RAY_DASHBOARD_AGGREGATOR_AGENT_EVENTS_EXPORT_ADDR`: Target HTTP endpoint for the collector's event server, for example `"http://localhost:8084/v1/events"`.
-* `RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES`: Comma-separated list of event types to collect, for example `"TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT,DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT"`.
+* `RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES`: Comma-separated list of event types to collect. The example manifest sets `"ALL"`, which requires Ray 2.54.0 or later. On earlier versions, pass an explicit comma-separated list instead, for example `"TASK_DEFINITION_EVENT,TASK_LIFECYCLE_EVENT,ACTOR_TASK_DEFINITION_EVENT,TASK_PROFILE_EVENT,DRIVER_JOB_DEFINITION_EVENT,DRIVER_JOB_LIFECYCLE_EVENT,ACTOR_DEFINITION_EVENT,ACTOR_LIFECYCLE_EVENT,NODE_DEFINITION_EVENT,NODE_LIFECYCLE_EVENT"`.
 
 #### Collector container variables
 
@@ -169,11 +250,11 @@ Configure the collector sidecar container with the following environment variabl
 * - `GCS_BUCKET`
   - 
   - Yes (all nodes)
-  - Object storage bucket or account name. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_ACCOUNT`.
+  - Object storage bucket or container name. For other cloud providers, use `S3_BUCKET` or `AZURE_STORAGE_CONTAINER`.
 * - `STORAGE_BACKEND`
-  - `--runtime-class-name`
+  - `--storage-backend`
   - Yes (all nodes)
-  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`). The `--runtime-class-name` flag is specific to the collector storage backend.
+  - Storage backend type (`gcs`, `s3`, `azureblob`, `aliyunoss`).
 * - `RAY_ROLE`
   - `--role`
   - Yes (all nodes)
@@ -181,15 +262,15 @@ Configure the collector sidecar container with the following environment variabl
 * - `RAY_CLUSTER_NAME`
   - `--ray-cluster-name`
   - Yes (all nodes)
-  - Name of the target `RayCluster`.
+  - Name of the target `RayCluster`. For a RayJob, KubeRay generates this name, so read it from the `ray.io/cluster` Pod label with the Kubernetes Downward API rather than setting it literally.
 * - `RAY_DASHBOARD_ADDRESS`
   - 
   - Yes (head node)
-  - URL of the local Ray Dashboard, for example `"http://localhost:8265"`. Used by the head node collector to fetch cluster metadata and poll dashboard APIs. Worker collectors don't require this.
+  - URL of the local Ray dashboard, for example `"http://localhost:8265"`. Used by the head node collector to fetch cluster metadata and poll dashboard APIs. Worker collectors don't require this.
 * - `RAY_COLLECTOR_ADDITIONAL_ENDPOINTS`
   - 
   - No (head node)
-  - Comma-separated list of static Ray Dashboard API endpoints to periodically poll and store, for example `"/api/v0/placement_groups?detail=1&limit=10000"`.
+  - Comma-separated list of extra Ray dashboard API endpoints to periodically poll and store, for example `"/api/train/v2/runs/v1"`. The head collector already polls the Ray Serve, placement group, and Ray Data endpoints by default; this variable adds to that set rather than replacing it. Each path must match the History Server replay request URI exactly, query string included.
 * - `RAY_COLLECTOR_POLL_INTERVAL`
   - 
   - No (head node)
@@ -206,14 +287,14 @@ Configure the collector sidecar container with the following environment variabl
   - 
   - No
   - Owner resource name, if applicable.
-* - `RAY_ROOT_DIR`
-  - `--ray-root-dir`
+* - `STORAGE_ROOT_DIR`
+  - `--storage-root-dir`
   - No
-  - Root path prefix for stored Ray logs in object storage (defaults to `"log"`).
+  - Root path prefix inside the object storage bucket (defaults to `""`).
 * - `EVENTS_PORT`
   - `--events-port`
   - No
-  - Event server listening port matching the Ray container export address (defaults to `8080`). The example manifest sets this to `8084`.
+  - Event server listening port matching the Ray container export address (defaults to `8084`).
 :::
 
 :::{important}
@@ -224,10 +305,16 @@ Configure the collector sidecar container with the following environment variabl
 
 ### Verify Pod status
 
-Check that the History Server and RayCluster Pods are running:
+Check that the History Server and RayJob Pods are running:
 
 ```sh
 kubectl get pods -o wide
+```
+
+Check the RayJob status. The entrypoint script takes about a minute to finish:
+
+```sh
+kubectl get rayjob ${RAY_JOB}
 ```
 
 ### Verify collector output in Google Cloud Storage
@@ -241,25 +328,27 @@ kubectl logs -l ray.io/node-type=head -c collector --tail=20
 List the bucket contents to confirm session log uploads:
 
 ```sh
-gcloud storage ls gs://${GCS_BUCKET}/log/
+gcloud storage ls gs://${GCS_BUCKET}/
 ```
 
-## Terminate the RayCluster
+## Terminate the RayJob
 
-Metadata and logs persist after termination, allowing for the safe deletion of the RayCluster.
+Metadata and logs persist after termination, allowing for the safe deletion of the RayJob.
+
+The `ttlSecondsAfterFinished` setting in the manifest automatically deletes the RayJob custom resource once the TTL elapses after completion. To skip the TTL wait, delete the RayJob directly:
 
 ```sh
-kubectl delete raycluster ${RAY_CLUSTER} -n ${NAMESPACE}
+kubectl delete rayjob ${RAY_JOB} -n ${NAMESPACE}
 ```
 
-After the RayCluster terminates, the collector uploads the final events and logs to object storage.
+After the RayJob terminates, the collector uploads the final events and logs to object storage.
 
 ### Storage layout
 
-The collector organizes files in object storage according to the following directory structure:
+The collector organizes files in object storage according to the following directory structure (if `STORAGE_ROOT_DIR` is set, paths are prefixed with that directory):
 
 ```text
-gs://${GCS_BUCKET}/${RAY_ROOT_DIR}/
+gs://${GCS_BUCKET}/
 ├── cluster-metadata/
 │   ├── raycluster/
 │   │   └── <namespace>_<cluster_name>/
@@ -290,7 +379,7 @@ gs://${GCS_BUCKET}/${RAY_ROOT_DIR}/
 ```
 
 For `RayJob` and `RayService`, the paths carry an extra `<owner_name>` segment, and the
-`cluster-metadata` directory name joins the owner name into the underscore-separated key.
+`cluster-metadata` directory name joins the owner name into the underscore-separated key. In this guide, `<owner_name>` is `rayjob-historyserver-gcs`, and `<cluster_name>` is the RayCluster name KubeRay generated for the job.
 
 
 To list the objects in storage, run the following command:
@@ -300,19 +389,19 @@ gcloud storage ls --recursive gs://${GCS_BUCKET}
 ```
 
 ```text
-gs://BUCKET/log/cluster-metadata/raycluster/NAMESPACE_raycluster-historyserver/session_2026-02-20_13-03-16_320452_1
-gs://BUCKET/log/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log
-gs://BUCKET/log/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/node_events/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
-gs://BUCKET/log/cluster-history/raycluster/NAMESPACE/raycluster-historyserver/session_2026-02-20_13-03-16_320452_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-02-20-13
+gs://BUCKET/cluster-metadata/rayjob/NAMESPACE_rayjob-historyserver-gcs_rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1
+gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/logs/dashboard_agent.log
+gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/node_events/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
+gs://BUCKET/cluster-history/rayjob/NAMESPACE/rayjob-historyserver-gcs/rayjob-historyserver-gcs-lz9xt/session_2026-07-28_17-07-51_736134_1/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace/job_events/AQAAAA==/0a46878b6f144cdb0ed62e9871caaeb16083547bf34acb5025832ace-2026-07-28-17
 ```
 
-## Access a terminated RayCluster from the Ray Dashboard
+## Access a terminated RayJob from the Ray dashboard
 
-To view terminated Ray clusters, set up a local Ray Dashboard that uses the History Server as its backend.
+To view terminated Ray clusters, set up a local Ray dashboard that uses the History Server as its backend.
 
 ### Port-forward the History Server
 
-For the local Ray Dashboard to reach the History Server, port-forward its service:
+For the local Ray dashboard to reach the History Server, port-forward its service:
 
 ```sh
 kubectl port-forward svc/historyserver 8080:30080
@@ -324,7 +413,7 @@ Query the cluster list endpoint to verify the History Server API:
 curl -s http://localhost:8080/clusters
 ```
 
-### Start the local Ray Dashboard
+### Start the local Ray dashboard
 
 Install Ray locally. Make sure to use at least Ray `v2.55`.
 
@@ -341,9 +430,9 @@ ray start --head --num-cpus=1 --proxy-server-url=http://localhost:8080
 
 Notice the `--proxy-server-url` parameter that points to the port-forwarded History Server.
 
-### Configure RayCluster for the Ray Dashboard
+### Configure RayCluster for the Ray dashboard
 
-The Ray Dashboard uses cookies to identify which RayCluster to look at. To select a historical cluster, first get the list of all Ray clusters and their sessions.
+The Ray dashboard uses cookies to identify which RayCluster to look at. To select a historical cluster, first get the list of all Ray clusters and their sessions.
 
 In your browser, list your Ray cluster sessions by navigating to the following URL:
 
@@ -356,13 +445,13 @@ The endpoint call result should look something like the following:
 ```json
 [
  {
-  "name": "rayjob-sample-dn5kz",
+  "name": "rayjob-historyserver-gcs-lz9xt",
   "namespace": "default",
   "sessionName": "session_2026-07-28_17-07-51_736134_1",
   "createTime": "2026-07-28T17:07:51Z",
   "createTimeStamp": 1785258471,
   "ownerKind": "rayjob",
-  "ownerName": "rayjob-sample"
+  "ownerName": "rayjob-historyserver-gcs"
  },
  {
   "name": "ray-cluster-hs",
@@ -381,23 +470,23 @@ The endpoint call result should look something like the following:
 ]
 ```
 
-The `/enter_cluster` endpoint sets session cookies so the local Ray Dashboard knows which cluster to display. It takes the form `/enter_cluster/{namespace}/{resourceType}/{resourceName}/{session}`:
+The `/enter_cluster` endpoint sets session cookies so the local Ray dashboard knows which cluster to display. It takes the form `/enter_cluster/{namespace}/{resourceType}/{resourceName}/{session}`:
 
 * `{namespace}`: The Kubernetes namespace of the workload, such as `default`.
 * `{resourceType}`: The resource type. One of `raycluster`, `rayjob`, or `rayservice`.
-* `{resourceName}`: The name of the target resource.
-* `{session}`: Optional. The session ID, such as `session_2026-02-20_13-03-16_320452_1`. Use `"latest"` for the most recent session, or `"live"` for an active cluster. Defaults to `"latest"`.
+* `{resourceName}`: The name of the target resource. For a RayJob or RayService, this is the owner name, not the generated RayCluster name.
+* `{session}`: Optional. The session ID, such as `session_2026-07-28_17-07-51_736134_1`. Use `"latest"` for the most recent session, or `"live"` for an active cluster. Defaults to `"latest"`.
 
 Copy a Ray cluster session and navigate to the `/enter_cluster` endpoint in your browser:
 
 ```text
-http://localhost:8265/enter_cluster/default/raycluster/raycluster-historyserver/<SELECTED_SESSION_ID>
+http://localhost:8265/enter_cluster/default/rayjob/rayjob-historyserver-gcs/<SELECTED_SESSION_ID>
 ```
 
 Alternatively, omit the session ID to automatically load the latest session using `/enter_cluster/{namespace}/{resourceType}/{resourceName}`:
 
 ```text
-http://localhost:8265/enter_cluster/default/raycluster/raycluster-historyserver
+http://localhost:8265/enter_cluster/default/rayjob/rayjob-historyserver-gcs
 ```
 
 Loading the endpoint initializes the session cookies (`cluster_name`, `cluster_namespace`, `session_name`, `owner_kind`, `owner_name`).
@@ -406,10 +495,10 @@ A successful request produces output like the following:
 
 ```json
 {
- "name": "raycluster-historyserver",
+ "name": "rayjob-historyserver-gcs-lz9xt",
  "namespace": "default",
  "result": "success",
- "session": "session_2026-02-20_13-03-16_320452_1"
+ "session": "session_2026-07-28_17-07-51_736134_1"
 }
 ```
 
@@ -421,7 +510,7 @@ Alternatively, navigate to the History Server cluster selection page:
 http://localhost:8265/select_cluster
 ```
 
-This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray Dashboard to that session.
+This page lists every stored cluster session with its name, namespace, status, and creation timestamp. Each row has an **Open Dashboard** button that switches the Ray dashboard to that session.
 
 ![Cluster selection page listing stored Ray cluster sessions, each row showing a cluster name, namespace, status, creation timestamp, and an Open Dashboard button](images/kuberay-historyserver-select-cluster.png)
 

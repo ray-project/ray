@@ -7,7 +7,9 @@ stop, which keeps serving its stale config indefinitely.
 """
 import asyncio
 import os
+import subprocess
 import sys
+import textwrap
 from typing import Optional
 
 import pytest
@@ -158,6 +160,30 @@ class TestCountHaproxyProcesses:
     def test_returns_zero_when_no_match(self, api):
         api.config_file_path = "/tmp/not-in-any-cmdline/haproxy.cfg"
         assert api.count_haproxy_processes() == 0
+
+
+def test_import_serve_does_not_require_jinja2():
+    """A plain `import ray.serve` must not require jinja2 (issue #65507).
+
+    jinja2 is only needed when HAProxy mode actually renders its config, so
+    haproxy.py must import it lazily; a module-scope import breaks
+    `import ray.serve` on installs that don't have jinja2.
+    """
+    code = textwrap.dedent(
+        """
+        import importlib.abc, sys
+
+        class BlockJinja(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname, path=None, target=None):
+                if fullname == "jinja2" or fullname.startswith("jinja2."):
+                    raise ModuleNotFoundError("No module named 'jinja2'")
+
+        sys.meta_path.insert(0, BlockJinja())
+        import ray.serve
+        import ray.serve._private.controller
+        """
+    )
+    subprocess.check_call([sys.executable, "-c", code])
 
 
 if __name__ == "__main__":

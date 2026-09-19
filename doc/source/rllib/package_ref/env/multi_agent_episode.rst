@@ -15,7 +15,7 @@ Constructor
 
 .. autosummary::
     :nosignatures:
-    :toctree: env/
+    :toctree: doc/
 
     ~MultiAgentEpisode
     ~MultiAgentEpisode.validate
@@ -25,7 +25,7 @@ Getting basic information
 
 .. autosummary::
     :nosignatures:
-    :toctree: env/
+    :toctree: doc/
 
     ~MultiAgentEpisode.get_return
     ~MultiAgentEpisode.get_duration_s
@@ -38,7 +38,7 @@ Multi-agent information
 ~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: env/
+    :toctree: doc/
 
     ~MultiAgentEpisode.module_for
     ~MultiAgentEpisode.get_agents_to_act
@@ -48,7 +48,7 @@ Getting environment data
 ~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: env/
+    :toctree: doc/
 
     ~MultiAgentEpisode.get_observations
     ~MultiAgentEpisode.get_infos
@@ -62,7 +62,7 @@ Adding data
 ~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: env/
+    :toctree: doc/
 
     ~MultiAgentEpisode.add_env_reset
     ~MultiAgentEpisode.add_env_step
@@ -71,7 +71,7 @@ Creating and handling episode chunks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
     :nosignatures:
-    :toctree: env/
+    :toctree: doc/
 
     ~MultiAgentEpisode.cut
     ~MultiAgentEpisode.slice

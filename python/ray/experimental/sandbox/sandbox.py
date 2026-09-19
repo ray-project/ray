@@ -12,21 +12,34 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 
 @ray.remote
 class Sandbox:
-    """Ray actor interface for managing scheduling and lifecycle of an isolated sandbox.
+    """Ray actor proxy for managing scheduling, lifecycle, command execution, and file I/O for an isolated sandbox instance.
 
     Args:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
-        workdir: Default working directory inside the sandbox. Note that the
-            working directory is the only writable path in the sandbox. If not provided,
-            the container's WORKDIR is used.
-        ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+        workdir: Working directory for commands; None uses the image's
+            WORKDIR. On a readonly rootfs an explicit workdir is also the
+            sandbox's only writable path; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+        ttl_seconds: Optional time-to-live in seconds, wall-clock from
+            creation (not idle time). None (default) or <= 0 disables it.
         timeout_seconds: Timeout in seconds for sandbox creation.
         rootless: If True, run gVisor in rootless mode.
-        network: Network mode for runsc.
-        readonly: If True, mount container image rootfs in read-only mode (default: True).
+        network: Network mode ("none", "public", "host", "sandbox"); see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`. "public"
+            is the recommended internet-access mode.
+        dns: Optional nameserver IPs for the generated /etc/resolv.conf
+            (public resolvers by default for "public").
+        capabilities: Linux capabilities, written exactly (None keeps the
+            runtime default; ``[]`` means none); see
+            ``DOCKER_DEFAULT_CAPABILITIES``.
+        readonly: If True (default), mount container image rootfs in read-only mode
+            such that only ``workdir`` is writable. If False, the entire root filesystem
+            is writable. Writes are isolated within a per-sandbox copy-on-write overlay
+            filesystem, ensuring multiple sandboxes running the same container image do
+            not interfere with each other or modify the base image.
         **kwargs: Additional parameters passed to runtime.
     """
 
@@ -37,10 +50,12 @@ class Sandbox:
         memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
-        ttl_seconds: Optional[int] = 3600,
+        ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
+        dns: Optional[List[str]] = None,
+        capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         **kwargs,
     ):
@@ -68,17 +83,11 @@ class Sandbox:
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
+            dns=dns,
+            capabilities=capabilities,
             readonly=readonly,
             **kwargs,
         )
-
-        self._ttl_timer = None
-        if ttl_seconds is not None and ttl_seconds > 0:
-            import threading
-
-            self._ttl_timer = threading.Timer(ttl_seconds, self.delete)
-            self._ttl_timer.daemon = True
-            self._ttl_timer.start()
 
     def __del__(self):
         try:
@@ -87,11 +96,19 @@ class Sandbox:
             pass
 
     def get_instance_id(self) -> str:
-        """Get the unique instance ID for the sandbox."""
+        """Get the unique instance ID for the sandbox.
+
+        Returns:
+            The instance ID string.
+        """
         return self.instance_id
 
     def get_config(self) -> SandboxConfig:
-        """Get the sandbox configuration used by the runtime."""
+        """Get the sandbox configuration used by the runtime.
+
+        Returns:
+            SandboxConfig of the sandbox instance.
+        """
         meta = self.runtime._backend._sandbox_metadata.get(self.instance_id)
         if not meta:
             raise SandboxNotFoundError(
@@ -105,37 +122,73 @@ class Sandbox:
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
     ) -> ExecResult:
-        """Execute a command inside the sandbox."""
+        """Execute a command inside the sandbox.
+
+        Args:
+            command: Command to execute, either as a string or a list of arguments.
+            timeout: Maximum execution time in seconds.
+            cwd: Working directory inside the sandbox for command execution.
+            env: Environment variables to set for the command.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+
+        Returns:
+            ExecResult containing exit code, stdout, and stderr.
+        """
         return self.runtime.exec(
-            self.instance_id, command, timeout=timeout, cwd=cwd, env=env
+            self.instance_id, command, timeout=timeout, cwd=cwd, env=env, shell=shell
         )
 
     def upload_file(self, local_path: str, remote_path: str) -> None:
-        """Copy local file into the sandbox."""
+        """Copy local file into the sandbox.
+
+        Args:
+            local_path: Path to the source file on the local filesystem.
+            remote_path: Destination path inside the sandbox.
+        """
         self.runtime.upload_file(self.instance_id, local_path, remote_path)
 
     def download_file(self, remote_path: str, local_path: str) -> None:
-        """Copy file from the sandbox to local."""
+        """Copy file from the sandbox to local.
+
+        Args:
+            remote_path: Path to the source file inside the sandbox.
+            local_path: Destination path on the local filesystem.
+        """
         self.runtime.download_file(self.instance_id, remote_path, local_path)
 
     def write_file(self, path: str, content: Union[str, bytes]) -> None:
-        """Write content directly to a file inside the sandbox."""
+        """Write content directly to a file inside the sandbox.
+
+        Args:
+            path: Destination file path inside the sandbox.
+            content: String or binary content to write into the file.
+        """
         self.runtime.write_file(self.instance_id, path, content)
 
     def read_file(self, path: str) -> bytes:
-        """Read binary content from a file inside the sandbox."""
+        """Read binary content from a file inside the sandbox.
+
+        Args:
+            path: Path to the file inside the sandbox to read.
+
+        Returns:
+            File content as bytes.
+        """
         return self.runtime.read_file(self.instance_id, path)
 
     def get_status(self) -> SandboxStatus:
-        """Query operational status of the sandbox."""
+        """Query operational status of the sandbox.
+
+        Returns:
+            SandboxStatus of the sandbox instance.
+        """
         return self.runtime.get_status(self.instance_id)
 
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""
-        if self._ttl_timer:
-            self._ttl_timer.cancel()
-            self._ttl_timer = None
         self.runtime.delete(self.instance_id)
 
     def terminate(self) -> None:

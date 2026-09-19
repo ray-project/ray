@@ -1,0 +1,2 @@
+# objects.inv snapshots are binary (zlib-compressed); never normalize or diff.
+*.inv binary
