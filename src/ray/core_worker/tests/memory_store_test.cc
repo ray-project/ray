@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <future>
 #include <memory>
 #include <string>
 #include <utility>
@@ -92,6 +94,62 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   memory_store->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
+}
+
+TEST(TestMemoryStore, GetAsyncInvokesWhenObjectArrives) {
+  InstrumentedIOContextWithThread io_context("GetAsyncInvokesWhenObjectArrives");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+  RayObject obj(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+
+  std::promise<std::shared_ptr<RayObject>> done;
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = memory_store.GetAsync(
+      object_id,
+      [&done](std::shared_ptr<RayObject> object) { done.set_value(std::move(object)); });
+  ASSERT_NE(callback_id, 0u);
+
+  memory_store.Put(obj, object_id, /*has_reference=*/true);
+  ASSERT_EQ(done.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+}
+
+TEST(TestMemoryStore, GetAsyncInvokesWhenAlreadyPresent) {
+  InstrumentedIOContextWithThread io_context("GetAsyncInvokesWhenAlreadyPresent");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+  RayObject obj(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  memory_store.Put(obj, object_id, /*has_reference=*/true);
+
+  std::promise<std::shared_ptr<RayObject>> done;
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = memory_store.GetAsync(
+      object_id,
+      [&done](std::shared_ptr<RayObject> object) { done.set_value(std::move(object)); });
+  ASSERT_EQ(callback_id, 0u);
+  ASSERT_EQ(done.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+}
+
+TEST(TestMemoryStore, CancelAsyncGetRemovesCallback) {
+  InstrumentedIOContextWithThread io_context("CancelAsyncGetRemovesCallback");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id =
+      memory_store.GetAsync(object_id, [](std::shared_ptr<RayObject>) {});
+  ASSERT_NE(callback_id, 0u);
+  {
+    absl::MutexLock lock(&memory_store.mu_);
+    ASSERT_EQ(memory_store.object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  memory_store.CancelGetAsync(object_id, callback_id);
+  {
+    absl::MutexLock lock(&memory_store.mu_);
+    ASSERT_FALSE(memory_store.object_async_get_requests_.contains(object_id));
+  }
 }
 
 TEST(TestMemoryStore, TestMemoryStoreStats) {
