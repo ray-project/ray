@@ -153,6 +153,7 @@ def test_interrupted_manifest_publication_preserves_previous_version(tmp_path):
     adopted.mark_terminal()
     assert original_manifest.exists()
     assert (manifest_dir / "00000000000000000002.json").exists()
+    assert len(list(manifest_dir.glob("*.json"))) == 2
 
 
 def test_namespace_identity_mismatch(tmp_path):
@@ -203,6 +204,16 @@ def test_metadata_without_row_checkpoint_is_ignored(tmp_path):
     assert coordinator.load_active_results() == []
 
 
+def test_manifest_history_is_bounded(tmp_path):
+    _, coordinator = _coordinator(tmp_path)
+    for _ in range(5):
+        coordinator.mark_terminal()
+        coordinator.initialize("table-uuid")
+
+    manifest_dir = tmp_path / "_iceberg" / "manifests"
+    assert len(list(manifest_dir.glob("*.json"))) == 2
+
+
 def test_task_checkpoint_retry_reuses_committed_result(tmp_path):
     config, coordinator = _coordinator(tmp_path)
     sink = SimpleNamespace(
@@ -238,6 +249,47 @@ def test_task_checkpoint_retry_reuses_committed_result(tmp_path):
     assert [str(result.data_files[0].file_path) for result in results] == [
         "file:///first"
     ]
+
+
+def test_task_checkpoint_lookup_does_not_list_namespace(tmp_path):
+    config, coordinator = _coordinator(tmp_path)
+    path = _publish_task(config, coordinator, artifact_suffix="task")
+    task_id = f"{coordinator.operation_id}-task"
+
+    with patch.object(
+        coordinator,
+        "_selected_row_checkpoint_paths",
+        side_effect=AssertionError("namespace listing is not allowed"),
+    ):
+        assert coordinator.find_committed_task_checkpoint(task_id) == path
+
+
+def test_task_checkpoint_retry_recovers_metadata_before_row_commit(tmp_path):
+    config, coordinator = _coordinator(tmp_path)
+    sink = SimpleNamespace(coordinator=coordinator, _config=config)
+    writer = BatchBasedCheckpointWriter(config)
+    block = BlockAccessor.for_block(pa.table({"id": [1]}))
+    task_id = f"{coordinator.operation_id}-write-0"
+    result = _write_result("file:///first")
+    artifact_id = coordinator.task_artifact_id(task_id, result)
+    pending = writer.write_pending_checkpoint(pa.array([1]), artifact_id)
+    assert pending is not None
+    coordinator.persist_task_result(artifact_id, pending.committed_path, result)
+
+    context = TaskContext(
+        0,
+        "Write",
+        kwargs={
+            "write_uuid": "write",
+            "_datasink_write_return": _write_result("file:///orphaned-retry"),
+        },
+    )
+    write_task_checkpoint(sink, writer, block, context)
+
+    assert str(context.kwargs["_datasink_write_return"].data_files[0].file_path) == (
+        "file:///first"
+    )
+    assert os.path.exists(pending.committed_path)
 
 
 def test_partition_filter_selects_matching_task_metadata(tmp_path):
@@ -416,6 +468,63 @@ def test_append_protocol_commits_snapshot_marker_without_ray_cluster(tmp_path):
         snapshots[0].summary.get(_OPERATION_PROPERTY)
         == wrapped.coordinator.operation_id
     )
+
+
+def test_late_commit_discards_uncommitted_task_checkpoints(tmp_path):
+    catalog, catalog_kwargs = _create_catalog(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints"
+    config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path=str(checkpoint_path),
+        delete_checkpoint_on_success=False,
+    )
+    wrapped = IcebergCheckpointDatasink(
+        IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
+    )
+    wrapped.enable_checkpointing()
+
+    committed_block = pa.table({"id": [1], "value": ["a"]})
+    wrapped.on_write_start(committed_block.schema)
+    committed_context = TaskContext(0, "Write", kwargs={"write_uuid": "committed"})
+    committed_result = wrapped.write([committed_block], committed_context)
+    committed_context.kwargs["_datasink_write_return"] = committed_result
+    write_task_checkpoint(
+        wrapped,
+        BatchBasedCheckpointWriter(config),
+        BlockAccessor.for_block(committed_block),
+        committed_context,
+    )
+
+    wrapped._sink._snapshot_properties = {
+        _OPERATION_PROPERTY: wrapped.coordinator.operation_id
+    }
+    wrapped._sink.on_write_complete(
+        WriteResult(1, committed_block.nbytes, [committed_result])
+    )
+
+    late_block = pa.table({"id": [2], "value": ["b"]})
+    late_context = TaskContext(0, "Write", kwargs={"write_uuid": "late"})
+    late_result = wrapped.write([late_block], late_context)
+    late_context.kwargs["_datasink_write_return"] = late_result
+    write_task_checkpoint(
+        wrapped,
+        BatchBasedCheckpointWriter(config),
+        BlockAccessor.for_block(late_block),
+        late_context,
+    )
+
+    with pytest.raises(RuntimeError, match="late task checkpoints were discarded"):
+        wrapped.on_write_complete(WriteResult(1, late_block.nbytes, [late_result]))
+
+    row_checkpoints = sorted(checkpoint_path.glob("*.parquet"))
+    assert len(row_checkpoints) == 1
+    assert "committed" in row_checkpoints[0].name
+
+    retry = IcebergCheckpointDatasink(
+        IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
+    )
+    retry.enable_checkpointing()
+    assert retry.coordinator.load_active_results() == []
 
 
 def test_empty_append_cleans_checkpoint_namespace_without_ray_cluster(tmp_path):

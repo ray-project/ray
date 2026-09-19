@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 _FORMAT_VERSION = 1
 _METADATA_DIR = "_iceberg"
 _MANIFEST_DIR = "manifests"
+_MANIFEST_RETENTION = 2
 _OPERATION_PROPERTY = "ray.data.checkpoint.operation-id"
 
 _PAYLOAD_SCHEMA = pa.schema(
@@ -365,8 +366,59 @@ class IcebergCheckpointCoordinator:
             "generations": manifest["generations"].copy(),
         }
 
+    @staticmethod
+    def _is_complete_manifest(manifest: Dict[str, Any], revision: int) -> bool:
+        required_fields = {
+            "format_version",
+            "revision",
+            "table_identifier",
+            "table_uuid",
+            "mode",
+            "active_generation",
+            "generations",
+        }
+        return (
+            set(manifest) == required_fields
+            and manifest["format_version"] == _FORMAT_VERSION
+            and manifest["revision"] == revision
+            and isinstance(manifest["table_identifier"], str)
+            and isinstance(manifest["table_uuid"], str)
+            and isinstance(manifest["mode"], str)
+            and isinstance(manifest["generations"], dict)
+            and all(
+                isinstance(key, str) and value in {"active", "terminal"}
+                for key, value in manifest["generations"].items()
+            )
+            and (
+                manifest["active_generation"] is None
+                or isinstance(manifest["active_generation"], str)
+            )
+        )
+
     def _write_manifest(self, manifest: Dict[str, Any]) -> None:
         self._write_json(self._manifest_path(manifest["revision"]), manifest)
+
+        # Keep the current manifest and one valid fallback without retaining an
+        # ever-growing sequence of full manifest snapshots. Malformed interrupted
+        # revisions do not consume the fallback slot.
+        valid_manifests = 0
+        for revision, path in self._manifest_paths():
+            try:
+                candidate = self._load_json(path)
+                is_valid = self._is_complete_manifest(candidate, revision)
+            except ValueError:
+                is_valid = False
+            if is_valid and valid_manifests < _MANIFEST_RETENTION:
+                valid_manifests += 1
+                continue
+            try:
+                self._filesystem.delete_file(path)
+            except Exception:
+                logger.warning(
+                    "Failed to compact Iceberg checkpoint manifest %s",
+                    path,
+                    exc_info=True,
+                )
 
     def _load_manifest(self, *, required: bool = True) -> Optional[Dict[str, Any]]:
         for revision, path in self._manifest_paths():
@@ -377,36 +429,12 @@ class IcebergCheckpointCoordinator:
                     "Ignoring incomplete Iceberg checkpoint manifest %s", path
                 )
                 continue
-            required_fields = {
-                "format_version",
-                "revision",
-                "table_identifier",
-                "table_uuid",
-                "mode",
-                "active_generation",
-                "generations",
-            }
             if manifest.get("format_version") != _FORMAT_VERSION:
                 raise ValueError(
                     "Unsupported Iceberg checkpoint namespace format version: "
                     f"{manifest.get('format_version')}"
                 )
-            if (
-                set(manifest) != required_fields
-                or manifest["revision"] != revision
-                or not isinstance(manifest["table_identifier"], str)
-                or not isinstance(manifest["table_uuid"], str)
-                or not isinstance(manifest["mode"], str)
-                or not isinstance(manifest["generations"], dict)
-                or not all(
-                    isinstance(key, str) and value in {"active", "terminal"}
-                    for key, value in manifest["generations"].items()
-                )
-                or (
-                    manifest["active_generation"] is not None
-                    and not isinstance(manifest["active_generation"], str)
-                )
-            ):
+            if not self._is_complete_manifest(manifest, revision):
                 logger.warning(
                     "Ignoring incomplete Iceberg checkpoint manifest %s", path
                 )
@@ -430,8 +458,10 @@ class IcebergCheckpointCoordinator:
             )
 
     def task_artifact_id(self, task_id: str, write_result: IcebergWriteResult) -> str:
-        payload_hash = hashlib.sha256(_serialize_write_result(write_result)).hexdigest()
-        return f"{task_id}-{payload_hash}-{uuid.uuid4().hex}"
+        del write_result
+        if not task_id or posixpath.basename(task_id) != task_id:
+            raise ValueError(f"Invalid Iceberg checkpoint task ID: {task_id!r}")
+        return task_id
 
     def persist_task_result(
         self,
@@ -445,9 +475,8 @@ class IcebergCheckpointCoordinator:
             )
         payload = _serialize_write_result(write_result)
         payload_hash = hashlib.sha256(payload).hexdigest()
-        artifact_parts = artifact_id.rsplit("-", 2)
-        if len(artifact_parts) != 3 or artifact_parts[-2] != payload_hash:
-            raise ValueError("Iceberg task checkpoint ID does not match its payload")
+        if not artifact_id or posixpath.basename(artifact_id) != artifact_id:
+            raise ValueError(f"Invalid Iceberg checkpoint artifact ID: {artifact_id!r}")
         task_root = posixpath.join(self._generation_root(), "tasks")
         payload_path = posixpath.join(task_root, f"{artifact_id}.arrow")
         envelope_path = posixpath.join(task_root, f"{artifact_id}.json")
@@ -465,17 +494,34 @@ class IcebergCheckpointCoordinator:
         )
 
     def find_committed_task_checkpoint(self, task_id: str) -> Optional[str]:
-        prefix = f"{task_id}-"
-        paths = [
-            path
-            for path in self._selected_row_checkpoint_paths()
-            if posixpath.basename(path).startswith(prefix)
-        ]
-        if len(paths) > 1:
-            raise ValueError(
-                f"Multiple committed Iceberg checkpoints found for task {task_id}"
+        if not task_id or posixpath.basename(task_id) != task_id:
+            raise ValueError(f"Invalid Iceberg checkpoint task ID: {task_id!r}")
+        path = posixpath.join(self._root, f"{task_id}.parquet")
+        if self._filesystem.get_file_info(path).type == FileType.NotFound:
+            return None
+        partition_filter = self._config.checkpoint_path_partition_filter
+        if partition_filter is not None and path not in partition_filter([path]):
+            return None
+        return path
+
+    def load_task_result_if_present(
+        self, artifact_id: str
+    ) -> Optional[IcebergWriteResult]:
+        envelope_path = posixpath.join(
+            self._generation_root(), "tasks", f"{artifact_id}.json"
+        )
+        if self._filesystem.get_file_info(envelope_path).type == FileType.NotFound:
+            # A payload without its envelope was never published. Remove it so a
+            # retry can safely publish the deterministic task artifact.
+            payload_path = posixpath.join(
+                self._generation_root(), "tasks", f"{artifact_id}.arrow"
             )
-        return paths[0] if paths else None
+            if self._filesystem.get_file_info(payload_path).type != FileType.NotFound:
+                self._filesystem.delete_file(payload_path)
+            return None
+        return self.load_task_result(
+            posixpath.join(self._root, f"{artifact_id}.parquet")
+        )
 
     def load_task_result(self, checkpoint_path: str) -> IcebergWriteResult:
         checkpoint_file = posixpath.basename(checkpoint_path)
@@ -580,6 +626,45 @@ class IcebergCheckpointCoordinator:
                 )
             results.append(self.load_task_result(checkpoint_path))
         return results
+
+    def discard_task_results(self, results: List[IcebergWriteResult]) -> None:
+        """Remove row checkpoints for task results not included in a late commit."""
+        current_paths = {
+            str(data_file.file_path)
+            for result in results
+            for data_file in result.data_files
+        }
+        discarded_paths = set()
+        for checkpoint_path in self._selected_row_checkpoint_paths():
+            checkpoint_file = posixpath.basename(checkpoint_path)
+            if not checkpoint_file.startswith(f"{self.operation_id}-"):
+                continue
+            result = self.load_task_result(checkpoint_path)
+            result_paths = {str(data_file.file_path) for data_file in result.data_files}
+            if not result_paths.intersection(current_paths):
+                continue
+            if not result_paths.issubset(current_paths):
+                raise ValueError(
+                    "Iceberg task checkpoint only partially matches late task results"
+                )
+
+            # Delete the row checkpoint first. Once it is gone these IDs cannot be
+            # incorrectly filtered, even if metadata cleanup is interrupted.
+            self._filesystem.delete_file(checkpoint_path)
+            artifact_id = checkpoint_file[: -len(".parquet")]
+            task_root = posixpath.join(self._generation_root(), "tasks")
+            for extension in (".json", ".arrow"):
+                path = posixpath.join(task_root, f"{artifact_id}{extension}")
+                if self._filesystem.get_file_info(path).type != FileType.NotFound:
+                    self._filesystem.delete_file(path)
+            discarded_paths.update(result_paths)
+
+        if discarded_paths != current_paths:
+            missing = sorted(current_paths - discarded_paths)
+            raise ValueError(
+                "Could not identify row checkpoints for late Iceberg task results: "
+                f"{missing}"
+            )
 
     def mark_terminal(self) -> None:
         manifest = self._load_manifest()
@@ -713,13 +798,21 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
             return
 
         if self._find_operation_snapshot() is not None:
-            if any(
-                result is not None and result.data_files
+            current = [
+                result
                 for result in write_result.write_returns
-            ):
+                if result is not None and result.data_files
+            ]
+            if current:
+                # The visible snapshot belongs to the earlier attempt. These task
+                # outputs were produced after it and must not remain as row
+                # checkpoints in the generation that is about to become terminal.
+                self._coordinator.discard_task_results(current)
+                self._coordinator.mark_terminal()
                 raise RuntimeError(
                     "Iceberg checkpoint generation was committed concurrently while "
-                    "new task results were being written"
+                    "new task results were being written; late task checkpoints were "
+                    "discarded and will be retried"
                 )
             self._coordinator.mark_terminal()
             self._cleanup_after_success()
@@ -815,6 +908,11 @@ def write_task_checkpoint(
         return
 
     artifact_id = datasink.coordinator.task_artifact_id(task_id, write_result)
+    recovered_result = datasink.coordinator.load_task_result_if_present(artifact_id)
+    if recovered_result is not None:
+        write_result = recovered_result
+        ctx.kwargs["_datasink_write_return"] = recovered_result
+
     id_column_data = BlockAccessor.for_block(
         block.select(columns=[datasink._config.id_column])
     ).to_arrow()[datasink._config.id_column]
@@ -823,7 +921,8 @@ def write_task_checkpoint(
     )
     if pending is None:
         return
-    datasink.coordinator.persist_task_result(
-        artifact_id, pending.committed_path, write_result
-    )
+    if recovered_result is None:
+        datasink.coordinator.persist_task_result(
+            artifact_id, pending.committed_path, write_result
+        )
     checkpoint_writer.commit_checkpoint(pending)

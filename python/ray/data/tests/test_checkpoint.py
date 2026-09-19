@@ -947,6 +947,46 @@ def test_commit_checkpoint_neither_exists(fs, base_path):
         writer.commit_checkpoint(pending)
 
 
+@pytest.mark.parametrize(
+    "fs,base_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+    ids=["local", "s3"],
+)
+def test_load_checkpoint_excludes_pending_files(
+    ray_start_10_cpus_shared, fs, base_path
+):
+    """Pending row checkpoints must not filter rows during restoration."""
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(base_path, "checkpoint")
+    fs.create_dir(_unwrap_protocol(checkpoint_path))
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+        override_filesystem=fs,
+    )
+
+    writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+    committed = writer.write_pending_checkpoint(
+        pa.array([1]), checkpoint_id="committed"
+    )
+    assert committed is not None
+    writer.commit_checkpoint(committed)
+    pending = writer.write_pending_checkpoint(pa.array([2]), checkpoint_id="pending")
+    assert pending is not None
+
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
+    checkpoint_ref, checkpoint_size = checkpoint_manager.load_checkpoint()
+
+    assert checkpoint_ref is not None
+    assert checkpoint_size > 0
+    assert ray.get(checkpoint_ref).tolist() == [1]
+    assert fs.get_file_info(pending.pending_path).type != FileType.NotFound
+
+
 @pytest.mark.parametrize("data_file_exists", [True, False])
 @pytest.mark.parametrize(
     "fs,base_path",
