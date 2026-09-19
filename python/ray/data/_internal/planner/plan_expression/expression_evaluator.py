@@ -924,6 +924,11 @@ def eval_projection(
     temporary columns on a working block. Visible projection expressions are
     then evaluated against that working block.
     """
+    block_accessor = BlockAccessor.for_block(block)
+    # Skip projection only for schema-less empty blocks.
+    if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
+        return block
+
     if not common_sub_exprs:
         return _eval_projection_without_cse(projection_exprs, block)
 
