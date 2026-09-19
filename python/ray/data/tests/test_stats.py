@@ -2608,9 +2608,7 @@ def test_update_iteration_metrics_exports_new_iter_metrics(
     stats.iter_batches_total = 7
     stats.iter_rows_total = 8
 
-    actor = _StatsActor.__ray_metadata__.modified_class.__new__(
-        _StatsActor.__ray_metadata__.modified_class
-    )
+    actor = _StatsActor.__new__(_StatsActor)
     recorded = {}
 
     class FakeGauge:
@@ -2872,7 +2870,7 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
     max_stats = 2
     # Create a dedicated _StatsActor for this test to avoid interfering
     # with the global actor.
-    stats_actor = _StatsActor.remote(max_stats=max_stats)
+    stats_actor = ray.remote(num_cpus=0)(_StatsActor).remote(max_stats=max_stats)
 
     # Patch the function that retrieves the stats actor to return our
     # test-specific actor instance.

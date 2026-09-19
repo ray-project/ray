@@ -1,10 +1,9 @@
 import threading
 from typing import List
 
-import ray
+from ray.data._internal.singleton_actor import get_or_create_singleton_actor
 
 
-@ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class ActorLocationTracker:
     def __init__(self):
         self._actor_locations = {}
@@ -22,18 +21,4 @@ class ActorLocationTracker:
 
 
 def get_or_create_actor_location_tracker():
-
-    # Pin the actor location tracker to the local node so it fate-shares with the driver.
-    # NOTE: for Ray Client, the ray.get_runtime_context().get_node_id() should
-    # point to the head node.
-    label_selector = {
-        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-    }
-    return ActorLocationTracker.options(
-        name="ActorLocationTracker",
-        namespace="ActorLocationTracker",
-        get_if_exists=True,
-        lifetime="detached",
-        label_selector=label_selector,
-        max_concurrency=8,
-    ).remote()
+    return get_or_create_singleton_actor(ActorLocationTracker, max_concurrency=8)
