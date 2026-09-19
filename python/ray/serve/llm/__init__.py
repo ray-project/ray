@@ -250,6 +250,111 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     return build_openai_app(builder_config=llm_serving_args)
 
 
+@PublicAPI(stability="alpha")
+def build_anthropic_app(llm_serving_args: dict) -> "Application":
+    """Helper to build an Anthropic compatible app with the llm deployment setup from
+    the given llm serving args. This is the main entry point for users to create a
+    Serve application serving LLMs.
+
+
+    Examples:
+        .. code-block:: python
+            :caption: Example usage in code.
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, LLMServingArgs, build_anthropic_app
+
+            llm_config1 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-0.5b",
+                    model_source="Qwen/Qwen2.5-0.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            llm_config2 = LLMConfig(
+                model_loading_config=dict(
+                    model_id="qwen-1.5b",
+                    model_source="Qwen/Qwen2.5-1.5B-Instruct",
+                ),
+                deployment_config=dict(
+                    autoscaling_config=dict(
+                        min_replicas=1, max_replicas=2,
+                    )
+                ),
+                accelerator_type="A10G",
+            )
+
+            # Deploy the application
+            llm_app = build_anthropic_app(
+                LLMServingArgs(
+                    llm_configs=[
+                        llm_config1,
+                        llm_config2,
+                    ]
+                )
+            )
+            serve.run(llm_app)
+
+
+            # Querying the model via anthropic client
+            from anthropic import Anthropic
+
+            # Initialize client
+            client = Anthropic(base_url="http://localhost:8000/v1", api_key="fake-key")
+
+            # Basic messages
+            response = client.messages.create(
+                model="qwen-0.5b",
+                messages=[{"role": "user", "content": "Hello!"}]
+            )
+
+        .. code-block:: yaml
+            :caption: Example usage in YAML.
+
+            # config.yaml
+            applications:
+            - args:
+                llm_configs:
+                    - model_loading_config:
+                        model_id: qwen-0.5b
+                        model_source: Qwen/Qwen2.5-0.5B-Instruct
+                      accelerator_type: A10G
+                      deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+                    - model_loading_config:
+                        model_id: qwen-1.5b
+                        model_source: Qwen/Qwen2.5-1.5B-Instruct
+                      accelerator_type: A10G
+                      deployment_config:
+                        autoscaling_config:
+                            min_replicas: 1
+                            max_replicas: 2
+              import_path: ray.serve.llm:build_anthropic_app
+              name: llm_app
+              route_prefix: "/"
+
+
+    Args:
+        llm_serving_args: A dict that conforms to the LLMServingArgs pydantic model.
+
+    Returns:
+        The configured Ray Serve Application router.
+    """
+    from ray.llm._internal.serve.core.ingress.builder import (
+        build_anthropic_app,
+    )
+
+    return build_anthropic_app(builder_config=llm_serving_args)
+
+
 @PublicAPI(stability="stable")
 def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     """Build a deployable application utilizing P/D disaggregation.
@@ -402,6 +507,7 @@ __all__ = [
     "LoraConfig",
     "build_llm_deployment",
     "build_openai_app",
+    "build_anthropic_app",
     "build_pd_openai_app",
     "build_dp_deployment",
     "build_dp_openai_app",
