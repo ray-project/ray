@@ -255,6 +255,12 @@ message DeploymentConfig {
   // older controller during a rolling upgrade) falls back to the Python-side
   // defaults.
   BackpressureConfig backpressure_config = 24;
+
+  // Prefer routing requests to replicas on the same node as the caller.
+  optional bool prefer_local_node_routing = 25;
+
+  // Prefer routing requests to replicas in the same availability zone as the caller.
+  optional bool prefer_local_az_routing = 26;
 }
 
 // Configuration of the HTTP response returned when a request is rejected due
