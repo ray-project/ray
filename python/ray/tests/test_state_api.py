@@ -7,6 +7,7 @@ import threading
 import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock
 
@@ -18,6 +19,8 @@ from click.testing import CliRunner
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.state as global_state
+import ray.util.state.api as state_api
+import ray.util.state.state_cli as state_cli
 from ray._common.network_utils import find_free_port, parse_address
 from ray._common.test_utils import (
     SignalActor,
@@ -92,6 +95,7 @@ from ray.util.state.state_cli import (
     _normalize_filter_keys,
     _parse_filter,
     format_list_api_output,
+    logs_state_cli_group,
     ray_get,
     ray_list,
     summary_state_cli_group,
@@ -101,6 +105,45 @@ from ray.util.state.state_manager import StateDataSourceClient
 """
 Unit tests
 """
+
+
+class FakeStateApiClient:
+    captured = None
+
+    def __init__(
+        self,
+        address=None,
+        cookies=None,
+        headers=None,
+        verify=True,
+        **kwargs,
+    ):
+        FakeStateApiClient.captured = {
+            "address": address,
+            "cookies": cookies,
+            "headers": headers,
+            "verify": verify,
+            "kwargs": kwargs,
+        }
+
+    def get(self, *args, **kwargs):
+        FakeStateApiClient.captured["get"] = {"args": args, "kwargs": kwargs}
+        return None
+
+    def list(self, *args, **kwargs):
+        FakeStateApiClient.captured["list"] = {"args": args, "kwargs": kwargs}
+        return []
+
+    def summary(self, *args, **kwargs):
+        FakeStateApiClient.captured["summary"] = {"args": args, "kwargs": kwargs}
+        return {"cluster": {"summary": {}, "summary_by": "state"}}
+
+
+@pytest.fixture
+def reset_fake_state_api_client():
+    FakeStateApiClient.captured = None
+    yield
+    FakeStateApiClient.captured = None
 
 
 @pytest.fixture
@@ -454,6 +497,500 @@ def test_parse_filter():
         _parse_filter("key>value")
     with pytest.raises(ValueError):
         _parse_filter("key>value!=")
+
+
+def test_state_cli_get_headers_and_verify_false(
+    monkeypatch, reset_fake_state_api_client
+):
+    monkeypatch.setattr(state_cli, "StateApiClient", FakeStateApiClient)
+
+    result = CliRunner().invoke(
+        ray_get,
+        [
+            "actors",
+            "actor-id",
+            "--headers",
+            '{"Authorization": "Bearer cli"}',
+            "--verify",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert FakeStateApiClient.captured["headers"] == {"Authorization": "Bearer cli"}
+    assert FakeStateApiClient.captured["verify"] is False
+
+
+def test_state_cli_list_headers_and_verify_false(
+    monkeypatch, reset_fake_state_api_client
+):
+    monkeypatch.setattr(state_cli, "StateApiClient", FakeStateApiClient)
+
+    result = CliRunner().invoke(
+        ray_list,
+        [
+            "actors",
+            "--headers",
+            '{"X-API-Key": "cli"}',
+            "--verify",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert FakeStateApiClient.captured["headers"] == {"X-API-Key": "cli"}
+    assert FakeStateApiClient.captured["verify"] is False
+
+
+def test_state_cli_headers_from_env(monkeypatch, reset_fake_state_api_client):
+    monkeypatch.setattr(state_cli, "StateApiClient", FakeStateApiClient)
+    monkeypatch.setenv("RAY_STATE_HEADERS", '{"X-Env": "env"}')
+
+    result = CliRunner().invoke(ray_list, ["actors"])
+
+    assert result.exit_code == 0, result.output
+    assert FakeStateApiClient.captured["headers"] == {"X-Env": "env"}
+
+
+def test_state_cli_headers_cli_precedence_over_env(
+    monkeypatch, reset_fake_state_api_client
+):
+    monkeypatch.setattr(state_cli, "StateApiClient", FakeStateApiClient)
+    monkeypatch.setenv("RAY_STATE_HEADERS", '{"X-Env": "env"}')
+
+    result = CliRunner().invoke(ray_list, ["actors", "--headers", '{"X-CLI": "cli"}'])
+
+    assert result.exit_code == 0, result.output
+    assert FakeStateApiClient.captured["headers"] == {"X-CLI": "cli"}
+
+
+@pytest.mark.parametrize(
+    "headers,error",
+    [
+        ("{bad json", "Failed to parse headers into JSON"),
+        ("[]", "Expected headers to be a JSON object/dictionary"),
+        ('{"X-Retry": 3}', "All header keys and values must be strings"),
+    ],
+)
+def test_state_cli_rejects_invalid_headers(headers, error, reset_fake_state_api_client):
+    result = CliRunner().invoke(ray_list, ["actors", "--headers", headers])
+
+    assert result.exit_code != 0
+    assert error in result.output
+    assert FakeStateApiClient.captured is None
+
+
+@pytest.mark.parametrize(
+    "cli_value,expected",
+    [
+        ("true", True),
+        ("false", False),
+        ("/tmp/test-ca.pem", "/tmp/test-ca.pem"),
+    ],
+)
+def test_state_cli_verify_values(
+    monkeypatch, reset_fake_state_api_client, cli_value, expected
+):
+    monkeypatch.setattr(state_cli, "StateApiClient", FakeStateApiClient)
+
+    result = CliRunner().invoke(ray_list, ["actors", "--verify", cli_value])
+
+    assert result.exit_code == 0, result.output
+    assert FakeStateApiClient.captured["verify"] == expected
+
+
+def _empty_summary_response():
+    return {"cluster": {"summary": {}, "summary_by": "state"}}
+
+
+@pytest.mark.parametrize(
+    "args,function_name",
+    [
+        (["tasks"], "summarize_tasks"),
+        (["actors"], "summarize_actors"),
+        (["objects"], "summarize_objects"),
+    ],
+)
+def test_state_cli_summary_headers_and_verify(monkeypatch, args, function_name):
+    captured = {}
+
+    def fake_summarize(**kwargs):
+        captured.update(kwargs)
+        return _empty_summary_response()
+
+    monkeypatch.setattr(state_cli, function_name, fake_summarize)
+
+    result = CliRunner().invoke(
+        summary_state_cli_group,
+        [
+            *args,
+            "--headers",
+            '{"Authorization": "Bearer summary"}',
+            "--verify",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"Authorization": "Bearer summary"}
+    assert captured["verify"] is False
+
+
+def test_state_cli_logs_cluster_list_headers_and_verify(monkeypatch):
+    captured = {}
+
+    def fake_list_logs(**kwargs):
+        captured.update(kwargs)
+        return {"worker": ["a.log", "b.log"]}
+
+    monkeypatch.setattr(state_cli, "_get_head_node_ip", lambda address: "127.0.0.1")
+    monkeypatch.setattr(state_cli, "list_logs", fake_list_logs)
+
+    result = CliRunner().invoke(
+        logs_state_cli_group,
+        [
+            "cluster",
+            "*.log",
+            "--headers",
+            '{"X-API-Key": "logs"}',
+            "--verify",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"X-API-Key": "logs"}
+    assert captured["verify"] is False
+
+
+def test_state_cli_logs_cluster_print_headers_and_verify(monkeypatch):
+    list_captured = {}
+    print_captured = {}
+
+    def fake_list_logs(**kwargs):
+        list_captured.update(kwargs)
+        return {"worker": ["a.log"]}
+
+    def fake_print_log(**kwargs):
+        print_captured.update(kwargs)
+
+    monkeypatch.setattr(state_cli, "_get_head_node_ip", lambda address: "127.0.0.1")
+    monkeypatch.setattr(state_cli, "list_logs", fake_list_logs)
+    monkeypatch.setattr(state_cli, "_print_log", fake_print_log)
+
+    result = CliRunner().invoke(
+        logs_state_cli_group,
+        [
+            "cluster",
+            "a.log",
+            "--headers",
+            '{"X-API-Key": "logs"}',
+            "--verify",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert list_captured["headers"] == {"X-API-Key": "logs"}
+    assert list_captured["verify"] is False
+    assert print_captured["headers"] == {"X-API-Key": "logs"}
+    assert print_captured["verify"] is False
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["actor", "--id", "actor-id", "--node-ip", "127.0.0.1"],
+        ["worker", "--pid", "123", "--node-ip", "127.0.0.1"],
+        ["job", "--id", "raysubmit_123"],
+        ["task", "--id", "task-id"],
+    ],
+)
+def test_state_cli_logs_print_commands_headers_and_verify(monkeypatch, args):
+    captured = {}
+
+    def fake_print_log(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(state_cli, "_print_log", fake_print_log)
+
+    result = CliRunner().invoke(
+        logs_state_cli_group,
+        [
+            *args,
+            "--headers",
+            '{"X-API-Key": "logs"}',
+            "--verify",
+            "false",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["headers"] == {"X-API-Key": "logs"}
+    assert captured["verify"] is False
+
+
+class _FakeLogResponse:
+    def __init__(self, json_data=None, chunks=None):
+        self.status_code = 200
+        self.text = ""
+        self._json_data = json_data or {
+            "result": True,
+            "data": {"result": {"worker": ["worker.log"]}},
+        }
+        self._chunks = chunks or [b"log"]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return None
+
+    def iter_content(self, chunk_size=None):
+        yield from self._chunks
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._json_data
+
+
+def test_list_logs_forwards_headers_verify_and_does_not_mutate(monkeypatch):
+    captured = {}
+    headers = {"X-API-Key": "logs"}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return _FakeLogResponse()
+
+    monkeypatch.delenv(
+        ray_constants.RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE, raising=False
+    )
+    monkeypatch.delenv(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE, raising=False)
+    monkeypatch.setattr(state_api.requests, "get", fake_get)
+    monkeypatch.setattr(
+        state_api, "get_auth_headers_if_auth_enabled", lambda headers: {}
+    )
+
+    assert state_api.list_logs(
+        address="https://cluster.example.com:8265",
+        node_ip="127.0.0.1",
+        headers=headers,
+        verify="/tmp/test-ca.pem",
+    ) == {"worker": ["worker.log"]}
+    assert captured["url"].startswith("https://cluster.example.com:8265/api/v0/logs?")
+    assert captured["headers"] == {"X-API-Key": "logs"}
+    assert captured["verify"] == "/tmp/test-ca.pem"
+    assert headers == {"X-API-Key": "logs"}
+
+
+def test_get_log_forwards_headers_verify_and_does_not_mutate(monkeypatch):
+    captured = {}
+    headers = {"X-API-Key": "logs"}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured.update(kwargs)
+        return _FakeLogResponse(chunks=[b"hello"])
+
+    monkeypatch.delenv(
+        ray_constants.RAY_API_SERVER_ADDRESS_ENVIRONMENT_VARIABLE, raising=False
+    )
+    monkeypatch.delenv(ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE, raising=False)
+    monkeypatch.setattr(state_api.requests, "get", fake_get)
+    monkeypatch.setattr(
+        state_api, "get_auth_headers_if_auth_enabled", lambda headers: {}
+    )
+
+    chunks = list(
+        state_api.get_log(
+            address="https://cluster.example.com:8265",
+            node_ip="127.0.0.1",
+            filename="worker.log",
+            headers=headers,
+            verify=False,
+        )
+    )
+
+    assert chunks == ["hello"]
+    assert captured["url"].startswith(
+        "https://cluster.example.com:8265/api/v0/logs/file?"
+    )
+    assert captured["headers"] == {"X-API-Key": "logs"}
+    assert captured["verify"] is False
+    assert headers == {"X-API-Key": "logs"}
+
+
+def test_state_api_client_forwards_headers_verify_and_does_not_mutate(monkeypatch):
+    captured = {}
+    headers = {"Authorization": "Bearer user"}
+
+    def fake_submission_init(self, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        state_api, "get_address_for_submission_client", lambda address: "http://api"
+    )
+    monkeypatch.setattr(state_api.SubmissionClient, "__init__", fake_submission_init)
+
+    state_api.StateApiClient(
+        address="http://api",
+        headers=headers,
+        verify=False,
+    )
+
+    assert captured["address"] == "http://api"
+    assert captured["headers"] == {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer user",
+    }
+    assert captured["verify"] is False
+    assert headers == {"Authorization": "Bearer user"}
+
+
+def test_state_api_client_merges_content_type_case_insensitively(monkeypatch):
+    captured = {}
+    headers = {"content-type": "application/custom"}
+
+    def fake_submission_init(self, **kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        state_api, "get_address_for_submission_client", lambda address: "http://api"
+    )
+    monkeypatch.setattr(state_api.SubmissionClient, "__init__", fake_submission_init)
+
+    state_api.StateApiClient(address="http://api", headers=headers)
+
+    content_type_headers = [
+        (key, value)
+        for key, value in captured["headers"].items()
+        if key.lower() == "content-type"
+    ]
+    assert content_type_headers == [("content-type", "application/custom")]
+    assert headers == {"content-type": "application/custom"}
+
+
+@pytest.mark.parametrize(
+    "input_headers,expected_authorization",
+    [
+        ({"authorization": "Bearer user"}, "Bearer user"),
+        ({"X-API-Key": "logs"}, "Bearer internal"),
+    ],
+)
+def test_log_headers_preserve_user_auth_and_add_internal_auth(
+    monkeypatch, input_headers, expected_authorization
+):
+    captured = {}
+    original_headers = dict(input_headers)
+
+    def fake_get(url, **kwargs):
+        captured.update(kwargs)
+        return _FakeLogResponse()
+
+    def fake_auth(headers):
+        if "Authorization" in headers:
+            return {}
+        return {"Authorization": "Bearer internal"}
+
+    monkeypatch.setattr(
+        state_api, "get_address_for_submission_client", lambda address: "http://api"
+    )
+    monkeypatch.setattr(state_api.requests, "get", fake_get)
+    monkeypatch.setattr(state_api, "get_auth_headers_if_auth_enabled", fake_auth)
+
+    state_api.list_logs(
+        address="http://api", node_ip="127.0.0.1", headers=input_headers
+    )
+
+    authorization_headers = [
+        value
+        for key, value in captured["headers"].items()
+        if key.lower() == "authorization"
+    ]
+    assert authorization_headers == [expected_authorization]
+    assert input_headers == original_headers
+
+
+def test_log_apis_delegate_bootstrap_address_to_submission_resolver(monkeypatch):
+    resolved_addresses = []
+    requested_urls = []
+
+    def fake_resolve(address):
+        resolved_addresses.append(address)
+        return "http://api"
+
+    def fake_get(url, **kwargs):
+        requested_urls.append(url)
+        return _FakeLogResponse(chunks=[b"hello"])
+
+    monkeypatch.setattr(state_api, "get_address_for_submission_client", fake_resolve)
+    monkeypatch.setattr(state_api.requests, "get", fake_get)
+    monkeypatch.setattr(
+        state_api, "get_auth_headers_if_auth_enabled", lambda headers: {}
+    )
+
+    state_api.list_logs(address="auto", node_ip="127.0.0.1")
+    list(state_api.get_log(address="auto", node_ip="127.0.0.1", filename="worker.log"))
+
+    assert resolved_addresses == ["auto", "auto"]
+    assert all(url.startswith("http://api/api/v0/logs") for url in requested_urls)
+
+
+def test_state_cli_list_integration_sends_headers_to_http_server():
+    class RecordingHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.server.received_headers = dict(self.headers)
+            self.server.received_path = self.path
+            body = json.dumps(
+                {
+                    "result": True,
+                    "msg": "",
+                    "data": {
+                        "result": {
+                            "result": [],
+                            "total": 0,
+                            "num_after_truncation": 0,
+                            "num_filtered": 0,
+                        }
+                    },
+                }
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            return None
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RecordingHandler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        result = CliRunner().invoke(
+            ray_list,
+            [
+                "actors",
+                "--address",
+                f"http://127.0.0.1:{server.server_port}",
+                "--headers",
+                '{"Authorization": "Bearer integration"}',
+                "--verify",
+                "false",
+            ],
+        )
+        assert result.exit_code == 0, result.output
+        assert server.received_headers["Authorization"] == "Bearer integration"
+        assert server.received_path.startswith("/api/v0/actors")
+        assert "No resource in the cluster" in result.output
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
 
 
 # Without this, capsys will have a race condition
