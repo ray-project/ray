@@ -3018,6 +3018,7 @@ def test_subslice_placement_group_jax_env_vars(monkeypatch):
     expected = {
         "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
         "TPU_PROCESS_ADDRESSES": "10.0.0.10:8472,10.0.0.11:8472",
+        "TPU_PROCESS_PORT": "8472",
         "TPU_WORKER_ID": "1",
         "TPU_PROCESS_BOUNDS": "1,2,1",
         "TPU_HOST_BOUNDS": "1,2,1",
@@ -3036,6 +3037,37 @@ def test_subslice_placement_group_jax_env_vars(monkeypatch):
         sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
         == expected
     )
+
+    # A 4-chip (2x2) subslice on an 8-chip (2x4) parent VM must use the subslice's
+    # per-host chip count (4 -> "2,2,1") rather than the parent host's chip count (8 -> "2,4,1").
+    sg_single_host_subslice = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=MagicMock(id="mock_subslice_8chip_pg"),
+        parent_topology="2x4",
+        subslice_topology="2x2",
+        subslice_index=0,
+        slice_name="slice-8chip",
+        num_hosts=1,
+        chips_per_host=8,
+        bundle_resources={"TPU": 4},
+    )
+    env_4chip = sg_single_host_subslice.get_jax_env_vars(worker_hostnames=["10.0.0.10"])
+    assert env_4chip["TPU_CHIPS_PER_PROCESS_BOUNDS"] == "2,2,1"
+    assert env_4chip["TPU_CHIPS_PER_HOST_BOUNDS"] == "2,2,1"
+
+    # Multi-slice SlicePlacementGroup must not fall back to os.environ[TPU_WORKER_HOSTNAMES]
+    # when bundles are not yet placed.
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2")
+    spg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    spg._topology = "2x2x2"
+    spg._num_slices = 2
+    spg._num_bundles = 4
+    spg._num_hosts = 4
+    spg._pg_per_slice = False
+    spg._managed_pgs = []
+    spg._tpu_resource_per_chip = 1
+    monkeypatch.setattr(spg, "get_worker_addrs", lambda idx=0: [None, None])
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        spg.get_jax_env_vars(slice_index=1, worker_id=0)
 
 
 def test_build_slice_worker_to_node_ignores_dead_nodes():
