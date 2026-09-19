@@ -22,8 +22,8 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID SpreadSchedulingPolicy::Schedule(
-    const ResourceRequest &resource_request, SchedulingOptions options) {
+SchedulingResult SpreadSchedulingPolicy::Schedule(const ResourceRequest &resource_request,
+                                                  SchedulingOptions options) {
   RAY_CHECK(options.spread_threshold_ == 0 &&
             options.scheduling_type_ == SchedulingType::SPREAD)
       << "SpreadPolicy policy requires spread_threshold = 0 and type = SPREAD";
@@ -36,6 +36,7 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
 
   // Spread among available nodes first.
   // If there is no available nodes, we spread among feasible nodes.
+  bool saw_feasible_but_unavailable = false;
   for (bool available_nodes_only :
        (options.require_node_available_ ? std::vector<bool>{true}
                                         : std::vector<bool>{true, false})) {
@@ -53,15 +54,22 @@ scheduling::NodeID SpreadSchedulingPolicy::Schedule(
       if (available_nodes_only &&
           !node.GetLocalView().IsAvailable(resource_request,
                                            /*ignore_pull_manager_at_capacity=*/false)) {
+        saw_feasible_but_unavailable = true;
         continue;
       }
 
       spread_scheduling_next_index_ = ((round_index + 1) % round.size());
-      return node_id;
+      return SchedulingResult::Success({node_id});
     }
   }
 
-  return scheduling::NodeID::Nil();
+  if (saw_feasible_but_unavailable) {
+    // Feasible nodes exist but none is available and the caller required an
+    // available node: this is retryable on the next resource-view change, so
+    // it is Failed, not Infeasible.
+    return SchedulingResult::Failed();
+  }
+  return SchedulingResult::Infeasible();
 }
 
 }  // namespace raylet_scheduling_policy

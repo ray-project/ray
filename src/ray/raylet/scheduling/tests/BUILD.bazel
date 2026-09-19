@@ -81,6 +81,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/asio:periodical_runner",
+        "//src/ray/common:bundle_spec",
         "//src/ray/common:id",
         "//src/ray/common:lease",
         "//src/ray/common:task_common",

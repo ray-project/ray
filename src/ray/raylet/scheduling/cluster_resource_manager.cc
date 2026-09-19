@@ -79,7 +79,8 @@ void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
 
 bool ClusterResourceManager::UpdateNode(
     scheduling::NodeID node_id,
-    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message,
+    NodeViewChanges *changes) {
   if (!nodes_.contains(node_id)) {
     return false;
   }
@@ -92,8 +93,20 @@ bool ClusterResourceManager::UpdateNode(
   NodeResources local_view;
   RAY_CHECK(GetNodeResources(node_id, &local_view));
 
-  local_view.total = NodeResourceSet(resources_total);
-  local_view.SetAvailable(NodeResourceSet(resources_available));
+  NodeResourceSet new_total(resources_total);
+  NodeResourceSet new_available(resources_available);
+  if (changes != nullptr) {
+    changes->capacity_changed |=
+        !(local_view.total == new_total) || local_view.labels != node_labels;
+    changes->usage_changed |=
+        !(local_view.GetAvailable() == new_available) ||
+        local_view.object_pulls_queued !=
+            resource_view_sync_message.object_pulls_queued() ||
+        (!local_view.is_draining && resource_view_sync_message.is_draining());
+  }
+
+  local_view.total = std::move(new_total);
+  local_view.SetAvailable(std::move(new_available));
   local_view.labels = std::move(node_labels);
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
@@ -112,6 +125,14 @@ bool ClusterResourceManager::UpdateNode(
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);
   return true;
+}
+
+void ClusterResourceManager::AddOrUpdateNode(
+    scheduling::NodeID node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message,
+    NodeViewChanges *changes) {
+  nodes_.try_emplace(node_id, NodeResources());
+  RAY_CHECK(UpdateNode(node_id, resource_view_sync_message, changes));
 }
 
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {

@@ -30,8 +30,8 @@ inline constexpr size_t kComponentArraySize =
 // TODO(hjiang): As of now, only ray syncer uses it so we put it under `ray_syncer`
 // folder, better to place it into other common folders if uses elsewhere.
 //
-// A callback, which is called whenever a rpc succeeds (at rpc communication level)
-// between the current node and the remote node.
-using RpcCompletionCallback = std::function<void(const NodeID &)>;
+// Called once per batch of messages received from the remote node, before they are
+// applied.
+using MessagesReceivedCallback = std::function<void(const NodeID &)>;
 
 }  // namespace ray::syncer

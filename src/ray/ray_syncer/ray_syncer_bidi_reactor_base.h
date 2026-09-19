@@ -18,7 +18,9 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
@@ -38,7 +40,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   ///
   /// \param io_context The io context for the callback.
   /// \param remote_node_id The node id connects to.
-  /// \param message_processor The callback for the message received.
+  /// \param message_processor The callback for the messages received, called once per
+  ///     batch.
   /// \param cleanup_cb When the connection terminates, it'll be called to cleanup
   ///     the environment.
   /// \param max_batch_size The maximum number of messages in a batch.
@@ -46,7 +49,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
-      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
+          message_processor,
       size_t max_batch_size,
       uint64_t max_batch_delay_ms)
       : RaySyncerBidiReactor(std::move(remote_node_id)),
@@ -124,9 +128,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   void StartPull() {
-    receiving_message_batch_ = std::make_shared<RaySyncMessageBatch>();
+    receiving_message_batch_.Clear();
     RAY_LOG(DEBUG) << "Start reading: " << NodeID::FromBinary(GetRemoteNodeID());
-    StartRead(receiving_message_batch_.get());
+    StartRead(&receiving_message_batch_);
   }
 
  protected:
@@ -134,25 +138,24 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   instrumented_io_context &io_context_;
 
  private:
-  /// Handle the updates sent from the remote node.
-  ///
-  /// \param message_batch The message batch received.
-  void ReceiveUpdate(std::shared_ptr<RaySyncMessageBatch> message_batch) {
-    RAY_CHECK(message_batch->messages_size() > 0);
-
-    RAY_LOG(DEBUG) << "Receive message batch with messages_size="
-                   << message_batch->messages_size();
-
-    for (const auto &message : message_batch->messages()) {
+  void ProcessBufferedSyncMessages() {
+    ReceivedBuffer buffer;
+    {
+      absl::MutexLock lock(&received_mutex_);
+      buffer.swap(received_buffer_);
+    }
+    RAY_LOG(DEBUG) << "Processing " << buffer.size() << " buffered messages from "
+                   << NodeID::FromBinary(remote_node_id_);
+    if (on_messages_received_) {
+      on_messages_received_(NodeID::FromBinary(remote_node_id_));
+    }
+    std::vector<std::shared_ptr<const RaySyncMessage>> accepted;
+    accepted.reserve(buffer.size());
+    for (auto &[key, message] : buffer) {
       auto &node_versions = GetNodeComponentVersions(message.node_id());
-      RAY_LOG(DEBUG) << "Receive update: "
-                     << " message_type=" << message.message_type()
-                     << ", message_version=" << message.version()
-                     << ", local_message_version="
-                     << node_versions[message.message_type()];
       if (node_versions[message.message_type()] < message.version()) {
         node_versions[message.message_type()] = message.version();
-        message_processor_(std::make_shared<RaySyncMessage>(message));
+        accepted.push_back(std::make_shared<RaySyncMessage>(std::move(message)));
       } else {
         RAY_LOG_EVERY_MS(WARNING, 1000)
             << "Drop message received from " << NodeID::FromBinary(message.node_id())
@@ -161,6 +164,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
             << node_versions[message.message_type()]
             << ". Message type: " << message.message_type();
       }
+    }
+    if (!accepted.empty()) {
+      message_processor_(std::move(accepted));
     }
   }
 
@@ -231,40 +237,53 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   void OnReadDone(bool ok) override {
-    io_context_.dispatch(
-        [this, ok, msg_batch = std::move(receiving_message_batch_)]() mutable {
-          // NOTE: According to the grpc callback streaming api best practices 3.)
-          // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
-          // The client must read all incoming data i.e. until OnReadDone(ok = false)
-          // happens for OnDone to be called. Hence even if disconnected_ is true, we
-          // still need to allow OnReadDone to repeatedly execute until StartReadData has
-          // consumed all the data for OnDone to be called.
-          if (!ok) {
+    // NOTE: According to the grpc callback streaming api best practices 3.)
+    // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
+    // The client must read all incoming data i.e. until OnReadDone(ok = false)
+    // happens for OnDone to be called. Hence even if disconnected_ is true, we
+    // still need to allow OnReadDone to repeatedly execute until StartReadData has
+    // consumed all the data for OnDone to be called.
+    if (!ok) {
+      io_context_.dispatch(
+          [this]() {
             RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read a message from node: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
-            return;
-          }
+          },
+          "");
+      return;
+    }
 
-          // Successful rpc completion callback.
-          RAY_CHECK(!msg_batch->messages().empty());
-          if (on_rpc_completion_) {
-            on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
-          }
-          ReceiveUpdate(std::move(msg_batch));
-          StartPull();
-        },
-        "");
+    RAY_CHECK(!receiving_message_batch_.messages().empty());
+    bool buffer_was_empty = false;
+    {
+      absl::MutexLock lock(&received_mutex_);
+      // A non-empty buffer already has a processing task queued.
+      buffer_was_empty = received_buffer_.empty();
+      for (auto &message : *receiving_message_batch_.mutable_messages()) {
+        auto [it, inserted] = received_buffer_.try_emplace(
+            std::make_pair(message.node_id(), message.message_type()));
+        if (inserted || it->second.version() < message.version()) {
+          it->second = std::move(message);
+        }
+      }
+    }
+    StartPull();
+    if (buffer_was_empty) {
+      io_context_.dispatch([this]() { ProcessBufferedSyncMessages(); },
+                           "RaySyncer.ProcessBufferedSyncMessages");
+    }
   }
 
   /// grpc requests for sending and receiving
   std::shared_ptr<const RaySyncMessageBatch> sending_message_batch_;
-  std::shared_ptr<RaySyncMessageBatch> receiving_message_batch_;
+  RaySyncMessageBatch receiving_message_batch_;
 
   // For testing
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBase);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseReadsAreNotGatedByProcessing);
 
   friend struct SyncerServerTest;
 
@@ -280,7 +299,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   /// Handler of a message update.
-  const std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor_;
+  const std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
+      message_processor_;
 
  private:
   /// Buffering all the updates. Sending will be done in an async way.
@@ -295,6 +315,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       node_versions_;
 
   bool sending_ = false;
+
+  /// Messages read from the remote but not yet applied, one per (node, message type)
+  /// with the newest version winning, like sending_buffer_. Filled on the gRPC thread,
+  /// drained on the io context; see the note on MessageType in ray_syncer.proto.
+  using ReceivedBuffer =
+      absl::flat_hash_map<std::pair<std::string, MessageType>, RaySyncMessage>;
+  absl::Mutex received_mutex_;
+  ReceivedBuffer received_buffer_ ABSL_GUARDED_BY(received_mutex_);
 
   /// Batch configuration
   const size_t max_batch_size_;

@@ -33,14 +33,14 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
                      size_t max_batch_size,
                      uint64_t max_batch_delay_ms,
-                     RpcCompletionCallback on_rpc_completion)
+                     MessagesReceivedCallback on_messages_received)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
       periodical_runner_(std::move(periodical_runner)),
       max_batch_size_(max_batch_size),
       max_batch_delay_ms_(max_batch_delay_ms),
-      on_rpc_completion_(std::move(on_rpc_completion)) {
+      on_messages_received_(std::move(on_messages_received)) {
   stopped_ = std::make_shared<bool>(false);
 }
 
@@ -89,7 +89,7 @@ void RaySyncer::Connect(const std::string &node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
             /* message_processor */
-            [this](auto msg) { BroadcastMessage(std::move(msg)); },
+            [this](auto messages) { BroadcastMessages(std::move(messages)); },
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *bidi_reactor, bool restart) {
               const std::string &remote_node_id = bidi_reactor->GetRemoteNodeID();
@@ -125,9 +125,8 @@ void RaySyncer::Connect(const std::string &node_id,
 }
 
 void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
-  // Bind rpc completion callback.
-  if (on_rpc_completion_) {
-    reactor->SetRpcCompletionCallbackForOnce(on_rpc_completion_);
+  if (on_messages_received_) {
+    reactor->SetMessagesReceivedCallbackForOnce(on_messages_received_);
   }
 
   boost::asio::dispatch(
@@ -139,6 +138,9 @@ void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
           for (const auto &message : messages) {
             if (!message) {
+              continue;
+            }
+            if (!ShouldFanOutTo(*message, reactor->GetRemoteNodeID())) {
               continue;
             }
             RAY_LOG(DEBUG) << "Push init view from: "
@@ -201,27 +203,68 @@ bool RaySyncer::BroadcastMessageIfNewVersion(MessageType message_type) {
   auto msg = node_state_->CreateSyncMessage(message_type);
   if (msg) {
     RAY_CHECK(msg->node_id() == GetLocalNodeID());
-    BroadcastMessage(std::make_shared<RaySyncMessage>(std::move(*msg)));
+    BroadcastMessages({std::make_shared<RaySyncMessage>(std::move(*msg))});
     return true;
   }
   return false;
 }
 
-void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
+void RaySyncer::BroadcastMessages(
+    std::vector<std::shared_ptr<const RaySyncMessage>> messages) {
   io_context_.dispatch(
-      [this, message] {
-        // The message is stale. Just skip this one.
-        RAY_LOG(DEBUG) << "Receive message from: "
-                       << NodeID::FromBinary(message->node_id()) << " to "
-                       << NodeID::FromBinary(GetLocalNodeID());
-        if (!node_state_->ConsumeSyncMessage(message)) {
-          return;
-        }
-        for (auto &reactor : sync_reactors_) {
-          reactor.second->PushToSendingQueue(message);
+      [this, messages = std::move(messages)]() mutable {
+        for (const auto &accepted :
+             node_state_->ConsumeSyncMessages(std::move(messages))) {
+          for (auto &reactor : sync_reactors_) {
+            if (!ShouldFanOutTo(*accepted, reactor.first)) {
+              continue;
+            }
+            reactor.second->PushToSendingQueue(accepted);
+          }
         }
       },
-      "RaySyncer.BroadcastMessage");
+      "RaySyncer.BroadcastMessages");
+}
+
+void RaySyncer::SetResourceViewFanoutTargets(std::vector<std::string> node_ids) {
+  io_context_.dispatch(
+      [this, node_ids = std::move(node_ids)]() {
+        absl::flat_hash_set<std::string> new_targets(node_ids.begin(), node_ids.end());
+        // A node that becomes a target after it connected (e.g. it replaces a dead
+        // view holder) missed the updates that were filtered out earlier, and the
+        // version-gated broadcast would never resend them. Push the current view to
+        // it; the reactor's version bookkeeping drops anything it already knows.
+        for (const auto &target : new_targets) {
+          if (resource_view_fanout_targets_.contains(target)) {
+            continue;
+          }
+          auto reactor_it = sync_reactors_.find(target);
+          if (reactor_it == sync_reactors_.end()) {
+            continue;
+          }
+          for (const auto &[_, messages] : node_state_->GetClusterView()) {
+            for (const auto &message : messages) {
+              if (message != nullptr &&
+                  message->message_type() == MessageType::RESOURCE_VIEW) {
+                reactor_it->second->PushToSendingQueue(message);
+              }
+            }
+          }
+        }
+        resource_view_fanout_targets_ = std::move(new_targets);
+        RAY_LOG(INFO) << "Restricted RESOURCE_VIEW fan-out to "
+                      << resource_view_fanout_targets_.size() << " nodes.";
+      },
+      "RaySyncer.SetResourceViewFanoutTargets");
+}
+
+bool RaySyncer::ShouldFanOutTo(const RaySyncMessage &message,
+                               const std::string &remote_node_id) const {
+  if (resource_view_fanout_targets_.empty() ||
+      message.message_type() != MessageType::RESOURCE_VIEW) {
+    return true;
+  }
+  return resource_view_fanout_targets_.contains(remote_node_id);
 }
 
 SyncStreamReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
@@ -230,7 +273,7 @@ SyncStreamReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
       /*message_processor=*/
-      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      [this](auto messages) mutable { syncer_.BroadcastMessages(std::move(messages)); },
       /*cleanup_cb=*/
       [this](RaySyncerBidiReactor *bidi_reactor, bool reconnect) mutable {
         // No need to reconnect for server side.

@@ -183,9 +183,11 @@ class FakeRayletClient : public RayletClientInterface {
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+      bool placement_group_removed,
       const ClientCallback<RemovePlacementGroupBundlesReply> &callback) override {
     num_remove_pg_bundles_requested += 1;
     num_bundles_removed += bundle_specs.size();
+    remove_pg_bundles_removed_flags.push_back(placement_group_removed);
     remove_pg_bundles_callbacks.push_back(callback);
   }
 
@@ -341,6 +343,7 @@ class FakeRayletClient : public RayletClientInterface {
   int num_get_task_failure_causes = 0;
   int num_lease_requested = 0;
   int num_remove_pg_bundles_requested = 0;
+  std::vector<bool> remove_pg_bundles_removed_flags;
   int num_bundles_removed = 0;
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;

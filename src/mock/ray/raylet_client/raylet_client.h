@@ -71,6 +71,7 @@ class MockRayletClientInterface : public RayletClientInterface {
       RemovePlacementGroupBundles,
       (const PlacementGroupID &placement_group_id,
        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+       bool placement_group_removed,
        const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
            &callback),
       (override));

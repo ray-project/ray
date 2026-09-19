@@ -276,11 +276,13 @@ void RayletClient::CommitBundleResources(
 void RayletClient::RemovePlacementGroupBundles(
     const PlacementGroupID &placement_group_id,
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+    bool placement_group_removed,
     const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
         &callback) {
   RAY_CHECK(!bundle_specs.empty());
   rpc::RemovePlacementGroupBundlesRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
+  request.set_placement_group_removed(placement_group_removed);
   const auto &expected_node_id = bundle_specs.front()->NodeId();
   for (const auto &bundle_spec : bundle_specs) {
     RAY_CHECK(bundle_spec->NodeId() == expected_node_id)

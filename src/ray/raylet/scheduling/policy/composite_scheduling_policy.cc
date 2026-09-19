@@ -20,7 +20,7 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-scheduling::NodeID CompositeSchedulingPolicy::Schedule(
+SchedulingResult CompositeSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   switch (options.scheduling_type_) {
   case SchedulingType::SPREAD:

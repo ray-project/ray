@@ -57,12 +57,19 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   /// \param gcs_table_storage Used to flush placement group data to storage.
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
+  /// \param destroy_actors_bound_to_placement_group Destroys the not-yet-alive
+  /// actors scheduled into a placement group; invoked by RemovePlacementGroup.
+  /// Dereferences the actor manager at call time: the earliest invocation is
+  /// RemoveStartupLeftoverPlacementGroups, which GcsServer calls after both
+  /// managers exist.
   GcsPlacementGroupManager(
       instrumented_io_context &io_context,
       GcsPlacementGroupSchedulerInterface *scheduler,
       gcs::GcsTableStorage *gcs_table_storage,
       GcsResourceManager &gcs_resource_manager,
       std::function<std::string(const JobID &)> get_ray_namespace,
+      std::function<void(const PlacementGroupID &)>
+          destroy_actors_bound_to_placement_group,
       ray::observability::MetricInterface &placement_group_gauge,
       ray::observability::MetricInterface
           &placement_group_creation_latency_in_ms_histogram,
@@ -72,6 +79,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       ClockInterface &clock);
 
   ~GcsPlacementGroupManager() override = default;
+
+  /// Remove the placement groups whose creator job was found dead during
+  /// Initialize. Deferred out of Initialize so it runs after the destroy
+  /// callback above is wired (removal destroys the groups' pending actors).
+  void RemoveStartupLeftoverPlacementGroups();
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -377,6 +389,18 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
   ClockInterface &clock_;
+
+  /// Destroys the actors scheduled into a placement group when the group is
+  /// removed, so leases waiting anywhere (including a non-bundle raylet's
+  /// queues) are cancelled through the actor destruction path. Set at
+  /// construction; dereferences the actor manager at call time.
+  const std::function<void(const PlacementGroupID &)>
+      destroy_actors_bound_to_placement_group_;
+
+  /// Placement groups whose creator job died before this GCS (re)started,
+  /// collected by Initialize and removed by
+  /// RemoveStartupLeftoverPlacementGroups.
+  std::vector<PlacementGroupID> groups_to_remove_at_startup_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
