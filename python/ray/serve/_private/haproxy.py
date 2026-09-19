@@ -54,6 +54,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
+    RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
     RAY_SERVE_HAPROXY_METRICS_PORT,
@@ -222,6 +223,64 @@ def _tail_file(path: str, n_bytes: int = 4096) -> str:
             return f.read().decode("utf-8", errors="ignore").strip()
     except OSError:
         return ""
+
+
+@dataclass
+class MasterProcState:
+    """Processes reported by the master CLI's `show proc`."""
+
+    master_pid: Optional[int] = None
+    # Failed reloads since the master started, when HAProxy reports it.
+    failed_reloads: Optional[int] = None
+    # Workers serving the current configuration.
+    workers: List[int] = field(default_factory=list)
+    # Soft-stopping workers from previous reloads.
+    old_workers: List[int] = field(default_factory=list)
+
+
+def parse_show_proc(output: str) -> MasterProcState:
+    """Parse the master CLI's `show proc`.
+
+    Example output::
+
+        #<PID>          <type>          <reloads>       <uptime>        <version>
+        1162            master          5 [failed: 0]   0d00h02m07s     2.8.25
+        # workers
+        1271            worker          1               0d00h00m00s     2.8.25
+        # old workers
+        1233            worker          3               0d00h00m43s     2.8.25
+        # programs
+
+    Args:
+        output: Raw `show proc` response.
+
+    Returns:
+        The parsed state. `master_pid` is None when the output is not a
+        `show proc` response.
+    """
+    state = MasterProcState()
+    section = None
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            header = stripped.lstrip("#").strip().lower()
+            if header in ("workers", "old workers", "programs"):
+                section = header
+            continue
+        parts = stripped.split()
+        if len(parts) < 2 or not parts[0].isdigit():
+            continue
+        pid, kind = int(parts[0]), parts[1]
+        if kind == "master":
+            state.master_pid = pid
+            failed = re.search(r"\[failed:\s*(\d+)\]", stripped)
+            if failed:
+                state.failed_reloads = int(failed.group(1))
+        elif kind == "worker" and section == "workers":
+            state.workers.append(pid)
+        elif kind == "worker" and section == "old workers":
+            state.old_workers.append(pid)
+    return state
 
 
 def get_haproxy_binary() -> str:
@@ -655,6 +714,8 @@ class HAProxyConfig:
     # See RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED.
     observe_mark_down_enabled: bool = RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED
     observe_error_limit: int = RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT
+    # See RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED.
+    master_worker_enabled: bool = RAY_SERVE_HAPROXY_MASTER_WORKER_ENABLED
     custom_global: Dict[str, str] = field(default_factory=dict)
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
@@ -735,6 +796,11 @@ class HAProxyConfig:
     h2_be_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
     h2_fe_initial_window_size: int = RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE
     h2_fe_max_concurrent_streams: int = RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS
+
+    @property
+    def master_socket_path(self) -> str:
+        """Master CLI socket, used in master-worker mode."""
+        return f"{self.socket_path}.master"
 
     @property
     def frontend_host(self) -> str:
@@ -889,6 +955,12 @@ class HAProxyApi(ProxyApi):
         self._retired_logs: "deque[Tuple[str, str]]" = deque()
         self._max_retained_logs: int = 10
 
+        # Master-worker mode only: `_proc` is the long-lived master. These track
+        # the worker serving the current config and soft-stopping workers from
+        # earlier reloads, which are the master's children rather than ours.
+        self._worker_pid: Optional[int] = None
+        self._old_worker_pids: List[int] = []
+
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
 
@@ -959,6 +1031,10 @@ class HAProxyApi(ProxyApi):
                 continue
             self._retire_log_files(p)
         self._old_procs = still_alive
+        # Master-worker old workers are reaped by the master; drop exited ones.
+        self._old_worker_pids = [
+            pid for pid in self._old_worker_pids if self._is_our_haproxy(pid)
+        ]
 
     def _soft_stop_old_procs(self) -> None:
         """Send SIGUSR1 to displaced workers so they close their listeners and
@@ -968,12 +1044,13 @@ class HAProxyApi(ProxyApi):
         lost, so the manager sends the signal itself where it is reliable.
         """
         self._prune_old_procs()
-        for proc in self._old_procs:
-            if not self._is_our_haproxy(proc.pid):
+        old_pids = [proc.pid for proc in self._old_procs] + self._old_worker_pids
+        for pid in old_pids:
+            if not self._is_our_haproxy(pid):
                 continue
             try:
                 # This is a no-op if the worker is already draining
-                os.kill(proc.pid, signal.SIGUSR1)
+                os.kill(pid, signal.SIGUSR1)
             except OSError:
                 pass
 
@@ -997,19 +1074,31 @@ class HAProxyApi(ProxyApi):
         Scans /proc for processes whose cmdline references our config file, so
         the count spans the live worker, draining workers from prior reloads,
         and any leaked/orphaned workers — making it a signal for process leaks.
-        Returns 0 on non-Linux / no-/proc platforms where /proc is unavailable.
+        In master-worker mode the master is excluded, so a steady state is still
+        one process. Returns 0 on non-Linux / no-/proc platforms where /proc is
+        unavailable.
+        """
+        master_pid = (
+            self._proc.pid
+            if self.cfg.master_worker_enabled and self._proc is not None
+            else None
+        )
+        return len(self._our_haproxy_pids() - {master_pid})
+
+    def _our_haproxy_pids(self) -> Set[int]:
+        """Pids of processes whose cmdline references our config file.
+
+        Empty on non-Linux / no-/proc platforms.
         """
         try:
             entries = os.listdir("/proc")
         except OSError:
-            return 0
-
-        processes = {
-            entry
+            return set()
+        return {
+            int(entry)
             for entry in entries
             if entry.isdigit() and self._is_our_haproxy(int(entry))
         }
-        return len(processes)
 
     async def compute_target_mismatch(self) -> int:
         """Cardinality of the mismatch between the controller's broadcasted
@@ -1103,6 +1192,12 @@ class HAProxyApi(ProxyApi):
         # Build command args
         haproxy_bin = get_haproxy_binary()
         args = [haproxy_bin, "-db", "-f", self.config_file_path]
+        if self.cfg.master_worker_enabled:
+            # `-W` keeps a master in the foreground that owns the workers; `-S`
+            # exposes its CLI for `show proc`. The master passes listening
+            # sockets to new workers itself (the admin socket exposes them).
+            args[1:1] = ["-W"]
+            args.extend(["-S", self.cfg.master_socket_path])
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
@@ -1133,10 +1228,21 @@ class HAProxyApi(ProxyApi):
         )
 
         try:
-            await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
+            if self.cfg.master_worker_enabled:
+                self._worker_pid = await self._wait_for_worker_takeover(
+                    proc,
+                    previous_workers=set(),
+                    failed_before=None,
+                    timeout_s=timeout_s,
+                )
+                self._old_worker_pids = []
+            else:
+                await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
         except Exception:
             # If startup fails, ensure the process is killed to avoid orphaned processes
-            if proc.returncode is None:
+            if self.cfg.master_worker_enabled:
+                await self._cleanup_failed_master_start(proc)
+            elif proc.returncode is None:
                 proc.kill()
                 await proc.wait()
             # The proc has exited; retire its log files so a failed start/reload
@@ -1146,14 +1252,190 @@ class HAProxyApi(ProxyApi):
 
         return proc
 
+    async def _cleanup_failed_master_start(
+        self, master: asyncio.subprocess.Process
+    ) -> None:
+        """Stop a master that failed to start, including any worker it forked.
+
+        The takeover can fail after the master has already started a worker, and
+        a SIGKILLed master cannot stop its children, which would keep holding
+        the listening and admin sockets. On a fresh start no other process uses
+        our config file, so every remaining match is left over from this spawn.
+        """
+        await self._stop_master_worker(master)
+        for pid in self._our_haproxy_pids():
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.warning(f"Killed HAProxy worker {pid} left by a failed start.")
+            except OSError:
+                pass
+
     async def _save_server_state(self) -> None:
         """Save the server state to the file."""
         server_state = await self._send_socket_command("show servers state")
         with open(self.cfg.server_state_file, "w") as f:
             f.write(server_state)
 
+    async def _get_master_proc_state(self) -> Optional[MasterProcState]:
+        """`show proc` from the master CLI, or None if it is unavailable (for
+        example while the master re-executes during a reload)."""
+        try:
+            # Unlike the admin socket, the master CLI keeps the connection open
+            # after answering; `quit` makes it close so the read ends.
+            output = await self._send_socket_command(
+                "show proc;quit", socket_path=self.cfg.master_socket_path
+            )
+        except Exception:
+            return None
+        state = parse_show_proc(output)
+        return state if state.master_pid is not None else None
+
+    async def _wait_for_worker_takeover(
+        self,
+        master: asyncio.subprocess.Process,
+        previous_workers: Set[int],
+        failed_before: Optional[int],
+        timeout_s: int = RAY_SERVE_HAPROXY_STARTUP_TIMEOUT_S,
+    ) -> int:
+        """Wait for a master-worker (re)load to hand the admin socket to a new
+        worker.
+
+        A worker only counts once the admin socket answers from it, mirroring
+        the pid-verified takeover of standalone reloads.
+
+        Args:
+            master: The HAProxy master process.
+            previous_workers: Worker pids that existed before the (re)load.
+            failed_before: The master's failed-reload count before a reload, or
+                None when starting.
+            timeout_s: How long to wait for the takeover.
+
+        Returns:
+            The pid of the worker now answering the admin socket.
+
+        Raises:
+            RuntimeError: If the master exits, reports a failed reload (it then
+                keeps the previous workers serving), or times out.
+        """
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < timeout_s:
+            if master.returncode is not None:
+                output = _tail_file(master._stderr_path) or _tail_file(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                    master._stdout_path  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                )
+                raise RuntimeError(
+                    "HAProxy master exited: "
+                    f"{output or f'exit code {master.returncode}'}"
+                )
+
+            state = await self._get_master_proc_state()
+            if state is not None:
+                if (
+                    failed_before is not None
+                    and state.failed_reloads is not None
+                    and state.failed_reloads > failed_before
+                ):
+                    raise RuntimeError(
+                        "HAProxy master failed to load the new configuration and "
+                        "kept the previous workers: "
+                        f"{_tail_file(master._stderr_path)}"  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+                    )
+                new_workers = [
+                    pid for pid in state.workers if pid not in previous_workers
+                ]
+                if new_workers:
+                    running_pid = await self._get_running_pid()
+                    if running_pid is not None and running_pid in new_workers:
+                        return running_pid
+
+            await asyncio.sleep(0.5)
+
+        raise RuntimeError(
+            f"No new HAProxy worker took over the admin socket within {timeout_s} "
+            f"seconds. stderr: {_tail_file(master._stderr_path)}"  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        )
+
+    async def _track_workers_after_failed_reload(
+        self, previous_workers: List[int]
+    ) -> None:
+        """Re-read the master's workers when a reload was not confirmed.
+
+        The master may have replaced the worker even though the takeover was not
+        verified (for example the admin socket answered too late). Every worker
+        it now reports as old, including a displaced previous worker, is tracked
+        so draining still waits for its in-flight requests. After a rejected
+        config the previous worker is still current and stays untracked.
+        """
+        state = await self._get_master_proc_state()
+        if state is None:
+            logger.warning(
+                "HAProxy master CLI unavailable after a failed reload; worker "
+                "tracking was not refreshed."
+            )
+            return
+        displaced = set(state.old_workers) | {
+            pid for pid in previous_workers if pid not in state.workers
+        }
+        self._old_worker_pids.extend(
+            pid for pid in sorted(displaced) if pid not in self._old_worker_pids
+        )
+        if state.workers:
+            self._worker_pid = state.workers[0]
+
+    async def _master_worker_reload(self) -> None:
+        """Reload by signaling the master, which re-reads the config, starts a
+        new worker, and soft-stops the current one."""
+        master = self._proc
+        assert master is not None
+        state = await self._get_master_proc_state()
+        if state is None:
+            raise RuntimeError(
+                "HAProxy master CLI is unavailable at "
+                f"{self.cfg.master_socket_path}; cannot reload."
+            )
+
+        # The new worker loads this through `load-server-state-from-file`.
+        if self.cfg.enable_hap_optimization:
+            await self._save_server_state()
+
+        previous_workers = set(state.workers) | set(state.old_workers)
+        os.kill(master.pid, signal.SIGUSR2)
+        try:
+            new_worker = await self._wait_for_worker_takeover(
+                master, previous_workers, failed_before=state.failed_reloads
+            )
+        except Exception:
+            await self._track_workers_after_failed_reload(state.workers)
+            raise
+
+        self._prune_old_procs()
+        self._old_worker_pids.extend(
+            pid
+            for pid in state.workers
+            if pid != new_worker and pid not in self._old_worker_pids
+        )
+        self._worker_pid = new_worker
+        # The master soft-stops old workers; re-signal as standalone reloads do
+        # in case a signal was lost.
+        self._soft_stop_old_procs()
+        logger.info(
+            f"Reloaded HAProxy master (pid={master.pid}); worker {new_worker} took "
+            f"over from {state.workers}."
+        )
+
     async def _graceful_reload(self) -> None:
-        """Perform a graceful reload of HAProxy by starting a new process with -sf."""
+        """Perform a graceful reload of HAProxy by starting a new process with -sf.
+
+        In master-worker mode the master performs the reload instead.
+        """
+        if self.cfg.master_worker_enabled:
+            try:
+                await self._master_worker_reload()
+            except Exception as e:
+                logger.error(f"HAProxy graceful reload failed: {e}")
+                raise
+            return
+
         try:
             old_proc = self._proc
             # _graceful_reload only runs with a live proc; None would already
@@ -1494,22 +1776,29 @@ class HAProxyApi(ProxyApi):
         server_stats = await self.get_all_stats()
         return HAProxyStats(backend_to_servers=server_stats)
 
-    async def _send_socket_command(self, command: str) -> str:
-        """Send a command to the HAProxy stats socket via Unix domain socket."""
+    async def _send_socket_command(
+        self, command: str, socket_path: Optional[str] = None
+    ) -> str:
+        """Send a command to an HAProxy CLI socket via Unix domain socket.
+
+        Defaults to the admin (stats) socket; pass `socket_path` for the master
+        CLI.
+        """
+        socket_path = socket_path or self.cfg.socket_path
         try:
-            if not os.path.exists(self.cfg.socket_path):
+            if not os.path.exists(socket_path):
                 raise RuntimeError(
-                    f"HAProxy socket file does not exist: {self.cfg.socket_path}."
+                    f"HAProxy socket file does not exist: {socket_path}."
                 )
 
             try:
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_unix_connection(self.cfg.socket_path),
+                    asyncio.open_unix_connection(socket_path),
                     timeout=5.0,
                 )
             except asyncio.TimeoutError:
                 raise RuntimeError(
-                    f"Timeout connecting to HAProxy socket: {self.cfg.socket_path}"
+                    f"Timeout connecting to HAProxy socket: {socket_path}"
                 )
 
             try:
@@ -1577,6 +1866,10 @@ class HAProxyApi(ProxyApi):
             return
 
         try:
+            if self.cfg.master_worker_enabled:
+                await self._stop_master_worker(proc)
+                return
+
             # Kill the current process
             if proc.returncode is None:
                 proc.kill()
@@ -1599,6 +1892,41 @@ class HAProxyApi(ProxyApi):
         except RuntimeError as e:
             logger.error(f"Error during HAProxy shutdown: {e}")
 
+    async def _stop_master_worker(self, master: asyncio.subprocess.Process) -> None:
+        """Stop the master and every worker it started.
+
+        SIGTERM makes the master hard-stop its workers before exiting. Workers
+        are the master's children, so any that outlive it are killed by pid.
+        """
+        worker_pids = {
+            pid for pid in [self._worker_pid, *self._old_worker_pids] if pid is not None
+        }
+        if master.returncode is None:
+            master.terminate()
+            try:
+                await asyncio.wait_for(master.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"HAProxy master (pid={master.pid}) did not exit after SIGTERM; "
+                    "killing it."
+                )
+                master.kill()
+                await master.wait()
+
+        for pid in worker_pids:
+            if not self._is_our_haproxy(pid):
+                continue
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.info(f"Killed HAProxy worker (PID: {pid}) left by the master.")
+            except OSError:
+                pass
+
+        self._proc = None
+        self._worker_pid = None
+        self._old_worker_pids = []
+        logger.info("Stopped HAProxy master and workers.")
+
     async def reload(self) -> None:
         try:
             self._generate_config_file_internal()
@@ -1609,7 +1937,7 @@ class HAProxyApi(ProxyApi):
     def has_alive_old_procs(self) -> bool:
         """True if any soft-stopping HAProxy workers from prior reloads remain."""
         self._prune_old_procs()
-        return len(self._old_procs) > 0
+        return len(self._old_procs) > 0 or len(self._old_worker_pids) > 0
 
     async def disable(self) -> None:
         """Force haproxy health checks to fail."""
@@ -1695,6 +2023,10 @@ class HAProxyApi(ProxyApi):
         return None
 
     async def is_running(self) -> bool:
+        if self.cfg.master_worker_enabled and not self._is_running():
+            # Workers may outlive a dead master, but without it no reload can
+            # happen, so report unhealthy and let the proxy be replaced.
+            return False
         try:
             await self._send_socket_command("show info")
             return True
