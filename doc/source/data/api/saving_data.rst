@@ -152,6 +152,15 @@ Parquet
 
    Dataset.write_parquet
 
+Qdrant
+^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Dataset.write_qdrant
+
 SQL Databases
 ^^^^^^^^^^^^^
 

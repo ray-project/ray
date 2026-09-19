@@ -705,6 +705,20 @@ py_test(
 )
 
 py_test(
+    name = "test_qdrant_datasink",
+    size = "small",
+    srcs = ["tests/datasource/test_qdrant_datasink.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_turbopuffer_datasink",
     size = "small",
     srcs = ["tests/datasource/test_turbopuffer_datasink.py"],
