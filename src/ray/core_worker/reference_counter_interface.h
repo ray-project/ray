@@ -474,6 +474,16 @@ class ReferenceCounterInterface {
   /// \return Whether we have a reference to the object ID.
   virtual bool HasReference(const ObjectID &object_id) const = 0;
 
+  /// Whether the object has no in-scope references left, in which case its value
+  /// may already have been deleted. A Reference can outlive that point: with
+  /// lineage pinning it is kept until no task that may be retried depends on the
+  /// object, so HasReference and GetOwner keep returning true.
+  ///
+  /// \param[in] object_id The object ID to check for.
+  /// \return Whether the object is tracked and out of scope. False if it is
+  /// still in scope, or not tracked at all.
+  virtual bool IsObjectOutOfScope(const ObjectID &object_id) const = 0;
+
   /// Write the current reference table to the given proto.
   ///
   /// \param[out] stats The proto to write references to.
