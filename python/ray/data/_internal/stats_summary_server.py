@@ -16,7 +16,7 @@ REPORT_STATS_SUMMARY_TIMEOUT_S = 30
 
 
 @ray.remote(num_cpus=0)
-class _StatsSummaryServer:
+class _StatsSummaryActor:
     """Retains the stats summaries of finished executions."""
 
     def __init__(self):
@@ -41,7 +41,7 @@ def _get_or_create_stats_summary_server() -> ray.actor.ActorHandle:
         ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
     }
     # pyrefly: ignore[missing-attribute]
-    return _StatsSummaryServer.options(
+    return _StatsSummaryActor.options(
         name=STATS_SUMMARY_SERVER_NAME,
         namespace=STATS_SUMMARY_SERVER_NAMESPACE,
         get_if_exists=True,
