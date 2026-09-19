@@ -11,6 +11,7 @@ from packaging.version import Version
 import ray
 from ray._common.network_utils import build_address
 from ray._private import ray_constants
+from ray._private.accelerators.tpu import DEFAULT_MEGASCALE_PORT
 from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.exceptions import GetTimeoutError
 from ray.train._internal.base_worker_group import BaseWorkerGroup
@@ -23,7 +24,7 @@ from ray.train.constants import (
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
-from ray.util.tpu import DEFAULT_MEGASCALE_PORT, get_tpu_coordinator_env_vars
+from ray.util.tpu import get_tpu_coordinator_env_vars
 
 logger = logging.getLogger(__name__)
 
