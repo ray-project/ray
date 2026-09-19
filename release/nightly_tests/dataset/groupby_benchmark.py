@@ -53,7 +53,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark()
+    # Shuffles legitimately exceed the object-store bound.
+    benchmark = Benchmark(max_object_store_utilization=None)
     consume_fn = get_consume_fn(args)
 
     def benchmark_fn():

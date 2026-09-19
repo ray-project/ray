@@ -224,7 +224,8 @@ class FakeInfer:
 
 
 def main(args: argparse.Namespace, profiling: Profiling):
-    benchmark = Benchmark()
+    # Both release test cases allow node death during this test.
+    benchmark = Benchmark(fail_on_dead_nodes=False)
 
     if args.chaos:
         start_chaos()
