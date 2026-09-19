@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import os
-import re
 import shutil
 import signal
 import string
@@ -83,6 +82,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_SESSION_ID,
 )
+from ray.serve._private.haproxy_server_slots import get_safe_name
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
     HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE,
@@ -2212,9 +2212,7 @@ class HAProxyManager(ProxyActorInterface):
     @staticmethod
     def get_safe_name(name: str) -> str:
         """Get a safe label name for the haproxy config."""
-        name = name.replace("#", "-").replace("/", ".")
-        # replace all remaining non-alphanumeric and non-{".", "_", "-"} with "_"
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+        return get_safe_name(name)
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         """Return the set of replica IDs for targets matching the given route.
