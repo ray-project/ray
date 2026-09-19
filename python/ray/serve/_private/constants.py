@@ -321,6 +321,16 @@ PROXY_DRAIN_CHECK_PERIOD_S = 5
 #: being marked unhealthy.
 REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
+#: Consecutive failed health checks allowed before marking an actor unhealthy
+#: when the latest failure is ``ActorUnavailableError``. Applies to replicas and
+#: deployment-scoped actors. Application failures share this counter; a successful
+#: check resets it. Defaults to 3 to tolerate transient unavailability. Set it to
+#: 1 for immediate replacement. Higher values can delay replacement when actor
+#: death information is unavailable.
+REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD = get_env_int_positive(
+    "RAY_SERVE_REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD", 3
+)
+
 # Watchdog that detects a wedged user code event loop when user code runs in a
 # separate thread (RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=1) and no user-defined
 # check_health is present. The main loop periodically schedules asyncio.sleep(0) on
