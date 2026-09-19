@@ -962,28 +962,33 @@ def test_streaming_split_materialize_reports_to_executor(
     coord = shard._coord_actor
 
     # The coordinator clears the client's bytes when the epoch ends, so record
-    # the peak inside the actor as each `get` reports them.
-    def track_peak(coordinator):
-        coordinator.peak_client_bytes = 0
+    # inside the actor what the client reported at each `get`, next to how many
+    # rows the coordinator had handed it by then.
+    def track(coordinator):
+        coordinator.reports = []
         report = coordinator._report_prefetched_bytes_to_executor
 
         def tracked():
             report()
-            coordinator.peak_client_bytes = max(
-                coordinator.peak_client_bytes,
-                sum(coordinator._client_prefetched_bytes.values()),
+            coordinator.reports.append(
+                (
+                    sum(coordinator._client_prefetched_bytes.values()),
+                    coordinator._num_rows_dispatched[0],
+                )
             )
 
         coordinator._report_prefetched_bytes_to_executor = tracked
 
-    ray.get(coord.__ray_call__.remote(track_peak))
+    ray.get(coord.__ray_call__.remote(track))
 
     materialized = shard.materialize()
 
-    # Prefetch alone is one bundle in flight; only the materialized total
-    # approaches the whole shard.
-    peak = ray.get(coord.__ray_call__.remote(lambda c: c.peak_client_bytes))
-    assert peak > materialized.size_bytes() / 2
+    reports = ray.get(coord.__ray_call__.remote(lambda c: c.reports))
+    bytes_per_row = materialized.size_bytes() / materialized.count()
+    # Every figure the client sent must equal the bytes it had been handed by
+    # then. The zero entries are the opening `get` and the epoch-end reset.
+    checked = [(sent, rows * bytes_per_row) for sent, rows in reports if sent]
+    assert checked and all(sent == handed for sent, handed in checked), checked
     assert shard._iter_stats.iter_prefetched_bytes == 0
 
 
