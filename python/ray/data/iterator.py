@@ -117,6 +117,22 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _make_consumer_held_bytes_callback(
+        self, executor: Optional["StreamingExecutor"]
+    ) -> Optional[Callable[[int], None]]:
+        """Build the callback reporting object store bytes the consumer holds.
+
+        Overridden by ``StreamSplitDataIterator``, whose executor lives on a
+        remote actor and is reached over the ``SplitCoordinator`` RPC instead.
+        """
+        if executor is None:
+            return None
+
+        def callback(num_bytes: int) -> None:
+            executor.set_consumer_held_bytes(num_bytes)
+
+        return callback
+
     def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
         """Hook fired from the consumer's thread when iteration ends.
 
@@ -266,6 +282,9 @@ class DataIterator(abc.ABC):
             prefetch_bytes_callback = (
                 make_prefetch_callback(executor) if executor is not None else None
             )
+            consumer_held_bytes_callback = self._make_consumer_held_bytes_callback(
+                executor
+            )
             if prefetch_bytes_callback is not None:
                 # Register the external consumer with the executor's resource manager.
                 prefetch_bytes_callback(0)
@@ -283,6 +302,7 @@ class DataIterator(abc.ABC):
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
                 prefetch_bytes_callback=prefetch_bytes_callback,
+                consumer_held_bytes_callback=consumer_held_bytes_callback,
                 preserve_order=self.get_context().execution_options.preserve_order,
             )
 
