@@ -7,10 +7,14 @@ import os
 import threading
 import time
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Union
 import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.data import DataContext
+from ray.data._internal.execution.streaming_executor_state import (
+    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+)
 from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
@@ -268,6 +272,8 @@ class Benchmark:
     Args:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
+        max_sched_loop_duration_s: If set, fail if any dataset that executed during
+            the run had a scheduling loop iteration longer than this limit.
 
     Here's an example of typical usage:
 
@@ -294,12 +300,25 @@ class Benchmark:
         {"short": {"time": 1.0, "sleep_s": 1}, "long": {"time": 10.0 "sleep_s": 10}}
     """
 
-    def __init__(self, *, max_head_node_memory_bytes: Optional[int] = None):
+    def __init__(
+        self,
+        *,
+        max_head_node_memory_bytes: int | None = None,
+        max_sched_loop_duration_s: float
+        | None = 2 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+    ):
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
+        if max_sched_loop_duration_s is not None and max_sched_loop_duration_s <= 0:
+            raise ValueError("max_sched_loop_duration_s must be greater than 0.")
 
         self.result = {}
         self._max_head_node_memory_bytes = max_head_node_memory_bytes
+        self._max_sched_loop_duration_s = max_sched_loop_duration_s
+
+        # Stats summaries are required for the scheduling loop duration assertion
+        # in `run_fn`.
+        DataContext.get_current().enable_stats_summary_collection = True
 
     def run_fn(
         self,
@@ -386,6 +405,25 @@ class Benchmark:
                 f"configured limit "
                 f"({_bytes_to_gb(max_head_node_memory_bytes)} GiB)."
             )
+
+        if self._max_sched_loop_duration_s is not None:
+            # This includes executions that finished before `run_fn` was called.
+            # The code assumes this isn't an issue to simplify the implementation.
+            stats_summaries = ray.data.list_stats_summaries()
+            datasets_exceeding_limit = [
+                f"{summary.dataset_uuid} "
+                f"({summary.streaming_exec_schedule_max_s} seconds)"
+                for summary in stats_summaries
+                if summary.streaming_exec_schedule_max_s
+                > self._max_sched_loop_duration_s
+            ]
+            if datasets_exceeding_limit:
+                raise AssertionError(
+                    f"Benchmark case {name!r} had datasets whose max scheduling loop "
+                    f"duration exceeded the configured limit of "
+                    f"{self._max_sched_loop_duration_s} seconds: "
+                    f"{', '.join(datasets_exceeding_limit)}."
+                )
 
     def write_result(self):
         """Write all results to the appropriate JSON file.

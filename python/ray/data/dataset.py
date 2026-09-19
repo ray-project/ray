@@ -3610,6 +3610,8 @@ class Dataset:
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys.
 
+        Joins require the ``polars`` package.
+
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
@@ -4914,7 +4916,7 @@ class Dataset:
                 look like. The filename is expected to be templatized with `{i}`
                 to ensure unique filenames when writing multiple files. If it's not
                 templatized, Ray Data will add `{i}` to the filename to ensure
-                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_dataset.html>`_.
+                compatibility with the pyarrow `write_to_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_to_dataset.html>`_.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
