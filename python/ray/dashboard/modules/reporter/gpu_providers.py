@@ -344,18 +344,12 @@ class NvidiaGpuProvider(GpuProvider):
             memory_info = None
             try:
                 memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
-            except self._pynvml.NVMLError as e:
-                # See the note in `_get_gpu_info`: NVML_ERROR_NOT_SUPPORTED is
-                # expected, anything else is a fault.
-                if getattr(e, "value", None) == self._pynvml.NVML_ERROR_NOT_SUPPORTED:
-                    if log_once("mig_memory_info_unsupported"):
-                        logger.info(
-                            "MIG device does not report a separate memory pool via "
-                            f"`nvmlDeviceGetMemoryInfo`: {e}"
-                        )
-                elif log_once("mig_memory_info_error"):
-                    logger.warning(
-                        "Failed to retrieve MIG device memory info via "
+            except self._pynvml.NVMLError_NotSupported as e:
+                # See the note in `_get_gpu_info`: only an unsupported query is
+                # treated as "no separate memory pool"; other errors propagate.
+                if log_once("mig_memory_info_unsupported"):
+                    logger.info(
+                        "MIG device does not report a separate memory pool via "
                         f"`nvmlDeviceGetMemoryInfo`: {e}"
                     )
 
@@ -439,18 +433,14 @@ class NvidiaGpuProvider(GpuProvider):
             memory_info = None
             try:
                 memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
-            except self._pynvml.NVMLError as e:
-                # NVML_ERROR_NOT_SUPPORTED is expected on devices with no separate
-                # GPU memory pool; any other code is a fault worth surfacing.
-                if getattr(e, "value", None) == self._pynvml.NVML_ERROR_NOT_SUPPORTED:
-                    if log_once("gpu_memory_info_unsupported"):
-                        logger.info(
-                            "GPU does not report a separate memory pool via "
-                            f"`nvmlDeviceGetMemoryInfo`: {e}"
-                        )
-                elif log_once("gpu_memory_info_error"):
-                    logger.warning(
-                        "Failed to retrieve GPU memory info via "
+            except self._pynvml.NVMLError_NotSupported as e:
+                # Only an explicitly unsupported query means "this device has no
+                # separate memory pool". Any other NVML error is a real fault and
+                # propagates to the handler below, which drops the device for this
+                # cycle rather than reporting it in a degraded state.
+                if log_once("gpu_memory_info_unsupported"):
+                    logger.info(
+                        "GPU does not report a separate memory pool via "
                         f"`nvmlDeviceGetMemoryInfo`: {e}"
                     )
 
