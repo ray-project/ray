@@ -453,7 +453,7 @@ class ListFiles(LogicalOperator, SourceOperator):
 
     paths: List[str]
     file_indexer: "FileIndexer"
-    filesystem: "FileSystem"
+    filesystem: Optional["FileSystem"]
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
