@@ -933,8 +933,20 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def refresh_actor_state(self):
         self._alive_node_to_actor_heap.clear()
+        dead_actors = []
         for actor in self._running_actors:
-            self._update_running_actor_state(actor)
+            if self._update_running_actor_state(actor):
+                dead_actors.append(actor)
+        for actor in dead_actors:
+            # Release dead actors so they stop counting towards the pool's
+            # current size; otherwise a fixed-size pool would never replace
+            # them and the pipeline could silently stall (see #62746). The
+            # autoscaler will scale the pool back up to its min size.
+            logger.warning(
+                f"{self.map_worker_cls_name} actor {actor} is dead; releasing "
+                "it from the actor pool so it can be replaced."
+            )
+            self._release_running_actor(actor)
 
     @override
     def on_task_submitted(self, actor: ActorHandle):
@@ -1068,7 +1080,12 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def on_task_completed(self, actor: ActorHandle):
         """Called when a task completes. Returns the provided actor to the pool."""
-        state = self._running_actors[actor]
+        state = self._running_actors.get(actor)
+        if state is None:
+            # The actor was already released from the pool (e.g. it died with
+            # tasks in flight and was removed by `refresh_actor_state`);
+            # `_release_running_actor` already reconciled the pool's counters.
+            return
         assert state.num_tasks_in_flight > 0
         state.num_tasks_in_flight -= 1
         self._total_num_tasks_in_flight -= 1
@@ -1127,12 +1144,15 @@ class _ActorPool(AutoscalingActorPool):
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref, resource_usage
 
-    def _update_running_actor_state(self, actor: ActorHandle):
+    def _update_running_actor_state(self, actor: ActorHandle) -> bool:
         """Update running actor state. This is called for every actor
         in `refresh_actor_state`.
 
         Args:
             actor: The running actor that needs state update.
+
+        Returns:
+            True if the actor is dead (and should be released from the pool).
         """
         actor_state = actor._get_local_state()
 
@@ -1166,6 +1186,10 @@ class _ActorPool(AutoscalingActorPool):
                 running_actor_state.is_restarting = False
 
         self._update_rank(actor=actor, state=running_actor_state, died=died)
+
+        # Only report definitively dead actors for release; a `None` state means
+        # the state is unknown (possibly transiently), so keep those in the pool.
+        return actor_state == _ACTOR_STATE_DEAD
 
     def _update_rank(self, actor: ActorHandle, state: _ActorState, died: bool):
         """Update the scheduling rank for an actor after a state refresh.
