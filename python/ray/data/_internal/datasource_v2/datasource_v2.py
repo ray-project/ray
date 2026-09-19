@@ -71,11 +71,16 @@ class DatasourceCategory(Enum):
 class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
-    A datasource answers two questions for a read: where the data is
-    (``paths``, ``filesystem``, ``_get_file_indexer``) and how to read it
-    (``infer_schema``, ``create_scanner``). Everything the read pipeline
-    needs is declared on this class, so implementing the abstract members is
-    enough for a new source to work end to end.
+    The entry point for reading data from a source. It provides:
+
+    1. File listing, via ``_get_file_indexer()``
+    2. Schema inference
+    3. Size estimation and read-task grouping
+    4. Scanner creation
+
+    Implementing the abstract members is enough for a new source to work end
+    to end. ``get_size_estimator()``, ``get_file_partitioner()`` and
+    ``resolve_partitioning()`` have defaults and are optional to override.
 
     Example::
 
