@@ -84,8 +84,7 @@ class BuiltApplication:
 
         Deployments marked `_direct_http` are exempt. They own an HTTP port so
         HAProxy can reach their replicas directly, but they do not own the app's
-        route prefix and are not its ingress -- a `serve.ingress`-wrapped model
-        server sitting behind a control-plane ingress is the intended shape.
+        route prefix and are not its ingress.
         """
         num_ingress_deployments = sum(
             inspect.isclass(deployment.func_or_class)
