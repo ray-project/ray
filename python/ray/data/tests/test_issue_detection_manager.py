@@ -7,6 +7,9 @@ import pytest
 
 import ray
 from ray._private import ray_constants
+from ray.data._internal.execution.callbacks.insert_issue_detectors import (
+    IssueDetectionExecutionCallback,
+)
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
 )
@@ -24,6 +27,8 @@ from ray.data._internal.issue_detection.issue_detector_manager import (
 from ray.data._internal.operator_event_exporter import (
     format_export_issue_event_name,
 )
+from ray.data._internal.planner import create_planner
+from ray.data._internal.usage.execution_callback import UsageCallback
 from ray.data.context import DataContext
 
 
@@ -111,6 +116,76 @@ def test_report_issues():
         ]
     )
     assert detector.get_detected_issues() == expected_issues
+
+
+def test_invoke_detectors_on_execution_end():
+    ctx = DataContext.get_current()
+    executor = StreamingExecutor(ctx)
+    executor._topology = {}
+    detector = IssueDetectorManager(executor)
+    issue_detector = MagicMock()
+    issue_detector.detection_time_interval_s.return_value = 30
+    issue_detector.detect.return_value = []
+    issue_detector.detect_on_execution_end.return_value = []
+    detector._issue_detectors = [issue_detector]
+    detector._last_detection_times = {
+        issue_detector: float("inf"),
+    }
+
+    detector.invoke_detectors()
+    issue_detector.detect.assert_not_called()
+
+    detector.invoke_detectors_on_execution_end()
+    issue_detector.detect_on_execution_end.assert_called_once_with()
+
+
+def test_execution_end_detection_skips_disabled_detectors():
+    ctx = DataContext.get_current()
+    executor = StreamingExecutor(ctx)
+    executor._topology = {}
+    detector = IssueDetectorManager(executor)
+    issue_detector = MagicMock()
+    issue_detector.detection_time_interval_s.return_value = -1
+    detector._issue_detectors = [issue_detector]
+
+    detector.invoke_detectors_on_execution_end()
+
+    issue_detector.detect_on_execution_end.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "callback_name, callback_args",
+    [
+        ("after_execution_succeeds", ()),
+        ("after_execution_fails", (RuntimeError(),)),
+    ],
+)
+def test_issue_detection_callback_invokes_execution_end_detection(
+    callback_name, callback_args
+):
+    callback = IssueDetectionExecutionCallback()
+    executor = MagicMock()
+
+    getattr(callback, callback_name)(executor, *callback_args)
+
+    (
+        executor._issue_detector_manager.invoke_detectors_on_execution_end.assert_called_once_with()
+    )
+
+
+def test_issue_detection_callback_precedes_usage_callback():
+    _, callbacks = create_planner().plan(ray.data.range(1)._logical_plan)
+
+    issue_detection_index = next(
+        i
+        for i, callback in enumerate(callbacks)
+        if isinstance(callback, IssueDetectionExecutionCallback)
+    )
+    usage_index = next(
+        i for i, callback in enumerate(callbacks) if isinstance(callback, UsageCallback)
+    )
+
+    assert issue_detection_index < usage_index
 
 
 if __name__ == "__main__":
