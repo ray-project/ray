@@ -1971,6 +1971,27 @@ TEST_F(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback) {
   ASSERT_EQ(result.calls, 1);
 }
 
+TEST_F(CoreWorkerTest, WaitAsyncPostedCompletionAfterWorkerDestroyed) {
+  // GetAsync posts to io_service_, which outlives CoreWorker in this fixture.
+  // The completion holds the wait table, not ``this``; after destroy it misses.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+
+  core_worker_.reset();
+
+  while (io_service_.poll_one() > 0) {
+  }
+  ASSERT_EQ(result.calls, 0);
+}
+
 TEST_F(CoreWorkerTest, FreeLocalObjectsCoalescesWhileInFlight) {
   const NodeID node_id = core_worker_->GetCurrentNodeId();
 

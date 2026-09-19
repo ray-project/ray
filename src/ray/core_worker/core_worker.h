@@ -63,11 +63,12 @@
 namespace ray::core {
 
 /**
- * @brief Per-request state for one CoreWorker::WaitAsync.
+ * @brief In-flight WaitAsync table.
  *
- * Defined in core_worker.cc; opaque to callers.
+ * Defined in core_worker.cc. Posted GetAsync callbacks hold a shared_ptr to
+ * this so they can outlive ``CoreWorker``.
  */
-struct WaitAsyncState;
+struct WaitAsyncRegistry;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -1968,8 +1969,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /**
    * Complete a ``WaitAsync`` request and invoke its callback at most once.
    *
-   * Looks the handle up in ``wait_async_requests_``. Unregisters it, cancels
-   * the memory-store wait, then runs the callback. No-op if the handle is
+   * Looks the handle up in ``wait_async_``. Unregisters it, cancels the
+   * memory-store wait, then runs the callback. No-op if the handle is
    * unknown or already completed.
    *
    * \param[in] handle Value returned by ``WaitAsync``.
@@ -2195,13 +2196,9 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
-  // In-flight WaitAsync requests, keyed by handle.
-  absl::Mutex wait_async_mu_;
-  uint64_t wait_async_next_handle_ ABSL_GUARDED_BY(wait_async_mu_) = 0;
-  absl::flat_hash_map<uint64_t, std::unique_ptr<WaitAsyncState>> wait_async_requests_
-      ABSL_GUARDED_BY(wait_async_mu_);
-  // Set by CancelAllWaitAsync; no new waits are accepted afterwards.
-  bool wait_async_shutdown_ ABSL_GUARDED_BY(wait_async_mu_) = false;
+  // In-flight WaitAsync table. Shared so a posted GetAsync can look up a
+  // handle after this worker is destroyed (the lookup misses and returns).
+  std::shared_ptr<WaitAsyncRegistry> wait_async_;
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
