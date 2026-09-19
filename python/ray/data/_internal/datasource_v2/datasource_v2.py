@@ -31,6 +31,7 @@ import pyarrow as pa
 
 from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -77,6 +78,14 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     2. Schema inference
     3. Size estimation and read-task grouping
     4. Scanner creation
+
+    Do not extend this class directly. Every datasource extends one of its two
+    subclasses, and the read path rejects anything else:
+
+    - :class:`FileDataSourceV2` when the framework finds the files by walking a
+      filesystem (Parquet, CSV, JSON, images).
+    - :class:`TableDataSourceV2` when the source finds its own data through a
+      catalog, table metadata or a database (Iceberg, Delta, Hudi, Lance, SQL).
 
     Implementing the abstract members is enough for a new source to work end
     to end. ``get_size_estimator()``, ``get_file_partitioner()`` and
@@ -147,34 +156,6 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         and the read is silently empty.
         """
         ...
-
-    @property
-    @abstractmethod
-    def filesystem(self) -> Optional["FileSystem"]:
-        """PyArrow filesystem the indexer and scanner read through, or ``None``
-        when they do their own IO.
-
-        The framework only forwards it and never dereferences it, so whether
-        ``None`` is acceptable is up to the components this datasource returns.
-        The stock indexers require one -- resolve it in ``__init__``, see
-        ``_resolve_paths_and_filesystem``. A source read through its own library
-        (PyIceberg, Lance, hudi-rs) returns ``None``.
-        """
-        ...
-
-    @property
-    def file_extensions(self) -> Optional[List[str]]:
-        """File extensions to keep while listing; ``None`` keeps every file."""
-        return None
-
-    @property
-    def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
-        """File-level shuffle the user asked for; ``None`` means no shuffle.
-
-        ``"files"`` shuffles with a seed drawn per execution; a
-        :class:`FileShuffleConfig` pins the seed.
-        """
-        return None
 
     @abstractmethod
     def _get_file_indexer(self) -> FileIndexer:
@@ -257,7 +238,8 @@ class DataSourceV2(ABC, Generic[InputSplit]):
 
         Args:
             schema: Schema for the data to read.
-            filesystem: Optional filesystem for file-based sources.
+            filesystem: :attr:`FileDataSourceV2.filesystem`, or ``None`` for
+                a :class:`TableDataSourceV2`.
             **options: Additional datasource-specific options.
 
         Returns:
@@ -278,3 +260,59 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         path to read keys from.
         """
         return None
+
+
+@DeveloperAPI
+class FileDataSourceV2(DataSourceV2[FileManifest]):
+    """Base class for sources whose files the framework finds itself.
+
+    ``ListFiles`` walks :attr:`paths` through :attr:`filesystem`, keeps the
+    files matching :attr:`file_extensions` and applies :attr:`shuffle` to the
+    listing. Parquet, CSV and every other plain file format belong here; a
+    source that finds its own data extends :class:`TableDataSourceV2` instead.
+    """
+
+    @property
+    @abstractmethod
+    def filesystem(self) -> "FileSystem":
+        """PyArrow filesystem the indexer and scanner list and read through.
+
+        Resolve it in ``__init__`` together with :attr:`paths`, see
+        ``_resolve_paths_and_filesystem``.
+        """
+        ...
+
+    @property
+    def file_extensions(self) -> Optional[List[str]]:
+        """File extensions to keep while listing; ``None`` keeps every file."""
+        return None
+
+    @property
+    def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
+        """File-level shuffle the user asked for; ``None`` means no shuffle.
+
+        ``"files"`` shuffles with a seed drawn per execution; a
+        :class:`FileShuffleConfig` pins the seed.
+        """
+        return None
+
+
+@DeveloperAPI
+class TableDataSourceV2(DataSourceV2[InputSplit]):
+    """Base class for sources that find their own data.
+
+    The indexer from :meth:`_get_file_indexer` asks a catalog, a table format's
+    metadata or a database what to read, so the framework has no filesystem to
+    walk and passes ``None`` wherever a :class:`FileDataSourceV2` supplies one.
+    Iceberg, Delta, Hudi, Lance and SQL sources belong here.
+
+    :attr:`paths` stays abstract and is usually one label such as
+    ``"iceberg://db.table"``, handed to the indexer unread.
+    """
+
+    @property
+    def schema_needs_file_sample(self) -> bool:
+        """``False``: the schema comes from the same metadata as the listing,
+        not from opening a data file. Override if a format needs the sample.
+        """
+        return False
