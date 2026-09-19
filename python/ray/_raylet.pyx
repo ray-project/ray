@@ -3696,6 +3696,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
             size_t total_bytes = serialized_object.total_bytes
+            shared_ptr[CRayObject] inlined_object
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
@@ -3707,7 +3708,8 @@ cdef class CoreWorker:
                     &c_object_id,
                     &data,
                     inline_small_object,
-                    c_tensor_transport))
+                    c_tensor_transport,
+                    c_tensor_transport.has_value()))
 
         if (data.get() == NULL):
             # Object already exists
@@ -3721,10 +3723,18 @@ cdef class CoreWorker:
                 Buffer.make(data))
 
         with nogil:
+            if c_tensor_transport.has_value():
+                # Tensor data travels out of band. Keep the Python payload in
+                # worker memory even when it exceeds the ordinary inline limit.
+                inlined_object = make_shared[CRayObject](
+                    data, metadata,
+                    CCoreWorkerProcess.GetCoreWorker().GetObjectRefs(contained_object_ids),
+                    False, c_tensor_transport)
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().SealOwned(
                             c_object_id,
-                            pin_object))
+                            pin_object,
+                            inlined_object))
 
         return c_object_id.Binary()
 
@@ -4680,7 +4690,8 @@ cdef class CoreWorker:
                            const c_vector[CObjectID] &contained_id,
                            const CAddress &caller_address,
                            int64_t *task_output_inlined_bytes,
-                           shared_ptr[CRayObject] *return_ptr):
+                           shared_ptr[CRayObject] *return_ptr,
+                           c_bool force_inline):
         """Store a task return value in plasma or as an inlined object."""
         with nogil:
             # For objects that can't be inlined, return_ptr will only be set if
@@ -4688,7 +4699,7 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker().AllocateReturnObject(
                     return_id, data_size, metadata, contained_id, caller_address,
-                    task_output_inlined_bytes, return_ptr))
+                    task_output_inlined_bytes, return_ptr, force_inline))
 
         if return_ptr.get() != NULL:
             if return_ptr.get().HasData():
@@ -4843,7 +4854,8 @@ cdef class CoreWorker:
                     contained_id,
                     caller_address,
                     &task_output_inlined_bytes,
-                    return_ptr):
+                    return_ptr,
+                    c_tensor_transport.has_value()):
                 if (attempt > max_attempts):
                     raise RaySystemError(
                         "Failed to store task output with object id {} after {} attempts.".format(

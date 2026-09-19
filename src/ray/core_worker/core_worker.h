@@ -616,6 +616,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \param[in] inline_small_object Whether to inline create this object if it's
   /// small.
   /// \param[in] tensor_transport The tensor transport to use for the object.
+  /// \param[in] force_inline Allocate in worker memory regardless of size. Mutable
+  /// objects cannot be inlined. Pass the completed object to SealOwned().
   /// \return Status.
   Status CreateOwnedAndIncrementLocalRef(
       bool is_experimental_mutable_object,
@@ -625,7 +627,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       ObjectID *object_id,
       std::shared_ptr<Buffer> *data,
       bool inline_small_object = true,
-      const std::optional<std::string> &tensor_transport = std::nullopt);
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      bool force_inline = false);
 
   /// Create and return a buffer in the object store that can be directly written
   /// into, for an object ID that already exists. After writing to the buffer, the
@@ -655,8 +658,12 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \param[in] object_id Object ID corresponding to the object.
   /// \param[in] pin_object Whether or not to pin the object at the local raylet.
+  /// \param[in] inlined_object Completed object allocated with force_inline, or
+  /// nullptr for an object allocated in plasma.
   /// \return Status.
-  Status SealOwned(const ObjectID &object_id, bool pin_object);
+  Status SealOwned(const ObjectID &object_id,
+                   bool pin_object,
+                   const std::shared_ptr<RayObject> &inlined_object = nullptr);
 
   /// Finalize placing an object into the object store. This should be called after
   /// a corresponding `CreateExisting()` call and then writing into the returned buffer.
@@ -1225,6 +1232,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// objects of a task. It is used to decide if the current object should be inlined. If
   /// the current object is inlined, the task_output_inlined_bytes will be updated.
   /// \param[out] return_object RayObject containing buffers to write results into.
+  /// \param[in] force_inline Bypass the per-object and per-task inline size limits.
   /// \return Status.
   Status AllocateReturnObject(const ObjectID &object_id,
                               const size_t &data_size,
@@ -1232,7 +1240,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                               const std::vector<ObjectID> &contained_object_id,
                               const rpc::Address &owner_address,
                               int64_t *task_output_inlined_bytes,
-                              std::shared_ptr<RayObject> *return_object);
+                              std::shared_ptr<RayObject> *return_object,
+                              bool force_inline = false);
 
   /// Seal a return object for an executing task. The caller should already have
   /// written into the data buffer.
