@@ -209,6 +209,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   std::vector<ObjectID> FlushObjectsToRecover() override;
 
+  void MarkObjectForRecovery(const ObjectID &object_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool HasReference(const ObjectID &object_id) const override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void AddObjectRefStats(
