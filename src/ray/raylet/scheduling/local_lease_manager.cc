@@ -26,6 +26,7 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/placement_group_util.h"
+#include "ray/raylet/worker_resource_limits.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -392,6 +393,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         // task might be hanging.
         worker_pool_.PopWorker(
             spec,
+            BuildWorkerResourceLimits(spec.SerializedRuntimeEnv(),
+                                      allocated_instances->ToResourceSet()),
             [this, lease_id, scheduling_class, work, is_detached_actor, owner_address](
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,

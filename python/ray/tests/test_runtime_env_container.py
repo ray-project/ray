@@ -66,6 +66,19 @@ def test_ray_env_vars(podman_docker_cluster, use_image_uri_api):
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+def test_worker_resource_limits(podman_docker_cluster):
+    """Verify cgroup v2 CPU/memory limits and profile-aware worker reuse."""
+    container_id = podman_docker_cluster
+    cmd = [
+        "python",
+        "tests/test_worker_resource_limits.py",
+        "--image",
+        NESTED_IMAGE_NAME,
+    ]
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 def test_container_with_env_vars(podman_docker_cluster):
     """Test blah blah."""
 

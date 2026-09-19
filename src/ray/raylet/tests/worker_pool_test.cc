@@ -150,6 +150,16 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     }
   };
 
+  void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const rpc::WorkerResourceLimits &worker_resource_limits,
+                             GetOrCreateRuntimeEnvCallback callback) override {
+    last_worker_resource_limits = worker_resource_limits;
+    GetOrCreateRuntimeEnv(
+        job_id, serialized_runtime_env, runtime_env_config, std::move(callback));
+  }
+
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                   DeleteRuntimeEnvIfPossibleCallback callback) override {
     auto it = runtime_env_reference.find(serialized_runtime_env);
@@ -158,6 +168,8 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     RAY_CHECK(runtime_env_reference[serialized_runtime_env] >= 0);
     callback(true);
   };
+
+  rpc::WorkerResourceLimits last_worker_resource_limits;
 };
 
 class WorkerPoolMock : public WorkerPool {
@@ -428,6 +440,26 @@ class WorkerPoolMock : public WorkerPool {
     return popped_worker;
   }
 
+  std::shared_ptr<WorkerInterface> PopWorkerWithResourceLimitsSync(
+      const LeaseSpecification &lease_spec,
+      const rpc::WorkerResourceLimits &worker_resource_limits) {
+    std::shared_ptr<WorkerInterface> popped_worker = nullptr;
+    std::promise<bool> promise;
+    this->PopWorker(lease_spec,
+                    worker_resource_limits,
+                    [&popped_worker, &promise](
+                        const std::shared_ptr<WorkerInterface> worker,
+                        PopWorkerStatus status,
+                        const std::string &runtime_env_setup_error_message) -> bool {
+                      popped_worker = worker;
+                      promise.set_value(true);
+                      return true;
+                    });
+    PushWorkers(/*timeout_worker_number=*/0, lease_spec.JobId());
+    promise.get_future().get();
+    return popped_worker;
+  }
+
   int num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
  private:
@@ -451,7 +483,8 @@ class WorkerPoolTest : public ::testing::Test {
         std::to_string(WORKER_REGISTER_TIMEOUT_SECONDS) +
         R"(, "object_spilling_config": "dummy", "max_io_workers": )" +
         std::to_string(MAX_IO_WORKER_SIZE) + R"(, "kill_idle_workers_interval_ms": 0)" +
-        R"(, "enable_worker_prestart": true)" + "}");
+        R"(, "enable_worker_prestart": true)" +
+        R"(, "worker_resource_limits_enabled": true)" + "}");
     SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}},
                        {Language::JAVA,
                         {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
@@ -463,7 +496,9 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
+    auto runtime_env_agent_client = std::make_unique<MockRuntimeEnvAgentClient>();
+    runtime_env_agent_client_ = runtime_env_agent_client.get();
+    worker_pool_->SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   }
 
   void TearDown() override {
@@ -554,6 +589,7 @@ class WorkerPoolTest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
+  MockRuntimeEnvAgentClient *runtime_env_agent_client_ = nullptr;
   std::unique_ptr<gcs::MockGcsClient> mock_gcs_client_ =
       std::make_unique<gcs::MockGcsClient>();
 
@@ -737,6 +773,29 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithResourceLimits) {
+  constexpr uint64_t kMemoryBytes = 256 * 1024 * 1024;
+  auto runtime_env_info =
+      ExampleRuntimeEnvInfoFromString(R"({"image_uri":"podman://ray:latest"})");
+  LeaseSpecification lease_spec =
+      ExampleLeaseSpec(ActorID::Nil(),
+                       Language::PYTHON,
+                       JOB_ID,
+                       {},
+                       LeaseID::Nil(),
+                       runtime_env_info,
+                       {{"CPU", 0.5}, {"memory", kMemoryBytes}});
+
+  worker_pool_->PrestartWorkers(lease_spec, 1);
+
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
+  EXPECT_EQ(runtime_env_agent_client_->last_worker_resource_limits.cpu_period_us(),
+            100000);
+  EXPECT_EQ(runtime_env_agent_client_->last_worker_resource_limits.cpu_quota_us(), 50000);
+  EXPECT_EQ(runtime_env_agent_client_->last_worker_resource_limits.memory_bytes(),
+            kMemoryBytes);
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
   std::shared_ptr<WorkerInterface> popped_worker;
   const LeaseSpecification lease_spec = ExampleLeaseSpec();
@@ -887,6 +946,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
           /*actor_worker=*/std::nullopt,
           runtime_env_info,
           CalculateRuntimeEnvHash(runtime_env_info.serialized_runtime_env()),
+          /*worker_resource_limits=*/rpc::WorkerResourceLimits(),
           /*options=*/std::vector<std::string>{},
           keep_alive_duration,
           /*callback=*/
@@ -2241,6 +2301,43 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
   // Check that we got the pushed worker.
   ASSERT_EQ(popped_worker, worker);
   worker_pool_->ClearProcesses();
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerResourceLimitsParticipateInReuse) {
+  const LeaseSpecification lease_spec = ExampleLeaseSpec();
+  rpc::WorkerResourceLimits one_cpu;
+  one_cpu.set_cpu_period_us(100000);
+  one_cpu.set_cpu_quota_us(100000);
+  one_cpu.set_memory_bytes(256 * 1024 * 1024);
+
+  rpc::WorkerResourceLimits four_cpus = one_cpu;
+  four_cpus.set_cpu_quota_us(400000);
+
+  auto one_cpu_worker =
+      worker_pool_->PopWorkerWithResourceLimitsSync(lease_spec, one_cpu);
+  ASSERT_NE(one_cpu_worker, nullptr);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  worker_pool_->PushWorker(one_cpu_worker);
+  auto reused_worker = worker_pool_->PopWorkerWithResourceLimitsSync(lease_spec, one_cpu);
+  ASSERT_EQ(reused_worker, one_cpu_worker);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  worker_pool_->PushWorker(reused_worker);
+  auto four_cpu_worker =
+      worker_pool_->PopWorkerWithResourceLimitsSync(lease_spec, four_cpus);
+  ASSERT_NE(four_cpu_worker, nullptr);
+  ASSERT_NE(four_cpu_worker, one_cpu_worker);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  rpc::WorkerResourceLimits different_memory = one_cpu;
+  different_memory.set_memory_bytes(512 * 1024 * 1024);
+  auto different_memory_worker =
+      worker_pool_->PopWorkerWithResourceLimitsSync(lease_spec, different_memory);
+  ASSERT_NE(different_memory_worker, nullptr);
+  ASSERT_NE(different_memory_worker, one_cpu_worker);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 3);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {

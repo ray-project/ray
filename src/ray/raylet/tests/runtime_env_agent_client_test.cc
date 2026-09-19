@@ -209,6 +209,10 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(req.worker_resource_limits().cpu_period_us(), 100000);
+        ASSERT_EQ(req.worker_resource_limits().cpu_quota_us(), 50000);
+        ASSERT_EQ(req.worker_resource_limits().memory_bytes(), 256 * 1024 * 1024);
+        ASSERT_EQ(req.worker_resource_limits().validation_error(), "validation error");
         ASSERT_EQ(request.find(http::field::authorization), request.end());
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -237,6 +241,11 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   std::string serialized_runtime_env = "serialized_runtime_env";
   ray::rpc::RuntimeEnvConfig runtime_env_config;
   runtime_env_config.set_setup_timeout_seconds(12);
+  ray::rpc::WorkerResourceLimits worker_resource_limits;
+  worker_resource_limits.set_cpu_period_us(100000);
+  worker_resource_limits.set_cpu_quota_us(50000);
+  worker_resource_limits.set_memory_bytes(256 * 1024 * 1024);
+  worker_resource_limits.set_validation_error("validation error");
 
   size_t called_times = 0;
   auto callback = [&](bool successful,
@@ -248,8 +257,11 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
     called_times += 1;
   };
 
-  client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+  client->GetOrCreateRuntimeEnv(job_id,
+                                serialized_runtime_env,
+                                runtime_env_config,
+                                worker_resource_limits,
+                                callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);

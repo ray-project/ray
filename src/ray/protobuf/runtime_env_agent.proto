@@ -26,6 +26,18 @@ enum AgentRpcStatus {
   AGENT_RPC_STATUS_FAILED = 1;
 }
 
+/// Operating-system resource limits applied to one container worker.
+/// A zero value means that the corresponding limit is not set.
+message WorkerResourceLimits {
+  int64 cpu_period_us = 1;
+  int64 cpu_quota_us = 2;
+  uint64 memory_bytes = 3;
+  /// Set when the requested limits cannot be represented by the container runtime.
+  /// The runtime env agent must fail worker setup instead of starting an unlimited or
+  /// less strictly limited worker.
+  string validation_error = 4;
+}
+
 message GetOrCreateRuntimeEnvRequest {
   /// Json serialized [RuntimeEnv].
   /// For details, checkout "//python/ray/runtime_env/runtime_env.py".
@@ -36,6 +48,7 @@ message GetOrCreateRuntimeEnvRequest {
   /// For details, checkout "//src/ray/common/id.h".
   bytes job_id = 3;
   string source_process = 4;
+  WorkerResourceLimits worker_resource_limits = 5;
 }
 
 message GetOrCreateRuntimeEnvReply {
