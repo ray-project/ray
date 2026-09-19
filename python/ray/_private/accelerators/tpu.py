@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 
 import ray
+from ray._common.network_utils import parse_address
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 from ray.util.placement_group import (
@@ -44,8 +45,14 @@ RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 NOSET_TPU_VISIBLE_CHIPS_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS"
 
+# TorchTPU (PyTorch/XLA) environment variables and defaults.
+TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
+TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
+DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
+
 # The following defines environment variables that allow
-# us to access a subset of TPU visible chips.
+# us to access a subset of TPU visible chips and configure
+# multi-host LibTPU / JAX meshes.
 #
 # See: https://github.com/google/jax/issues/14977 for an example/more details.
 TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_HOST_BOUNDS"
@@ -54,6 +61,13 @@ TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG = "1,2,1"
 
 TPU_HOST_BOUNDS_ENV_VAR = "TPU_HOST_BOUNDS"
 TPU_SINGLE_HOST_BOUNDS = "1,1,1"
+
+TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR = "TPU_CHIPS_PER_PROCESS_BOUNDS"
+TPU_PROCESS_BOUNDS_ENV_VAR = "TPU_PROCESS_BOUNDS"
+TPU_PROCESS_ADDRESSES_ENV_VAR = "TPU_PROCESS_ADDRESSES"
+TPU_PROCESS_PORT_ENV_VAR = "TPU_PROCESS_PORT"
+TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
+TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
@@ -172,8 +186,13 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
 
 @lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
-    """Return the worker-grid dimensions for *topology*: (y, x) for 2D,
-    (z, y, x) for 3D. Raises ``ValueError`` for unknown topologies.
+    """Return the worker-grid dimensions for *topology*: (x, y) for 2D,
+    (x, y, z) for 3D. Raises ``ValueError`` for unknown topologies.
+
+    Cloud TPU topology strings (e.g. "2x4", "2x4x4") specify chip bounds in
+    (X, Y, Z) axis order. Dividing each chip axis by per-host bounds (2x2 for 2D,
+    2x2x1 for 3D) yields worker dimensions in the same (worker_x, worker_y, worker_z)
+    order.
     """
     dims = _parse_topology_dims(topology)
     if len(dims) == 2:
@@ -183,13 +202,29 @@ def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
                 f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_2D.keys())}"
             )
         return _VALID_TOPOLOGY_WORKER_DIMS_2D[topology]
+    elif len(dims) == 3:
+        if topology in _VALID_TOPOLOGY_WORKER_DIMS_3D:
+            return _VALID_TOPOLOGY_WORKER_DIMS_3D[topology]
+        if (
+            topology in VALID_TPU_TOPOLOGY["v4"]
+            or topology in VALID_TPU_TOPOLOGY["v5p"]
+            or topology in VALID_TPU_TOPOLOGY["v7x"]
+        ):
+            return (dims[0] // 2, dims[1] // 2, dims[2])
+        raise ValueError(
+            f"Unknown 3D topology: '{topology}'. "
+            f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
+        )
     else:
-        if topology not in _VALID_TOPOLOGY_WORKER_DIMS_3D:
-            raise ValueError(
-                f"Unknown 3D topology: '{topology}'. "
-                f"Valid: {list(_VALID_TOPOLOGY_WORKER_DIMS_3D.keys())}"
-            )
-        return _VALID_TOPOLOGY_WORKER_DIMS_3D[topology]
+        raise ValueError(f"Unsupported topology dimensionality for '{topology}'.")
+
+
+def _strip_endpoint_port(endpoint: Optional[str]) -> str:
+    """Strip the port from a network endpoint (e.g. '10.0.0.1:8471' or '[::1]:8471')."""
+    if not endpoint or not (s := endpoint.strip()):
+        return ""
+    parsed = parse_address(s)
+    return parsed[0] if parsed is not None else s.strip("[]")
 
 
 def _get_default_chips_per_vm(topology: str, accelerator_version: str) -> int:
@@ -235,6 +270,47 @@ def _accelerator_type_check(accelerator_type: str):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
+
+
+def normalize_torchtpu_topology(
+    topology: str,
+    tpu_resource_per_chip: int = 1,
+    accelerator_type: Optional[str] = None,
+) -> str:
+    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
+    if not isinstance(tpu_resource_per_chip, int) or isinstance(
+        tpu_resource_per_chip, bool
+    ):
+        raise TypeError(
+            f"tpu_resource_per_chip must be an integer, got {type(tpu_resource_per_chip)}."
+        )
+    if tpu_resource_per_chip <= 0:
+        raise ValueError("tpu_resource_per_chip must be positive")
+
+    if not isinstance(topology, str) or not topology.strip():
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    clean_topo = topology.strip().lower().replace("x", ",")
+    dims: List[str] = []
+    for token in clean_topo.split(","):
+        tok = token.strip()
+        if not tok or not tok.isdigit() or int(tok) <= 0:
+            raise ValueError(f"Invalid topology string: {topology!r}")
+        dims.append(tok)
+
+    if len(dims) not in (2, 3, 4):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    # 2D topologies (e.g. "2x4") are padded with 1 for the Z dimension ("2,4,1").
+    if len(dims) == 2:
+        dims.append("1")
+    # For dual-device TPUs (or when tpu_resource_per_chip > 1), expand 3D to 4D ("2,4,1,2").
+    if len(dims) == 3:
+        if tpu_resource_per_chip > 1:
+            dims.append(str(tpu_resource_per_chip))
+        elif accelerator_type and "v7x" in accelerator_type.lower():
+            dims.append("2")
+    return ",".join(dims)
 
 
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
