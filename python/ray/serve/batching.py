@@ -239,16 +239,9 @@ class _BatchQueue:
         if self.batch_size_fn is None:
             return len(batch)
 
-        # Extract the actual data items from requests to pass to batch_size_fn.
-        # We need to reconstruct the original arguments from flattened_args.
-        items = []
-        for request in batch:
-            # Recover the original arguments from flattened format
-            args, kwargs = recover_args(request.flattened_args)
-            # The batch function expects a single positional argument (the item)
-            # after 'self' has been extracted (if it was a method)
-            items.append(args[0])
-
+        # Flattened arguments alternate names and values, with `self` already
+        # removed. The first value is the item for either positional or keyword calls.
+        items = [request.flattened_args[1] for request in batch]
         return self.batch_size_fn(items)
 
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:

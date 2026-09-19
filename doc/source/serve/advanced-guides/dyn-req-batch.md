@@ -62,7 +62,14 @@ By default, Ray Serve measures batch size as the number of items in the batch (`
 - **Natural Language Processing (NLP)**: Transformer models batch by total token count, not the number of sequences
 - **Variable-resolution images**: Memory usage depends on total pixels, not the number of images
 
-Use the `batch_size_fn` parameter to define a custom metric for batch size:
+Use the `batch_size_fn` parameter to define a custom metric for batch size.
+
+For a handler with a single input parameter, you can pass each item positionally
+or by keyword. For example, `await handler(text)` and
+`await handler(items=text)` both pass `text` to the sizing function when the
+handler's parameter is named `items`. Keyword-only input parameters are also
+supported. The sizing function receives a list of the input values, regardless
+of the call style.
 
 ### Graph Neural Network example
 
