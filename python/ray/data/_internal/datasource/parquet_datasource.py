@@ -1646,7 +1646,8 @@ def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.nda
     """
     path_seed = np.uint64(
         int.from_bytes(
-            hashlib.md5(file_path.encode("utf-8")).digest()[:8], byteorder="little"
+            hashlib.md5(file_path.encode("utf-8"), usedforsecurity=False).digest()[:8],
+            byteorder="little",
         )
     )
     keys = path_seed + np.arange(start_row, start_row + num_rows, dtype=np.uint64)
