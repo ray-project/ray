@@ -57,7 +57,7 @@ from ray.data._internal.operator_schema_exporter import (
 )
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
-from ray.data._internal.stats_summary_server import report_stats_summary
+from ray.data._internal.stats_summary_actor import report_stats_summary
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.exceptions import UserCodeException
 from ray.util.debug import log_once

@@ -3,7 +3,7 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray.data import list_stats_summaries
-from ray.data._internal.stats_summary_server import clear_stats_summaries
+from ray.data._internal.stats_summary_actor import clear_stats_summaries
 
 
 @pytest.fixture
@@ -13,10 +13,10 @@ def enable_stats_summary_collection(restore_data_context):
 
 
 def test_list_stats_summaries_ordered_by_completion(
-    ray_start_regular_shared, enable_stats_summary_collection, tmp_path
+    ray_start_regular_shared, enable_stats_summary_collection
 ):
-    ray.data.range(1).write_parquet(str(tmp_path / "a"))
-    ray.data.range(2).write_parquet(str(tmp_path / "b"))
+    ray.data.range(1).materialize()
+    ray.data.range(2).materialize()
 
     # Use row counts to identify datasets
     summaries = list_stats_summaries()

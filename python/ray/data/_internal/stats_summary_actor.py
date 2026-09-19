@@ -9,8 +9,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-STATS_SUMMARY_SERVER_NAME = "dataset_stats_summary_server"
-STATS_SUMMARY_SERVER_NAMESPACE = "_dataset_stats_summary_server"
+STATS_SUMMARY_ACTOR_NAME = "dataset_stats_summary_actor"
+STATS_SUMMARY_ACTOR_NAMESPACE = "_dataset_stats_summary_actor"
 
 REPORT_STATS_SUMMARY_TIMEOUT_S = 30
 
@@ -32,9 +32,9 @@ class _StatsSummaryActor:
         self._summaries.clear()
 
 
-def _get_or_create_stats_summary_server() -> ray.actor.ActorHandle:
-    """Return the server for this cluster, creating it if it doesn't exist yet."""
-    # Pin to the caller's node so the server fate-shares with the driver, matching
+def _get_or_create_stats_summary_actor() -> ray.actor.ActorHandle:
+    """Return the actor for this cluster, creating it if it doesn't exist yet."""
+    # Pin to the caller's node so the actor fate-shares with the driver, matching
     # `_StatsActor`.
     label_selector = {
         # pyrefly: ignore[missing-attribute]  # constant lives in the Cython ext
@@ -42,8 +42,8 @@ def _get_or_create_stats_summary_server() -> ray.actor.ActorHandle:
     }
     # pyrefly: ignore[missing-attribute]
     return _StatsSummaryActor.options(
-        name=STATS_SUMMARY_SERVER_NAME,
-        namespace=STATS_SUMMARY_SERVER_NAMESPACE,
+        name=STATS_SUMMARY_ACTOR_NAME,
+        namespace=STATS_SUMMARY_ACTOR_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
         label_selector=label_selector,
@@ -51,14 +51,14 @@ def _get_or_create_stats_summary_server() -> ray.actor.ActorHandle:
 
 
 def report_stats_summary(stats_summary: "DatasetStatsSummary") -> None:
-    """Record a finished execution's summary on the server.
+    """Record a finished execution's summary on the actor.
 
-    Blocks until the server acknowledges the summary, so that it is queryable as soon
+    Blocks until the actor acknowledges the summary, so that it is queryable as soon
     as the execution that produced it returns.
     """
-    server = _get_or_create_stats_summary_server()
+    actor = _get_or_create_stats_summary_actor()
     ray.get(
-        server.report_stats_summary.remote(stats_summary),
+        actor.report_stats_summary.remote(stats_summary),
         timeout=REPORT_STATS_SUMMARY_TIMEOUT_S,
     )
 
@@ -98,15 +98,15 @@ def list_stats_summaries() -> "list[DatasetStatsSummary]":
         One :class:`~ray.data._internal.stats.DatasetStatsSummary` per execution, in
         completion order.
     """
-    server = _get_or_create_stats_summary_server()
-    return ray.get(server.list_stats_summaries.remote())
+    actor = _get_or_create_stats_summary_actor()
+    return ray.get(actor.list_stats_summaries.remote())
 
 
 def clear_stats_summaries() -> None:
-    """Discard every summary the server is holding.
+    """Discard every summary the actor is holding.
 
     Intended for tests, which would otherwise see summaries reported by earlier tests
     sharing the same cluster.
     """
-    server = _get_or_create_stats_summary_server()
-    ray.get(server.clear_stats_summaries.remote())
+    actor = _get_or_create_stats_summary_actor()
+    ray.get(actor.clear_stats_summaries.remote())
