@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -36,8 +36,7 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
 # HAProxy forwards the original request line on these headers so the router can
 # tell a request the application ingress owns (e.g. `GET /v1/models`) from model
-# traffic. Sent regardless of whether body forwarding is enabled, since a
-# deployment choice must not depend on that escape hatch. Looked up through
+# traffic. Sent regardless of whether body forwarding is enabled. Looked up through
 # Starlette's case-insensitive headers.
 _REQUEST_METHOD_HEADER = "x-serve-request-method"
 _REQUEST_PATH_HEADER = "x-serve-request-path"
@@ -50,7 +49,7 @@ _ROUTING_KEY_FIELDS = ("messages", "prompt")
 router_app = FastAPI()
 
 
-def _parse_body(body: bytes) -> Optional[dict]:
+def _parse_body(body: bytes) -> Optional[Dict[str, Any]]:
     """Parse a request body as a JSON object.
 
     Returns ``None`` for an empty, unparseable (including truncated), or
@@ -69,7 +68,9 @@ def _parse_body(body: bytes) -> Optional[dict]:
     return data
 
 
-def _routing_payload(data: Optional[dict]) -> Optional[SimpleNamespace]:
+def _build_replica_routing_payload(
+    data: Optional[Mapping[str, Any]],
+) -> Optional[SimpleNamespace]:
     """Wrap a parsed body as a namespace a body-aware router routes on.
 
     Routers read a routing field (``messages`` or ``prompt``) off the first
@@ -84,11 +85,6 @@ def _routing_payload(data: Optional[dict]) -> Optional[SimpleNamespace]:
     if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
         return None
     return SimpleNamespace(**data)
-
-
-def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
-    """``_routing_payload`` of ``_parse_body``; kept for callers and tests."""
-    return _routing_payload(_parse_body(body))
 
 
 @serve.ingress(router_app)
@@ -137,10 +133,11 @@ class LLMRouter:
         POST /internal/route
         Content-Type: application/json
         Body: the target ChatCompletions or Completions request payload.
-            Wrapped in a namespace by ``_parse_routing_payload`` and passed to
-            ``choose_replica`` positionally, exposing the request fields the way
-            the parsed request does. Body-aware policies then score replicas the
-            same way on both paths.
+            Parsed by ``_parse_body``, then wrapped by
+            ``_build_replica_routing_payload`` and passed to ``choose_replica``
+            positionally, exposing the request fields the way the parsed request
+            does. Body-aware policies then score replicas the same way on both
+            paths.
 
     Truncated bodies:
         HAProxy may forward only a prefix of the body for routing and sets the
@@ -365,7 +362,7 @@ class LLMRouter:
         # Select the deployment before anything else: an unreadable body cannot
         # name a model, and with several models that is a 400, not a guess.
         handle = self._select_handle(data.get("model") if data is not None else None)
-        routing_payload = _routing_payload(data)
+        routing_payload = _build_replica_routing_payload(data)
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
