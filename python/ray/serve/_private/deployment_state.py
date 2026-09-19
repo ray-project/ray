@@ -3425,6 +3425,11 @@ class DeploymentState:
         }
         return expected_names == running_names
 
+    @property
+    def deleting(self) -> bool:
+        """Whether this deployment is being torn down."""
+        return self._target_state.deleting
+
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
         failures has exceeded a threshold.
@@ -6078,6 +6083,25 @@ class DeploymentStateManager:
             all_current_actor_names, all_current_placement_group_names
         )
 
+    def _evict_stale_long_poll_keys(self, deployment_id: DeploymentID) -> None:
+        """Drop long-poll snapshots describing a previous incarnation of this id.
+
+        The delete path tombstones DEPLOYMENT_TARGETS (is_available=False) so
+        existing handles fail fast, and that tombstone outlives the deployment it
+        described. A router subscribing afterwards would be handed it and reject
+        every request for the deployment that replaced it.
+        """
+        # `LongPollHost.remove_keys`'s `KeyType` doesn't include
+        # `Tuple[LongPollNamespace, DeploymentID]` keys.
+        self._long_poll_host.remove_keys(
+            # pyrefly: ignore[bad-argument-type]
+            [
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id),  # type: ignore[list-item]
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id.name),
+                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id),  # type: ignore[list-item]
+            ]
+        )
+
     def _create_deployment_state(self, deployment_id):
         self._deployment_scheduler.on_deployment_created(
             deployment_id, SpreadDeploymentSchedulingPolicy()
@@ -6091,13 +6115,7 @@ class DeploymentStateManager:
         # broadcast_running_replicas_if_changed short-circuits and never
         # overwrites the tombstone — freshly-subscribed routers would then
         # see is_available=False and reject every request.
-        self._long_poll_host.remove_keys(
-            [
-                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id),
-                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id.name),
-                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id),
-            ]
-        )
+        self._evict_stale_long_poll_keys(deployment_id)
 
         return DeploymentState(
             deployment_id,
@@ -6566,6 +6584,11 @@ class DeploymentStateManager:
             )
             self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
+        elif self._deployment_states[deployment_id].deleting:
+            # Redeploying onto a state that was being torn down reuses its
+            # DeploymentState, so creation (and its eviction) is skipped and the
+            # tombstone stays the stored snapshot for this id.
+            self._evict_stale_long_poll_keys(deployment_id)
 
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
