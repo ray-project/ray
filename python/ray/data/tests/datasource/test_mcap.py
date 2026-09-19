@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 
+import pyarrow as pa
 import pytest
 
 import ray
@@ -386,6 +387,118 @@ def test_read_mcap_json_decoding(ray_start_regular_shared, tmp_path):
     assert row["data"]["sensor_data"]["temperature"] == 23.5
     assert row["data"]["metadata"]["device_id"] == "sensor_001"
     assert row["data"]["sensor_data"]["readings"] == [1, 2, 3, 4, 5]
+
+
+def create_mcap_file_with_channel_metadata(
+    file_path: str, channels: dict, num_messages: int = 3
+) -> None:
+    """Write an MCAP whose channels carry metadata.
+
+    ``channels`` maps a topic to the ``Map<string, string>`` recorded on its
+    Channel record.
+    """
+    from mcap.writer import Writer
+
+    with open(file_path, "wb") as stream:
+        writer = Writer(stream)
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b"{}"
+        )
+        registered = {
+            topic: writer.register_channel(
+                schema_id=schema_id,
+                topic=topic,
+                message_encoding="json",
+                metadata=metadata,
+            )
+            for topic, metadata in channels.items()
+        }
+        for i in range(num_messages):
+            for topic, channel_id in registered.items():
+                writer.add_message(
+                    channel_id=channel_id,
+                    log_time=1000 + i,
+                    publish_time=1000 + i,
+                    data=json.dumps({"i": i}).encode(),
+                )
+        writer.finish()
+
+
+def test_read_mcap_includes_channel_metadata(ray_start_regular_shared, tmp_path):
+    """A Channel record's metadata must be reachable from the dataset.
+
+    No message record reproduces it, so without this column the information is
+    unreachable. ROS 2 records `offered_qos_profiles` here and recorders
+    commonly add sensor serials.
+    """
+    path = os.path.join(tmp_path, "channel_metadata.mcap")
+    create_mcap_file_with_channel_metadata(
+        path,
+        {
+            "/camera": {"serial": "cam-7", "offered_qos_profiles": ""},
+            "/imu": {"serial": "imu-2", "offered_qos_profiles": ""},
+        },
+    )
+
+    ds = ray.data.read_mcap(path)
+
+    column_types = dict(zip(ds.schema().names, ds.schema().types))
+    assert pa.types.is_map(column_types["channel_metadata"])
+
+    by_topic = {row["topic"]: dict(row["channel_metadata"]) for row in ds.take_all()}
+    assert by_topic == {
+        "/camera": {"serial": "cam-7", "offered_qos_profiles": ""},
+        "/imu": {"serial": "imu-2", "offered_qos_profiles": ""},
+    }
+
+
+def test_read_mcap_channel_metadata_requires_include_metadata(
+    ray_start_regular_shared, tmp_path
+):
+    """`include_metadata=False` must omit the column entirely."""
+    path = os.path.join(tmp_path, "no_metadata.mcap")
+    create_mcap_file_with_channel_metadata(path, {"/camera": {"serial": "cam-7"}})
+
+    ds = ray.data.read_mcap(path, include_metadata=False)
+
+    assert "channel_metadata" not in ds.schema().names
+
+
+def test_read_mcap_channel_metadata_keys_may_differ_across_files(
+    ray_start_regular_shared, tmp_path
+):
+    """Blocks must concatenate when files record different metadata keys.
+
+    This is why the column is a `map` rather than the `struct` Arrow infers from
+    a Python dict: a struct's fields are the union of the keys it happens to
+    see, so blocks from these two files would carry different types and fail to
+    concatenate, and a channel that never recorded a key would be
+    indistinguishable from one whose value is null.
+    """
+    first = os.path.join(tmp_path, "first.mcap")
+    second = os.path.join(tmp_path, "second.mcap")
+    create_mcap_file_with_channel_metadata(first, {"/a": {"serial": "cam-7"}})
+    create_mcap_file_with_channel_metadata(second, {"/b": {"rate_hz": "200"}})
+
+    ds = ray.data.read_mcap([first, second]).materialize()
+    blocks = [ray.get(ref) for ref in ds.to_arrow_refs()]
+
+    # Would raise ArrowInvalid on differing struct fields.
+    assert pa.concat_tables(blocks).num_rows == ds.count()
+
+    by_topic = {row["topic"]: dict(row["channel_metadata"]) for row in ds.take_all()}
+    assert by_topic == {"/a": {"serial": "cam-7"}, "/b": {"rate_hz": "200"}}
+
+
+def test_read_mcap_channel_metadata_absent(ray_start_regular_shared, tmp_path):
+    """A channel recording no metadata yields an empty map, not a failure."""
+    path = os.path.join(tmp_path, "empty_metadata.mcap")
+    create_mcap_file_with_channel_metadata(path, {"/camera": {}})
+
+    rows = ray.data.read_mcap(path).take_all()
+
+    assert all(dict(row["channel_metadata"]) == {} for row in rows)
 
 
 if __name__ == "__main__":
