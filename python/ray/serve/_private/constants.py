@@ -732,6 +732,14 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# When "1", deployments using @serve.multiplexed fail at deploy time regardless of
+# proxy mode. Default "0" allows multiplexed downstream deployments (the supported
+# pattern). HAProxy rejects all multiplexing immediately; ingress multiplexing is
+# rejected when direct ingress is enabled.
+RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING = (
+    os.environ.get("RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING", "0") == "1"
+)
+
 # Ingress request router replicas pinned to each proxy node.
 RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
     "RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 1
