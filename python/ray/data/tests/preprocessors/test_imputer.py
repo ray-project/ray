@@ -623,6 +623,39 @@ class TestSimpleImputerSerialization:
         assert np.isnan(deserialized.stats_["mean(col)"])
 
 
+def test_most_frequent_fits_via_aggregation():
+    """most_frequent registers a plan aggregator, not a callable stat."""
+    ds = ray.data.from_items([{"A": "a"}, {"A": "a"}, {"A": "b"}])
+    imputer = SimpleImputer(["A"], strategy="most_frequent")
+    imputer.fit(ds)
+    assert not imputer._stat_computation_plan.has_custom_stat_fn()
+    assert imputer.stats_ == {"most_frequent(A)": "a"}
+
+
+def test_most_frequent_never_imputes_null():
+    """Nulls never win the frequency contest, even when most common.
+
+    An Arrow-backed column reports nulls as `value_counts` entries, so without
+    filtering, a mostly-null column would be "imputed" with null.
+    """
+    ds = ray.data.from_items(
+        [{"A": None}, {"A": None}, {"A": None}, {"A": "a"}, {"A": "a"}, {"A": "b"}]
+    )
+    imputer = SimpleImputer(["A"], strategy="most_frequent")
+    imputer.fit(ds)
+    assert imputer.stats_ == {"most_frequent(A)": "a"}
+
+
+def test_most_frequent_deterministic_tiebreak():
+    """Among equally frequent values, the smallest wins."""
+    ds = ray.data.from_items(
+        [{"A": "zebra"}, {"A": "apple"}, {"A": "zebra"}, {"A": "apple"}]
+    )
+    imputer = SimpleImputer(["A"], strategy="most_frequent")
+    imputer.fit(ds)
+    assert imputer.stats_ == {"most_frequent(A)": "apple"}
+
+
 if __name__ == "__main__":
     import sys
 
