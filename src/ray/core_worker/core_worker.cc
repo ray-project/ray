@@ -93,11 +93,19 @@ namespace {
 constexpr size_t kDefaultSerializationCacheCap = 500;
 
 /**
- * Complete one WaitAsync request. No-op if ``handle`` is already gone.
+ * @brief Complete one WaitAsync request. No-op if ``handle`` is already gone.
  *
  * CancelGetAsync runs under ``registry.mu`` so ``~CoreWorker`` cannot null
  * ``memory_store`` until this returns. The user callback runs after unlock
  * (it may re-enter WaitAsync).
+ *
+ * @param[in,out] registry In-flight WaitAsync table. The matching request is
+ * erased under ``registry.mu``.
+ * @param[in] handle Token from ``CoreWorker::WaitAsync``. Zero or a missing
+ * handle is a no-op.
+ * @param[in] status Passed to the user callback (OK, cancel, or shutdown).
+ * @return None. Missing or already-completed handles return without invoking
+ * the user callback.
  */
 void CompleteWaitAsync(WaitAsyncRegistry &registry, uint64_t handle, Status status) {
   void (*callback)(Status status, void *callback_arg) = nullptr;
