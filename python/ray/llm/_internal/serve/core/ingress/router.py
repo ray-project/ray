@@ -18,6 +18,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
 )
 from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
+    RoutePattern,
+)
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
@@ -101,6 +105,12 @@ class LLMRouter:
     deployment's configured request router, and this class translates the
     resulting pick into a backend HTTP endpoint.
 
+    A separate application ingress is represented by two constructor arguments:
+    ``ingress`` is its deployment handle, used for replica selection, while
+    ``ingress_route_patterns`` is route-ownership metadata reflected from its
+    FastAPI app when the application graph is built. Keeping the metadata local
+    avoids a startup or per-request RPC to an ingress replica.
+
     ``servers`` is an allow-list the builder constructs: it is the only place
     that both marks deployments ``_direct_http`` and hands them here, so the
     router never has to know which deployments own HTTP ports. Were a handle to
@@ -182,10 +192,19 @@ class LLMRouter:
         servers: Dict[str, DeploymentHandle],
         llm_config: Optional["LLMConfig"] = None,
         ingress: Optional[DeploymentHandle] = None,
+        ingress_route_patterns: Optional[List[RoutePattern]] = None,
     ):
         if not servers:
             raise ValueError(
                 "LLMRouter requires at least one model id -> deployment handle."
+            )
+        if (ingress is None) != (ingress_route_patterns is None):
+            raise ValueError(
+                "`ingress` and `ingress_route_patterns` must be provided together."
+            )
+        if ingress is not None and not ingress_route_patterns:
+            raise ValueError(
+                "A separate ingress must declare at least one HTTP route pattern."
             )
         # model id -> handle to the `_direct_http` deployment serving that model.
         self._servers: Dict[str, DeploymentHandle] = dict(servers)
@@ -193,6 +212,14 @@ class LLMRouter:
         # of its own (model discovery, control plane). None for the builders
         # whose ingress *is* the model server.
         self._ingress = ingress
+        # Route ownership is build-time metadata, separate from the deployment
+        # handle used for replica selection. Compile it once so request routing
+        # stays local and does not need an RPC to the ingress deployment.
+        self._ingress_routes = (
+            ASGIRoutePatternMatcher(ingress_route_patterns)
+            if ingress_route_patterns is not None
+            else None
+        )
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
@@ -242,21 +269,6 @@ class LLMRouter:
 
         if self._ingress is not None:
             self._ingress._init()
-            # Ask the running replica what it actually serves, rather than
-            # reading build-time metadata off the controller, which can be stale
-            # or missing before replicas report in. Fetched once and cached for
-            # this replica's life; an ingress-only route change needs a restart.
-            #
-            # Deliberately unguarded: if this fails the router has no idea which
-            # paths the ingress owns, and every control request would fall
-            # through to model selection and be answered by a model deployment.
-            # Failing initialization is the safe outcome.
-            from ray.serve._private.thirdparty.get_asgi_route_name import (
-                ASGIRoutePatternMatcher,
-            )
-
-            patterns = await self._ingress.__serve_route_patterns__.remote()
-            self._ingress_routes = ASGIRoutePatternMatcher(patterns)
 
     def _select_handle(self, model: Optional[str]) -> DeploymentHandle:
         """Resolve the request's ``model`` to a deployment handle.
