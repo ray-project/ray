@@ -1459,7 +1459,7 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         assert (
             "http-request lua.route_via_ingress_request_router "
-            "if METH_POST has_ingress_request_router_app"
+            "if has_ingress_request_router_app"
         ) in cfg, cfg
 
         # Method and path reach the router regardless of body forwarding: a
@@ -1468,6 +1468,7 @@ def test_ingress_request_router_forward_body_gate_renders(
         assert 'local REQUEST_PATH_HEADER = "X-Serve-Request-Path"' in lua, lua
         assert "local method = txn.sf:method()" in lua, lua
         assert "local path = txn.sf:path()" in lua, lua
+        assert 'if FORWARD_BODY and method == "POST" then' in lua, lua
         assert ".. method_header" in lua and ".. path_header" in lua, lua
 
         assert (
@@ -1716,12 +1717,17 @@ async def test_direct_http_deployment_end_to_end(haproxy_api_cleanup):
                 requests.get(f"http://127.0.0.1:{haproxy_port}{own_path}", timeout=5)
             assert len(router_captured["bodies"]) == 3
 
-            # Non-POST requests bypass the router until it supports ingress
-            # route ownership, so existing path routing sends this to ingress.
+            # Non-POST requests also go through the router. This fake router
+            # always selects model-b, so the GET must reach that deployment.
             resp = requests.get(f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5)
             assert resp.status_code == 200, resp.text
-            assert resp.headers.get("x-replica-id") == "INGRESS"
-            assert len(router_captured["bodies"]) == 3
+            assert resp.headers.get("x-replica-id") == "MODEL_B"
+            assert len(router_captured["bodies"]) == 4
+            assert router_captured["bodies"][-1] == ""
+            assert router_captured["methods"] == ["POST"] * 3 + ["GET"]
+            assert router_captured["paths"] == ["/v1/chat/completions"] * 3 + [
+                "/v1/models"
+            ]
         finally:
             _shutdown_fake_servers(
                 [ingress, model_a, model_b, router],
@@ -1932,16 +1938,14 @@ async def test_ingress_selection_end_to_end(haproxy_api_cleanup):
                 haproxy_api_cleanup,
             )
 
-            # The router can select the ingress for a POST as well as a direct
-            # deployment, and dispatches it through the companion backend.
-            resp = requests.post(
-                f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5
-            )
+            # The router can select the ingress for a non-POST request and
+            # dispatch it through the companion backend.
+            resp = requests.get(f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5)
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "INGRESS"
 
             assert len(router_captured["bodies"]) == 1
-            assert router_captured["methods"] == ["POST"]
+            assert router_captured["methods"] == ["GET"]
             assert router_captured["paths"] == ["/v1/models"]
         finally:
             _shutdown_fake_servers(
@@ -1953,8 +1957,8 @@ async def test_ingress_selection_end_to_end(haproxy_api_cleanup):
 @pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
     """Run actual HAProxy against a fake router, an ingress replica and a
-    `_direct_http` replica; verify a POST is pinned to the replica the router
-    selects, while a GET (which doesn't trigger the router-routed path) is not."""
+    `_direct_http` replica; verify both POST and GET are pinned to the replica
+    selected by the router."""
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,
@@ -2054,13 +2058,16 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
 
-            # GET bypasses the router until it supports ingress route ownership.
+            # GET also goes through the router, without forwarding a body.
             n_router_calls_before_get = len(router_captured["bodies"])
             resp = requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
             )
-            assert len(router_captured["bodies"]) == n_router_calls_before_get
-            assert resp.headers.get("x-replica-id") == "A"
+            assert len(router_captured["bodies"]) == n_router_calls_before_get + 1
+            assert router_captured["bodies"][-1] == ""
+            assert router_captured["methods"][-1] == "GET"
+            assert router_captured["paths"][-1] == "/health-passthrough"
+            assert resp.headers.get("x-replica-id") == "B"
 
             # HAProxy's own endpoints still short-circuit ahead of the router.
             n_router_calls = len(router_captured["bodies"])
