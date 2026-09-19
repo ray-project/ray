@@ -103,7 +103,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
                           ray::observability::MetricInterface &task_events_dropped_gauge,
                           ray::observability::MetricInterface &task_events_stored_gauge);
 
-  /// Handles a AddTaskEventData request.
+  /// Handles an AddTaskEventData request.
   ///
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.
@@ -112,7 +112,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handles a AddEvents request.
+  /// Handles an AddEvents request.
   ///
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.

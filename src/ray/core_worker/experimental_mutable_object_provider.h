@@ -46,7 +46,7 @@ class MutableObjectProviderInterface {
       const ObjectID &writer_object_id,
       const std::vector<NodeID> &remote_reader_node_ids) = 0;
 
-  /// Handles an RPC request from another note to register a mutable object on this node.
+  /// Handles an RPC request from another node to register a mutable object on this node.
   /// The remote node writes the object and this node reads the object. This node is
   /// notified of writes to the object via HandlePushMutableObject().
   /// \param[in] writer_object_id The ID of the object on the remote note.

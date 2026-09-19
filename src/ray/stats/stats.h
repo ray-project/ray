@@ -65,8 +65,8 @@ static inline bool should_enable_open_census() {
 /// - It is thread-safe.
 /// We recommend you to use this only once inside a main script and add Shutdown() method
 /// to any signal handler.
-/// \param global_tags[in] Tags that will be appended to all metrics in this process.
-/// \param worker_id[in] The worker ID of the current component.
+/// \param[in] global_tags Tags that will be appended to all metrics in this process.
+/// \param[in] worker_id The worker ID of the current component.
 static inline void Init(
     const TagsType &global_tags,
     const WorkerID &worker_id = WorkerID::Nil(),
