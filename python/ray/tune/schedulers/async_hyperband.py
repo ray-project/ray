@@ -145,6 +145,13 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         idx = np.random.choice(len(self._brackets), p=normalized)
         self._trial_info[trial.trial_id] = self._brackets[idx]
 
+    def _reward(self, result: Dict) -> Optional[float]:
+        # A trial can report the metric as None. _Bracket.on_result already handles that by
+        # warning and leaving the trial running, so keep None intact instead of failing here
+        # on the metric_op multiplication.
+        value = result[self._metric]
+        return None if value is None else self._metric_op * value
+
     def on_trial_result(
         self, tune_controller: "TuneController", trial: Trial, result: Dict
     ) -> str:
@@ -156,7 +163,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         else:
             bracket = self._trial_info[trial.trial_id]
             action = bracket.on_result(
-                trial, result[self._time_attr], self._metric_op * result[self._metric]
+                trial, result[self._time_attr], self._reward(result)
             )
         if action == TrialScheduler.STOP:
             self._num_stopped += 1
@@ -168,9 +175,7 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         if self._time_attr not in result or self._metric not in result:
             return
         bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(
-            trial, result[self._time_attr], self._metric_op * result[self._metric]
-        )
+        bracket.on_result(trial, result[self._time_attr], self._reward(result))
         del self._trial_info[trial.trial_id]
 
     def on_trial_remove(self, tune_controller: "TuneController", trial: Trial):
@@ -258,15 +263,15 @@ class _Bracket:
             if cur_iter < milestone or trial.trial_id in recorded:
                 continue
             else:
-                cutoff = self.cutoff(recorded)
-                if cutoff is not None and cur_rew < cutoff:
-                    action = TrialScheduler.STOP
                 if cur_rew is None:
                     logger.warning(
                         "Reward attribute is None! Consider"
                         " reporting using a different field."
                     )
                 else:
+                    cutoff = self.cutoff(recorded)
+                    if cutoff is not None and cur_rew < cutoff:
+                        action = TrialScheduler.STOP
                     recorded[trial.trial_id] = cur_rew
                 break
         return action
