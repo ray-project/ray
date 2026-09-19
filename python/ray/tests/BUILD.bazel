@@ -803,6 +803,7 @@ py_test_module_list(
     files = [
         "test_autoscaler_azure.py",
         "test_autoscaler_gcp.py",
+        "test_autoscaler_oci.py",
         "test_autoscaler_util.py",
         "test_azure_ssh_config.py",
     ],
@@ -890,6 +891,7 @@ py_test(
         "//python/ray/autoscaler/azure:example",
         "//python/ray/autoscaler/gcp:example",
         "//python/ray/autoscaler/local:example",
+        "//python/ray/autoscaler/oci:example",
     ],
     tags = [
         "exclusive",
