@@ -1364,22 +1364,6 @@ class ActorReplicaWrapper:
 
         return True
 
-    def _kill_unrecoverable_actor(self) -> None:
-        """Force-kill an actor that cannot be recovered.
-
-        Best-effort: any failure to kill the actor is
-        logged but ignored.
-        """
-        try:
-            # Only called from `check_ready()`, after the handle is set.
-            # pyrefly: ignore[bad-argument-type]
-            ray.kill(self._actor_handle, no_restart=True)  # type: ignore[arg-type]
-        except Exception:
-            logger.exception(
-                f"Failed to kill unrecoverable replica actor "
-                f"{self._replica_id} during controller recovery."
-            )
-
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
         Check if current replica has started by making ray API calls on
@@ -1452,7 +1436,6 @@ class ActorReplicaWrapper:
                     "Replacing with a fresh replica."
                 )
                 logger.warning(msg)
-                self._kill_unrecoverable_actor()
                 self._unrecoverable = True
                 return ReplicaStartupStatus.FAILED, msg
 
@@ -1464,7 +1447,6 @@ class ActorReplicaWrapper:
                     "replica."
                 )
                 logger.warning(msg)
-                self._kill_unrecoverable_actor()
                 self._unrecoverable = True
                 return ReplicaStartupStatus.FAILED, msg
 
@@ -4678,12 +4660,11 @@ class DeploymentState:
                 # (e.g., the previous controller crashed before assigning a
                 # rank to it), don't bump the deploy failure counter -- the
                 # underlying cause is controller-side, not user code, and a
-                # fresh replica will be started in its place. The actor was
-                # already killed in `check_ready()`, so force-stop to avoid
-                # issuing a graceful shutdown RPC to a dead actor. We still
+                # fresh replica will be started in its place. Stop it
+                # gracefully so the user's destructor still runs. We still
                 # propagate gang failure tracking so siblings get cleaned up.
                 if replica.unrecoverable:
-                    self._stop_replica(replica, graceful_stop=False)
+                    self._stop_replica(replica)
                     if replica.gang_context is not None:
                         failed_gang_ids.add(replica.gang_context.gang_id)
                     continue

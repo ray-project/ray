@@ -4086,10 +4086,11 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     between actor creation and the first
     `initialize_and_get_metadata(rank=...)` call. `recover()` is non-
     blocking: the new controller fires `was_initialized` asynchronously,
-    `check_ready()` observes the False response in the reconcile loop,
-    kills the actor, and the reconciler replaces it with a fresh replica.
-    The controller-side deploy-failure counter must NOT be bumped, since
-    the underlying cause is a previous controller crash, not user code.
+    `check_ready()` observes the False response in the reconcile loop, and
+    the reconciler stops the replica and replaces it with a fresh one. The
+    stop is graceful so the user's destructor still runs, and the
+    controller-side deploy-failure counter must NOT be bumped, since the
+    underlying cause is a previous controller crash, not user code.
     """
 
     create_dsm, _, _, _ = mock_deployment_state_manager
@@ -4122,7 +4123,7 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
     starting_failures_before = new_ds._replica_constructor_retry_counter
 
-    # Next update cycle: probe says False -> the replica is force-stopped
+    # Next update cycle: probe says False -> the replica is stopped
     # (STOPPING) and a fresh replica is started in its place (STARTING) in
     # the same reconcile pass.
     new_dsm.update()
@@ -4142,6 +4143,8 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     # Drain the STOPPING replica and confirm we're left with just the
     # replacement.
     stopping_replica = new_ds._replicas.get(states=[ReplicaState.STOPPING])[0]
+    # Stopped gracefully, so the replica still runs its destructor.
+    assert stopping_replica._actor.force_stopped_counter == 0
     stopping_replica._actor.set_done_stopping()
     new_dsm.update()
     check_counts(new_ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
