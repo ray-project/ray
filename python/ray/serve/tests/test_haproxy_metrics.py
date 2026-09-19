@@ -895,6 +895,9 @@ def _render_with_metrics(enabled: bool) -> str:
             name="llm",
             path_prefix="/",
             app_name="llm",
+            # Needed for the ingress to be router-selectable, and so for any Lua
+            # to be rendered at all: the map is keyed by deployment name.
+            ingress_deployment_name="Ingress",
             servers=[
                 ServerConfig(
                     name="A", host="127.0.0.1", port=9001, replica_id="actor-A"
@@ -956,6 +959,9 @@ def _render_lua_with_metrics(enabled: bool) -> str:
             name="llm",
             path_prefix="/",
             app_name="llm",
+            # Needed for the ingress to be router-selectable, and so for any Lua
+            # to be rendered at all: the map is keyed by deployment name.
+            ingress_deployment_name="Ingress",
             servers=[
                 ServerConfig(
                     name="A", host="127.0.0.1", port=9001, replica_id="actor-A"

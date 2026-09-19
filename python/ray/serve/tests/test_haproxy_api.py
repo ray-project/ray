@@ -19,14 +19,18 @@ from fastapi import FastAPI, Request, Response
 
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
+    DirectTargetConfig,
     HAProxyApi,
     HAProxyConfig,
     HAProxyManager,
@@ -34,6 +38,7 @@ from ray.serve._private.haproxy import (
     _routers_and_targets_by_backend,
 )
 from ray.serve.config import HTTPOptions
+from ray.serve.schema import Target, TargetGroup
 
 logger = logging.getLogger(__name__)
 
@@ -606,6 +611,20 @@ def _make_api(temp_dir, backend_configs):
     )
 
 
+def _direct_target(rid="drid_1", host="10.0.0.2"):
+    """One `_direct_http` deployment holding a single replica.
+
+    The router only ever names `_direct_http` deployments, so a router-bearing
+    backend needs at least one with a replica ID for any Lua to be emitted.
+    Ingress `servers` alone no longer produce router directives.
+    """
+    return DirectTargetConfig(
+        deployment_name="LLMServer:x",
+        name="llm-direct-0",
+        servers=[ServerConfig(name="d1", host=host, port=30010, replica_id=rid)],
+    )
+
+
 def test_routers_and_targets_prefers_colocated_router():
     """Each HAProxy round-robins across the routers co-located on its own node,
     and falls back to a single deterministic pick when none is co-located."""
@@ -623,6 +642,7 @@ def test_routers_and_targets_prefers_colocated_router():
                 ServerConfig(name="router_local_a", host=local, port=9000),
                 ServerConfig(name="router_remote", host="10.0.0.2", port=9000),
             ],
+            direct_target_configs=[_direct_target(host=local)],
         )
     ]
     # Both on-node routers form the sorted pool; the remote router is excluded.
@@ -641,6 +661,7 @@ def test_routers_and_targets_prefers_colocated_router():
                 ServerConfig(name="router_a", host="10.0.0.2", port=9000),
                 ServerConfig(name="router_b", host="10.0.0.3", port=9000),
             ],
+            direct_target_configs=[_direct_target()],
         )
     ]
     routers, _ = _routers_and_targets_by_backend(remote_only, local_host=local)
@@ -664,6 +685,7 @@ def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cl
                 ServerConfig(name="router_a", host=local, port=9000),
                 ServerConfig(name="router_b", host=local, port=9001),
             ],
+            direct_target_configs=[_direct_target(host=local)],
         )
         api = _make_api(temp_dir, {"llm": backend})
 
@@ -695,6 +717,78 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
 
         assert result is None
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
+
+
+def test_router_with_only_ingress_replicas_is_still_routed(haproxy_api_cleanup):
+    """A router-bearing app whose only replicas are its ingress's still gets Lua.
+
+    The ingress is a deployment the router may name like any other, so this app
+    is routed through its router rather than load-balanced by path. Before the
+    ingress joined the deployment map such an app silently bypassed the routing
+    policy, which is why it had to be warned about; there is nothing to warn
+    about now.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            ingress_deployment_name="Ingress",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.1", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router", host="10.0.0.10", port=9000)
+            ],
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+        with mock.patch("ray.serve._private.haproxy.logger") as logger:
+            lua_path = api._write_ingress_request_router_lua([backend])
+        assert lua_path is not None
+        assert logger.warning.call_count == 0
+        with open(lua_path) as f:
+            lua = f.read()
+
+        # The ingress row points at the companion backend, keyed by the raw
+        # replica ID `/internal/route` returns.
+        assert (
+            '["Ingress"] = { b = "llm-via-ingress-request-router", r = {\n'
+            '            ["rid_1"] = "r1"\n'
+            "        } }" in lua
+        )
+
+        cfg = _render(api)
+        assert "lua.route_via_ingress_request_router" in cfg
+
+
+def test_proxy_backed_app_without_ingress_identity_emits_no_lua(haproxy_api_cleanup):
+    """No `ingress_deployment_name` means no ingress row, and with no direct
+    targets that leaves nothing for the router to select.
+
+    A proxy-backed target group has no ingress deployment identity for the router
+    to name, so it must not be invented -- otherwise the Lua map would carry a
+    deployment key no router would ever return.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.1", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router", host="10.0.0.10", port=9000)
+            ],
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+        assert api._write_ingress_request_router_lua([backend]) is None
+        assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
+
+        cfg = _render(api)
+        assert "lua.route_via_ingress_request_router" not in cfg
+        # The ingress is still served, by path.
+        assert "use_backend llm if is_llm" in cfg
 
 
 def test_router_servers_without_replica_ids_emits_no_lua_directives(
@@ -760,6 +854,7 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
                     ingress_request_router_servers=[
                         ServerConfig(name="router", host="10.0.0.10", port=9000)
                     ],
+                    direct_target_configs=[_direct_target()],
                 ),
                 "api": BackendConfig(
                     name="api",
@@ -790,6 +885,303 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
         assert "set-var(txn.ingress_request_router_app) str(api)" not in cfg
 
 
+def _direct_http_backend(direct_deployments):
+    """An app backend with a router plus one `_direct_http` deployment per entry.
+
+    `direct_deployments` maps deployment name -> list of (server name, replica id).
+    """
+    return BackendConfig(
+        name="llm",
+        path_prefix="/",
+        app_name="llm",
+        ingress_deployment_name="Ingress",
+        servers=[
+            ServerConfig(
+                name="ingress1", host="10.0.0.1", port=30001, replica_id="ingress_rid"
+            )
+        ],
+        ingress_request_router_servers=[
+            ServerConfig(name="router", host="10.0.0.10", port=9000)
+        ],
+        direct_target_configs=[
+            DirectTargetConfig(
+                deployment_name=deployment_name,
+                name=f"llm-direct-{i}",
+                servers=[
+                    ServerConfig(
+                        name=server_name,
+                        host="10.0.0.2",
+                        port=30010 + j,
+                        replica_id=rid,
+                    )
+                    for j, (server_name, rid) in enumerate(servers)
+                ],
+            )
+            for i, (deployment_name, servers) in enumerate(direct_deployments.items())
+        ],
+    )
+
+
+def _render(api):
+    with mock.patch(
+        "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+        api.config_file_path,
+    ):
+        api._generate_config_file_internal()
+    with open(api.config_file_path) as f:
+        return f.read()
+
+
+def test_direct_http_deployments_get_isolated_backends(haproxy_api_cleanup):
+    """Each `_direct_http` deployment renders its own backend holding only its
+    own replicas.
+
+    This isolation is the whole point of the design: if two models shared a
+    backend, HAProxy's retry/redispatch could serve a model-a request from a
+    model-b replica.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = _direct_http_backend(
+            {
+                "LLMServer:model-a": [("srv_a1", "rid_a1"), ("srv_a2", "rid_a2")],
+                "LLMServer:model-b": [("srv_b1", "rid_b1")],
+            }
+        )
+        cfg = _render(_make_api(temp_dir, {"llm": backend}))
+
+        # Split on the stanza header; the frontend's use_backend lines mention
+        # these names too.
+        backend_a = cfg.split("\nbackend llm-direct-0\n", 1)[1].split("\nbackend ", 1)[
+            0
+        ]
+        backend_b = cfg.split("\nbackend llm-direct-1\n", 1)[1].split("\nbackend ", 1)[
+            0
+        ]
+
+        # model-a's backend holds both of its replicas and none of model-b's.
+        assert "server srv_a1 " in backend_a and "server srv_a2 " in backend_a
+        assert "srv_b1" not in backend_a
+        # ...and vice versa.
+        assert "server srv_b1 " in backend_b
+        assert "srv_a1" not in backend_b and "srv_a2" not in backend_b
+        # The ingress replica stays out of both.
+        assert "ingress1" not in backend_a and "ingress1" not in backend_b
+        # Direct backends also contribute to the node's health response.
+        assert "nbsrv(llm-direct-0) ge 1" in cfg
+        assert "nbsrv(llm-direct-1) ge 1" in cfg
+
+
+def test_direct_http_backends_are_dispatched_by_txn_var(haproxy_api_cleanup):
+    """Both kinds of selection dispatch on the *name* of the backend the Lua
+    resolved, and both rules precede the app's path-routed use_backend.
+
+    Matching the boolean txn.via_ingress_request_router instead would make a
+    successful direct selection eligible for the ingress companion as well --
+    whichever rule the template happened to render first would win, so a model
+    request could be answered by the ingress.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = _direct_http_backend(
+            {"LLMServer:model-a": [("srv_a1", "rid_a1")]},
+        )
+        cfg = _render(_make_api(temp_dir, {"llm": backend}))
+
+        direct_dispatch = (
+            "use_backend llm-direct-0 if is_llm "
+            '{ var(txn.selected_deployment_backend) -m str "llm-direct-0" }'
+        )
+        ingress_dispatch = (
+            "use_backend llm-via-ingress-request-router if is_llm "
+            "{ var(txn.selected_deployment_backend) -m str "
+            '"llm-via-ingress-request-router" }'
+        )
+        assert direct_dispatch in cfg
+        assert ingress_dispatch in cfg
+
+        # Success no longer selects the ingress companion merely because the
+        # via-router flag is set.
+        assert (
+            "use_backend llm-via-ingress-request-router if is_llm "
+            "{ var(txn.via_ingress_request_router) -m found }"
+        ) not in cfg
+
+        lines = [ln.strip() for ln in cfg.splitlines()]
+        path_routed = lines.index("use_backend llm if is_llm")
+        assert lines.index(direct_dispatch) < path_routed
+        assert lines.index(ingress_dispatch) < path_routed
+
+
+def test_direct_http_replicas_are_grouped_by_deployment_in_lua_map(
+    haproxy_api_cleanup,
+):
+    """The Lua replica map is keyed [deployment][replica_id], mirroring the
+    two-level decision `/internal/route` reports, and holds every deployment the
+    router may name -- the app's ingress as well as its `_direct_http` ones.
+
+    The backend name hangs off the deployment, not off each replica, so it is
+    written once however many replicas the deployment has. Each deployment's
+    replicas stay under its own key, which is what keeps a model-a pick from ever
+    resolving to a model-b server.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = _direct_http_backend(
+            {
+                "LLMServer:model-a": [("srv_a1", "rid_a1"), ("srv_a2", "rid_a2")],
+                "LLMServer:model-b": [("srv_b1", "rid_b1")],
+            },
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+        lua_path = api._write_ingress_request_router_lua([backend])
+        assert lua_path is not None
+        with open(lua_path) as f:
+            lua = f.read()
+
+        # Ingress: its replicas live in the companion backend.
+        assert (
+            '["Ingress"] = { b = "llm-via-ingress-request-router", r = {\n'
+            '            ["ingress_rid"] = "ingress1"\n'
+            "        } }" in lua
+        )
+        # Direct: each model in its own isolated backend.
+        assert (
+            '["LLMServer:model-a"] = { b = "llm-direct-0", r = {\n'
+            '            ["rid_a1"] = "srv_a1",\n'
+            '            ["rid_a2"] = "srv_a2"\n'
+            "        } }" in lua
+        )
+        assert (
+            '["LLMServer:model-b"] = { b = "llm-direct-1", r = {\n'
+            '            ["rid_b1"] = "srv_b1"\n'
+            "        } }" in lua
+        )
+        # One backend name per deployment row, not per replica.
+        assert lua.count('"llm-direct-0"') == 1
+        assert lua.count('"llm-direct-1"') == 1
+        assert lua.count('"llm-via-ingress-request-router"') == 1
+        # Replica IDs stay scoped to their own deployment: model-b's row must
+        # not carry model-a's servers, nor the ingress's.
+        model_b_row = lua.split('["LLMServer:model-b"]', 1)[1]
+        for foreign in ("srv_a1", "srv_a2", "ingress1"):
+            assert foreign not in model_b_row
+
+
+def test_only_ingress_lookup_miss_is_recoverable(haproxy_api_cleanup):
+    """Only a stale ingress replica can recover through the fallback proxy."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = _direct_http_backend({"LLMServer:model-a": [("srv_a1", "rid_a1")]})
+        assert backend.ingress_deployment_name == "Ingress"
+        backend.fallback_server = ServerConfig(
+            name="fallback", host="10.0.0.99", port=8000
+        )
+        cfg = _render(_make_api(temp_dir, {"llm": backend}))
+
+        assert "lua.route_via_ingress_request_router" in cfg
+        directives = [
+            ln.strip() for ln in cfg.splitlines() if not ln.strip().startswith("#")
+        ]
+        assert [ln for ln in directives if "set-var" in ln and "recoverable" in ln]
+
+        failure_503 = next(
+            ln.strip()
+            for ln in cfg.splitlines()
+            if "status 503" in ln and "ingress_request_router_failed" in ln
+        )
+        assert (
+            "!{ var(txn.ingress_request_router_recoverable) -m found }" in failure_503
+        )
+
+        assert any(
+            line.startswith("use-server fallback") and "recoverable" in line
+            for line in directives
+        )
+        assert "server fallback 10.0.0.99:8000" in cfg
+
+
+@pytest.mark.parametrize(
+    "deployment_names",
+    [
+        # get_safe_name maps ':' and ' ' to '_', so these collide after sanitizing.
+        ("LLMServer:a", "LLMServer a"),
+        # '/' becomes '.', so a literal '.' collides with a model id path.
+        ("meta-llama/L3", "meta-llama.L3"),
+    ],
+)
+def test_direct_backend_names_survive_sanitization_collisions(deployment_names):
+    """Deployment names that sanitize identically still get distinct backends.
+
+    Two identically named `backend` stanzas are a fatal HAProxy parse error, and
+    since the config is written before the reload, that would wedge the node on a
+    stale config. Model ids are user-supplied and routinely contain '/' and ':'.
+    """
+    manager = _bare_haproxy_manager()
+    names = {
+        manager._generate_direct_backend_name("http-app", deployment_name)
+        for deployment_name in deployment_names
+    }
+    assert len(names) == len(deployment_names)
+
+
+def _target_group(*, with_router: bool) -> TargetGroup:
+    """An HTTP app with one ingress replica and one `_direct_http` deployment."""
+    return TargetGroup(
+        targets=[
+            Target(ip="10.0.0.1", port=8000, instance_id="", name="app#Ingress#i1")
+        ],
+        route_prefix="/",
+        protocol=RequestProtocol.HTTP,
+        app_name="app",
+        ingress_deployment_name="Ingress",
+        ingress_request_router_targets=(
+            [Target(ip="10.0.0.9", port=9000, instance_id="", name="app#LLMRouter#r1")]
+            if with_router
+            else []
+        ),
+        direct_http_targets={
+            "LLMServer:m": [
+                Target(
+                    ip="10.0.0.2", port=8001, instance_id="", name="app#LLMServer:m#d1"
+                )
+            ]
+        },
+    )
+
+
+@pytest.mark.parametrize("with_router", [True, False])
+def test_direct_backends_require_an_ingress_request_router(with_router):
+    """Direct backends are built, and awaited by `serving()`, only for apps with
+    an ingress request router -- and the two always agree.
+
+    A direct backend is reachable only through the router's dispatch variable, so
+    without a router there is nothing to render. Awaiting one that is never
+    rendered is what wedged the proxy: `serving()` compared its desired backends
+    to HAProxy's stats and never saw the missing one come UP, so `_direct_http`
+    apps without a router (e.g. the `_direct_http` integration tests) hung on
+    "Proxies not available".
+    """
+    manager = _bare_haproxy_manager()
+    manager._node_ip_address = "10.0.0.250"
+    tg = _target_group(with_router=with_router)
+    manager._target_groups = [tg]
+
+    backend = manager._create_backend_config(tg, fallback_target=None)
+    desired = manager._desired_backend_servers()
+
+    app_backend = manager._generate_backend_name(tg)
+    direct_backend = manager._generate_direct_backend_name(app_backend, "LLMServer:m")
+
+    if with_router:
+        assert [d.name for d in backend.direct_target_configs] == [direct_backend]
+        assert set(desired) == {app_backend, direct_backend}
+        assert desired[direct_backend] == {manager.get_safe_name("app#LLMServer:m#d1")}
+    else:
+        assert backend.direct_target_configs == []
+        assert set(desired) == {app_backend}
+    # Whatever the case, what `serving()` waits for is exactly what is rendered.
+    assert set(desired) == {app_backend} | {
+        d.name for d in backend.direct_target_configs
+    }
+
+
 def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup):
     """The 503-on-router-failure rule must be rendered before any
     ``use_backend`` directive. If it isn't, a failed Lua dispatch would
@@ -814,6 +1206,7 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
                     ingress_request_router_servers=[
                         ServerConfig(name="router", host="10.0.0.10", port=9000)
                     ],
+                    direct_target_configs=[_direct_target()],
                 ),
             },
         )
@@ -868,6 +1261,7 @@ def test_ingress_backend_inherits_global_retry_policy(haproxy_api_cleanup):
             ingress_request_router_servers=[
                 ServerConfig(name="router", host="10.0.0.10", port=9000)
             ],
+            direct_target_configs=[_direct_target()],
         ),
     }
 
@@ -1036,6 +1430,7 @@ def test_ingress_request_router_forward_body_gate_renders(
                     ingress_request_router_servers=[
                         ServerConfig(name="router", host="10.0.0.10", port=9000)
                     ],
+                    direct_target_configs=[_direct_target()],
                 ),
             },
         )
@@ -1050,11 +1445,31 @@ def test_ingress_request_router_forward_body_gate_renders(
             lua = f.read()
 
         if forward_body:
-            assert "wait-for-body" in cfg, cfg
+            assert (
+                "http-request wait-for-body time "
+                f"{RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S}s "
+                "if METH_POST has_ingress_request_router_app"
+            ) in cfg, cfg
+            bufsize = RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
+            assert f"tune.bufsize {bufsize}" in cfg, cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+
+        assert (
+            "http-request lua.route_via_ingress_request_router "
+            "if METH_POST has_ingress_request_router_app"
+        ) in cfg, cfg
+
+        # Method and path reach the router regardless of body forwarding: a
+        # deployment choice must not depend on the body escape hatch.
+        assert 'local REQUEST_METHOD_HEADER = "X-Serve-Request-Method"' in lua, lua
+        assert 'local REQUEST_PATH_HEADER = "X-Serve-Request-Path"' in lua, lua
+        assert "local method = txn.sf:method()" in lua, lua
+        assert "local path = txn.sf:path()" in lua, lua
+        assert ".. method_header" in lua and ".. path_header" in lua, lua
+
         assert (
             "http-request del-header x-serve-router- -m beg "
             "if has_ingress_request_router_app"
@@ -1070,7 +1485,8 @@ def _create_replica_server(port: int, replica_id_header: str):
     async def health():
         return {"status": "OK"}
 
-    @app.post("/{path:path}")
+    # `/-/healthz` is registered first, so it wins over these catch-alls.
+    @app.api_route("/{path:path}", methods=["GET", "POST"])
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
         for name, value in req.headers.items():
@@ -1084,18 +1500,33 @@ def _create_replica_server(port: int, replica_id_header: str):
 
 
 def _create_router_server(
-    port: int, replica_id_to_return: str, extra_response: Optional[dict] = None
+    port: int,
+    replica_id_to_return: str,
+    deployment_to_return: str,
+    extra_response: Optional[dict] = None,
 ):
-    """Fake /internal/route. Captures request data forwarded by HAProxy."""
+    """Fake /internal/route. Captures request data forwarded by HAProxy.
+
+    Both fields are required: HAProxy looks the pick up as
+    [deployment][replica_id], so a response naming only a replica cannot be
+    resolved.
+    """
     app = FastAPI()
-    captured = {"bodies": [], "request_ids": []}
+    captured = {"bodies": [], "request_ids": [], "methods": [], "paths": []}
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
         captured["request_ids"].append(req.headers.get("x-request-id", ""))
-        response = {"replica_id": replica_id_to_return}
+        # The router selects a deployment as well as a replica, so HAProxy
+        # forwards what was asked for regardless of body forwarding.
+        captured["methods"].append(req.headers.get("x-serve-request-method", ""))
+        captured["paths"].append(req.headers.get("x-serve-request-path", ""))
+        response = {
+            "deployment": deployment_to_return,
+            "replica_id": replica_id_to_return,
+        }
         if extra_response:
             response.update(extra_response)
         return response
@@ -1110,8 +1541,8 @@ def _create_router_server(
 
     server, thread = _serve_fastapi_app(app, port, ready)
     # Discard the readiness-probe data so callers see only client traffic.
-    captured["bodies"].clear()
-    captured["request_ids"].clear()
+    for values in captured.values():
+        values.clear()
     return server, thread, captured
 
 
@@ -1171,10 +1602,359 @@ def _shutdown_fake_servers(servers, threads):
 
 
 @pytest.mark.asyncio
+async def test_direct_http_deployment_end_to_end(haproxy_api_cleanup):
+    """Run real HAProxy and route a request to a non-ingress deployment's replica.
+
+    The router names the deployment it chose and one of its replicas; HAProxy
+    walks its map the same two levels, switches to that deployment's backend, and
+    pins the replica there. This is the behavior the whole change exists for:
+    traffic reaching a `_direct_http` deployment without passing through the
+    application's ingress.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        ingress_port = find_free_port()
+        model_a_port = find_free_port()
+        model_b_port = find_free_port()
+        router_port = find_free_port()
+
+        ingress_actor = "SERVE_REPLICA::app#Ingress#iii"
+        model_a_actor = "SERVE_REPLICA::app#LLMServer:model-a#aaa"
+        model_b_actor = "SERVE_REPLICA::app#LLMServer:model-b#bbb"
+
+        ingress, ingress_thread = _create_replica_server(
+            ingress_port, replica_id_header="INGRESS"
+        )
+        model_a, model_a_thread = _create_replica_server(
+            model_a_port, replica_id_header="MODEL_A"
+        )
+        model_b, model_b_thread = _create_replica_server(
+            model_b_port, replica_id_header="MODEL_B"
+        )
+        # The router picks model-b's replica, so a correct dispatch must cross
+        # into model-b's backend rather than staying on the ingress.
+        router, router_thread, router_captured = _create_router_server(
+            router_port,
+            replica_id_to_return=model_b_actor,
+            deployment_to_return="LLMServer:model-b",
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="INGRESS",
+                        host="127.0.0.1",
+                        port=ingress_port,
+                        replica_id=ingress_actor,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                direct_target_configs=[
+                    DirectTargetConfig(
+                        deployment_name="LLMServer:model-a",
+                        name="llm-direct-model-a",
+                        servers=[
+                            ServerConfig(
+                                name="MODEL_A",
+                                host="127.0.0.1",
+                                port=model_a_port,
+                                replica_id=model_a_actor,
+                            )
+                        ],
+                    ),
+                    DirectTargetConfig(
+                        deployment_name="LLMServer:model-b",
+                        name="llm-direct-model-b",
+                        servers=[
+                            ServerConfig(
+                                name="MODEL_B",
+                                host="127.0.0.1",
+                                port=model_b_port,
+                                replica_id=model_b_actor,
+                            )
+                        ],
+                    ),
+                ],
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            # The router names model-b's replica, so the request must land on
+            # model-b -- not the ingress, and not model-a.
+            for _ in range(3):
+                resp = requests.post(
+                    f"http://127.0.0.1:{haproxy_port}/v1/chat/completions",
+                    json={"prompt": "hello"},
+                    timeout=5,
+                )
+                assert resp.status_code == 200, resp.text
+                assert resp.headers.get("x-replica-id") == "MODEL_B"
+
+            assert len(router_captured["bodies"]) == 3
+            # The router is told what was asked for, so it can pick a deployment
+            # and not just a replica. Sent even though body forwarding is off.
+            assert router_captured["methods"] == ["POST"] * 3
+            assert router_captured["paths"] == ["/v1/chat/completions"] * 3
+
+            # HAProxy answers its own endpoints before routing, so they never
+            # reach the router...
+            for own_path in ("/-/healthz", "/-/routes"):
+                requests.get(f"http://127.0.0.1:{haproxy_port}{own_path}", timeout=5)
+            assert len(router_captured["bodies"]) == 3
+
+            # Non-POST requests bypass the router until it supports ingress
+            # route ownership, so existing path routing sends this to ingress.
+            resp = requests.get(f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5)
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "INGRESS"
+            assert len(router_captured["bodies"]) == 3
+        finally:
+            _shutdown_fake_servers(
+                [ingress, model_a, model_b, router],
+                [ingress_thread, model_a_thread, model_b_thread, router_thread],
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "returned_deployment,returned_replica,expected_status,expected_reason,expected_replica",
+    [
+        # Known deployment, replica not in its map: e.g. it scaled in since the
+        # last HAProxy reload.
+        (
+            "LLMServer:model-a",
+            "SERVE_REPLICA::app#LLMServer:model-a#zzz",
+            503,
+            "unknown_replica_id",
+            None,
+        ),
+        # Deployment absent from this HAProxy's config entirely: e.g. a model
+        # added since the last reload. No sibling replica exists to recover onto.
+        (
+            "LLMServer:model-gone",
+            "SERVE_REPLICA::app#LLMServer:model-gone#zzz",
+            503,
+            "unknown_deployment",
+            None,
+        ),
+        # The app's own ingress, with a replica that has moved. This app has a
+        # fallback Serve proxy that re-pins ingress traffic.
+        (
+            "Ingress",
+            "SERVE_REPLICA::app#Ingress#stale",
+            200,
+            None,
+            "FALLBACK",
+        ),
+    ],
+)
+async def test_router_lookup_miss_fails_closed_or_recovers_ingress(
+    haproxy_api_cleanup,
+    returned_deployment,
+    returned_replica,
+    expected_status,
+    expected_reason,
+    expected_replica,
+):
+    """Ingress misses recover; direct and unknown deployment misses fail closed."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        ingress_port = find_free_port()
+        model_a_port = find_free_port()
+        fallback_port = find_free_port()
+        router_port = find_free_port()
+
+        ingress, ingress_thread = _create_replica_server(
+            ingress_port, replica_id_header="INGRESS"
+        )
+        model_a, model_a_thread = _create_replica_server(
+            model_a_port, replica_id_header="MODEL_A"
+        )
+        fallback, fallback_thread = _create_replica_server(
+            fallback_port, replica_id_header="FALLBACK"
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port,
+            replica_id_to_return=returned_replica,
+            deployment_to_return=returned_deployment,
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                # The fallback may recover a stale ingress replica, but not a
+                # direct or unknown deployment.
+                ingress_deployment_name="Ingress",
+                servers=[
+                    ServerConfig(
+                        name="INGRESS",
+                        host="127.0.0.1",
+                        port=ingress_port,
+                        replica_id="SERVE_REPLICA::app#Ingress#iii",
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                fallback_server=ServerConfig(
+                    name="FALLBACK", host="127.0.0.1", port=fallback_port
+                ),
+                direct_target_configs=[
+                    DirectTargetConfig(
+                        deployment_name="LLMServer:model-a",
+                        name="llm-direct-model-a",
+                        servers=[
+                            ServerConfig(
+                                name="MODEL_A",
+                                host="127.0.0.1",
+                                port=model_a_port,
+                                replica_id="SERVE_REPLICA::app#LLMServer:model-a#aaa",
+                            )
+                        ],
+                    ),
+                ],
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/v1/chat/completions",
+                json={"prompt": "hello"},
+                timeout=5,
+            )
+            assert resp.status_code == expected_status, resp.text
+            assert resp.headers.get("x-serve-reason") == expected_reason
+            assert resp.headers.get("x-replica-id") == expected_replica
+        finally:
+            _shutdown_fake_servers(
+                [ingress, model_a, fallback, router],
+                [ingress_thread, model_a_thread, fallback_thread, router_thread],
+            )
+
+
+@pytest.mark.asyncio
+async def test_ingress_selection_end_to_end(haproxy_api_cleanup):
+    """Run real HAProxy and have the router select the app's *ingress*.
+
+    The ingress is reachable the same way a `_direct_http` deployment is -- the
+    router names it, HAProxy resolves it in the same two-level map and pins the
+    replica in the companion backend. This is the half of the contract the
+    direct-deployment test cannot cover, and the reason the frontend compares the
+    resolved backend by name instead of a via-router boolean.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        ingress_port = find_free_port()
+        model_port = find_free_port()
+        router_port = find_free_port()
+
+        ingress_actor = "SERVE_REPLICA::app#Ingress#iii"
+        model_actor = "SERVE_REPLICA::app#LLMServer:model-a#aaa"
+
+        ingress, ingress_thread = _create_replica_server(
+            ingress_port, replica_id_header="INGRESS"
+        )
+        model, model_thread = _create_replica_server(
+            model_port, replica_id_header="MODEL_A"
+        )
+        # The router picks the ingress, so a correct dispatch must land there
+        # rather than on the model deployment that also exists.
+        router, router_thread, router_captured = _create_router_server(
+            router_port,
+            replica_id_to_return=ingress_actor,
+            deployment_to_return="Ingress",
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                ingress_deployment_name="Ingress",
+                servers=[
+                    ServerConfig(
+                        name="INGRESS",
+                        host="127.0.0.1",
+                        port=ingress_port,
+                        replica_id=ingress_actor,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                direct_target_configs=[
+                    DirectTargetConfig(
+                        deployment_name="LLMServer:model-a",
+                        name="llm-direct-model-a",
+                        servers=[
+                            ServerConfig(
+                                name="MODEL_A",
+                                host="127.0.0.1",
+                                port=model_port,
+                                replica_id=model_actor,
+                            )
+                        ],
+                    ),
+                ],
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            # The router can select the ingress for a POST as well as a direct
+            # deployment, and dispatches it through the companion backend.
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/v1/models", timeout=5
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "INGRESS"
+
+            assert len(router_captured["bodies"]) == 1
+            assert router_captured["methods"] == ["POST"]
+            assert router_captured["paths"] == ["/v1/models"]
+        finally:
+            _shutdown_fake_servers(
+                [ingress, model, router],
+                [ingress_thread, model_thread, router_thread],
+            )
+
+
+@pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
-    """Run actual HAProxy against a fake router + two replicas; verify a POST
-    is pinned to the replica the router selects, while a GET (which doesn't
-    trigger the router-routed path) is not."""
+    """Run actual HAProxy against a fake router, an ingress replica and a
+    `_direct_http` replica; verify a POST is pinned to the replica the router
+    selects, while a GET (which doesn't trigger the router-routed path) is not."""
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,
@@ -1186,8 +1966,8 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
         replica_b_port = find_free_port()
         router_port = find_free_port()
 
-        actor_name_a = "SERVE_REPLICA::app#dep#aaa"
-        actor_name_b = "SERVE_REPLICA::app#dep#bbb"
+        actor_name_a = "SERVE_REPLICA::app#Ingress#aaa"
+        actor_name_b = "SERVE_REPLICA::app#LLMServer#bbb"
 
         replica_a, replica_a_thread = _create_replica_server(
             replica_a_port, replica_id_header="A"
@@ -1196,7 +1976,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             replica_b_port, replica_id_header="B"
         )
         router, router_thread, router_captured = _create_router_server(
-            router_port, replica_id_to_return=actor_name_b  # always pick B
+            router_port,
+            replica_id_to_return=actor_name_b,  # always pick B
+            deployment_to_return="LLMServer",
         )
 
         try:
@@ -1205,6 +1987,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 path_prefix="/",
                 app_name="llm",
                 http_health_check_path="/-/healthz",
+                # A is the ingress; B is the `_direct_http` replica the router picks.
                 servers=[
                     ServerConfig(
                         name="A",
@@ -1212,15 +1995,23 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                         port=replica_a_port,
                         replica_id=actor_name_a,
                     ),
-                    ServerConfig(
-                        name="B",
-                        host="127.0.0.1",
-                        port=replica_b_port,
-                        replica_id=actor_name_b,
-                    ),
                 ],
                 ingress_request_router_servers=[
                     ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                direct_target_configs=[
+                    DirectTargetConfig(
+                        deployment_name="LLMServer",
+                        name="llm-direct-LLMServer",
+                        servers=[
+                            ServerConfig(
+                                name="B",
+                                host="127.0.0.1",
+                                port=replica_b_port,
+                                replica_id=actor_name_b,
+                            ),
+                        ],
+                    ),
                 ],
             )
 
@@ -1263,15 +2054,18 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
 
-            # GET is not POST, so Lua routing never runs; the router should
-            # have seen exactly the four POSTs above and nothing more.
+            # GET bypasses the router until it supports ingress route ownership.
             n_router_calls_before_get = len(router_captured["bodies"])
-            requests.get(
+            resp = requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
             )
-            assert (
-                len(router_captured["bodies"]) == n_router_calls_before_get
-            ), "GET must not invoke /internal/route"
+            assert len(router_captured["bodies"]) == n_router_calls_before_get
+            assert resp.headers.get("x-replica-id") == "A"
+
+            # HAProxy's own endpoints still short-circuit ahead of the router.
+            n_router_calls = len(router_captured["bodies"])
+            requests.get(f"http://127.0.0.1:{haproxy_port}/-/routes", timeout=5)
+            assert len(router_captured["bodies"]) == n_router_calls
 
         finally:
             _shutdown_fake_servers(
@@ -1296,17 +2090,22 @@ async def test_ingress_request_router_forwards_trusted_headers(
         replica_port = find_free_port()
         router_port = find_free_port()
 
-        actor_name = "SERVE_REPLICA::app#dep#aaa"
+        actor_name = "SERVE_REPLICA::app#LLMServer#aaa"
         token_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
         metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
         spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
 
+        ingress_port = find_free_port()
+        ingress, ingress_thread = _create_replica_server(
+            ingress_port, replica_id_header="INGRESS"
+        )
         replica, replica_thread = _create_replica_server(
             replica_port, replica_id_header="A"
         )
         router, router_thread, _ = _create_router_server(
             router_port,
             replica_id_to_return=actor_name,
+            deployment_to_return="LLMServer",
             extra_response={
                 RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
                     token_header: "trusted-key",
@@ -1322,15 +2121,24 @@ async def test_ingress_request_router_forwards_trusted_headers(
                 app_name="llm",
                 http_health_check_path="/-/healthz",
                 servers=[
-                    ServerConfig(
-                        name="A",
-                        host="127.0.0.1",
-                        port=replica_port,
-                        replica_id=actor_name,
-                    ),
+                    ServerConfig(name="INGRESS", host="127.0.0.1", port=ingress_port),
                 ],
                 ingress_request_router_servers=[
                     ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                direct_target_configs=[
+                    DirectTargetConfig(
+                        deployment_name="LLMServer",
+                        name="llm-direct-LLMServer",
+                        servers=[
+                            ServerConfig(
+                                name="A",
+                                host="127.0.0.1",
+                                port=replica_port,
+                                replica_id=actor_name,
+                            ),
+                        ],
+                    ),
                 ],
             )
 
@@ -1356,11 +2164,12 @@ async def test_ingress_request_router_forwards_trusted_headers(
             assert resp.headers.get(f"echo-{token_header}") == "trusted-key"
             assert resp.headers.get(f"echo-{metadata_header}") == "trusted-metadata"
             assert f"echo-{spoofed_only_header}" not in resp.headers
+            assert resp.headers.get("x-replica-id") == "A"
 
         finally:
             _shutdown_fake_servers(
-                (replica, router),
-                (replica_thread, router_thread),
+                (ingress, replica, router),
+                (ingress_thread, replica_thread, router_thread),
             )
 
 
@@ -1415,8 +2224,12 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
         replica_port = find_free_port()
         router_port = find_free_port()
 
-        actor_name = "SERVE_REPLICA::app#dep#aaa"
+        actor_name = "SERVE_REPLICA::app#LLMServer#aaa"
 
+        ingress_port = find_free_port()
+        ingress, ingress_thread = _create_replica_server(
+            ingress_port, replica_id_header="INGRESS"
+        )
         replica, replica_thread = _create_replica_server(
             replica_port, replica_id_header="A"
         )
@@ -1429,15 +2242,24 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 app_name="llm",
                 http_health_check_path="/-/healthz",
                 servers=[
-                    ServerConfig(
-                        name="A",
-                        host="127.0.0.1",
-                        port=replica_port,
-                        replica_id=actor_name,
-                    ),
+                    ServerConfig(name="INGRESS", host="127.0.0.1", port=ingress_port),
                 ],
                 ingress_request_router_servers=[
                     ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                direct_target_configs=[
+                    DirectTargetConfig(
+                        deployment_name="LLMServer",
+                        name="llm-direct-LLMServer",
+                        servers=[
+                            ServerConfig(
+                                name="A",
+                                host="127.0.0.1",
+                                port=replica_port,
+                                replica_id=actor_name,
+                            ),
+                        ],
+                    ),
                 ],
             )
 
@@ -1474,113 +2296,11 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
             assert (
                 _backend_stot(stats_csv, "llm-via-ingress-request-router") == 0
             ), stats_csv
+            assert _backend_stot(stats_csv, "llm-direct-LLMServer") == 0, stats_csv
         finally:
             _shutdown_fake_servers(
-                (replica, broken_router), (replica_thread, broken_router_thread)
-            )
-
-
-@pytest.mark.asyncio
-async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
-    """When the router pins a replica_id that is not in HAProxy's server map
-    (the brief membership gap right after an app becomes RUNNING, where the
-    router's in-process view runs ahead of HAProxy's config reload), HAProxy
-    must hand the request to the fallback Serve proxy instead of returning 503.
-    The primary backend must not be load-balanced into, since that would break
-    session affinity."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        haproxy_port = find_free_port()
-        stats_port = find_free_port()
-        replica_port = find_free_port()
-        fallback_port = find_free_port()
-        router_port = find_free_port()
-
-        actor_name = "SERVE_REPLICA::app#dep#aaa"
-        # The router names a replica that is NOT among the configured servers,
-        # simulating HAProxy lagging the router's freshly-updated view.
-        unknown_actor_name = "SERVE_REPLICA::app#dep#not_loaded_yet"
-
-        replica, replica_thread = _create_replica_server(
-            replica_port, replica_id_header="A"
-        )
-        fallback, fallback_thread = _create_replica_server(
-            fallback_port, replica_id_header="FALLBACK"
-        )
-        router, router_thread, _ = _create_router_server(
-            router_port, replica_id_to_return=unknown_actor_name
-        )
-
-        try:
-            backend = BackendConfig(
-                name="llm",
-                path_prefix="/",
-                app_name="llm",
-                http_health_check_path="/-/healthz",
-                servers=[
-                    ServerConfig(
-                        name="A",
-                        host="127.0.0.1",
-                        port=replica_port,
-                        replica_id=actor_name,
-                    ),
-                ],
-                ingress_request_router_servers=[
-                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
-                ],
-                fallback_server=ServerConfig(
-                    name="fallback",
-                    host="127.0.0.1",
-                    port=fallback_port,
-                ),
-            )
-
-            await _start_router_haproxy(
-                temp_dir,
-                haproxy_port,
-                stats_port,
-                {"llm": backend},
-                haproxy_api_cleanup,
-            )
-
-            # The fallback is a `backup` server, so the /-/healthz wait above
-            # (satisfied by the primary replica alone) does not gate it. Before
-            # its health check passes, a pin-miss use-server is skipped and the
-            # request load-balances onto the primary replica; once it passes,
-            # every pin-miss POST lands on the fallback proxy. Require several
-            # consecutive FALLBACK responses so a transient health-check flap
-            # during warmup retries here instead of failing an assertion.
-            def _pin_miss_consistently_reaches_fallback():
-                for _ in range(3):
-                    resp = requests.post(
-                        f"http://127.0.0.1:{haproxy_port}/predict",
-                        json={"prompt": "hi"},
-                        timeout=5,
-                    )
-                    if (
-                        resp.status_code != 200
-                        or resp.headers.get("x-replica-id") != "FALLBACK"
-                    ):
-                        return False
-                return True
-
-            await async_wait_for_condition(
-                _pin_miss_consistently_reaches_fallback, timeout=10
-            )
-
-            # A pin-miss must route via the router backend, never through the
-            # plain primary backend (a silent router bypass). The router backend
-            # carries the fallback-served sessions; the plain backend stays 0.
-            stats_csv = requests.get(
-                f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
-            ).text
-            assert _backend_stot(stats_csv, "llm") == 0, stats_csv
-            assert (
-                _backend_stot(stats_csv, "llm-via-ingress-request-router") >= 3
-            ), stats_csv
-        finally:
-            _shutdown_fake_servers(
-                (replica, fallback, router),
-                (replica_thread, fallback_thread, router_thread),
+                (ingress, replica, broken_router),
+                (ingress_thread, replica_thread, broken_router_thread),
             )
 
 

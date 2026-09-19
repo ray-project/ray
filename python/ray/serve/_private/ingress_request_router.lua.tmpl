@@ -18,6 +18,10 @@ local REQUEST_ID_HEADER = "x-request-id"
 -- same name to /internal/route so session-aware routers (e.g.
 -- ConsistentHashRouter) can use it.
 local SESSION_HEADER = "${SESSION_HEADER}"
+-- Method and path let the router prioritize ingress-owned routes. They are
+-- always forwarded because they do not depend on body forwarding.
+local REQUEST_METHOD_HEADER = "X-Serve-Request-Method"
+local REQUEST_PATH_HEADER = "X-Serve-Request-Path"
 
 -- Per-app router pool and replica map. The frontend sets
 -- txn.ingress_request_router_app to the matched backend name. We look up its
@@ -29,7 +33,8 @@ local REPLICA_TARGETS = ${REPLICA_TARGETS}
 -- lua-load-per-thread, so rotation needs no cross-thread synchronization.
 local _rr_cursor = {}
 
-local function call_router(router, body, truncated_length, session_id, request_id)
+local function call_router(
+    router, body, truncated_length, session_id, request_id, method, path)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -53,6 +58,16 @@ local function call_router(router, body, truncated_length, session_id, request_i
         request_id_header = REQUEST_ID_HEADER .. ": " .. request_id .. "\r\n"
     end
 
+    local method_header = ""
+    if method and method ~= "" then
+        method_header = REQUEST_METHOD_HEADER .. ": " .. method .. "\r\n"
+    end
+
+    local path_header = ""
+    if path and path ~= "" then
+        path_header = REQUEST_PATH_HEADER .. ": " .. path .. "\r\n"
+    end
+
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
         .. "Host: " .. router.host_header .. "\r\n"
@@ -62,6 +77,8 @@ local function call_router(router, body, truncated_length, session_id, request_i
         .. truncation_header
         .. session_header
         .. request_id_header
+        .. method_header
+        .. path_header
         .. "\r\n"
         .. body
 
@@ -87,11 +104,12 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
--- Router contract: response MUST be a flat JSON object with `replica_id` as a
--- plain string actor name (no escaped quotes, no nested objects). The regex
--- relies on this; broaden the parser if the contract grows.
-local function extract_replica_id(json_body)
-    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
+-- Router contract: response MUST be a flat JSON object with `deployment` and
+-- `replica_id` as plain string values (no escaped quotes, no nested objects).
+-- The regex relies on this; broaden the parser if the contract grows.
+-- `field` is always one of our own literals, so it needs no pattern escaping.
+local function extract_string_field(json_body, field)
+    return json_body:match('"' .. field .. '"%s*:%s*"([^"]+)"')
 end
 
 local function set_router_response_headers(txn, json_body)
@@ -115,10 +133,11 @@ local function truncated_full_length(txn, body)
     end
 end
 
--- Core routing decision. Sets either txn.ingress_request_router_target +
--- txn.via_ingress_request_router (success) or txn.ingress_request_router_failed
--- (failure). Both outcomes are timed by the caller; only the silent early
--- returns in the action handler skip timing because no routing was attempted.
+-- Core routing decision. Sets txn.selected_deployment_backend +
+-- txn.selected_replica_server + txn.via_ingress_request_router on success, or
+-- txn.ingress_request_router_failed on failure. Both outcomes are timed by the
+-- caller; only the silent early returns in the action handler skip timing
+-- because no routing was attempted.
 local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- FORWARD_BODY=false: don't read or forward the body; call the router
     -- with body="" so a Content-Length: 0 POST still goes through routing
@@ -175,13 +194,18 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- Round-robin over the app's routers, one cursor step per request. On a
     -- connection failure try the next router. A non-200 is the router's answer
     -- and is not retried.
+    -- `path` is the normalized path with the query string excluded.
+    local method = txn.sf:method()
+    local path = txn.sf:path()
+
     local n = #pool
     local start = _rr_cursor[app] or 0
     _rr_cursor[app] = start + 1
     local response = nil
     for i = 0, n - 1 do
         local router = pool[(start + i) % n + 1]
-        response = call_router(router, body, truncated, session_id, request_id)
+        response = call_router(
+            router, body, truncated, session_id, request_id, method, path)
         if response then
             break
         end
@@ -196,23 +220,44 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     end
 
     local response_body = http_response_body(response)
-    local replica_id = extract_replica_id(response_body)
+    local deployment = extract_string_field(response_body, "deployment")
+    if not deployment then
+        txn:set_var("txn.ingress_request_router_failed", "unparseable_deployment")
+        return
+    end
+    local replica_id = extract_string_field(response_body, "replica_id")
     if not replica_id then
         txn:set_var("txn.ingress_request_router_failed", "unparseable_replica_id")
         return
     end
 
-    local server_name = replica_map[replica_id]
+    -- Attribute metrics to the deployment named by the router, including misses.
+    txn:set_var("txn.serve_deployment", deployment)
+
+    local deployment_targets = replica_map[deployment]
+    if not deployment_targets then
+        -- The deployment is absent from this HAProxy config snapshot.
+        txn:set_var("txn.ingress_request_router_failed", "unknown_deployment")
+        return
+    end
+
+    -- Record the deployment backend before resolving the replica so the
+    -- frontend can recover an ingress replica miss without recovering a miss
+    -- for a direct deployment.
+    txn:set_var("txn.selected_deployment_backend", deployment_targets.b)
+
+    local server_name = deployment_targets.r[replica_id]
     if not server_name then
         -- Pin-miss: router named a replica not in HAProxy's server map, a
         -- transient gap between the router view and HAProxy's config snapshot.
-        -- Arm `failed`. The frontend recovers it via the fallback proxy.
+        -- Arm `failed`. The frontend recovers it via the fallback proxy only
+        -- for ingress; direct deployment misses fail closed.
         txn:set_var("txn.ingress_request_router_failed", "unknown_replica_id")
         return
     end
 
     set_router_response_headers(txn, response_body)
-    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.selected_replica_server", server_name)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
@@ -221,11 +266,12 @@ end
 -- rule fires instead of letting the request silently fall through to the
 -- primary backend. The product invariant is: requests to a router-bearing app
 -- are served via the router or fail; there is no quiet alternative path.
--- Exception: `unknown_replica_id` is recovered via the fallback proxy when the
--- app has one, otherwise 503ed. The fallback re-pins via its own router so the
--- policy is not bypassed. While the fallback is DOWN the request load-balances
--- onto a primary replica in the router backend instead of 503ing, so affinity
--- lapses for that window. Still counted as a failure.
+-- Exception: an ingress `unknown_replica_id` is recovered via the fallback
+-- proxy when the app has one, otherwise 503ed. A direct deployment miss always
+-- fails closed. The fallback re-pins via its own router so the policy is not
+-- bypassed. While the fallback is DOWN, the request load-balances onto an
+-- ingress replica instead of 503ing, so affinity lapses for that window. It is
+-- still counted as a failure.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.
@@ -234,8 +280,9 @@ end
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
     -- Time the routing attempt regardless of outcome: both successful pins
     -- and explicit failures (router_unreachable, router_non_200,
-    -- unparseable_replica_id, unknown_replica_id) record latency_us so
-    -- failure paths are visible in the metrics stream.
+    -- unparseable_deployment, unparseable_replica_id, unknown_deployment,
+    -- unknown_replica_id) record latency_us so failure paths are visible in
+    -- the metrics stream.
     ${METRICS_PRE_CALL_ROUTER}
 
     local app = txn:get_var("txn.ingress_request_router_app")
