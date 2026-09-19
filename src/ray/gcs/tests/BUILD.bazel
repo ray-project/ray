@@ -296,7 +296,11 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
+        "//src/ray/gcs/store_client:observable_store_client",
+        "//src/ray/gcs/store_client:table_name_label",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:clock",
     ],
 )

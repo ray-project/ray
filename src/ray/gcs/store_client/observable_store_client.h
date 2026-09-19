@@ -27,11 +27,46 @@ namespace ray {
 
 namespace gcs {
 
+/// Wraps `delegate` in an ObservableStoreClient when `enabled`, and returns it
+/// unchanged otherwise.
+///
+/// Exists as a named function, and takes `enabled` rather than reading
+/// RayConfig itself, so that both GCS construction sites share one branch and
+/// so that the branch is testable without standing up a GcsServer.
+///
+/// \param delegate The store client to wrap.
+/// \param enabled Whether to observe. GcsServer passes
+/// RayConfig::gcs_redis_storage_metrics_enabled() for the Redis backend; the
+/// in-memory and RocksDB backends are always observed and do not call this.
+/// \param storage_operation_latency_in_ms_histogram Sink for per-operation
+/// latency, recorded when each operation completes.
+/// \param storage_operation_count_counter Sink for per-operation counts,
+/// recorded when each operation is issued.
+/// \param clock Clock used to measure operation latency.
+/// \return Either an ObservableStoreClient owning `delegate`, or `delegate`.
+std::shared_ptr<StoreClient> MaybeObserve(
+    std::shared_ptr<StoreClient> delegate,
+    bool enabled,
+    ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
+    ray::observability::MetricInterface &storage_operation_count_counter,
+    ClockInterface &clock);
+
 /// Wraps around a StoreClient instance and observe the metrics.
 class ObservableStoreClient : public StoreClient {
  public:
+  /// \param delegate The store client to observe. Taken as a shared_ptr rather
+  /// than a unique_ptr because the Redis backend has to be reachable
+  /// concretely as well: AsyncCheckHealth is declared on RedisStoreClient and
+  /// not on this interface, so GcsServer keeps its own pointer for the periodic
+  /// health check while handing a copy here. std::unique_ptr converts
+  /// implicitly, so the in-memory and RocksDB construction sites are unchanged.
+  /// \param storage_operation_latency_in_ms_histogram Sink for per-operation
+  /// latency, recorded when each operation completes.
+  /// \param storage_operation_count_counter Sink for per-operation counts,
+  /// recorded when each operation is issued.
+  /// \param clock Clock used to measure operation latency.
   explicit ObservableStoreClient(
-      std::unique_ptr<StoreClient> delegate,
+      std::shared_ptr<StoreClient> delegate,
       ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
       ray::observability::MetricInterface &storage_operation_count_counter,
       ClockInterface &clock)
@@ -79,7 +114,7 @@ class ObservableStoreClient : public StoreClient {
                    Postable<void(bool)> callback) override;
 
  private:
-  std::unique_ptr<StoreClient> delegate_;
+  std::shared_ptr<StoreClient> delegate_;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
   ray::observability::MetricInterface &storage_operation_count_counter_;
   ClockInterface &clock_;
