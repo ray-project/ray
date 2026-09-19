@@ -2764,24 +2764,10 @@ def test_slice_placement_group_torchtpu_env_vars(monkeypatch):
         "TPU_WORKER_ID": "0",
         "MASTER_ADDR": "10.0.0.1",
     }
-    jax_env = spg.get_jax_env_vars(slice_index=0, worker_id=0)
-    assert jax_env == {
-        "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
-        "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471",
-        "TPU_WORKER_ID": "0",
-        "TORCH_TPU_SLICEBUILDER_ADDRESSES": "",
-    }
-    assert ray.util.tpu.get_jax_env_vars(
-        "10.0.0.1:8471,10.0.0.2:8471", worker_id=1
-    ) == {
-        "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
-        "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471",
-        "TPU_WORKER_ID": "1",
-    }
 
 
 def test_subslice_placement_group_torchtpu_env_vars(monkeypatch):
-    """Test SubslicePlacementGroup address resolution, get_jax_env_vars, and get_torchtpu_env_vars."""
+    """Test SubslicePlacementGroup address resolution and get_torchtpu_env_vars."""
     mock_pg = MagicMock()
     mock_pg.id = "mock_subslice_pg"
     sg = ray.util.tpu.SubslicePlacementGroup(
@@ -2802,26 +2788,18 @@ def test_subslice_placement_group_torchtpu_env_vars(monkeypatch):
     ):
         assert sg.get_worker_addrs() == ["10.0.0.10", "10.0.0.11"]
         assert sg.get_master_addr() == "10.0.0.10"
-        jax_env = sg.get_jax_env_vars(worker_id=1)
-        assert jax_env == {
-            "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
-            "TPU_PROCESS_ADDRESSES": "10.0.0.10:8471,10.0.0.11:8471",
-            "TPU_WORKER_ID": "1",
-            "TPU_PROCESS_BOUNDS": "1,2,1",
-            "TPU_HOST_BOUNDS": "1,2,1",
-            "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
-            "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
-            "TPU_TOPOLOGY": "2x4",
-        }
         torch_env = sg.get_torchtpu_env_vars(worker_id=1)
         assert torch_env == {
             "TORCH_TPU_TOPOLOGY": "2,4,1",
-            "TORCH_TPU_SLICEBUILDER_ADDRESSES": "10.0.0.10:8471,10.0.0.11:8471",
+            "TORCH_TPU_SLICEBUILDER_ADDRESSES": "10.0.0.10:8472,10.0.0.11:8472",
+            "TPU_PROCESS_PORT": "8472",
             "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
             "TPU_WORKER_ID": "1",
             "MASTER_ADDR": "10.0.0.10",
             "TPU_TOPOLOGY": "2x4",
         }
+        monkeypatch.setenv("TPU_PROCESS_PORT", "8471")
+        assert sg.get_torchtpu_env_vars(worker_id=1) == torch_env
 
     # Unplaced raises RuntimeError when addresses cannot be resolved from PG bundles
     sg_unplaced = ray.util.tpu.SubslicePlacementGroup(
@@ -2990,6 +2968,23 @@ def test_multi_slice_unplaced_does_not_fallback_to_environ(monkeypatch):
     assert sg_none_res.bundle_resources == {}
     env = sg_none_res.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])
     assert env["TORCH_TPU_TOPOLOGY"] == "2,4,1"
+
+    # A 4-chip (2x2) subslice on an 8-chip (2x4) parent VM with 2 logical resources
+    # per chip (bundle_resources={"TPU": 8}) derives tpu_resource_per_chip=2 from
+    # subslice_chips_per_host (4) rather than parent chips_per_host (8).
+    sg_8chip = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="2x4",
+        subslice_topology="2x2",
+        subslice_index=0,
+        slice_name="slice-8chip",
+        num_hosts=1,
+        chips_per_host=8,
+        bundle_resources={"TPU": 8},
+        accelerator_version="v6e",
+    )
+    env_8chip = sg_8chip.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])
+    assert env_8chip["TORCH_TPU_TOPOLOGY"] == "2,2,1,2"
 
 
 def test_subslice_waits_for_discovery_reservation_to_free():

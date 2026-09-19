@@ -12,13 +12,6 @@ from ray._common.network_utils import build_address
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
-    GKE_TPU_TOPOLOGY_ENV_VAR,
-    TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR,
-    TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR,
-    TPU_HOST_BOUNDS_ENV_VAR,
-    TPU_PROCESS_ADDRESSES_ENV_VAR,
-    TPU_PROCESS_BOUNDS_ENV_VAR,
-    TPU_PROCESS_PORT_ENV_VAR,
     TPU_SUBSLICE_LABEL_PREFIX,
     TPU_WORKER_HOSTNAMES_ENV_VAR,
     TPU_WORKER_ID_ENV_VAR,
@@ -292,67 +285,6 @@ def _validate_worker_id(
             f"with {num_hosts} host(s). Must be in range [0, {num_hosts - 1}]."
         )
     return worker_id
-
-
-@PublicAPI(stability="alpha")
-def get_jax_env_vars(
-    worker_hostnames: Union[str, List[str]],
-    worker_id: Optional[int] = None,
-    process_bounds: Optional[str] = None,
-    chips_per_process_bounds: Optional[str] = None,
-    process_port: Optional[str] = None,
-) -> Dict[str, str]:
-    """Returns environment variables required for JAX / libtpu execution on TPU slices or subslices.
-
-    Args:
-        worker_hostnames: Comma-separated string or list of host IP addresses or DNS hostnames.
-            If port numbers (e.g. "10.0.0.1:8471") are included,
-            they are automatically stripped to conform to LibTPU requirements.
-        worker_id: Optional integer ID of the worker (0-indexed). Defaults to 0
-            for a single host; required when multiple hosts are provided.
-        process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
-        chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").
-        process_port: Optional port for TPU_PROCESS_ADDRESSES. Defaults to
-            the TPU_PROCESS_PORT env var with fallback to ``8471``.
-
-    Returns:
-        A dictionary mapping JAX / libtpu environment variables to their values.
-    """
-    raw_items = (
-        worker_hostnames.split(",")
-        if isinstance(worker_hostnames, str)
-        else worker_hostnames
-    )
-    clean_hosts = [
-        host for item in raw_items if (host := _strip_endpoint_port(str(item)))
-    ]
-
-    port = process_port or os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471")
-    env_vars = {
-        TPU_WORKER_HOSTNAMES_ENV_VAR: ",".join(clean_hosts),
-        TPU_PROCESS_ADDRESSES_ENV_VAR: ",".join(
-            build_address(h, port) for h in clean_hosts
-        ),
-    }
-    if worker_id is None and len(clean_hosts) == 1:
-        worker_id = 0
-    if worker_id is not None:
-        if not isinstance(worker_id, int) or isinstance(worker_id, bool):
-            raise TypeError(f"worker_id must be an integer, got {type(worker_id)}.")
-        env_vars[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
-    elif len(clean_hosts) > 1:
-        raise ValueError(
-            f"worker_id must be specified when multiple hosts are provided "
-            f"(received {len(clean_hosts)} hosts)."
-        )
-    if process_bounds is not None:
-        env_vars[TPU_PROCESS_BOUNDS_ENV_VAR] = str(process_bounds)
-        env_vars[TPU_HOST_BOUNDS_ENV_VAR] = str(process_bounds)
-    if chips_per_process_bounds is not None:
-        env_vars[TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR] = str(chips_per_process_bounds)
-        env_vars[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = str(chips_per_process_bounds)
-
-    return env_vars
 
 
 def _get_pg_bundle_node_ips(
@@ -1086,67 +1018,6 @@ class SlicePlacementGroup:
             return None
         bundles_per_host = max(1, self.bundles_per_slice // self.hosts_per_slice)
         return [slice_addrs[h * bundles_per_host] for h in range(self.hosts_per_slice)]
-
-    @PublicAPI(stability="alpha")
-    def get_jax_env_vars(
-        self,
-        slice_index: int = 0,
-        worker_id: Optional[int] = None,
-        worker_hostnames: Optional[Union[str, List[str]]] = None,
-        process_bounds: Optional[str] = None,
-        chips_per_process_bounds: Optional[str] = None,
-    ) -> Dict[str, str]:
-        """Returns the JAX TPU environment variables for this slice.
-
-        Args:
-            slice_index: The 0-based index of the TPU slice.
-            worker_id: Integer ID of the worker within the slice (0-indexed),
-                between 0 and hosts_per_slice - 1. Defaults to 0 on a
-                single-host slice; required on a multi-host one, where each host
-                must declare its own rank. Whether a slice counts as multi-host
-                is derived from the topology and chips per host, not probed from
-                the local hardware.
-            worker_hostnames: Optional comma-separated string or list of host IP
-                addresses or DNS hostnames. If omitted, resolved from placement
-                group bundles in this slice.
-            process_bounds: Optional process bounds string (e.g. "1,2,1") for subslice execution.
-            chips_per_process_bounds: Optional chips per process bounds string (e.g. "2,2,1").
-
-        Returns:
-            A dictionary mapping JAX TPU environment variables to their values.
-
-        Raises:
-            TypeError: If worker_id is not an integer.
-            ValueError: If slice_index is out of range, if worker_id is out of
-                bounds, or if worker_id is omitted on a multi-host slice.
-            RuntimeError: If worker hostnames cannot be resolved.
-        """
-        if not (0 <= slice_index < self.num_slices):
-            raise ValueError(
-                f"slice_index {slice_index} is out of range for {self.num_slices} slice(s)."
-            )
-
-        worker_id = _validate_worker_id(worker_id, self.hosts_per_slice)
-
-        if worker_hostnames is None:
-            if host_addrs := self._get_placed_host_addrs(slice_index):
-                worker_hostnames = host_addrs
-            elif env_hosts := os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "").strip():
-                worker_hostnames = env_hosts
-            else:
-                raise RuntimeError(
-                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for slice "
-                    f"{slice_index}. Placement group bundles are not yet placed and "
-                    f"the local {TPU_WORKER_HOSTNAMES_ENV_VAR} environment variable was not found. "
-                    "Please ensure the placement group is ready, or pass `worker_hostnames` explicitly."
-                )
-
-        return get_jax_env_vars(
-            worker_hostnames=worker_hostnames,
-            worker_id=worker_id,
-            process_bounds=process_bounds,
-            chips_per_process_bounds=chips_per_process_bounds,
-        )
 
     @property
     def chips_per_host(self) -> int:
@@ -2279,26 +2150,6 @@ class SubslicePlacementGroup:
         """Number of hosts (VM workers) in this subslice."""
         return self._num_hosts
 
-    @property
-    def chips_per_host(self) -> int:
-        """TPU chips available per host."""
-        return self._chips_per_host
-
-    @property
-    def bundle_resources(self) -> Dict[str, float]:
-        """Resources assigned to each bundle."""
-        return self._bundle_resources
-
-    @property
-    def head_placement_groups(self) -> List[PlacementGroup]:
-        """Internal head PGs used for slice reservation."""
-        return self._head_placement_groups
-
-    @property
-    def bundle_label_selector(self) -> List[Dict[str, str]]:
-        """Label selectors used for each bundle when creating the PG."""
-        return self._bundle_label_selectors
-
     @PublicAPI(stability="alpha")
     def get_worker_addrs(self) -> List[Optional[str]]:
         """Returns the IP addresses of all worker bundles in this subslice.
@@ -2325,68 +2176,25 @@ class SubslicePlacementGroup:
         addrs = self.get_worker_addrs()
         return addrs[0] if addrs else None
 
-    @PublicAPI(stability="alpha")
-    def get_jax_env_vars(
-        self,
-        worker_id: Optional[int] = None,
-        worker_hostnames: Optional[Union[str, List[str]]] = None,
-        process_bounds: Optional[str] = None,
-        chips_per_process_bounds: Optional[str] = None,
-        process_port: Optional[str] = None,
-    ) -> Dict[str, str]:
-        """Returns the JAX TPU environment variables for this subslice.
+    @property
+    def chips_per_host(self) -> int:
+        """TPU chips available per host."""
+        return self._chips_per_host
 
-        Automatically configures ``TPU_PROCESS_BOUNDS`` and
-        ``TPU_CHIPS_PER_PROCESS_BOUNDS`` for subslice execution if not
-        explicitly provided.
-        """
-        worker_id = _validate_worker_id(worker_id, self._num_hosts)
+    @property
+    def bundle_resources(self) -> Dict[str, float]:
+        """Resources assigned to each bundle."""
+        return self._bundle_resources
 
-        if worker_hostnames is None:
-            # Resolve strictly from placed subslice bundle IPs rather than
-            # os.environ[TPU_WORKER_HOSTNAMES], which lists all parent slice hosts.
-            addrs = self.get_worker_addrs()
-            if addrs and all(addr is not None for addr in addrs):
-                worker_hostnames = addrs
-            else:
-                raise RuntimeError(
-                    f"Could not resolve {TPU_WORKER_HOSTNAMES_ENV_VAR} for subslice "
-                    f"'{self._slice_name}' (index {self._subslice_index}). "
-                    "Ensure the placement group is ready, or pass `worker_hostnames` explicitly."
-                )
+    @property
+    def head_placement_groups(self) -> List[PlacementGroup]:
+        """Internal head PGs used for slice reservation."""
+        return self._head_placement_groups
 
-        if process_bounds is None:
-            w_dims = _get_worker_dims_for_topology(self._subslice_topology)
-            bounds_3d = w_dims if len(w_dims) == 3 else (*w_dims, 1)
-            process_bounds = ",".join(str(d) for d in bounds_3d)
-
-        if chips_per_process_bounds is None:
-            chips_per_process_bounds = {
-                1: "1,1,1",
-                2: "1,2,1",
-                4: "2,2,1",
-                8: "2,4,1",
-            }.get(self._chips_per_host, f"{self._chips_per_host},1,1")
-
-        if process_port is None:
-            # Offset base port by subslice_index so multiple subslices colocated on a
-            # single 8-chip host (e.g. two 2x2 subslices on one v5e-8/v6e-8 VM) do not
-            # collide on localhost:8471 even when TPU_PROCESS_PORT=8471 is set in env.
-            try:
-                base_port = int(os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471"))
-            except ValueError:
-                base_port = 8471
-            process_port = str(base_port + self._subslice_index)
-
-        env_vars = get_jax_env_vars(
-            worker_hostnames=worker_hostnames,
-            worker_id=worker_id,
-            process_bounds=process_bounds,
-            chips_per_process_bounds=chips_per_process_bounds,
-            process_port=process_port,
-        )
-        env_vars[GKE_TPU_TOPOLOGY_ENV_VAR] = self._subslice_topology
-        return env_vars
+    @property
+    def bundle_label_selector(self) -> List[Dict[str, str]]:
+        """Label selectors used for each bundle when creating the PG."""
+        return self._bundle_label_selectors
 
     @DeveloperAPI(stability="alpha")
     def release_head_pgs(self) -> None:
@@ -2421,7 +2229,7 @@ class SubslicePlacementGroup:
         worker_id: Optional[int] = None,
         worker_hostnames: Optional[Union[str, List[str]]] = None,
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
-        slicebuilder_port: int = DEFAULT_TORCH_TPU_SLICEBUILDER_PORT,
+        slicebuilder_port: Optional[int] = None,
         master_addr: Optional[str] = None,
     ) -> Dict[str, str]:
         """Returns the PyTorch/TPU (torch_tpu) environment variables for this subslice.
@@ -2462,10 +2270,25 @@ class SubslicePlacementGroup:
         if master_addr is None:
             master_addr = self.get_master_addr()
 
-        tpu_res = int(self._bundle_resources.get("TPU", self._chips_per_host))
-        tpu_resource_per_chip = (
-            max(1, tpu_res // self._chips_per_host) if self._chips_per_host > 0 else 1
+        subslice_chips_per_host = max(
+            1,
+            get_num_chips_from_topology(self._subslice_topology)
+            // max(1, self._num_hosts),
         )
+        tpu_res = int(self._bundle_resources.get("TPU", subslice_chips_per_host))
+        tpu_resource_per_chip = max(1, tpu_res // subslice_chips_per_host)
+
+        if slicebuilder_port is None:
+            try:
+                base_port = int(
+                    os.environ.get(
+                        "TPU_PROCESS_PORT",
+                        str(DEFAULT_TORCH_TPU_SLICEBUILDER_PORT),
+                    )
+                )
+            except ValueError:
+                base_port = DEFAULT_TORCH_TPU_SLICEBUILDER_PORT
+            slicebuilder_port = base_port + self._subslice_index
 
         env_vars = get_torchtpu_env_vars(
             topology=self._subslice_topology,
@@ -2477,6 +2300,7 @@ class SubslicePlacementGroup:
             tpu_resource_per_chip=tpu_resource_per_chip,
             accelerator_type=self._accelerator_version,
         )
+        env_vars["TPU_PROCESS_PORT"] = str(slicebuilder_port)
         env_vars["TPU_TOPOLOGY"] = self._subslice_topology
         return env_vars
 
