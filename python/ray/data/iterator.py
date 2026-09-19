@@ -1250,15 +1250,12 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
-        # Materialized blocks stay alive, so count them as consumer-held bytes;
-        # otherwise backpressure reads them as producer backlog and throttles it.
         ref_bundles = []
         try:
             for ref_bundle in ref_bundles_iter:
                 stats.iter_prefetched_bytes += ref_bundle.size_bytes()
                 ref_bundles.append(ref_bundle)
         finally:
-            # Nothing else on this path resets the field.
             stats.iter_prefetched_bytes = 0
         context = self.get_context()
         logical_plan = LogicalPlan(

@@ -961,39 +961,29 @@ def test_streaming_split_materialize_reports_to_executor(
     (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
     coord = shard._coord_actor
 
-    def external_consumer_bytes(coordinator):
-        executor = coordinator._current_executor
-        if executor is None:
-            return 0
-        return executor._resource_manager.get_external_consumer_bytes()
+    # The coordinator clears the client's bytes when the epoch ends, so record
+    # the peak inside the actor as each `get` reports them.
+    def track_peak(coordinator):
+        coordinator.peak_client_bytes = 0
+        report = coordinator._report_prefetched_bytes_to_executor
 
-    peak = 0
-    original = shard._to_ref_bundle_iterator
+        def tracked():
+            report()
+            coordinator.peak_client_bytes = max(
+                coordinator.peak_client_bytes,
+                sum(coordinator._client_prefetched_bytes.values()),
+            )
 
-    def sampling_iterator():
-        bundles, stats, executor = original()
+        coordinator._report_prefetched_bytes_to_executor = tracked
 
-        def sampled():
-            nonlocal peak
-            for bundle in bundles:
-                yield bundle
-                peak = max(
-                    peak,
-                    ray.get(coord.__ray_call__.remote(external_consumer_bytes)),
-                )
+    ray.get(coord.__ray_call__.remote(track_peak))
 
-        return sampled(), stats, executor
-
-    shard._to_ref_bundle_iterator = sampling_iterator
     materialized = shard.materialize()
 
-    # One bundle is in flight at any time; only the accumulated total approaches
-    # the whole shard. Half the shard separates the two without depending on how
-    # many bundles the reporting lag costs.
-    assert (
-        peak > materialized.size_bytes() / 2
-    ), "resource manager never saw the materialized bytes"
-    # Cleared on the way out; nothing else on this path resets it.
+    # Prefetch alone is one bundle in flight; only the materialized total
+    # approaches the whole shard.
+    peak = ray.get(coord.__ray_call__.remote(lambda c: c.peak_client_bytes))
+    assert peak > materialized.size_bytes() / 2
     assert shard._iter_stats.iter_prefetched_bytes == 0
 
 
