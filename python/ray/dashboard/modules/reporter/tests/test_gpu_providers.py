@@ -684,9 +684,14 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         mock_handle = Mock()
 
         class MockNVMLError(Exception):
-            pass
+            def __init__(self, message):
+                super().__init__(message)
+                # Real NVMLError carries the numeric code; the production guard
+                # reads it to pick the log level.
+                self.value = NVML_ERROR_NOT_SUPPORTED
 
         mock_pynvml.NVMLError = MockNVMLError
+        mock_pynvml.NVML_ERROR_NOT_SUPPORTED = NVML_ERROR_NOT_SUPPORTED
 
         mock_utilization_info = Mock()
         mock_utilization_info.gpu = 42
@@ -740,9 +745,14 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         mock_mig_handle = Mock()
 
         class MockNVMLError(Exception):
-            pass
+            def __init__(self, message):
+                super().__init__(message)
+                # Real NVMLError carries the numeric code; the production guard
+                # reads it to pick the log level.
+                self.value = NVML_ERROR_NOT_SUPPORTED
 
         mock_pynvml.NVMLError = MockNVMLError
+        mock_pynvml.NVML_ERROR_NOT_SUPPORTED = NVML_ERROR_NOT_SUPPORTED
 
         mock_mig_utilization_info = Mock()
         mock_mig_utilization_info.gpu = 80
