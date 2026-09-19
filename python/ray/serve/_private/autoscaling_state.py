@@ -169,6 +169,9 @@ class _HandleMetricStore:
         self.objects: Dict[str, HandleMetricReport] = dict()
         self.columnar: Dict[str, ColumnarHandleReport] = dict()
         self._report_ts: Dict[str, float] = dict()
+        # Controller-local receive times (monotonic). Used only for drop freshness;
+        # producer timestamps remain the ordering / is_fresher key.
+        self._received_at: Dict[str, float] = dict()
 
     def is_fresher(self, handle_id: str, timestamp: float) -> bool:
         """Whether `accept` would take this report. Lets the columnar path skip the
@@ -183,6 +186,9 @@ class _HandleMetricStore:
         if not self.is_fresher(report.handle_id, report.timestamp):
             return False
         self._report_ts[report.handle_id] = report.timestamp
+        # Stamp receive time only after the fresher gate passes so a rejected
+        # late frame cannot extend handle liveness.
+        self._received_at[report.handle_id] = time.monotonic()
         if isinstance(report, ColumnarHandleReport):
             self.columnar[report.handle_id] = report
             self.objects.pop(report.handle_id, None)
@@ -196,6 +202,11 @@ class _HandleMetricStore:
         self.objects.pop(handle_id, None)
         self.columnar.pop(handle_id, None)
         self._report_ts.pop(handle_id, None)
+        self._received_at.pop(handle_id, None)
+
+    def received_at(self, handle_id: str) -> Optional[float]:
+        """Controller-local monotonic time of the last accepted report, if any."""
+        return self._received_at.get(handle_id)
 
     def all_reports(self) -> List[HandleReport]:
         """Every stored report, materialized so callers can drop while iterating."""
@@ -591,17 +602,23 @@ class DeploymentAutoscalingState:
             2 * self._config.metrics_interval_s,
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
-        now = time.time()
+        now_mono = time.monotonic()
         # Both stores hold reports with the same drop-relevant shape, so one loop. A
         # handle on a dead proxy/replica actor goes immediately; otherwise it goes when
-        # it has not reported for timeout_s, which is expected after a shutdown.
+        # the controller has not received an update for timeout_s. Age is measured from
+        # controller-local receive time so producer/controller clock skew cannot drop
+        # fresh reports early or retain phantoms past the timeout.
         for report in self._handle_store.all_reports():
             dead_actor = (
                 report.is_serve_component_source
                 and report.actor_id is not None
                 and report.actor_id not in alive_serve_actor_ids
             )
-            if not (dead_actor or now - report.timestamp >= timeout_s):
+            received_at = self._handle_store.received_at(report.handle_id)
+            timed_out = (
+                received_at is not None and now_mono - received_at >= timeout_s
+            )
+            if not (dead_actor or timed_out):
                 continue
             self._handle_store.forget(report.handle_id)
             _log_dropped_handle(report, timeout_s, dead_actor)

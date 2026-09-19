@@ -8,6 +8,7 @@ stores and aggregates them.
 import random
 import sys
 from functools import partial
+from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -29,6 +30,7 @@ from ray.serve._private.common import (
     TimeStampedValue,
 )
 from ray.serve._private.controller import ServeController
+from ray.serve._private.constants import RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S
 from ray.serve._private.utils import compress_metric_report, decompress_metric_report
 from ray.serve.config import AggregationFunction, AutoscalingConfig
 
@@ -303,6 +305,7 @@ def _random_handle_report(hid, rng, n_replicas):
 
 def _recorded_state(rep, monkeypatch, now=NOW + 3.0):
     monkeypatch.setattr(A.time, "time", lambda: now)
+    monkeypatch.setattr(A.time, "monotonic", lambda: now)
     st = _state()
     st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
     return st
@@ -414,7 +417,9 @@ def test_drop_stale_handle_metrics_prunes_columnar_dead_actor(monkeypatch):
 def test_drop_stale_handle_metrics_prunes_columnar_timeout(monkeypatch):
     rep = _random_handle_report("h1", random.Random(1), 2)
     st = _recorded_state(rep, monkeypatch)
-    monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)  # long past any timeout
+    # Receive-age uses monotonic; advance both clocks past any timeout.
+    monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)
+    monkeypatch.setattr(A.time, "monotonic", lambda: NOW + 1e6)
     st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
     assert "h1" not in st._handle_store.columnar
 
@@ -433,10 +438,156 @@ def test_columnar_handle_drops_are_logged(monkeypatch):
             st.drop_stale_handle_metrics(alive_serve_actor_ids=set())
         else:
             monkeypatch.setattr(A.time, "time", lambda: NOW + 1e6)
+            monkeypatch.setattr(A.time, "monotonic", lambda: NOW + 1e6)
             st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
         assert "h1" not in st._handle_store.columnar
         assert log.call_count == 1, (dead_actor, log.call_args_list)
         assert "h1" in log.call_args[0][0]
+
+
+def _object_report(hid, *, timestamp, actor_id=None, source=DeploymentHandleSource.UNKNOWN):
+    return HandleMetricReport(
+        deployment_id=DEP,
+        handle_id=hid,
+        actor_id=actor_id,
+        handle_source=source,
+        queued_requests=[TimeStampedValue(timestamp, 1.0)],
+        metrics={RUNNING_REQUESTS_KEY: {}},
+        timestamp=timestamp,
+    )
+
+
+def _timeout_s(metrics_interval_s=1.0):
+    return max(2 * metrics_interval_s, RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S)
+
+
+def _state_with_interval(metrics_interval_s=1.0):
+    st = _state()
+    # Only metrics_interval_s is read by drop_stale_handle_metrics.
+    st._config = SimpleNamespace(metrics_interval_s=metrics_interval_s)
+    return st
+
+
+def test_drop_keeps_fresh_report_when_producer_clock_behind(monkeypatch):
+    """Producer wall clock behind the controller must not make a just-received
+    report look stale. Regression for #66271."""
+    interval = 1.0
+    timeout = _timeout_s(interval)
+    st = _state_with_interval(interval)
+    controller_now = 1000.0
+    producer_ts = controller_now - timeout - 5
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: controller_now)
+    assert st._handle_store.accept(
+        _object_report("h", timestamp=producer_ts)
+    )
+    st.drop_stale_handle_metrics(set())
+    assert "h" in st._handle_store.objects
+    assert st._handle_store.received_at("h") == controller_now
+
+
+def test_drop_prunes_when_producer_clock_ahead_past_receive_timeout(monkeypatch):
+    """Producer wall clock ahead of the controller must not retain phantoms past
+    the receive-based timeout. Regression for #66271."""
+    interval = 1.0
+    timeout = _timeout_s(interval)
+    st = _state_with_interval(interval)
+    receive_mono = 1000.0
+    producer_ts = receive_mono + 3600.0
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: receive_mono)
+    assert st._handle_store.accept(
+        _object_report("h", timestamp=producer_ts)
+    )
+    # Still within receive timeout: keep.
+    monkeypatch.setattr(A.time, "monotonic", lambda: receive_mono + timeout - 0.1)
+    st.drop_stale_handle_metrics(set())
+    assert "h" in st._handle_store.objects
+
+    # Past receive timeout despite producer timestamp still looking "future": drop.
+    monkeypatch.setattr(A.time, "monotonic", lambda: receive_mono + timeout + 0.1)
+    st.drop_stale_handle_metrics(set())
+    assert "h" not in st._handle_store.objects
+    assert st._handle_store.received_at("h") is None
+
+
+def test_rejected_stale_accept_does_not_refresh_received_at(monkeypatch):
+    """A late frame rejected by is_fresher must not extend handle liveness."""
+    interval = 1.0
+    timeout = _timeout_s(interval)
+    st = _state_with_interval(interval)
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 100.0)
+    assert st._handle_store.accept(_object_report("h", timestamp=100.0))
+    assert st._handle_store.received_at("h") == 100.0
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 150.0)
+    assert not st._handle_store.accept(_object_report("h", timestamp=90.0))
+    assert st._handle_store.received_at("h") == 100.0
+    assert st._handle_store._report_ts["h"] == 100.0
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 100.0 + timeout + 0.1)
+    st.drop_stale_handle_metrics(set())
+    assert "h" not in st._handle_store.objects
+
+
+def test_fresher_accept_refreshes_received_at(monkeypatch):
+    """A fresher accepted report refreshes receive time and postpones the drop."""
+    interval = 1.0
+    timeout = _timeout_s(interval)
+    st = _state_with_interval(interval)
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 100.0)
+    assert st._handle_store.accept(_object_report("h", timestamp=100.0))
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 101.0)
+    assert st._handle_store.accept(_object_report("h", timestamp=110.0))
+    assert st._handle_store.received_at("h") == 101.0
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 101.0 + timeout - 0.1)
+    st.drop_stale_handle_metrics(set())
+    assert "h" in st._handle_store.objects
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: 101.0 + timeout + 0.1)
+    st.drop_stale_handle_metrics(set())
+    assert "h" not in st._handle_store.objects
+
+
+def test_drop_dead_actor_ignores_receive_age(monkeypatch):
+    """Dead Serve-component handles still drop immediately regardless of clocks."""
+    st = _state_with_interval(1.0)
+    monkeypatch.setattr(A.time, "monotonic", lambda: 1000.0)
+    assert st._handle_store.accept(
+        _object_report(
+            "h",
+            timestamp=1000.0,
+            actor_id="actor-dead",
+            source=DeploymentHandleSource.PROXY,
+        )
+    )
+    st.drop_stale_handle_metrics(alive_serve_actor_ids=set())
+    assert "h" not in st._handle_store.objects
+
+
+def test_drop_keeps_fresh_columnar_report_when_producer_clock_behind(monkeypatch):
+    """Columnar ingest path has the same receive-based drop semantics."""
+    interval = 1.0
+    timeout = _timeout_s(interval)
+    st = _state_with_interval(interval)
+    controller_now = 1000.0
+    producer_ts = controller_now - timeout - 5
+    rep = _object_report(
+        "h1",
+        timestamp=producer_ts,
+        actor_id="actor-h1",
+        source=DeploymentHandleSource.PROXY,
+    )
+
+    monkeypatch.setattr(A.time, "monotonic", lambda: controller_now)
+    st.record_columnar_metrics_for_handle(codec.decode_handle_flat(codec.encode(rep)))
+    st.drop_stale_handle_metrics(alive_serve_actor_ids={"actor-h1"})
+    assert "h1" in st._handle_store.columnar
+    assert st._handle_store.received_at("h1") == controller_now
 
 
 def test_stale_columnar_handle_report_rejected(monkeypatch):
@@ -717,7 +868,9 @@ def test_handle_store_invariant_survives_interleaved_writes(monkeypatch):
     def _check():
         store = st._handle_store
         assert not set(store.columnar) & set(store.objects)
-        assert set(store._report_ts) == set(store.columnar) | set(store.objects)
+        present = set(store.columnar) | set(store.objects)
+        assert set(store._report_ts) == present
+        assert set(store._received_at) == present
 
     # Interleave both formats, including flips and stale reports that must be rejected.
     for hid, timestamp, columnar in [
@@ -742,6 +895,8 @@ def test_handle_store_invariant_survives_interleaved_writes(monkeypatch):
 
     # Dropping must clear the gate too, or a dead handle blocks its own replacement.
     monkeypatch.setattr(A.time, "time", lambda: NOW + 10_000)
+    monkeypatch.setattr(A.time, "monotonic", lambda: NOW + 10_000)
     st.drop_stale_handle_metrics(set())
     _check()
     assert not st._handle_store._report_ts
+    assert not st._handle_store._received_at

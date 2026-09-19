@@ -51,6 +51,10 @@ def mock_deployment_state_manager(
     ), patch(
         "time.time", new=timer.time
     ), patch(
+        # Receive-age for handle metric drops uses monotonic; keep it on the same
+        # mock clock so timeout tests that advance timer still exercise the path.
+        "time.monotonic", new=timer.time
+    ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll, patch(
         "ray.get_runtime_context"
