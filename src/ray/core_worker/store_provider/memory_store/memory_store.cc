@@ -147,9 +147,11 @@ CoreWorkerMemoryStore::AsyncGetCallbackId CoreWorkerMemoryStore::GetAsync(
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>::iterator iter =
       objects_.find(object_id);
   if (iter == objects_.end()) {
-    do {
+    // 0 is reserved for "already present / posted". Skip wraparound to 0.
+    ++next_async_get_callback_id_;
+    if (next_async_get_callback_id_ == 0) {
       ++next_async_get_callback_id_;
-    } while (next_async_get_callback_id_ == 0);
+    }
     object_async_get_requests_[object_id].push_back(
         {next_async_get_callback_id_, std::move(callback)});
     return next_async_get_callback_id_;

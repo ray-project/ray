@@ -296,7 +296,7 @@ def test_async_callback(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
-async def test_object_ref_ready(ray_start_regular_shared):
+async def test_async_wait_for_object_ref_ready(ray_start_regular_shared):
     signal = SignalActor.remote()
 
     @ray.remote
@@ -314,7 +314,7 @@ async def test_object_ref_ready(ray_start_regular_shared):
 
 
 @pytest.mark.asyncio
-async def test_object_ref_ready_cancel(ray_start_regular_shared):
+async def test_async_wait_for_object_ref_ready_cancel(ray_start_regular_shared):
     signal = SignalActor.remote()
 
     @ray.remote

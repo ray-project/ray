@@ -604,7 +604,7 @@ CoreWorker::CoreWorker(
 
 CoreWorker::~CoreWorker() {
   // Drain WaitAsync *after* shutdown completes: that joins io_thread_, so no
-  // GetAsync callback can be mid-FinishWaitAsync while we clear the map.
+  // memory-store callback can be mid-FinishWaitAsync while we clear the map.
   // Clearing before the join left a window where a completion already taken
   // off the state would still call the user callback from here.
   WaitForShutdownComplete();
@@ -614,7 +614,7 @@ CoreWorker::~CoreWorker() {
   // fine; clearing ``callback`` keeps any surviving GetAsync off ``this``.
   {
     absl::MutexLock lock(&wait_async_mu_);
-    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+    for (std::pair<const uint64_t, std::unique_ptr<WaitAsyncState>> &entry :
          wait_async_requests_) {
       entry.second->callback = nullptr;
       entry.second->callback_arg = nullptr;
@@ -1753,30 +1753,34 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   return Status::OK();
 }
 
-void CoreWorker::FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state,
-                                 uint64_t handle,
-                                 Status status) {
+void CoreWorker::FinishWaitAsync(uint64_t handle, Status status) {
   void (*callback)(Status status, void *callback_arg) = nullptr;
   void *callback_arg = nullptr;
   ObjectID object_id;
   CoreWorkerMemoryStore::AsyncGetCallbackId memory_callback_id = 0;
   {
     absl::MutexLock lock(&wait_async_mu_);
-    if (state->callback == nullptr) {
+    absl::flat_hash_map<uint64_t, std::unique_ptr<WaitAsyncState>>::iterator it =
+        wait_async_requests_.find(handle);
+    if (it == wait_async_requests_.end()) {
       return;
     }
-    callback = state->callback;
-    callback_arg = state->callback_arg;
-    object_id = state->object_id;
-    memory_callback_id = state->memory_callback_id;
-    state->callback = nullptr;
-    state->callback_arg = nullptr;
-    state->memory_callback_id = 0;
-    wait_async_requests_.erase(handle);
+    WaitAsyncState &state = *it->second;
+    if (state.callback == nullptr) {
+      return;
+    }
+    callback = state.callback;
+    callback_arg = state.callback_arg;
+    object_id = state.object_id;
+    memory_callback_id = state.memory_callback_id;
+    state.callback = nullptr;
+    state.callback_arg = nullptr;
+    wait_async_requests_.erase(it);
   }
   if (memory_callback_id != 0) {
     memory_store_->CancelGetAsync(object_id, memory_callback_id);
   }
+  // May enter the Cython callback wrapper (GIL).
   if (callback != nullptr) {
     callback(std::move(status), callback_arg);
   }
@@ -1792,40 +1796,34 @@ uint64_t CoreWorker::WaitAsync(const ObjectID &object_id,
     return 0;
   }
 
-  std::shared_ptr<WaitAsyncState> state = std::make_shared<WaitAsyncState>();
-  state->object_id = object_id;
-  state->callback = callback;
-  state->callback_arg = callback_arg;
-
   uint64_t handle = 0;
   {
     absl::MutexLock lock(&wait_async_mu_);
     // Once CancelAllWaitAsync has run, io_service_ is about to stop, so a new
     // registration would never be posted. Fail fast instead of hanging.
     if (!wait_async_shutdown_) {
-      // Handles are never zero; zero means "already completed / not registered".
-      do {
+      // 0 is reserved for "already completed". Skip wraparound to 0.
+      ++wait_async_next_handle_;
+      if (wait_async_next_handle_ == 0) {
         ++wait_async_next_handle_;
-      } while (wait_async_next_handle_ == 0);
+      }
       handle = wait_async_next_handle_;
-      wait_async_requests_[handle] = state;
-      // Hold the lock through GetAsync so the cancel token is stored before
-      // cancel can run.
-      std::function<void(std::shared_ptr<RayObject>)> on_memory_object =
-          [this, handle, weak_state = std::weak_ptr<WaitAsyncState>(state)](
-              std::shared_ptr<RayObject>) {
-            std::shared_ptr<WaitAsyncState> wait_state = weak_state.lock();
-            if (wait_state == nullptr) {
-              return;
-            }
-            FinishWaitAsync(wait_state, handle, Status::OK());
-          };
-      state->memory_callback_id =
-          memory_store_->GetAsync(object_id, std::move(on_memory_object));
+      std::unique_ptr<WaitAsyncState> state = std::make_unique<WaitAsyncState>();
+      state->object_id = object_id;
+      state->callback = callback;
+      state->callback_arg = callback_arg;
+      wait_async_requests_[handle] = std::move(state);
+      // Store memory_callback_id under the lock so CancelWaitAsync cannot
+      // miss a queued GetAsync. A posted GetAsync only has ``handle``;
+      // FinishWaitAsync returns if that entry is already gone.
+      wait_async_requests_[handle]->memory_callback_id =
+          memory_store_->GetAsync(object_id, [this, handle](std::shared_ptr<RayObject>) {
+            FinishWaitAsync(handle, Status::OK());
+          });
     }
   }
   if (handle == 0) {
-    callback(Status::UnknownError("Core worker is shutting down."), callback_arg);
+    callback(Status::Invalid("Core worker is shutting down."), callback_arg);
     return 0;
   }
   return handle;
@@ -1835,37 +1833,24 @@ void CoreWorker::CancelWaitAsync(uint64_t handle) {
   if (handle == 0) {
     return;
   }
-  std::shared_ptr<WaitAsyncState> state;
-  {
-    absl::MutexLock lock(&wait_async_mu_);
-    absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>>::iterator it =
-        wait_async_requests_.find(handle);
-    if (it == wait_async_requests_.end()) {
-      return;
-    }
-    state = it->second;
-  }
-  // No Status::Cancelled; Invalid uniquely means this wait was cancelled.
-  FinishWaitAsync(state, handle, Status::Invalid("WaitAsync cancelled"));
+  FinishWaitAsync(handle, Status::Invalid("WaitAsync cancelled"));
 }
 
 void CoreWorker::CancelAllWaitAsync() {
-  // Steal the map under the lock, then finish outside it: FinishWaitAsync takes
-  // wait_async_mu_ to unregister, so holding it here would deadlock.
-  std::vector<std::pair<uint64_t, std::shared_ptr<WaitAsyncState>>> pending;
+  // Collect handles under the lock, then finish outside it: FinishWaitAsync
+  // takes wait_async_mu_ to unregister, so holding it here would deadlock.
+  std::vector<uint64_t> handles;
   {
     absl::MutexLock lock(&wait_async_mu_);
     wait_async_shutdown_ = true;
-    pending.reserve(wait_async_requests_.size());
-    for (std::pair<const uint64_t, std::shared_ptr<WaitAsyncState>> &entry :
+    handles.reserve(wait_async_requests_.size());
+    for (const std::pair<const uint64_t, std::unique_ptr<WaitAsyncState>> &entry :
          wait_async_requests_) {
-      pending.emplace_back(entry.first, entry.second);
+      handles.push_back(entry.first);
     }
-    wait_async_requests_.clear();
   }
-  for (const std::pair<uint64_t, std::shared_ptr<WaitAsyncState>> &entry : pending) {
-    FinishWaitAsync(
-        entry.second, entry.first, Status::UnknownError("Core worker is shutting down."));
+  for (uint64_t handle : handles) {
+    FinishWaitAsync(handle, Status::Invalid("Core worker is shutting down."));
   }
 }
 

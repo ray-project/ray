@@ -192,7 +192,9 @@ cdef class ObjectRef(BaseID):
         """Wait until the object exists without fetching or deserializing it.
 
         Unlike ``await self``, this returns ``self`` rather than the value.
-        Cancelling this coroutine cancels the wait.
+
+        ``asyncio.CancelledError`` is raised when this coroutine's Task is
+        cancelled (``task.cancel()``). That also cancels the wait.
         """
         py_future = concurrent.futures.Future()
 

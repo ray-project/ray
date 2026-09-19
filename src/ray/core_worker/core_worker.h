@@ -808,12 +808,15 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * An object is ready when it is in the in-process memory store or a plasma
    * marker is present. This does not pull plasma objects locally.
    *
-   * The callback is invoked at most once, on ``io_service_``, even when the
-   * object is already present. ``Status::OK`` means the object is ready.
+   * The callback is invoked at most once. Completions from the memory store
+   * run on ``io_service_`` (same as ``GetAsync``), even when the object is
+   * already present. Cancel and shutdown invoke the callback on the caller.
+   * ``Status::OK`` means the object is ready.
    *
-   * The caller must keep a reference to ``object_id`` alive until the callback
-   * runs; if the last reference is dropped the object can be deleted from the
-   * memory store and the wait will never complete.
+   * WaitAsync does not hold a reference. The caller should keep ``object_id``
+   * in scope until the callback (the Python ``ObjectRef`` already does).
+   * If the object has no owner, the callback is invoked immediately with
+   * ``ObjectUnknownOwner``.
    *
    * \param[in] object_id ID of the object to wait for.
    * \param[in] callback Invoked with status and ``callback_arg``.
@@ -1965,16 +1968,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /**
    * Complete a ``WaitAsync`` request and invoke its callback at most once.
    *
-   * Unregisters the handle and cancels the memory-store registration before
-   * running the callback.
+   * Looks the handle up in ``wait_async_requests_``. Unregisters it, cancels
+   * the memory-store wait, then runs the callback. No-op if the handle is
+   * unknown or already completed.
    *
-   * \param[in] state Shared wait state for the request.
    * \param[in] handle Value returned by ``WaitAsync``.
    * \param[in] status Status passed to the user callback.
    */
-  void FinishWaitAsync(const std::shared_ptr<WaitAsyncState> &state,
-                       uint64_t handle,
-                       Status status);
+  void FinishWaitAsync(uint64_t handle, Status status);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -2197,7 +2198,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // In-flight WaitAsync requests, keyed by handle.
   absl::Mutex wait_async_mu_;
   uint64_t wait_async_next_handle_ ABSL_GUARDED_BY(wait_async_mu_) = 0;
-  absl::flat_hash_map<uint64_t, std::shared_ptr<WaitAsyncState>> wait_async_requests_
+  absl::flat_hash_map<uint64_t, std::unique_ptr<WaitAsyncState>> wait_async_requests_
       ABSL_GUARDED_BY(wait_async_mu_);
   // Set by CancelAllWaitAsync; no new waits are accepted afterwards.
   bool wait_async_shutdown_ ABSL_GUARDED_BY(wait_async_mu_) = false;

@@ -1834,6 +1834,41 @@ TEST_F(CoreWorkerTest, WaitAsyncPlasmaMarkerReady) {
   ASSERT_TRUE(result.status.ok());
 }
 
+TEST_F(CoreWorkerTest, WaitAsyncInlinedObjectReady) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  ObjectID object_id = CreateInlineObjectInMemoryStoreAndRefCounter(
+      *memory_store_, *reference_counter_, owner_address);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncBorrowedObjectReady) {
+  ObjectID object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_address.set_ip_address("127.0.0.1");
+  owner_address.set_port(1);
+  reference_counter_->AddLocalReference(object_id, "");
+  ASSERT_TRUE(
+      reference_counter_->AddBorrowedObject(object_id, ObjectID::Nil(), owner_address));
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
 TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
@@ -1874,7 +1909,7 @@ TEST_F(CoreWorkerTest, WaitAsyncShutdownInvokesCallback) {
 
   core_worker_->CancelAllWaitAsync();
   ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsUnknownError());
+  ASSERT_TRUE(result.status.IsInvalid());
 
   // Second shutdown is a no-op (callback already ran; map is empty).
   core_worker_->CancelAllWaitAsync();
@@ -1893,7 +1928,7 @@ TEST_F(CoreWorkerTest, WaitAsyncAfterShutdownFailsFast) {
   uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_EQ(handle, 0u);
   ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsUnknownError());
+  ASSERT_TRUE(result.status.IsInvalid());
 
   // Nothing was registered with the memory store, so the object arriving
   // afterwards must not invoke the callback a second time.
