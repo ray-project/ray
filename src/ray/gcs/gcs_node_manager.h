@@ -228,13 +228,21 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \param node_info The local head node info to cache.
   void CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info);
 
-  /// Drop the cached passive local head node, if any.
-  /// TODO: currently only called in tests; wire it into the real promotion path
-  /// once that is implemented.
-  void ClearPassiveLocalNode() {
+  /// Remove the cached passive local head node and return it, or nullptr if none is
+  /// cached. Taking and clearing in one critical section keeps a concurrent
+  /// CachePassiveLocalNode from resurrecting the entry behind the caller's back.
+  std::unique_ptr<rpc::GcsNodeInfo> TakePassiveLocalNode() {
     absl::MutexLock lock(&mutex_);
-    passive_local_node_.reset();
+    return std::move(passive_local_node_);
   }
+
+  /// Register the head node that was cached while passive, so it is persisted and
+  /// published like any other node. No-op when nothing was cached.
+  ///
+  /// The caller must already have flipped this GCS to leader and hydrated the
+  /// managers from storage: registration marks any stale head loaded from storage
+  /// dead, which only works once that stale head is present.
+  void PromoteNodeManager();
 
   std::string DebugString() const;
 
@@ -449,10 +457,10 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// In-memory cache of the local head node while this GCS is passive. Written by
   /// CachePassiveLocalNode() (not persisted to Redis) and surfaced by the un-gated
   /// visibility RPCs (CheckAlive/GetAllNodeInfo/GetAllNodeAddressAndLiveness) so the
-  /// head is visible before promotion. Cleared on promotion via ClearPassiveLocalNode();
+  /// head is visible before promotion. Consumed on promotion by PromoteNodeManager();
   /// readers also skip it once alive_nodes_/dead_nodes_ tracks the id, so it is never
   /// double-counted.
-  std::shared_ptr<rpc::GcsNodeInfo> passive_local_node_ ABSL_GUARDED_BY(mutex_);
+  std::unique_ptr<rpc::GcsNodeInfo> passive_local_node_ ABSL_GUARDED_BY(mutex_);
 
   // Debug info.
   enum CountType {

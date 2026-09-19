@@ -23,12 +23,17 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/constants.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
+#include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/metrics.h"
+#include "ray/gcs/store_client/redis_store_client.h"
+#include "ray/gcs/store_client_kv.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/util/clock.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
 
 namespace ray {
@@ -297,6 +302,26 @@ class GcsServerTest : public ::testing::Test {
           promise.set_value(true);
         });
     return WaitReady(promise.get_future(), client_timeout_ms_);
+  }
+
+  // Reads a key from the shared KV store, or nullopt if it is absent.
+  std::optional<std::string> InternalKVGet(const std::string &ns,
+                                           const std::string &key) {
+    rpc::InternalKVGetRequest request;
+    request.set_namespace_(ns);
+    request.set_key(key);
+    std::promise<bool> promise;
+    std::optional<std::string> value;
+    client_->InternalKVGet(
+        std::move(request),
+        [&promise, &value](const Status &status, const rpc::InternalKVGetReply &reply) {
+          if (status.ok()) {
+            value = reply.value();
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+    return value;
   }
 
  protected:
@@ -608,6 +633,513 @@ TEST_F(GcsServerTest, HealthCheckReflectsMainIOContextHealth) {
   release.set_value();
   EXPECT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
                                   std::chrono::seconds(30)));
+}
+
+// Owns a GcsServer plus the io_context and thread it runs on, so several servers can
+// coexist in one test process.
+class GcsServerWithThread {
+ public:
+  GcsServerWithThread(const gcs::GcsServerConfig &config,
+                      const gcs::GcsServerMetrics &metrics)
+      : server_(std::make_unique<gcs::GcsServer>(config, metrics, io_service_)) {}
+
+  ~GcsServerWithThread() { Stop(); }
+
+  void Start() {
+    server_->Start();
+    thread_ = std::make_unique<std::thread>([this] {
+      boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+          io_service_.get_executor());
+      io_service_.run();
+    });
+  }
+
+  void Stop() {
+    if (!server_) {
+      return;
+    }
+    io_service_.stop();
+    server_->Stop();
+    if (thread_ && thread_->joinable()) {
+      thread_->join();
+    }
+    server_.reset();
+  }
+
+  // Polls until the server finishes DoStart() or the timeout elapses.
+  bool WaitForStarted(std::chrono::seconds timeout) {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (server_->IsStarted()) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return server_->IsStarted();
+  }
+
+  gcs::GcsServer &server() { return *server_; }
+  instrumented_io_context &io_service() { return io_service_; }
+
+  // Owned here so the client and its call manager cannot outlive the io context they
+  // borrow. Lazy because tests that only inspect server state need no connection.
+  rpc::GcsRpcClient &Client() {
+    if (client_ == nullptr) {
+      call_manager_ = std::make_unique<rpc::ClientCallManager>(
+          io_service_, /*record_stats=*/false, /*local_address=*/"");
+      client_ = std::make_unique<rpc::GcsRpcClient>(
+          "0.0.0.0", server_->GetPort(), *call_manager_);
+    }
+    return *client_;
+  }
+
+ private:
+  instrumented_io_context io_service_;
+  std::unique_ptr<gcs::GcsServer> server_;
+  std::unique_ptr<rpc::ClientCallManager> call_manager_;
+  std::unique_ptr<rpc::GcsRpcClient> client_;
+  std::unique_ptr<std::thread> thread_;
+};
+
+gcs::GcsServerConfig MakeGcsServerConfig(const std::string &name, bool leader_elect) {
+  gcs::GcsServerConfig config;
+  config.grpc_server_port = 0;
+  config.grpc_server_name = name;
+  config.grpc_server_thread_num = 1;
+  config.redis_address = "127.0.0.1";
+  config.node_ip_address = "127.0.0.1";
+  config.enable_sharding_conn = false;
+  config.redis_port = TEST_REDIS_SERVER_PORTS.front();
+  config.enable_gcs_leader_election = leader_elect;
+  return config;
+}
+
+// Guards the WriteGcsPid()/WriteAutoscalerV2Flag() extraction: an active GCS must still
+// perform both shared-storage writes during startup.
+TEST_F(GcsServerTest, TestActiveWritesSharedStorage) {
+  EXPECT_TRUE(InternalKVGet("", kGcsPidKey).has_value());
+  EXPECT_TRUE(InternalKVGet(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey)
+                  .has_value());
+}
+
+// A passive GCS boots against storage that an active GCS has already initialized: it
+// adopts the existing cluster ID, serves health checks, and reports is_leader=false.
+TEST_F(GcsServerTest, TestPassiveServerReadiness) {
+  // The fixture's active GCS has already written the cluster ID.
+  ASSERT_TRUE(WaitForHealthStatus(grpc::health::v1::HealthCheckResponse::SERVING,
+                                  std::chrono::seconds(10)));
+
+  gcs::GcsServerConfig passive_config =
+      MakeGcsServerConfig("MockedPassiveGcsServer", /*leader_elect=*/true);
+
+  GcsServerWithThread passive(passive_config, fake_metrics_);
+  passive.Start();
+  ASSERT_TRUE(passive.WaitForStarted(std::chrono::seconds(30)));
+
+  EXPECT_FALSE(passive.server().IsLeader());
+  // It adopted the active GCS's cluster ID rather than minting a new one.
+  EXPECT_EQ(passive.server().GetClusterId(), gcs_server_->GetClusterId());
+
+  rpc::ClientCallManager passive_call_manager(
+      passive.io_service(), /*record_stats=*/false, /*local_address=*/"");
+  rpc::GcsRpcClient passive_client(
+      "0.0.0.0", passive.server().GetPort(), passive_call_manager);
+
+  std::promise<bool> promise;
+  std::optional<bool> is_leader;
+  passive_client.CheckAlive(
+      rpc::CheckAliveRequest(),
+      [&promise, &is_leader](const Status &status, const rpc::CheckAliveReply &reply) {
+        RAY_CHECK_OK(status);
+        if (reply.has_is_leader()) {
+          is_leader = reply.is_leader();
+        }
+        promise.set_value(true);
+      });
+  ASSERT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+  ASSERT_TRUE(is_leader.has_value());
+  EXPECT_FALSE(*is_leader);
+
+  passive.Stop();
+}
+
+// Starts no GCS of its own, so storage is empty and nothing has claimed leadership.
+// Holds the helpers the active-passive tests share.
+class GcsLeaderElectionTestBase : public GcsServerTest {
+ public:
+  // Skip the base SetUp: it starts an active GCS, which would write the cluster ID.
+  void SetUp() override { TestSetupUtil::FlushAllRedisServers(); }
+
+  void TearDown() override {
+    rpc::DrainServerCallExecutor();
+    rpc::ResetServerCallExecutor();
+  }
+
+ protected:
+  // Started but not waited on: a passive GCS does not finish starting until some leader
+  // has written the cluster ID.
+  std::unique_ptr<GcsServerWithThread> MakePassiveServer(const std::string &name) {
+    auto server = std::make_unique<GcsServerWithThread>(
+        MakeGcsServerConfig(name, /*leader_elect=*/true), fake_metrics_);
+    server->Start();
+    return server;
+  }
+
+  // For storage that already has a cluster ID, so the passive GCS can finish starting.
+  std::unique_ptr<GcsServerWithThread> StartPassiveServer(
+      const std::string &name = "MockedPassiveGcsServer") {
+    auto server = MakePassiveServer(name);
+    EXPECT_TRUE(server->WaitForStarted(std::chrono::seconds(30)));
+    return server;
+  }
+
+  // PromoteToLeader() must run on the promoted server's own io context. The leader
+  // election client will post it the same way once it is wired up.
+  void Promote(gcs::GcsServer &server, instrumented_io_context &io_service) {
+    std::promise<void> posted;
+    io_service.post(
+        [&server, &posted] {
+          server.PromoteToLeader();
+          posted.set_value();
+        },
+        "test.PromoteToLeader");
+    posted.get_future().wait();
+  }
+
+  void Promote(GcsServerWithThread &server) {
+    Promote(server.server(), server.io_service());
+  }
+
+  // Promotion loads the GCS tables asynchronously and only then flips is_leader_.
+  bool WaitForLeader(GcsServerWithThread &server, std::chrono::seconds timeout) {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline && !server.server().IsLeader()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    return server.server().IsLeader();
+  }
+
+  std::vector<rpc::GcsNodeInfo> GetAllNodeInfoFrom(rpc::GcsRpcClient &client) {
+    std::vector<rpc::GcsNodeInfo> node_info_list;
+    std::promise<bool> promise;
+    client.GetAllNodeInfo(
+        rpc::GetAllNodeInfoRequest(),
+        [&node_info_list, &promise](const Status &status,
+                                    const rpc::GetAllNodeInfoReply &reply) {
+          RAY_CHECK_OK(status);
+          for (const auto &node_info : reply.node_info_list()) {
+            node_info_list.push_back(node_info);
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+    return node_info_list;
+  }
+
+  Status RegisterNodeOn(rpc::GcsRpcClient &client, const rpc::GcsNodeInfo &node_info) {
+    rpc::RegisterNodeRequest request;
+    request.mutable_node_info()->CopyFrom(node_info);
+    std::promise<Status> promise;
+    client.RegisterNode(std::move(request),
+                        [&promise](const Status &status, const rpc::RegisterNodeReply &) {
+                          promise.set_value(status);
+                        });
+    auto future = promise.get_future();
+    EXPECT_EQ(future.wait_for(std::chrono::milliseconds(client_timeout_ms_)),
+              std::future_status::ready);
+    return future.get();
+  }
+
+  // The helpers below talk to Redis directly rather than through a GCS. A server would
+  // answer reads from memory, and starting one just to read would itself write the very
+  // keys some of these tests are about.
+  std::unique_ptr<gcs::RedisStoreClient> MakeStoreClient(instrumented_io_context &io,
+                                                         ClockInterface &clock) {
+    gcs::RedisClientOptions options{"127.0.0.1",
+                                    TEST_REDIS_SERVER_PORTS.front(),
+                                    /*username=*/"",
+                                    /*password=*/"",
+                                    /*enable_ssl=*/false};
+    return std::make_unique<gcs::RedisStoreClient>(io, options, clock);
+  }
+
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> NodesInStorage() {
+    instrumented_io_context io_context("TestStorage");
+    Clock clock;
+    gcs::GcsTableStorage storage(MakeStoreClient(io_context, clock));
+    absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> nodes;
+    bool done = false;
+    storage.NodeTable().GetAll(
+        {[&nodes, &done](absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> result) {
+           nodes = std::move(result);
+           done = true;
+         },
+         io_context});
+    RunUntil(io_context, done);
+    return nodes;
+  }
+
+  std::optional<std::string> StorageGet(const std::string &ns, const std::string &key) {
+    instrumented_io_context io_context("TestStorage");
+    Clock clock;
+    gcs::StoreClientInternalKV kv(MakeStoreClient(io_context, clock));
+    bool done = false;
+    std::optional<std::string> result;
+    kv.Get(ns,
+           key,
+           {[&done, &result](std::optional<std::string> value) {
+              result = std::move(value);
+              done = true;
+            },
+            io_context});
+    RunUntil(io_context, done);
+    return result;
+  }
+
+  bool StorageHas(const std::string &ns, const std::string &key) {
+    return StorageGet(ns, key).has_value();
+  }
+
+  void PutInStorage(const std::string &ns, const std::string &key, std::string value) {
+    instrumented_io_context io_context("TestStorage");
+    Clock clock;
+    gcs::StoreClientInternalKV kv(MakeStoreClient(io_context, clock));
+    bool done = false;
+    kv.Put(ns,
+           key,
+           std::move(value),
+           /*overwrite=*/true,
+           {[&done](bool) { done = true; }, io_context});
+    RunUntil(io_context, done);
+  }
+
+ private:
+  static void RunUntil(instrumented_io_context &io_context, const bool &done) {
+    while (!done) {
+      io_context.run_one();
+    }
+  }
+};
+
+// A cluster coming up for the first time: storage is empty, so both candidates park in
+// the cluster-ID wait and neither may write anything. Promoting one has to release its
+// own wait rather than deadlock -- that wait only ends when a leader writes the ID, and
+// that leader is now itself -- perform the shared-storage writes it skipped as a
+// passive, and thereby unblock the other candidate.
+TEST_F(GcsLeaderElectionTestBase, TestColdStartPromotionBootsWinnerAndLoser) {
+  // Private to GcsServer::GetOrGenerateClusterId. Getting it wrong here surfaces as the
+  // post-promotion assertion failing, not as a silent pass.
+  const std::string cluster_id_ns = "cluster";
+
+  auto winner = MakePassiveServer("MockedWinnerGcsServer");
+  auto loser = MakePassiveServer("MockedLoserGcsServer");
+
+  // Had either written the cluster ID, it would have finished starting. The retry runs
+  // every second, so this window covers several attempts for both.
+  EXPECT_FALSE(winner->WaitForStarted(std::chrono::seconds(5)));
+  EXPECT_FALSE(loser->server().IsStarted());
+  ASSERT_FALSE(StorageHas(cluster_id_ns, kClusterIdKey));
+  ASSERT_FALSE(StorageHas("", kGcsPidKey));
+  ASSERT_FALSE(StorageHas(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey));
+
+  Promote(*winner);
+
+  EXPECT_TRUE(winner->WaitForStarted(std::chrono::seconds(30)));
+  EXPECT_TRUE(WaitForCondition(
+      [this, &cluster_id_ns]() {
+        return StorageHas(cluster_id_ns, kClusterIdKey) && StorageHas("", kGcsPidKey) &&
+               StorageHas(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey);
+      },
+      /*timeout_ms=*/30000));
+
+  // The loser adopts the ID the winner minted and finishes starting, still passive.
+  EXPECT_TRUE(loser->WaitForStarted(std::chrono::seconds(30)));
+  EXPECT_FALSE(loser->server().IsLeader());
+  EXPECT_EQ(loser->server().GetClusterId(), winner->server().GetClusterId());
+}
+
+// Adds a promoted leader, for the cases that need a standing leader to observe or to
+// initialize storage. Both heads run with leader election enabled and start as
+// candidates, which is the only topology a real cluster produces.
+class GcsLeaderElectionTest : public GcsLeaderElectionTestBase {
+ public:
+  void SetUp() override {
+    GcsLeaderElectionTestBase::SetUp();
+    leader_ = MakePassiveServer("MockedLeaderGcsServer");
+    // Cold start: storage has no cluster ID, so this head stays parked until it wins
+    // the election, then mints the ID itself. Same as a real cluster coming up.
+    Promote(*leader_);
+    ASSERT_TRUE(leader_->WaitForStarted(std::chrono::seconds(30)));
+    ASSERT_TRUE(leader_->server().IsLeader());
+  }
+
+  void TearDown() override {
+    leader_.reset();
+    GcsLeaderElectionTestBase::TearDown();
+  }
+
+ protected:
+  rpc::GcsRpcClient &LeaderClient() { return leader_->Client(); }
+
+  std::unique_ptr<GcsServerWithThread> leader_;
+};
+
+// What a passive gains by being promoted: the node table it never loaded, and an RPC
+// gate that lets mutations through. A leader missing either one is not running the
+// cluster.
+TEST_F(GcsLeaderElectionTest, TestPromotionActivatesTheServer) {
+  // Seed storage through the current leader.
+  auto seeded_node = GenNodeInfo(1, "127.0.0.1", "seeded_node");
+  ASSERT_TRUE(RegisterNodeOn(LeaderClient(), *seeded_node).ok());
+
+  auto passive = StartPassiveServer();
+
+  // The node table was never loaded, so the seeded node is invisible here even though
+  // the leader already persisted it.
+  EXPECT_TRUE(GetAllNodeInfoFrom(passive->Client()).empty());
+
+  auto rejected_node = GenNodeInfo(2, "127.0.0.2", "rejected_node");
+  EXPECT_EQ(RegisterNodeOn(passive->Client(), *rejected_node).code(),
+            StatusCode::GcsPassive);
+
+  Promote(*passive);
+  ASSERT_TRUE(WaitForLeader(*passive, std::chrono::seconds(30)));
+
+  // Hydrated from storage, so the seeded node is now visible.
+  auto nodes = GetAllNodeInfoFrom(passive->Client());
+  ASSERT_EQ(nodes.size(), 1);
+  EXPECT_EQ(nodes[0].node_id(), seeded_node->node_id());
+  EXPECT_EQ(nodes[0].state(), rpc::GcsNodeInfo::ALIVE);
+
+  // The gate is open: the registration that was rejected while passive now succeeds.
+  ASSERT_TRUE(RegisterNodeOn(passive->Client(), *rejected_node).ok());
+  EXPECT_EQ(GetAllNodeInfoFrom(passive->Client()).size(), 2);
+
+  passive->Stop();
+}
+
+// The head node handover, which is what a failover comes down to: the head this GCS
+// cached while passive has to become durable, and the head it replaces -- still recorded
+// ALIVE in storage, and loaded back by hydration -- has to be retired.
+TEST_F(GcsLeaderElectionTest, TestPromotionHandsOverTheHeadNode) {
+  // The previous leader's head, persisted before this GCS takes over.
+  auto stale_head = GenNodeInfo(1, "127.0.0.2", "stale_head");
+  stale_head->set_is_head_node(true);
+  const NodeID stale_id = NodeID::FromBinary(stale_head->node_id());
+  ASSERT_TRUE(RegisterNodeOn(LeaderClient(), *stale_head).ok());
+
+  auto passive = StartPassiveServer();
+
+  // This GCS's own head, on a different machine. Allowed through so the colocated
+  // services can start; a remote worker node is not.
+  auto new_head = GenNodeInfo(2, "127.0.0.3", "new_head");
+  new_head->set_is_head_node(true);
+  const NodeID new_id = NodeID::FromBinary(new_head->node_id());
+  ASSERT_TRUE(RegisterNodeOn(passive->Client(), *new_head).ok());
+  auto worker_node = GenNodeInfo(3, "127.0.0.4", "worker_node");
+  EXPECT_EQ(RegisterNodeOn(passive->Client(), *worker_node).code(),
+            StatusCode::GcsPassive);
+
+  // Visible, but only from the cache: nothing reached storage.
+  auto before = GetAllNodeInfoFrom(passive->Client());
+  ASSERT_EQ(before.size(), 1);
+  EXPECT_EQ(before[0].node_id(), new_head->node_id());
+  EXPECT_FALSE(NodesInStorage().contains(new_id));
+
+  Promote(*passive);
+  ASSERT_TRUE(WaitForLeader(*passive, std::chrono::seconds(30)));
+
+  // Neither head has a raylet behind it, so health checks would eventually mark both
+  // dead on their own: ~20s here (health_check_initial_delay_ms +
+  // health_check_failure_threshold * health_check_period_ms). Promotion takes well under
+  // a second, so keep this timeout far below that -- raising it would let a broken
+  // ordering pass on the health checker's back.
+  EXPECT_TRUE(WaitForCondition(
+      [this, stale_id, new_id]() {
+        auto stored = NodesInStorage();
+        auto stale = stored.find(stale_id);
+        auto fresh = stored.find(new_id);
+        return stale != stored.end() && stale->second.state() == rpc::GcsNodeInfo::DEAD &&
+               fresh != stored.end() && fresh->second.state() == rpc::GcsNodeInfo::ALIVE;
+      },
+      /*timeout_ms=*/10000));
+
+  int alive_heads = 0;
+  for (const auto &entry : NodesInStorage()) {
+    if (entry.second.is_head_node() && entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
+      ++alive_heads;
+    }
+  }
+  EXPECT_EQ(alive_heads, 1);
+
+  passive->Stop();
+}
+
+// The active-only keys across a takeover. A passive GCS has to leave the leader's values
+// alone while passive and has to claim them once promoted, rather than leaving a dead
+// leader's behind. Both GCS run in this one process, so their real pid and autoscaler
+// flag are identical; stamping a sentinel first is what makes either half observable.
+TEST_F(GcsLeaderElectionTest, TestPromotionRewritesActiveOnlyKeys) {
+  PutInStorage("", kGcsPidKey, "leader-pid");
+  PutInStorage(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey, "leader-flag");
+
+  // Running all the way through DoStart is the steady state of a standby: it joins a
+  // cluster someone else initialized and then waits to be promoted.
+  auto passive = StartPassiveServer();
+  EXPECT_EQ(StorageGet("", kGcsPidKey), "leader-pid");
+  EXPECT_EQ(StorageGet(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey),
+            "leader-flag");
+
+  Promote(*passive);
+  ASSERT_TRUE(WaitForLeader(*passive, std::chrono::seconds(30)));
+
+  const auto expected_v2_flag =
+      std::to_string(static_cast<int>(RayConfig::instance().enable_autoscaler_v2()));
+  EXPECT_TRUE(WaitForCondition(
+      [this, &expected_v2_flag]() {
+        return StorageGet("", kGcsPidKey) == std::to_string(getpid()) &&
+               StorageGet(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey) ==
+                   expected_v2_flag;
+      },
+      /*timeout_ms=*/30000));
+
+  passive->Stop();
+}
+
+// Promotion must tolerate being driven more than once: the elector re-invokes
+// on_started_leading on every renewal, and a GCS that never was passive has nothing to
+// promote out of. The second call is issued from the same handler as the first, so it
+// also covers the harder case where it lands while the first is still loading tables:
+// the IsLeader() guard is still open then, and a second load would hydrate twice.
+TEST_F(GcsLeaderElectionTest, TestPromotionIsIdempotent) {
+  auto seeded_node = GenNodeInfo(1, "127.0.0.1", "seeded_node");
+  ASSERT_TRUE(RegisterNodeOn(LeaderClient(), *seeded_node).ok());
+
+  auto passive = StartPassiveServer();
+
+  std::promise<void> posted;
+  passive->io_service().post(
+      [&passive, &posted] {
+        passive->server().PromoteToLeader();
+        passive->server().PromoteToLeader();
+        posted.set_value();
+      },
+      "test.PromoteToLeaderTwice");
+  posted.get_future().wait();
+  ASSERT_TRUE(WaitForLeader(*passive, std::chrono::seconds(30)));
+
+  // Hydrated exactly once: a second load would re-apply the same node table.
+  EXPECT_EQ(GetAllNodeInfoFrom(passive->Client()).size(), 1);
+
+  // Once promoted, further calls are no-ops.
+  Promote(*passive);
+  EXPECT_TRUE(passive->server().IsLeader());
+
+  // And the head that is already the leader has nothing to promote out of.
+  Promote(*leader_);
+  EXPECT_TRUE(leader_->server().IsLeader());
+
+  passive->Stop();
 }
 
 }  // namespace ray
