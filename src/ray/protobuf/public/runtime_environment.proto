@@ -17,6 +17,7 @@ syntax = "proto3";
 package ray.rpc;
 
 option java_package = "io.ray.runtime.generated";
+option go_package = "github.com/ray-project/ray/go/proto";
 
 message RuntimeEnvUris {
   /// working dir uri
