@@ -22,7 +22,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.router import (
     LLMRouter,
-    _parse_routing_payload,
+    _build_replica_routing_payload,
+    _parse_body,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
@@ -765,11 +766,11 @@ class TestDirectStreamingRouterInit:
 
 
 class TestRoutingPayload:
-    """Unit coverage for wrapping a body as a routing namespace."""
+    """Unit coverage for parsing and building a replica-routing namespace."""
 
     def test_parses_chat_messages(self):
         body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
-        payload = _parse_routing_payload(body)
+        payload = _build_replica_routing_payload(_parse_body(body))
         assert isinstance(payload, SimpleNamespace)
         assert payload.messages == [{"role": "user", "content": "hi"}]
         # A chat body exposes no `prompt`, so `_extract_text_from_request`
@@ -778,7 +779,9 @@ class TestRoutingPayload:
         assert payload.model == "x"
 
     def test_parses_completion_prompt(self):
-        payload = _parse_routing_payload(b'{"model":"x","prompt":"hello"}')
+        payload = _build_replica_routing_payload(
+            _parse_body(b'{"model":"x","prompt":"hello"}')
+        )
         assert isinstance(payload, SimpleNamespace)
         assert payload.prompt == "hello"
         assert not hasattr(payload, "messages")
@@ -797,7 +800,7 @@ class TestRoutingPayload:
         ],
     )
     def test_returns_none_when_no_key_derivable(self, body):
-        assert _parse_routing_payload(body) is None
+        assert _build_replica_routing_payload(_parse_body(body)) is None
 
     @pytest.mark.asyncio
     async def test_payload_satisfies_prefix_router_contract(self):
@@ -817,13 +820,15 @@ class TestRoutingPayload:
         # only uses self for the pure `_normalize_prompt_to_string` helper.
         router = PrefixCacheAffinityRouter.__new__(PrefixCacheAffinityRouter)
 
-        chat = _parse_routing_payload(
-            b'{"messages":[{"role":"user","content":"hello world"}]}'
+        chat = _build_replica_routing_payload(
+            _parse_body(b'{"messages":[{"role":"user","content":"hello world"}]}')
         )
         pr = PendingRequest(args=[chat], kwargs={}, metadata=MagicMock())
         assert router._extract_text_from_request(pr) == "hello world"
 
-        completion = _parse_routing_payload(b'{"prompt":"hello world"}')
+        completion = _build_replica_routing_payload(
+            _parse_body(b'{"prompt":"hello world"}')
+        )
         pr = PendingRequest(args=[completion], kwargs={}, metadata=MagicMock())
         assert router._extract_text_from_request(pr) == "hello world"
 
