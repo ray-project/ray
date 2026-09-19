@@ -107,6 +107,7 @@ from ray.serve._private.utils import (
     get_capacity_adjusted_num_replicas,
     get_deployment_actor_name,
     get_random_string,
+    maybe_crash_after_checkpoint,
     msgpack_deserialize,
     msgpack_serialize,
     override_runtime_envs_except_env_vars,
@@ -6405,6 +6406,7 @@ class DeploymentStateManager:
             CHECKPOINT_KEY,
             cloudpickle.dumps(deployment_state_info),
         )
+        maybe_crash_after_checkpoint()
 
     def get_running_replica_infos(
         self,

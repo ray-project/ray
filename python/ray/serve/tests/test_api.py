@@ -16,6 +16,7 @@ from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -565,6 +566,11 @@ def test_delete_application(serve_instance):
     assert httpx.get(url).text == "got g"
 
 
+# A crash rebuilds the replica, and its predecessor dies mid-__del__.
+@pytest.mark.skipif(
+    RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING > 0,
+    reason="Crash injection rebuilds the replica, so __del__ does not run exactly once.",
+)
 @pytest.mark.asyncio
 async def test_delete_while_initializing(serve_instance):
     """Test that __del__ runs when a replica terminates while initializing."""
