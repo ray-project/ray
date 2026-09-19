@@ -949,6 +949,49 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
+def test_streaming_split_materialize_reports_to_executor(
+    ray_start_regular_shared_2_cpus,
+):
+    """`materialize()` on a split shard tells the executor what it is holding.
+
+    Those blocks stay alive for the rest of the job, so without the report the
+    block ref counter counts them as unconsumed output and backpressures the
+    producer down to a single task.
+    """
+    (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
+    coord = shard._coord_actor
+
+    # The coordinator clears the client's bytes when the epoch ends, so record
+    # inside the actor what the client reported at each `get`, next to how many
+    # rows the coordinator had handed it by then.
+    def track(coordinator):
+        coordinator.reports = []
+        report = coordinator._report_prefetched_bytes_to_executor
+
+        def tracked():
+            report()
+            coordinator.reports.append(
+                (
+                    sum(coordinator._client_prefetched_bytes.values()),
+                    coordinator._num_rows_dispatched[0],
+                )
+            )
+
+        coordinator._report_prefetched_bytes_to_executor = tracked
+
+    ray.get(coord.__ray_call__.remote(track))
+
+    materialized = shard.materialize()
+
+    reports = ray.get(coord.__ray_call__.remote(lambda c: c.reports))
+    bytes_per_row = materialized.size_bytes() / materialized.count()
+    # Every figure the client sent must equal the bytes it had been handed by
+    # then. The zero entries are the opening `get` and the epoch-end reset.
+    checked = [(sent, rows * bytes_per_row) for sent, rows in reports if sent]
+    assert checked and all(sent == handed for sent, handed in checked), checked
+    assert shard._iter_stats.iter_prefetched_bytes == 0
+
+
 @pytest.mark.parametrize("prefetch_batches", [0, 2])
 def test_streaming_split_reports_and_clears_prefetched_bytes(
     ray_start_regular_shared_2_cpus, prefetch_batches
