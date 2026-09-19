@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import ray
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import build_address
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
@@ -330,7 +330,9 @@ def get_jax_env_vars(
     port = process_port or os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471")
     env_vars = {
         TPU_WORKER_HOSTNAMES_ENV_VAR: ",".join(clean_hosts),
-        TPU_PROCESS_ADDRESSES_ENV_VAR: ",".join(f"{h}:{port}" for h in clean_hosts),
+        TPU_PROCESS_ADDRESSES_ENV_VAR: ",".join(
+            build_address(h, port) for h in clean_hosts
+        ),
     }
     if worker_id is None and len(clean_hosts) == 1:
         worker_id = 0
@@ -493,7 +495,7 @@ def get_torchtpu_env_vars(
             ]
         norm_sb_list = [
             build_address(parsed[0], parsed[1])
-            if (parsed := parse_address(a)) is not None
+            if (parsed := ray._common.network_utils.parse_address(a)) is not None
             else build_address(_strip_endpoint_port(a), slicebuilder_port)
             for a in raw_sb_list
             if _strip_endpoint_port(a)
@@ -2330,6 +2332,7 @@ class SubslicePlacementGroup:
         worker_hostnames: Optional[Union[str, List[str]]] = None,
         process_bounds: Optional[str] = None,
         chips_per_process_bounds: Optional[str] = None,
+        process_port: Optional[str] = None,
     ) -> Dict[str, str]:
         """Returns the JAX TPU environment variables for this subslice.
 
@@ -2365,18 +2368,22 @@ class SubslicePlacementGroup:
                 8: "2,4,1",
             }.get(self._chips_per_host, f"{self._chips_per_host},1,1")
 
-        # Offset default port by subslice_index so multiple subslices colocated on a
-        # single 8-chip host (e.g. two 2x2 subslices on one v5e-8/v6e-8 VM) do not
-        # collide on localhost:8471 when initializing their PJRT coordinators.
-        default_port = os.environ.get(
-            TPU_PROCESS_PORT_ENV_VAR, str(8471 + self._subslice_index)
-        )
+        if process_port is None:
+            # Offset base port by subslice_index so multiple subslices colocated on a
+            # single 8-chip host (e.g. two 2x2 subslices on one v5e-8/v6e-8 VM) do not
+            # collide on localhost:8471 even when TPU_PROCESS_PORT=8471 is set in env.
+            try:
+                base_port = int(os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471"))
+            except ValueError:
+                base_port = 8471
+            process_port = str(base_port + self._subslice_index)
+
         env_vars = get_jax_env_vars(
             worker_hostnames=worker_hostnames,
             worker_id=worker_id,
             process_bounds=process_bounds,
             chips_per_process_bounds=chips_per_process_bounds,
-            process_port=default_port,
+            process_port=process_port,
         )
         env_vars[GKE_TPU_TOPOLOGY_ENV_VAR] = self._subslice_topology
         return env_vars
