@@ -21,6 +21,7 @@ from ray.exceptions import (
     RayTaskError,
     TaskCancelledError,
 )
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -2365,10 +2366,11 @@ class TestRouterMetricsManager:
         assert metrics_manager.should_send_scaled_to_zero_optimized_push(0)
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("columnar", [True, False])
     @patch(
         "ray.serve._private.router.RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE", "1"
     )
-    async def test_push_autoscaling_metrics_to_controller(self):
+    async def test_push_autoscaling_metrics_to_controller(self, columnar):
         timer = MockTimer()
         start = random.randint(50, 100)
         timer.reset(start)
@@ -2414,18 +2416,32 @@ class TestRouterMetricsManager:
                 running_requests[r] += 1
                 metrics_manager.inc_num_running_requests_for_replica(r)
 
-            # Check metrics are pushed correctly (compressed)
-            metrics_manager.push_autoscaling_metrics_to_controller()
+            # Which wire format we chose to send. The kill switch is the only thing
+            # deciding it, so both of its positions are asserted here.
+            with patch(
+                "ray.serve._private.router.RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS",
+                columnar,
+            ):
+                metrics_manager.push_autoscaling_metrics_to_controller()
             mock_controller_handle.record_autoscaling_metrics_from_handle.remote.assert_called_once()
             (
-                compressed,
+                payload,
             ) = mock_controller_handle.record_autoscaling_metrics_from_handle.remote.call_args[
                 0
             ]
-            assert isinstance(compressed, bytes)
-            handle_metric_report = decompress_metric_report(compressed)
-            assert handle_metric_report.deployment_id == deployment_id
-            assert handle_metric_report.handle_id == handle_id
+            assert isinstance(payload, bytes)
+            assert autoscaling_metrics_codec.is_columnar(payload) is columnar
+            if columnar:
+                report = autoscaling_metrics_codec.decode_handle_flat(payload)
+                assert report["deployment_id"] == deployment_id
+                assert report["handle_id"] == handle_id
+                assert set(report["replica_keys"]) == {
+                    r.to_full_id_str() for r in running_requests
+                }
+            else:
+                report = decompress_metric_report(payload)
+                assert report.deployment_id == deployment_id
+                assert report.handle_id == handle_id
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
