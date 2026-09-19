@@ -15,6 +15,7 @@
 #pragma once
 
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -25,10 +26,17 @@
 
 namespace ray {
 
+using ResourceAllocation = absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>;
+
 /// Represents a node resource set that contains the per-instance resource values.
 class NodeResourceInstanceSet {
  public:
-  NodeResourceInstanceSet(){};
+  /// \param track_pg_index If true, parse resource names on every Set/Remove
+  /// to build a lookup table for PG bundle resources. The raylet uses this to
+  /// find which bundle can satisfy a PG resource request. The GCS passes false
+  /// because it never does local PG allocation, and the parsing overhead is large.
+  explicit NodeResourceInstanceSet(bool track_pg_index = true)
+      : track_pg_index_(track_pg_index){};
 
   /// Construct a NodeResourceInstanceSet from a node total resources.
   explicit NodeResourceInstanceSet(const NodeResourceSet &total);
@@ -50,17 +58,22 @@ class NodeResourceInstanceSet {
   /// If the resource doesn't exist, return 0.
   FixedPoint Sum(ResourceID resource_id) const;
 
+  /// Return all the ids of explicit resources that this set has.
+  std::set<ResourceID> ExplicitResourceIds() const;
+
   /// Check whether two node resource sets are equal meaning
   /// they have the same resources and instances.
   bool operator==(const NodeResourceInstanceSet &other) const;
 
   std::string DebugString() const;
 
+  /// Returns true if `resource_demands` can be satisfied without modifying state.
+  bool CanAllocate(const ResourceSet &resource_demands) const;
+
   /// Try to allocate resources specified by `resource_demands`.
   /// This operation is all or nothing meaning that if any single resource
   /// cannot be allocated, the entire allocation fails and std::nullopt is returned.
-  std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>> TryAllocate(
-      const ResourceSet &resource_demands);
+  std::optional<ResourceAllocation> TryAllocate(const ResourceSet &resource_demands);
 
   /// Free allocated resources and add them back to this set.
   void Free(ResourceID resource_id, const std::vector<FixedPoint> &allocation);
@@ -87,11 +100,8 @@ class NodeResourceInstanceSet {
   NodeResourceSet ToNodeResourceSet() const;
 
   /// Only for testing.
-  const absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> &Resources() const {
-    return resources_;
-  }
+  const ResourceAllocation &Resources() const { return resources_; }
 
- private:
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
   ///
   /// Allocate full unit-capacity instances until
@@ -150,6 +160,7 @@ class NodeResourceInstanceSet {
   std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
                                                      FixedPoint demand);
 
+ private:
   /// Allocate resource to the resource_id based on a provided reference allocation.
   /// The function is used for placement group allocation. Making the allocation of
   /// the wildcard resource be identical to the indexed resource allocation.
@@ -163,8 +174,10 @@ class NodeResourceInstanceSet {
   void AllocateWithReference(const std::vector<FixedPoint> &ref_allocation,
                              ResourceID resource_id);
 
+  bool track_pg_index_ = true;
+
   /// Map from the resource IDs to the resource instance values.
-  absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
+  ResourceAllocation resources_;
 
   /// This is a derived map from the resources_ map. The map aggregates all the current
   /// placement group indexed resources in resources_ by their original resource id and

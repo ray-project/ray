@@ -787,7 +787,9 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
-  payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(kTestTotalCpuResource);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
   payload.mutable_labels()->insert({"label1", "value1"});
 
   std::string serialized;
