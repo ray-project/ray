@@ -126,9 +126,9 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 };
 
 LeaseSpecification BuildLeaseSpec(
-    const std::unordered_map<std::string, double> &resources) {
+    const std::unordered_map<std::string, double> &resources,
+    const rpc::Address &caller_address = rpc::Address()) {
   TaskSpecBuilder builder;
-  rpc::Address empty_address;
   rpc::JobConfig config;
   FunctionDescriptor function_descriptor =
       FunctionDescriptorBuilder::BuildPython("x", "", "", "");
@@ -141,7 +141,7 @@ LeaseSpecification BuildLeaseSpec(
                             TaskID::Nil(),
                             0,
                             TaskID::Nil(),
-                            empty_address,
+                            caller_address,
                             1,
                             false,
                             false,
@@ -675,6 +675,206 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   EXPECT_FALSE(worker->IsKilled());
 }
 
+TEST_F(NodeManagerTest, TestCleanupLeaseAfterOwnerWorkerDies) {
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
+      .WillRepeatedly(Return(false));
+  EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
+
+  // Save the pop_worker_callback for providing a mock worker later.
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .WillOnce(
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+            pop_worker_callback = callback;
+          });
+
+  // Save the publish_worker_failure_callback for publishing a worker failure event later.
+  rpc::ItemCallback<rpc::WorkerDeltaData> publish_worker_failure_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _))
+      .WillOnce([&](const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                    const rpc::StatusCallback &done) {
+        publish_worker_failure_callback = subscribe;
+        return Status::OK();
+      });
+
+  // Invoke RegisterGcs and wait until publish_worker_failure_callback is set.
+  node_manager_->RegisterGcs();
+  while (!publish_worker_failure_callback) {
+    io_service_.run_one();
+  }
+
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+  auto lease_spec = BuildLeaseSpec({}, owner_address);
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+
+  ObjectID object_dep = ObjectID::FromRandom();
+  auto *dep = lease_spec.GetMutableMessage().add_dependencies();
+  dep->set_object_id(object_dep.Binary());
+
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      object_dep, owner_address, 1024, nullptr, 1024, nullptr, source, 0));
+
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1).WillOnce(Return(1));
+
+  // Invoke RequestWorkerLease to request a leased worker for the task in the
+  // NodeManager.
+  std::promise<Status> promise;
+  rpc::RequestWorkerLeaseReply reply;
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply,
+      [&](Status status, std::function<void()> success, std::function<void()> failure) {
+        promise.set_value(status);
+      });
+
+  auto ready_lease_ids = lease_dependency_manager_->HandleObjectLocal(object_dep);
+  ASSERT_EQ(ready_lease_ids.size(), 1);
+  local_lease_manager_->LeasesUnblocked(ready_lease_ids);
+  ASSERT_TRUE(pop_worker_callback);
+
+  // Prepare a mock worker and check if it is killed later.
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  // Complete the RequestWorkerLease rpc with the mock worker.
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  EXPECT_TRUE(promise.get_future().get().ok());
+
+  ASSERT_EQ(GetPinnedLeaseArgumentCount(*local_lease_manager_), 1);
+
+  // After RequestWorkerLease, a leased worker is ready in the NodeManager.
+  // Then use publish_worker_failure_callback to say owner_worker_id is dead.
+  // The leased worker should be killed by this.
+  rpc::WorkerDeltaData delta_data;
+  delta_data.set_worker_id(owner_worker_id.Binary());
+  publish_worker_failure_callback(std::move(delta_data));
+
+  // The worker should be dead because it should be killed by
+  // publish_worker_failure_callback.
+  EXPECT_TRUE(worker->IsKilled());
+  EXPECT_EQ(GetPinnedLeaseArgumentCount(*local_lease_manager_), 0);
+}
+
+TEST_F(NodeManagerTest, TestDisconnectClientAfterOwnerWorkerDies) {
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
+      .WillRepeatedly(Return(false));
+  EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
+
+  // Save the pop_worker_callback for providing a mock worker later.
+  PopWorkerCallback pop_worker_callback;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .WillOnce(
+          [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+            pop_worker_callback = callback;
+          });
+
+  const auto owner_worker_id = WorkerID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(owner_worker_id.Binary());
+  auto lease_spec = BuildLeaseSpec({}, owner_address);
+  LeaseID lease_id = LeaseID::FromRandom();
+  lease_spec.GetMutableMessage().set_lease_id(lease_id.Binary());
+
+  ObjectID object_dep = ObjectID::FromRandom();
+  auto *dep = lease_spec.GetMutableMessage().add_dependencies();
+  dep->set_object_id(object_dep.Binary());
+
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+      object_dep, owner_address, 1024, nullptr, 1024, nullptr, source, 0));
+
+  EXPECT_CALL(*mock_object_manager_, Pull(_, _, _)).Times(1).WillOnce(Return(1));
+
+  // Invoke RequestWorkerLease to request a leased worker for the task in the
+  // NodeManager.
+  std::promise<Status> promise;
+  rpc::RequestWorkerLeaseReply reply;
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  node_manager_->HandleRequestWorkerLease(
+      request,
+      &reply,
+      [&](Status status, std::function<void()> success, std::function<void()> failure) {
+        promise.set_value(status);
+      });
+
+  auto ready_lease_ids = lease_dependency_manager_->HandleObjectLocal(object_dep);
+  ASSERT_EQ(ready_lease_ids.size(), 1);
+  local_lease_manager_->LeasesUnblocked(ready_lease_ids);
+  ASSERT_TRUE(pop_worker_callback);
+
+  // Prepare a mock worker and check if it is killed later.
+  const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  // DisconnectClient closes the worker's connection on its way out, so the mock
+  // worker needs a real (never-opened) one rather than nullptr.
+  auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
+                                 int64_t message_type,
+                                 const std::vector<uint8_t> &message) {};
+  auto connection_error_handler = [](std::shared_ptr<ClientConnection> client,
+                                     const boost::system::error_code &error) {};
+  local_stream_socket socket(io_service_);
+  worker->SetConnection(ClientConnection::Create(std::move(noop_message_handler),
+                                                 std::move(connection_error_handler),
+                                                 std::move(socket),
+                                                 "worker",
+                                                 {}));
+
+  // Complete the RequestWorkerLease rpc with the mock worker.
+  pop_worker_callback(worker, PopWorkerStatus::OK, "");
+  EXPECT_TRUE(promise.get_future().get().ok());
+
+  // Kill the worker deliberately, exactly as HandleUnexpectedWorkerFailure and
+  // NodeRemoved do. It is already dead by the time the disconnect arrives.
+  worker->KillAsync(io_service_, /*force=*/false);
+  ASSERT_TRUE(worker->IsKilled());
+  ASSERT_EQ(GetPinnedLeaseArgumentCount(*local_lease_manager_), 1);
+
+  // DisconnectClient resolves a connection to a worker via the pool. The mocked
+  // pool keeps no such map, so tell it which worker this connection belongs to.
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::An<const std::shared_ptr<ClientConnection> &>()))
+      .WillOnce(Return(worker));
+
+  // Return the lease and ask the raylet to disconnect the already-dead worker.
+  rpc::ReturnWorkerLeaseRequest return_request;
+  rpc::ReturnWorkerLeaseReply return_reply;
+  return_request.set_lease_id(worker->GetGrantedLeaseId().Binary());
+  return_request.set_disconnect_worker(true);
+  return_request.set_disconnect_worker_error_detail("test");
+  return_request.set_worker_exiting(false);
+  node_manager_->HandleReturnWorkerLease(
+      return_request,
+      &return_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // The pinned lease arguments must be released even though the worker was
+  // already dead when the disconnect arrived.
+  EXPECT_EQ(GetPinnedLeaseArgumentCount(*local_lease_manager_), 0);
+
+  // A worker Ray killed on purpose must not be reported as an unexpected failure.
+  // This also guards against "fixing" the leak by deleting the IsDead() check
+  // outright rather than narrowing it: that would report every deliberate reap
+  // as a task failure and inflate Raylet.UnexpectedTaskFailure.Total.
+  EXPECT_TRUE(
+      fake_node_manager_unexpected_worker_failure_total_count_.GetTagToValue().empty());
+}
+
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {
   EXPECT_CALL(*mock_object_directory_, HandleNodeRemoved(_)).Times(1);
   EXPECT_CALL(*mock_object_manager_, HandleNodeRemoved(_)).Times(1);
@@ -1198,6 +1398,10 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseInfeasibleIdempotent) {
 size_t GetPendingLeaseWorkerCount(const LocalLeaseManager &local_lease_manager) {
   return local_lease_manager.waiting_lease_queue_.size() +
          local_lease_manager.leases_to_grant_.size();
+}
+
+size_t GetPinnedLeaseArgumentCount(const LocalLeaseManager &local_lease_manager) {
+  return local_lease_manager.pinned_lease_arguments_.size();
 }
 
 TEST_F(NodeManagerTest, TestReschedulingLeasesDuringHandleDrainRaylet) {
