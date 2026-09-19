@@ -469,18 +469,18 @@ void LocalLeaseManager::SpillWaitingLeases() {
     RAY_LOG(DEBUG) << "Attempting to spill back waiting lease " << lease_id
                    << " to remote node. Dependencies blocked? "
                    << lease_dependencies_blocked;
-    bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
     scheduling::NodeID scheduling_node_id;
     if (!lease_spec.IsSpreadSchedulingStrategy()) {
-      scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
-          lease_spec,
-          /*preferred_node_id*/ self_node_id_.Binary(),
-          /*exclude_local_node*/ lease_dependencies_blocked,
-          /*requires_object_store_memory*/ true,
-          &is_infeasible);
+      scheduling_node_id =
+          cluster_resource_scheduler_
+              .GetBestSchedulableNode(lease_spec,
+                                      /*preferred_node_id*/ self_node_id_.Binary(),
+                                      /*exclude_local_node*/ lease_dependencies_blocked,
+                                      /*requires_object_store_memory*/ true)
+              .node_id;
     } else {
       // If scheduling strategy is spread, we prefer honoring spread decision
       // and waiting for lease dependencies to be pulled
@@ -520,16 +520,17 @@ void LocalLeaseManager::SpillWaitingLeases() {
 bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                      bool &is_infeasible) {
   const auto &spec = work->lease_.GetLeaseSpecification();
-  auto scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
+  const auto result = cluster_resource_scheduler_.GetBestSchedulableNode(
       spec,
       // We should prefer to stay local if possible
       // to avoid unnecessary spillback
       // since this node is already selected by the cluster scheduler.
       /*preferred_node_id=*/self_node_id_.Binary(),
       /*exclude_local_node=*/false,
-      /*requires_object_store_memory=*/false,
-      &is_infeasible);
+      /*requires_object_store_memory=*/false);
+  is_infeasible = result.IsInfeasible();
 
+  const auto scheduling_node_id = result.node_id;
   if (is_infeasible || scheduling_node_id.IsNil() ||
       scheduling_node_id == self_scheduling_node_id_) {
     return false;

@@ -38,6 +38,7 @@
 
 namespace ray {
 
+using raylet_scheduling_policy::NodeSchedulingResult;
 using raylet_scheduling_policy::SchedulingOptions;
 using raylet_scheduling_policy::SchedulingResult;
 
@@ -97,16 +98,12 @@ class ClusterResourceScheduler {
   ///  prioritize_local_node if set to true.
   ///  \param requires_object_store_memory: take object store memory usage as part of
   ///  scheduling decision.
-  ///  \param is_infeasible[out]: It is set
-  ///  true if the task is not schedulable because it is infeasible.
   ///
-  ///  \return empty string, if no node can schedule the current request; otherwise,
-  ///          return the string name of a node that can schedule the resource request.
-  scheduling::NodeID GetBestSchedulableNode(const LeaseSpecification &lease_spec,
-                                            const std::string &preferred_node_id,
-                                            bool exclude_local_node,
-                                            bool requires_object_store_memory,
-                                            bool *is_infeasible);
+  ///  \return See `NodeSchedulingResult`.
+  NodeSchedulingResult GetBestSchedulableNode(const LeaseSpecification &lease_spec,
+                                              const std::string &preferred_node_id,
+                                              bool exclude_local_node,
+                                              bool requires_object_store_memory);
 
   /// Subtract the resources required by a given resource request (resource_request) from
   /// a given remote node.
@@ -181,39 +178,25 @@ class ClusterResourceScheduler {
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: True if we want to avoid local node.
   ///  \param preferred_node_id: The node where the task is preferred to be placed.
-  ///  \param violations[out]: The number of soft constraint violations associated
-  ///                     with the node returned by this function (assuming
-  ///                     a node that can schedule resource_request is found).
-  ///  \param is_infeasible[out]: It is set true if the task is not schedulable because it
-  ///  is infeasible.
   ///
-  ///  \return -1, if no node can schedule the current request; otherwise,
-  ///          return the ID of a node that can schedule the resource request.
-  scheduling::NodeID GetBestSchedulableNode(
+  ///  \return See `NodeSchedulingResult`.
+  NodeSchedulingResult GetBestSchedulableNode(
       const ResourceRequest &resource_request,
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool actor_creation,
       bool force_spillback,
-      const std::string &preferred_node_id,
-      int64_t *violations,
-      bool *is_infeasible);
+      const std::string &preferred_node_id);
 
-  /// Similar to
-  ///    int64_t GetBestSchedulableNode(...)
-  /// but the return value is different:
-  /// \return "", if no node can schedule the current request; otherwise,
-  ///          return the ID in string format of a node that can schedule the
-  //           resource request.
-  scheduling::NodeID GetBestSchedulableNode(
+  /// Same as above, with the resource request given as a map plus a label
+  /// selector.
+  NodeSchedulingResult GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       const LabelSelector &label_selector,
       const rpc::SchedulingStrategy &scheduling_strategy,
       bool requires_object_store_memory,
       bool actor_creation,
       bool force_spillback,
-      const std::string &preferred_node_id,
-      int64_t *violations,
-      bool *is_infeasible);
+      const std::string &preferred_node_id);
 
   /// Judging whether it affinity with placement group bundle
   bool IsAffinityWithBundleSchedule(const rpc::SchedulingStrategy &scheduling_strategy);
