@@ -2,11 +2,13 @@ import copy
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import cdi, cdi_lib
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     _release_image_use,
@@ -14,6 +16,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     sanitize_image_name,
 )
 from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,19 @@ _OCI_CAPABILITY_SETS = ("bounding", "effective", "permitted")
 _RESOLV_CONF = "/etc/resolv.conf"
 _ETC_HOSTS = "/etc/hosts"
 
+# Shared with GVisorSandboxBackend._resolve_gpu_run_args, which raises this
+# same message *before* pulling/extracting the container image if no CDI
+# spec exists at all -- there's no point paying that cost for a sandbox
+# creation that's certain to fail here anyway.
+NO_GPU_CDI_SPEC_MESSAGE = (
+    "gpu_ids was requested but no CDI spec for this node's GPU "
+    "accelerator could be generated. Ensure this node's "
+    "accelerator vendor has CDI support configured (today, "
+    "only NVIDIA GPUs are supported: ensure "
+    "nvidia-container-toolkit-base, providing nvidia-ctk, is "
+    "installed on this node)."
+)
+
 
 def get_default_oci_spec() -> Dict[str, Any]:
     """Derive default OCI runtime specification by executing `runsc spec` in a temporary directory.
@@ -39,6 +55,176 @@ def get_default_oci_spec() -> Dict[str, Any]:
         config_path = os.path.join(temp_dir, "config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def _chain_transform_fns(
+    *fns: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that applies `fns` (skipping any
+    that are None) in order, each to the previous one's result.
+    """
+    active_fns = [fn for fn in fns if fn is not None]
+
+    def _chained(spec: Dict[str, Any]) -> Dict[str, Any]:
+        for fn in active_fns:
+            result = fn(spec)
+            if result is not None:
+                spec = result
+        return spec
+
+    return _chained
+
+
+def _clone_private_mount_dir(
+    shared_rootfs: str, root_dir: str, container_dir: str
+) -> Optional[str]:
+    """Hardlink-clone `container_dir` (a path relative to root, e.g.
+    "/usr/lib/x86_64-linux-gnu") from `shared_rootfs` into a private copy
+    under `root_dir`, returning the private copy's path.
+
+    Hardlinking shares file content (no data copy, same disk usage) but
+    gives every directory its own entries, so a write into the private
+    copy can't collide with one into `shared_rootfs` or another
+    sandbox's own private copy.
+
+    Args:
+        shared_rootfs: The shared, cached image rootfs to clone from.
+        root_dir: This sandbox's own bundle directory to stage the
+            private copy under.
+        container_dir: The directory to clone, as a container-side path
+            relative to root (e.g. "/usr/lib/x86_64-linux-gnu").
+
+    Returns:
+        The private copy's path, or None if `container_dir` doesn't
+        exist under `shared_rootfs`.
+    """
+    shared_dir = os.path.join(shared_rootfs, container_dir.lstrip("/"))
+    if not os.path.isdir(shared_dir):
+        return None
+    private_dir = os.path.join(root_dir, "cdi_mounts", container_dir.lstrip("/"))
+    if os.path.isdir(private_dir):
+        # If it's already cloned, e.g. as part of a shallower directory's
+        # clone (this one nested inside it), re-cloning would hit an
+        # existing destination.
+        return private_dir
+    os.makedirs(os.path.dirname(private_dir), exist_ok=True)
+    shutil.copytree(shared_dir, private_dir, symlinks=True, copy_function=os.link)
+    return private_dir
+
+
+def _build_gpu_cdi_devices_transform_fn(
+    cdi_spec: cdi_lib.CDISpec,
+    cdi_devices: List[Dict[str, Any]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that merges `cdi_devices`' CDI
+    edits into whatever spec `create_oci_spec` passes it, then patches
+    LD_LIBRARY_PATH so NVIDIA's CDI-injected libraries can be found.
+    """
+
+    def _transform(spec: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            cdi_spec.apply_edits(spec, cdi_devices)
+        except cdi_lib.CDIError as err:
+            raise SandboxCreationError(
+                f"Failed to configure GPU access via CDI: {err}"
+            ) from err
+
+        # TODO(klueska): Special case override to allow NVIDIA GPU
+        # CDI-injected libraries to be found, since update-ldcache stays
+        # disabled under gVisor (see --disable-hook=update-ldcache above).
+        # Remove once https://github.com/NVIDIA/nvidia-container-toolkit/pull/2059
+        # lands and is backported to a 1.18.x release, letting that hook run
+        # under gVisor again.
+        env = spec.get("process", {}).get("env", [])
+        libcuda_dir = next(
+            (
+                e.split("=", 1)[1]
+                for e in env
+                if e.startswith("NVIDIA_CTK_LIBCUDA_DIR=")
+            ),
+            None,
+        )
+        if libcuda_dir:
+            ld_library_path = next(
+                (e.split("=", 1)[1] for e in env if e.startswith("LD_LIBRARY_PATH=")),
+                None,
+            )
+            new_value = (
+                f"{libcuda_dir}:{ld_library_path}" if ld_library_path else libcuda_dir
+            )
+            env[:] = [e for e in env if not e.startswith("LD_LIBRARY_PATH=")]
+            env.append(f"LD_LIBRARY_PATH={new_value}")
+
+        return spec
+
+    return _transform
+
+
+def _build_gpu_cdi_private_mounts_transform_fn(
+    cdi_spec: cdi_lib.CDISpec,
+    cdi_devices: List[Dict[str, Any]],
+    root_dir: str,
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that gives the sandbox bundled at
+    `root_dir` a private copy of the directories its GPU CDI mounts land
+    files into, instead of pointing at the shared, cached image rootfs
+    there.
+
+    A CDI-aware runtime's createContainer-stage hooks run against
+    root.path once the container's mounts are attached, and commonly
+    write compatibility symlinks/adjustments into those same
+    directories (e.g. nvidia-cdi-hook's CDI symlink injection,
+    alongside the driver libraries CDI just mounted in). Since these
+    directories are only ever a handful, and are cheap regardless of
+    the image's overall size (the clone cost is bounded by how many
+    files already live in them, not by the image's file count), this
+    only privatizes those specific directories rather than the whole
+    rootfs -- concurrent sandboxes booting off the same cached image no
+    longer share the directories those writes land in, without paying
+    for a full private rootfs.
+    """
+
+    def _transform(spec: Dict[str, Any]) -> Dict[str, Any]:
+        shared_rootfs = spec["root"]["path"]
+        mounts = spec.setdefault("mounts", [])
+        existing_dests = {m.get("destination") for m in mounts}
+
+        # Shallowest-first, so a directory's clone is always complete
+        # before any directory nested inside it is touched.
+        all_dirs = sorted(
+            cdi_spec.parent_dirs_of_mounts(cdi_devices),
+            key=lambda d: d.count(os.sep),
+        )
+        for container_dir in all_dirs:
+            if container_dir in existing_dests:
+                continue
+            private_dir = _clone_private_mount_dir(
+                shared_rootfs, root_dir, container_dir
+            )
+            if private_dir is None:
+                continue
+            mounts.append(
+                {
+                    "destination": container_dir,
+                    "type": "bind",
+                    "source": private_dir,
+                    "options": ["rbind", "rw"],
+                }
+            )
+            existing_dests.add(container_dir)
+
+        # Mounts apply in array order, and a later mount can shadow an
+        # earlier one at the same or a deeper path. CDI's own mounts are
+        # already shallowest-first, so appending the directory mounts here
+        # without re-sorting would let them land after -- and shadow -- the
+        # individual driver-library file mounts CDI placed inside them.
+        mounts.sort(
+            key=lambda m: os.path.normpath(m.get("destination", "/")).count(os.sep)
+        )
+
+        return spec
+
+    return _transform
 
 
 class BaseImageManager(ABC):
@@ -202,6 +388,7 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -220,6 +407,7 @@ class BaseImageManager(ABC):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -576,6 +764,7 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -594,6 +783,7 @@ class ImageManager(BaseImageManager):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -632,6 +822,28 @@ class ImageManager(BaseImageManager):
             f.write("::1\tlocalhost ip6-localhost ip6-loopback\n")
             if host_entries:
                 f.write(host_entries)
+
+        if gpu_ids:
+            cdi_spec = cdi.get_spec("GPU")
+            if cdi_spec is None:
+                raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+            try:
+                cdi_devices = cdi_spec.select_devices(gpu_ids)
+            except cdi_lib.CDIError as err:
+                raise SandboxCreationError(
+                    f"Failed to configure GPU access via CDI: {err}"
+                ) from err
+            gpu_cdi_devices_fn = _build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            )
+            gpu_cdi_mounts_fn = _build_gpu_cdi_private_mounts_transform_fn(
+                cdi_spec, cdi_devices, root_dir
+            )
+            _oci_spec_transform_fn = _chain_transform_fns(
+                gpu_cdi_devices_fn,
+                _oci_spec_transform_fn,
+                gpu_cdi_mounts_fn,
+            )
 
         spec = self.create_oci_spec(
             image=image,

@@ -3,19 +3,38 @@ import json
 import os
 import sys
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.experimental.sandbox._internal import cdi, cdi_lib
 from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
+    NO_GPU_CDI_SPEC_MESSAGE,
     BaseImageManager,
     ImageManager,
+    _build_gpu_cdi_devices_transform_fn,
+    _build_gpu_cdi_private_mounts_transform_fn,
     get_default_oci_spec,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+
+def _resolve_gpu_cdi_devices(gpu_ids):
+    """Test-only mirror of the resolve step `prepare_oci_bundle` does
+    inline, so the tests below don't repeat it three times."""
+    cdi_spec = cdi.get_spec("GPU")
+    if cdi_spec is None:
+        raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+    try:
+        return cdi_spec, cdi_spec.select_devices(gpu_ids)
+    except cdi_lib.CDIError as err:
+        raise SandboxCreationError(
+            f"Failed to configure GPU access via CDI: {err}"
+        ) from err
 
 
 def test_image_manager_init(tmp_path):
@@ -159,6 +178,154 @@ def test_image_manager_create_oci_spec(tmp_path):
 
     # Verify custom transform
     assert spec.get("customField") == "customValue"
+
+
+def test_create_oci_spec_raises_when_no_cdi_spec_found(tmp_path):
+    """gpu_ids with no generatable CDI spec for this node must fail loudly
+    with actionable guidance, not proceed silently."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "gate_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=None,
+    ):
+        with pytest.raises(SandboxCreationError, match="nvidia-ctk"):
+            cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+            mgr.create_oci_spec(
+                image=str(local_tar),
+                _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                    cdi_spec, cdi_devices
+                ),
+            )
+
+
+def test_create_oci_spec_injects_cdi_devices_for_any_kind(tmp_path):
+    """create_oci_spec's CDI injection is generic across vendors — whether a
+    given kind is one a specific backend (e.g. gVisor/runsc) actually
+    supports is that backend's own concern (see
+    GVisorSandboxBackend._resolve_gpu_run_args), not this
+    backend-agnostic OCI-spec builder's."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "cdi_inject_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "devices": [{"name": "0", "containerEdits": {}}],
+        },
+    )
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+        spec = mgr.create_oci_spec(
+            image=str(local_tar),
+            _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            ),
+        )
+        assert spec is not None
+
+
+def test_create_oci_spec_translates_cdi_error(tmp_path):
+    """cdi_lib.CDIError (e.g. a requested gpu_ids entry with no matching
+    CDI device) must surface as SandboxCreationError, not leak the
+    sandbox-agnostic CDIError past this module's translation boundary."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "cdi_error_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    # A spec with no devices at all: selecting id "0" has no match.
+    cdi_spec = cdi_lib.CDISpec("acme.com/widget", {"devices": []})
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        with pytest.raises(
+            SandboxCreationError, match="Failed to configure GPU access via CDI"
+        ):
+            cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+            mgr.create_oci_spec(
+                image=str(local_tar),
+                _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                    cdi_spec, cdi_devices
+                ),
+            )
+
+
+def test_privatize_gpu_cdi_mount_dirs_handles_nested_dirs(tmp_path):
+    """A nested pair of at-risk directories (e.g. .../vdpau under
+    .../x86_64-linux-gnu, common in real nvidia-ctk specs) must not raise,
+    and the shallower directory's clone must be complete (not just an
+    empty ancestor of the nested one's clone) regardless of which order
+    `parent_dirs_of_mounts`' set happens to yield them in."""
+    rootfs = tmp_path / "rootfs"
+    lib_dir = rootfs / "usr" / "lib" / "x86_64-linux-gnu"
+    vdpau_dir = lib_dir / "vdpau"
+    vdpau_dir.mkdir(parents=True)
+    (lib_dir / "libfoo.so").write_bytes(b"foo")
+    (vdpau_dir / "libbar.so").write_bytes(b"bar")
+
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "containerEdits": {
+                "mounts": [
+                    {
+                        "hostPath": "/host/libfoo.so",
+                        "containerPath": "/usr/lib/x86_64-linux-gnu/libfoo.so",
+                    },
+                    {
+                        "hostPath": "/host/libbar.so",
+                        "containerPath": "/usr/lib/x86_64-linux-gnu/vdpau/libbar.so",
+                    },
+                ]
+            },
+            "devices": [],
+        },
+    )
+
+    transform_fn = _build_gpu_cdi_private_mounts_transform_fn(
+        cdi_spec, [], str(tmp_path / "bundle")
+    )
+    spec = transform_fn({"root": {"path": str(rootfs)}})
+
+    dests = {m["source"]: m["destination"] for m in spec["mounts"]}
+    assert "/usr/lib/x86_64-linux-gnu" in dests.values()
+    assert "/usr/lib/x86_64-linux-gnu/vdpau" in dests.values()
+
+    lib_source = next(
+        m["source"]
+        for m in spec["mounts"]
+        if m["destination"] == "/usr/lib/x86_64-linux-gnu"
+    )
+    with open(os.path.join(lib_source, "libfoo.so"), "rb") as f:
+        assert f.read() == b"foo"
+    with open(os.path.join(lib_source, "vdpau", "libbar.so"), "rb") as f:
+        assert f.read() == b"bar"
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):
