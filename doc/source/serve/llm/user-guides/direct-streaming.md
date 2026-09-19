@@ -10,12 +10,12 @@ myst:
 Lower streaming latency by removing the ingress proxy hop and routing requests directly to model replicas.
 
 :::{note}
-Direct streaming is experimental and may change before it becomes stable. It depends on the HAProxy ingress. Configure it through the environment variables and `request_router_config` described in this guide rather than the internal ingress and router deployments and their endpoints.
+Direct streaming is experimental and may change before it becomes stable. It depends on the HAProxy ingress and supports a single model per application. Configure it through the environment variables and `request_router_config` described in this guide rather than the internal router deployment and endpoints.
 :::
 
 By default, every request to a Ray Serve LLM application flows through a separate ingress deployment (`OpenAiIngress`) before reaching an `LLMServer` replica. The ingress replica proxies both the request and the streamed response, so each token in a streaming response crosses one extra deployment boundary. The ingress replica's event loop also handles both the inbound request path (which affects TTFT) and the outbound streamed-token path (which affects TPOT), so the two contend for the same loop under load.
 
-**Direct streaming** removes that hop. When enabled, HAProxy forwards client traffic straight to the `LLMServer` replica that serves it, and an **ingress request router** chooses which model deployment and which replica handle each request. A small control-plane ingress stays behind to answer model discovery, but it's off the inference path entirely.
+**Direct streaming** removes that hop. When enabled, the `LLMServer` deployment itself becomes the HTTP ingress, and HAProxy forwards client traffic straight to the replica that serves it. An **ingress request router** chooses the replica for each request.
 
 ## Enable direct streaming
 
@@ -26,7 +26,7 @@ export RAY_SERVE_ENABLE_HA_PROXY=1
 export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 ```
 
-Then build and deploy an application:
+Then build and deploy a single-model application:
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -52,7 +52,7 @@ serve run config.yaml
 
 The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`.
 
-To confirm direct streaming is active, check that the application runs three kinds of deployment: one model deployment per model (`LLMServer:<model_id>`), a `DirectStreamingIngress` deployment, and an `LLMRouter` deployment. `DirectStreamingIngress` is the application's front door but serves only model discovery; `LLMRouter` is the ingress request router. Together they replace the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app and proxies every token.
+To confirm direct streaming is active, check that the application runs two deployments: your model deployment (`LLMServer:<model_id>`) and an `LLMRouter` deployment. `LLMRouter` is the ingress request router. It replaces the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app.
 
 Run `serve status`:
 
@@ -65,10 +65,6 @@ applications:
   default:
     status: RUNNING
     deployments:
-      DirectStreamingIngress:
-        status: HEALTHY
-        replica_states:
-          RUNNING: 1
       LLMServer:qwen3_5-0_8b:
         status: HEALTHY
         replica_states:
@@ -79,14 +75,14 @@ applications:
           RUNNING: 1
 ```
 
-The Serve dashboard shows the same deployments:
+The Serve dashboard shows the same two deployments:
 
 ```{figure} ../images/direct_streaming_dashboard.png
 ---
 width: 800px
 name: direct-streaming-dashboard
 ---
-The deployments appear healthy: the `LLMServer` model deployment, the `DirectStreamingIngress` control-plane ingress, and the `LLMRouter` ingress request router.
+Both deployments appear healthy: the `LLMServer` model deployment and the `LLMRouter` ingress request router.
 ```
 
 :::{tip}
@@ -101,23 +97,7 @@ Direct streaming is an experimental serving path for Ray Serve LLM. Removing the
 
 Without direct streaming, the request and every streamed token pass through the ingress deployment: `Client → HAProxy → OpenAiIngress replica → LLMServer replica → engine`.
 
-With direct streaming, HAProxy calls `/internal/route` on the `LLMRouter` deployment for every request and gets back one deployment and one replica to send it to. Inference requests go straight to the chosen `LLMServer` replica, which serves the engine's own OpenAI-compatible FastAPI app, such as vLLM's API server, so no ingress deployment sits on the response path.
-
-The application topology is:
-
-```
-DirectStreamingIngress          the app's front door; model discovery only
-├── LLMServer:model-a           one deployment per model, reached directly
-├── LLMServer:model-b
-└── LLMRouter                   ingress request router
-```
-
-Routes split between the two paths, and never overlap:
-
-- The routes `DirectStreamingIngress` declares — `GET /v1/models` and `GET /v1/models/{model}` — go to a `DirectStreamingIngress` replica. This deployment does nothing but answer model discovery; it never touches an inference request.
-- Everything else, including `/v1/chat/completions` and `/v1/completions`, is routed by the request's `model` field to that model's `LLMServer` deployment and sent directly to one of its replicas.
-
-Each model deployment gets its own HAProxy backend, so a retry or redispatch can never move a request onto another model's replicas.
+With direct streaming, the `LLMServer` deployment is the ingress. HAProxy calls `/internal/route` on the `LLMRouter` deployment to choose an `LLMServer` replica, then sends the request and the streamed response directly to that replica. The replica serves the engine's own OpenAI-compatible FastAPI app, such as vLLM's API server, so no separate ingress deployment sits on the response path.
 
 ```{figure} ../images/direct_streaming_architecture.png
 ---
@@ -135,26 +115,11 @@ Replica selection reuses the `LLMServer` deployment's configured request router,
 
 ## Supported serving patterns
 
-Direct streaming works with the OpenAI, data parallel attention, and prefill/decode builders:
+Direct streaming works with the single-model builders for the OpenAI, data parallel attention, and prefill/decode patterns:
 
-- **Standard serving** (`build_openai_app`): supports **multiple models per application**, each as its own `LLMServer` deployment behind one `DirectStreamingIngress`. See [Serve multiple models](#direct-streaming-multi-model).
-- **Data parallel attention** (`build_dp_openai_app`): single model. The `DPServer` deployment is itself the ingress and serves the engine app directly, with no separate control-plane ingress. Use this for wide expert parallelism. See {doc}`data-parallel-attention`.
-- **Prefill/decode disaggregation** (`build_pd_openai_app`): single model. The decode server is the ingress and serves the engine app directly. See {doc}`prefill-decode`.
-
-(direct-streaming-multi-model)=
-## Serve multiple models
-
-Pass several `LLMConfig`s to `build_openai_app` and each becomes its own `LLMServer` deployment. `GET /v1/models` lists all of them, and each inference request selects its model with the `model` field, exactly as on the default ingress.
-
-Because the `model` field lives in the request body, multi-model routing requires body forwarding:
-
-```bash
-export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
-```
-
-`build_openai_app` raises if you configure more than one model without it — the router would have nothing to select on, and every request would fail closed rather than land on an arbitrary model. See [Body-aware routers](#body-aware-routers) for what forwarding costs. A single-model application doesn't need it: with one model the `model` field is optional and requests that omit it still serve.
-
-Requests that name no model, or name a model the application doesn't serve, fail closed rather than being sent somewhere arbitrary. See [Limitations](#direct-streaming-limitations) for how those errors currently reach the client.
+- **Standard serving** (`build_openai_app`): the `LLMServer` deployment serves the engine app directly.
+- **Data parallel attention** (`build_dp_openai_app`): the `DPServer` deployment serves the engine app directly. Use this for wide expert parallelism. See {doc}`data-parallel-attention`.
+- **Prefill/decode disaggregation** (`build_pd_openai_app`): the decode server serves the engine app directly. See {doc}`prefill-decode`.
 
 (direct-streaming-customize)=
 ## Customize replica selection
@@ -192,13 +157,8 @@ The header name defaults to `x-session-id` and is configurable with `RAY_SERVE_S
 (direct-streaming-limitations)=
 ## Limitations
 
-- **Multiple models only on `build_openai_app`.** The data parallel attention and prefill/decode builders keep their single-model topology, where the server deployment is itself the ingress. They raise if you configure more than one model.
-- **No multi-model KV-aware routing.** {ref}`KV-aware routing <kv-aware-routing-guide>` supports one model per application. Its token tracker is per-process and its pre-routing tokenizer is per-model, so `build_openai_app` rejects a multi-model application where any model requests it.
-- **No multi-model LoRA.** `build_openai_app` rejects a multi-model application where any model sets `lora_config`. A single base model with adapters still serves and still lists its adapters under `GET /v1/models`.
-- **No LoRA- or multiplex-aware routing.** The ingress request router doesn't steer requests to replicas that already have a given LoRA adapter loaded, and the default `RoundRobinRouter` is multiplex-unaware. A single base model with adapters serves, but without adapter affinity. If you need adapter-affinity routing, use the default ingress instead, which routes multiplex-aware. See [Multi-LoRA deployment](multi-lora.md). LoRA- and multiplex-aware routing for direct streaming is planned for a future release.
-- **No custom control ingress or custom control routes.** `ingress_cls_config` is rejected while direct streaming is enabled. The routes the control ingress declares are exactly the routes taken away from the model deployments, so a custom ingress would silently pull inference traffic back through a Python hop.
-- **The control ingress can't scale to zero.** It's the only deployment serving model discovery, and the ingress request router needs a running ingress replica to resolve its routes. `build_openai_app` rejects an `ingress_deployment_config` that sets `autoscaling_config.min_replicas` to `0`. Model deployments can still scale to zero.
-- **Routing errors reach the client as 503.** HAProxy currently treats any non-200 from the ingress request router as a routing failure and answers `503` with `X-Serve-Reason: router_non_200`. A request with no `model` field on a multi-model application (router `400`) and a request naming an unknown model (router `404`) therefore both surface as `503` today. Forwarding the router's own status and OpenAI-shaped error body is planned.
+- **Single model per application.** `build_openai_app` raises if you pass more than one `LLMConfig` while direct streaming is enabled. To serve multiple models, deploy each as its own single-model direct streaming application on a distinct route prefix. Clients then target the per-model endpoint directly instead of selecting the model by the `model` field on one shared endpoint.
+- **No LoRA- or multiplex-aware routing.** The ingress request router doesn't forward the requested model or adapter id to the routing policy, so requests aren't steered to replicas that already have a given LoRA adapter loaded. The default `RoundRobinRouter` is multiplex-unaware. A single base model with adapters still serves, but without adapter affinity. If you need adapter-affinity routing, use the default ingress instead, which routes multiplex-aware. See [Multi-LoRA deployment](multi-lora.md). LoRA- and multiplex-aware routing for direct streaming is planned for a future release.
 
 ## See also
 
