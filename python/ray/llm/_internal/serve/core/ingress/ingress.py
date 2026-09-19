@@ -12,6 +12,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Tuple,
     Type,
     Union,
 )
@@ -74,6 +75,10 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
 )
 from ray.llm._internal.serve.utils.server_utils import replace_prefix
 from ray.serve._private.http_util import session_id_from_headers
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    RoutePattern,
+    extract_route_patterns,
+)
 from ray.serve.handle import DeploymentHandle
 
 # Import asyncio timeout depends on python version
@@ -190,20 +195,22 @@ def init(*, enable_docs: bool = True) -> FastAPI:
     return _fastapi_router_app
 
 
-def make_direct_streaming_control_ingress() -> Type:
-    """Build the ``serve.ingress``-wrapped ``DirectStreamingIngress`` class.
+def make_direct_streaming_control_ingress() -> Tuple[Type, List[RoutePattern]]:
+    """Build the direct-streaming ingress class and its routing metadata.
 
     The endpoint map is passed explicitly rather than defaulted so the route
     inventory is stated in one place, and the FastAPI app drops the docs routes
-    -- see ``init``. The result declares exactly ``GET /v1/models`` and
-    ``GET /v1/models/{model:path}``, which is what ``LLMRouter`` reads back off
-    a running replica to decide what belongs to the ingress.
+    -- see ``init``. Route patterns are extracted from that exact app at build
+    time and passed to ``LLMRouter``, so route ownership cannot drift from the
+    routes served by the ingress.
     """
-    return make_fastapi_ingress(
+    app = init(enable_docs=False)
+    ingress_cls = make_fastapi_ingress(
         DirectStreamingIngress,
         endpoint_map=DISCOVERY_ENDPOINTS,
-        app=init(enable_docs=False),
+        app=app,
     )
+    return ingress_cls, extract_route_patterns(app)
 
 
 def make_fastapi_ingress(

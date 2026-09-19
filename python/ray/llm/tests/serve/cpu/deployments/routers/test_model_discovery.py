@@ -222,7 +222,7 @@ async def _build_control_ingress_replica():
     what a Serve replica awaits), so construct it the way the replica does
     rather than calling the class directly.
     """
-    cls = make_direct_streaming_control_ingress()
+    cls, _ = make_direct_streaming_control_ingress()
     replica = cls.__new__(cls)
     await cls.__init__(
         replica,
@@ -236,29 +236,27 @@ async def _build_control_ingress_replica():
 class TestControlIngressRoutes:
     """The control ingress's route inventory is a routing contract.
 
-    ``LLMRouter`` reads it off a running replica through
-    ``__serve_route_patterns__`` and sends exactly those requests to the
-    ingress. Anything extra here -- a docs page, an inference endpoint -- is a
-    path silently taken away from the model deployments.
+    The builder extracts this inventory from the FastAPI app and passes it to
+    ``LLMRouter``. Anything extra here -- a docs page, an inference endpoint --
+    is a path silently taken away from the model deployments.
     """
 
     async def test_declares_exactly_the_two_discovery_routes(self):
-        replica = await _build_control_ingress_replica()
-        patterns = replica.__serve_route_patterns__()
+        _, patterns = make_direct_streaming_control_ingress()
         assert [(p.methods, p.path) for p in patterns] == [
             (["GET"], "/v1/models"),
             (["GET"], "/v1/models/{model:path}"),
         ]
 
     async def test_chat_completions_is_not_claimed(self):
-        replica = await _build_control_ingress_replica()
-        paths = {p.path for p in replica.__serve_route_patterns__()}
+        _, patterns = make_direct_streaming_control_ingress()
+        paths = {p.path for p in patterns}
         assert "/v1/chat/completions" not in paths
 
     @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
     async def test_fastapi_docs_routes_are_disabled(self, path: str):
-        replica = await _build_control_ingress_replica()
-        paths = {p.path for p in replica.__serve_route_patterns__()}
+        _, patterns = make_direct_streaming_control_ingress()
+        paths = {p.path for p in patterns}
         assert path not in paths
 
     @pytest.mark.parametrize(

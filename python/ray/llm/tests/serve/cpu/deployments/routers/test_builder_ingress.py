@@ -478,6 +478,15 @@ class TestDirectStreamingOpenAiApp:
             c.model_id for c in llm_configs[:num_models]
         )
         assert router._bound_deployment.init_kwargs["ingress"] is app
+        assert [
+            (pattern.methods, pattern.path)
+            for pattern in router._bound_deployment.init_kwargs[
+                "ingress_route_patterns"
+            ]
+        ] == [
+            (["GET"], "/v1/models"),
+            (["GET"], "/v1/models/{model:path}"),
+        ]
 
     @pytest.mark.parametrize("num_models", [1, 2])
     def test_ingress_and_router_share_the_same_model_applications(
