@@ -67,6 +67,67 @@ class TestDatetimeNamespace:
 
         assert rows_same(actual, expected)
 
+    def test_datetime_namespace_calendar_extractors(self, ray_start_regular_shared):
+        """Test calendar and sub-second datetime extractors.
+
+        Uses a leap-day timestamp with sub-second precision and a timestamp on
+        an ISO 8601 year boundary (2021-01-01 belongs to ISO year 2020, week 53).
+        """
+        ds = ray.data.from_items(
+            [
+                # Leap day, a Thursday, with nanosecond precision so the
+                # millisecond/microsecond/nanosecond extractors all get a
+                # non-zero value.
+                {"ts": pd.Timestamp("2024-02-29 13:45:30.123456789")},
+                # New Year's Day 2021 (a Friday) is ISO year 2020, week 53.
+                {"ts": datetime.datetime(2021, 1, 1, 0, 0, 0)},
+            ]
+        )
+
+        result_ds = (
+            ds.with_column("quarter", col("ts").dt.quarter())
+            .with_column("day_of_week", col("ts").dt.day_of_week())
+            .with_column("day_of_year", col("ts").dt.day_of_year())
+            .with_column("iso_week", col("ts").dt.iso_week())
+            .with_column("iso_year", col("ts").dt.iso_year())
+            .with_column("is_leap_year", col("ts").dt.is_leap_year())
+            .with_column("millisecond", col("ts").dt.millisecond())
+            .with_column("microsecond", col("ts").dt.microsecond())
+            .with_column("nanosecond", col("ts").dt.nanosecond())
+            .drop_columns(["ts"])
+        )
+
+        actual = result_ds.to_pandas()
+
+        expected = pd.DataFrame(
+            [
+                {
+                    "quarter": 1,
+                    "day_of_week": 3,  # Thursday (Monday=0)
+                    "day_of_year": 60,
+                    "iso_week": 9,
+                    "iso_year": 2024,
+                    "is_leap_year": True,
+                    "millisecond": 123,
+                    "microsecond": 456,
+                    "nanosecond": 789,
+                },
+                {
+                    "quarter": 1,
+                    "day_of_week": 4,  # Friday (Monday=0)
+                    "day_of_year": 1,
+                    "iso_week": 53,
+                    "iso_year": 2020,
+                    "is_leap_year": False,
+                    "millisecond": 0,
+                    "microsecond": 0,
+                    "nanosecond": 0,
+                },
+            ]
+        )
+
+        assert rows_same(actual, expected)
+
     def test_dt_namespace_invalid_dtype_raises(self, ray_start_regular_shared):
         """Test that dt namespace on non-datetime column raises an error."""
         ds = ray.data.from_items([{"value": 1}])
