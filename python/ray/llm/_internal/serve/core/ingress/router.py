@@ -2,11 +2,12 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
 from ray import serve
+from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
@@ -17,6 +18,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
 )
 from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
+    RoutePattern,
+)
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
@@ -29,6 +34,13 @@ logger = get_logger(__name__)
 
 _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
+# HAProxy forwards the original request line on these headers so the router can
+# tell a request the application ingress owns (e.g. `GET /v1/models`) from model
+# traffic. Sent regardless of whether body forwarding is enabled. Looked up through
+# Starlette's case-insensitive headers.
+_REQUEST_METHOD_HEADER = "x-serve-request-method"
+_REQUEST_PATH_HEADER = "x-serve-request-path"
+
 # A request body routes on one of these fields. Body-aware routers read it off
 # the namespace; a body without any of them degrades to load-balancing. Extend
 # as routers learn to route additional request types.
@@ -37,15 +49,13 @@ _ROUTING_KEY_FIELDS = ("messages", "prompt")
 router_app = FastAPI()
 
 
-def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
-    """Wrap a request body as a namespace a body-aware router routes on.
+def _parse_body(body: bytes) -> Optional[Dict[str, Any]]:
+    """Parse a request body as a JSON object.
 
-    Routers read a routing field (``messages`` or ``prompt``) off the first
-    positional routing arg, the parsed request the normal ingress forwards.
-    Direct streaming has only the raw body, so this wraps the parsed body in a
-    namespace exposing every field by attribute, which a router reads the same
-    way regardless of request type. Returns ``None`` for an empty, non-object,
-    unparseable, or keyless body, so the caller falls back to load-balancing.
+    Returns ``None`` for an empty, unparseable (including truncated), or
+    non-object body. Parsed once here and shared by model selection and the
+    routing payload below, so a body with a ``model`` but no routing key (e.g. an
+    embeddings request) can still select a deployment.
     """
     if not body:
         return None
@@ -54,6 +64,23 @@ def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
     except (ValueError, TypeError):
         return None
     if not isinstance(data, dict):
+        return None
+    return data
+
+
+def _build_replica_routing_payload(
+    data: Optional[Mapping[str, Any]],
+) -> Optional[SimpleNamespace]:
+    """Wrap a parsed body as a namespace a body-aware router routes on.
+
+    Routers read a routing field (``messages`` or ``prompt``) off the first
+    positional routing arg, the parsed request the normal ingress forwards.
+    Direct streaming has only the raw body, so this wraps it in a namespace
+    exposing every field by attribute, which a router reads the same way
+    regardless of request type. Returns ``None`` for a missing or keyless body,
+    so the caller falls back to load-balancing.
+    """
+    if data is None:
         return None
     if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
         return None
@@ -68,9 +95,27 @@ class LLMRouter:
     deployment to get a data plane replica, then forwards traffic directly
     to the matching LLMServer replica's backend HTTP port.
 
-    Replica selection is delegated to the underlying deployment's configured
-    request router, and this class translates the resulting pick into a backend
-    HTTP endpoint.
+    The router first selects a deployment, then delegates replica selection to
+    that deployment's configured request router. ``servers`` maps each model ID
+    to its direct-HTTP deployment handle.
+
+    When a separate application ingress is configured, ``ingress`` is its
+    deployment handle and ``ingress_route_patterns`` identifies the HTTP routes
+    it owns. Ingress routes take priority over model selection.
+
+    Model selection:
+        * A configured ``model`` selects its corresponding deployment.
+        * A LoRA-style ``base:adapter`` model falls back to the configured base
+          model deployment.
+        * If ``model`` is omitted and exactly one server is configured, that
+          server is selected.
+        * If ``model`` is omitted and multiple servers are configured, the
+          router returns 400 rather than selecting an arbitrary server.
+        * An unknown or non-string ``model`` returns 404.
+
+        HAProxy treats any non-200 from this endpoint as a routing failure and
+        responds to the client with 503. The status codes above are visible to
+        direct callers and in router logs.
 
     /internal/route HTTP contract
     -----------------------------
@@ -78,10 +123,11 @@ class LLMRouter:
         POST /internal/route
         Content-Type: application/json
         Body: the target ChatCompletions or Completions request payload.
-            Wrapped in a namespace by ``_parse_routing_payload`` and passed to
-            ``choose_replica`` positionally, exposing the request fields the way
-            the parsed request does. Body-aware policies then score replicas the
-            same way on both paths.
+            Parsed by ``_parse_body``, then wrapped by
+            ``_build_replica_routing_payload`` and passed to ``choose_replica``
+            positionally, exposing the request fields the way the parsed request
+            does. Body-aware policies then score replicas the same way on both
+            paths.
 
     Truncated bodies:
         HAProxy may forward only a prefix of the body for routing and sets the
@@ -117,27 +163,59 @@ class LLMRouter:
     """
 
     # Warn once per replica when no routing key is derived. Class-level default
-    # keeps the guard safe before __init__ runs.
+    # keeps the below fields safe before __init__ runs.
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
+    _ingress: Optional[DeploymentHandle] = None
+    _ingress_routes = None
 
     async def __init__(
         self,
-        server: DeploymentHandle,
+        servers: Dict[str, DeploymentHandle],
         llm_config: Optional["LLMConfig"] = None,
+        ingress: Optional[DeploymentHandle] = None,
+        ingress_route_patterns: Optional[List[RoutePattern]] = None,
     ):
-        self._handle: DeploymentHandle = server
+        if not servers:
+            raise ValueError(
+                "LLMRouter requires at least one model id -> deployment handle."
+            )
+        if (ingress is None) != (ingress_route_patterns is None):
+            raise ValueError(
+                "`ingress` and `ingress_route_patterns` must be provided together."
+            )
+        if ingress is not None and not ingress_route_patterns:
+            raise ValueError(
+                "A separate ingress must declare at least one HTTP route pattern."
+            )
+        # model id -> handle to the `_direct_http` deployment serving that model.
+        self._servers: Dict[str, DeploymentHandle] = dict(servers)
+        self._ingress = ingress
+        # Route ownership is build-time metadata, separate from the deployment
+        # handle used for replica selection. Compile it once so request routing
+        # stays local and does not need an RPC to the ingress deployment.
+        self._ingress_routes = (
+            ASGIRoutePatternMatcher(ingress_route_patterns)
+            if ingress_route_patterns is not None
+            else None
+        )
         self._tokenizer = None
         self._token_sender = None
         # Holds the KVTokenTracker (KV-aware deployments only) so the
         # engine-facing on_lifecycle_events method can book load into it.
         self._kv_token_tracker = None
         # A non-None llm_config signals pre-routing tokenization, which the
-        # builder binds only for a KV-aware request router.
+        # builder binds only for a KV-aware request router. The tracker is a
+        # process global and the tokenizer is per-model, so this path is
+        # single-model; the builder rejects KV-aware routing with several
+        # models before it can reach here.
         if llm_config is not None:
-            # Build the tracker before _handle._init() below, which initializes
-            # the KVAwareRouter that looks it up. server.deployment_id is the
-            # tracked LLMServer deployment.
+            if len(self._servers) != 1:
+                raise ValueError(
+                    "KV-aware routing (llm_config given) supports exactly one "
+                    f"model per LLMRouter; got {sorted(self._servers)}."
+                )
+            (server,) = self._servers.values()
             from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
                 build_kv_token_tracker,
                 get_llm_router_handle,
@@ -161,13 +239,86 @@ class LLMRouter:
             )
 
             self._token_sender = token_channel.TokenSender()
-        self._handle._init()
+        for handle in self._servers.values():
+            handle._init()
+
+        if self._ingress is not None:
+            self._ingress._init()
+
+    def _select_handle(self, model: Any) -> DeploymentHandle:
+        """Resolve the request's ``model`` to a deployment handle or raises."""
+        if model is None:
+            if (
+                len(self._servers) == 1
+            ):  # By design: its okay if no model is specified for single model.
+                (handle,) = self._servers.values()
+                return handle
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Model parameter is required when multiple models are "
+                    f"configured. Available models: {sorted(self._servers)}"
+                ),
+            )
+        if not isinstance(model, str):
+            raise HTTPException(
+                status_code=400,
+                detail="Model parameter must be a string.",
+            )
+        handle = self._servers.get(model)
+        if handle is None:
+            # Try LoRA base model id
+            handle = self._servers.get(get_base_model_id(model))
+        if handle is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f'Got request for model "{model}". Could not find a '
+                    f"configured model with that id or base model id. Available "
+                    f"models: {sorted(self._servers)}"
+                ),
+            )
+        return handle
+
+    async def _route_to_ingress(self) -> dict:
+        """Select an ingress replica for a request the ingress owns."""
+        try:
+            host, port, replica_id, _ = await self._pick_replica(
+                handle=self._ingress,
+                routing_payload=None,
+                request_token_ids=None,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except (RuntimeError, DeploymentUnavailableError) as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        return {
+            "host": host,
+            "port": port,
+            "deployment": self._ingress.deployment_id.name,
+            "replica_id": replica_id,
+        }
+
+    def _matches_ingress_route(self, request: Request) -> bool:
+        """Whether this request belongs to a route the application ingress owns."""
+        if self._ingress_routes is None:
+            return False
+        method = request.headers.get(_REQUEST_METHOD_HEADER)
+        path = request.headers.get(_REQUEST_PATH_HEADER)
+        if not method or not path:
+            return False
+        return self._ingress_routes.matches_http_route(method, path)
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
+        if self._matches_ingress_route(request):
+            return await self._route_to_ingress()
+
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
-        routing_payload = _parse_routing_payload(body)
+        data = _parse_body(body)
+        handle = self._select_handle(data.get("model") if data is not None else None)
+        routing_payload = _build_replica_routing_payload(data)
         if routing_payload is None and not self._warned_no_routing_key:
             self._warned_no_routing_key = True
             logger.warning(
@@ -201,9 +352,8 @@ class LLMRouter:
             (v for k, v in request.headers.items() if _matches_session_id_header(k)),
             None,
         )
-        handle = (
-            self._handle.options(session_id=session_id) if session_id else self._handle
-        )
+        if session_id:
+            handle = handle.options(session_id=session_id)
         try:
             host, port, replica_id, token_endpoint = await self._pick_replica(
                 handle=handle,
@@ -218,7 +368,7 @@ class LLMRouter:
         response = {
             "host": host,
             "port": port,
-            "deployment": self._handle.deployment_id.name,
+            "deployment": handle.deployment_id.name,
             "replica_id": replica_id,
         }
         if request_token_ids:

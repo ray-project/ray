@@ -117,7 +117,7 @@ def _build_openai_ingress_request_router(
         ray_actor_options=ray_actor_options,
     )
     return deployment.bind(
-        server=server,
+        servers={llm_config.model_id: server},
         llm_config=llm_config if is_kv_aware(llm_config) else None,
     )
 

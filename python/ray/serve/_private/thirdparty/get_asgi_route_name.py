@@ -32,8 +32,9 @@
 #  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Sequence, Set
 
+from starlette.applications import Starlette
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Scope
 
@@ -239,3 +240,77 @@ def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
 
     # Sort by path for consistent ordering
     return sorted(patterns, key=lambda x: x.path)
+
+
+_ALL_HTTP_METHODS = (
+    "GET",
+    "HEAD",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS",
+    "TRACE",
+)
+
+
+class ASGIRoutePatternMatcher:
+    """Matches (method, path) pairs against a fixed list of `RoutePattern`s.
+
+    Serve needs to answer "does this request belong to a route this ASGI app
+    declares?" in two places: the proxy, which tags metrics with the matched
+    pattern instead of the bare route prefix, and the LLM ingress request
+    router, which must send a request the application ingress owns to the
+    ingress rather than to a model deployment. Both have to agree -- a request
+    the proxy would tag `/v1/models` must be the same one the router keeps on
+    the ingress -- so the matching lives here once rather than being
+    reimplemented per caller.
+
+    Matching goes through `get_asgi_route_name` against a Starlette app built
+    from the patterns, so parameterized segments, `{name:path}`, method
+    restrictions, and trailing-slash redirects follow Starlette's behavior.
+
+    The mock app is built once in the constructor. Invalid patterns therefore
+    raise here, at construction, rather than on a request.
+    """
+
+    def __init__(self, patterns: Sequence[RoutePattern]):
+        async def _dummy_endpoint(request):
+            # Never called: the app exists only so Starlette's own matching can
+            # be run against it.
+            pass
+
+        self._app = Starlette(
+            routes=[
+                Route(
+                    pattern.path,
+                    _dummy_endpoint,
+                    # RoutePattern uses None when it has no HTTP method
+                    # restriction. Starlette Route instead interprets None as
+                    # GET-only for a function endpoint, so expand the sentinel
+                    # to the standard HTTP methods.
+                    methods=(
+                        _ALL_HTTP_METHODS
+                        if pattern.methods is None
+                        else pattern.methods
+                    ),
+                )
+                for pattern in patterns
+            ]
+        )
+
+    def match_scope(self, scope: Scope) -> Optional[str]:
+        """Match a full ASGI scope against the declared routes.
+
+        Takes the whole scope rather than just method and path so fields
+        `get_asgi_route_name` reads -- notably `root_path`, which it prepends to
+        the matched name -- survive.
+        """
+        return get_asgi_route_name(self._app, scope)
+
+    def matches_http_route(self, method: str, path: str) -> bool:
+        """Whether an HTTP request with this method and path matches."""
+        return (
+            self.match_scope({"type": "http", "method": method, "path": path})
+            is not None
+        )
