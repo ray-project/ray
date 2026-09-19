@@ -1,0 +1,366 @@
+{
+  "arms": {
+    "0": {
+      "Q": 8,
+      "repeat": 0,
+      "death_phase": 25.0,
+      "buffer_units": 24,
+      "predicted_lo": 28,
+      "predicted_hi": 30,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 75,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 8,
+        "queue_depth": 8,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1141427
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1141429
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo": 30,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3
+      }
+    },
+    "1": {
+      "Q": 8,
+      "repeat": 1,
+      "death_phase": 26.3,
+      "buffer_units": 24,
+      "predicted_lo": 28,
+      "predicted_hi": 30,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 75,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 8,
+        "queue_depth": 8,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1142471
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1142470
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo": 30,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3
+      }
+    },
+    "2": {
+      "Q": 8,
+      "repeat": 2,
+      "death_phase": 27.6,
+      "buffer_units": 24,
+      "predicted_lo": 28,
+      "predicted_hi": 30,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 75,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 8,
+        "queue_depth": 8,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1143510
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1143511
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo": 30,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3
+      }
+    },
+    "3": {
+      "Q": 8,
+      "repeat": 3,
+      "death_phase": 28.9,
+      "buffer_units": 24,
+      "predicted_lo": 28,
+      "predicted_hi": 30,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 75,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 8,
+        "queue_depth": 8,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1144553
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1144551
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo": 30,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3
+      }
+    },
+    "4": {
+      "Q": 8,
+      "repeat": 4,
+      "death_phase": 30.2,
+      "buffer_units": 24,
+      "predicted_lo": 28,
+      "predicted_hi": 30,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 75,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 8,
+        "queue_depth": 8,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1145587
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1145585
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo": 30,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3
+      }
+    },
+    "5": {
+      "Q": 8,
+      "repeat": 5,
+      "death_phase": 31.5,
+      "buffer_units": 24,
+      "predicted_lo": 28,
+      "predicted_hi": 30,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 75,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 8,
+        "queue_depth": 8,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1146866
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 8,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1146865
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 75,
+        "durable_at_death": 45,
+        "queued_at_death": 8,
+        "resumed_from": 45,
+        "redo": 30,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3
+      }
+    }
+  },
+  "config": {
+    "N": 600,
+    "W": 3,
+    "K": 3,
+    "unit_seconds": 0.35,
+    "outage_s": 42,
+    "Q": 8,
+    "death_phases": [
+      25.0,
+      26.3,
+      27.6,
+      28.9,
+      30.2,
+      31.5
+    ]
+  },
+  "verdict": {
+    "repeats_measured": 6,
+    "NC_saturated_count": 6,
+    "NC_enough_saturated": true,
+    "redo_values": [
+      30,
+      30,
+      30,
+      30,
+      30,
+      30
+    ],
+    "p_values": [
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "distinct_redo_values": [
+      30
+    ],
+    "n_distinct": 1,
+    "predicted_interval": [
+      28,
+      30
+    ],
+    "all_in_interval": true,
+    "modal_is_p_equals_W": true,
+    "contiguous_everywhere": true,
+    "C30_proven": false,
+    "C30_refuted_constant": true
+  }
+}

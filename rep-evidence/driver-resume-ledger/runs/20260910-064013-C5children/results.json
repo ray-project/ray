@@ -1,0 +1,369 @@
+{
+  "arms": {
+    "opaque": {
+      "arm": "opaque",
+      "reconcile": true,
+      "phase1": {
+        "created": [
+          {
+            "idx": 0,
+            "name": "d31bf8d05eea4eed8ac189fbd90ffa38",
+            "pid": 993730
+          },
+          {
+            "idx": 1,
+            "name": "02e2f8f0a72441239e509e34c7a5e504",
+            "pid": 993731
+          },
+          {
+            "idx": 2,
+            "name": "7ac2c982138a456b9d52188f09f87954",
+            "pid": 993732
+          },
+          {
+            "idx": 3,
+            "name": "0fee0c13619e43cea83ae6b159371e46",
+            "pid": 993733
+          },
+          {
+            "idx": 4,
+            "name": "82072734e66a471bb86fe9903db74607",
+            "pid": 993891
+          },
+          {
+            "idx": 5,
+            "name": "8638e3f7207c4e52b399dec96576cc1c",
+            "pid": 993934
+          }
+        ]
+      },
+      "phase2": {
+        "recorded": {
+          "0": "d31bf8d05eea4eed8ac189fbd90ffa38",
+          "1": "02e2f8f0a72441239e509e34c7a5e504"
+        },
+        "discovered": [],
+        "adopted": [
+          {
+            "name": "d31bf8d05eea4eed8ac189fbd90ffa38",
+            "ident": {
+              "idx": 0,
+              "pid": 993730
+            }
+          },
+          {
+            "name": "02e2f8f0a72441239e509e34c7a5e504",
+            "ident": {
+              "idx": 1,
+              "pid": 993731
+            }
+          }
+        ],
+        "created_now": [
+          {
+            "name": "07797ea08686444c869e1ea219b28290",
+            "pid": 994011
+          },
+          {
+            "name": "df948855247c4994b9329dfd5669ed62",
+            "pid": 994047
+          },
+          {
+            "name": "dbba54614a2e48828b6087bca10f7d78",
+            "pid": 994085
+          },
+          {
+            "name": "130b130093044b37a38be76729ab4520",
+            "pid": 994125
+          }
+        ],
+        "unreachable": [],
+        "live_named_total": 10,
+        "live_named": [
+          "8638e3f7207c4e52b399dec96576cc1c",
+          "d31bf8d05eea4eed8ac189fbd90ffa38",
+          "df948855247c4994b9329dfd5669ed62",
+          "82072734e66a471bb86fe9903db74607",
+          "07797ea08686444c869e1ea219b28290",
+          "dbba54614a2e48828b6087bca10f7d78",
+          "0fee0c13619e43cea83ae6b159371e46",
+          "7ac2c982138a456b9d52188f09f87954",
+          "02e2f8f0a72441239e509e34c7a5e504",
+          "130b130093044b37a38be76729ab4520"
+        ]
+      },
+      "metrics": {
+        "adopted": 2,
+        "adopted_same_pid": true,
+        "created_now": 4,
+        "unreachable": 0,
+        "orphans": 4,
+        "orphan_names": [
+          "7ac2c982138a456b9d52188f09f87954",
+          "0fee0c13619e43cea83ae6b159371e46",
+          "82072734e66a471bb86fe9903db74607",
+          "8638e3f7207c4e52b399dec96576cc1c"
+        ],
+        "live_named_total": 10
+      }
+    },
+    "prefixed": {
+      "arm": "prefixed",
+      "reconcile": true,
+      "phase1": {
+        "created": [
+          {
+            "idx": 0,
+            "name": "r4/scope-c5-prefixed/jobc5/child-0",
+            "pid": 994220
+          },
+          {
+            "idx": 1,
+            "name": "r4/scope-c5-prefixed/jobc5/child-1",
+            "pid": 994256
+          },
+          {
+            "idx": 2,
+            "name": "r4/scope-c5-prefixed/jobc5/child-2",
+            "pid": 994293
+          },
+          {
+            "idx": 3,
+            "name": "r4/scope-c5-prefixed/jobc5/child-3",
+            "pid": 994331
+          },
+          {
+            "idx": 4,
+            "name": "r4/scope-c5-prefixed/jobc5/child-4",
+            "pid": 994372
+          },
+          {
+            "idx": 5,
+            "name": "r4/scope-c5-prefixed/jobc5/child-5",
+            "pid": 994414
+          }
+        ]
+      },
+      "phase2": {
+        "recorded": {
+          "0": "r4/scope-c5-prefixed/jobc5/child-0",
+          "1": "r4/scope-c5-prefixed/jobc5/child-1"
+        },
+        "discovered": [
+          "r4/scope-c5-prefixed/jobc5/child-0",
+          "r4/scope-c5-prefixed/jobc5/child-1",
+          "r4/scope-c5-prefixed/jobc5/child-2",
+          "r4/scope-c5-prefixed/jobc5/child-5",
+          "r4/scope-c5-prefixed/jobc5/child-3",
+          "r4/scope-c5-prefixed/jobc5/child-4"
+        ],
+        "adopted": [
+          {
+            "name": "r4/scope-c5-prefixed/jobc5/child-0",
+            "ident": {
+              "idx": 0,
+              "pid": 994220
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed/jobc5/child-1",
+            "ident": {
+              "idx": 1,
+              "pid": 994256
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed/jobc5/child-2",
+            "ident": {
+              "idx": 2,
+              "pid": 994293
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed/jobc5/child-3",
+            "ident": {
+              "idx": 3,
+              "pid": 994331
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed/jobc5/child-4",
+            "ident": {
+              "idx": 4,
+              "pid": 994372
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed/jobc5/child-5",
+            "ident": {
+              "idx": 5,
+              "pid": 994414
+            }
+          }
+        ],
+        "created_now": [],
+        "unreachable": [],
+        "live_named_total": 16,
+        "live_named": [
+          "07797ea08686444c869e1ea219b28290",
+          "82072734e66a471bb86fe9903db74607",
+          "d31bf8d05eea4eed8ac189fbd90ffa38",
+          "r4/scope-c5-prefixed/jobc5/child-0",
+          "r4/scope-c5-prefixed/jobc5/child-1",
+          "r4/scope-c5-prefixed/jobc5/child-2",
+          "r4/scope-c5-prefixed/jobc5/child-5",
+          "dbba54614a2e48828b6087bca10f7d78",
+          "7ac2c982138a456b9d52188f09f87954",
+          "02e2f8f0a72441239e509e34c7a5e504",
+          "r4/scope-c5-prefixed/jobc5/child-3",
+          "r4/scope-c5-prefixed/jobc5/child-4",
+          "8638e3f7207c4e52b399dec96576cc1c",
+          "df948855247c4994b9329dfd5669ed62",
+          "0fee0c13619e43cea83ae6b159371e46",
+          "130b130093044b37a38be76729ab4520"
+        ]
+      },
+      "metrics": {
+        "adopted": 6,
+        "adopted_same_pid": true,
+        "created_now": 0,
+        "unreachable": 0,
+        "orphans": 0,
+        "orphan_names": [],
+        "live_named_total": 16
+      }
+    },
+    "prefixed_noreconcile": {
+      "arm": "prefixed_noreconcile",
+      "reconcile": false,
+      "phase1": {
+        "created": [
+          {
+            "idx": 0,
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-0",
+            "pid": 994548
+          },
+          {
+            "idx": 1,
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-1",
+            "pid": 994587
+          },
+          {
+            "idx": 2,
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-2",
+            "pid": 994628
+          },
+          {
+            "idx": 3,
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-3",
+            "pid": 994668
+          },
+          {
+            "idx": 4,
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-4",
+            "pid": 994705
+          },
+          {
+            "idx": 5,
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-5",
+            "pid": 994742
+          }
+        ]
+      },
+      "phase2": {
+        "recorded": {
+          "0": "r4/scope-c5-prefixed_noreconcile/jobc5/child-0",
+          "1": "r4/scope-c5-prefixed_noreconcile/jobc5/child-1"
+        },
+        "discovered": [],
+        "adopted": [
+          {
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-0",
+            "ident": {
+              "idx": 0,
+              "pid": 994548
+            }
+          },
+          {
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-1",
+            "ident": {
+              "idx": 1,
+              "pid": 994587
+            }
+          }
+        ],
+        "created_now": [
+          {
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-2",
+            "pid": 994628
+          },
+          {
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-3",
+            "pid": 994668
+          },
+          {
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-4",
+            "pid": 994705
+          },
+          {
+            "name": "r4/scope-c5-prefixed_noreconcile/jobc5/child-5",
+            "pid": 994742
+          }
+        ],
+        "unreachable": [],
+        "live_named_total": 22,
+        "live_named": [
+          "07797ea08686444c869e1ea219b28290",
+          "82072734e66a471bb86fe9903db74607",
+          "d31bf8d05eea4eed8ac189fbd90ffa38",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-0",
+          "r4/scope-c5-prefixed/jobc5/child-0",
+          "r4/scope-c5-prefixed/jobc5/child-1",
+          "r4/scope-c5-prefixed/jobc5/child-2",
+          "r4/scope-c5-prefixed/jobc5/child-5",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-1",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-3",
+          "dbba54614a2e48828b6087bca10f7d78",
+          "7ac2c982138a456b9d52188f09f87954",
+          "02e2f8f0a72441239e509e34c7a5e504",
+          "r4/scope-c5-prefixed/jobc5/child-3",
+          "r4/scope-c5-prefixed/jobc5/child-4",
+          "8638e3f7207c4e52b399dec96576cc1c",
+          "df948855247c4994b9329dfd5669ed62",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-2",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-5",
+          "0fee0c13619e43cea83ae6b159371e46",
+          "130b130093044b37a38be76729ab4520",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-4"
+        ]
+      },
+      "metrics": {
+        "adopted": 2,
+        "adopted_same_pid": true,
+        "created_now": 4,
+        "unreachable": 0,
+        "orphans": 4,
+        "orphan_names": [
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-2",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-3",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-4",
+          "r4/scope-c5-prefixed_noreconcile/jobc5/child-5"
+        ],
+        "live_named_total": 22
+      }
+    }
+  },
+  "K": 6,
+  "R": 2,
+  "verdict": {
+    "NC_noreconcile_leaked_as_required": true,
+    "VOID_control_clean": false,
+    "opaque_orphans": 4,
+    "opaque_duplicated": 4,
+    "prefixed_orphans": 0,
+    "prefixed_duplicated": 0,
+    "prefixed_adopted_all": true,
+    "prefixed_adoption_was_real_same_pid": true,
+    "C5_proven_conditional_on_scoped_names": true
+  }
+}

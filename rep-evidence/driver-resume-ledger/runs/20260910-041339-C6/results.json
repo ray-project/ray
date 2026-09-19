@@ -1,0 +1,392 @@
+{
+  "experiment": "C6",
+  "verdict": "proven",
+  "why": "no violation across the exhaustive sweep; all voiding controls red",
+  "config": {
+    "experiment": "C6",
+    "git_rev": "4eee3fd351c926cff73d1c8a7b7efd87e3a00c36",
+    "python": "3.10.14",
+    "budgets": [
+      1,
+      2
+    ],
+    "faults": [
+      "crash_before",
+      "crash_after",
+      "lost_ack"
+    ],
+    "workloads": {
+      "small": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "batched": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "wide": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      }
+    },
+    "controls": {
+      "NC1_fence_ignored": {
+        "fence_mode": "ignore"
+      },
+      "NC2_fence_inverted": {
+        "fence_mode": "inverted"
+      },
+      "NC3_state_not_epoch_scoped": {
+        "epoch_scoped_state": false
+      },
+      "NC4_sweep_before_ptr": {
+        "sweep_before_ptr": true
+      },
+      "NC5_compact_delete_before_ptr": {
+        "compact_delete_before_ptr": true
+      },
+      "NC6_compact_base_in_place": {
+        "compact_in_place": true
+      },
+      "NC7_no_startup_sweep": {
+        "startup_sweep": false
+      },
+      "NC8_ctor_seeds_empty_base": {
+        "carry_forward": false
+      },
+      "NC10_compact_ptr_before_base": {
+        "compact_ptr_before_base": true
+      },
+      "NC1b_fence_raw_no_readback": {
+        "fence_mode": "raw"
+      },
+      "NC11_ack_before_commit": {
+        "ack_before_commit": true
+      },
+      "NC12_resume_ignores_ledger": {
+        "resume_ignores_ledger": true
+      }
+    },
+    "seeds": "n/a -- deterministic exhaustive DFS, no randomness",
+    "started": "2026-09-10T04:13:39"
+  },
+  "real": {
+    "small/B=1": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "budget": 1,
+      "traces": 105,
+      "violations_by_kind": {},
+      "max_instances": 3,
+      "max_compactions": 3,
+      "max_final_keys": 3,
+      "seconds": 0.24,
+      "examples": []
+    },
+    "small/B=2": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 6,
+        "W": 1,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "budget": 2,
+      "traces": 7524,
+      "violations_by_kind": {},
+      "max_instances": 4,
+      "max_compactions": 3,
+      "max_final_keys": 3,
+      "seconds": 16.96,
+      "examples": []
+    },
+    "batched/B=1": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "budget": 1,
+      "traces": 80,
+      "violations_by_kind": {},
+      "max_instances": 3,
+      "max_compactions": 2,
+      "max_final_keys": 3,
+      "seconds": 0.15,
+      "examples": []
+    },
+    "batched/B=2": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 8,
+        "W": 2,
+        "K": 2,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "budget": 2,
+      "traces": 4731,
+      "violations_by_kind": {},
+      "max_instances": 4,
+      "max_compactions": 2,
+      "max_final_keys": 3,
+      "seconds": 8.81,
+      "examples": []
+    },
+    "wide/B=1": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "budget": 1,
+      "traces": 70,
+      "violations_by_kind": {},
+      "max_instances": 3,
+      "max_compactions": 1,
+      "max_final_keys": 3,
+      "seconds": 0.16,
+      "examples": []
+    },
+    "wide/B=2": {
+      "workload": {
+        "session": "session-A",
+        "job": "job1",
+        "n_units": 12,
+        "W": 3,
+        "K": 3,
+        "fence_mode": "readback",
+        "epoch_scoped_state": true,
+        "sweep_before_ptr": false,
+        "compact_delete_before_ptr": false,
+        "compact_in_place": false,
+        "compact_ptr_before_base": false,
+        "startup_sweep": true,
+        "carry_forward": true,
+        "session_scoped": true,
+        "resume_ignores_ledger": false,
+        "ack_before_commit": false
+      },
+      "budget": 2,
+      "traces": 3979,
+      "violations_by_kind": {},
+      "max_instances": 4,
+      "max_compactions": 1,
+      "max_final_keys": 3,
+      "seconds": 7.31,
+      "examples": []
+    }
+  },
+  "controls": {
+    "NC4_sweep_before_ptr": {
+      "flags": {
+        "sweep_before_ptr": true
+      },
+      "went_red": true,
+      "traces_until_first_violation": 1,
+      "violations_by_kind": {
+        "INV-PTR": 1,
+        "INV-DUR": 4
+      },
+      "counterexample": "[(no faults)] -> INV-PTR at i1#8 after Delete: base_ptr names a base key that does not exist; INV-DUR at i1#8 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at i1#9 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at i1#11 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-DUR at i1#12 after Put: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered [])",
+      "seconds": 0.0,
+      "voids_run_if_green": true
+    },
+    "NC5_compact_delete_before_ptr": {
+      "flags": {
+        "compact_delete_before_ptr": true
+      },
+      "went_red": true,
+      "traces_until_first_violation": 1,
+      "violations_by_kind": {
+        "INV-PTR": 9,
+        "INV-DUR": 9
+      },
+      "counterexample": "[(no faults)] -> INV-PTR at i0#16 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#16 after Delete: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#17 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#17 after Delete: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#18 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#18 after Delete: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#29 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#29 after Delete: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#30 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#30 after Delete: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#31 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#31 after Delete: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#42 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#42 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-PTR at i0#43 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#43 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered []); INV-PTR at i0#44 after Delete: base_ptr names a base key that does not exist; INV-DUR at i0#44 after Delete: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered [])",
+      "seconds": 0.0,
+      "voids_run_if_green": true
+    },
+    "NC6_compact_base_in_place": {
+      "flags": {
+        "compact_in_place": true
+      },
+      "went_red": false,
+      "traces_until_first_violation": 6513,
+      "violations_by_kind": {},
+      "counterexample": null,
+      "seconds": 14.57,
+      "voids_run_if_green": false
+    },
+    "NC7_no_startup_sweep": {
+      "flags": {
+        "startup_sweep": false
+      },
+      "went_red": true,
+      "traces_until_first_violation": 1,
+      "violations_by_kind": {
+        "INV-GC": 1
+      },
+      "counterexample": "[(no faults)] -> INV-GC at after audit startup: 3 key(s) below the winning epoch survived a clean startup: ['session-A/job1/epoch/0001', 'session-A/job1/state/0001/base@0006', 'session-A/job1/state/0001/base_ptr']",
+      "seconds": 0.0,
+      "voids_run_if_green": true
+    },
+    "NC10_compact_ptr_before_base": {
+      "flags": {
+        "compact_ptr_before_base": true
+      },
+      "went_red": true,
+      "traces_until_first_violation": 1,
+      "violations_by_kind": {
+        "INV-PTR": 3,
+        "INV-DUR": 3
+      },
+      "counterexample": "[(no faults)] -> INV-PTR at i0#14 after Put: base_ptr names a base key that does not exist; INV-DUR at i0#14 after Put: acked units [0, 1] are not recoverable (recovered []); INV-PTR at i0#27 after Put: base_ptr names a base key that does not exist; INV-DUR at i0#27 after Put: acked units [0, 1, 2, 3] are not recoverable (recovered []); INV-PTR at i0#40 after Put: base_ptr names a base key that does not exist; INV-DUR at i0#40 after Put: acked units [0, 1, 2, 3, 4, 5] are not recoverable (recovered [])",
+      "seconds": 0.0,
+      "voids_run_if_green": false
+    },
+    "NC11_ack_before_commit": {
+      "flags": {
+        "ack_before_commit": true
+      },
+      "went_red": true,
+      "traces_until_first_violation": 1,
+      "violations_by_kind": {
+        "INV-DUR": 6
+      },
+      "counterexample": "[(no faults)] -> INV-DUR at i0#9 after Ack: acked units [0] are not recoverable (recovered []); INV-DUR at i0#12 after Ack: acked units [1] are not recoverable (recovered [0]); INV-DUR at i0#22 after Ack: acked units [2] are not recoverable (recovered [0, 1]); INV-DUR at i0#25 after Ack: acked units [3] are not recoverable (recovered [0, 1, 2]); INV-DUR at i0#35 after Ack: acked units [4] are not recoverable (recovered [0, 1, 2, 3]); INV-DUR at i0#38 after Ack: acked units [5] are not recoverable (recovered [0, 1, 2, 3, 4])",
+      "seconds": 0.0,
+      "voids_run_if_green": false
+    },
+    "NC12_resume_ignores_ledger": {
+      "flags": {
+        "resume_ignores_ledger": true
+      },
+      "went_red": true,
+      "traces_until_first_violation": 49,
+      "violations_by_kind": {
+        "INV-REDO": 1
+      },
+      "counterexample": "[i0#0:crash_before, i1#21:crash_after] -> INV-REDO at end of trace: 3 unit(s) re-executed after 2 crash(es); budget is 2 (= crashes x W)",
+      "seconds": 0.13,
+      "voids_run_if_green": true
+    },
+    "NC1b_fence_raw_no_readback": {
+      "flags": {
+        "fence_mode": "raw"
+      },
+      "went_red": true,
+      "traces_until_first_violation": 7,
+      "violations_by_kind": {
+        "INV-LIVE": 1
+      },
+      "counterexample": "[i0#0:crash_before, i1#1:lost_ack] -> INV-LIVE at end of trace: no instance ever completed: crashed(Keys), aborted(i1: lost epoch 1)",
+      "seconds": 0.01,
+      "voids_run_if_green": true
+    }
+  }
+}

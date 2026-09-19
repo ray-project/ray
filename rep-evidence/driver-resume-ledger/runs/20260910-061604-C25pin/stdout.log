@@ -1,0 +1,35 @@
+
+====================================================================
+ARM: hard
+====================================================================
+  [hard] placed off-head=True progress=60 units
+  [hard] killed gcs_server [982255]
+  [hard] head restarted rc=0
+  [hard] name_present=True committed=60 reattached=False resumed_from=None
+  [hard] error: ActorUnschedulableError: The actor is not schedulable: The node specified via NodeAffinitySchedulingStrategy doesn't exist any more or is infeasible, and soft=False was specified.
+
+====================================================================
+ARM: soft
+====================================================================
+  [soft] placed off-head=True progress=60 units
+  [soft] killed gcs_server [983626]
+  [soft] head restarted rc=0
+  [soft] name_present=True committed=60 reattached=True resumed_from=60
+
+====================================================================
+ARM: none
+====================================================================
+  [none] placed off-head=True progress=60 units
+  [none] killed gcs_server [984949]
+  [none] head restarted rc=0
+  [none] name_present=True committed=60 reattached=True resumed_from=60
+
+====================================================================
+  control_hard_failed_as_required              True
+  soft_reattached                              True
+  none_reattached                              True
+  soft_reattached_with_progress                True
+  none_reattached_with_progress                True
+  VOID_control_did_not_fire                    False
+  C25_proven                                   True
+====================================================================

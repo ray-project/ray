@@ -1,0 +1,25 @@
+experiment=C1 git=91eebd218d00 budgets=[1, 2]
+
+==============================================================================
+REAL PROTOCOL -- two concurrent instances, windowed exhaustive search
+==============================================================================
+  tiny/w=4  traces=1061    fenced-active=971       2.5s  {'INV-FENCE-ACK': 663}
+  tiny/w=6  traces=4193    fenced-active=3949      9.6s  {'INV-FENCE-ACK': 2739, 'INV-DUR': 28}
+  small/w=4  traces=1395    fenced-active=1340      4.0s  {'INV-FENCE-ACK': 1004}
+  small/w=6  traces=5695    fenced-active=5486     16.4s  {'INV-FENCE-ACK': 4136, 'INV-DUR': 44}
+
+  cross-check: random interleaving fuzzer, no window bound
+  tiny     traces=1500   fenced-active=864    {'INV-FENCE-ACK': 583, 'INV-DUR': 146}
+  small    traces=1500   fenced-active=1226   {'INV-FENCE-ACK': 873, 'INV-DUR': 409}
+
+==============================================================================
+NEGATIVE CONTROLS
+==============================================================================
+  NC1_fence_ignored              {'INV-FENCE-ACK': 2612, 'INV-ONE': 126, 'INV-DUR': 206}  (4071 traces)
+      INV-ONE: {1: ['A', 'B'], 2: ['audit']}
+  NC2_fence_inverted             CLEAN  (123 traces)
+  NC3_state_not_epoch_scoped     {'INV-FENCE-ACK': 2739, 'INV-DUR': 18}  (4193 traces)
+
+==============================================================================
+VERDICT: VOID -- fencing controls NC1/NC2 did not produce INV-ONE
+==============================================================================
