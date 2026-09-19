@@ -75,10 +75,7 @@ def _build_direct_streaming_llm_deployment(
     leave their configured value untouched.
 
     ``direct_http`` marks the deployment as owning HTTP listeners without being
-    the application's ingress. The standard OpenAI builder sets it, because
-    there a ``DirectStreamingIngress`` deployment is the app's front door; the
-    DP and P/D builders do not, because there the server deployment still *is*
-    the ingress.
+    the application's ingress.
     """
     server_cls = deployment_cls or llm_config.server_cls or LLMServer
     return build_llm_deployment(
@@ -119,14 +116,10 @@ def _build_openai_ingress_request_router(
     must not throttle it.
 
     ``servers`` is the model-id -> model deployment registry the router selects
-    from; the DP and P/D builders pass their single server, the standard builder
-    passes one entry per configured model.
+    from.
 
     ``ingress``, when given, is the application's control-plane ingress.
-    ``ingress_route_patterns`` is extracted from that ingress's FastAPI app at
-    build time, and tells the router which requests to send there instead of to
-    a model. The DP and P/D topologies have no separate ingress -- their server
-    deployment *is* the ingress -- so they leave both unset.
+    ``ingress_route_patterns`` are the routes owned by the ingress, and are given priority.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
@@ -233,20 +226,10 @@ class LLMServingArgs(BaseModelExtended):
         return self
 
 
-def _validate_direct_streaming_ingress_cls_config(
+def _validate_no_custom_direct_streaming_ingress(
     ingress_cls_config: IngressClsConfig,
 ) -> None:
-    """Reject a user-supplied ingress class while direct streaming is on.
-
-    Every builder rejects it, for two different reasons. Where the server class
-    is the ingress (DP, P/D) there is no ingress deployment to substitute at
-    all. In the standard builder there is one, ``DirectStreamingIngress``, but
-    the routes it declares are exactly the routes the ingress request router
-    takes away from the model deployments, so a custom ingress would silently
-    redirect inference traffic through a Python hop. Custom control ingresses
-    and custom control routes are deferred until that coupling is expressed in
-    the API.
-    """
+    """Reject custom ingress classes and kwargs for direct streaming."""
     if (
         ingress_cls_config.ingress_cls != OpenAiIngress
         or ingress_cls_config.ingress_extra_kwargs
@@ -260,16 +243,14 @@ def _validate_direct_streaming_ingress_cls_config(
         )
 
 
-def _validate_direct_streaming_ingress_config(
+def _validate_direct_streaming_server_as_ingress_config(
     ingress_deployment_config: Optional[dict],
     ingress_cls_config: IngressClsConfig,
 ) -> None:
-    """Validation for the builders whose LLM server *is* the ingress (DP, P/D).
+    """Validate direct streaming when the LLM server is the ingress.
 
-    Those topologies have no ingress deployment of their own, so there is
-    nothing for ``ingress_deployment_config`` to configure. The standard
-    builder does have one and accepts it; see
-    ``_build_direct_streaming_openai_app``.
+    DP and P/D have no separate ingress deployment, so ingress options must be
+    configured through the server's ``LLMConfig.deployment_config``.
     """
     if ingress_deployment_config:
         raise ValueError(
@@ -279,7 +260,7 @@ def _validate_direct_streaming_ingress_config(
             "each LLMConfig.deployment_config instead."
         )
 
-    _validate_direct_streaming_ingress_cls_config(ingress_cls_config)
+    _validate_no_custom_direct_streaming_ingress(ingress_cls_config)
 
 
 def _get_min_replicas(deployment_options: Dict[str, Any]) -> Optional[int]:
@@ -297,22 +278,18 @@ def _get_min_replicas(deployment_options: Dict[str, Any]) -> Optional[int]:
 
 
 def _validate_control_ingress_stays_up(ingress_options: Dict[str, Any]) -> None:
-    """The control ingress must keep at least one replica.
+    """Reject scale-to-zero for the direct-streaming control ingress.
 
-    Unlike ``OpenAiIngress``, it may not scale to zero along with the models.
-    It is the only deployment that answers ``GET /v1/models``, and the ingress
-    request router learns which routes belong to the ingress by asking a
-    running ingress replica -- with none, model discovery is exactly what an
-    idle application loses first. Serve's controller also stops publishing an
-    app's direct-HTTP targets once its ingress has no running replicas, so a
-    scaled-to-zero ingress takes the model backends down with it.
+    It serves model discovery, and Serve publishes an application's HAProxy
+    target group only while an ingress replica is running. Scaling the control
+    ingress to zero would therefore also remove the direct model backends.
     """
     if _get_min_replicas(ingress_options) == 0:
         raise ValueError(
             "The direct-streaming control ingress cannot scale to zero: it is "
-            "the only deployment serving model discovery, and the ingress "
-            "request router needs a running ingress replica to resolve its "
-            "routes. Set ingress_deployment_config.autoscaling_config."
+            "the only deployment serving model discovery, and HAProxy targets "
+            "for the application require a running ingress replica. Set "
+            "ingress_deployment_config.autoscaling_config."
             "min_replicas to at least 1."
         )
 
@@ -336,7 +313,7 @@ def _validate_direct_streaming_models(llm_configs: List[LLMConfig]) -> None:
             "deploy one application per model."
         )
 
-    kv_aware_models = sorted(c.model_id for c in llm_configs if is_kv_aware(c))
+    kv_aware_models = [c.model_id for c in llm_configs if is_kv_aware(c)]
     if kv_aware_models:
         raise ValueError(
             "KV-aware routing supports one model per application. The KV token "
@@ -346,7 +323,7 @@ def _validate_direct_streaming_models(llm_configs: List[LLMConfig]) -> None:
             f"tokenizer. Models requesting KV-aware routing: {kv_aware_models}."
         )
 
-    lora_models = sorted(c.model_id for c in llm_configs if c.lora_config is not None)
+    lora_models = [c.model_id for c in llm_configs if c.lora_config is not None]
     if lora_models:
         raise ValueError(
             "LoRA supports one model per application under "
@@ -369,16 +346,9 @@ def _build_direct_streaming_openai_app(builder_config: LLMServingArgs) -> Applic
     A request on a route the ingress declares goes to an ingress replica;
     anything else is matched by its ``model`` field to one model deployment and
     sent straight to that deployment's replica, with no Python proxy hop.
-
-    The same bound model ``Application`` objects go to both the ingress (as
-    ``llm_deployments``) and the router (as ``servers``). Serve's graph
-    traversal keys on object identity, so passing the same objects is what makes
-    the router a peer of the existing model deployments rather than a second
-    copy of them -- and ``build_app`` rejects an ingress request router that
-    introduces more than its own deployment.
     """
     llm_configs = builder_config.llm_configs
-    _validate_direct_streaming_ingress_cls_config(builder_config.ingress_cls_config)
+    _validate_no_custom_direct_streaming_ingress(builder_config.ingress_cls_config)
     _validate_direct_streaming_models(llm_configs)
 
     model_deployments = {
@@ -416,8 +386,7 @@ def _build_direct_streaming_openai_app(builder_config: LLMServingArgs) -> Applic
     return ingress._with_ingress_request_router(
         _build_openai_ingress_request_router(
             servers=model_deployments,
-            # Only a lone model can be KV-aware; `_validate_direct_streaming_models`
-            # has already rejected the multi-model case.
+            # KV aware routing is currently only supported for single model.
             llm_config=llm_configs[0] if len(llm_configs) == 1 else None,
             ingress=ingress,
             ingress_route_patterns=ingress_route_patterns,
