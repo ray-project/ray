@@ -301,6 +301,156 @@ def test_get_all_jobs_filters_out_none_job_info():
         asdict(job_info)  # This should not raise an exception
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "current_info",
+    [None, JobInfo(status=JobStatus.SUCCEEDED, entrypoint="echo done")],
+)
+async def test_guarded_put_status_skips_deleted_or_changed_job(current_info):
+    gcs = MagicMock()
+    gcs.async_internal_kv_get = AsyncMock(
+        return_value=json.dumps(current_info.to_json()).encode()
+        if current_info is not None
+        else None
+    )
+    gcs.async_internal_kv_put_if_match = AsyncMock()
+    storage = JobInfoStorageClient(gcs)
+
+    updated = await storage.put_status(
+        "job-id",
+        JobStatus.FAILED,
+        jobinfo_must_exist=True,
+        expected_status=JobStatus.RUNNING,
+    )
+
+    assert not updated
+    gcs.async_internal_kv_put_if_match.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_guarded_put_status_updates_matching_job():
+    gcs = MagicMock()
+    old_info = JobInfo(status=JobStatus.RUNNING, entrypoint="echo running")
+    old_raw = json.dumps(old_info.to_json()).encode()
+    gcs.async_internal_kv_get = AsyncMock(return_value=old_raw)
+    gcs.async_internal_kv_put_if_match = AsyncMock(return_value=True)
+    storage = JobInfoStorageClient(gcs)
+
+    updated = await storage.put_status(
+        "job-id",
+        JobStatus.FAILED,
+        jobinfo_must_exist=True,
+        expected_status=JobStatus.RUNNING,
+    )
+
+    assert updated
+    _, expected_raw, updated_raw = gcs.async_internal_kv_put_if_match.await_args.args
+    assert expected_raw == old_raw
+    assert JobInfo.from_json(json.loads(updated_raw)).status == JobStatus.FAILED
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed_info", [None, JobStatus.SUCCEEDED, JobStatus.RUNNING])
+async def test_guarded_put_status_does_not_overwrite_a_late_change(changed_info):
+    gcs = MagicMock()
+    original = JobInfo(status=JobStatus.RUNNING, entrypoint="original")
+    saved = json.dumps(original.to_json()).encode()
+
+    async def get_info(*args, **kwargs):
+        return saved
+
+    async def compare_and_put(key, expected, value, **kwargs):
+        nonlocal saved
+        if changed_info is None:
+            saved = None
+        else:
+            replacement = JobInfo(status=changed_info, entrypoint="changed")
+            saved = json.dumps(replacement.to_json()).encode()
+        if saved != expected:
+            return False
+        saved = value
+        return True
+
+    gcs.async_internal_kv_get = AsyncMock(side_effect=get_info)
+    gcs.async_internal_kv_put_if_match = AsyncMock(side_effect=compare_and_put)
+    storage = JobInfoStorageClient(gcs)
+
+    assert not await storage.put_status(
+        "job-id",
+        JobStatus.FAILED,
+        jobinfo_must_exist=True,
+        expected_status=JobStatus.RUNNING,
+    )
+    assert saved is None or JobInfo.from_json(json.loads(saved)).entrypoint == "changed"
+
+
+@pytest.mark.asyncio
+async def test_guarded_put_status_does_not_claim_another_writer_result():
+    gcs = MagicMock()
+    original = JobInfo(status=JobStatus.RUNNING, entrypoint="original")
+    old_raw = json.dumps(original.to_json()).encode()
+    written_raw = None
+
+    async def get_info(*args, **kwargs):
+        return written_raw if written_raw is not None else old_raw
+
+    async def put_if_match(key, expected, value, **kwargs):
+        nonlocal written_raw
+        assert expected == old_raw
+        # Another monitor wrote exactly the bytes we would have written.
+        written_raw = value
+        return False
+
+    gcs.async_internal_kv_get = AsyncMock(side_effect=get_info)
+    gcs.async_internal_kv_put_if_match = AsyncMock(side_effect=put_if_match)
+    storage = JobInfoStorageClient(gcs)
+    storage._write_submission_job_export_event = MagicMock()
+
+    assert not await storage.put_status(
+        "job-id",
+        JobStatus.FAILED,
+        jobinfo_must_exist=True,
+        expected_status=JobStatus.RUNNING,
+    )
+    assert JobInfo.from_json(json.loads(written_raw)).status == JobStatus.FAILED
+    assert gcs.async_internal_kv_get.await_count == 1
+    storage._write_submission_job_export_event.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_guarded_put_status_does_not_claim_a_lost_reply():
+    gcs = MagicMock()
+    original = JobInfo(status=JobStatus.RUNNING, entrypoint="original")
+    old_raw = json.dumps(original.to_json()).encode()
+    saved = old_raw
+
+    async def get_info(*args, **kwargs):
+        return saved
+
+    async def put_if_match(key, expected, value, **kwargs):
+        nonlocal saved
+        assert saved == expected
+        saved = value
+        raise RuntimeError("reply lost after write")
+
+    gcs.async_internal_kv_get = AsyncMock(side_effect=get_info)
+    gcs.async_internal_kv_put_if_match = AsyncMock(side_effect=put_if_match)
+    storage = JobInfoStorageClient(gcs)
+    storage._write_submission_job_export_event = MagicMock()
+
+    with pytest.raises(RuntimeError, match="reply lost after write"):
+        await storage.put_status(
+            "job-id",
+            JobStatus.FAILED,
+            jobinfo_must_exist=True,
+            expected_status=JobStatus.RUNNING,
+        )
+
+    assert gcs.async_internal_kv_get.await_count == 1
+    assert JobInfo.from_json(json.loads(saved)).status == JobStatus.FAILED
+    storage._write_submission_job_export_event.assert_not_called()
+
+
 if __name__ == "__main__":
     import sys
 
