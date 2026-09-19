@@ -32,6 +32,11 @@ from ray._private.metrics_agent import (
     Record,
 )
 from ray._private.telemetry.metric_cardinality import WORKER_ID_TAG_KEY
+from ray._private.telemetry.metric_exclusion import (
+    RAY_METRICS_EXCLUDE_NAMES,
+    RAY_METRICS_EXCLUDE_PATTERNS,
+    MetricsExclusionConfig,
+)
 from ray._raylet import WorkerID
 from ray.core.generated.metrics_pb2 import (
     LabelKey,
@@ -97,12 +102,20 @@ def generate_protobuf_metric(
 @pytest.fixture
 def get_agent(request, monkeypatch):
     with monkeypatch.context() as m:
-        if hasattr(request, "param"):
-            delay = request.param
+        param = getattr(request, "param", 0)
+        if isinstance(param, dict):
+            delay = param.get("delay", 0)
+            extra_env = param.get("env", {})
         else:
-            delay = 0
+            delay = param
+            extra_env = {}
 
-        m.setenv(RAY_WORKER_TIMEOUT_S, delay)
+        m.setenv(RAY_WORKER_TIMEOUT_S, str(delay))
+        for key, value in extra_env.items():
+            m.setenv(key, value)
+        for key in (RAY_METRICS_EXCLUDE_NAMES, RAY_METRICS_EXCLUDE_PATTERNS):
+            if key not in extra_env:
+                m.delenv(key, raising=False)
         agent_port = random.randint(10000, 65535)
         stats_recorder = StatsRecorder()
         view_manager = ViewManager()
@@ -500,6 +513,110 @@ def test_metrics_agent_export_format_correct(get_agent):
     assert response.count("# TYPE test_test gauge") == 1
     assert response.count("# HELP test_test2 desc") == 1
     assert response.count("# TYPE test_test2 gauge") == 1
+
+
+def test_metrics_exclusion_config_keeps_valid_rules(monkeypatch):
+    logged_errors = []
+    monkeypatch.setattr(
+        "ray._private.telemetry.metric_exclusion.logger.error",
+        lambda *args: logged_errors.append(args),
+    )
+    monkeypatch.setenv(RAY_METRICS_EXCLUDE_NAMES, " tasks, data_output_rows, ")
+    monkeypatch.setenv(
+        RAY_METRICS_EXCLUDE_PATTERNS, "(invalid,grpc_.*,object_directory_.*"
+    )
+
+    config = MetricsExclusionConfig()
+
+    assert config.exclude_names == {"tasks", "data_output_rows"}
+    assert config.is_excluded("tasks")
+    assert config.is_excluded("grpc_server_requests")
+    assert config.is_excluded("object_directory_lookup")
+    assert not config.is_excluded("foo_grpc_server_requests")
+    assert not config.is_excluded("resources")
+    assert len(logged_errors) == 1
+    assert logged_errors[0][1] == "(invalid"
+
+
+def test_metrics_exclusion_config_caches_pattern_results():
+    config = MetricsExclusionConfig()
+    assert not config.is_excluded("resources")
+    assert config._matches_pattern.cache_info().misses == 0
+
+    config = MetricsExclusionConfig(exclude_names=["tasks"])
+    assert config.is_excluded("tasks")
+    assert not config.is_excluded("resources")
+    assert config._matches_pattern.cache_info().misses == 0
+
+    config = MetricsExclusionConfig(exclude_patterns=["grpc_.*"])
+    assert config.is_excluded("grpc_server_requests")
+    assert config.is_excluded("grpc_server_requests")
+    assert not config.is_excluded("resources")
+    assert not config.is_excluded("resources")
+    cache_info = config._matches_pattern.cache_info()
+    assert cache_info.hits == 2
+    assert cache_info.misses == 2
+
+
+def test_opencensus_component_excludes_names_and_patterns():
+    config = MetricsExclusionConfig(
+        exclude_names=["tasks"], exclude_patterns=["grpc_.*"]
+    )
+    collector = OpenCensusProxyCollector("ray", exclusion_config=config)
+    metrics = []
+    for name in ("tasks", "grpc_server_requests", "resources"):
+        metric = generate_protobuf_metric(
+            name,
+            "desc",
+            "",
+            MetricDescriptorType.GAUGE_DOUBLE,
+        )
+        metric.timeseries.append(generate_timeseries(["a", "b"], [1]))
+        metrics.append(metric)
+
+    collector.record(metrics)
+
+    component_metrics = collector._components["CORE"].metrics
+    assert set(component_metrics) == {"resources"}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+@pytest.mark.parametrize(
+    "get_agent",
+    [
+        {
+            "env": {
+                RAY_METRICS_EXCLUDE_NAMES: "filtered_gauge,filtered_proxy",
+            }
+        }
+    ],
+    indirect=True,
+)
+def test_metrics_agent_excludes_direct_and_proxied_metrics(get_agent):
+    namespace = "test"
+    agent, agent_port = get_agent
+
+    agent.record_and_export(
+        [
+            Record(Gauge("filtered_gauge", "desc", "unit", []), 1.0, {}),
+            Record(Gauge("kept_gauge", "desc", "unit", []), 2.0, {}),
+        ]
+    )
+    assert get_metric(f"{namespace}_filtered_gauge", agent_port) is None
+    assert get_metric(f"{namespace}_kept_gauge", agent_port) is not None
+
+    filtered = generate_protobuf_metric(
+        "filtered_proxy", "desc", "", MetricDescriptorType.GAUGE_DOUBLE
+    )
+    filtered.timeseries.append(generate_timeseries(["a", "b"], [1]))
+    kept = generate_protobuf_metric(
+        "kept_proxy", "desc", "", MetricDescriptorType.GAUGE_DOUBLE
+    )
+    kept.timeseries.append(generate_timeseries(["a", "b"], [1]))
+    agent.proxy_export_metrics([filtered, kept])
+
+    assert get_metric(f"{namespace}_filtered_proxy", agent_port) is None
+    assert get_metric(f"{namespace}_kept_proxy", agent_port) is not None
 
 
 def _stub_node_level_metric(label: str, value: float) -> OpencensusProxyMetric:
