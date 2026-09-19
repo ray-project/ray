@@ -33,6 +33,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Granularity that node memory is quantized to when building a node resource
+# spec. Nodes of the same type can report slightly different physical memory
+# (e.g. 14.87 GiB vs 14.93 GiB) because of non-deterministic memory
+# availability at Ray init time.
+_MEMORY_QUANTIZATION_BYTES = GiB
+
 
 @dataclass(frozen=True)
 class _NodeResourceSpec:
@@ -59,9 +65,13 @@ class _NodeResourceSpec:
     def of(cls, *, cpu=0, gpu=0, mem=0):
         cpu = math.floor(cpu)
         gpu = math.floor(gpu)
-        # Round memory to the nearest 0.1 GiB so that nodes of the same type
-        # with slightly different reported physical memory are grouped together.
-        mem = int(round(mem / GiB, 1) * GiB) if mem > 0 else 0
+        # Quantize memory *down* so that nodes of the same type with slightly
+        # different reported physical memory are grouped together. Rounding down
+        # (instead of to the nearest multiple) keeps the spec from ever claiming
+        # more memory than the node it was derived from: a bundle bigger than
+        # its source node doesn't fit on that node type, so the autoscaler would
+        # treat the request as infeasible instead of scaling up.
+        mem = math.floor(mem / _MEMORY_QUANTIZATION_BYTES) * _MEMORY_QUANTIZATION_BYTES
         return cls(cpu=cpu, gpu=gpu, mem=mem)
 
     @classmethod
