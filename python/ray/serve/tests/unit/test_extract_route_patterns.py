@@ -386,8 +386,12 @@ class TestASGIRoutePatternMatcher:
         matcher = ASGIRoutePatternMatcher(
             [RoutePattern(methods=["GET"], path="/v1/models")]
         )
-        assert matcher.match("GET", "/v1/models") == "/v1/models"
-        assert matcher.matches("GET", "/v1/models")
+        assert matcher.match_scope(self._scope("GET", "/v1/models")) == "/v1/models"
+        assert matcher.matches_http_route("GET", "/v1/models")
+
+    @staticmethod
+    def _scope(method, path):
+        return {"type": "http", "method": method, "path": path}
 
     def test_method_restrictions_are_enforced(self):
         """`GET /foo` and `POST /foo` can belong to different destinations, so a
@@ -398,10 +402,10 @@ class TestASGIRoutePatternMatcher:
                 RoutePattern(methods=["POST"], path="/admin/pause"),
             ]
         )
-        assert matcher.matches("GET", "/v1/models")
-        assert not matcher.matches("POST", "/v1/models")
-        assert matcher.matches("POST", "/admin/pause")
-        assert not matcher.matches("GET", "/admin/pause")
+        assert matcher.matches_http_route("GET", "/v1/models")
+        assert not matcher.matches_http_route("POST", "/v1/models")
+        assert matcher.matches_http_route("POST", "/admin/pause")
+        assert not matcher.matches_http_route("GET", "/admin/pause")
 
     def test_same_path_with_two_methods(self):
         matcher = ASGIRoutePatternMatcher(
@@ -410,17 +414,19 @@ class TestASGIRoutePatternMatcher:
                 RoutePattern(methods=["POST"], path="/thing"),
             ]
         )
-        assert matcher.match("GET", "/thing") == "/thing"
-        assert matcher.match("POST", "/thing") == "/thing"
-        assert not matcher.matches("DELETE", "/thing")
+        assert matcher.match_scope(self._scope("GET", "/thing")) == "/thing"
+        assert matcher.match_scope(self._scope("POST", "/thing")) == "/thing"
+        assert not matcher.matches_http_route("DELETE", "/thing")
 
     def test_named_parameter_matches_one_segment(self):
         matcher = ASGIRoutePatternMatcher(
             [RoutePattern(methods=["GET"], path="/users/{user_id}")]
         )
-        assert matcher.match("GET", "/users/abc") == "/users/{user_id}"
+        assert (
+            matcher.match_scope(self._scope("GET", "/users/abc")) == "/users/{user_id}"
+        )
         # A single `{name}` does not span a `/`.
-        assert not matcher.matches("GET", "/users/abc/def")
+        assert not matcher.matches_http_route("GET", "/users/abc/def")
 
     def test_path_converter_spans_segments(self):
         """`{model:path}` is what makes `/v1/models/{model}` work for model ids
@@ -429,7 +435,7 @@ class TestASGIRoutePatternMatcher:
             [RoutePattern(methods=["GET"], path="/v1/models/{model:path}")]
         )
         assert (
-            matcher.match("GET", "/v1/models/meta-llama/Llama-3")
+            matcher.match_scope(self._scope("GET", "/v1/models/meta-llama/Llama-3"))
             == "/v1/models/{model:path}"
         )
 
@@ -439,26 +445,26 @@ class TestASGIRoutePatternMatcher:
         )
         # Starlette redirects the slashed form to the same route, and
         # get_asgi_route_name mirrors that rather than reporting no match.
-        assert matcher.matches("GET", "/v1/models/")
+        assert matcher.matches_http_route("GET", "/v1/models/")
 
     def test_unmatched_path_returns_none(self):
         matcher = ASGIRoutePatternMatcher(
             [RoutePattern(methods=["GET"], path="/v1/models")]
         )
-        assert matcher.match("GET", "/v1/chat/completions") is None
-        assert not matcher.matches("GET", "/v1/chat/completions")
+        assert matcher.match_scope(self._scope("GET", "/v1/chat/completions")) is None
+        assert not matcher.matches_http_route("GET", "/v1/chat/completions")
 
     def test_empty_patterns_match_nothing(self):
         matcher = ASGIRoutePatternMatcher([])
-        assert matcher.match("GET", "/anything") is None
-        assert not matcher.matches("GET", "/")
+        assert matcher.match_scope(self._scope("GET", "/anything")) is None
+        assert not matcher.matches_http_route("GET", "/")
 
     def test_none_methods_allows_any_method(self):
         """`methods=None` is what extract_route_patterns reports for WebSocket
         routes and mounted ASGI apps."""
         matcher = ASGIRoutePatternMatcher([RoutePattern(methods=None, path="/mounted")])
-        assert matcher.matches("GET", "/mounted")
-        assert matcher.matches("POST", "/mounted")
+        assert matcher.matches_http_route("GET", "/mounted")
+        assert matcher.matches_http_route("POST", "/mounted")
 
     def test_invalid_pattern_raises_at_construction(self):
         """Construction is where an unusable pattern surfaces, not the first
@@ -504,10 +510,10 @@ class TestASGIRoutePatternMatcher:
             return {}
 
         matcher = ASGIRoutePatternMatcher(extract_route_patterns(app))
-        assert matcher.matches("GET", "/v1/models")
-        assert matcher.matches("POST", "/v1/chat/completions")
-        assert not matcher.matches("POST", "/v1/models")
-        assert not matcher.matches("GET", "/v1/embeddings")
+        assert matcher.matches_http_route("GET", "/v1/models")
+        assert matcher.matches_http_route("POST", "/v1/chat/completions")
+        assert not matcher.matches_http_route("POST", "/v1/models")
+        assert not matcher.matches_http_route("GET", "/v1/embeddings")
 
 
 if __name__ == "__main__":

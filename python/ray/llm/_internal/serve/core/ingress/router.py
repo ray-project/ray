@@ -302,7 +302,7 @@ class LLMRouter:
         path = request.headers.get(_REQUEST_PATH_HEADER)
         if not method or not path:
             return False
-        return self._ingress_routes.matches(method, path)
+        return self._ingress_routes.matches_http_route(method, path)
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):

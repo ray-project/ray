@@ -32,7 +32,7 @@
 #  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Sequence, Set
 
 from starlette.applications import Starlette
 from starlette.routing import Match, Mount, Route
@@ -242,7 +242,7 @@ def extract_route_patterns(app: ASGIApp) -> List[RoutePattern]:
     return sorted(patterns, key=lambda x: x.path)
 
 
-_ALL_HTTP_METHODS = [
+_ALL_HTTP_METHODS = (
     "GET",
     "HEAD",
     "POST",
@@ -251,7 +251,7 @@ _ALL_HTTP_METHODS = [
     "DELETE",
     "OPTIONS",
     "TRACE",
-]
+)
 
 
 class ASGIRoutePatternMatcher:
@@ -266,18 +266,15 @@ class ASGIRoutePatternMatcher:
     the ingress -- so the matching lives here once rather than being
     reimplemented per caller.
 
-    Matching goes through `get_asgi_route_name` against a mock Starlette app
-    built from the patterns, so parameterized segments, `{name:path}`, mounts,
-    method restrictions and Starlette's trailing-slash redirect behavior are all
-    handled exactly as they are for real requests.
+    Matching goes through `get_asgi_route_name` against a Starlette app built
+    from the patterns, so parameterized segments, `{name:path}`, method
+    restrictions, and trailing-slash redirects follow Starlette's behavior.
 
     The mock app is built once in the constructor. Invalid patterns therefore
     raise here, at construction, rather than on a request.
     """
 
-    def __init__(self, patterns: List[RoutePattern]):
-        self._patterns = list(patterns)
-
+    def __init__(self, patterns: Sequence[RoutePattern]):
         async def _dummy_endpoint(request):
             # Never called: the app exists only so Starlette's own matching can
             # be run against it.
@@ -288,18 +285,17 @@ class ASGIRoutePatternMatcher:
                 Route(
                     pattern.path,
                     _dummy_endpoint,
-                    # `RoutePattern.methods is None` means "no method
-                    # restrictions" (a WebSocket route or a mounted ASGI app).
-                    # Passing that straight to Starlette would silently mean
-                    # GET-only, since `Route` defaults `methods` to `["GET"]`,
-                    # so spell out the full set instead.
+                    # RoutePattern uses None when it has no HTTP method
+                    # restriction. Starlette Route instead interprets None as
+                    # GET-only for a function endpoint, so expand the sentinel
+                    # to the standard HTTP methods.
                     methods=(
                         _ALL_HTTP_METHODS
                         if pattern.methods is None
                         else pattern.methods
                     ),
                 )
-                for pattern in self._patterns
+                for pattern in patterns
             ]
         )
 
@@ -308,20 +304,13 @@ class ASGIRoutePatternMatcher:
 
         Takes the whole scope rather than just method and path so fields
         `get_asgi_route_name` reads -- notably `root_path`, which it prepends to
-        the matched name -- survive. Callers holding a real request scope should
-        use this; `match` is for callers that only have the two values.
+        the matched name -- survive.
         """
         return get_asgi_route_name(self._app, scope)
 
-    def match(self, method: str, path: str) -> Optional[str]:
-        """Return the matched route pattern, or None if nothing matches.
-
-        A pattern whose path matches but whose declared methods exclude `method`
-        is not a match: `GET /foo` and `POST /foo` can legitimately belong to
-        different destinations.
-        """
-        return self.match_scope({"type": "http", "method": method, "path": path})
-
-    def matches(self, method: str, path: str) -> bool:
-        """Whether any declared route owns this (method, path)."""
-        return self.match(method, path) is not None
+    def matches_http_route(self, method: str, path: str) -> bool:
+        """Whether an HTTP request with this method and path matches."""
+        return (
+            self.match_scope({"type": "http", "method": method, "path": path})
+            is not None
+        )
