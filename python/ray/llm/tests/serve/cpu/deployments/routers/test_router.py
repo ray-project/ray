@@ -703,7 +703,7 @@ class TestDirectStreamingRouterInit:
         )
 
         ingress._init.assert_called_once()
-        assert router._ingress_routes.matches("GET", "/v1/models")
+        assert router._ingress_routes.matches_http_route("GET", "/v1/models")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
