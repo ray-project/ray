@@ -3,6 +3,8 @@ import json
 import logging
 import sys
 import time
+from collections import deque
+from pathlib import Path
 from typing import Dict, Optional, Union
 from unittest.mock import MagicMock
 
@@ -381,6 +383,14 @@ def test_parse_healthy_ras_example():
     assert report.mismatched_comms == set()
 
 
+def test_parse_keeps_the_raw_output():
+    # The history written at hang time is the raw `ncclras` output, so a report
+    # has to carry what it was parsed from -- including the unrepaired JSON, so
+    # the file shows what NCCL actually emitted.
+    assert parse_ras_schema(HEALTHY_RAS_JSON).raw_json == HEALTHY_RAS_JSON
+    assert parse_ras_schema(DEAD_RANK_RAS_JSON).raw_json == DEAD_RANK_RAS_JSON
+
+
 def test_parse_ras_missing_comma():
     # NCCL 2.28.9 emits missing_ranks[] with no comma before the nested "status",
     # which is invalid JSON until parse_ras_schema repairs it.
@@ -494,13 +504,24 @@ def make_nccl_ras_callback(
     callback._ras_poller = FakePoller(reports)
 
     captured = []
-    callback.dump_workers_stack_traces = lambda: captured.append(True) or "/tmp/dump"
+
+    def capture(tool):
+        captured.append(tool)
+        return f"/exp/{nccl_ras._DIAGNOSTICS_DIR}/{tool}"
+
+    callback.dump_ras_query_history = lambda _report=None: capture(
+        nccl_ras._NCCL_RAS_TOOL
+    )
+    callback.dump_workers_stack_traces = lambda: capture(nccl_ras._STACK_TRACES_TOOL)
 
     return callback, captured
 
 
 _COMM_A = "0x2b9ffd12ea17b069"
 _COMM_B = "0xced5b798f46495a3"
+
+# The diagnostics a confirmed hang captures, in the order they are collected.
+_CONFIRMED_HANG_DIAGNOSTICS = [nccl_ras._NCCL_RAS_TOOL, nccl_ras._STACK_TRACES_TOOL]
 
 # A rank's spec is either an AllReduce count (int) or an explicit op->count map.
 _RankCounts = Dict[int, Union[int, Dict[str, int]]]
@@ -541,22 +562,22 @@ def create_healthy_report():
 
 
 def test_observe_mode_never_raises(monkeypatch):
-    # A confirmed hang in observe mode never raises. Observe mode currently does
-    # not collect stack-trace diagnostics either (only the fail action does).
+    # A confirmed hang in observe mode never raises, but still captures the same
+    # diagnostics as fail mode: observing is worthless without them.
     reports = [create_single_comm_report({1: 5, 2: 4})] * 3
-    callback, captured_stack_traces = make_nccl_ras_callback(
+    callback, captured_diagnostics = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=reports
     )
 
     for _ in reports:
         callback.after_worker_group_poll_status(MagicMock())  # must not raise
-    assert len(captured_stack_traces) == 1
+    assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
 
 
 def test_fail_mode_raises_after_confirm(monkeypatch):
     # rank 3 frozen behind rank 2 with no progress on either -> a deadlock.
     reports = [create_single_comm_report({1: 5, 2: 4})] * 3
-    callback, captured_stack_traces = make_nccl_ras_callback(
+    callback, captured_diagnostics = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
@@ -565,8 +586,14 @@ def test_fail_mode_raises_after_confirm(monkeypatch):
     with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())  # frozen -> 2/2 -> raise
     # The error reports how many communicators were confirmed stalled.
-    assert "1 of 1 communicators" in str(exc_info.value)
-    assert len(captured_stack_traces) == 1
+    message = str(exc_info.value)
+    assert "1 of 1 communicators" in message
+    assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
+    # ...and points the user at every diagnostic that was captured.
+    assert "per-rank stack traces" in message
+    assert "/exp/hang_detector/stack_traces" in message
+    assert "query history" in message
+    assert "/exp/hang_detector/nccl_ras" in message
 
 
 @pytest.mark.parametrize(
@@ -595,7 +622,7 @@ def test_deadlock_requires_whole_comm_frozen(
     allgather_seq = [2, 3, 4] if other_op_advances else [2, 2, 2]
     reports = [report(ag) for ag in allgather_seq]
 
-    callback, captured_stack_trace = make_nccl_ras_callback(
+    callback, captured_diagnostics = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
@@ -606,12 +633,12 @@ def test_deadlock_requires_whole_comm_frozen(
         with pytest.raises(NCCLHangError) as exc_info:
             callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> raise
         assert "1 of 1 communicators" in str(exc_info.value)
-        assert len(captured_stack_trace) == 1
+        assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
     else:
         for _ in reports[1:]:
             callback.after_worker_group_poll_status(MagicMock())  # never a hang
         assert callback.comm_deadlock_count == {}
-        assert not captured_stack_trace
+        assert not captured_diagnostics
 
 
 def test_healthy_resets_deadlock_streak(monkeypatch):
@@ -640,14 +667,14 @@ def test_advancing_never_deadlocks(monkeypatch):
         create_single_comm_report({1: 15, 2: 8}),
         create_single_comm_report({1: 20, 2: 14}),
     ]
-    callback, captured_stack_trace = make_nccl_ras_callback(
+    callback, captured_diagnostics = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
     for _ in reports:
         callback.after_worker_group_poll_status(MagicMock())
         assert callback.comm_deadlock_count == {}
-    assert not captured_stack_trace
+    assert not captured_diagnostics
 
 
 def test_advancing_then_freeze_deadlocks(monkeypatch):
@@ -704,7 +731,7 @@ def test_communicator_added_after_two_polls(monkeypatch):
         create_report(comms={_COMM_A: {0: 5, 1: 5}, _COMM_B: {0: 7, 1: 5}}),  # B 1/2
         create_report(comms={_COMM_A: {0: 6, 1: 6}, _COMM_B: {0: 7, 1: 5}}),  # B 2/2
     ]
-    callback, captured_stack_trace = make_nccl_ras_callback(
+    callback, captured_diagnostics = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
@@ -719,7 +746,7 @@ def test_communicator_added_after_two_polls(monkeypatch):
         callback.after_worker_group_poll_status(MagicMock())  # B frozen -> 2/2
     # Only B is confirmed (1 of the 2 communicators present this poll).
     assert "1 of 2 communicators" in str(exc_info.value)
-    assert len(captured_stack_trace) == 1
+    assert captured_diagnostics == _CONFIRMED_HANG_DIAGNOSTICS
 
 
 def test_communicator_removed_over_time(monkeypatch):
@@ -732,7 +759,7 @@ def test_communicator_removed_over_time(monkeypatch):
         create_report(comms={_COMM_B: {0: 6, 1: 4}}),  # A gone; B skewed, advancing
         create_report(comms={_COMM_B: {0: 9, 1: 6}}),  # B still advancing
     ]
-    callback, captured_stack_trace = make_nccl_ras_callback(
+    callback, captured_diagnostics = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
@@ -743,7 +770,7 @@ def test_communicator_removed_over_time(monkeypatch):
     assert callback.comm_deadlock_count == {}
     callback.after_worker_group_poll_status(MagicMock())  # B keeps advancing
     assert callback.comm_deadlock_count == {}
-    assert not captured_stack_trace
+    assert not captured_diagnostics
 
 
 def test_no_new_report_is_noop(monkeypatch):
@@ -968,23 +995,38 @@ def test_unexpected_error_disables_detection(monkeypatch):
     assert callback.prev_report is None
 
 
-def test_hang_error_propagates_when_diagnostics_fail(monkeypatch):
-    # Collecting hang diagnostics (stack dump) must not suppress the hang
-    # failure, and a real hang must not be misread as a detector bug.
+@pytest.mark.parametrize(
+    "fail_stack_traces,fail_ras_history",
+    [(True, False), (False, True), (True, True)],
+    ids=["stack_traces_fail", "ras_history_fails", "both_fail"],
+)
+def test_hang_error_propagates_when_diagnostics_fail(
+    monkeypatch, fail_stack_traces, fail_ras_history
+):
+    # Collecting hang diagnostics must not suppress the hang failure, and a real
+    # hang must not be misread as a detector bug. Each diagnostic fails on its
+    # own, so the one that worked is still reported to the user.
     reports = [create_single_comm_report({2: 5, 3: 4})] * 3
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=reports
     )
 
     def boom(*_args, **_kwargs):
-        raise RuntimeError("stack dump failed")
+        raise RuntimeError("diagnostic failed")
 
-    callback.dump_workers_stack_traces = boom
+    if fail_stack_traces:
+        callback.dump_workers_stack_traces = boom
+    if fail_ras_history:
+        callback.dump_ras_query_history = boom
 
     callback.after_worker_group_poll_status(MagicMock())  # baseline
     callback.after_worker_group_poll_status(MagicMock())  # frozen -> 1/2
-    with pytest.raises(NCCLHangError):
+    with pytest.raises(NCCLHangError) as exc_info:
         callback.after_worker_group_poll_status(MagicMock())  # 2/2 -> still raises
+
+    message = str(exc_info.value)
+    assert ("per-rank stack traces" in message) is not fail_stack_traces
+    assert ("query history" in message) is not fail_ras_history
     assert callback._is_ras_degraded is False
 
 
@@ -1077,6 +1119,141 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     assert "Possible NCCL hang detected!" in text
     assert "NCCL hang still suspected!" in text
     assert "NCCLHangError will be raised" not in text
+
+
+@pytest.fixture
+def uploads(monkeypatch):
+    """Capture each upload as ``(fs_path, {filename: contents})``."""
+    calls = []
+
+    def fake_upload(local_dir, filesystem, fs_path):
+        calls.append(
+            (fs_path, {p.name: p.read_text() for p in Path(local_dir).iterdir()})
+        )
+
+    monkeypatch.setattr(nccl_ras, "_upload_to_fs_path", fake_upload)
+    return calls
+
+
+def make_diagnostics_callback(experiment_fs_path="/exp"):
+    """A callback wired to a worker group, to exercise the real dump methods."""
+    callback = NCCLRASCallback()
+    worker_group = MagicMock()
+    worker_group._storage_context.experiment_fs_path = experiment_fs_path
+    callback._worker_group = worker_group
+    return callback
+
+
+def test_ras_history_retains_the_confirm_window_plus_a_margin(monkeypatch):
+    # The buffer has to reach back past the confirmation window, otherwise the
+    # saved history only ever shows the communicator already stalled.
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=3, reports=[]
+    )
+    assert (
+        callback.ras_history.maxlen
+        == callback._confirm_poll_counts + nccl_ras._RAS_HISTORY_MARGIN_POLLS
+        > callback._confirm_poll_counts
+    )
+
+
+def test_ras_history_records_every_poll_and_evicts_the_oldest(monkeypatch):
+    # Every successful poll is recorded, healthy or not, and the buffer keeps
+    # only the most recent maxlen of them.
+    reports = [create_single_comm_report({1: count}) for count in range(20)]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=reports
+    )
+    monkeypatch.setattr(callback, "ras_history", deque(maxlen=3))
+
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+
+    assert list(callback.ras_history) == reports[-3:]
+
+
+def test_ras_history_ignores_polls_that_produced_no_report(monkeypatch):
+    # A poll the controller has no report for (the poller had nothing new)
+    # must not advance the history or its file numbering.
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=[]
+    )
+
+    callback.after_worker_group_poll_status(MagicMock())
+
+    assert len(callback.ras_history) == 0
+
+
+def test_ras_history_resets_with_the_worker_group(monkeypatch):
+    # A new worker group is a new set of communicators, so the old group's polls
+    # say nothing about it and the file numbering restarts.
+    reports = [create_single_comm_report({1: 5})] * 2
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=100, reports=reports
+    )
+
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+    assert len(callback.ras_history) == 2
+
+    callback.reset_detection_state()
+    assert len(callback.ras_history) == 0
+
+
+def test_ras_history_uploads_one_file_per_retained_poll(uploads):
+    # Each retained poll is written verbatim under a filename that carries its
+    # poll number (so the files read in poll order even once the buffer has
+    # wrapped) and the RAS timestamp, with the text report alongside them.
+    callback = make_diagnostics_callback()
+    callback.ras_history.extend(
+        parse_ras_schema(ras_json)
+        for ras_json in (HEALTHY_RAS_JSON, DEAD_RANK_RAS_JSON, MULTI_COMM_RAS_JSON)
+    )
+
+    fs_path = callback.dump_ras_query_history("human readable report")
+
+    assert fs_path == "/exp/hang_detector/nccl_ras"
+    ((uploaded_path, files),) = uploads
+    assert uploaded_path == fs_path
+    assert sorted(files) == [
+        "ncclras_2026-06-19-06-51-56.json",
+        "ncclras_2026-06-19-06-55-57.json",
+        "ncclras_2026-06-19-06-56-24.json",
+        "ncclras_report.txt",
+    ]
+    # The polls are the raw `ncclras` output, not what the detector parsed out
+    # of it, so hosts, pids and missing ranks survive into the history.
+    assert files["ncclras_2026-06-19-06-51-56.json"] == HEALTHY_RAS_JSON
+    assert files["ncclras_report.txt"] == "human readable report"
+
+
+def test_ras_history_upload_without_a_text_report(uploads):
+    # The text report is a separate query that can fail while the history the
+    # controller already holds is still worth writing.
+    callback = make_diagnostics_callback()
+    callback.ras_history.append(parse_ras_schema(HEALTHY_RAS_JSON))
+
+    callback.dump_ras_query_history(None)
+
+    ((_, files),) = uploads
+    assert list(files) == ["ncclras_2026-06-19-06-51-56.json"]
+
+
+def test_ras_history_upload_skipped_when_empty(uploads):
+    # Nothing polled yet (the hang was confirmed on another signal): there is no
+    # empty directory to leave behind in the user's experiment directory.
+    assert make_diagnostics_callback().dump_ras_query_history() is None
+    assert uploads == []
+
+
+def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
+    # A diagnostic that fails must never take the run's hang handling with it.
+    def boom():
+        raise RuntimeError("upload failed")
+
+    with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
+        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
+    assert "worker stack traces" in caplog.text
 
 
 if __name__ == "__main__":
