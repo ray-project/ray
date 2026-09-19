@@ -30,6 +30,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
 )
+from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -105,6 +106,7 @@ def _build_openai_ingress_request_router(
     servers: Dict[str, Application],
     llm_config: Optional[LLMConfig] = None,
     ingress: Optional[Application] = None,
+    ingress_route_patterns: Optional[List[RoutePattern]] = None,
 ) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -120,11 +122,11 @@ def _build_openai_ingress_request_router(
     from; the DP and P/D builders pass their single server, the standard builder
     passes one entry per configured model.
 
-    ``ingress``, when given, is the application's control-plane ingress. The
-    router asks a live replica which routes it serves and sends those requests
-    to the ingress instead of to a model. The DP and P/D topologies have no
-    separate ingress -- their server deployment *is* the ingress -- so they
-    leave it unset.
+    ``ingress``, when given, is the application's control-plane ingress.
+    ``ingress_route_patterns`` is extracted from that ingress's FastAPI app at
+    build time, and tells the router which requests to send there instead of to
+    a model. The DP and P/D topologies have no separate ingress -- their server
+    deployment *is* the ingress -- so they leave both unset.
 
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
@@ -148,6 +150,7 @@ def _build_openai_ingress_request_router(
         servers=servers,
         llm_config=llm_config if kv_aware else None,
         ingress=ingress,
+        ingress_route_patterns=ingress_route_patterns,
     )
 
 
@@ -398,9 +401,8 @@ def _build_direct_streaming_openai_app(builder_config: LLMServingArgs) -> Applic
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
-    ingress = serve.deployment(
-        make_direct_streaming_control_ingress(), **ingress_options
-    ).bind(
+    ingress_cls, ingress_route_patterns = make_direct_streaming_control_ingress()
+    ingress = serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=model_deployments,
         model_cards=model_cards,
         lora_paths=lora_paths,
@@ -418,6 +420,7 @@ def _build_direct_streaming_openai_app(builder_config: LLMServingArgs) -> Applic
             # has already rejected the multi-model case.
             llm_config=llm_configs[0] if len(llm_configs) == 1 else None,
             ingress=ingress,
+            ingress_route_patterns=ingress_route_patterns,
         )
     )
 
