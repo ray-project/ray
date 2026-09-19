@@ -1,11 +1,23 @@
 import os
 from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from ray._common.runtime_env_uri import Protocol
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
 RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
 _DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
+
+
+def file_uri_to_path(uri: str) -> str:
+    """Convert a ``file://`` URI into a path the local OS can open.
+
+    ``Path.as_uri()`` percent encodes the path, and on Windows it puts a slash
+    in front of the drive letter, as in ``file:///C:/tmp/pkg.zip``. Removing
+    only the scheme leaves ``/C:/tmp/pkg.zip``, which Windows rejects with
+    ``OSError: [Errno 22] Invalid argument``.
+    """
+    return url2pathname(urlparse(uri).path)
 
 
 class ProtocolsProvider:
@@ -262,7 +274,7 @@ class ProtocolsProvider:
         open_file = None
 
         if protocol == "file":
-            source_uri = source_uri[len("file://") :]
+            source_uri = file_uri_to_path(source_uri)
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
