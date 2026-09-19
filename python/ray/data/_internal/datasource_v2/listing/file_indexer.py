@@ -28,9 +28,8 @@ logger = logging.getLogger(__name__)
 class FileIndexer(ABC):
     """Turns root paths into ``FileManifest`` blocks inside ``ListFiles`` tasks.
 
-    Chosen by ``DataSourceV2._get_file_indexer``. How an implementation splits a
-    file into manifest rows is deliberately its own business, not part of this
-    interface.
+    Chosen by ``DataSourceV2._get_file_indexer``. How a file is split into
+    manifest rows is the implementation's business, not this interface's.
     """
 
     def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
