@@ -77,6 +77,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_NODE_COMPACTION_DELAY_S,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
@@ -3240,6 +3241,9 @@ class DeploymentState:
         self._deployment_scheduler.on_deployment_deployed(
             self._id,
             self._deployed_info.replica_config,
+            is_gang=self._deployed_info.deployment_config.gang_scheduling_config
+            is not None,
+            pins_replicas=self._deployed_info.ingress_request_router,
         )
         if self._deployed_info.deployment_config.autoscaling_config:
             self._autoscaling_state_manager.register_deployment(
@@ -3773,7 +3777,11 @@ class DeploymentState:
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
         self._deployment_scheduler.on_deployment_deployed(
-            self._id, deployment_info.replica_config
+            self._id,
+            deployment_info.replica_config,
+            is_gang=deployment_info.deployment_config.gang_scheduling_config
+            is not None,
+            pins_replicas=deployment_info.ingress_request_router,
         )
 
         # Determine if the updated target state simply scales the current state.
@@ -5615,11 +5623,36 @@ class DeploymentState:
 
         return to_stop, remaining
 
-    def migrate_replicas_on_draining_nodes(self, draining_nodes: Mapping[str, float]):
+    def migrate_replicas_on_draining_nodes(
+        self,
+        draining_nodes: Mapping[str, float],
+        compacting_node_id: Optional[str] = None,
+    ):
+        # Compaction only moves RUNNING replicas of ordinary deployments. The
+        # scheduler never compacts a node that runs a gang, and a gang that lands
+        # on the compacting node while starting cancels the compaction once it's
+        # RUNNING. Ingress request router replicas are pinned to proxy nodes and
+        # leave with the proxy once the other replicas are gone, so migrating one
+        # would only pin a replacement back onto the target.
+        if compacting_node_id is not None and (
+            self._is_gang_deployment or self.is_ingress_request_router()
+        ):
+            draining_nodes = {
+                node: deadline
+                for node, deadline in draining_nodes.items()
+                if node != compacting_node_id
+            }
+
         # Fast path: no draining nodes and deployment is in steady state —
         # no PENDING_MIGRATION replicas to move back and no replicas to
-        # migrate, so skip the O(N) pop-and-readd.
-        if not draining_nodes and not self._in_transition:
+        # migrate, so skip the O(N) pop-and-readd. A compaction cancelled after
+        # its replacements are RUNNING leaves PENDING_MIGRATION replicas behind
+        # with _in_transition already False, so check for them explicitly.
+        if (
+            not draining_nodes
+            and not self._in_transition
+            and self._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 0
+        ):
             return
 
         # Move replicas back to RUNNING if they are no longer on a draining node.
@@ -5693,6 +5726,15 @@ class DeploymentState:
                     "created on another node."
                 )
                 self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+            # Ray Core placed this replica on the compacting node while it was
+            # starting. Leave it alone: once it's RUNNING the scheduler sees a
+            # new replica on the target and cancels the compaction. Stopping it
+            # here would restart it every update until the compaction times out.
+            elif (
+                compacting_node_id is not None
+                and replica.actor_node_id == compacting_node_id
+            ):
+                self._replicas.add(replica.actor_details.state, replica)
             # For replicas that are STARTING or UPDATING, might as
             # well terminate them immediately to allow replacement
             # replicas to start. Otherwise we need to wait for them
@@ -6057,6 +6099,8 @@ class DeploymentStateManager:
         self._shutdown_tier_started_at: Optional[float] = None
 
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
+        self._all_deployments_healthy: bool = False
+        self._last_became_stable_at: Optional[float] = None
         # Monotonic counter bumped whenever an ingress deployment's running-replica
         # set (node/ports included) changes; the controller gates the direct-ingress port
         # reconcile on it, skipping the O(replicas) pass on ticks with no change.
@@ -6648,7 +6692,7 @@ class DeploymentStateManager:
         draining_nodes: Mapping[
             str, float
         ] = self._cluster_node_info_cache.get_draining_nodes()
-        allow_new_compaction = len(draining_nodes) == 0 and all(
+        all_deployments_healthy = all(
             ds.curr_status_info.status == DeploymentStatus.HEALTHY
             # TODO(zcin): Make sure that status should never be healthy if
             # the number of running replicas at target version is not at
@@ -6659,7 +6703,19 @@ class DeploymentStateManager:
             and ds._replicas.count() == ds.target_num_replicas
             for ds in self._deployment_states.values()
         )
+        if all_deployments_healthy and not self._all_deployments_healthy:
+            self._last_became_stable_at = time.time()
+        self._all_deployments_healthy = all_deployments_healthy
+
+        compacting_node_id: Optional[str] = None
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY:
+            allow_new_compaction = (
+                len(draining_nodes) == 0
+                and all_deployments_healthy
+                and self._last_became_stable_at is not None
+                and time.time() - self._last_became_stable_at
+                > RAY_SERVE_NODE_COMPACTION_DELAY_S
+            )
             # Tuple of target node to compact, and its draining deadline
             node_info: Optional[
                 Tuple[str, float]
@@ -6668,10 +6724,15 @@ class DeploymentStateManager:
             )
             if node_info:
                 target_node_id, deadline = node_info
-                draining_nodes = {target_node_id: deadline}
+                # A real drain of the compacting node keeps its own deadline.
+                if target_node_id not in draining_nodes:
+                    compacting_node_id = target_node_id
+                    draining_nodes = {**draining_nodes, target_node_id: deadline}
 
         for deployment_id, deployment_state in self._deployment_states.items():
-            deployment_state.migrate_replicas_on_draining_nodes(draining_nodes)
+            deployment_state.migrate_replicas_on_draining_nodes(
+                draining_nodes, compacting_node_id=compacting_node_id
+            )
 
         # STEP 3: Reserve gang placement groups
         gang_placement_groups = self._reserve_gang_placement_groups()
