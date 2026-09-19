@@ -500,7 +500,10 @@ class TableBlockAccessor(BlockAccessor):
         columns = sort_key.get_columns()
         descending = sort_key.get_descending()
 
-        key_columns = [self._table[col].to_numpy() for col in columns]
+        key_columns = [
+            BlockColumnAccessor.for_column(self._table[col]).to_numpy()
+            for col in columns
+        ]
 
         # Per-column null check, computed once per block instead of once per
         # boundary inside ``find_insertion_index``. Arrow's ``null_count`` is
