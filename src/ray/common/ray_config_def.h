@@ -342,6 +342,11 @@ RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
 
+/// Nsight launcher flush budget, starting when raylet observes its worker exit.
+/// Non-positive values disable only the post-worker-exit wait. Supported with
+/// process-group cleanup on Linux; force kill and registration failure are excluded.
+RAY_CONFIG(int64_t, worker_profiler_flush_timeout_ms, 10000)
+
 /// Timeout for graceful actor shutdown (e.g. when actor goes out of scope).
 /// If an actor does not gracefully shut down within this timeout, it will be force
 /// killed. Set to -1 for infinite timeout to prevent the actor from being force killed
