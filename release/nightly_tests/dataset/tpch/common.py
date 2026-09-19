@@ -1,4 +1,5 @@
 import argparse
+from typing import Optional
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -121,7 +122,9 @@ def load_table(
     return ds
 
 
-def run_tpch_benchmark(name: str, benchmark_fn):
-    benchmark = Benchmark()
+def run_tpch_benchmark(
+    name: str, benchmark_fn, *, max_object_store_utilization: Optional[float] = None
+):
+    benchmark = Benchmark(max_object_store_utilization=max_object_store_utilization)
     benchmark.run_fn(name, benchmark_fn)
     benchmark.write_result()

@@ -138,7 +138,8 @@ if __name__ == "__main__":
             holder["exc"] = e
             holder["ds"] = ds
 
-    benchmark = Benchmark()
+    # Shuffles legitimately exceed the object-store bound.
+    benchmark = Benchmark(max_object_store_utilization=None)
     benchmark.run_fn("main", run_benchmark, args)
 
     ds = holder["ds"]

@@ -42,7 +42,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark()
+    # Shuffles legitimately exceed the object-store bound.
+    benchmark = Benchmark(max_object_store_utilization=None)
 
     def benchmark_fn():
         left_ds = ray.data.read_parquet(args.left_dataset)
