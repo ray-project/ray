@@ -95,37 +95,27 @@ class LLMRouter:
     deployment to get a data plane replica, then forwards traffic directly
     to the matching LLMServer replica's backend HTTP port.
 
-    The router holds one ``DeploymentHandle`` per served model, keyed by model
-    id (``servers``). A request selects its deployment by the ``model`` field of
-    its body, then replica selection within that deployment is delegated to the
-    deployment's configured request router, and this class translates the
-    resulting pick into a backend HTTP endpoint.
+    The router first selects a deployment, then delegates replica selection to
+    that deployment's configured request router. ``servers`` maps each model ID
+    to its direct-HTTP deployment handle.
 
-    A separate application ingress is represented by two constructor arguments:
-    ``ingress`` is its deployment handle, used for replica selection, while
-    ``ingress_route_patterns`` is route-ownership metadata reflected from its
-    FastAPI app when the application graph is built. Keeping the metadata local
-    avoids a startup or per-request RPC to an ingress replica.
-
-    ``servers`` is an allow-list the builder constructs: it is the only place
-    that both marks deployments ``_direct_http`` and hands them here, so the
-    router never has to know which deployments own HTTP ports. Were a handle to
-    a deployment without one ever passed, HAProxy's map has no entry for it and
-    the request fails closed with ``unknown_deployment``.
+    When a separate application ingress is configured, ``ingress`` is its
+    deployment handle and ``ingress_route_patterns`` identifies the HTTP routes
+    it owns. Ingress routes take priority over model selection.
 
     Model selection:
-        * ``model`` names a configured id -> that deployment.
-        * Otherwise its base model id (``get_base_model_id``) is tried, so a
-          LoRA-style ``base:adapter`` id resolves to the base deployment.
-        * No ``model`` and exactly one server -> that server (single-model apps
-          need not send the field).
-        * No ``model`` and several servers -> 400. A body HAProxy truncated or
-          that is not a JSON object has no readable ``model`` and is treated the
-          same way; selection never falls back to an arbitrary deployment.
-        * Unknown ``model`` -> 404.
+        * A configured ``model`` selects its corresponding deployment.
+        * A LoRA-style ``base:adapter`` model falls back to the configured base
+          model deployment.
+        * If ``model`` is omitted and exactly one server is configured, that
+          server is selected.
+        * If ``model`` is omitted and multiple servers are configured, the
+          router returns 400 rather than selecting an arbitrary server.
+        * An unknown ``model`` returns 404.
+
         HAProxy treats any non-200 from this endpoint as a routing failure and
-        answers the client with 503 ``X-Serve-Reason: router_non_200``; the
-        status codes above are for logs and direct callers.
+        responds to the client with 503. The status codes above are visible to
+        direct callers and in router logs.
 
     /internal/route HTTP contract
     -----------------------------
@@ -173,14 +163,9 @@ class LLMRouter:
     """
 
     # Warn once per replica when no routing key is derived. Class-level default
-    # keeps the guard safe before __init__ runs.
+    # keeps the below fields safe before __init__ runs.
     _warned_no_routing_key: bool = False
     _warned_no_token_endpoint: bool = False
-
-    # No application ingress to route to, and so no ingress-owned routes to
-    # match against. Class-level defaults for the same reason as the flags
-    # above: a router built without __init__ (as the unit tests do, to skip the
-    # handle setup) still takes the model-selection path rather than raising.
     _ingress: Optional[DeploymentHandle] = None
     _ingress_routes = None
 
@@ -205,9 +190,6 @@ class LLMRouter:
             )
         # model id -> handle to the `_direct_http` deployment serving that model.
         self._servers: Dict[str, DeploymentHandle] = dict(servers)
-        # Application ingress, when it is a separate deployment that owns routes
-        # of its own (model discovery, control plane). None for the builders
-        # whose ingress *is* the model server.
         self._ingress = ingress
         # Route ownership is build-time metadata, separate from the deployment
         # handle used for replica selection. Compile it once so request routing
@@ -226,8 +208,7 @@ class LLMRouter:
         # builder binds only for a KV-aware request router. The tracker is a
         # process global and the tokenizer is per-model, so this path is
         # single-model; the builder rejects KV-aware routing with several
-        # models before it can reach here. TODO (celinky): multi model KV-aware
-        # routing support.
+        # models before it can reach here.
         if llm_config is not None:
             if len(self._servers) != 1:
                 raise ValueError(
@@ -235,9 +216,6 @@ class LLMRouter:
                     f"model per LLMRouter; got {sorted(self._servers)}."
                 )
             (server,) = self._servers.values()
-            # Build the tracker before the handles' _init() below, which
-            # initializes the KVAwareRouter that looks it up. server.deployment_id
-            # is the tracked LLMServer deployment.
             from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (  # noqa: E501
                 build_kv_token_tracker,
                 get_llm_router_handle,
@@ -268,13 +246,7 @@ class LLMRouter:
             self._ingress._init()
 
     def _select_handle(self, model: Optional[str]) -> DeploymentHandle:
-        """Resolve the request's ``model`` to a deployment handle.
-
-        See the class docstring for the rules. Raises ``HTTPException`` (400 for
-        an ambiguous request, 404 for an unknown model) so ``route`` surfaces a
-        non-200 and HAProxy fails closed rather than picking a deployment the
-        client did not ask for.
-        """
+        """Resolve the request's ``model`` to a deployment handle or raises."""
         if model is None:
             if (
                 len(self._servers) == 1
@@ -288,10 +260,9 @@ class LLMRouter:
                     f"configured. Available models: {sorted(self._servers)}"
                 ),
             )
-        # Exact id first so a configured id that itself contains ':' is not
-        # mistaken for a LoRA id and stripped to a base that does not exist.
         handle = self._servers.get(model)
         if handle is None:
+            # Try LoRA base model id
             handle = self._servers.get(get_base_model_id(model))
         if handle is None:
             raise HTTPException(
@@ -305,15 +276,7 @@ class LLMRouter:
         return handle
 
     async def _route_to_ingress(self) -> dict:
-        """Select an ingress replica for a request the ingress owns.
-
-        Deliberately does none of the model-request work: the body is never read
-        (a control request has nothing to route on, and HAProxy may have
-        truncated it anyway), no session affinity is applied (session pinning is
-        a model-deployment concern), and no KV tokenization is attempted.
-        Selection still goes through the handle's normal request router rather
-        than reaching into a replica set directly.
-        """
+        """Select an ingress replica for a request the ingress owns."""
         try:
             host, port, replica_id, _ = await self._pick_replica(
                 handle=self._ingress,
@@ -332,14 +295,7 @@ class LLMRouter:
         }
 
     def _matches_ingress_route(self, request: Request) -> bool:
-        """Whether this request belongs to a route the application ingress owns.
-
-        HAProxy forwards the original method and path (it consults the router for
-        every request now, not just model traffic). Both are required: `GET /foo`
-        and `POST /foo` can legitimately belong to different destinations. An
-        older HAProxy that does not send them simply never matches, so the
-        router keeps its previous model-only behavior.
-        """
+        """Whether this request belongs to a route the application ingress owns."""
         if self._ingress_routes is None:
             return False
         method = request.headers.get(_REQUEST_METHOD_HEADER)
@@ -350,17 +306,12 @@ class LLMRouter:
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):
-        # A route the ingress declares is the ingress's, whatever the body says.
-        # Checked before the body is read at all, so a control request is never
-        # subject to model selection or its 400/404s.
         if self._matches_ingress_route(request):
             return await self._route_to_ingress()
 
         body = await request.body()
         body_truncated = _BODY_TRUNCATED_HEADER in request.headers
         data = _parse_body(body)
-        # Select the deployment before anything else: an unreadable body cannot
-        # name a model, and with several models that is a 400, not a guess.
         handle = self._select_handle(data.get("model") if data is not None else None)
         routing_payload = _build_replica_routing_payload(data)
         if routing_payload is None and not self._warned_no_routing_key:
