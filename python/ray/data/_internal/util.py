@@ -860,11 +860,11 @@ def unify_ref_bundles_schema(
 
 
 def find_insertion_index(
-    columns: List[np.ndarray],
+    key_columns: List[np.ndarray],
     pivot: Tuple[Union[Any]],
     descending: List[bool],
     has_nulls: Optional[List[bool]] = None,
-    _start_from_idx: int = 0,
+    start_from_idx: int = 0,
 ) -> int:
     """For the given list of *sorted* columns, find the index where ``pivot`` value
     should be added, while maintaining sorted order.
@@ -875,7 +875,7 @@ def find_insertion_index(
     value could be inserted.
 
     Args:
-        columns: List of *sorted* arrays (as ndarrays).
+        key_columns: List of *sorted* arrays (as ndarrays).
         pivot: A (row-like) tuple of corresponding column values, for which insertion
                 needs to be determined.
         descending: List of booleans designating whether key columns are in ascending
@@ -887,19 +887,13 @@ def find_insertion_index(
                    but expensive when called in a hot loop. Callers that know the
                    column has no nulls (e.g. via Arrow's O(1) ``null_count``) should
                    pass ``False`` for that column to skip the O(n) strip.
-        _start_from_idx: The index to start the search from. Rows before this
+        start_from_idx: The index to start the search from. Rows before this
             index are assumed to already precede ``pivot`` in sorted order.
 
     Returns:
         Index where the pivot value would have been inserted into to maintain sorted
         order of ``key_columns``.
     """
-
-    assert len(columns) > 0, "Expected non-empty list of key columns"
-    assert has_nulls is None or len(has_nulls) == len(columns), (
-        f"has_nulls length ({len(has_nulls)}) must equal columns length "
-        f"({len(columns)})"
-    )
 
     # NOTE: Left and right offsets track 2 insertion points:
     #
@@ -912,7 +906,7 @@ def find_insertion_index(
     # insertion point in the multi-column scenario, since lexicographic ordering
     # in the second (and beyond) columns might not necessarily match the
     # non-lexicographic ordering.
-    left, right = _start_from_idx, len(columns[0])
+    left, right = start_from_idx, len(key_columns[0])
 
     for col_idx, cur_pivot_val in enumerate(pivot):
         if left == right:
@@ -922,7 +916,7 @@ def find_insertion_index(
         #
         # This is necessary to make sure that the values in the projected range
         # are in the ascending/descending order (in multi-column scenario)
-        column_range_view = columns[col_idx][left:right]
+        column_range_view = key_columns[col_idx][left:right]
 
         # Nulls sort last in Arrow, so they accumulate at the tail of
         # column_range_view. Stripping them before searching avoids a
