@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pyarrow as pa
-import pyarrow.parquet as pq
 import pytest
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.manifest import DataFile, DataFileContent, FileFormat
@@ -82,13 +81,13 @@ def _coordinator(tmp_path, table_uuid="table-uuid", **config_kwargs):
 
 
 def _publish_task(config, coordinator, artifact_suffix="task", result=None):
-    artifact_id = f"{coordinator.operation_id}-{artifact_suffix}"
+    result = result or _write_result()
+    task_id = f"{coordinator.operation_id}-{artifact_suffix}"
+    artifact_id = coordinator.task_artifact_id(task_id, result)
     writer = BatchBasedCheckpointWriter(config)
     pending = writer.write_pending_checkpoint(pa.array([1, 2]), artifact_id)
     assert pending is not None
-    coordinator.persist_task_result(
-        artifact_id, pending.committed_path, result or _write_result()
-    )
+    coordinator.persist_task_result(artifact_id, pending.committed_path, result)
     writer.commit_checkpoint(pending)
     return pending.committed_path
 
@@ -135,6 +134,27 @@ def test_manifest_adoption_terminal_and_new_generation(tmp_path):
     fresh.discard_empty_generation()
 
 
+def test_interrupted_manifest_publication_preserves_previous_version(tmp_path):
+    config, coordinator = _coordinator(tmp_path)
+    operation_id = coordinator.operation_id
+    manifest_dir = tmp_path / "_iceberg" / "manifests"
+    original_manifest = manifest_dir / "00000000000000000000.json"
+    assert original_manifest.exists()
+
+    (manifest_dir / "00000000000000000001.json.tmp.interrupted").write_text("{")
+    (manifest_dir / "00000000000000000001.json").write_text("{")
+    adopted = IcebergCheckpointCoordinator(
+        config, SimpleNamespace(table_identifier="db.table")
+    )
+    adopted.initialize("table-uuid")
+
+    assert adopted.operation_id == operation_id
+    assert original_manifest.exists()
+    adopted.mark_terminal()
+    assert original_manifest.exists()
+    assert (manifest_dir / "00000000000000000002.json").exists()
+
+
 def test_namespace_identity_mismatch(tmp_path):
     config, _ = _coordinator(tmp_path)
     coordinator = IcebergCheckpointCoordinator(
@@ -175,9 +195,11 @@ def test_missing_and_corrupt_task_metadata_fail_closed(tmp_path):
 
 def test_metadata_without_row_checkpoint_is_ignored(tmp_path):
     config, coordinator = _coordinator(tmp_path)
-    artifact_id = f"{coordinator.operation_id}-orphan"
+    result = _write_result()
+    task_id = f"{coordinator.operation_id}-orphan"
+    artifact_id = coordinator.task_artifact_id(task_id, result)
     checkpoint_path = tmp_path / f"{artifact_id}.parquet"
-    coordinator.persist_task_result(artifact_id, str(checkpoint_path), _write_result())
+    coordinator.persist_task_result(artifact_id, str(checkpoint_path), result)
     assert coordinator.load_active_results() == []
 
 
@@ -396,6 +418,24 @@ def test_append_protocol_commits_snapshot_marker_without_ray_cluster(tmp_path):
     )
 
 
+def test_empty_append_cleans_checkpoint_namespace_without_ray_cluster(tmp_path):
+    _, catalog_kwargs = _create_catalog(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints"
+    config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path=str(checkpoint_path),
+        delete_checkpoint_on_success=True,
+    )
+    wrapped = IcebergCheckpointDatasink(
+        IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
+    )
+    wrapped.enable_checkpointing()
+
+    wrapped.on_write_complete(WriteResult(0, 0, []))
+
+    assert not checkpoint_path.exists()
+
+
 def test_append_protocol_recovers_ambiguous_commit_without_ray_cluster(tmp_path):
     catalog, catalog_kwargs = _create_catalog(tmp_path)
     config = CheckpointConfig(
@@ -433,29 +473,36 @@ def test_append_protocol_recovers_ambiguous_commit_without_ray_cluster(tmp_path)
         IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
     )
     retry.enable_checkpointing()
-    retry.on_write_complete(WriteResult(0, 0, []))
+    new_block = pa.table({"id": [2], "value": ["b"]})
+    retry.on_write_start(new_block.schema)
+    retry_context = TaskContext(0, "Write", kwargs={"write_uuid": "retry"})
+    retry_return = retry.write([new_block], retry_context)
+    retry_context.kwargs["_datasink_write_return"] = retry_return
+    write_task_checkpoint(
+        retry,
+        BatchBasedCheckpointWriter(config),
+        BlockAccessor.for_block(new_block),
+        retry_context,
+    )
+    retry.on_write_complete(WriteResult(1, new_block.nbytes, [retry_return]))
 
     table = catalog.load_table("db.table")
-    assert len(table.snapshots()) == 1
-    assert table.scan().to_arrow().to_pydict() == {"id": [1], "value": ["a"]}
+    assert len(table.snapshots()) == 2
+    assert table.scan().to_arrow().sort_by("id").to_pydict() == {
+        "id": [1, 2],
+        "value": ["a", "b"],
+    }
 
 
 def _iceberg_input_dataset(catalog_kwargs):
-    return ray.data.read_iceberg("db.source", catalog_kwargs=catalog_kwargs)
-
-
-def _input_dataset(tmp_path):
-    input_path = tmp_path / "input"
-    pq.write_table(
-        pa.table({"id": [1, 2, 3], "value": ["a", "b", "c"]}),
-        input_path.with_suffix(".parquet"),
+    return ray.data.read_iceberg(
+        table_identifier="db.source", catalog_kwargs=catalog_kwargs
     )
-    return ray.data.read_parquet(str(input_path.with_suffix(".parquet")))
 
 
 @pytest.mark.parametrize("delete_checkpoint_on_success", [True, False])
 def test_append_recovers_after_failure_before_commit(
-    ray_start_regular_shared,
+    ray_start_10_cpus_shared,
     restore_data_context,
     tmp_path,
     delete_checkpoint_on_success,
@@ -491,8 +538,8 @@ def test_append_recovers_after_failure_before_commit(
     assert checkpoint_path.exists() is (not delete_checkpoint_on_success)
 
 
-def test_ambiguous_append_is_not_committed_twice(
-    ray_start_regular_shared, restore_data_context, tmp_path
+def test_ambiguous_append_starts_new_generation_for_new_rows(
+    ray_start_10_cpus_shared, restore_data_context, tmp_path
 ):
     catalog, catalog_kwargs = _create_catalog(tmp_path)
     checkpoint_path = tmp_path / "checkpoints"
@@ -509,19 +556,25 @@ def test_ambiguous_append_is_not_committed_twice(
 
     with patch.object(IcebergDatasink, "on_write_complete", commit_then_raise):
         with pytest.raises(RuntimeError, match="ambiguous catalog response"):
-            _input_dataset(tmp_path).write_iceberg(
+            _iceberg_input_dataset(catalog_kwargs).write_iceberg(
                 "db.table", catalog_kwargs=catalog_kwargs
             )
 
     assert len(catalog.load_table("db.table").snapshots()) == 1
-    _input_dataset(tmp_path).write_iceberg("db.table", catalog_kwargs=catalog_kwargs)
+    catalog.load_table("db.source").append(pa.table({"id": [4], "value": ["d"]}))
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
     table = catalog.load_table("db.table")
-    assert len(table.snapshots()) == 1
-    assert table.scan().to_arrow().num_rows == 3
+    assert len(table.snapshots()) == 2
+    assert table.scan().to_arrow().sort_by("id").to_pydict() == {
+        "id": [1, 2, 3, 4],
+        "value": ["a", "b", "c", "d"],
+    }
 
 
 def test_retained_terminal_checkpoint_starts_new_generation_for_new_rows(
-    ray_start_regular_shared, restore_data_context, tmp_path
+    ray_start_10_cpus_shared, restore_data_context, tmp_path
 ):
     catalog, catalog_kwargs = _create_catalog(tmp_path)
     checkpoint_path = tmp_path / "checkpoints"
@@ -531,16 +584,16 @@ def test_retained_terminal_checkpoint_starts_new_generation_for_new_rows(
         delete_checkpoint_on_success=False,
     )
 
-    _input_dataset(tmp_path).write_iceberg("db.table", catalog_kwargs=catalog_kwargs)
-    _input_dataset(tmp_path).write_iceberg("db.table", catalog_kwargs=catalog_kwargs)
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
     assert len(catalog.load_table("db.table").snapshots()) == 1
 
-    second_input = tmp_path / "input2.parquet"
-    pq.write_table(
-        pa.table({"id": [1, 2, 3, 4], "value": ["a", "b", "c", "d"]}),
-        second_input,
-    )
-    ray.data.read_parquet(str(second_input)).write_iceberg(
+    catalog.load_table("db.source").append(pa.table({"id": [4], "value": ["d"]}))
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
         "db.table", catalog_kwargs=catalog_kwargs
     )
     table = catalog.load_table("db.table")
