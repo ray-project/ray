@@ -212,8 +212,10 @@ class ActorPool:
             self._future_to_actor[future_key] = (self._next_task_index, actor)
             self._index_to_future[self._next_task_index] = future
             self._next_task_index += 1
+            return future
         else:
             self._pending_submits.append((fn, value))
+            return None
 
     def has_next(self):
         """Returns whether there are any pending results to return.
