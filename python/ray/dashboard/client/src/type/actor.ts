@@ -55,16 +55,17 @@ export type ActorDetail = {
       childrenUser: number;
       childrenUystem: number;
       iowait?: number;
-    };
+    } | null;
     createTime: number;
     memoryInfo: {
       rss: number; // aka “Resident Set Size”, this is the non-swapped physical memory a process has used. On UNIX it matches “top“‘s RES column). On Windows this is an alias for wset field and it matches “Mem Usage” column of taskmgr.exe.
       vms: number; // aka “Virtual Memory Size”, this is the total amount of virtual memory used by the process. On UNIX it matches “top“‘s VIRT column. On Windows this is an alias for pagefile field and it matches “Mem Usage” “VM Size” column of taskmgr.exe.
-      pfaults: number; // number of page faults.
-      pageins: number; // number of actual pageins.
+      // Only rss and vms are reported on every platform. macOS adds
+      // pfaults/pageins, Linux adds shared/text/lib/data/dirty, and Windows adds
+      // numPageFaults/wset/... so the rest arrives through the index signature.
       [key: string]: number;
-    };
+    } | null;
     pid: number | null;
-  };
+  } | null;
   mem?: number[]; // total memory, free memory, memory used ratio
 } & Actor;
