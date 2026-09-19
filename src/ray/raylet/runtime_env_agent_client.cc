@@ -23,6 +23,7 @@
 #include <queue>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
@@ -44,12 +45,23 @@ namespace raylet {
 
 namespace {
 
+// One HTTP call: what to send, and where to deliver the outcome.
+// Exactly one of `succ_callback` and `fail_callback` is invoked.
+struct Request {
+  http::verb method;
+  std::string_view target;
+  std::string body;
+  std::function<void(std::string)> succ_callback;
+  std::function<void(ray::Status)> fail_callback;
+};
+
 //------------------------------------------------------------------------------
-// Simple class to make a async POST call.
-// Will call callback exactly once with pair{non-ok, any} or pair{ok, reply body}.
+// A persistent HTTP/1.1 connection to the runtime env agent. Requests are sent one at a
+// time; the socket is kept open between them so the raylet does not burn an ephemeral
+// port per call (a port stays in TIME_WAIT for 60s after close, so per-call connections
+// exhaust the ephemeral range under load).
 //
 // Hard coded behavior:
-// - method is POST.
 // - version is HTTP/1.1.
 // - content type is "application/octet-stream".
 // - connection has infinite timeout (This is because runtime env agent can
@@ -61,89 +73,138 @@ namespace {
 // - if the HTTP response is received and well-formed, but the status code is not OK,
 //  return IOError.
 //
+// A request that fails on a reused socket before any response byte arrives is retried
+// once on a fresh socket without surfacing an error: the peer closes idle connections
+// (aiohttp's keepalive_timeout) but never mid-request, so the server has provably not
+// processed it. Requests are not idempotent on the agent, which reference counts each
+// GetOrCreateRuntimeEnv, so this is only safe under that condition.
+//
 // Spirit from
 // https://www.boost.org/doc/libs/develop/libs/beast/example/http/client/async/http_client_async.cpp
-class Session : public std::enable_shared_from_this<Session> {
+class Connection : public std::enable_shared_from_this<Connection> {
  public:
-  using FinishedCallback = std::function<void(std::shared_ptr<Session>)>;
+  // `reusable` is false if the socket is no longer usable, i.e. the caller must discard
+  // this connection.
+  using FinishedCallback =
+      std::function<void(std::shared_ptr<Connection>, bool reusable)>;
 
   // Factory method.
   // Not exposing ctor because it's expected to always be in a shared_ptr.
-  static std::shared_ptr<Session> Create(net::io_context &ioc,
-                                         std::string_view host,
-                                         std::string_view port,
-                                         http::verb method,
-                                         std::string_view target,
-                                         std::string body,
-                                         std::function<void(std::string)> succ_callback,
-                                         std::function<void(ray::Status)> fail_callback) {
+  static std::shared_ptr<Connection> Create(net::io_context &ioc,
+                                            std::string_view host,
+                                            std::string_view port) {
     // C++ limitations: make_shared can't be used because std::shared_ptr can't invoke
     // private ctor.
-    return std::shared_ptr<Session>(new Session(ioc,
-                                                host,
-                                                port,
-                                                method,
-                                                target,
-                                                std::move(body),
-                                                std::move(succ_callback),
-                                                std::move(fail_callback)));
+    return std::shared_ptr<Connection>(new Connection(ioc, host, port));
   }
 
-  // Runs the session asynchrounously. Immediately returns.
+  // Sends `request` asynchrounously. Immediately returns. Connects first if the socket is
+  // not already open.
+  //
   // It's ok to release a shared_ptr to `this` because the io context will hold a
   // shared_ptr that holds a reference to `this`.
   //
-  // This method should only be called once.
-  void run(FinishedCallback finished_callback) {
+  // Must not be called while another request is in flight.
+  void Execute(Request request, FinishedCallback finished_callback) {
+    request_ = std::move(request);
     finished_callback_ = std::move(finished_callback);
-    // Starts the state machine by looking up the domain name.
-    resolver_.async_resolve(
-        host_,
-        port_,
-        beast::bind_front_handler(&Session::on_resolve, shared_from_this()));
-  }
+    // Only a socket that already survived one request may be silently retried.
+    may_retry_ = connected_;
 
- private:
-  explicit Session(net::io_context &ioc,
-                   std::string_view host,
-                   std::string_view port,
-                   http::verb method,
-                   std::string_view target,
-                   std::string body,
-                   std::function<void(std::string)> succ_callback,
-                   std::function<void(ray::Status)> fail_callback)
-      : resolver_(ioc),
-        stream_(ioc),
-        host_(std::string(host)),
-        port_(std::string(port)),
-        method_(method),
-        succ_callback_(std::move(succ_callback)),
-        fail_callback_(std::move(fail_callback)) {
-    stream_.expires_never();
-    req_.method(method_);
-    req_.target(target);
-    req_.body() = std::move(body);
+    req_ = {};
+    req_.method(request_.method);
+    req_.target(request_.target);
+    req_.body() = std::move(request_.body);
     req_.version(11);  // HTTP/1.1
-    req_.set(http::field::host, host);
+    req_.set(http::field::host, host_);
     req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
     req_.set(http::field::content_type, "application/octet-stream");
     // Sets Content-Length header.
     req_.prepare_payload();
 
+    // Read per request rather than per connection so a rotated token is picked up.
     auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
     if (auth_token && !auth_token->empty()) {
       req_.set(http::field::authorization, auth_token->ToAuthorizationHeaderValue());
     }
+
+    if (connected_) {
+      Write();
+    } else {
+      Resolve();
+    }
+  }
+
+ private:
+  explicit Connection(net::io_context &ioc, std::string_view host, std::string_view port)
+      : resolver_(ioc), stream_(ioc), host_(std::string(host)), port_(std::string(port)) {
+    stream_.expires_never();
+  }
+
+  void Resolve() {
+    resolver_.async_resolve(
+        host_,
+        port_,
+        beast::bind_front_handler(&Connection::on_resolve, shared_from_this()));
+  }
+
+  void Write() {
+    buffer_.clear();
+    res_ = {};
+    stream_.expires_never();
+    http::async_write(
+        stream_,
+        req_,
+        beast::bind_front_handler(&Connection::on_write, shared_from_this()));
+  }
+
+  void Close() {
+    connected_ = false;
+    beast::error_code ec;
+    stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
+    // not_connected happens sometimes so don't bother reporting it.
+    if (ec && ec != beast::errc::not_connected) {
+      RAY_LOG(INFO) << "error shutting down runtime env agent connection: "
+                    << ec.message();
+    }
+    stream_.socket().close(ec);
+  }
+
+  // Retries once on a fresh socket if the failure can only mean the server never read the
+  // request; otherwise reports it.
+  void FailedMidRequest(ray::Status status) {
+    if (!may_retry_) {
+      Failed(std::move(status));
+      return;
+    }
+    may_retry_ = false;
+    RAY_LOG(DEBUG) << "Runtime env agent closed an idle connection, reconnecting: "
+                   << status;
+    Close();
+    Resolve();
+  }
+
+  // Releases this connection back to its pool, then delivers the outcome. Releasing
+  // first lets a callback that issues the next request reuse this very connection
+  // instead of opening another one.
+  void Finish(bool reusable, std::function<void()> deliver_outcome) {
+    auto self = shared_from_this();
+    auto finished = std::move(finished_callback_);
+    finished(self, reusable);
+    deliver_outcome();
   }
 
   void Failed(ray::Status status) {
-    fail_callback_(std::move(status));
-    finished_callback_(shared_from_this());
+    Close();
+    Finish(/*reusable=*/false,
+           [fail_callback = std::move(request_.fail_callback),
+            status = std::move(status)]() mutable { fail_callback(std::move(status)); });
   }
 
   void Succeeded(std::string body) {
-    succ_callback_(std::move(body));
-    finished_callback_(shared_from_this());
+    Finish(connected_,
+           [succ_callback = std::move(request_.succ_callback),
+            body = std::move(body)]() mutable { succ_callback(std::move(body)); });
   }
 
   void on_resolve(beast::error_code ec, tcp::resolver::results_type results) {
@@ -155,7 +216,7 @@ class Session : public std::enable_shared_from_this<Session> {
     stream_.expires_never();
     // Make the connection on the IP address we get from a lookup
     stream_.async_connect(
-        results, beast::bind_front_handler(&Session::on_connect, shared_from_this()));
+        results, beast::bind_front_handler(&Connection::on_connect, shared_from_this()));
   }
 
   void on_connect(beast::error_code ec, tcp::resolver::results_type::endpoint_type) {
@@ -164,15 +225,16 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
-    stream_.expires_never();
+    connected_ = true;
     // Send the HTTP request to the remote host
-    http::async_write(
-        stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+    Write();
   }
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
     if (ec) {
-      Failed(ray::Status::Disconnected(absl::StrCat(
+      // A partially written request is never processed by the agent, so retrying is safe
+      // regardless of how many bytes went out.
+      FailedMidRequest(ray::Status::Disconnected(absl::StrCat(
           "on_write ", ec.message(), ", bytes_transferred ", bytes_transferred)));
       return;
     }
@@ -181,14 +243,25 @@ class Session : public std::enable_shared_from_this<Session> {
     http::async_read(stream_,
                      buffer_,
                      res_,
-                     beast::bind_front_handler(&Session::on_read, shared_from_this()));
+                     beast::bind_front_handler(&Connection::on_read, shared_from_this()));
   }
 
   void on_read(beast::error_code ec, std::size_t bytes_transferred) {
     if (ec) {
-      Failed(ray::Status::Disconnected(absl::StrCat(
-          "on_read ", ec.message(), ", bytes_transferred ", bytes_transferred)));
+      auto status = ray::Status::Disconnected(absl::StrCat(
+          "on_read ", ec.message(), ", bytes_transferred ", bytes_transferred));
+      if (bytes_transferred == 0) {
+        FailedMidRequest(std::move(status));
+      } else {
+        Failed(std::move(status));
+      }
       return;
+    }
+
+    // Decide the socket's fate before handing control back, because the callbacks may
+    // start the next request on this connection.
+    if (!res_.keep_alive()) {
+      Close();
     }
 
     if (http::to_status_class(res_.result()) == http::status_class::successful) {
@@ -199,69 +272,94 @@ class Session : public std::enable_shared_from_this<Session> {
                                                ", body",
                                                std::move(res_).body())));
     }
-
-    // Gracefully close the socket
-    stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
-    // not_connected happens sometimes so don't bother reporting it.
-    if (ec && ec != beast::errc::not_connected) {
-      RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
-    }
   }
 
   tcp::resolver resolver_;
   beast::tcp_stream stream_;
   std::string host_;
   std::string port_;
-  http::verb method_;
-  std::function<void(std::string)> succ_callback_;
-  std::function<void(ray::Status)> fail_callback_;
+  bool connected_ = false;
+  bool may_retry_ = false;
+  Request request_;
   beast::flat_buffer buffer_;  // (Must persist between reads)
   http::request<http::string_body> req_;
   http::response<http::string_body> res_;
   FinishedCallback finished_callback_;
 };
 
-// A pool of sessions with a fixed max concurrency. Each session can handle 1 concurrent
-// request.
-// Users can post a session to this pool, but should not *run* them. The Session pool runs
-// them if the concurrency is not exceeding the desired value.
+// A pool of persistent connections with a fixed max concurrency. Each connection handles
+// 1 concurrent request; requests beyond the max are queued.
 //
-// Once a session is done, remove it from the pool.
+// Steady state costs exactly `max_concurrency` ephemeral ports no matter the request
+// rate. Idle connections are left open and are reaped by the agent, so the raylet never
+// closes first and never accumulates TIME_WAIT sockets.
 //
 // NOT thread safe: if the methods or the fallbacks are invoked in different threads, the
 // workloads may be lost or the running order may not be fair.
-class SessionPool {
+class ConnectionPool {
  public:
-  explicit SessionPool(size_t max_concurrency)
-      : max_concurrency_(max_concurrency), running_sessions_(), pending_sessions_() {}
+  ConnectionPool(net::io_context &ioc,
+                 std::string_view host,
+                 std::string_view port,
+                 size_t max_concurrency)
+      : ioc_(ioc),
+        host_(std::string(host)),
+        port_(std::string(port)),
+        max_concurrency_(max_concurrency) {}
 
-  void enqueue(std::shared_ptr<Session> session) {
-    if (running_sessions_.size() < max_concurrency_) {
-      running_sessions_.insert(session);
-      session->run(
-          /*finished_callback=*/[this](std::shared_ptr<Session> session_to_remove) {
-            this->remove_session_from_running(session_to_remove);
-          });
+  void enqueue(Request request) {
+    if (!idle_connections_.empty()) {
+      auto connection = std::move(idle_connections_.back());
+      idle_connections_.pop_back();
+      dispatch(std::move(connection), std::move(request));
+    } else if (connections_.size() < max_concurrency_) {
+      dispatch(create_connection(), std::move(request));
     } else {
-      pending_sessions_.emplace(std::move(session));
+      pending_requests_.emplace(std::move(request));
     }
   }
 
  private:
-  // Removes 1 session from running. After that, we have 1 free session slot so we can
-  // enqueue one.
-  void remove_session_from_running(std::shared_ptr<Session> session) {
-    running_sessions_.erase(session);
-    if (!pending_sessions_.empty()) {
-      auto pending = std::move(pending_sessions_.front());
-      pending_sessions_.pop();
-      enqueue(std::move(pending));
-    }
+  std::shared_ptr<Connection> create_connection() {
+    auto connection = Connection::Create(ioc_, host_, port_);
+    connections_.insert(connection);
+    return connection;
   }
 
+  void dispatch(std::shared_ptr<Connection> connection, Request request) {
+    connection->Execute(std::move(request),
+                        [this](std::shared_ptr<Connection> finished, bool reusable) {
+                          this->on_finished(std::move(finished), reusable);
+                        });
+  }
+
+  // After a request completes we have 1 free slot, so we can start a pending request.
+  void on_finished(std::shared_ptr<Connection> connection, bool reusable) {
+    if (!reusable) {
+      connections_.erase(connection);
+      if (!pending_requests_.empty()) {
+        auto request = std::move(pending_requests_.front());
+        pending_requests_.pop();
+        dispatch(create_connection(), std::move(request));
+      }
+      return;
+    }
+    if (pending_requests_.empty()) {
+      idle_connections_.push_back(std::move(connection));
+      return;
+    }
+    auto request = std::move(pending_requests_.front());
+    pending_requests_.pop();
+    dispatch(std::move(connection), std::move(request));
+  }
+
+  net::io_context &ioc_;
+  const std::string host_;
+  const std::string port_;
   const size_t max_concurrency_;
-  absl::flat_hash_set<std::shared_ptr<Session>> running_sessions_;
-  std::queue<std::shared_ptr<Session>> pending_sessions_;
+  absl::flat_hash_set<std::shared_ptr<Connection>> connections_;
+  std::vector<std::shared_ptr<Connection>> idle_connections_;
+  std::queue<Request> pending_requests_;
 };
 
 inline constexpr std::string_view HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV =
@@ -282,8 +380,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       uint32_t agent_register_timeout_ms,
       uint32_t agent_manager_retry_interval_ms,
       uint32_t session_pool_size = 10)
-      : io_context_(io_context),
-        session_pool_(session_pool_size),
+      : connection_pool_(
+            io_context, address, absl::StrFormat("%d", port), session_pool_size),
         address_(address),
         port_str_(absl::StrFormat("%d", port)),
         delay_executor_(delay_executor),
@@ -429,24 +527,20 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
     std::string payload = request.SerializeAsString();
 
-    auto session = Session::Create(
-        io_context_,
-        address_,
-        port_str_,
-        http::verb::post,
-        HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
-        std::move(payload),
-        /*succ_callback=*/
-        [succ_callback, fail_callback](std::string body) {
-          rpc::GetOrCreateRuntimeEnvReply reply;
-          if (!reply.ParseFromString(body)) {
-            fail_callback(Status::IOError("protobuf parse error"));
-          } else {
-            succ_callback(std::move(reply));
-          }
-        },
-        fail_callback);
-    session_pool_.enqueue(std::move(session));
+    connection_pool_.enqueue(Request{http::verb::post,
+                                     HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
+                                     std::move(payload),
+                                     /*succ_callback=*/
+                                     [succ_callback, fail_callback](std::string body) {
+                                       rpc::GetOrCreateRuntimeEnvReply reply;
+                                       if (!reply.ParseFromString(body)) {
+                                         fail_callback(
+                                             Status::IOError("protobuf parse error"));
+                                       } else {
+                                         succ_callback(std::move(reply));
+                                       }
+                                     },
+                                     fail_callback});
   }
 
   // Making HTTP call.
@@ -496,29 +590,24 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     request.set_source_process("raylet");
     std::string payload = request.SerializeAsString();
 
-    auto session = Session::Create(
-        io_context_,
-        address_,
-        port_str_,
-        http::verb::post,
-        HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE,
-        std::move(payload),
-        /*succ_callback=*/
-        [succ_callback, fail_callback](std::string body) {
-          rpc::DeleteRuntimeEnvIfPossibleReply reply;
-          if (!reply.ParseFromString(body)) {
-            fail_callback(Status::IOError("protobuf parse error"));
-          } else {
-            succ_callback(std::move(reply));
-          }
-        },
-        fail_callback);
-    session_pool_.enqueue(std::move(session));
+    connection_pool_.enqueue(Request{http::verb::post,
+                                     HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE,
+                                     std::move(payload),
+                                     /*succ_callback=*/
+                                     [succ_callback, fail_callback](std::string body) {
+                                       rpc::DeleteRuntimeEnvIfPossibleReply reply;
+                                       if (!reply.ParseFromString(body)) {
+                                         fail_callback(
+                                             Status::IOError("protobuf parse error"));
+                                       } else {
+                                         succ_callback(std::move(reply));
+                                       }
+                                     },
+                                     fail_callback});
   }
 
  private:
-  boost::asio::io_context &io_context_;
-  SessionPool session_pool_;
+  ConnectionPool connection_pool_;
 
   const std::string address_;
   const std::string port_str_;
