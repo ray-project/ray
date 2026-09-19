@@ -1241,7 +1241,10 @@ class RequestRouter(ABC):
                 start_time = time.time()
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
-                request_metadata = pending_request.metadata if pending_request else None
+                # Other routing tasks may already own all remaining requests.
+                if pending_request is None:
+                    break
+                request_metadata = pending_request.metadata
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
@@ -1256,7 +1259,11 @@ class RequestRouter(ABC):
                         ):
                             self._pending_requests_to_fulfill.popleft()
 
-                        if len(self._routing_tasks) > self.target_num_routing_tasks:
+                        # Finish an owned request before retiring its routing task.
+                        if (
+                            len(self._routing_tasks) > self.target_num_routing_tasks
+                            and pending_request.future.done()
+                        ):
                             break
 
                         replica = await self._select_from_candidate_replicas(
@@ -1292,10 +1299,18 @@ class RequestRouter(ABC):
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
         finally:
+            while (
+                self._pending_requests_to_fulfill
+                and self._pending_requests_to_fulfill[0].future.done()
+            ):
+                self._pending_requests_to_fulfill.popleft()
             routing_task = asyncio.current_task(loop=self._event_loop)
             assert routing_task is not None
             self._routing_tasks.remove(routing_task)
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
+            # Requests may have arrived while this task was exiting.
+            if self._pending_requests_to_route:
+                self._maybe_start_routing_tasks()
 
     def _maybe_start_routing_tasks(self):
         """Start routing tasks to fulfill pending requests if necessary.
