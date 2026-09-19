@@ -271,11 +271,11 @@ class TestControlIngressRoutes:
             "transcriptions",
         ],
     )
-    def test_no_inference_handlers_are_defined(self, method_name: str):
+    async def test_no_inference_handlers_are_defined(self, method_name: str):
         assert not hasattr(DirectStreamingIngress, method_name)
 
-    def test_is_not_an_openai_ingress(self):
-        """Subclassing would inherit the OpenAI routes and re-add the proxy hop."""
+    async def test_is_not_an_openai_ingress(self):
+        """Keep the control ingress independent from the data-plane proxy."""
         assert not issubclass(DirectStreamingIngress, OpenAiIngress)
 
     async def test_check_health_is_exposed_for_serve(self):
