@@ -11,7 +11,9 @@ from packaging.version import parse as parse_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
+    _group_indices,
     _has_unhashable_pandas_types,
+    _hash_partition_vectorized,
     concat,
     hash_partition,
     shuffle,
@@ -216,6 +218,64 @@ def test_hash_partition_null_struct_consistent_across_blocks():
         return next(iter(null_pids))
 
     assert null_partition_id(p1) == null_partition_id(p2)
+
+
+def _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts):
+    # Exclusive prefix sums of counts.
+    assert np.array_equal(
+        offsets, np.concatenate(([0], np.cumsum(counts)[:-1]))
+    ), offsets
+    # Stable grouping: identical to NumPy's stable argsort.
+    assert np.array_equal(
+        np.asarray(grouped_indices), np.argsort(partition_mask, kind="stable")
+    ), grouped_indices
+
+
+@pytest.mark.parametrize("num_partitions", [1, 2, 7, 64])
+def test_group_indices_matches_stable_argsort(num_partitions):
+    # The grouping must equal NumPy's stable argsort: contiguous per-partition
+    # ranges, original order preserved within each partition.
+    rng = np.random.RandomState(42)
+    for size in (0, 1, 5, 1000):
+        partition_mask = rng.randint(0, num_partitions, size=size).astype(np.int64)
+        counts = np.bincount(partition_mask, minlength=num_partitions).astype(np.int64)
+
+        grouped_indices, offsets = _group_indices(partition_mask, counts)
+        _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts)
+
+
+def test_hash_partition_polars_consistent_across_blocks():
+    # Rows with equal keys must land in the same partition regardless of which
+    # block they came from (the Polars path hashes each block independently).
+    pytest.importorskip("polars")
+
+    num_partitions = 16
+    keys = [str(i) for i in range(100)]
+
+    t1 = pa.Table.from_pydict({"k": keys[:70], "v": list(range(70))})
+    t2 = pa.Table.from_pydict({"k": keys[30:], "v": list(range(30, 100))})
+
+    h1 = _hash_partition_vectorized(t1.select(["k"]), num_partitions)
+    h2 = _hash_partition_vectorized(t2.select(["k"]), num_partitions)
+
+    key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
+    for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
+        assert key_to_partition.setdefault(key, pid) == pid, key
+
+
+def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
+    # A PolarsError inside the fast path must not fail the partitioning.
+    pl = pytest.importorskip("polars")
+    from polars.exceptions import PolarsError
+
+    def _raise(*args, **kwargs):
+        raise PolarsError("simulated failure")
+
+    monkeypatch.setattr(pl.DataFrame, "hash_rows", _raise)
+
+    t = pa.Table.from_pydict({"k": [str(i) for i in range(30)]})
+    parts = hash_partition(t, hash_cols=["k"], num_partitions=5)
+    assert pa.concat_tables(parts.values()).sort_by("k") == t.sort_by("k")
 
 
 def test_shuffle():

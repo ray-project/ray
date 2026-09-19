@@ -1,7 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -109,6 +109,104 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+def _has_unhashable_polars_types(schema: "pyarrow.Schema") -> bool:
+    """Return True if this schema must not be hashed with Polars.
+
+    Two kinds of columns are unsafe:
+
+    - Union types: ``pl.from_arrow`` fails on them.
+    - Extension types (Ray's tensor / Python-object): Polars does NOT fail,
+      it silently hashes the raw storage. For pickled Python objects that's
+      wrong: equal objects can pickle to different bytes in different
+      processes, so the same key could land in different partitions.
+    """
+    for field in schema:
+        if isinstance(field.type, pyarrow.ExtensionType):
+            return True
+        if pyarrow.types.is_union(field.type):
+            return True
+    return False
+
+
+def _hash_partition_vectorized(
+    projected_table: "pyarrow.Table",
+    num_partitions: int,
+) -> np.ndarray:
+    """
+    For each row, calculates hash(row_values) % num_partitions in a vectorized
+    manner using Polars, falling back to :func:`_hash_partition` when Polars is
+    unavailable or cannot handle the input.
+
+    Args:
+        projected_table: Arrow table containing rows to hash.
+        num_partitions: Number of target partitions (must be > 0).
+
+    Returns:
+        np.ndarray: Array of hashed values for each row.
+    """
+    try:
+        import polars as pl
+        from polars.exceptions import PolarsError
+    except ImportError:
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+    if _has_unhashable_polars_types(projected_table.schema):
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+    # Polars hashes dictionary (Categorical) values differently from the same
+    # values plainly encoded, so a dict-encoded block would partition a key
+    # differently from a plain-encoded block of the same dataset. Decode to
+    # the value type before hashing.
+    if any(pyarrow.types.is_dictionary(f.type) for f in projected_table.schema):
+        projected_table = projected_table.cast(
+            pyarrow.schema(
+                [
+                    f.with_type(f.type.value_type)
+                    if pyarrow.types.is_dictionary(f.type)
+                    else f
+                    for f in projected_table.schema
+                ]
+            )
+        )
+
+    try:
+        df: "pl.DataFrame" = pl.from_arrow(projected_table, rechunk=False)
+        return (df.hash_rows(seed=0) % num_partitions).cast(pl.Int64).to_numpy()
+    except (PolarsError, TypeError, ValueError, NotImplementedError) as e:
+        logger.warning(
+            f"Polars-based hash partitioning failed, falling back to the "
+            f"default implementation: {e}"
+        )
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+
+def _group_indices(
+    partition_mask: np.ndarray, counts: np.ndarray
+) -> Tuple["pyarrow.Array", np.ndarray]:
+    """Group row indices by their partition id.
+
+    Args:
+        partition_mask: partition_mask[i] is the partition id of row i.
+        counts: counts[j] is the number of rows assigned to partition j.
+
+    Returns:
+        - grouped_indices: row indices ordered so that partition 0's rows come
+          first, then partition 1's, etc. Original order is kept within each
+          partition (Arrow's ``sort_indices`` is a stable sort).
+        - offsets: offsets[j] is where partition j starts in
+          ``grouped_indices`` (exclusive prefix sum of ``counts``).
+
+    Example:
+        partition_mask=[1,0,1,0], counts=[2,2] returns
+        grouped_indices=[1,3,0,2] and offsets=[0,2].
+    """
+    import pyarrow.compute as pac
+
+    offsets = np.concatenate((np.zeros(1, dtype=counts.dtype), counts)).cumsum()[:-1]
+    grouped_indices = pac.sort_indices(pyarrow.array(partition_mask))
+    return grouped_indices, offsets
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -156,9 +254,6 @@ def hash_partition(
           dictionary, rather than a list
     """
 
-    import numpy as np
-    import pyarrow.compute as pac
-
     assert num_partitions > 0
 
     if table.num_rows == 0:
@@ -167,28 +262,25 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = _hash_partition_vectorized(projected_table, num_partitions)
+    # bincount needs signed int; the pandas hash path returns uint64.
     partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # Sort rows by partition id so each partition occupies a contiguous range
-    # of the result, then carve out partitions with zero-copy slices. The N
-    # output partitions together form a permutation of `table`, so one big
+    # Group row indices by partition id so each partition occupies a contiguous
+    # range of the result, then carve out partitions with zero-copy slices. The
+    # N output partitions together form a permutation of `table`, so one big
     # take + N slices is equivalent to N independent takes and pays the take
     # fixed cost once.
-    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
-    counts = np.bincount(partitions_array, minlength=num_partitions)
-    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
-    offsets[1:] = np.cumsum(counts)
+    counts = np.bincount(partitions_array, minlength=num_partitions).astype(np.int64)
+    grouped_indices, offsets = _group_indices(partitions_array, counts)
 
-    sorted_table = take_table(table, sort_indices)
+    sorted_table = take_table(table, grouped_indices)
     return {
-        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
+        int(p): sorted_table.slice(int(offsets[p]), int(counts[p]))  # noqa
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p in range(num_partitions)
-        if counts[p] > 0
+        for p in np.nonzero(counts)[0]
     }
 
 
