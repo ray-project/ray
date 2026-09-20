@@ -260,10 +260,21 @@ void GcsActorScheduler::ReconcileRayletsAfterGcsRestart(
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
 
     raylet_client->CancelStaleActorLeases(
-        [this, node_id, raylet_client, workers_in_use = std::move(workers_in_use)](
+        [this,
+         node_id,
+         weak_raylet_client = std::weak_ptr<RayletClientInterface>(raylet_client),
+         workers_in_use = std::move(workers_in_use)](
             const Status &cancel_status,
             const rpc::CancelStaleActorLeasesReply &cancel_reply) {
-          raylet_client->ReleaseUnusedActorWorkers(
+          // Do not keep the raylet client alive from a callback stored inside it,
+          // otherwise the client is never destroyed when its node dies and the
+          // requests pending on it are never failed.
+          auto locked_raylet_client = weak_raylet_client.lock();
+          if (!locked_raylet_client) {
+            nodes_being_reconciled_.erase(node_id);
+            return;
+          }
+          locked_raylet_client->ReleaseUnusedActorWorkers(
               workers_in_use,
               [this, node_id](const Status &release_status,
                               const rpc::ReleaseUnusedActorWorkersReply &release_reply) {
