@@ -72,6 +72,54 @@ def test_shuffle_config_factory_returns_config_when_seeded(tmp_path):
     assert config.seed == 42
 
 
+def test_list_files_ray_remote_args_default_to_empty(tmp_path):
+    from dataclasses import replace
+
+    op = _mk_list_files(tmp_path, num_files=1)
+    assert op.ray_remote_args == {}
+
+    scheduled = replace(op, ray_remote_args={"runtime_env": {"env_vars": {"A": "1"}}})
+    assert scheduled.ray_remote_args == {"runtime_env": {"env_vars": {"A": "1"}}}
+
+
+def test_indexer_requires_file_io_follows_its_chunker():
+    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
+        WholeFileChunker,
+    )
+
+    class HeaderReadingChunker(WholeFileChunker):
+        @property
+        def requires_file_io(self) -> bool:
+            return True
+
+    assert not NonSamplingFileIndexer(ignore_missing_paths=False).requires_file_io
+    assert NonSamplingFileIndexer(
+        ignore_missing_paths=False, file_chunker=HeaderReadingChunker()
+    ).requires_file_io
+
+
+def test_partition_filter_cache_is_bounded_and_frozen():
+    from unittest.mock import MagicMock
+
+    from ray.data._internal.datasource_v2.listing.listing_utils import (
+        _CachedPathPartitionFilter,
+    )
+
+    delegate = MagicMock()
+    delegate.apply.return_value = False
+    cache = _CachedPathPartitionFilter(delegate, max_cached_paths=2)
+    for index in range(100):
+        assert cache.apply(str(index)) is False
+    assert len(cache._decisions) == 2
+    cache.freeze()
+    calls = delegate.apply.call_count
+    assert cache.apply("0") is False
+    assert delegate.apply.call_count == calls
+    for index in range(100, 200):
+        assert cache.apply(str(index)) is False
+    assert len(cache._decisions) == 2
+
+
 if __name__ == "__main__":
     import sys
 

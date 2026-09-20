@@ -1,0 +1,27 @@
+# Two autoscaling worker groups that both start empty. The GPU group uses CPU
+# instances each with a single fake GPU, so this test can exercise heterogeneous
+# autoscaling without using real GPUs.
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.2xlarge
+    # This lets the test count only worker nodes.
+    resources:
+        CPU: 0
+
+worker_nodes:
+    # Runs the produce tasks.
+    - name: cpu-node
+      instance_type: m5.2xlarge
+      min_nodes: 0
+      max_nodes: 10
+
+    # Runs the consume tasks. Only `GPU` is overridden, so these nodes still
+    # expose the 8 vCPUs of an m5.2xlarge and can run produce tasks too. The
+    # test's CPU-node arithmetic depends on that.
+    - name: gpu-node
+      instance_type: m5.2xlarge
+      min_nodes: 0
+      max_nodes: 10
+      resources:
+        GPU: 1

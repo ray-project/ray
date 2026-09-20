@@ -40,6 +40,8 @@ class ProtocolsProvider:
             "abfss",
             # File storage path, assumes everything packed in one zip file.
             "file",
+            # A directory that is already present on every node. Assumes absolute path.
+            "local",
         }
 
     @classmethod

@@ -83,7 +83,6 @@ def plan_read_files_op(
 
     read_transform = BlockMapTransformFn(
         do_read,
-        is_udf=False,
         output_block_size_option=OutputBlockSizeOption.of(
             target_max_block_size=data_context.target_max_block_size,
         ),

@@ -308,6 +308,38 @@ def test_weighted_round_robin_partitioner_can_emit_before_overflow():
     assert partitioner.next_partition() == ["b"]
 
 
+def test_weighted_round_robin_partitioner_caps_items_per_bucket():
+    partitioner = WeightedRoundRobinPartitioner(
+        num_buckets=2,
+        min_bucket_size=100,
+        max_bucket_size=1000,
+        max_items_per_bucket=2,
+    )
+
+    for index in range(5):
+        partitioner.add_item(str(index), None if index % 2 else 1)
+    partitioner.finalize()
+
+    partitions = []
+    while partitioner.has_partition():
+        partitions.append(partitioner.next_partition())
+    assert max(map(len, partitions)) == 2
+    assert sorted(item for partition in partitions for item in partition) == [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+    ]
+
+
+def test_weighted_round_robin_partitioner_rejects_zero_item_cap():
+    with pytest.raises(ValueError, match="max_items_per_bucket"):
+        WeightedRoundRobinPartitioner(
+            num_buckets=1, min_bucket_size=1, max_bucket_size=2, max_items_per_bucket=0
+        )
+
+
 if __name__ == "__main__":
     import sys
 

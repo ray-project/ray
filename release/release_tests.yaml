@@ -1496,6 +1496,38 @@
         cluster_compute: rte_gce_small.yaml
 
 
+- name: runtime_env_local_working_dir
+  python: "3.10"
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  frequency: nightly
+  team: core
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_local_working_dir.sh
+    cluster_compute: rte_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/rte_local_working_dir.py
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: rte_gce_small.yaml
+
+
 - name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
@@ -1883,8 +1915,9 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
 
       # 'type: torch-cu128' means: use the 'ray-torch' image.
       type: torch-cu128
@@ -1941,7 +1974,8 @@
         byod:
           runtime_env:
             - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
+            # Only Ray OOM kills fail this test; workers are killed intentionally.
+            - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: full_training.s3_url
@@ -2047,8 +2081,9 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
@@ -2081,8 +2116,9 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
@@ -2114,8 +2150,9 @@
   cluster:
     byod:
       runtime_env:
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        - RAYTEST_FAIL_ON_RAY_OOM_KILL=1
+        - RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE=1
       type: gpu
       post_build_script: byod_install_torchrec.sh
     anyscale_sdk_2026: true
@@ -4860,6 +4897,28 @@
     timeout: 3600
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3.yaml --skip-hf-token true
+
+- name: llm_serve_llama_3dot2_1B_s3_runai_streamer
+  frequency: nightly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      type: llm-cu130
+      post_build_script: byod_llm_runai_streamer.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_auto_select_worker.yaml
+    # NOTE: Important for getting the correct secrets
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_llama_3dot2_1b_s3_runai_streamer.yaml --skip-hf-token true
 
 - name: llm_serve_correctness
   frequency: nightly

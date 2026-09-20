@@ -224,26 +224,22 @@ Example of hash shuffling based on column `id`:
 .. testcode::
 
     import ray
-    from ray.data.context import DataContext, ShuffleStrategy
 
-    # First enable hash-shuffle as shuffling strategy
-    DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-
-    # Hash-shuffle
     hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 
 .. tip::
 
-    :ref:`Shuffle v2 <shuffle-v2>` (``ShuffleStrategy.SHUFFLE_V2``) is a shuffle backend in alpha
-    that provides an updated hash-shuffle implementation:
+    Key-based repartitioning uses :ref:`shuffle v2 <shuffle-v2>`
+    (``ShuffleStrategy.SHUFFLE_V2``) by default. See
+    :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
+
+    To fall back to the previous :ref:`hash-shuffle <hash-shuffle>` implementation:
 
     .. code-block:: python
 
         from ray.data.context import DataContext, ShuffleStrategy
 
-        DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-
-    See :ref:`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
+        DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
 .. _optimizing_shuffles:
 

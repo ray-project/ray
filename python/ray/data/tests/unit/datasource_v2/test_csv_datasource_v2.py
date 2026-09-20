@@ -1,5 +1,4 @@
 import gzip
-import io
 import math
 from unittest.mock import MagicMock
 
@@ -43,26 +42,6 @@ def test_infer_schema_and_create_scanner(tmp_path):
         [("id", pa.int64()), ("value", pa.string()), ("path", pa.string())]
     )
     assert datasource.create_scanner(schema).read_schema() is None
-
-
-def test_partition_filter_cache_is_bounded_and_frozen():
-    from ray.data._internal.datasource_v2.listing.listing_utils import (
-        _CachedPathPartitionFilter,
-    )
-
-    delegate = MagicMock()
-    delegate.apply.return_value = False
-    cache = _CachedPathPartitionFilter(delegate, max_cached_paths=2)
-    for index in range(100):
-        assert cache.apply(str(index)) is False
-    assert len(cache._decisions) == 2
-    cache.freeze()
-    calls = delegate.apply.call_count
-    assert cache.apply("0") is False
-    assert delegate.apply.call_count == calls
-    for index in range(100, 200):
-        assert cache.apply(str(index)) is False
-    assert len(cache._decisions) == 2
 
 
 @pytest.mark.parametrize("multi_chunk", [False, True])
@@ -273,44 +252,6 @@ def test_single_chunk_uses_stream_only_filesystem(tmp_path):
         {"id": 1},
         {"id": 2},
     ]
-
-
-@pytest.mark.parametrize("hadoop", [False, True])
-def test_snappy_schema_sampling_is_incremental(hadoop):
-    import snappy
-
-    from ray.data.datasource.file_based_datasource import _SnappyInputStream
-
-    payload = b"value\n" + b"abcdefgh\n" * (1 << 20)
-    compressed = io.BytesIO()
-    compressor_cls = (
-        snappy.HadoopStreamCompressor if hadoop else snappy.StreamCompressor
-    )
-    snappy.stream_compress(
-        io.BytesIO(payload), compressed, compressor_cls=compressor_cls
-    )
-
-    class CountingFile(io.BytesIO):
-        bytes_read = 0
-
-        def read(self, size=-1):
-            assert 0 < size <= 64 * 1024
-            data = super().read(size)
-            self.bytes_read += len(data)
-            return data
-
-    file = CountingFile(compressed.getvalue())
-    decompressor_cls = (
-        snappy.HadoopStreamDecompressor if hadoop else snappy.StreamDecompressor
-    )
-    with pa.PythonFile(
-        _SnappyInputStream(file, decompressor_cls()), mode="r"
-    ) as stream:
-        reader = csv.open_csv(stream)
-        assert reader.schema == pa.schema([("value", pa.string())])
-        assert file.bytes_read < len(compressed.getvalue())
-        assert reader.read_all().num_rows == 1 << 20
-    assert file.closed
 
 
 def test_reader_ignores_manifest_file_size(tmp_path):

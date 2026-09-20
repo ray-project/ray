@@ -218,19 +218,21 @@ def test_read_csv_v1_v2_sampled_heterogeneous_schema_parity(
         ).materialize()
         results.append(
             {
-                "rows": dataset.take_all(),
+                "rows": sorted(dataset.take_all(), key=lambda row: row["id"]),
                 "schema": dataset.schema(),
                 "columns": dataset.columns(),
-                "selected": ray.data.read_csv(
-                    paths, partitioning=None, override_num_blocks=2
-                )
-                .select_columns(["id"])
-                .take_all(),
-                "dropped": ray.data.read_csv(
-                    paths, partitioning=None, override_num_blocks=2
-                )
-                .drop_columns(["id"])
-                .take_all(),
+                "selected": sorted(
+                    ray.data.read_csv(paths, partitioning=None, override_num_blocks=2)
+                    .select_columns(["id"])
+                    .take_all(),
+                    key=lambda row: row["id"],
+                ),
+                "dropped": sorted(
+                    ray.data.read_csv(paths, partitioning=None, override_num_blocks=2)
+                    .drop_columns(["id"])
+                    .take_all(),
+                    key=lambda row: row["value"],
+                ),
             }
         )
 
@@ -261,7 +263,10 @@ def test_read_csv_v1_v2_heterogeneous_hive_partition_keys(
     for use_datasource_v2 in (False, True):
         restore_ctx.use_datasource_v2 = use_datasource_v2
         rows_by_version.append(
-            ray.data.read_csv(paths, override_num_blocks=2).take_all()
+            sorted(
+                ray.data.read_csv(paths, override_num_blocks=2).take_all(),
+                key=lambda row: row["id"],
+            )
         )
 
     assert rows_by_version[0] == rows_by_version[1]

@@ -265,6 +265,11 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
     def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
         return self._shuffle
 
+    @property
+    def schema_needs_file_sample(self) -> bool:
+        # CSV has no metadata; the planning schema comes from file headers.
+        return True
+
     def _get_file_indexer(self) -> FileIndexer:
         return NonSamplingFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
