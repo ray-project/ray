@@ -557,8 +557,7 @@ std::string GcsActorScheduler::DebugString() const {
          << "\n- node_to_actors_when_leasing_: " << node_to_actors_when_leasing_.size()
          << "\n- node_to_workers_when_creating_: "
          << node_to_workers_when_creating_.size()
-         << "\n- nodes_being_reconciled_: "
-         << nodes_being_reconciled_.size();
+         << "\n- nodes_being_reconciled_: " << nodes_being_reconciled_.size();
   return stream.str();
 }
 
