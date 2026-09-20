@@ -110,7 +110,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return
 
-    def delete_uri(self, uri: str, logger: logging.Logger) -> float:
+    def delete_uri(self, uri: str, logger: logging.Logger) -> Optional[float]:
         """Delete the runtime environment given uri.
 
         Args:
@@ -118,7 +118,8 @@ class RuntimeEnvPlugin(ABC):
             logger: The logger used to log messages during the deletion.
 
         Returns:
-            float: The amount of space reclaimed by the deletion.
+            Optional[float]: The amount of space reclaimed by the deletion, or
+                None if deletion was deferred and should be retried later.
         """
         return 0
 
