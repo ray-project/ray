@@ -135,6 +135,10 @@ message RequestRouterConfig {
 
   // Maximum backoff time (in seconds) between retries.
   double max_backoff_s = 8;
+
+  // Allow HAProxy to select a serving replica when the HTTP ingress request
+  // router is unavailable or fails to select a replica.
+  bool ingress_router_fallback = 9;
 }
 //[End] ROUTING CONFIG
 

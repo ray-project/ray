@@ -14,10 +14,10 @@ import socket
 from dataclasses import dataclass
 from typing import Optional, cast
 
+from ray.serve._private import haproxy
 from ray.serve._private.common import RequestProtocol
-from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
-from ray.util import metrics
+from ray.util import log_once, metrics
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,8 @@ class ParsedMetrics:
     ingress_request_body_truncated_full_length: Optional[int] = None
     ingress_request_via_router: bool = False
     ingress_request_failed: Optional[str] = None
+    ingress_request_fallback: bool = False
+    ingress_request_router_status: Optional[int] = None
     route: Optional[str] = None
     method: Optional[str] = None
     status_code: Optional[str] = None
@@ -115,7 +117,7 @@ class HAProxyMetricsCollector:
 
     def __init__(
         self,
-        haproxy_api: HAProxyApi,
+        haproxy_api: "haproxy.HAProxyApi",
         node_id: str,
         node_ip_address: str = "",
     ) -> None:
@@ -181,10 +183,15 @@ class HAProxyMetricsCollector:
                 "'unparseable_replica_id' (router 200 but response body "
                 "did not contain a string replica_id), "
                 "'unknown_replica_id' (router returned a replica_id not "
-                "present in the current replica map). All reasons return 503 "
-                "to the client except 'unknown_replica_id', which routes to the "
-                "fallback proxy when one is available (otherwise 503)."
+                "present in the current replica map), or 'router_unavailable' "
+                "(no router replicas). Applications opting into load-balanced "
+                "fallback continue serving requests after these failures."
             ),
+            tag_keys=("application", "reason"),
+        )
+        self.fallback_counter = metrics.Counter(
+            "serve_haproxy_ingress_router_fallbacks",
+            description="Requests using backend balancing after an ingress router failure.",
             tag_keys=("application", "reason"),
         )
         self.requests_counter = metrics.Counter(
@@ -266,6 +273,8 @@ class HAProxyMetricsCollector:
             # HAProxy renders booleans as "1"/"0"; absence as "" -> False.
             ingress_request_via_router=kv.get("via_router") == "1",
             ingress_request_failed=kv.get("failed"),
+            ingress_request_fallback=kv.get("fallback") == "1",
+            ingress_request_router_status=as_int("router_status"),
             route=kv.get("route"),
             method=kv.get("method"),
             status_code=kv.get("status"),
@@ -334,6 +343,21 @@ class HAProxyMetricsCollector:
         # frontends still show up in the data.
         app_tag = parsed.app or "unknown"
         tags = {"application": app_tag}
+
+        if parsed.ingress_request_fallback and parsed.ingress_request_failed:
+            status = parsed.ingress_request_router_status
+            reason = parsed.ingress_request_failed
+            self.fallback_counter.inc(tags={**tags, "reason": reason})
+            if log_once(f"haproxy_ingress_router_fallback:{app_tag}:{reason}"):
+                logger.warning(
+                    "Routing fell back to load balancing: application=%s; reason=%s; "
+                    "router_status=%s. "
+                    "Check ingress router logs and whether its selected replica "
+                    "is still running and listed in HAProxy's server pool.",
+                    app_tag,
+                    reason,
+                    status,
+                )
 
         if parsed.ingress_request_via_router and not parsed.ingress_request_failed:
             self.requests_counter.inc(tags=tags)

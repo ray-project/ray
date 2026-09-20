@@ -1008,6 +1008,7 @@ RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD = "request_headers"
 # Emit per-request metrics from the ingress-request-router data path:
 # - truncated body counter
 # - router consultation latency histogram
+# - router failure and fallback counters, and log-once fallback warnings
 # - replica-id mismatch counter (router pinned X, HAProxy used Y after fallthrough)
 #
 # When enabled, HAProxy logs an RFC 5424 line with metric fields in the

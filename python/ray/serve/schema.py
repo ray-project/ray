@@ -1657,6 +1657,13 @@ class TargetGroup(BaseModel):
             "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
     )
+    ingress_router_fallback: bool = Field(
+        False,
+        description=(
+            "Allow HAProxy to select a serving replica when the HTTP ingress "
+            "request router is unavailable or fails to select a replica."
+        ),
+    )
     # Name of the application's ingress deployment (the deployment that serves
     # the data-plane traffic). Empty when not applicable (e.g. proxy target groups).
     ingress_deployment_name: str = Field(

@@ -188,6 +188,12 @@ Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRE
 
 Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
 
+## Ingress router failure fallback
+
+Ray Serve LLM enables ingress router fault tolerance for all direct-streaming applications, regardless of the routing policy. If the ingress router is unavailable or fails to select a replica, HAProxy uses its configured load-balancing policy (`leastconn` by default) to send the request to an available serving replica. Fallback doesn't preserve KV-cache affinity and requires available serving capacity.
+
+Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to enable fallback metrics and warnings. The `ray_serve_haproxy_ingress_router_fallbacks_total` counter tracks fallback attempts by `application` and `reason`.
+
 ## Limitations
 
 - **Direct streaming only.** `KVAwareRouter` inherits direct streaming's constraints, including one model per application and no LoRA- or multiplex-aware routing. See {ref}`direct-streaming-limitations`.

@@ -356,6 +356,17 @@ class TestDeploymentConfig:
             == PowerOfTwoChoicesRequestRouter
         )
 
+    @pytest.mark.parametrize("enabled", [False, True])
+    def test_ingress_router_fallback(self, enabled):
+        @serve.deployment(request_router_config={"ingress_router_fallback": enabled})
+        class Ingress:
+            pass
+
+        config = Ingress._deployment_config
+        assert config.request_router_config.ingress_router_fallback is enabled
+        restored = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert restored.request_router_config.ingress_router_fallback is enabled
+
     def test_backoff_params_imperative(self):
         """Check that custom backoff params are set via the imperative path."""
         custom_initial = 0.1

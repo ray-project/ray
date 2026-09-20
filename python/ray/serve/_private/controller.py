@@ -1660,6 +1660,16 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = False
+        if ingress_request_router_deployment_name is not None:
+            deployment_info = self.deployment_state_manager.get_deployment(
+                DeploymentID(name=ingress_deployment_name, app_name=app_name)
+            )
+            if deployment_info is not None:
+                ingress_router_fallback = (
+                    deployment_info.deployment_config.request_router_config.ingress_router_fallback
+                )
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1674,6 +1684,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )

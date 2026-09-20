@@ -1,0 +1,7 @@
+applications:
+  - name: app
+    import_path: ray.serve.tests.test_config_files.ingress_router_fallback:app
+    deployments:
+      - name: Ingress
+        request_router_config:
+          ingress_router_fallback: true

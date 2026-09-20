@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import json
 import logging
 import os
 import signal
@@ -11,14 +12,24 @@ import time
 from typing import Optional
 from unittest import mock
 
+import httpx
 import pytest
 import pytest_asyncio
 import requests
 import uvicorn
+import yaml
 from fastapi import FastAPI, Request, Response
+from starlette.responses import StreamingResponse
 
-from ray._common.network_utils import find_free_port
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+import ray
+from ray import serve
+from ray._common.network_utils import find_free_port, get_localhost_ip
+from ray._common.test_utils import (
+    async_wait_for_condition,
+    fetch_prometheus_metrics,
+    wait_for_condition,
+)
+from ray.serve._private import haproxy
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -33,7 +44,10 @@ from ray.serve._private.haproxy import (
     ServerConfig,
     _routers_and_targets_by_backend,
 )
+from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 from ray.serve.config import HTTPOptions
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
 
 logger = logging.getLogger(__name__)
 
@@ -649,8 +663,6 @@ def test_routers_and_targets_prefers_colocated_router():
 
 def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cleanup):
     """Multiple co-located routers render as a pool in the app's ROUTERS entry."""
-    from ray._common.network_utils import get_localhost_ip
-
     local = get_localhost_ip()
     with tempfile.TemporaryDirectory() as temp_dir:
         backend = BackendConfig(
@@ -1116,7 +1128,12 @@ def _create_router_server(
 
 
 async def _start_router_haproxy(
-    temp_dir, haproxy_port, stats_port, backend_configs, haproxy_api_cleanup
+    temp_dir,
+    haproxy_port,
+    stats_port,
+    backend_configs,
+    haproxy_api_cleanup,
+    **config_overrides,
 ):
     """Build, start, and await readiness of an HAProxyApi for the ingress
     request router e2e tests. These tests share this scaffold and differ only
@@ -1135,6 +1152,7 @@ async def _start_router_haproxy(
         health_check_inter="500ms",
         health_check_rise=1,
         health_check_fall=2,
+        **config_overrides,
     )
     api = HAProxyApi(
         cfg=config,
@@ -2997,6 +3015,358 @@ async def test_failed_spawn_retires_log_files(monkeypatch):
         stdout_path, stderr_path = api._retired_logs[0]
         assert stdout_path.endswith(".stdout.log")
         assert stderr_path.endswith(".stderr.log")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metrics_enabled,router_metrics_enabled",
+    [(False, False), (True, False), (True, True)],
+)
+async def test_ingress_router_fallback_leastconn(
+    haproxy_api_cleanup, tmp_path, metrics_enabled, router_metrics_enabled
+):
+    """Fallback avoids a replica busy with a router-selected request."""
+    release = threading.Event()
+    router_failed = threading.Event()
+    servers, threads, targets = [], [], []
+    for replica_id in ("a", "b"):
+        app = FastAPI()
+
+        @app.get("/-/healthz")
+        async def health():
+            return {}
+
+        @app.post("/predict")
+        async def predict(request: Request, replica_id=replica_id):
+            if (await request.json()).get("hold"):
+
+                async def stream():
+                    yield b"started\n"
+                    while not release.is_set():
+                        await asyncio.sleep(0.01)
+                    yield b"done\n"
+
+                return StreamingResponse(stream(), headers={"x-replica-id": replica_id})
+            return Response(replica_id)
+
+        port = find_free_port()
+        server, thread = _serve_fastapi_app(app, port, _healthz_ready(port))
+        servers.append(server)
+        threads.append(thread)
+        targets.append(
+            ServerConfig(
+                name=replica_id, host="127.0.0.1", port=port, replica_id=replica_id
+            )
+        )
+
+    app = FastAPI()
+
+    @app.get("/-/healthz")
+    async def router_health():
+        return {}
+
+    @app.post("/internal/route")
+    async def route():
+        if router_failed.is_set():
+            return Response(status_code=503)
+        return {"replica_id": "a"}
+
+    port = find_free_port()
+    server, thread = _serve_fastapi_app(app, port, _healthz_ready(port))
+    servers.append(server)
+    threads.append(thread)
+    backend = BackendConfig(
+        name="llm",
+        path_prefix="/",
+        servers=targets,
+        ingress_request_router_servers=[
+            ServerConfig(name="router", host="127.0.0.1", port=port)
+        ],
+        ingress_router_fallback=True,
+    )
+    http_port = find_free_port()
+    try:
+        api = await _start_router_haproxy(
+            str(tmp_path),
+            http_port,
+            find_free_port(),
+            {"llm": backend},
+            haproxy_api_cleanup,
+            metrics_enabled=metrics_enabled,
+            ingress_request_router_metrics_enabled=router_metrics_enabled,
+        )
+        assert api.cfg.balance_algorithm == "leastconn"
+        config = (tmp_path / "haproxy.cfg").read_text()
+        lua = (tmp_path / "ingress_request_router.lua").read_text()
+        assert ("log-format-sd" in config) == metrics_enabled
+        assert ("fallback=%" in config) == router_metrics_enabled
+        assert ("_metrics_t0" in lua) == router_metrics_enabled
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{http_port}", timeout=10
+        ) as client:
+            async with client.stream(
+                "POST", "/predict", json={"hold": True}
+            ) as response:
+                assert response.status_code == 200
+                assert response.headers["x-replica-id"] == "a"
+                router_failed.set()
+                # Keep a busy throughout: repeated sequential requests must all
+                # pick b. Round-robin/random would eventually pick busy replica a.
+                for _ in range(10):
+                    result = await client.post("/predict", json={})
+                    assert result.status_code == 200
+                    assert result.text == "b"
+                release.set()
+                assert await response.aread() == b"started\ndone\n"
+    finally:
+        release.set()
+        _shutdown_fake_servers(servers, threads)
+
+
+@pytest.fixture(scope="module")
+def metrics_port():
+    port = find_free_port()
+    ray.init(
+        num_cpus=1,
+        include_dashboard=False,
+        _metrics_export_port=port,
+        _system_config={"metrics_report_interval_ms": 100},
+    )
+    yield port
+    ray.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure,reason,router_status",
+    [
+        ("4xx", "router_non_200", 400),
+        ("5xx", "router_non_200", 503),
+        ("timeout", "router_unreachable", None),
+        ("unreachable", "router_unreachable", None),
+        ("no_routers", "router_unavailable", None),
+        ("malformed", "unparseable_replica_id", 200),
+        ("unknown", "unknown_replica_id", 200),
+    ],
+)
+async def test_ingress_router_fallback(
+    failure,
+    reason,
+    router_status,
+    metrics_port,
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    # Short test deadline; the production router request timeout remains unchanged.
+    monkeypatch.setattr(
+        haproxy, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 1
+    )
+    monkeypatch.setattr(haproxy, "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", True)
+    # Capture at the Serve logger once, independent of Ray/root propagation.
+    monkeypatch.setattr(logging.getLogger("ray.serve"), "handlers", [caplog.handler])
+    monkeypatch.setattr(logging.getLogger("ray.serve"), "propagate", False)
+    servers, threads, targets = [], [], []
+    for replica_id in ("a", "b"):
+        port = find_free_port()
+        server, thread = _create_replica_server(port, replica_id)
+        servers.append(server)
+        threads.append(thread)
+        targets.append(
+            ServerConfig(
+                name=replica_id, host="127.0.0.1", port=port, replica_id=replica_id
+            )
+        )
+
+    router_app = FastAPI()
+    state = {"failure": failure}
+
+    @router_app.get("/-/healthz")
+    async def router_health():
+        return {}
+
+    @router_app.post("/internal/route")
+    async def route():
+        mode = state["failure"]
+        if mode == "4xx":
+            return Response(status_code=400)
+        if mode == "5xx":
+            return Response(status_code=503)
+        if mode == "timeout":
+            await asyncio.sleep(2)
+        if mode == "malformed":
+            return Response("not a routing response")
+        return {"replica_id": "absent" if mode == "unknown" else "a"}
+
+    router_port = find_free_port()
+    server, thread = _serve_fastapi_app(
+        router_app, router_port, _healthz_ready(router_port)
+    )
+    servers.append(server)
+    threads.append(thread)
+    router = ServerConfig(name="router", host="127.0.0.1", port=router_port)
+    backend = BackendConfig(
+        name=f"llm-{failure}",
+        app_name=f"llm-{failure}",
+        path_prefix="/",
+        servers=targets,
+        ingress_router_fallback=True,
+        ingress_request_router_servers=[]
+        if failure == "no_routers"
+        else [
+            ServerConfig(name="down", host="127.0.0.1", port=find_free_port())
+            if failure == "unreachable"
+            else router
+        ],
+    )
+    http_port, stats_port = find_free_port(), find_free_port()
+    cfg = HAProxyConfig(
+        http_options=HTTPOptions(host="127.0.0.1", port=http_port),
+        stats_port=stats_port,
+        socket_path=str(tmp_path / "admin.sock"),
+        metrics_socket_path=str(tmp_path / "metrics.sock"),
+        metrics_enabled=True,
+        ingress_request_router_metrics_enabled=True,
+        has_received_routes=True,
+        has_received_servers=True,
+        http_health_check_path="/-/healthz",
+        health_check_inter="100ms",
+        health_check_rise=1,
+    )
+    api = HAProxyApi(
+        cfg=cfg,
+        backend_configs={backend.name: backend},
+        config_file_path=str(tmp_path / "haproxy.cfg"),
+    )
+    collector = HAProxyMetricsCollector(api, "test-node")
+    await collector.bind_and_attach(cfg.metrics_socket_path)
+    try:
+        await api.start()
+        await async_wait_for_condition(lambda: check_haproxy_ready(stats_port))
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{http_port}", timeout=10
+        ) as client:
+
+            async def send_request(i):
+                request_id = f"{failure}-{i}"
+                body = json.dumps({"prompt": f"hello {i}"})
+                response = await client.post(
+                    "/predict",
+                    content=body,
+                    headers={
+                        "x-request-id": request_id,
+                        "x-serve-router-kv-token-key": "untrusted",
+                    },
+                )
+                assert response.status_code == 200, response.text
+                assert response.json()["echo"] == body
+                assert response.headers["x-received-request-id"] == request_id
+                assert "echo-x-serve-router-kv-token-key" not in response.headers
+                assert response.headers["x-replica-id"] in {"a", "b"}
+
+            await asyncio.gather(*(send_request(i) for i in range(12)))
+
+            def check_metrics():
+                metrics = fetch_prometheus_metrics([f"127.0.0.1:{metrics_port}"])
+                samples = metrics.get(
+                    "ray_serve_haproxy_ingress_router_fallbacks_total", []
+                )
+                samples = [
+                    s
+                    for s in samples
+                    if s.labels.get("application") == backend.app_name
+                ]
+                assert sum(s.value for s in samples) == 12
+                assert {s.labels["reason"] for s in samples} == {reason}
+                return True
+
+            await async_wait_for_condition(check_metrics, timeout=30)
+            warnings = [
+                record.getMessage()
+                for record in caplog.records
+                if "Routing fell back to load balancing" in record.getMessage()
+                and backend.app_name in record.getMessage()
+            ]
+            # All 12 fallbacks are counted, while repeated warnings are limited.
+            assert len(warnings) == 1
+            assert f"reason={reason}" in warnings[0]
+            assert f"router_status={router_status}" in warnings[0]
+            assert "Check ingress router logs" in warnings[0]
+
+            # Restore the ingress router, retaining the same app and proxy.
+            state["failure"] = None
+            if failure in {"no_routers", "unreachable"}:
+                backend.ingress_request_router_servers = [router]
+                api.set_backend_configs({backend.name: backend})
+                await api.reload()
+            # Existing keep-alive connections may still use the draining worker's
+            # old Lua state. A new connection exercises the reloaded router pool.
+            async with httpx.AsyncClient(
+                base_url=f"http://127.0.0.1:{http_port}", timeout=10
+            ) as recovered_client:
+                response = await recovered_client.post(
+                    "/predict",
+                    json={"prompt": "recovered"},
+                    headers={"x-request-id": "recovered"},
+                )
+                assert response.status_code == 200
+                assert response.headers["x-replica-id"] == "a"
+
+            def check_recovery_metrics():
+                samples = fetch_prometheus_metrics([f"127.0.0.1:{metrics_port}"]).get(
+                    "ray_serve_haproxy_ingress_router_requests_total", []
+                )
+                assert (
+                    sum(
+                        s.value
+                        for s in samples
+                        if s.labels.get("application") == backend.app_name
+                    )
+                    == 13
+                )
+                return check_metrics()  # Still exactly 12 fallbacks.
+
+            await async_wait_for_condition(check_recovery_metrics, timeout=30)
+    finally:
+        await api.stop()
+        collector.close()
+        _shutdown_fake_servers(tuple(servers), tuple(threads))
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_ingress_router_fallback_yaml(ray_shutdown, enabled):
+    ray.init(num_cpus=1, include_dashboard=False)
+    config_path = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "ingress_router_fallback.yaml"
+    )
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    if not enabled:
+        config["applications"][0]["deployments"][0]["request_router_config"][
+            "ingress_router_fallback"
+        ] = False
+    config = ServeDeploySchema.model_validate(config)
+    serve.start()
+    _get_global_client().deploy_apps(config, _blocking=True)
+    router = serve.get_deployment_handle("Router", app_name="app")
+
+    def router_ready():
+        # App readiness can precede HAProxy's router membership update.
+        requests.post("http://127.0.0.1:8000/", json={}, timeout=10)
+        return router.get_num_requests.remote().result(timeout_s=10) > 0
+
+    wait_for_condition(router_ready)
+    # The actual ingress router returns 503. Only the YAML option permits
+    # HAProxy to send the request to the healthy serving replica instead.
+    for i in range(8):
+        response = requests.post(
+            "http://127.0.0.1:8000/", json={"request": i}, timeout=10
+        )
+        assert response.status_code == (200 if enabled else 503)
+        if enabled:
+            assert response.json() == {"request": i}
+        else:
+            assert response.headers["x-serve-reason"] == "router_non_200"
 
 
 if __name__ == "__main__":

@@ -162,7 +162,7 @@ frontend http_frontend
     # metrics are also enabled, the router-specific fields are appended to the same
     # line.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
-    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)] router_status=%[var(txn.ingress_request_router_status)] fallback=%[var(txn.ingress_request_router_fallback)]{% endif %}]"
     {%- endif %}
     {%- if config.root_path %}
     # Strip the configured global root_path so the health/routes endpoints, the
@@ -213,7 +213,7 @@ frontend http_frontend
     # backend. Backends are sorted longest-prefix-first, and the !found guard
     # ensures only the longest match wins.
     {%- for backend in backends %}
-    {%- if backend.ingress_request_router_servers %}
+    {%- if backend.ingress_request_router_servers or backend.ingress_router_fallback %}
     http-request set-var(txn.ingress_request_router_app) str({{ backend.name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.ingress_request_router_app) -m found }
     {%- endif %}
     {%- endfor %}
@@ -225,6 +225,14 @@ frontend http_frontend
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    # Opted-in apps use the primary backend's existing balancing policy on any
+    # ingress router request failure, including an empty router pool.
+    {%- for backend in backends %}
+    {%- if backend.ingress_router_fallback %}
+    http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m found }
+    http-request set-var(txn.ingress_request_router_fallback) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m found }
+    {%- endif %}
+    {%- endfor %}
     # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
     # per app so the 503 below fails loud for apps with none.
     {%- for backend in backends %}
@@ -232,13 +240,13 @@ frontend http_frontend
     http-request set-var(txn.ingress_request_router_recoverable) str(1) if { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" } { var(txn.ingress_request_router_failed) -m str "unknown_replica_id" }
     {%- endif %}
     {%- endfor %}
-    # 503 on any router failure except a recoverable pin-miss. Must precede the
-    # use_backend rules so failures never fall through to the primary backend.
+    # 503 on router failures unless the app enables recovery. Must precede the
+    # use_backend rules so unrecoverable failures cannot reach the primary backend.
     http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found } !{ var(txn.ingress_request_router_recoverable) -m found }
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
-    {%- if has_ingress_request_router and backend.ingress_request_router_servers %}
+    {%- if has_ingress_request_router and backend.ingress_request_router_servers and not backend.ingress_router_fallback %}
     use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
     {%- if backend.fallback_server %}
     # Pin-miss recovery: route into the router backend, which picks the fallback.
@@ -261,7 +269,9 @@ backend {{ backend.name or 'unknown' }}
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
+    {%- if backend.ingress_router_fallback and config.ingress_timeout_server_s is not none %}
+    timeout server {{ config.ingress_timeout_server_s }}s
+    {%- elif backend.timeout_server_s is not none %}
     timeout server {{ backend.timeout_server_s }}s
     {%- endif %}
     {%- if backend.timeout_client_s is not none %}
@@ -287,6 +297,13 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
+    {%- if backend.ingress_router_fallback %}
+    # Share connection counts between router-selected and fallback requests so
+    # leastconn accounts for requests already in progress when the router fails.
+    {%- for server in backend.servers %}
+    use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
+    {%- endfor %}
+    {%- endif %}
     # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
@@ -295,7 +312,7 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
-{%- if has_ingress_request_router and backend.ingress_request_router_servers %}
+{%- if has_ingress_request_router and backend.ingress_request_router_servers and not backend.ingress_router_fallback %}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
     # Keep the pinned data-plane path on the same connection policy as the
