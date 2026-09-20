@@ -173,6 +173,10 @@ message ReleaseUnusedActorWorkersRequest {
 
 message ReleaseUnusedActorWorkersReply {}
 
+message CancelStaleActorLeasesRequest {}
+
+message CancelStaleActorLeasesReply {}
+
 message ShutdownRayletRequest {
   /// Whether the shutdown request is graceful or not.
   bool graceful = 1;
@@ -494,6 +498,14 @@ service NodeManagerService {
   // Failure: TODO: We log warning, but need to fix to retry.
   rpc ReleaseUnusedActorWorkers(ReleaseUnusedActorWorkersRequest)
       returns (ReleaseUnusedActorWorkersReply);
+  // This method is only used by GCS, and the purpose is to cancel the actor creation
+  // leases that are still queued on the raylet. When GCS restarts, it doesn't know the
+  // leases that it has requested in the previous lifecycle. In this case, GCS will ask
+  // the raylet to cancel all of them, and it won't send new actor creation leases to
+  // the raylet until it receives the reply.
+  // Failure: We log warning.
+  rpc CancelStaleActorLeases(CancelStaleActorLeasesRequest)
+      returns (CancelStaleActorLeasesReply);
   // Shutdown the raylet (node manager).
   // Failure: TODO: This + DrainRaylet should retry behavior needs to be thought of from
   // oss autoscaler level.

@@ -89,6 +89,11 @@ class GcsActorSchedulerInterface {
   virtual void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
+  /// Notify raylets to cancel the actor creation leases still queued on them, which
+  /// were requested by the previous GCS. Actor creation leases are not sent to a
+  /// raylet until it replies.
+  virtual void CancelStaleActorLeases() = 0;
+
   /// Handle the destruction of an actor.
   ///
   /// \param actor The actor to be destoryed.
@@ -170,6 +175,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node_to_workers Workers used by each node.
   void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
+
+  /// Notify raylets to cancel the actor creation leases still queued on them, which
+  /// were requested by the previous GCS. Actor creation leases are not sent to a
+  /// raylet until it replies.
+  void CancelStaleActorLeases() override;
 
   /// Handle the destruction of an actor.
   ///
@@ -354,6 +364,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   GcsActorSchedulerSuccessCallback schedule_success_handler_;
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
+  /// The nodes which are cancelling stale actor creation leases.
+  absl::flat_hash_set<NodeID> nodes_of_cancelling_stale_leases_;
   /// The cached raylet clients used to communicate with raylet.
   rpc::RayletClientPool &raylet_client_pool_;
   /// Core worker client pool shared by the GCS.
@@ -383,6 +395,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
   FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
+  FRIEND_TEST(GcsActorSchedulerTest, TestCancelStaleActorLeases);
   FRIEND_TEST(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity);
   FRIEND_TEST(GcsActorSchedulerTest, TestSelectForwardingNodeForNodeAffinityStrategy);
 
