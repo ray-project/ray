@@ -801,8 +801,7 @@ def read_datasource(
         placement_group=cur_pg,
     )
 
-    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
-    # removing LazyBlockList code path.
+    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
