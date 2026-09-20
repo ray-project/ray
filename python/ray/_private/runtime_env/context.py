@@ -43,6 +43,7 @@ class RuntimeEnvContext:
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
+        launcher_path = os.environ.get("PATH")
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
@@ -96,7 +97,10 @@ class RuntimeEnvContext:
                     path_prefix + os.pathsep + path if path else path_prefix
                 )
             for key in sorted(container_env):
-                container_command.extend(["--env", key])
+                if key == "PATH":
+                    container_command.extend(["--env", f"PATH={container_env[key]}"])
+                else:
+                    container_command.extend(["--env", key])
             for mount in self.container.get("mounts", []):
                 mount_spec = f"{mount['source']}:{mount['target']}"
                 mount_options = []
@@ -116,7 +120,10 @@ class RuntimeEnvContext:
                 ]
             )
             logger.debug("Exec'ing Python worker in image %s.", self.container["image"])
-            executable_path = shutil.which(container_command[0])
+            executable_path = shutil.which(
+                container_command[0],
+                path=launcher_path if launcher_path is not None else os.defpath,
+            )
             if not executable_path:
                 raise FileNotFoundError(
                     f"'{container_command[0]}' was not found in PATH; it is "
@@ -124,7 +131,13 @@ class RuntimeEnvContext:
                     "environment."
                 )
             exec_env = os.environ.copy()
-            exec_env.update(container_env)
+            exec_env.update(
+                {key: value for key, value in container_env.items() if key != "PATH"}
+            )
+            if launcher_path is None:
+                exec_env.pop("PATH", None)
+            else:
+                exec_env["PATH"] = launcher_path
             os.execve(executable_path, container_command, exec_env)
             return
 

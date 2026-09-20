@@ -331,12 +331,14 @@ class ReferenceTable:
         source_process: str,
         dynamic_uris: Optional[List[Tuple[str, UriType]]] = None,
     ) -> None:
-        """Release dynamic URIs of an env dereferenced during its creation.
+        """Reconcile dynamic URIs after an environment finishes creation.
 
         DeleteRuntimeEnvIfPossible is not serialized with creation, so every
         reference can be dropped while the environment is still being
         created. The URIs and env cache entry published by the finished
-        creation would then stay marked used forever; release them here.
+        creation would then stay marked used forever; release them here. A new
+        reference can also arrive after the old binding was removed but before
+        creation finishes; bind the resolved URIs to that reference here.
 
         ``dynamic_uris`` must carry the URIs resolved by the creation itself:
         when the delete arrived after the URIs were bound, the binding in
@@ -347,6 +349,7 @@ class ReferenceTable:
         if source_process in self._reference_exclude_sources:
             return
         if serialized_env in self._runtime_env_reference:
+            self.add_dynamic_uris(serialized_env, dynamic_uris or [])
             return
         candidates = list(self._dynamic_uris.pop(serialized_env, []))
         for uri in dynamic_uris or []:
@@ -551,7 +554,9 @@ class RuntimeEnvAgent:
                         or runtime_env[plugin.name] is None
                     ):
                         return
-                    resolved_uris = await plugin.resolve_uris(runtime_env, per_job_logger)
+                    resolved_uris = await plugin.resolve_uris(
+                        runtime_env, per_job_logger
+                    )
                     if resolved_uris is not None:
                         dynamic_uris = [
                             (uri, UriType(plugin.name)) for uri in resolved_uris

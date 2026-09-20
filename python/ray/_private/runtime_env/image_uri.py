@@ -24,7 +24,7 @@ try:
 except ImportError:  # pragma: no cover - image_uri is only supported on Linux.
     fcntl = None
 
-_CACHE_SCHEMA_VERSION = 1
+_CACHE_SCHEMA_VERSION = 2
 _CACHE_URI_PREFIX = "image-pip://"
 _DEFAULT_PIP_INSTALL_OPTIONS = [
     "--disable-pip-version-check",
@@ -448,6 +448,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         self._ray_tmp_dir = ray_tmp_dir
         self._cache_dir: Optional[str] = None
         self._metadata_by_image_id: Dict[str, ImageMetadata] = {}
+        self._probe_locks: Dict[str, asyncio.Lock] = {}
         self._metadata_by_uri: Dict[str, ImageMetadata] = {}
         self._install_env_by_uri: Dict[str, Dict[str, str]] = {}
         self._create_locks: Dict[str, asyncio.Lock] = {}
@@ -525,13 +526,9 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             for key, value in os.environ.items()
             if key.startswith("PIP_") or key in pip_env_names
         }
-        effective_env.update(
-            {
-                key: value
-                for key, value in runtime_env.env_vars().items()
-                if key.startswith("PIP_") or key in pip_env_names
-            }
-        )
+        # Explicit runtime env variables must be available to build backends and
+        # setup hooks during pip install. They also become part of the cache key.
+        effective_env.update(runtime_env.env_vars())
         return effective_env
 
     async def resolve_uris(
@@ -548,12 +545,18 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             runtime_env.image_uri(), logger
         )
         image_id = inspect_data.get("Id") or inspect_data.get("ID")
+        if not image_id:
+            raise RuntimeError(f"Podman returned no image ID for {image_reference}.")
         metadata = self._metadata_by_image_id.get(image_id)
         if metadata is None:
-            # Probing starts a container, so reuse the result while the
-            # resolved image ID stays the same.
-            metadata = await _probe_image(image_reference, inspect_data, logger)
-            self._metadata_by_image_id[metadata.image_id] = metadata
+            probe_lock = self._probe_locks.setdefault(image_id, asyncio.Lock())
+            async with probe_lock:
+                metadata = self._metadata_by_image_id.get(image_id)
+                if metadata is None:
+                    # Probing starts a container, so reuse the result while the
+                    # resolved image ID stays the same.
+                    metadata = await _probe_image(image_reference, inspect_data, logger)
+                    self._metadata_by_image_id[metadata.image_id] = metadata
         _check_host_compatibility(
             metadata, image_reference, runtime_env.has_pip(), logger
         )
@@ -579,20 +582,42 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                 os.path.join(path, "manifest.json"), encoding="utf-8"
             ) as manifest_file:
                 size_bytes = json.load(manifest_file).get("size_bytes")
-            return size_bytes if isinstance(size_bytes, int) else None
+            return (
+                size_bytes
+                if isinstance(size_bytes, int)
+                and not isinstance(size_bytes, bool)
+                and size_bytes >= 0
+                else None
+            )
         except (OSError, ValueError, TypeError, AttributeError):
             return None
 
     @staticmethod
-    def _manifest_is_valid(path: str, uri: str) -> bool:
+    def _manifest_is_valid(path: str, uri: str, has_pip: bool) -> bool:
         manifest_path = os.path.join(path, "manifest.json")
         try:
             with open(manifest_path, encoding="utf-8") as manifest_file:
                 manifest = json.load(manifest_file)
-            return (
-                manifest.get("schema_version") == _CACHE_SCHEMA_VERSION
-                and manifest.get("uri") == uri
-            )
+            size_bytes = manifest.get("size_bytes")
+            if (
+                manifest.get("schema_version") != _CACHE_SCHEMA_VERSION
+                or manifest.get("uri") != uri
+                or manifest.get("has_pip") is not has_pip
+                or not isinstance(size_bytes, int)
+                or isinstance(size_bytes, bool)
+                or size_bytes < 0
+            ):
+                return False
+            if has_pip:
+                virtualenv_python = os.path.join(path, "virtualenv", "bin", "python")
+                # venv normally creates a symlink to the image's interpreter.
+                # Its target may not exist on the host that owns this cache.
+                if os.path.islink(virtualenv_python):
+                    return True
+                return os.path.isfile(virtualenv_python) and os.access(
+                    virtualenv_python, os.X_OK
+                )
+            return True
         except (OSError, ValueError, TypeError, AttributeError):
             return False
 
@@ -634,13 +659,30 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             "-v",
             f"{staging_path}:{final_path}:rw,z",
         ]
+        launcher_path = os.environ.get("PATH")
         child_env = os.environ.copy()
         child_env.update(install_env)
         for key in sorted(install_env):
             # Podman reads the value from its own environment. This keeps secrets
             # out of the logged command line.
-            command.extend(["--env", key])
+            if key == "PATH":
+                command.extend(["--env", f"PATH={install_env[key]}"])
+            else:
+                command.extend(["--env", key])
         command.extend(["--entrypoint", entrypoint, metadata.image_id, *args])
+        executable_path = shutil.which(
+            command[0], path=launcher_path if launcher_path is not None else os.defpath
+        )
+        if not executable_path:
+            raise FileNotFoundError(
+                f"'{command[0]}' was not found in the host PATH; it is required "
+                "to prepare pip dependencies for image_uri."
+            )
+        command[0] = executable_path
+        if launcher_path is None:
+            child_env.pop("PATH", None)
+        else:
+            child_env["PATH"] = launcher_path
         try:
             return await check_output_cmd(command, logger=logger, env=child_env)
         except BaseException:
@@ -773,13 +815,13 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             return get_directory_size_bytes(final_path)
 
         async with self._create_locks[uri]:
-            if self._manifest_is_valid(final_path, uri):
+            if self._manifest_is_valid(final_path, uri, runtime_env.has_pip()):
                 return await loop.run_in_executor(None, measure)
 
             lock_path = final_path + ".lock"
             lock_file = await self._acquire_file_lock(lock_path)
             try:
-                if self._manifest_is_valid(final_path, uri):
+                if self._manifest_is_valid(final_path, uri, runtime_env.has_pip()):
                     return await loop.run_in_executor(None, measure)
 
                 def remove_previous_trees() -> None:
@@ -814,6 +856,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                     manifest = {
                         "schema_version": _CACHE_SCHEMA_VERSION,
                         "uri": uri,
+                        "has_pip": runtime_env.has_pip(),
                         "image": asdict(self._metadata_by_uri[uri]),
                         "pip": _canonical_pip_config(runtime_env),
                         # Recorded so cache hits and eviction never have to
@@ -850,12 +893,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
+    ) -> Optional[int]:
         cache_path = self._get_cache_path(uri)
-        # The URI leaves this cache's tracking regardless of whether the
-        # directory is removed below, so its recorded contribution to the
-        # cache size must be subtracted either way; otherwise a skipped
-        # deletion followed by a re-add double-counts the directory.
         manifest_size = self._read_manifest_size(cache_path)
         size_bytes = manifest_size or 0
         lock_file = self._try_acquire_file_lock(cache_path + ".lock")
@@ -866,6 +905,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             logger.warning(
                 f"Not deleting {cache_path}: another process holds its lock."
             )
+            return None
         else:
             try:
                 if os.path.exists(cache_path):
@@ -883,6 +923,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                     ).start()
             except OSError as error:
                 logger.warning(f"Failed to delete {cache_path}: {error}")
+                return None
             finally:
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
                 lock_file.close()
@@ -911,7 +952,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         path_prefix = None
         if runtime_env.has_pip():
             cache_path = self._get_cache_path(uri)
-            if not self._manifest_is_valid(cache_path, uri):
+            if not self._manifest_is_valid(cache_path, uri, has_pip=True):
                 raise RuntimeError(f"Cached image pip environment is incomplete: {uri}")
             mounts.append(
                 {

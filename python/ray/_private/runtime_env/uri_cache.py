@@ -27,7 +27,7 @@ class URICache:
 
     def __init__(
         self,
-        delete_fn: Optional[Callable[[str, logging.Logger], int]] = None,
+        delete_fn: Optional[Callable[[str, logging.Logger], Optional[int]]] = None,
         max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
         debug_mode: bool = False,
     ):
@@ -97,14 +97,21 @@ class URICache:
 
     def _evict_if_needed(self, logger: logging.Logger = default_logger):
         """Evict unused URIs (if they exist) until total size <= max size."""
+        deferred_uris = set()
         while (
-            self._unused_uris
+            self._unused_uris - deferred_uris
             and self.get_total_size_bytes() > self.max_total_size_bytes
         ):
             # TODO(architkulkarni): Evict least recently used URI instead
-            arbitrary_unused_uri = next(iter(self._unused_uris))
-            self._unused_uris.remove(arbitrary_unused_uri)
+            arbitrary_unused_uri = next(iter(self._unused_uris - deferred_uris))
             num_bytes_deleted = self._delete_fn(arbitrary_unused_uri, logger)
+            if num_bytes_deleted is None:
+                # None means the deletion could not complete and can be retried
+                # on a future eviction pass.
+                deferred_uris.add(arbitrary_unused_uri)
+                logger.info("Deferred deletion of URI %s.", arbitrary_unused_uri)
+                continue
+            self._unused_uris.remove(arbitrary_unused_uri)
             self._total_size_bytes -= num_bytes_deleted
             logger.info(
                 f"Deleted URI {arbitrary_unused_uri} with size " f"{num_bytes_deleted}."
