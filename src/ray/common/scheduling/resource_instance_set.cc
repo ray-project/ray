@@ -300,13 +300,12 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
   }
 
   std::vector<FixedPoint> allocation(available.size());
-  FixedPoint remaining_demand = demand;
 
   if (available.size() == 1) {
     // This resource has just one instance.
-    if (available[0] >= remaining_demand) {
-      available[0] -= remaining_demand;
-      allocation[0] = remaining_demand;
+    if (available[0] >= demand) {
+      available[0] -= demand;
+      allocation[0] = demand;
       Set(resource_id, std::move(available));
       return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
     } else {
@@ -315,51 +314,41 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     }
   }
 
-  // If resources has multiple instances, each instance has total capacity of 1.
-  //
-  // As long as remaining_demand is greater than 1.,
-  // allocate full unit-capacity instances until the remaining_demand becomes fractional.
-  // Then try to find the best fit for the fractional remaining_resources. Best fit means
-  // allocating the resource instance with the smallest available capacity greater than
-  // remaining_demand
-  if (remaining_demand >= 1.) {
+  // Demand > 1 must be a whole number because fractional demand >= 1 is invalid,
+  // so we only allocate full-capacity instances for integer demand
+  if (demand >= 1.) {
+    FixedPoint remaining_demand = demand;
     for (size_t i = 0; i < available.size(); i++) {
       if (available[i] == 1.) {
-        // Allocate a full unit-capacity instance.
         allocation[i] = 1.;
         available[i] = 0;
         remaining_demand -= 1.;
       }
-      if (remaining_demand < 1.) {
+      if (remaining_demand == 0.) {
         break;
       }
     }
-  }
-
-  if (remaining_demand >= 1.) {
-    // Cannot satisfy a demand greater than one if no unit capacity resource is available.
-    return std::nullopt;
-  }
-
-  // Remaining demand is fractional. Find the best fit, if exists.
-  if (remaining_demand > 0.) {
+    // All available full capabity instance cannot satisfy the demand
+    if (remaining_demand > 0.) {
+      return std::nullopt;
+    }
+  } else if (demand > 0.) {
+    // Fractional demand (0 < demand < 1): find the best-fit instance.
     int64_t idx_best_fit = -1;
     FixedPoint available_best_fit = 1.;
     for (size_t i = 0; i < available.size(); i++) {
-      if (available[i] >= remaining_demand) {
-        if (idx_best_fit == -1 ||
-            (available[i] - remaining_demand < available_best_fit)) {
-          available_best_fit = available[i] - remaining_demand;
+      if (available[i] >= demand) {
+        if (idx_best_fit == -1 || (available[i] - demand < available_best_fit)) {
+          available_best_fit = available[i] - demand;
           idx_best_fit = static_cast<int64_t>(i);
         }
       }
     }
     if (idx_best_fit == -1) {
       return std::nullopt;
-    } else {
-      allocation[idx_best_fit] = remaining_demand;
-      available[idx_best_fit] -= remaining_demand;
     }
+    allocation[idx_best_fit] = demand;
+    available[idx_best_fit] -= demand;
   }
 
   Set(resource_id, std::move(available));

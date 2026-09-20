@@ -94,16 +94,15 @@ class NodeResourceInstanceSet {
  private:
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
   ///
-  /// Allocate full unit-capacity instances until
-  /// demand becomes fractional, and then satisfy the fractional demand using the
-  /// instance with the smallest available capacity that can satisfy the fractional
-  /// demand. For example, assume a resource conisting of 4 instances, with available
-  /// capacities: (1., 1., .7, 0.5) and deman of 1.2. Then we allocate one full
-  /// instance and then allocate 0.2 of the 0.5 instance (as this is the instance
-  /// with the smalest available capacity that can satisfy the remaining demand of 0.2).
-  /// As a result remaining available capacities will be (0., 1., .7, .3).
-  /// Thus, we will allocate a bunch of full instances and
-  /// at most a fractional instance.
+  /// Demand constraints and allocation strategy:
+  /// - If demand >= 1, it must be an integer (e.g., 1.6 is invalid). In this case,
+  ///   only instances with full availability (1.0) are allocated.
+  /// - If demand < 1 (fractional), we select the best-fit instance, defined as
+  ///   the instance with the minimal availability that can still satisfy the demand.
+  /// - Fractional capacities across instances cannot be combined to satisfy demand.
+  ///   For example, if demand = 1.0 and available instances are [0.5, 0.5], the
+  ///   demand cannot be fulfilled. In this case, demand can only be satisfied by an
+  ///   instance with 1.0 availability.
   ///
   /// During resource allocation with a placement group, no matter whether the
   /// allocation requirement specifies a bundle index, we generate the
