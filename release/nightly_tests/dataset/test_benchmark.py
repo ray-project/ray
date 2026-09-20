@@ -166,6 +166,34 @@ def test_write_result_skips_checks_when_a_case_failed(tmp_path, monkeypatch):
     dead_nodes.assert_not_called()
 
 
+def test_write_result_skips_checks_when_a_post_case_assertion_failed(
+    tmp_path, monkeypatch
+):
+    """Assertions raised after the workload (e.g. head-node memory) count too."""
+    monkeypatch.setenv("TEST_OUTPUT_JSON", str(tmp_path / "result.json"))
+    benchmark = _all_checks_off(
+        fail_on_dead_nodes=True,
+        max_head_node_memory_bytes=1,
+        max_sched_loop_duration_s=None,
+    )
+
+    with patch.object(benchmark_module, "get_state_from_address"), patch.object(
+        benchmark_module, "_get_spilled_bytes_total", return_value=0
+    ), patch.object(benchmark_module, "ObjectStoreMemorySampler"), patch.object(
+        benchmark_module.ray, "get_runtime_context"
+    ), patch.object(
+        benchmark_module, "_get_peak_head_node_memory_used_bytes", return_value=2.0
+    ):
+        with pytest.raises(AssertionError, match="head-node physical memory"):
+            benchmark.run_fn("main", lambda: None)
+
+    with patch.object(
+        benchmark_module, "_get_unexpectedly_dead_nodes", return_value=["n1"]
+    ) as dead_nodes:
+        benchmark.write_result()
+    dead_nodes.assert_not_called()
+
+
 def test_invalid_limits():
     with pytest.raises(ValueError, match="must be nonnegative"):
         Benchmark(max_object_store_utilization=-0.1)

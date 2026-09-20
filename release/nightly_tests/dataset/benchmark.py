@@ -497,6 +497,19 @@ class Benchmark:
         Call ``write_result`` in a ``finally`` block to save metrics even if this
         method fails.
         """
+        try:
+            self._run_case(name, fn, *fn_args, **fn_kwargs)
+        except BaseException:
+            self._failed_cases.append(name)
+            raise
+
+    def _run_case(
+        self,
+        name: str,
+        fn: Callable[..., Dict[Union[str, BenchmarkMetric], Any]],
+        *fn_args,
+        **fn_kwargs,
+    ):
         gc.collect()
 
         print(f"Running case: {name}")
@@ -509,9 +522,6 @@ class Benchmark:
 
             try:
                 fn_output = fn(*fn_args, **fn_kwargs)
-            except BaseException:
-                self._failed_cases.append(name)
-                raise
             finally:
                 duration = time.perf_counter() - start_time
                 end_unix_time = time.time()
