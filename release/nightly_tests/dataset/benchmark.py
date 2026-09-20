@@ -13,6 +13,9 @@ import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.core.generated import common_pb2
 from ray.data import DataContext
+from ray.data._internal.execution.streaming_executor_state import (
+    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+)
 from ray.util.state import list_runtime_envs
 
 try:
@@ -401,6 +404,8 @@ class Benchmark:
             fraction of aggregate capacity. Set to ``None`` to disable the check.
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
+        max_sched_loop_duration_s: If set, fail if any dataset that executed during
+            the run had a scheduling loop iteration longer than this limit.
 
     The cluster health checks run in ``write_result`` after the metrics JSON is
     written, and only when every case succeeded. The worker and object-store checks
@@ -443,6 +448,9 @@ class Benchmark:
         debug_progress_manager: bool = True,
         max_object_store_utilization: Optional[float] = 1.0,
         max_head_node_memory_bytes: Optional[int] = None,
+        max_sched_loop_duration_s: Optional[float] = (
+            2 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
+        ),
     ):
         if (
             max_object_store_utilization is not None
@@ -451,6 +459,8 @@ class Benchmark:
             raise ValueError("max_object_store_utilization must be nonnegative.")
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
+        if max_sched_loop_duration_s is not None and max_sched_loop_duration_s <= 0:
+            raise ValueError("max_sched_loop_duration_s must be greater than 0.")
 
         self.result = {}
         self._fail_on_worker_oom = fail_on_worker_oom
@@ -458,11 +468,15 @@ class Benchmark:
         self._fail_on_dead_nodes = fail_on_dead_nodes
         self._max_object_store_utilization = max_object_store_utilization
         self._max_head_node_memory_bytes = max_head_node_memory_bytes
+        self._max_sched_loop_duration_s = max_sched_loop_duration_s
         self._failed_cases: List[str] = []
         self._first_case_start_unix_time: Optional[float] = None
         self._last_case_end_unix_time: Optional[float] = None
 
         DataContext.get_current().debug_resource_manager = debug_progress_manager
+        # Stats summaries are required for the scheduling loop duration assertion
+        # in `run_fn`.
+        DataContext.get_current().enable_stats_summary_collection = True
 
     def run_fn(
         self,
@@ -555,6 +569,25 @@ class Benchmark:
                 f"configured limit "
                 f"({_bytes_to_gb(max_head_node_memory_bytes)} GiB)."
             )
+
+        if self._max_sched_loop_duration_s is not None:
+            # This includes executions that finished before `run_fn` was called.
+            # The code assumes this isn't an issue to simplify the implementation.
+            stats_summaries = ray.data.list_stats_summaries()
+            datasets_exceeding_limit = [
+                f"{summary.dataset_uuid} "
+                f"({summary.streaming_exec_schedule_max_s} seconds)"
+                for summary in stats_summaries
+                if summary.streaming_exec_schedule_max_s
+                > self._max_sched_loop_duration_s
+            ]
+            if datasets_exceeding_limit:
+                raise AssertionError(
+                    f"Benchmark case {name!r} had datasets whose max scheduling loop "
+                    f"duration exceeded the configured limit of "
+                    f"{self._max_sched_loop_duration_s} seconds: "
+                    f"{', '.join(datasets_exceeding_limit)}."
+                )
 
     def write_result(self):
         """Write all results to the appropriate JSON file.

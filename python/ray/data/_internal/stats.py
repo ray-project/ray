@@ -436,15 +436,13 @@ class _DatasetStatsBuilder:
 
 @ray.remote(num_cpus=0)
 class _StatsActor:
-    """Actor holding stats for blocks created by LazyBlockList.
+    """Actor holding execution stats and metadata for datasets.
 
     This actor is shared across all datasets created in the same cluster.
     In order to cap memory usage, we set a max number of stats to keep
     in the actor. When this limit is exceeded, the stats will be garbage
     collected in FIFO order.
-
-    TODO(ekl) we should consider refactoring LazyBlockList so stats can be
-    extracted without using an out-of-band actor."""
+    """
 
     def __init__(self, max_stats=1000):
         # Mapping from uuid -> (task_id -> list of blocks statistics).
