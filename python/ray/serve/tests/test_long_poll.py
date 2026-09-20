@@ -659,5 +659,84 @@ def test_long_poll_client_disable_propagates_to_host_log():
     assert "not running" in output.lower(), output
 
 
+def _single_update(key: str, snapshot_id: int, snapshot) -> Dict[str, UpdatedObject]:
+    return {
+        key: UpdatedObject(
+            object_snapshot=snapshot,
+            snapshot_id=snapshot_id,
+            notify_timestamp=time.time(),
+        )
+    }
+
+
+@pytest.mark.asyncio
+async def test_listener_exception_does_not_stop_polling():
+    """A listener that raises must not stop the client from polling.
+
+    ``_process_update`` runs ``callback(update)`` and the counter that triggers
+    the next ``_poll_next()`` inside the same scheduled closure. If the callback
+    raises, the counter is never reached, ``_poll_next()`` is never called again
+    and the client stops asking the host for updates -- while ``is_running``
+    stays True, so nothing reports it. A proxy or router in that state keeps
+    serving the last route table / replica set it saw.
+    """
+    loop = asyncio.get_running_loop()
+    host_actor = MagicMock()
+
+    def failing_listener(_):
+        raise RuntimeError("listener failed")
+
+    client = LongPollClient(
+        host_actor,
+        {"key_1": failing_listener},
+        call_in_event_loop=loop,
+        client_id="test_listener_exception_does_not_stop_polling",
+    )
+    await async_wait_for_condition(
+        lambda: host_actor.listen_for_change.remote.call_count == 1, timeout=5
+    )
+
+    client._process_update(_single_update("key_1", 1, 100))
+
+    await async_wait_for_condition(
+        lambda: host_actor.listen_for_change.remote.call_count == 2, timeout=5
+    )
+    assert client.is_running
+
+
+@pytest.mark.asyncio
+async def test_next_poll_waits_for_every_listener():
+    """The next poll is issued once per batch, after every listener has run.
+
+    Passes before and after the fix above: it pins the serialization contract
+    that ``_on_callback_completed`` exists for, so "always count the callback"
+    cannot turn into "poll again as soon as any listener returns".
+    """
+    loop = asyncio.get_running_loop()
+    host_actor = MagicMock()
+
+    seen = []
+    client = LongPollClient(
+        host_actor,
+        {
+            "key_1": lambda v: seen.append(("key_1", v)),
+            "key_2": lambda v: seen.append(("key_2", v)),
+        },
+        call_in_event_loop=loop,
+        client_id="test_next_poll_waits_for_every_listener",
+    )
+    await async_wait_for_condition(
+        lambda: host_actor.listen_for_change.remote.call_count == 1, timeout=5
+    )
+
+    updates = _single_update("key_1", 1, 100)
+    updates.update(_single_update("key_2", 1, 200))
+    client._process_update(updates)
+
+    await async_wait_for_condition(lambda: len(seen) == 2, timeout=5)
+    assert host_actor.listen_for_change.remote.call_count == 2
+    assert client.snapshot_ids == {"key_1": 1, "key_2": 1}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
