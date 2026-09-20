@@ -702,6 +702,7 @@ async def test_listener_exception_does_not_stop_polling():
         lambda: host_actor.listen_for_change.remote.call_count == 2, timeout=5
     )
     assert client.is_running
+    client.stop()
 
 
 @pytest.mark.asyncio
@@ -736,6 +737,7 @@ async def test_next_poll_waits_for_every_listener():
     await async_wait_for_condition(lambda: len(seen) == 2, timeout=5)
     assert host_actor.listen_for_change.remote.call_count == 2
     assert client.snapshot_ids == {"key_1": 1, "key_2": 1}
+    client.stop()
 
 
 if __name__ == "__main__":
