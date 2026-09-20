@@ -1241,7 +1241,7 @@ class RequestRouter(ABC):
                 start_time = time.time()
                 backoff_index = 0
                 pending_request = self._get_next_pending_request_to_route()
-                # Other routing tasks may already own all remaining requests.
+                # No more pending requests for this task.
                 if pending_request is None:
                     break
                 request_metadata = pending_request.metadata
@@ -1299,6 +1299,7 @@ class RequestRouter(ABC):
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
         finally:
+            # Remove completed or cancelled entries from the fulfillment queue.
             while (
                 self._pending_requests_to_fulfill
                 and self._pending_requests_to_fulfill[0].future.done()
@@ -1308,7 +1309,8 @@ class RequestRouter(ABC):
             assert routing_task is not None
             self._routing_tasks.remove(routing_task)
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
-            # Requests may have arrived while this task was exiting.
+            # Requests may have arrived while this task is finishing.
+            # Start replacement tasks if routing work remains.
             if self._pending_requests_to_route:
                 self._maybe_start_routing_tasks()
 
