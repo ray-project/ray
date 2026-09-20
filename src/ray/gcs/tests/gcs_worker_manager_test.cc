@@ -409,7 +409,7 @@ TEST_F(GcsWorkerManagerTest, TestUpdateUnknownWorkerDoesNotCrash) {
                                std::function<void()> failure) { promise.set_value(); };
     worker_manager->HandleUpdateWorkerDebuggerPort(request, &reply, callback);
     promise.get_future().get();
-    ASSERT_NE(reply.status().code(), 0);
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
   }
 
   {
@@ -423,7 +423,7 @@ TEST_F(GcsWorkerManagerTest, TestUpdateUnknownWorkerDoesNotCrash) {
                                std::function<void()> failure) { promise.set_value(); };
     worker_manager->HandleUpdateWorkerNumPausedThreads(request, &reply, callback);
     promise.get_future().get();
-    ASSERT_NE(reply.status().code(), 0);
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
   }
 }
 
