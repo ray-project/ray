@@ -21,6 +21,7 @@ from ray._private.runtime_env.agent.runtime_env_agent import (
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.image_uri import (
+    _CACHE_SCHEMA_VERSION,
     ImageMetadata,
     ImageURIPlugin,
     _canonical_pip_config,
@@ -219,6 +220,41 @@ def test_reference_table_releases_uris_bound_before_delete():
     assert unused_runtime_envs == [serialized_env]
 
 
+def test_reference_table_rebinds_uris_after_recreate_race():
+    unused_uris = []
+    unused_runtime_envs = []
+    reference_table = ReferenceTable(
+        lambda runtime_env: [],
+        unused_uris.extend,
+        unused_runtime_envs.append,
+    )
+    runtime_env = RuntimeEnv(image_uri="example/image:latest", pip=["package==1"])
+    serialized_env = runtime_env.serialize()
+    dynamic_uri = ("image-pip://cache-key", "image_uri")
+
+    # The first reference is deleted after URI resolution. A new reference
+    # arrives before creation completes, after the old URI binding was popped.
+    reference_table.increase_reference(runtime_env, serialized_env, "raylet")
+    reference_table.add_dynamic_uris(serialized_env, [dynamic_uri])
+    reference_table.decrease_reference(runtime_env, serialized_env, "raylet")
+    unused_uris.clear()
+    unused_runtime_envs.clear()
+    reference_table.increase_reference(runtime_env, serialized_env, "raylet")
+
+    reference_table.release_dynamic_uris_if_unreferenced(
+        serialized_env, "raylet", [dynamic_uri]
+    )
+
+    assert reference_table._dynamic_uris[serialized_env] == [dynamic_uri]
+    assert reference_table._uri_reference[dynamic_uri[0]] == 1
+    assert unused_uris == []
+    assert unused_runtime_envs == []
+
+    reference_table.decrease_reference(runtime_env, serialized_env, "raylet")
+    assert unused_uris == [dynamic_uri]
+    assert unused_runtime_envs == [serialized_env]
+
+
 def test_image_uri_cache_key_covers_image_python_and_requirements():
     metadata = _image_metadata_for_test()
     pip_config = {
@@ -247,6 +283,27 @@ def test_image_uri_cache_key_covers_image_python_and_requirements():
     )
 
 
+def test_image_uri_install_env_includes_explicit_env_vars(monkeypatch):
+    monkeypatch.setenv("PIP_INDEX_URL", "https://host.example/simple")
+    monkeypatch.setenv("UNRELATED_HOST_VAR", "host-only")
+    runtime_env = RuntimeEnv(
+        image_uri="example/image",
+        pip=["package==1"],
+        env_vars={
+            "BUILD_TOKEN": "secret",
+            "CFLAGS": "-DUSE_FEATURE",
+            "PIP_INDEX_URL": "https://runtime.example/simple",
+        },
+    )
+
+    install_env = ImageURIPlugin._get_install_env(runtime_env)
+
+    assert install_env["BUILD_TOKEN"] == "secret"
+    assert install_env["CFLAGS"] == "-DUSE_FEATURE"
+    assert install_env["PIP_INDEX_URL"] == "https://runtime.example/simple"
+    assert "UNRELATED_HOST_VAR" not in install_env
+
+
 @pytest.mark.parametrize(
     ("path_env_vars", "expected_path"),
     [
@@ -268,7 +325,15 @@ def test_runtime_env_context_execs_container_as_argv(
         executed["env"] = env
 
     monkeypatch.setattr(os, "execve", execve)
-    monkeypatch.setattr("shutil.which", lambda executable: "/usr/bin/podman")
+    host_path = "/host/bin:/usr/local/bin"
+    searched_paths = []
+
+    def which(executable, path=None):
+        searched_paths.append(path)
+        return "/usr/bin/podman"
+
+    monkeypatch.setattr("shutil.which", which)
+    monkeypatch.setenv("PATH", host_path)
     monkeypatch.setenv("RAY_JOB_ID", "job-id")
     context = RuntimeEnvContext(
         env_vars={**path_env_vars, "USER_VALUE": "contains spaces"},
@@ -299,8 +364,10 @@ def test_runtime_env_context_execs_container_as_argv(
     assert executed["file"] == "/usr/bin/podman"
     assert "USER_VALUE" in executed["args"]
     assert "USER_VALUE=contains spaces" not in executed["args"]
+    assert f"PATH={expected_path}" in executed["args"]
     assert executed["env"]["USER_VALUE"] == "contains spaces"
-    assert executed["env"]["PATH"] == expected_path
+    assert executed["env"]["PATH"] == host_path
+    assert searched_paths == [host_path]
     assert "/cache:/cache:ro,z" in executed["args"]
     assert executed["args"][-3:] == [
         "/image/default_worker.py",
@@ -352,6 +419,47 @@ async def test_image_uri_uses_stdlib_venv(tmp_path, monkeypatch):
     )
 
 
+@pytest.mark.asyncio
+async def test_image_uri_install_uses_host_path_to_launch_podman(tmp_path, monkeypatch):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    metadata = _image_metadata_for_test()
+    captured = {}
+    host_path = "/host/bin:/usr/local/bin"
+
+    async def check_output(command, logger, env):
+        captured["command"] = command
+        captured["env"] = env
+        return ""
+
+    def which(executable, path=None):
+        captured["searched_path"] = path
+        return "/usr/bin/podman"
+
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri.check_output_cmd", check_output
+    )
+    monkeypatch.setattr("shutil.which", which)
+    monkeypatch.setenv("PATH", host_path)
+
+    await plugin._run_in_image(
+        metadata,
+        str(tmp_path / "staging"),
+        str(tmp_path / "final"),
+        metadata.python_executable,
+        ["-m", "pip", "install", "package==1"],
+        {"BUILD_TOKEN": "secret", "PATH": "/image/bin"},
+        logger,
+    )
+
+    assert captured["command"][0] == "/usr/bin/podman"
+    assert "PATH=/image/bin" in captured["command"]
+    assert "BUILD_TOKEN" in captured["command"]
+    assert "BUILD_TOKEN=secret" not in captured["command"]
+    assert captured["searched_path"] == host_path
+    assert captured["env"]["PATH"] == host_path
+    assert captured["env"]["BUILD_TOKEN"] == "secret"
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
 @pytest.mark.asyncio
 async def test_image_uri_cache_publishes_once(tmp_path, monkeypatch):
@@ -365,6 +473,9 @@ async def test_image_uri_cache_publishes_once(tmp_path, monkeypatch):
     async def prepare(*args, **kwargs):
         nonlocal prepare_calls
         prepare_calls += 1
+        virtualenv_python = os.path.join(args[3], "virtualenv", "bin", "python")
+        os.makedirs(os.path.dirname(virtualenv_python))
+        os.symlink("/inside-image/bin/python", virtualenv_python)
         await asyncio.sleep(0)
 
     monkeypatch.setattr(plugin, "_prepare_pip_environment", prepare)
@@ -376,7 +487,7 @@ async def test_image_uri_cache_publishes_once(tmp_path, monkeypatch):
     )
 
     assert prepare_calls == 1
-    assert plugin._manifest_is_valid(plugin._get_cache_path(uri), uri)
+    assert plugin._manifest_is_valid(plugin._get_cache_path(uri), uri, has_pip=True)
     plugin.modify_context([uri], runtime_env, context, logger)
     cache_path = plugin._get_cache_path(uri)
     # With pip, workers are pinned to the exact image the cached environment
@@ -393,6 +504,76 @@ async def test_image_uri_cache_publishes_once(tmp_path, monkeypatch):
             "options": "z",
         }
     ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.asyncio
+async def test_image_uri_cache_shared_between_plugin_instances(tmp_path, monkeypatch):
+    plugins = [
+        ImageURIPlugin(str(tmp_path / "ray")),
+        ImageURIPlugin(str(tmp_path / "ray")),
+    ]
+    uri = "image-pip://shared-key"
+    prepare_calls = 0
+
+    async def prepare(*args, **kwargs):
+        nonlocal prepare_calls
+        prepare_calls += 1
+        virtualenv_python = os.path.join(args[3], "virtualenv", "bin", "python")
+        os.makedirs(os.path.dirname(virtualenv_python))
+        os.symlink("/inside-image/bin/python", virtualenv_python)
+        await asyncio.sleep(0)
+
+    for plugin in plugins:
+        plugin.set_resources_dir(str(tmp_path / "resources"))
+        plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+        plugin._install_env_by_uri[uri] = {}
+        monkeypatch.setattr(plugin, "_prepare_pip_environment", prepare)
+
+    runtime_env = RuntimeEnv(image_uri="example/image", pip=["package==1"])
+    sizes = await asyncio.gather(
+        *[
+            plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
+            for plugin in plugins
+        ]
+    )
+
+    assert prepare_calls == 1
+    assert sizes[0] == sizes[1]
+    assert plugins[1]._manifest_is_valid(
+        plugins[1]._get_cache_path(uri), uri, has_pip=True
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlink test is POSIX-only.")
+def test_image_uri_manifest_requires_complete_pip_environment(tmp_path):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    plugin.set_resources_dir(str(tmp_path / "resources"))
+    uri = "image-pip://manifest-key"
+    cache_path = plugin._get_cache_path(uri)
+    os.makedirs(cache_path)
+    manifest_path = os.path.join(cache_path, "manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+        json.dump(
+            {
+                "schema_version": _CACHE_SCHEMA_VERSION,
+                "uri": uri,
+                "has_pip": True,
+                "size_bytes": 1234,
+            },
+            manifest_file,
+        )
+
+    assert not plugin._manifest_is_valid(cache_path, uri, has_pip=True)
+
+    virtualenv_python = os.path.join(cache_path, "virtualenv", "bin", "python")
+    os.makedirs(os.path.dirname(virtualenv_python))
+    os.symlink("/inside-image/bin/python", virtualenv_python)
+
+    assert not os.path.exists(virtualenv_python)
+    assert os.path.lexists(virtualenv_python)
+    assert plugin._manifest_is_valid(cache_path, uri, has_pip=True)
+    assert not plugin._manifest_is_valid(cache_path, uri, has_pip=False)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -480,13 +661,16 @@ async def test_image_uri_probe_memoized_by_image_id(tmp_path, monkeypatch):
     async def probe(image_uri, inspect_data, logger):
         nonlocal probe_calls
         probe_calls += 1
+        await asyncio.sleep(0)
         return metadata
 
     monkeypatch.setattr("ray._private.runtime_env.image_uri._inspect_image", inspect)
     monkeypatch.setattr("ray._private.runtime_env.image_uri._probe_image", probe)
     runtime_env = RuntimeEnv(image_uri="example/image", pip=["package==1"])
-    first = await plugin.resolve_uris(runtime_env, logger)
-    second = await plugin.resolve_uris(runtime_env, logger)
+    first, second = await asyncio.gather(
+        plugin.resolve_uris(runtime_env, logger),
+        plugin.resolve_uris(runtime_env, logger),
+    )
 
     assert first == second
     assert probe_calls == 1
@@ -515,19 +699,33 @@ def test_image_uri_delete_uri_respects_file_lock(tmp_path):
     plugin = ImageURIPlugin(str(tmp_path / "ray"))
     plugin.set_resources_dir(str(tmp_path / "resources"))
     uri = "image-pip://delete-key"
+    plugin._create_locks[uri] = asyncio.Lock()
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    plugin._install_env_by_uri[uri] = {}
     cache_path = plugin._get_cache_path(uri)
     os.makedirs(cache_path)
     with open(
         os.path.join(cache_path, "manifest.json"), "w", encoding="utf-8"
     ) as manifest_file:
-        json.dump({"schema_version": 1, "uri": uri, "size_bytes": 1234}, manifest_file)
+        json.dump(
+            {
+                "schema_version": _CACHE_SCHEMA_VERSION,
+                "uri": uri,
+                "has_pip": False,
+                "size_bytes": 1234,
+            },
+            manifest_file,
+        )
 
-    # Deletion is skipped while another holder keeps the flock, but the
-    # recorded size is still returned so cache accounting stays balanced.
+    # Deletion is deferred while another holder keeps the flock, and the URI
+    # remains tracked so a later eviction pass can retry it.
     with open(cache_path + ".lock", "a+") as holder:
         fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        assert plugin.delete_uri(uri, logger) == 1234
+        assert plugin.delete_uri(uri, logger) is None
         assert os.path.exists(cache_path)
+        assert uri in plugin._create_locks
+        assert uri in plugin._metadata_by_uri
+        assert uri in plugin._install_env_by_uri
         fcntl.flock(holder, fcntl.LOCK_UN)
 
     # Unlocked, deletion proceeds; the lock file stays so holders of the old
@@ -535,6 +733,9 @@ def test_image_uri_delete_uri_respects_file_lock(tmp_path):
     assert plugin.delete_uri(uri, logger) == 1234
     assert not os.path.exists(cache_path)
     assert os.path.exists(cache_path + ".lock")
+    assert uri not in plugin._create_locks
+    assert uri not in plugin._metadata_by_uri
+    assert uri not in plugin._install_env_by_uri
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")

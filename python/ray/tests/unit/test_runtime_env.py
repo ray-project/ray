@@ -197,6 +197,27 @@ class TestURICache:
         # "a" was the only unused URI, so it must have been deleted.
         assert "b" and "c" in cache and "a" not in cache
 
+    def test_delete_can_be_deferred(self):
+        attempts = 0
+
+        def delete_fn(uri, logger):
+            nonlocal attempts
+            attempts += 1
+            return None if attempts == 1 else 4
+
+        cache = URICache(delete_fn, max_total_size_bytes=0, debug_mode=True)
+        cache.add("a", 4)
+        cache.mark_unused("a")
+
+        assert "a" in cache
+        assert cache.get_total_size_bytes() == 4
+
+        cache._evict_if_needed()
+
+        assert "a" not in cache
+        assert cache.get_total_size_bytes() == 0
+        assert attempts == 2
+
     def test_mark_used_nonadded_uri_error(self):
         cache = URICache(debug_mode=True)
         with pytest.raises(ValueError):
