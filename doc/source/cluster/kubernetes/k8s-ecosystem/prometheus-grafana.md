@@ -40,9 +40,9 @@ kubectl get all -n prometheus-system
 
 * KubeRay provides an [install.sh script](https://github.com/ray-project/kuberay/blob/master/install/prometheus/install.sh) to:
   * Install the [kube-prometheus-stack v48.2.1](https://github.com/prometheus-community/helm-charts/tree/kube-prometheus-stack-48.2.1/charts/kube-prometheus-stack) chart and related custom resources, including **PodMonitor** for the RayCluster's Pods and **PrometheusRule**, in the namespace `prometheus-system` automatically. 
-  * Import Ray Dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
+  * Import Ray dashboard's [Grafana JSON files](https://github.com/ray-project/kuberay/tree/master/config/grafana) into Grafana using the `--auto-load-dashboard true` flag. If the flag isn't set, the following step also provides instructions for manual import. See [Step 12: Import Grafana dashboards manually (optional)](#step-12-import-grafana-dashboards-manually-optional) for more details.
 
-* We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray Dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/blob/master/install/prometheus/overrides.yaml) for more details.
+* We made some modifications to the original `values.yaml` in kube-prometheus-stack chart to allow embedding Grafana panels in Ray dashboard. See [overrides.yaml](https://github.com/ray-project/kuberay/blob/master/install/prometheus/overrides.yaml) for more details.
   ```yaml
   grafana:
     grafana.ini:
@@ -114,7 +114,7 @@ curl localhost:8080
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and Managing Ray Dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and managing Ray dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST
@@ -404,15 +404,15 @@ If `--auto-load-dashboard true` is set when running `install.sh`, you can skip t
 
 ## Step 13: View metrics from different RayCluster CRs
 
-Once the Ray Dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray Dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
+Once the Ray dashboard is imported into Grafana, you can filter metrics by using the `Cluster` variable. Ray dashboard automatically applies this variable by default when you use the provided `PodMonitor` configuration. You don't need any additional setup for this labeling.
 
 If you have multiple RayCluster custom resources, the `Cluster` variable allows you to filter metrics specific to a particular cluster. This feature ensures that you can easily monitor or debug individual RayCluster instances without being overwhelmed by the data from all clusters.
 
 For example, in the following figures, one selects the metrics from the RayCluster `raycluster-embed-grafana`, and the other selects metrics from the RayCluster `raycluster-embed-grafana-2`.
 
-![Grafana Ray Dashboard](../images/grafana_ray_dashboard.png)
+![Grafana Ray dashboard](../images/grafana_ray_dashboard.png)
 
-![Grafana Ray Dashboard2](../images/grafana_ray_dashboard2.png)
+![Grafana Ray dashboard2](../images/grafana_ray_dashboard2.png)
 
 ## Step 14: View the KubeRay operator dashboard
 
@@ -427,4 +427,4 @@ kubectl port-forward service/raycluster-embed-grafana-head-svc dashboard
 # Visit http://127.0.0.1:8265/#/metrics in your browser.
 ```
 
-![Ray Dashboard with Grafana panels](../images/ray_dashboard_embed_grafana.png)
+![Ray dashboard with Grafana panels](../images/ray_dashboard_embed_grafana.png)

@@ -1,0 +1,19 @@
+extends: existence
+message: "Cut the filler word '%s'; it adds no information."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#cut-qualifiers-and-filler'
+level: warning
+ignorecase: true
+# From the "Cut qualifiers and filler" section of writing-style.md. A substitution
+# can't delete, so filler is flagged with an existence rule and removed by hand.
+tokens:
+  - simply
+  - just
+  - basically
+  - actually
+  - really
+  - very
+  - easily
+  - of course
+  - obviously
+  - clearly
+  - note that

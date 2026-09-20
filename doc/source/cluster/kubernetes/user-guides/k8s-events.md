@@ -1,14 +1,14 @@
 ---
 myst:
   html_meta:
-    description: "How to enable platform events in the Ray Dashboard on Kubernetes: RBAC permissions, the environment variable that turns the feature on, and how to verify that the dashboard receives events."
+    description: "How to enable platform events in the Ray dashboard on Kubernetes: RBAC permissions, the environment variable that turns the feature on, and how to verify that the dashboard receives events."
 ---
 
 (kuberay-k8s-events)=
 
 # Enable Ray platform events on Kubernetes
 
-This guide describes how to enable and use platform events in the Ray Dashboard on Kubernetes. Platform events surface Kubernetes lifecycle events for the KubeRay custom resources `RayCluster`, `RayJob`, and `RayService` in the Ray Dashboard, alongside your Ray application metrics and logs, so you can correlate cluster behavior with application behavior.
+This guide describes how to enable and use platform events in the Ray dashboard on Kubernetes. Platform events surface Kubernetes lifecycle events for the KubeRay custom resources `RayCluster`, `RayJob`, and `RayService` in the Ray dashboard, alongside your Ray application metrics and logs, so you can correlate cluster behavior with application behavior.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ The role grants two permissions:
 
 ## Enable platform events
 
-Set `RAY_DASHBOARD_INGEST_PLATFORM_EVENTS` to `"true"` on the Ray head pod container. This environment variable starts the platform event watcher in the Ray Dashboard backend.
+Set `RAY_DASHBOARD_INGEST_PLATFORM_EVENTS` to `"true"` on the Ray head pod container. This environment variable starts the platform event watcher in the Ray dashboard backend.
 
 **For deployments without KubeRay (Ray 2.58+)**: KubeRay automatically injects `RAY_CLUSTER_NAME` and `RAY_CLUSTER_NAMESPACE` into the RayCluster's Pods. If you deploy Ray on Kubernetes without KubeRay, manually inject these environment variables into your Ray head pod container so the dashboard can display Kubernetes pod events:
 
@@ -220,11 +220,11 @@ A successful response is a JSON object containing recent events:
 }
 ```
 
-### Check the Ray Dashboard
+### Check the Ray dashboard
 
 Open `http://localhost:8265` in your browser. Look for the **Platform Events** tab in the navigation bar at the top. The dashboard displays the events there.
 
-![Ray Dashboard with the Platform Events tab selected, showing a table of Kubernetes lifecycle events with columns for time, severity, source, object, reason, and message.](../images/platform-events-ui.png)
+![Ray dashboard with the Platform Events tab selected, showing a table of Kubernetes lifecycle events with columns for time, severity, source, object, reason, and message.](../images/platform-events-ui.png)
 
 ## Troubleshooting
 

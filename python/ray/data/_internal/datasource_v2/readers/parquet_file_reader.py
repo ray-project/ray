@@ -17,7 +17,6 @@ from ray.data._internal.datasource.parquet_datasource import (
     _row_group_uncompressed_size,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _fragments_from_chunk_metadata,
     _fragments_from_row_group_ids,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -55,8 +54,8 @@ _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
 # Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
 # (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
 # Parquet scan issues against S3, especially for row-group-scoped fragments.
-_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 8)
-_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 8)
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 128)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 32)
 
 
 def _estimate_batch_size_from_metadata(
@@ -342,8 +341,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is with a row offset of 0 (the default
-          ``WholeFileChunker`` for non-chunking callers).
+          fragment is yielded as-is with a row offset of 0.
         - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
           naming the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
@@ -368,18 +366,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
                 fragments.append((fragment, 0))
-            elif "row_group_ids" in chunk_metadata:
+            else:
                 fragments.extend(
                     _fragments_from_row_group_ids(
                         fragment,
                         chunk_metadata["row_group_ids"],
                         per_row_group_offsets=self._include_row_hash,
                     )
-                )
-            else:
-                # Size-based ``ParquetFileChunkMetadata`` from the blind chunker.
-                fragments.extend(
-                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
                 )
         return fragments
 

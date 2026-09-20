@@ -21,7 +21,14 @@ steps:
 
   - label: ":tapioca: build: raydepsets: compile all dependencies"
     key: raydepsets_compile_all_dependencies
-    tags: python_dependencies
+    # `deplock_check` lets a docs-only deplock change reach this lock-consistency
+    # verification without also triggering the wheel/image build matrix that
+    # `python_dependencies` fans out to. Ordinary dependency changes still emit
+    # `python_dependencies` and run this job through that tag. See the docs
+    # deplock rule and the `deplock_check` declaration in test.rules.txt.
+    tags:
+      - python_dependencies
+      - deplock_check
     instance_type: small
     commands:
       - bazel run //ci/raydepsets:raydepsets -- build --all-configs --check

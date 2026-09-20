@@ -107,6 +107,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     USER_HEALTH_CHECK_PROBE_INTERVAL_S,
     USER_HEALTH_CHECK_PROBE_MAX_FAIL,
@@ -176,7 +177,6 @@ from ray.serve._private.tracing_utils import (
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     Semaphore,
-    _callable_uses_multiplexing,
     asyncio_grpc_exception_handler,
     check_obj_ref_ready_nowait,
     compress_metric_report,
@@ -980,21 +980,12 @@ class ReplicaMetricsManager:
         look_back_period = self._autoscaling_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
 
-        new_aggregated_metrics = {}
         # The store keys are `Hashable`; this replica only ever records `str` keys.
         new_metrics = cast(Dict[str, TimeSeries], {**self._metrics_store.data})
-
-        if self.should_collect_ongoing_requests():
-            # Keep the legacy window_avg ongoing requests in the merged metrics dict
-            window_avg = (
-                self._metrics_store.aggregate_avg([RUNNING_REQUESTS_KEY])[0] or 0.0
-            )
-            new_aggregated_metrics.update({RUNNING_REQUESTS_KEY: window_avg})
 
         replica_metric_report = ReplicaMetricReport(
             replica_id=self._replica_id,
             timestamp=time.time(),
-            aggregated_metrics=new_aggregated_metrics,
             metrics=new_metrics,
         )
         with self._metrics_push_lock:
@@ -1236,6 +1227,10 @@ class Replica:
         # Set after the graceful shutdown drain completes; new handle-path
         # requests are then rejected (the router retries them elsewhere).
         self._quiescing = False
+
+        # Tracks the in-progress graceful shutdown so repeated calls await the
+        # same one (see `perform_graceful_shutdown`).
+        self._graceful_shutdown_task: Optional[asyncio.Task] = None
 
         self._num_queued_requests = 0
         self._reserved_slots: Set[str] = set()
@@ -1848,25 +1843,6 @@ class Replica:
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - self._initialization_start_time
 
-    def _raise_if_multiplexing_with_direct_ingress(self):
-        """Reject model multiplexing on the ingress deployment under direct ingress.
-
-        Model multiplexing relies on the multiplexed model ID being propagated through
-        the proxy, which direct ingress bypasses (the model ID is never populated).
-
-        This runs after the user callable is initialized so it also catches
-        multiplexing that is wired up dynamically in the constructor (e.g.
-        `self._load_model = serve.multiplexed(...)(fn)`), which is invisible to the
-        static check performed at deploy time.
-        """
-        if self._ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            if _callable_uses_multiplexing(self._user_callable_wrapper._callable):
-                raise RuntimeError(
-                    "Model multiplexing (`@serve.multiplexed`) is not supported on the "
-                    "ingress deployment when direct ingress or HAProxy is enabled "
-                    "(RAY_SERVE_ENABLE_DIRECT_INGRESS)."
-                )
-
     async def initialize(
         self,
         deployment_config: Optional[DeploymentConfig],
@@ -1890,7 +1866,6 @@ class Replica:
                     self._user_callable_asgi_app = (
                         await self._user_callable_wrapper.initialize_callable()
                     )
-                    self._raise_if_multiplexing_with_direct_ingress()
                     self._user_callable_wrapper.start_user_loop_watchdog(
                         self._event_loop
                     )
@@ -2089,18 +2064,34 @@ class Replica:
         finally:
             release()
 
-    async def _drain_ongoing_requests(self, min_draining_period_s: float = 0.0):
+    async def _drain_ongoing_requests(
+        self,
+        min_draining_period_s: float = 0.0,
+        check_immediately: bool = False,
+    ):
         """Wait until the minimum draining period has elapsed and no ongoing
         requests remain.
 
         The minimum draining period gives load balancers time to deregister
         this replica; a request admitted during it becomes ongoing and is
         waited for like any other.
+
+        Args:
+            min_draining_period_s: keep waiting until at least this long has
+                passed, even if no requests are ongoing.
+            check_immediately: count ongoing requests before the first
+                `graceful_shutdown_wait_loop_s` sleep instead of after it. Use
+                this when the caller already waited out the draining period, so
+                an idle replica does not spend another wait loop here.
         """
         wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
         deadline = time.monotonic() + min_draining_period_s
+        skip_sleep = check_immediately
         while True:
-            await asyncio.sleep(wait_loop_period_s)
+            if skip_sleep:
+                skip_sleep = False
+            else:
+                await asyncio.sleep(wait_loop_period_s)
 
             num_ongoing_requests = self.get_num_ongoing_requests()
             min_period_remaining_s = deadline - time.monotonic()
@@ -2117,6 +2108,52 @@ class Replica:
                     extra={"log_to_stderr": False},
                 )
                 break
+
+    def _stop_accepting_direct_ingress(self) -> None:
+        """Close the direct-ingress HTTP listener; in-flight requests finish.
+
+        Only the HTTP listener: the direct-ingress gRPC server (if any) keeps
+        accepting until the post-drain quiesce, as before.
+        """
+        if self._direct_ingress_http_server is not None:
+            self._direct_ingress_http_server.should_exit = True
+
+    async def _drain_behind_haproxy(self, min_draining_period_s: float) -> None:
+        """Two-phase drain for replicas fronted by HAProxy.
+
+        Stay fully reachable for the deregistration window, then close the
+        HTTP listener and wait for in-flight requests. A stale HAProxy worker
+        (an old soft-stopping process with a frozen backend list) can keep
+        routing here for minutes after a reload; refusing it at connect time
+        makes it retry another replica (`retry-on conn-failure` + `option
+        redispatch`) instead of admitting a request that would be severed
+        when the replica exits.
+
+        Only safe with a retrying proxy in front -- without HAProxy the
+        refusal would reach the client, so callers use the plain drain there.
+        """
+        # Phase 1: remain fully reachable for the deregistration window.
+        if min_draining_period_s > 0:
+            logger.info(
+                f"Draining: staying reachable for {min_draining_period_s:.1f}s "
+                "so load balancers can deregister this replica.",
+                extra={"log_to_stderr": False},
+            )
+            await asyncio.sleep(min_draining_period_s)
+
+        # Phase 2: refuse new connections; stale routers retry elsewhere.
+        logger.info(
+            "Draining: closing the direct ingress HTTP listener; late arrivals "
+            "will be refused so the caller can retry another replica.",
+            extra={"log_to_stderr": False},
+        )
+        self._stop_accepting_direct_ingress()
+
+        # Phase 3: wait for in-flight requests. Check the count before
+        # sleeping: the window is already spent, and another
+        # graceful_shutdown_wait_loop_s here can run past the controller's
+        # force-kill deadline, which would skip the quiesce below.
+        await self._drain_ongoing_requests(check_immediately=True)
 
     async def shutdown(self):
         try:
@@ -2136,6 +2173,23 @@ class Replica:
         await self._metrics_manager.shutdown()
 
     async def perform_graceful_shutdown(self):
+        """Shut down gracefully, at most once.
+
+        The controller re-issues the stop when it restarts, so this can be
+        called more than once for the same replica. Later calls must await the
+        first rather than run a second pass: the user's destructor only runs
+        once, so a second pass would skip it and report a clean shutdown while
+        the first is still inside `__del__`.
+        """
+        if self._graceful_shutdown_task is None:
+            self._graceful_shutdown_task = self._event_loop.create_task(
+                self._perform_graceful_shutdown()
+            )
+
+        # Shielded so a cancelled caller doesn't abort the shutdown itself.
+        await asyncio.shield(self._graceful_shutdown_task)
+
+    async def _perform_graceful_shutdown(self):
         self._shutting_down = True
 
         # Shutdown budget, mirroring the controller's force-kill deadline (see
@@ -2153,12 +2207,19 @@ class Replica:
             # In direct ingress mode, hold the replica open at least
             # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S so load balancers can
             # deregister it; the drain also waits for in-flight requests.
+            is_direct_ingress = RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
             min_draining_period_s = (
                 RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S
-                if RAY_SERVE_ENABLE_DIRECT_INGRESS and self._ingress
+                if is_direct_ingress
                 else 0.0
             )
-            await self._drain_ongoing_requests(min_draining_period_s)
+            if is_direct_ingress and RAY_SERVE_ENABLE_HA_PROXY:
+                # HAProxy retries refused connections, so stop accepting once
+                # the deregistration window is over.
+                await self._drain_behind_haproxy(min_draining_period_s)
+            else:
+                # No retrying party in front; a refusal would reach the client.
+                await self._drain_ongoing_requests(min_draining_period_s)
 
         # Requests can still arrive after the drain (stale routers, keep-alive
         # connections). Quiesce before reporting shutdown complete: reject new
@@ -2628,6 +2689,7 @@ class Replica:
         c = RayServegRPCContext(context)
         request_id = c.request_id() or generate_request_id()
         c.set_trailing_metadata([("request_id", request_id)])
+        multiplexed_model_id = c.multiplexed_model_id() or ""
 
         # If the request targets a different application, return NOT_FOUND.
         # If no application is specified, serve this replica's app.
@@ -2663,8 +2725,7 @@ class Replica:
             _request_protocol=RequestProtocol.GRPC,
             grpc_context=c,
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate this.
-            multiplexed_model_id="",
+            multiplexed_model_id=multiplexed_model_id,
             route=self._deployment_id.app_name,
             tracing_context=self.get_grpc_tracing_context(c),
             is_streaming=is_streaming,
@@ -3150,6 +3211,11 @@ class Replica:
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
         session_id = parse_session_id_header(headers)
+        multiplexed_model_id = ""
+        for key, value in headers.items():
+            if key.decode().lower().replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID:
+                multiplexed_model_id = value.decode()
+                break
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -3157,8 +3223,7 @@ class Replica:
             call_method="__call__",
             route=self._determine_http_route(scope),
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate the multiplexed model ID.
-            multiplexed_model_id="",
+            multiplexed_model_id=multiplexed_model_id,
             session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,

@@ -4,11 +4,6 @@ import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    LineDelimitedFileChunker,
-    ParquetFileChunker,
-    WholeFileChunker,
-)
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
@@ -177,19 +172,6 @@ class TestListFileInfos:
 
         assert results == [(str(tmp_path / "keep.csv"), 10)]
 
-    def test_does_not_chunk(self, tmp_path):
-        """One entry per file even when the chunker would split it."""
-        (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=1,
-            file_chunker=LineDelimitedFileChunker(),
-        )
-
-        assert _list_all_file_infos(indexer, [str(tmp_path)]) == [
-            (str(tmp_path / "a.jsonl"), 10_000)
-        ]
-
     def test_is_lazy(self, tmp_path, indexer):
         """Consumers stop early under a limit, so nothing may be eager."""
         for i in range(5):
@@ -333,21 +315,8 @@ class TestManifestBatching:
         assert total_files == 7
 
 
-class TestFileChunkerIntegration:
-    """Cover ``NonSamplingFileIndexer`` interaction with a ``FileChunker``."""
-
-    def test_default_uses_whole_file_chunker(self):
-        indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
-        assert isinstance(indexer.file_chunker, WholeFileChunker)
-
-    def test_explicit_chunker_is_exposed(self):
-        chunker = ParquetFileChunker(target_chunk_size=1024)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False, file_chunker=chunker
-        )
-        assert indexer.file_chunker is chunker
-
-    def test_whole_file_chunker_yields_none_chunk_metadata(self, tmp_path):
+class TestManifestRows:
+    def test_one_row_per_file_with_none_chunk_metadata(self, tmp_path):
         (tmp_path / "a.csv").write_bytes(b"x" * 100)
         indexer = NonSamplingFileIndexer(ignore_missing_paths=False, num_workers=1)
         fs = LocalFileSystem()
@@ -355,54 +324,9 @@ class TestFileChunkerIntegration:
         assert len(manifests) == 1
         manifest = manifests[0]
         assert len(manifest) == 1
-        # ``WholeFileChunker`` emits one ``None`` chunk per file.
+        # A plain listing never splits a file, so the row carries no metadata.
         assert list(manifest.file_chunk_metadatas) == [None]
         assert list(manifest.file_sizes) == [100]
-
-    def test_parquet_chunker_splits_large_file_into_many_chunks(self, tmp_path):
-        # Write a "Parquet" file by name only — the chunker doesn't open it.
-        (tmp_path / "big.parquet").write_bytes(b"x" * 10_000)
-        chunker = ParquetFileChunker(target_chunk_size=1024)
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=1,
-            file_chunker=chunker,
-        )
-        fs = LocalFileSystem()
-        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
-        rows = []
-        for m in manifests:
-            for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
-                rows.append((str(path), int(size), md))
-
-        # 10000 bytes / 1024 target chunk size -> 10 chunks (ceil).
-        assert len(rows) == 10
-        for i, (_, _, md) in enumerate(rows):
-            assert md is not None
-            assert md["chunk_idx"] == i
-            assert md["total_num_chunks"] == 10
-
-    def test_line_delimited_chunker_byte_ranges(self, tmp_path):
-        (tmp_path / "a.jsonl").write_bytes(b"x" * 10_000)
-        chunker = LineDelimitedFileChunker()
-        # Force smaller chunks via a private override so the unit test
-        # doesn't need a 256 MB file on disk.
-        chunker._CHUNK_BYTE_SIZE = 1024
-        indexer = NonSamplingFileIndexer(
-            ignore_missing_paths=False,
-            num_workers=1,
-            file_chunker=chunker,
-        )
-        fs = LocalFileSystem()
-        manifests = list(indexer.list_files(pa.array([str(tmp_path)]), filesystem=fs))
-        rows = []
-        for m in manifests:
-            for path, size, md in zip(m.paths, m.file_sizes, m.file_chunk_metadatas):
-                rows.append((str(path), int(size), md))
-        assert len(rows) == 10
-        # Byte ranges must tile the file exactly.
-        assert rows[0][2]["chunk_byte_start_idx"] == 0
-        assert rows[-1][2]["chunk_byte_end_idx"] == 10_000
 
 
 class TestAsWholeFileIndexer:
@@ -448,23 +372,6 @@ class TestAsWholeFileIndexer:
         # copying a stale value.
         assert downgraded._queue_size_per_thread == max_paths_per_output * 4
 
-    def test_always_uses_whole_file_chunker(self):
-        source = NonSamplingFileIndexer(
-            ignore_missing_paths=False, file_chunker=LineDelimitedFileChunker()
-        )
-
-        assert isinstance(source.as_whole_file_indexer().file_chunker, WholeFileChunker)
-
-    def test_source_indexer_is_not_mutated(self):
-        source = NonSamplingFileIndexer(
-            ignore_missing_paths=False, file_chunker=LineDelimitedFileChunker()
-        )
-
-        source.as_whole_file_indexer()
-
-        # Guards against regressing to in-place mutation of the caller's indexer.
-        assert isinstance(source.file_chunker, LineDelimitedFileChunker)
-
     def test_carries_over_skip_paths(self, tmp_path):
         """A dropped ``skip_paths`` would let excluded files back into the
         listing, inflating a pushed-down ``count()``."""
@@ -497,7 +404,7 @@ class TestAsWholeFileIndexer:
 
 
 class TestFileShuffle:
-    """File shuffle runs after path discovery and before chunking/metadata."""
+    """File shuffle runs after path discovery and before metadata reads."""
 
     def _write_files(self, tmp_path, n=10):
         paths = []
@@ -603,6 +510,15 @@ class TestFooterIndexerFileShuffle:
         flattened = [p for batch in batches for p, _ in batch]
         assert flattened == [fi.path for fi in shuffled]
         assert len(batches) > 1
+
+
+def test_list_file_infos_rejects_missing_filesystem():
+    # The FileIndexer base accepts ``filesystem=None`` for indexers that do
+    # their own IO; this one cannot, and must say so instead of failing on a
+    # ``None`` attribute deep inside path expansion.
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    with pytest.raises(ValueError, match="NonSamplingFileIndexer.*filesystem=None"):
+        list(indexer.list_file_infos(pa.array(["a.csv"]), filesystem=None))
 
 
 if __name__ == "__main__":

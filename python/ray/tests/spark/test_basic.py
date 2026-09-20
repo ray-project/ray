@@ -260,6 +260,47 @@ class RayOnSparkCPUClusterTestBase(ABC):
                     time.sleep(30)
                     assert len(self.get_ray_worker_resources_list()) == min_worker_nodes
 
+    def test_autoscaling_v2(self, monkeypatch):
+        monkeypatch.setenv("RAY_enable_autoscaler_v2", "1")
+        with _setup_ray_cluster(
+            max_worker_nodes=1,
+            min_worker_nodes=0,
+            num_cpus_worker_node=self.num_cpus_per_spark_task,
+            num_gpus_worker_node=0,
+            head_node_options={"include_dashboard": False},
+            autoscale_idle_timeout_minutes=0.1,
+        ) as cluster:
+            ray.init()
+            assert self.get_ray_worker_resources_list() == []
+
+            @ray.remote(num_cpus=self.num_cpus_per_spark_task)
+            def f():
+                return 1
+
+            assert ray.get(f.remote()) == 1
+            wait_for_condition(
+                lambda: len(self.get_ray_worker_resources_list()) == 1,
+                timeout=60,
+                retry_interval_ms=1000,
+            )
+
+            from ray.autoscaler.v2.sdk import get_cluster_status
+
+            status = get_cluster_status(cluster.address)
+            worker_nodes = [
+                node
+                for node in status.active_nodes + status.idle_nodes
+                if node.ray_node_type_name == "ray.worker"
+            ]
+            assert len(worker_nodes) == 1
+            assert worker_nodes[0].instance_id == "1"
+
+            wait_for_condition(
+                lambda: self.get_ray_worker_resources_list() == [],
+                timeout=60,
+                retry_interval_ms=1000,
+            )
+
 
 class TestBasicSparkCluster(RayOnSparkCPUClusterTestBase):
     @classmethod

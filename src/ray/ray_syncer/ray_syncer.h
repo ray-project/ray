@@ -205,12 +205,26 @@ class RaySyncer {
   FRIEND_TEST(SyncerTest, Reconnect);
 };
 
+using SyncStreamReactor =
+    grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch>;
+
+/// Abstract handler for the RaySyncer stream RPCs. Lets the leader-gating proxy
+/// (LeaderGatedRaySyncerHandler) wrap the service without depending on the
+/// concrete gRPC-generated base. Any new stream RPC added here must also be
+/// implemented by the gated proxy, which forces an explicit leader-policy choice.
+class RaySyncerStreamHandler {
+ public:
+  virtual ~RaySyncerStreamHandler() = default;
+
+  virtual SyncStreamReactor *StartSync(grpc::CallbackServerContext *context) = 0;
+};
+
 /// RaySyncerService is a service to take care of resource synchronization
 /// related operations.
 /// Right now only raylet needs to setup this service. But in the future,
 /// we can use this to construct more complicated resource reporting algorithm,
 /// like tree-based one.
-class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
+class RaySyncerService : public RaySyncerStreamHandler {
  public:
   explicit RaySyncerService(
       RaySyncer &syncer,
@@ -221,8 +235,7 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
         auth_token_(std::move(auth_token)),
         auth_token_validator_(auth_token_validator) {}
 
-  grpc::ServerBidiReactor<RaySyncMessageBatch, RaySyncMessageBatch> *StartSync(
-      grpc::CallbackServerContext *context) override;
+  SyncStreamReactor *StartSync(grpc::CallbackServerContext *context) override;
 
  private:
   // The ray syncer this RPC wrappers of.
@@ -233,6 +246,21 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
 
   // Validator for authentication token
   ray::rpc::AuthenticationTokenValidator &auth_token_validator_;
+};
+
+/// gRPC-facing service. Thin adapter that forwards the generated CallbackService
+/// entry points to a RaySyncerStreamHandler (either the real RaySyncerService or
+/// the leader-gating proxy). Registered with the RPC server.
+class RaySyncerGrpcService : public ray::rpc::syncer::RaySyncer::CallbackService {
+ public:
+  explicit RaySyncerGrpcService(RaySyncerStreamHandler &handler) : handler_(handler) {}
+
+  SyncStreamReactor *StartSync(grpc::CallbackServerContext *context) override {
+    return handler_.StartSync(context);
+  }
+
+ private:
+  RaySyncerStreamHandler &handler_;
 };
 
 }  // namespace ray::syncer

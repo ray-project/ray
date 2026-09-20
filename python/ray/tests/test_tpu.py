@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -6,10 +7,14 @@ import pytest
 
 import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
+from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
     _find_valid_parent_topologies,
+    get_tpu_num_slices_for_workers,
+    get_tpu_worker_resources,
 )
 
 
@@ -1195,7 +1200,7 @@ def _make_mock_fn():
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_creates_internal_slice(mock_spg_cls):
+def test_run_on_slice_creates_internal_slice(mock_spg_cls):
     """When tpu_slice=None a SlicePlacementGroup is constructed with the
     correct forwarded arguments."""
     mock_handle = _make_mock_slice_handle()
@@ -1203,7 +1208,7 @@ def test_dispatch_creates_internal_slice(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 _make_mock_fn(),
                 topology="2x2x2",
                 accelerator_version="v4",
@@ -1222,14 +1227,14 @@ def test_dispatch_creates_internal_slice(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_uses_provided_slice(mock_spg_cls):
+def test_run_on_slice_uses_provided_slice(mock_spg_cls):
     """When tpu_slice= is provided, SlicePlacementGroup is never constructed
     and topology/accelerator_version are not required."""
     existing_handle = _make_mock_slice_handle()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 _make_mock_fn(),
                 tpu_slice=existing_handle,
             )
@@ -1237,57 +1242,57 @@ def test_dispatch_uses_provided_slice(mock_spg_cls):
     mock_spg_cls.assert_not_called()
 
 
-def test_dispatch_missing_topology_raises():
+def test_run_on_slice_missing_topology_raises():
     """ValueError is raised when tpu_slice=None and topology or
     accelerator_version are omitted."""
     with pytest.raises(
         ValueError, match="topology and accelerator_version are required"
     ):
-        ray.util.tpu.dispatch(_make_mock_fn(), accelerator_version="v4")
+        ray.util.tpu.run_on_slice(_make_mock_fn(), accelerator_version="v4")
 
     with pytest.raises(
         ValueError, match="topology and accelerator_version are required"
     ):
-        ray.util.tpu.dispatch(_make_mock_fn(), topology="2x2x2")
+        ray.util.tpu.run_on_slice(_make_mock_fn(), topology="2x2x2")
 
 
-def test_dispatch_raises_value_error_if_slice_index_without_tpu_slice():
+def test_run_on_slice_raises_value_error_if_slice_index_without_tpu_slice():
     with pytest.raises(
         ValueError,
         match="slice_index can only be used when an existing tpu_slice is provided.",
     ):
-        ray.util.tpu.dispatch(
+        ray.util.tpu.run_on_slice(
             _make_mock_fn(), topology="2x2x2", accelerator_version="v4", slice_index=0
         )
 
 
-def test_dispatch_raises_value_error_if_slice_index_but_not_pg_per_slice():
+def test_run_on_slice_raises_value_error_if_slice_index_but_not_pg_per_slice():
     mock_slice = _make_mock_slice_handle()
     mock_slice._pg_per_slice = False
     with pytest.raises(
         ValueError,
         match="slice_index can only be used when tpu_slice was created with pg_per_slice=True.",
     ):
-        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=0)
+        ray.util.tpu.run_on_slice(_make_mock_fn(), tpu_slice=mock_slice, slice_index=0)
 
 
-def test_dispatch_raises_value_error_if_invalid_slice_index():
+def test_run_on_slice_raises_value_error_if_invalid_slice_index():
     mock_slice = _make_mock_slice_handle()
     mock_slice._pg_per_slice = True
     mock_slice.num_slices = 2
     with pytest.raises(
         ValueError, match="Invalid slice_index 2. Must be between 0 and 1."
     ):
-        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=2)
+        ray.util.tpu.run_on_slice(_make_mock_fn(), tpu_slice=mock_slice, slice_index=2)
     with pytest.raises(
         ValueError, match="Invalid slice_index -1. Must be between 0 and 1."
     ):
-        ray.util.tpu.dispatch(_make_mock_fn(), tpu_slice=mock_slice, slice_index=-1)
+        ray.util.tpu.run_on_slice(_make_mock_fn(), tpu_slice=mock_slice, slice_index=-1)
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_dispatches_one_task_per_bundle(mock_spg_cls):
-    """dispatch returns exactly num_bundles ObjectRefs."""
+def test_run_on_slice_dispatches_one_task_per_bundle(mock_spg_cls):
+    """run_on_slice returns exactly num_bundles ObjectRefs."""
     num_bundles = 3
     mock_handle = _make_mock_slice_handle(num_bundles=num_bundles)
     mock_spg_cls.return_value = mock_handle
@@ -1295,15 +1300,17 @@ def test_dispatch_dispatches_one_task_per_bundle(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            refs = ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+            refs = ray.util.tpu.run_on_slice(
+                fn, topology="2x2x2", accelerator_version="v4"
+            )
 
     assert len(refs) == num_bundles
     assert fn.options.call_count == num_bundles
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_applies_unique_bundle_index_per_task(mock_spg_cls):
-    """Each dispatched task uses a distinct, sequential placement_group_bundle_index."""
+def test_run_on_slice_applies_unique_bundle_index_per_task(mock_spg_cls):
+    """Each task scheduled by run_on_slice uses a distinct, sequential placement_group_bundle_index."""
     num_bundles = 4
     mock_handle = _make_mock_slice_handle(num_bundles=num_bundles)
     mock_spg_cls.return_value = mock_handle
@@ -1311,7 +1318,7 @@ def test_dispatch_applies_unique_bundle_index_per_task(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     bundle_indices = [
         call.kwargs["scheduling_strategy"].placement_group_bundle_index
@@ -1321,7 +1328,7 @@ def test_dispatch_applies_unique_bundle_index_per_task(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_scheduling_strategy_references_correct_pg(mock_spg_cls):
+def test_run_on_slice_scheduling_strategy_references_correct_pg(mock_spg_cls):
     """The scheduling_strategy in every .options() call references the
     slice's placement group object."""
     mock_handle = _make_mock_slice_handle(num_bundles=2)
@@ -1330,7 +1337,7 @@ def test_dispatch_scheduling_strategy_references_correct_pg(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
         assert (
@@ -1340,7 +1347,7 @@ def test_dispatch_scheduling_strategy_references_correct_pg(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
+def test_run_on_slice_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
     """Every task is dispatched with num_cpus=0 and resources={"TPU": N}."""
     tpu_per_bundle = 8
     mock_handle = _make_mock_slice_handle(tpu_per_bundle=tpu_per_bundle)
@@ -1349,7 +1356,7 @@ def test_dispatch_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
         assert call.kwargs["num_cpus"] == 0
@@ -1357,7 +1364,7 @@ def test_dispatch_sets_num_cpus_zero_and_tpu_resources(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_tpu_count_falls_back_to_devices_per_host(mock_spg_cls):
+def test_run_on_slice_tpu_count_falls_back_to_devices_per_host(mock_spg_cls):
     """When bundle_resources has no 'TPU' key, the TPU resource count
     falls back to devices_per_host."""
     devices_per_host = 8
@@ -1370,24 +1377,24 @@ def test_dispatch_tpu_count_falls_back_to_devices_per_host(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(fn, topology="2x2x2", accelerator_version="v4")
+            ray.util.tpu.run_on_slice(fn, topology="2x2x2", accelerator_version="v4")
 
     for call in fn.options.call_args_list:
         assert call.kwargs["resources"] == {"TPU": devices_per_host}
 
 
-def test_dispatch_non_remote_fn_raises_type_error():
+def test_run_on_slice_non_remote_fn_raises_type_error():
     """A plain (non-remote) function raises TypeError with a clear message."""
 
     def plain_fn():
         pass
 
     with pytest.raises(TypeError, match="@ray.remote"):
-        ray.util.tpu.dispatch(plain_fn, topology="2x2x2", accelerator_version="v4")
+        ray.util.tpu.run_on_slice(plain_fn, topology="2x2x2", accelerator_version="v4")
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_forwards_args_and_kwargs(mock_spg_cls):
+def test_run_on_slice_forwards_args_and_kwargs(mock_spg_cls):
     """Positional and keyword arguments are forwarded unchanged to every task."""
     mock_handle = _make_mock_slice_handle(num_bundles=2)
     mock_spg_cls.return_value = mock_handle
@@ -1395,7 +1402,7 @@ def test_dispatch_forwards_args_and_kwargs(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 fn,
                 "pos_arg",
                 topology="2x2x2",
@@ -1411,15 +1418,15 @@ def test_dispatch_forwards_args_and_kwargs(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_releases_head_pgs_when_owns_slice(mock_spg_cls):
-    """When dispatch creates the slice internally it releases head PGs
+def test_run_on_slice_releases_head_pgs_when_owns_slice(mock_spg_cls):
+    """When run_on_slice creates the slice internally it releases head PGs
     after the placement group becomes ready."""
     mock_handle = _make_mock_slice_handle()
     mock_spg_cls.return_value = mock_handle
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 _make_mock_fn(), topology="2x2x2", accelerator_version="v4"
             )
 
@@ -1427,14 +1434,14 @@ def test_dispatch_releases_head_pgs_when_owns_slice(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_does_not_release_head_pgs_when_provided(mock_spg_cls):
-    """When the caller owns the SlicePlacementGroup, dispatch must not
+def test_run_on_slice_does_not_release_head_pgs_when_provided(mock_spg_cls):
+    """When the caller owns the SlicePlacementGroup, run_on_slice must not
     release its head PGs."""
     existing_handle = _make_mock_slice_handle()
 
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", return_value=None):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 _make_mock_fn(),
                 topology="2x2x2",
                 accelerator_version="v4",
@@ -1445,7 +1452,7 @@ def test_dispatch_does_not_release_head_pgs_when_provided(mock_spg_cls):
 
 
 @pytest.mark.parametrize("pg_per_slice, slice_index", [(False, None), (True, 0)])
-def test_dispatch_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_index):
+def test_run_on_slice_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_index):
     """A ValueError is raised when tpu_slice has already been shut down."""
     shut_down_handle = _make_mock_slice_handle(num_slices=2)
     shut_down_handle._pg_per_slice = pg_per_slice
@@ -1456,7 +1463,7 @@ def test_dispatch_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_inde
         shut_down_handle.placement_group = None
 
     with pytest.raises(ValueError, match="already been shut down"):
-        ray.util.tpu.dispatch(
+        ray.util.tpu.run_on_slice(
             _make_mock_fn(),
             tpu_slice=shut_down_handle,
             slice_index=slice_index,
@@ -1464,7 +1471,7 @@ def test_dispatch_raises_if_provided_slice_is_shut_down(pg_per_slice, slice_inde
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_pg_ready_exception_shuts_down_owned_slice(mock_spg_cls):
+def test_run_on_slice_pg_ready_exception_shuts_down_owned_slice(mock_spg_cls):
     """If pg.ready() resolves with an exception (e.g. PG was removed),
     ray.wait still returns it as ready. ray.get then surfaces the error;
     the internally-created slice must be shut down before re-raising."""
@@ -1474,7 +1481,7 @@ def test_dispatch_pg_ready_exception_shuts_down_owned_slice(mock_spg_cls):
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", side_effect=RuntimeError("PG failed")):
             with pytest.raises(RuntimeError, match="PG failed"):
-                ray.util.tpu.dispatch(
+                ray.util.tpu.run_on_slice(
                     _make_mock_fn(),
                     topology="2x2x2",
                     accelerator_version="v4",
@@ -1484,7 +1491,7 @@ def test_dispatch_pg_ready_exception_shuts_down_owned_slice(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_pg_ready_exception_does_not_shutdown_provided_slice(mock_spg_cls):
+def test_run_on_slice_pg_ready_exception_does_not_shutdown_provided_slice(mock_spg_cls):
     """If pg.ready() resolves with an exception and the slice was provided
     by the caller, shutdown() must not be called."""
     existing_handle = _make_mock_slice_handle()
@@ -1492,7 +1499,7 @@ def test_dispatch_pg_ready_exception_does_not_shutdown_provided_slice(mock_spg_c
     with patch.object(ray, "wait", return_value=([MagicMock()], [])):
         with patch.object(ray, "get", side_effect=RuntimeError("PG failed")):
             with pytest.raises(RuntimeError):
-                ray.util.tpu.dispatch(
+                ray.util.tpu.run_on_slice(
                     _make_mock_fn(),
                     tpu_slice=existing_handle,
                 )
@@ -1501,7 +1508,7 @@ def test_dispatch_pg_ready_exception_does_not_shutdown_provided_slice(mock_spg_c
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_timeout_shuts_down_owned_slice(mock_spg_cls):
+def test_run_on_slice_timeout_shuts_down_owned_slice(mock_spg_cls):
     """On a pg_ready timeout, the internally-created slice is shut down
     before the TimeoutError is raised."""
     mock_handle = _make_mock_slice_handle()
@@ -1509,7 +1516,7 @@ def test_dispatch_timeout_shuts_down_owned_slice(mock_spg_cls):
 
     with patch.object(ray, "wait", return_value=([], [MagicMock()])):
         with pytest.raises(TimeoutError, match="was not ready within"):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 _make_mock_fn(),
                 topology="2x2x2",
                 accelerator_version="v4",
@@ -1520,13 +1527,13 @@ def test_dispatch_timeout_shuts_down_owned_slice(mock_spg_cls):
 
 
 @patch("ray.util.tpu.SlicePlacementGroup")
-def test_dispatch_timeout_does_not_shutdown_provided_slice(mock_spg_cls):
+def test_run_on_slice_timeout_does_not_shutdown_provided_slice(mock_spg_cls):
     """On a pg_ready timeout, a caller-provided slice is never shut down."""
     existing_handle = _make_mock_slice_handle()
 
     with patch.object(ray, "wait", return_value=([], [MagicMock()])):
         with pytest.raises(TimeoutError):
-            ray.util.tpu.dispatch(
+            ray.util.tpu.run_on_slice(
                 _make_mock_fn(),
                 topology="2x2x2",
                 accelerator_version="v4",
@@ -1537,15 +1544,15 @@ def test_dispatch_timeout_does_not_shutdown_provided_slice(mock_spg_cls):
     existing_handle.shutdown.assert_not_called()
 
 
-def test_dispatch_integration_basic(ray_tpu_cluster):
-    """End-to-end: dispatch dispatches one task per host and all tasks
+def test_run_on_slice_integration_basic(ray_tpu_cluster):
+    """End-to-end: run_on_slice schedules one task per host and all tasks
     complete successfully. Uses the two-host v4-16 (2x2x2) fixture."""
 
     @ray.remote
     def tpu_work():
         return ray.get_runtime_context().get_node_id()
 
-    refs = ray.util.tpu.dispatch(
+    refs = ray.util.tpu.run_on_slice(
         tpu_work,
         topology="2x2x2",
         accelerator_version="v4",
@@ -1558,8 +1565,8 @@ def test_dispatch_integration_basic(ray_tpu_cluster):
     assert len(set(node_ids)) == 2
 
 
-def test_dispatch_integration_with_provided_slice(ray_tpu_cluster):
-    """When a SlicePlacementGroup is supplied, dispatch uses it without
+def test_run_on_slice_integration_with_provided_slice(ray_tpu_cluster):
+    """When a SlicePlacementGroup is supplied, run_on_slice uses it without
     creating or tearing down any extra placement groups."""
 
     @ray.remote
@@ -1571,7 +1578,7 @@ def test_dispatch_integration_with_provided_slice(ray_tpu_cluster):
     )
     ray.get(slice_handle.placement_group.ready())
 
-    refs = ray.util.tpu.dispatch(tpu_work, tpu_slice=slice_handle)
+    refs = ray.util.tpu.run_on_slice(tpu_work, tpu_slice=slice_handle)
     assert len(refs) == 2
     ray.get(refs)
 
@@ -1580,7 +1587,7 @@ def test_dispatch_integration_with_provided_slice(ray_tpu_cluster):
     slice_handle.shutdown()
 
 
-def test_dispatch_integration_pg_per_slice_slice_index(ray_tpu_cluster):
+def test_run_on_slice_integration_pg_per_slice_slice_index(ray_tpu_cluster):
     """Test dispatching to specific slices when pg_per_slice=True."""
 
     @ray.remote
@@ -1596,7 +1603,7 @@ def test_dispatch_integration_pg_per_slice_slice_index(ray_tpu_cluster):
     ray.get([pg.ready() for pg in slice_handle.slice_placement_groups])
 
     # Dispatch to slice 0
-    refs_0 = ray.util.tpu.dispatch(
+    refs_0 = ray.util.tpu.run_on_slice(
         tpu_work,
         tpu_slice=slice_handle,
         slice_index=0,
@@ -1604,7 +1611,7 @@ def test_dispatch_integration_pg_per_slice_slice_index(ray_tpu_cluster):
     assert len(refs_0) == 2
 
     # Dispatch to slice 1
-    refs_1 = ray.util.tpu.dispatch(
+    refs_1 = ray.util.tpu.run_on_slice(
         tpu_work,
         tpu_slice=slice_handle,
         slice_index=1,
@@ -1621,7 +1628,7 @@ def test_dispatch_integration_pg_per_slice_slice_index(ray_tpu_cluster):
     slice_handle.shutdown()
 
 
-def test_dispatch_integration_multi_slice(ray_tpu_cluster):
+def test_run_on_slice_integration_multi_slice(ray_tpu_cluster):
     """With num_slices=2 the function reserves both slices and dispatches
     one task per host across both (2 hosts * 2 slices = 4 tasks)."""
 
@@ -1629,7 +1636,7 @@ def test_dispatch_integration_multi_slice(ray_tpu_cluster):
     def tpu_work():
         return ray.get_runtime_context().get_node_id()
 
-    refs = ray.util.tpu.dispatch(
+    refs = ray.util.tpu.run_on_slice(
         tpu_work,
         topology="2x2x2",
         accelerator_version="v4",
@@ -1641,14 +1648,14 @@ def test_dispatch_integration_multi_slice(ray_tpu_cluster):
     assert len(set(node_ids)) == 4
 
 
-def test_dispatch_integration_v6e_single_host(ray_v6e_tpu_cluster):
+def test_run_on_slice_integration_v6e_single_host(ray_v6e_tpu_cluster):
     """A single-host v6e-8 slice produces exactly one ref."""
 
     @ray.remote
     def tpu_work():
         return ray.get_runtime_context().get_node_id()
 
-    refs = ray.util.tpu.dispatch(
+    refs = ray.util.tpu.run_on_slice(
         tpu_work,
         topology="2x4",
         accelerator_version="v6e",
@@ -2706,6 +2713,64 @@ def test_find_undiscovered_idle_slice_skips_held_head():
     # Head held on worker 0 (reported as 0) → slice skipped despite idle chips.
     avail["slice-h-w0"] = {"TPU": 4, head_resource: 0}
     assert check(avail) is None
+
+
+def test_tpu_resource_and_label_spec_resolution_with_visible_chips(monkeypatch):
+    """A GKE injected chip mask must not halve the capacity of a dual-device node.
+
+    GKE presets TPU_VISIBLE_CHIPS to the node's 4 physical chips while the node
+    enumerates 8 logical devices, so comparing the two directly clamps the node
+    to 4 TPUs and an explicit --resources='{"TPU": 8}' fails outright.
+    """
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,2,3")
+    monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    monkeypatch.setattr(
+        TPUAcceleratorManager, "get_current_node_num_accelerators", lambda: 8
+    )
+
+    # Default host-level accounting: one TPU resource per physical chip.
+    spec_default = ResourceAndLabelSpec()
+    spec_default.resolve(is_head=False)
+    assert spec_default.to_resource_dict()["TPU"] == 4
+
+    # Opt-in per-device accounting: the mask expands to all 8 logical devices.
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    spec_opt_in = ResourceAndLabelSpec()
+    spec_opt_in.resolve(is_head=False)
+    assert spec_opt_in.to_resource_dict()["TPU"] == 8
+
+    spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
+    spec_override.resolve(is_head=False)
+    assert spec_override.to_resource_dict()["TPU"] == 8
+
+    # A task holding half the node narrows the mask to the chips it owns.
+    # patch.dict restores the bounds the setter writes alongside the mask.
+    with patch.dict("os.environ", {}):
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+            ["0", "1", "2", "3"]
+        )
+        assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0,1"
+
+
+def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
+    """util.tpu reads RAY_TPU_RESOURCE_PER_CHIP through the shared accessor.
+
+    Every call site used to parse the variable itself, so "0" silently produced
+    zero TPU resources per slice instead of being rejected.
+    """
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    # "2x2x1" is a single 4 chip host, so a worker takes all 8 logical devices.
+    assert get_tpu_worker_resources("2x2x1", "v7x")[1]["TPU"] == 8
+    assert (
+        get_tpu_num_slices_for_workers(
+            "2x2x1", "v7x", num_workers=8, resources_per_worker={"TPU": 1}
+        )
+        == 1
+    )
+
+    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "0")
+    with pytest.raises(ValueError, match="must be a positive integer"):
+        get_tpu_worker_resources("2x2x1", "v7x")
 
 
 if __name__ == "__main__":

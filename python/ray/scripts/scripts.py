@@ -27,6 +27,7 @@ from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
+    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
@@ -1064,6 +1065,8 @@ def start(
                     "Please specify a different port using the `--port`"
                     " flag of `ray start` command."
                 )
+
+        maybe_enable_token_auth_if_token_available()
 
         # Ensure auth token is available if authentication mode is token
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
@@ -2719,7 +2722,15 @@ def drain_node(
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
+@click.option(
+    "--gcs-address",
+    required=False,
+    type=str,
+    help="The address (host:port) of GCS. Defaults to <node_ip>:6379.",
+)
+def kuberay_autoscaler(
+    cluster_name: str, cluster_namespace: str, gcs_address: Optional[str]
+) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
@@ -2730,7 +2741,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     # client.
     from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 
-    run_kuberay_autoscaler(cluster_name, cluster_namespace)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace, gcs_address)
 
 
 @cli.command(name="health-check", hidden=True)

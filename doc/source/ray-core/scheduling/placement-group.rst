@@ -503,7 +503,7 @@ Observe and Debug Placement Groups
 Ray provides several useful tools to inspect the placement group states and resource usage.
 
 - **Ray Status** is a CLI tool for viewing the resource usage and scheduling resource requirements of placement groups.
-- **Ray Dashboard** is a UI tool for inspecting placement group states.
+- **Ray dashboard** is a UI tool for inspecting placement group states.
 - **Ray State API** is a CLI for inspecting placement group states.
 
 .. tab-set::
