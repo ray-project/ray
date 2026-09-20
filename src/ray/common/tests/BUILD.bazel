@@ -18,6 +18,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
+        "//src/ray/util:env",
     ],
 )
 
