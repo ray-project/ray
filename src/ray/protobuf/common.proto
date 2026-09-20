@@ -19,6 +19,7 @@ package ray.rpc;
 import "src/ray/protobuf/public/runtime_environment.proto";
 
 option java_package = "io.ray.runtime.generated";
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // Language of a task or worker.
 // Note: The Language enum is used in the export API so it is public
@@ -27,6 +28,7 @@ enum Language {
   PYTHON = 0;
   JAVA = 1;
   CPP = 2;
+  GO = 3;
 }
 
 // Type of a worker.
@@ -154,12 +156,25 @@ message CppFunctionDescriptor {
   string class_name = 3;
 }
 
+/// Function descriptor for Go.
+message GoFunctionDescriptor {
+  /// Go module path (e.g., "github.com/example/myapp").
+  string module_name = 1;
+  /// Package path within the module (e.g., "pkg/tasks").
+  string package_path = 2;
+  /// Function name (e.g., "MyTask").
+  string function_name = 3;
+  /// Method name for actor methods (empty for normal functions).
+  string method_name = 4;
+}
+
 // A union wrapper for various function descriptor types.
 message FunctionDescriptor {
   oneof function_descriptor {
     JavaFunctionDescriptor java_function_descriptor = 1;
     PythonFunctionDescriptor python_function_descriptor = 2;
     CppFunctionDescriptor cpp_function_descriptor = 3;
+    GoFunctionDescriptor go_function_descriptor = 4;
   }
 }
 
