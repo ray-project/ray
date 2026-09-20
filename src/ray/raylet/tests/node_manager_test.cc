@@ -1300,9 +1300,7 @@ TEST_F(NodeManagerTest, TestHandleCancelStaleActorLeasesIdempotent) {
       &actor_lease_reply,
       [](const Status &s,
          const std::function<void()> &success,
-         const std::function<void()> &failure) {
-        ASSERT_TRUE(s.ok());
-      });
+         const std::function<void()> &failure) { ASSERT_TRUE(s.ok()); });
 
   auto task_lease_spec = BuildLeaseSpec({});
   task_lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
@@ -1314,9 +1312,7 @@ TEST_F(NodeManagerTest, TestHandleCancelStaleActorLeasesIdempotent) {
       &task_lease_reply,
       [](const Status &s,
          const std::function<void()> &success,
-         const std::function<void()> &failure) {
-        ASSERT_TRUE(s.ok());
-      });
+         const std::function<void()> &failure) { ASSERT_TRUE(s.ok()); });
 
   // Only the actor creation lease is cancelled, the task lease is requested by its
   // owner, not by GCS, so it is kept.
@@ -1327,9 +1323,7 @@ TEST_F(NodeManagerTest, TestHandleCancelStaleActorLeasesIdempotent) {
       &reply1,
       [](const Status &s,
          const std::function<void()> &success,
-         const std::function<void()> &failure) {
-        ASSERT_TRUE(s.ok());
-      });
+         const std::function<void()> &failure) { ASSERT_TRUE(s.ok()); });
   ASSERT_TRUE(actor_lease_reply.canceled());
   ASSERT_EQ(actor_lease_reply.failure_type(),
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
@@ -1342,9 +1336,7 @@ TEST_F(NodeManagerTest, TestHandleCancelStaleActorLeasesIdempotent) {
       &reply2,
       [](const Status &s,
          const std::function<void()> &success,
-         const std::function<void()> &failure) {
-        ASSERT_TRUE(s.ok());
-      });
+         const std::function<void()> &failure) { ASSERT_TRUE(s.ok()); });
   ASSERT_FALSE(task_lease_reply.canceled());
 }
 
