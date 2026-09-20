@@ -74,7 +74,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
   // Never seen any autoscaling state before - so just takes this.
   if (!autoscaling_state_.has_value()) {
-    autoscaling_state_ = *std::move(request.mutable_autoscaling_state());
+    autoscaling_state_ = std::move(*request.mutable_autoscaling_state());
 
     if (autoscaling_state_->infeasible_resource_requests_size() > 0) {
       has_new_infeasible_requests = true;
