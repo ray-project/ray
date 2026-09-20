@@ -266,6 +266,29 @@ void GcsActorScheduler::ReleaseUnusedActorWorkers(
   }
 }
 
+void GcsActorScheduler::CancelStaleActorLeases() {
+  // When GCS restarts, it doesn't know the actor creation leases that it requested in
+  // the previous lifecycle, and they may still be queued on the raylets. GCS asks every
+  // raylet to cancel them, and it won't send new leases to a node until it replies.
+  // If the node is dead, there is no need to send the request.
+  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
+  for (const auto &alive_node : alive_nodes) {
+    const auto &node_id = alive_node.first;
+    nodes_of_cancelling_stale_leases_.insert(node_id);
+
+    rpc::Address address;
+    address.set_node_id(alive_node.second->node_id());
+    address.set_ip_address(alive_node.second->node_manager_address());
+    address.set_port(alive_node.second->node_manager_port());
+    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(address);
+    raylet_client->CancelStaleActorLeases(
+        [this, node_id](const Status &status,
+                        const rpc::CancelStaleActorLeasesReply &reply) {
+          nodes_of_cancelling_stale_leases_.erase(node_id);
+        });
+  }
+}
+
 void GcsActorScheduler::LeaseWorkerFromNode(
     std::shared_ptr<GcsActor> actor, std::shared_ptr<const rpc::GcsNodeInfo> node) {
   RAY_CHECK(actor && node);
@@ -277,9 +300,10 @@ void GcsActorScheduler::LeaseWorkerFromNode(
           .WithField(node_id)
       << "Leasing worker for actor.";
 
-  // We need to ensure that the RequestWorkerLease won't be sent before the reply of
-  // ReleaseUnusedActorWorkers is returned.
-  if (nodes_of_releasing_unused_workers_.contains(node_id)) {
+  // We need to ensure that the RequestWorkerLease won't be sent before the replies of
+  // ReleaseUnusedActorWorkers and CancelStaleActorLeases are returned.
+  if (nodes_of_releasing_unused_workers_.contains(node_id) ||
+      nodes_of_cancelling_stale_leases_.contains(node_id)) {
     RetryLeasingWorkerFromNode(actor, node);
     return;
   }

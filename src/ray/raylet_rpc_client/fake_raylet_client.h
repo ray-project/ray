@@ -68,6 +68,12 @@ class FakeRayletClient : public RayletClientInterface {
     release_callbacks.push_back(callback);
   }
 
+  void CancelStaleActorLeases(
+      const ClientCallback<CancelStaleActorLeasesReply> &callback) override {
+    num_cancel_stale_actor_leases += 1;
+    cancel_stale_actor_leases_callbacks.push_back(callback);
+  }
+
   void CancelWorkerLease(
       const LeaseID &lease_id,
       const ClientCallback<CancelWorkerLeaseReply> &callback) override {
@@ -133,6 +139,18 @@ class FakeRayletClient : public RayletClientInterface {
       auto callback = release_callbacks.front();
       callback(Status::OK(), std::move(reply));
       release_callbacks.pop_front();
+      return true;
+    }
+  }
+
+  bool ReplyCancelStaleActorLeases() {
+    CancelStaleActorLeasesReply reply;
+    if (cancel_stale_actor_leases_callbacks.size() == 0) {
+      return false;
+    } else {
+      auto callback = cancel_stale_actor_leases_callbacks.front();
+      callback(Status::OK(), std::move(reply));
+      cancel_stale_actor_leases_callbacks.pop_front();
       return true;
     }
   }
@@ -338,6 +356,7 @@ class FakeRayletClient : public RayletClientInterface {
   int num_workers_disconnected = 0;
   int num_leases_canceled = 0;
   int num_release_unused_workers = 0;
+  int num_cancel_stale_actor_leases = 0;
   int num_get_task_failure_causes = 0;
   int num_lease_requested = 0;
   int num_remove_pg_bundles_requested = 0;
@@ -358,6 +377,8 @@ class FakeRayletClient : public RayletClientInterface {
   std::list<ClientCallback<RequestWorkerLeaseReply>> callbacks = {};
   std::list<ClientCallback<CancelWorkerLeaseReply>> cancel_callbacks = {};
   std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
+  std::list<ClientCallback<CancelStaleActorLeasesReply>>
+      cancel_stale_actor_leases_callbacks = {};
   std::list<ClientCallback<PrepareBundleResourcesReply>> lease_callbacks = {};
   std::list<ClientCallback<CommitBundleResourcesReply>> commit_callbacks = {};
   std::list<ClientCallback<RemovePlacementGroupBundlesReply>>

@@ -221,6 +221,26 @@ void RayletClient::ReleaseUnusedActorWorkers(
       /*method_timeout_ms*/ -1);
 }
 
+void RayletClient::CancelStaleActorLeases(
+    const rpc::ClientCallback<rpc::CancelStaleActorLeasesReply> &callback) {
+  rpc::CancelStaleActorLeasesRequest request;
+  INVOKE_RPC_CALL(
+      NodeManagerService,
+      CancelStaleActorLeases,
+      request,
+      [callback](const Status &status, rpc::CancelStaleActorLeasesReply &&reply) {
+        if (!status.ok()) {
+          RAY_LOG(WARNING)
+              << "Error cancelling stale actor leases from raylet, the raylet may have "
+                 "died: "
+              << status;
+        }
+        callback(status, std::move(reply));
+      },
+      grpc_client_,
+      /*method_timeout_ms*/ -1);
+}
+
 void RayletClient::CancelWorkerLease(
     const LeaseID &lease_id,
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {

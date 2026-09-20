@@ -759,6 +759,38 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
 
+TEST_F(GcsActorSchedulerTest, TestCancelStaleActorLeases) {
+  // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
+  // if there is still a pending `CancelStaleActorLeases` request.
+
+  // Add a node to the cluster.
+  auto node = GenNodeInfo();
+  gcs_node_manager_->AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  // Send a `CancelStaleActorLeases` request to the node.
+  gcs_actor_scheduler_->CancelStaleActorLeases();
+  ASSERT_EQ(1, raylet_client_->num_cancel_stale_actor_leases);
+  ASSERT_EQ(1, raylet_client_->cancel_stale_actor_leases_callbacks.size());
+
+  // Schedule an actor. Since the `CancelStaleActorLeases` request hasn't finished,
+  // `GcsActorScheduler` won't send `RequestWorkerLease` request to the node, but it
+  // will invoke `RetryLeasingWorkerFromNode` to retry later.
+  auto job_id = JobID::FromInt(1);
+  auto request = GenCreateActorRequest(job_id);
+  auto actor = std::make_shared<gcs::GcsActor>(
+      request.task_spec(), "", counter, fake_ray_event_recorder_, "");
+  gcs_actor_scheduler_->Schedule(actor);
+  ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
+  ASSERT_EQ(raylet_client_->num_workers_requested, 0);
+
+  // When `GcsActorScheduler` receives the `CancelStaleActorLeases` reply, it will send
+  // out the `RequestWorkerLease` request.
+  ASSERT_TRUE(raylet_client_->ReplyCancelStaleActorLeases());
+  gcs_actor_scheduler_->DoRetryLeasingWorkerFromNode(actor, node);
+  ASSERT_EQ(raylet_client_->num_workers_requested, 1);
+}
+
 TEST_F(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity) {
   // Two alive nodes.
   auto node_a = AddNewNode({{"CPU", 8.0}});

@@ -1840,6 +1840,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
 
   // Notify raylets to release unused workers.
   gcs_actor_scheduler_->ReleaseUnusedActorWorkers(node_to_workers);
+  // Notify raylets to cancel the actor creation leases requested by the previous GCS.
+  gcs_actor_scheduler_->CancelStaleActorLeases();
 
   RAY_LOG(DEBUG) << "The number of registered actors is " << registered_actors_.size()
                  << ", and the number of created actors is " << created_actors_.size();
