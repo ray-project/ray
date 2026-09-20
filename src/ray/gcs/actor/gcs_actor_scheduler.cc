@@ -261,11 +261,12 @@ void GcsActorScheduler::ReconcileRayletsAfterGcsRestart(
 
     raylet_client->CancelStaleActorLeases(
         [this, node_id, raylet_client, workers_in_use = std::move(workers_in_use)](
-            const Status &, const rpc::CancelStaleActorLeasesReply &) {
+            const Status &cancel_status,
+            const rpc::CancelStaleActorLeasesReply &cancel_reply) {
           raylet_client->ReleaseUnusedActorWorkers(
               workers_in_use,
-              [this, node_id](const Status &,
-                              const rpc::ReleaseUnusedActorWorkersReply &) {
+              [this, node_id](const Status &release_status,
+                              const rpc::ReleaseUnusedActorWorkersReply &release_reply) {
                 nodes_being_reconciled_.erase(node_id);
               });
         });
