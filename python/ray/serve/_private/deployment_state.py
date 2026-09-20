@@ -3425,6 +3425,17 @@ class DeploymentState:
         }
         return expected_names == running_names
 
+    def forget_broadcasts(self) -> None:
+        """Drop the record of what was last broadcast for this deployment.
+
+        Callers that evict this deployment's long-poll snapshots must call this,
+        or the `*_if_changed` broadcasts compare against snapshots that no longer
+        exist and skip republishing them.
+        """
+        self._last_broadcasted_running_replica_infos = []
+        self._last_broadcasted_availability = None
+        self._last_broadcasted_deployment_config = None
+
     @property
     def deleting(self) -> bool:
         """Whether this deployment is being torn down."""
@@ -6589,6 +6600,7 @@ class DeploymentStateManager:
             # DeploymentState, so creation (and its eviction) is skipped and the
             # tombstone stays the stored snapshot for this id.
             self._evict_stale_long_poll_keys(deployment_id)
+            self._deployment_states[deployment_id].forget_broadcasts()
 
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
