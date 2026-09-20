@@ -101,9 +101,23 @@ class ArrowRow(Mapping):
         tensor_arrow_extension_types = get_arrow_extension_tensor_types()
         schema = self._batch.schema
 
-        def get_item(keys: List[str]) -> Any:
+        def get_item(keys: List[str]) -> Tuple[Any, ...]:
+            # Resolve every column up front so that a missing one raises, rather
+            # than depending on its position in ``keys``.
+            col_indices = []
+            for col_name in keys:
+                col_idx = schema.get_field_index(col_name)
+                if col_idx == -1:
+                    raise KeyError(col_name)
+                col_indices.append(col_idx)
+
+            if not col_indices:
+                return ()
+
             # Check for tensor extension type on first key
-            if isinstance(schema.field(keys[0]).type, tensor_arrow_extension_types):
+            if isinstance(
+                schema.field(col_indices[0]).type, tensor_arrow_extension_types
+            ):
                 # Build a tensor row.
                 return tuple(
                     ArrowBlockAccessor._build_tensor_row(
@@ -114,18 +128,7 @@ class ArrowRow(Mapping):
 
             # Pyarrow select internally creates a new table by slicing which is
             # expensive. Instead, access the columns directly at row_idx.
-            items = []
-            for col_name in keys:
-                col_idx = schema.get_field_index(col_name)
-                if col_idx == -1:
-                    # key not found
-                    return None
-                col = self._batch.column(col_idx)
-                value = col[self._row_idx]
-                items.append(value)
-
-            if not items:
-                return None
+            items = [self._batch.column(i)[self._row_idx] for i in col_indices]
 
             try:
                 # Try to interpret this as a pyarrow.Scalar value.
@@ -139,8 +142,6 @@ class ArrowRow(Mapping):
         keys = [key] if is_single_item else key
         items = get_item(keys)
 
-        if items is None:
-            return None
         return items[0] if is_single_item else items
 
     def __iter__(self) -> Iterator:

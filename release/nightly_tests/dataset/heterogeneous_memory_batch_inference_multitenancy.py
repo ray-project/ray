@@ -294,7 +294,7 @@ if __name__ == "__main__":
     benchmark.write_result()
 
     # Raise after metrics have been written so the dashboard still records
-    # the failed run (matches the sort_benchmark.py "print then raise"
+    # the failed run (matches the random_shuffle_benchmark.py "print then raise"
     # convention).
     if errors:
         raise AssertionError("; ".join(errors))

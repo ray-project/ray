@@ -494,6 +494,11 @@ class MockDeploymentActorWrapper:
         self.killed = True
 
 
+# Gang PG names passed to `MockReplicaActorWrapper.remove_gang_placement_group`.
+# The call is a staticmethod, so there is no instance to record it on.
+REMOVED_GANG_PG_NAMES: List[str] = []
+
+
 class MockReplicaActorWrapper:
     def __init__(
         self,
@@ -783,6 +788,10 @@ class MockReplicaActorWrapper:
 
     def check_stopped(self) -> bool:
         return self.done_stopping
+
+    @staticmethod
+    def remove_gang_placement_group(pg_name: str):
+        REMOVED_GANG_PG_NAMES.append(pg_name)
 
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1

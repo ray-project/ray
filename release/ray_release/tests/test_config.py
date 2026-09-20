@@ -231,7 +231,7 @@ def test_parse_test_definition_with_matrix_and_adjustments():
             byod:
               type: gpu
               runtime_env:
-                - SCALING_MODE={{compute}}
+                SCALING_MODE: "{{compute}}"
             cluster_compute: "{{compute}}.yaml"
           run:
             timeout: 100
@@ -254,7 +254,7 @@ def test_parse_test_definition_with_matrix_and_adjustments():
     ):
         assert tests[i]["name"] == f"test-{compute}-{arg}"
         assert tests[i]["cluster"]["cluster_compute"] == f"{compute}.yaml"
-        assert tests[i]["cluster"]["byod"]["runtime_env"] == [f"SCALING_MODE={compute}"]
+        assert tests[i]["cluster"]["byod"]["runtime_env"] == {"SCALING_MODE": compute}
 
 
 class TestSubstituteVariable:
