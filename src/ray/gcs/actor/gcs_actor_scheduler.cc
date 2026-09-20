@@ -232,59 +232,42 @@ ActorID GcsActorScheduler::CancelOnWorker(const NodeID &node_id,
   return assigned_actor_id;
 }
 
-void GcsActorScheduler::ReleaseUnusedActorWorkers(
+void GcsActorScheduler::ReconcileRayletsAfterGcsRestart(
     const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {
-  // The purpose of this function is to release leased workers that may be leaked.
-  // When GCS restarts, it doesn't know which workers it has leased in the previous
-  // lifecycle. In this case, GCS will send a list of worker ids that are still needed.
-  // And Raylet will release other leased workers.
-  // If the node is dead, there is no need to send the request of release unused
-  // workers.
+  // When GCS restarts, it doesn't know the actor creation leases and the workers that
+  // it requested in the previous lifecycle. They may still be queued on, or leased
+  // from, the raylets. For each alive node, GCS first asks the raylet to cancel the
+  // queued actor creation leases, and then to release the leased actor workers that
+  // are not in use. The order matters: otherwise the resources freed by releasing a
+  // worker could be granted to a stale lease that is still queued.
+  // No lease is sent to a node until both steps have finished for it.
+  // If the node is dead, there is no need to send the requests.
   const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   for (const auto &alive_node : alive_nodes) {
     const auto &node_id = alive_node.first;
-    nodes_of_releasing_unused_workers_.insert(node_id);
+    nodes_being_reconciled_.insert(node_id);
 
     rpc::Address address;
     address.set_node_id(alive_node.second->node_id());
     address.set_ip_address(alive_node.second->node_manager_address());
     address.set_port(alive_node.second->node_manager_port());
     auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(address);
-    auto release_unused_workers_callback =
-        [this, node_id](const Status &status,
-                        const rpc::ReleaseUnusedActorWorkersReply &reply) {
-          nodes_of_releasing_unused_workers_.erase(node_id);
-        };
     auto iter = node_to_workers.find(alive_node.first);
 
     // When GCS restarts, the reply of RequestWorkerLease may not be processed, so some
     // nodes do not have leased workers. In this case, GCS will send an empty list.
     auto workers_in_use =
         iter != node_to_workers.end() ? iter->second : std::vector<WorkerID>{};
-    raylet_client->ReleaseUnusedActorWorkers(workers_in_use,
-                                             release_unused_workers_callback);
-  }
-}
 
-void GcsActorScheduler::CancelStaleActorLeases() {
-  // When GCS restarts, it doesn't know the actor creation leases that it requested in
-  // the previous lifecycle, and they may still be queued on the raylets. GCS asks every
-  // raylet to cancel them, and it won't send new leases to a node until it replies.
-  // If the node is dead, there is no need to send the request.
-  const auto alive_nodes = gcs_node_manager_.GetAllAliveNodes();
-  for (const auto &alive_node : alive_nodes) {
-    const auto &node_id = alive_node.first;
-    nodes_of_cancelling_stale_leases_.insert(node_id);
-
-    rpc::Address address;
-    address.set_node_id(alive_node.second->node_id());
-    address.set_ip_address(alive_node.second->node_manager_address());
-    address.set_port(alive_node.second->node_manager_port());
-    auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(address);
     raylet_client->CancelStaleActorLeases(
-        [this, node_id](const Status &status,
-                        const rpc::CancelStaleActorLeasesReply &reply) {
-          nodes_of_cancelling_stale_leases_.erase(node_id);
+        [this, node_id, raylet_client, workers_in_use = std::move(workers_in_use)](
+            const Status &, const rpc::CancelStaleActorLeasesReply &) {
+          raylet_client->ReleaseUnusedActorWorkers(
+              workers_in_use,
+              [this, node_id](const Status &,
+                              const rpc::ReleaseUnusedActorWorkersReply &) {
+                nodes_being_reconciled_.erase(node_id);
+              });
         });
   }
 }
@@ -300,10 +283,9 @@ void GcsActorScheduler::LeaseWorkerFromNode(
           .WithField(node_id)
       << "Leasing worker for actor.";
 
-  // We need to ensure that the RequestWorkerLease won't be sent before the replies of
-  // ReleaseUnusedActorWorkers and CancelStaleActorLeases are returned.
-  if (nodes_of_releasing_unused_workers_.contains(node_id) ||
-      nodes_of_cancelling_stale_leases_.contains(node_id)) {
+  // We need to ensure that the RequestWorkerLease won't be sent to a node that is still
+  // being reconciled with the GCS.
+  if (nodes_being_reconciled_.contains(node_id)) {
     RetryLeasingWorkerFromNode(actor, node);
     return;
   }
@@ -574,8 +556,8 @@ std::string GcsActorScheduler::DebugString() const {
          << "\n- node_to_actors_when_leasing_: " << node_to_actors_when_leasing_.size()
          << "\n- node_to_workers_when_creating_: "
          << node_to_workers_when_creating_.size()
-         << "\n- nodes_of_releasing_unused_workers_: "
-         << nodes_of_releasing_unused_workers_.size();
+         << "\n- nodes_being_reconciled_: "
+         << nodes_being_reconciled_.size();
   return stream.str();
 }
 
