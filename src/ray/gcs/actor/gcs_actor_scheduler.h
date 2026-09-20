@@ -83,16 +83,15 @@ class GcsActorSchedulerInterface {
   /// \return ID of actor associated with the specified node id and worker id.
   virtual ActorID CancelOnWorker(const NodeID &node_id, const WorkerID &worker_id) = 0;
 
-  /// Notify raylets to release unused workers.
+  /// Reconcile the raylets with the state of the GCS after a restart. GCS doesn't know
+  /// the actor creation leases and the workers it requested in the previous lifecycle.
+  /// For each alive raylet, it cancels the actor creation leases still queued on it and
+  /// then releases the actor workers that are not in use. Actor creation leases are not
+  /// sent to a raylet until this finishes for it.
   ///
   /// \param node_to_workers Workers used by each node.
-  virtual void ReleaseUnusedActorWorkers(
+  virtual void ReconcileRayletsAfterGcsRestart(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
-
-  /// Notify raylets to cancel the actor creation leases still queued on them, which
-  /// were requested by the previous GCS. Actor creation leases are not sent to a
-  /// raylet until it replies.
-  virtual void CancelStaleActorLeases() = 0;
 
   /// Handle the destruction of an actor.
   ///
@@ -170,16 +169,15 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \return ID of actor associated with the specified node id and worker id.
   ActorID CancelOnWorker(const NodeID &node_id, const WorkerID &worker_id) override;
 
-  /// Notify raylets to release unused workers.
+  /// Reconcile the raylets with the state of the GCS after a restart. GCS doesn't know
+  /// the actor creation leases and the workers it requested in the previous lifecycle.
+  /// For each alive raylet, it cancels the actor creation leases still queued on it and
+  /// then releases the actor workers that are not in use. Actor creation leases are not
+  /// sent to a raylet until this finishes for it.
   ///
   /// \param node_to_workers Workers used by each node.
-  void ReleaseUnusedActorWorkers(
+  void ReconcileRayletsAfterGcsRestart(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
-
-  /// Notify raylets to cancel the actor creation leases still queued on them, which
-  /// were requested by the previous GCS. Actor creation leases are not sent to a
-  /// raylet until it replies.
-  void CancelStaleActorLeases() override;
 
   /// Handle the destruction of an actor.
   ///
@@ -362,10 +360,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   GcsActorSchedulerFailureCallback schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
   GcsActorSchedulerSuccessCallback schedule_success_handler_;
-  /// The nodes which are releasing unused workers.
-  absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
-  /// The nodes which are cancelling stale actor creation leases.
-  absl::flat_hash_set<NodeID> nodes_of_cancelling_stale_leases_;
+  /// The nodes which are being reconciled with the GCS after a restart.
+  absl::flat_hash_set<NodeID> nodes_being_reconciled_;
   /// The cached raylet clients used to communicate with raylet.
   rpc::RayletClientPool &raylet_client_pool_;
   /// Core worker client pool shared by the GCS.
@@ -394,8 +390,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreating);
   FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
-  FRIEND_TEST(GcsActorSchedulerTest, TestCancelStaleActorLeases);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReconcileRayletsAfterGcsRestart);
   FRIEND_TEST(GcsActorSchedulerTest, TestSelectForwardingNodeForHardNodeAffinity);
   FRIEND_TEST(GcsActorSchedulerTest, TestSelectForwardingNodeForNodeAffinityStrategy);
 

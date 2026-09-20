@@ -55,9 +55,8 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
-  void ReleaseUnusedActorWorkers(
+  void ReconcileRayletsAfterGcsRestart(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
-  void CancelStaleActorLeases() {}
   void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {
     const auto &actor_id = actor->GetActorID();
     auto pending_it =

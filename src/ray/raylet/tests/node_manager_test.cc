@@ -1285,6 +1285,69 @@ TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseWhenHasLeaseRequest) {
   ASSERT_EQ(GetPendingLeaseWorkerCount(*local_lease_manager_), 0);
 }
 
+TEST_F(NodeManagerTest, TestHandleCancelStaleActorLeasesIdempotent) {
+  // Queue an actor creation lease and a normal task lease. Each lease needs its own
+  // lease id, otherwise the raylet takes the second request as a retry of the first.
+  const auto actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+  auto actor_lease_spec = DetachedActorCreationLeaseSpec(rpc::Address(), actor_id);
+  actor_lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
+  rpc::RequestWorkerLeaseRequest actor_lease_request;
+  actor_lease_request.mutable_lease_spec()->CopyFrom(actor_lease_spec.GetMessage());
+  rpc::RequestWorkerLeaseReply actor_lease_reply;
+  node_manager_->HandleRequestWorkerLease(
+      actor_lease_request,
+      &actor_lease_reply,
+      [](const Status &s,
+         const std::function<void()> &success,
+         const std::function<void()> &failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  auto task_lease_spec = BuildLeaseSpec({});
+  task_lease_spec.GetMutableMessage().set_lease_id(LeaseID::FromRandom().Binary());
+  rpc::RequestWorkerLeaseRequest task_lease_request;
+  task_lease_request.mutable_lease_spec()->CopyFrom(task_lease_spec.GetMessage());
+  rpc::RequestWorkerLeaseReply task_lease_reply;
+  node_manager_->HandleRequestWorkerLease(
+      task_lease_request,
+      &task_lease_reply,
+      [](const Status &s,
+         const std::function<void()> &success,
+         const std::function<void()> &failure) {
+        ASSERT_TRUE(s.ok());
+      });
+
+  // Only the actor creation lease is cancelled, the task lease is requested by its
+  // owner, not by GCS, so it is kept.
+  rpc::CancelStaleActorLeasesRequest request;
+  rpc::CancelStaleActorLeasesReply reply1;
+  node_manager_->HandleCancelStaleActorLeases(
+      request,
+      &reply1,
+      [](const Status &s,
+         const std::function<void()> &success,
+         const std::function<void()> &failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_TRUE(actor_lease_reply.canceled());
+  ASSERT_EQ(actor_lease_reply.failure_type(),
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+  ASSERT_FALSE(task_lease_reply.canceled());
+
+  // A retried request is a no-op.
+  rpc::CancelStaleActorLeasesReply reply2;
+  node_manager_->HandleCancelStaleActorLeases(
+      request,
+      &reply2,
+      [](const Status &s,
+         const std::function<void()> &success,
+         const std::function<void()> &failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_FALSE(task_lease_reply.canceled());
+}
+
 TEST_F(NodeManagerTest, TestHandleCancelWorkerLeaseNoLeaseIdempotent) {
   LeaseID lease_id = LeaseID::FromRandom();
   rpc::CancelWorkerLeaseRequest request;

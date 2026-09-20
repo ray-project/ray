@@ -501,9 +501,12 @@ service NodeManagerService {
   // This method is only used by GCS, and the purpose is to cancel the actor creation
   // leases that are still queued on the raylet. When GCS restarts, it doesn't know the
   // leases that it has requested in the previous lifecycle. In this case, GCS will ask
-  // the raylet to cancel all of them, and it won't send new actor creation leases to
-  // the raylet until it receives the reply.
-  // Failure: We log warning.
+  // the raylet to cancel all of them, and only then it will ask it to release the unused
+  // actor workers. It won't send new actor creation leases to the raylet until it
+  // receives both replies.
+  // Failure: The retryable gRPC client retries the request.
+  // Idempotency: This method is idempotent. Cancelling when there are no actor creation
+  // leases queued is a no-op.
   rpc CancelStaleActorLeases(CancelStaleActorLeasesRequest)
       returns (CancelStaleActorLeasesReply);
   // Shutdown the raylet (node manager).
