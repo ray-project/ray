@@ -371,6 +371,12 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+# Retain the stats summary of each finished execution so it can be read back with
+# `ray.data.list_stats_summaries()`, disabled by default.
+DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION = env_bool(
+    "RAY_DATA_ENABLE_STATS_SUMMARY_COLLECTION", False
+)
+
 DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
@@ -870,6 +876,9 @@ class DataContext:
         use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        enable_stats_summary_collection: Retain the stats summary of each finished
+            execution so it can be read back with `ray.data.list_stats_summaries()`,
+            disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
             store memory limit. If `None`, uses Ray's default.
         memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
@@ -1086,6 +1095,7 @@ class DataContext:
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
+    enable_stats_summary_collection: bool = DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None

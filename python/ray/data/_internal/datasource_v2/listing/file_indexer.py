@@ -8,11 +8,6 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray._common.utils import env_integer
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ChunkMetadata,
-    FileChunker,
-    WholeFileChunker,
-)
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
 from ray.data._internal.datasource_v2.listing.indexing_utils import (
@@ -31,23 +26,28 @@ logger = logging.getLogger(__name__)
 
 
 class FileIndexer(ABC):
-    @property
-    @abstractmethod
-    def file_chunker(self) -> FileChunker:
-        """The file chunker that this indexer uses."""
-        ...
+    """Turns root paths into ``FileManifest`` blocks inside ``ListFiles`` tasks.
+
+    Chosen by ``DataSourceV2._get_file_indexer``. How a file is split into
+    manifest rows is the implementation's business, not this interface's.
+    """
 
     @property
     def requires_file_io(self) -> bool:
-        """Whether listing reads file contents in addition to file metadata."""
-        return self.file_chunker.requires_file_io
+        """Whether listing opens files in addition to reading their metadata.
+
+        Metadata-only listing is fast, so ``plan_list_files_op`` runs it
+        without backpressure. An indexer that reads headers or footers while
+        listing returns ``True`` to keep normal backpressure.
+        """
+        return False
 
     def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
         """An equivalent indexer that emits each file exactly once, or ``None``.
 
         Metadata-only consumers -- currently the ``PushdownCountFiles`` rule --
         need a listing where one file means one manifest row and listing itself
-        does no per-file IO. An indexer that chunks files, bin-packs them, or
+        does no per-file IO. An indexer that splits files, bin-packs them, or
         reads metadata while listing cannot provide that, and would over-count.
 
         Default ``None`` means "cannot provide it", so such consumers decline
@@ -61,7 +61,7 @@ class FileIndexer(ABC):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -74,7 +74,9 @@ class FileIndexer(ABC):
 
         Args:
             paths: A column of paths pointing to files or directories.
-            filesystem: A PyArrow filesystem object.
+            filesystem: PyArrow filesystem to list through, or ``None`` for an
+                indexer that does its own IO (the framework forwards
+                ``DataSourceV2.filesystem`` unchanged).
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
             predicate: Pushed-down row filter. Indexers that read file
@@ -85,7 +87,7 @@ class FileIndexer(ABC):
             projected_columns: Pushed-down column projection, for metadata-aware
                 sizing. Others ignore it.
             shuffle_config: When set, listed files are shuffled after path
-                discovery and before metadata fetch (footer reads, chunking).
+                discovery and before any metadata fetch (footer reads).
                 :meth:`list_file_infos` is never shuffled.
             execution_idx: Execution index used with ``shuffle_config`` to
                 derive a per-execution seed.
@@ -101,7 +103,7 @@ class FileIndexer(ABC):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable["FileInfo"]:
@@ -190,7 +192,6 @@ class NonSamplingFileIndexer(FileIndexer):
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
-        file_chunker: Optional[FileChunker] = None,
     ):
         self._ignore_missing_paths = ignore_missing_paths
         # Resolved paths to exclude from the listing (see
@@ -209,18 +210,6 @@ class NonSamplingFileIndexer(FileIndexer):
             "RAY_DATA_LIST_FILES_QUEUE_SIZE_PER_THREAD",
             self._max_paths_per_output * 4,
         )
-        self._file_chunker: FileChunker = (
-            file_chunker if file_chunker is not None else WholeFileChunker()
-        )
-
-    @property
-    def file_chunker(self) -> FileChunker:
-        """The file chunker that this indexer uses.
-
-        Exposed primarily for tests and shuffle-aware planning code that needs
-        to introspect or override the chunking strategy.
-        """
-        return self._file_chunker
 
     @override
     def as_whole_file_indexer(self) -> "NonSamplingFileIndexer":
@@ -245,14 +234,13 @@ class NonSamplingFileIndexer(FileIndexer):
             skip_paths=self._skip_paths,
             num_workers=self._num_workers,
             max_paths_per_output=self._max_paths_per_output,
-            file_chunker=WholeFileChunker(),
         )
 
     def list_files(
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -264,8 +252,9 @@ class NonSamplingFileIndexer(FileIndexer):
         # This per-file listing path ignores predicate/limit/projected_columns;
         # they're consumed by metadata-aware indexers (e.g. the footer indexer).
         # ``list_file_infos`` already skips zero-size files and applies pruners,
-        # so the manifest builder only has to chunk. Shuffle, when requested,
-        # happens after path discovery and before chunking.
+        # so this method only batches them into manifests, one row per file.
+        # Shuffle, when requested, happens after path discovery and before the
+        # manifests are built.
         file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,
@@ -280,7 +269,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
@@ -290,8 +279,7 @@ class NonSamplingFileIndexer(FileIndexer):
 
         :meth:`list_file_infos` stays a pure listing stream. Shuffle, when
         requested, materializes that stream and permutes whole files so
-        metadata-aware subclasses (footer reads) and chunking both see the
-        shuffled file order. Unshuffled listing stays streaming.
+        metadata-aware subclasses (footer reads) see the shuffled file order. Unshuffled listing stays streaming.
         """
         file_infos = self.list_file_infos(
             paths,
@@ -436,7 +424,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable[FileInfo]:
@@ -451,6 +439,13 @@ class NonSamplingFileIndexer(FileIndexer):
         partition filters) are applied here, so both listing paths share one
         filtering point.
         """
+        if filesystem is None:
+            raise ValueError(
+                f"{type(self).__name__} lists files through a PyArrow filesystem, "
+                "but the datasource returned `filesystem=None`. Resolve one in the "
+                "datasource's `__init__` (see `_resolve_paths_and_filesystem`) or "
+                "return an indexer that does its own IO."
+            )
         pruners = pruners or []
         file_info_iterator = self._get_file_info_iterator(
             paths, filesystem, preserve_order
@@ -468,50 +463,40 @@ class NonSamplingFileIndexer(FileIndexer):
         file_infos: Iterable[FileInfo],
     ) -> Iterable[FileManifest]:
         # ``file_infos`` are already filtered (zero-size skipped, pruners applied)
-        # by ``list_file_infos``; this method only chunks them into manifests.
+        # by ``list_file_infos``; this method only batches them into manifests,
+        # one row per file. Indexers that read a file in parts (the Parquet
+        # footer indexer) override ``list_files`` instead.
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
-        running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
-        chunks_count = 0
+        files_count = 0
 
         for file_info in file_infos:
             # ``list_file_infos`` already dropped zero/None-size files.
             assert file_info.size is not None
-            path, file_size = file_info.path, file_info.size
+            running_paths.append(file_info.path)
+            running_file_sizes.append(file_info.size)
+            files_count += 1
 
-            # Drive the chunker once per file; emit one manifest row per chunk.
-            # ``chunk_metadata`` is ``None`` for whole-file chunks (the default
-            # ``WholeFileChunker`` behavior).
-            for (
-                chunk_metadata,
-                chunk_size,
-            ) in self._file_chunker.generate_chunk_metadatas(path, file_size):
-                running_paths.append(path)
-                running_file_sizes.append(chunk_size)
-                running_chunk_metadatas.append(chunk_metadata)
-                chunks_count += 1
-
-                if len(running_paths) >= self._max_paths_per_output:
-                    manifests_count += 1
-                    yield FileManifest.construct_manifest(
-                        paths=running_paths,
-                        sizes=running_file_sizes,
-                        chunk_metadatas=running_chunk_metadatas,
-                    )
-                    running_paths = []
-                    running_file_sizes = []
-                    running_chunk_metadatas = []
+            if len(running_paths) >= self._max_paths_per_output:
+                manifests_count += 1
+                yield FileManifest.construct_manifest(
+                    paths=running_paths,
+                    sizes=running_file_sizes,
+                    chunk_metadatas=[None] * len(running_paths),
+                )
+                running_paths = []
+                running_file_sizes = []
 
         if running_paths:
             manifests_count += 1
             yield FileManifest.construct_manifest(
                 paths=running_paths,
                 sizes=running_file_sizes,
-                chunk_metadatas=running_chunk_metadatas,
+                chunk_metadatas=[None] * len(running_paths),
             )
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "
-            f"with {chunks_count} file chunks"
+            f"with {files_count} files"
         )

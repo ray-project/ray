@@ -9,9 +9,6 @@ from pyarrow import csv
 from pyarrow.fs import LocalFileSystem
 
 import ray
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    LineDelimitedFileChunker,
-)
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
 from ray.data.context import DataContext
@@ -36,10 +33,6 @@ def restore_ctx():
             context.target_max_block_size,
             context.execution_options.preserve_order,
         ) = original
-
-
-class _SmallLineDelimitedFileChunker(LineDelimitedFileChunker):
-    _CHUNK_BYTE_SIZE = 8
 
 
 def test_read_csv_builds_list_files_read_files_chain(
@@ -138,7 +131,7 @@ def test_read_csv_v2_executor_chunking_and_stats(
     datasource = CSVDatasourceV2(
         [str(path)],
         partitioning=None,
-        file_chunker=_SmallLineDelimitedFileChunker(),
+        chunk_byte_size=8,
     )
 
     dataset = _read_datasource_v2(datasource, parallelism=4).materialize()
@@ -699,9 +692,7 @@ def test_csv_chunks_resume_after_downstream_blocked(
         ray.get(gate.wait.remote())
         return batch
 
-    datasource = CSVDatasourceV2(
-        [str(path)], file_chunker=_SmallLineDelimitedFileChunker()
-    )
+    datasource = CSVDatasourceV2([str(path)], chunk_byte_size=8)
     strategy = ActorPoolStrategy(size=1) if actor_pool else TaskPoolStrategy(size=1)
     dataset = _read_datasource_v2(datasource).map_batches(
         consume, batch_size=8, compute=strategy

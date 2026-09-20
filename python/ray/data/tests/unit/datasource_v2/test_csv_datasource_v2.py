@@ -6,10 +6,6 @@ import pyarrow as pa
 import pytest
 from pyarrow import csv
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    LineDelimitedFileChunker,
-    WholeFileChunker,
-)
 from ray.data._internal.datasource_v2.csv_datasource_v2 import CSVDatasourceV2
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.csv_file_reader import CSVFileReader
@@ -22,10 +18,6 @@ def _chunk(start: int, end: int):
         "chunk_byte_start_idx": start,
         "chunk_byte_end_idx": end,
     }
-
-
-class _SmallLineDelimitedFileChunker(LineDelimitedFileChunker):
-    _CHUNK_BYTE_SIZE = 8
 
 
 def test_infer_schema_and_create_scanner(tmp_path):
@@ -55,11 +47,11 @@ def test_listing_does_not_parse_csv_headers(monkeypatch, tmp_path, multi_chunk):
     monkeypatch.setattr(CSVFileReader, "_open_csv", fail_on_parse)
     datasource = CSVDatasourceV2(
         [str(path)],
-        file_chunker=_SmallLineDelimitedFileChunker() if multi_chunk else None,
+        chunk_byte_size=8 if multi_chunk else None,
     )
 
     chunks = list(
-        datasource._get_file_indexer().file_chunker.generate_chunk_metadatas(
+        datasource._get_file_indexer().generate_chunk_metadatas(
             str(path), path.stat().st_size
         )
     )
@@ -104,14 +96,14 @@ def test_infer_schema_unions_hive_partition_fields(tmp_path):
     assert datasource.resolve_partitioning(sample).field_names is None
 
 
-def test_default_and_fallback_chunkers(tmp_path):
+def test_default_and_fallback_split_modes(tmp_path):
     path = tmp_path / "data.csv"
     path.write_text("id\n1\n")
 
     default = CSVDatasourceV2([str(path)])
     assert default._get_file_indexer().requires_file_io
     chunks = list(
-        default._get_file_indexer().file_chunker.generate_chunk_metadatas(
+        default._get_file_indexer().generate_chunk_metadatas(
             str(path), path.stat().st_size
         )
     )
@@ -123,7 +115,7 @@ def test_default_and_fallback_chunkers(tmp_path):
             "parse_options": csv.ParseOptions(newlines_in_values=True),
         },
     )
-    assert isinstance(multiline._get_file_indexer().file_chunker, WholeFileChunker)
+    assert not multiline._get_file_indexer().splits_files
     assert not multiline._get_file_indexer().requires_file_io
 
     projected = CSVDatasourceV2(
@@ -132,19 +124,19 @@ def test_default_and_fallback_chunkers(tmp_path):
             "convert_options": csv.ConvertOptions(include_columns=["id"]),
         },
     )
-    assert isinstance(projected._get_file_indexer().file_chunker, WholeFileChunker)
+    assert not projected._get_file_indexer().splits_files
 
     skipped = CSVDatasourceV2(
         [str(path)],
         arrow_csv_args={"read_options": csv.ReadOptions(skip_rows=1)},
     )
-    assert isinstance(skipped._get_file_indexer().file_chunker, WholeFileChunker)
+    assert not skipped._get_file_indexer().splits_files
 
     stream_args = CSVDatasourceV2(
         [str(path)],
         open_stream_args={"buffer_size": 1},
     )
-    assert isinstance(stream_args._get_file_indexer().file_chunker, WholeFileChunker)
+    assert not stream_args._get_file_indexer().splits_files
 
 
 def test_explicit_none_csv_options_use_pyarrow_defaults(tmp_path):
@@ -160,7 +152,7 @@ def test_explicit_none_csv_options_use_pyarrow_defaults(tmp_path):
         },
     )
     chunks = list(
-        datasource._get_file_indexer().file_chunker.generate_chunk_metadatas(
+        datasource._get_file_indexer().generate_chunk_metadatas(
             str(path), path.stat().st_size
         )
     )
@@ -175,7 +167,7 @@ def test_compressed_file_is_not_chunked(tmp_path):
 
     datasource = CSVDatasourceV2([str(path)])
     chunks = list(
-        datasource._get_file_indexer().file_chunker.generate_chunk_metadatas(
+        datasource._get_file_indexer().generate_chunk_metadatas(
             str(path), path.stat().st_size
         )
     )
@@ -228,7 +220,7 @@ def test_single_chunk_uses_stream_only_filesystem(tmp_path):
     datasource = CSVDatasourceV2([str(path)])
     schema = pa.schema([("id", pa.int64())])
     chunks = list(
-        datasource._get_file_indexer().file_chunker.generate_chunk_metadatas(
+        datasource._get_file_indexer().generate_chunk_metadatas(
             str(path), path.stat().st_size
         )
     )
@@ -287,7 +279,7 @@ def test_reader_assigns_one_large_record_to_one_chunk(monkeypatch, tmp_path):
     datasource = CSVDatasourceV2(
         [str(path)],
         partitioning=None,
-        file_chunker=_SmallLineDelimitedFileChunker(),
+        chunk_byte_size=8,
     )
     file_size = path.stat().st_size
     sample = FileManifest.construct_manifest(
@@ -319,12 +311,9 @@ def test_reader_assigns_one_large_record_to_one_chunk(monkeypatch, tmp_path):
         def open_input_file(self, file_path):
             return CountingRandomAccessFile(pa.OSFile(file_path, "r"))
 
-    datasource._get_file_indexer().file_chunker._filesystem = CountingFilesystem()
-    chunks = list(
-        datasource._get_file_indexer().file_chunker.generate_chunk_metadatas(
-            str(path), file_size
-        )
-    )
+    indexer = datasource._get_file_indexer()
+    indexer._filesystem = CountingFilesystem()
+    chunks = list(indexer.generate_chunk_metadatas(str(path), file_size))
     manifest = FileManifest.construct_manifest(
         paths=[str(path)] * len(chunks),
         sizes=[chunk_size for _, chunk_size in chunks],
@@ -484,7 +473,7 @@ def test_chunked_file_with_different_columns_keeps_its_own_columns(tmp_path):
     different_path.write_text("id,extra\n1,a\n2,b\n3,c\n")
     datasource = CSVDatasourceV2(
         [str(sampled_path), str(different_path)],
-        file_chunker=_SmallLineDelimitedFileChunker(),
+        chunk_byte_size=8,
     )
     sample = FileManifest.construct_manifest(
         paths=[str(sampled_path)],
@@ -493,9 +482,7 @@ def test_chunked_file_with_different_columns_keeps_its_own_columns(tmp_path):
     )
     sampled_schema = datasource.infer_schema(sample)
 
-    chunks, manifest = _chunked_manifest(
-        datasource._get_file_indexer().file_chunker, different_path
-    )
+    chunks, manifest = _chunked_manifest(datasource._get_file_indexer(), different_path)
     table = pa.concat_tables(
         list(datasource.create_scanner(sampled_schema).create_reader().read(manifest))
     )
@@ -516,7 +503,7 @@ def test_chunked_file_keeps_its_own_types(tmp_path):
     promoted_path.write_text("value\n1.5\n2.5\n3.5\n")
     datasource = CSVDatasourceV2(
         [str(sampled_path), str(promoted_path)],
-        file_chunker=_SmallLineDelimitedFileChunker(),
+        chunk_byte_size=8,
     )
     sample = FileManifest.construct_manifest(
         paths=[str(sampled_path)],
@@ -525,9 +512,7 @@ def test_chunked_file_keeps_its_own_types(tmp_path):
     )
     sampled_schema = datasource.infer_schema(sample)
 
-    chunks, manifest = _chunked_manifest(
-        datasource._get_file_indexer().file_chunker, promoted_path
-    )
+    chunks, manifest = _chunked_manifest(datasource._get_file_indexer(), promoted_path)
     table = pa.concat_tables(
         list(datasource.create_scanner(sampled_schema).create_reader().read(manifest))
     )
@@ -545,9 +530,7 @@ def test_heterogeneous_files_are_all_chunked_with_their_own_types(tmp_path):
         value = f"{index}.5" if index % 2 else str(index)
         path.write_text("id,value\n" + "".join(f"{row},{value}\n" for row in range(8)))
         paths.append(path)
-    datasource = CSVDatasourceV2(
-        [str(path) for path in paths], file_chunker=_SmallLineDelimitedFileChunker()
-    )
+    datasource = CSVDatasourceV2([str(path) for path in paths], chunk_byte_size=8)
     # Sample only integer-valued files so the planning schema disagrees with
     # the types Arrow infers for every other file.
     sample = FileManifest.construct_manifest(
@@ -558,7 +541,7 @@ def test_heterogeneous_files_are_all_chunked_with_their_own_types(tmp_path):
     sampled_schema = datasource.infer_schema(sample)
     assert sampled_schema.field("value").type == pa.int64()
 
-    chunker = datasource._get_file_indexer().file_chunker
+    chunker = datasource._get_file_indexer()
     reader = datasource.create_scanner(sampled_schema).create_reader()
     for index, path in enumerate(paths):
         chunks, manifest = _chunked_manifest(chunker, path)
@@ -640,24 +623,21 @@ def test_chunk_reads_use_read_ahead_slabs(tmp_path):
     assert max(read_at_sizes) <= read_ahead_size
 
 
-def test_record_aligned_chunker_falls_back_without_random_access(tmp_path):
+def test_record_aligned_indexer_falls_back_without_random_access(tmp_path):
     path = tmp_path / "data.csv"
     path.write_text("id,value\n1,a\n2,b\n3,c\n")
-    datasource = CSVDatasourceV2(
-        [str(path)], file_chunker=_SmallLineDelimitedFileChunker()
-    )
+    datasource = CSVDatasourceV2([str(path)], chunk_byte_size=8)
 
     class StreamOnlyFilesystem:
         def open_input_file(self, _path):
             raise pa.ArrowNotImplementedError("random access is unavailable")
 
-    datasource._get_file_indexer().file_chunker._filesystem = StreamOnlyFilesystem()
+    indexer = datasource._get_file_indexer()
+    indexer._filesystem = StreamOnlyFilesystem()
 
-    assert list(
-        datasource._get_file_indexer().file_chunker.generate_chunk_metadatas(
-            str(path), path.stat().st_size
-        )
-    ) == [(None, path.stat().st_size)]
+    assert list(indexer.generate_chunk_metadatas(str(path), path.stat().st_size)) == [
+        (None, path.stat().st_size)
+    ]
 
 
 def test_csv_listing_emits_record_aligned_manifests_frequently(tmp_path):
@@ -669,7 +649,7 @@ def test_csv_listing_emits_record_aligned_manifests_frequently(tmp_path):
 
     datasource = CSVDatasourceV2(
         paths,
-        file_chunker=_SmallLineDelimitedFileChunker(),
+        chunk_byte_size=8,
     )
     manifests = list(
         datasource._get_file_indexer().list_files(

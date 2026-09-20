@@ -82,20 +82,14 @@ def test_list_files_ray_remote_args_default_to_empty(tmp_path):
     assert scheduled.ray_remote_args == {"runtime_env": {"env_vars": {"A": "1"}}}
 
 
-def test_indexer_requires_file_io_follows_its_chunker():
-    from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-        WholeFileChunker,
-    )
-
-    class HeaderReadingChunker(WholeFileChunker):
+def test_indexer_requires_file_io_defaults_to_false():
+    class HeaderReadingIndexer(NonSamplingFileIndexer):
         @property
         def requires_file_io(self) -> bool:
             return True
 
     assert not NonSamplingFileIndexer(ignore_missing_paths=False).requires_file_io
-    assert NonSamplingFileIndexer(
-        ignore_missing_paths=False, file_chunker=HeaderReadingChunker()
-    ).requires_file_io
+    assert HeaderReadingIndexer(ignore_missing_paths=False).requires_file_io
 
 
 def test_partition_filter_cache_is_bounded_and_frozen():

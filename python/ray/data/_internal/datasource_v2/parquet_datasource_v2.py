@@ -138,7 +138,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._paths
 
     @property
-    def filesystem(self) -> Optional["FileSystem"]:
+    def filesystem(self) -> "FileSystem":
         return self._filesystem
 
     @property

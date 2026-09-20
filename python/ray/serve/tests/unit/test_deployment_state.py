@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    DeploymentTargetInfo,
     GangReservationResult,
     HandleMetricReport,
     ReplicaID,
@@ -61,9 +62,11 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
+    REMOVED_GANG_PG_NAMES,
     MockDeploymentActorWrapper,
     MockKVStore,
     MockPlacementGroup,
+    MockReplicaActorWrapper,
     dead_replicas_context,
     replica_rank_context,
     uninitialized_replicas_context,
@@ -2644,6 +2647,80 @@ def test_deploy_with_consistent_constructor_failure(
         assert ds._replica_constructor_retry_counter == 4
         check_counts(ds, total=0)
         timer.advance(10)  # simulate time passing between each call to update
+
+    # A fresh deploy with no running replica is broadcast as unavailable.
+    assert _last_broadcast_target_info(ds).is_available is False
+
+
+def _last_broadcast_target_info(ds: DeploymentState) -> DeploymentTargetInfo:
+    key = (LongPollNamespace.DEPLOYMENT_TARGETS, TEST_DEPLOYMENT_ID)
+    for call in reversed(ds._long_poll_host.notify_changed.call_args_list):
+        if key in call[0][0]:
+            return call[0][0][key]
+    raise AssertionError("DEPLOYMENT_TARGETS was never broadcast")
+
+
+def test_terminally_failed_rolling_update_keeps_old_replicas_available(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
+    """A failed update must not make surviving old replicas unavailable to routers."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(num_replicas=2, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert _last_broadcast_target_info(ds).is_available is True
+
+    # Rolling update, one replica at a time: one old replica is stopped and
+    # one replica of the new version is started.
+    info_2, v2 = deployment_info(num_replicas=2, version="2")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    check_counts(
+        ds,
+        total=3,
+        by_state=[
+            (ReplicaState.RUNNING, 1, v1),
+            (ReplicaState.STOPPING, 1, v1),
+            (ReplicaState.STARTING, 1, v2),
+        ],
+    )
+    ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+    # The new version fails until the startup threshold is reached.
+    threshold = 2 * mock_max_per_replica_retry_count
+    for _ in range(threshold):
+        new_replica = ds._replicas.get(states=[ReplicaState.STARTING])[0]
+        assert new_replica.version == v2
+        new_replica._actor.set_failed_to_start()
+        dsm.update()
+        new_replica._actor.set_done_stopping()
+        dsm.update()
+
+    assert ds._replica_constructor_retry_counter == threshold
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert (
+        ds.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+    )
+    assert ds._terminally_failed()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # The surviving old replica keeps serving.
+    target_info = _last_broadcast_target_info(ds)
+    assert target_info.is_available is True
+    assert len(target_info.running_replicas) == 1
+    for _ in range(5):
+        dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert ds._last_broadcasted_availability is True
 
 
 def test_deploy_with_partial_constructor_failure(
@@ -9342,6 +9419,127 @@ class TestGangRollingUpdate:
         self._mock_gang_pgs(dsm, gang_size, gang_size)
         dsm.update()
         self._finish_starting(ds)
+
+    def _gang_pg_names(self, ds):
+        return {r.pg_name for r in ds._gang_reservations.values()}
+
+    def test_gang_pg_removed_only_after_last_member_stops(
+        self, mock_deployment_state_manager
+    ):
+        """One gang shares one PG, so it is freed only once every member is gone."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        first, last = stopping[0], stopping[1]
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # The first member out must not tear the PG from a sibling still draining.
+        first._actor.set_done_stopping()
+        dsm.update()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        last._actor.set_done_stopping()
+        dsm.update()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def _depart(self, ds, replica):
+        """Fully reap a replica: gone from the container and from bookkeeping."""
+        ds._replicas.remove([replica.replica_id])
+        ds._unregister_gang_replica(replica.replica_id)
+
+    def test_gang_pg_kept_while_any_member_of_that_gang_remains(
+        self, mock_deployment_state_manager
+    ):
+        """Registered membership going empty is not proof the gang is gone: a
+        recovering member is unregistered but still holding the PG."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # Drop registered membership to empty while both members are still tracked,
+        # which is the state recovery leaves behind.
+        for r in stopping:
+            ds._unregister_gang_replica(r.replica_id)
+        ds._reclaim_empty_gang_placement_groups()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        self._depart(ds, stopping[0])
+        ds._reclaim_empty_gang_placement_groups()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        self._depart(ds, stopping[1])
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def test_gang_pg_reservation_survives_a_failed_removal(
+        self, mock_deployment_state_manager
+    ):
+        """A failed removal must keep the reservation, or nothing can retry it."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        gang_id = stopping[0].gang_context.gang_id
+        for r in stopping:
+            self._depart(ds, r)
+        REMOVED_GANG_PG_NAMES.clear()
+
+        def boom(pg_name):
+            raise RuntimeError("gcs unavailable")
+
+        with patch.object(MockReplicaActorWrapper, "remove_gang_placement_group", boom):
+            ds._reclaim_empty_gang_placement_groups()
+        assert gang_id in ds._gang_reservations
+        assert gang_id in ds._gang_reclaim_candidates
+
+        # The retry has to survive the deployment going quiet, which is when the
+        # transitioning path that used to own this sweep stops running.
+        ds._in_transition = False
+        ds.check_and_update_replicas()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+        assert gang_id not in ds._gang_reservations
+
+    def test_gang_pg_not_blocked_by_another_gang_recovering(
+        self, mock_deployment_state_manager
+    ):
+        """A recovering replica of a different gang must not hold this gang's PG."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # Park a member of the OTHER gang in RECOVERING.
+        other = ds._replicas.get(states=[ReplicaState.RUNNING])[0]
+        ds._replicas.remove([other.replica_id])
+        ds._replicas.add(ReplicaState.RECOVERING, other)
+
+        for r in stopping:
+            self._depart(ds, r)
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
 
     def test_stop_gang_atomically(self, mock_deployment_state_manager):
         """Stops one complete gang per wave, never partially tearing down a gang."""

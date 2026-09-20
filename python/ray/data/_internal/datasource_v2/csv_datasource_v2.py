@@ -2,33 +2,22 @@
 
 from __future__ import annotations
 
-from itertools import chain
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
 from pyarrow import csv
-from pyarrow.fs import LocalFileSystem
 from typing_extensions import override
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    FileChunker,
-    LineDelimitedFileChunker,
-    WholeFileChunker,
-)
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
     DataSourceV2,
 )
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    FileIndexer,
-    NonSamplingFileIndexer,
+from ray.data._internal.datasource_v2.listing.csv_file_indexer import (
+    RecordAlignedCSVFileIndexer,
 )
+from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.readers.csv_file_reader import (
-    CSVFileReader,
-    _find_record_boundary,
-    _is_record_boundary,
-)
+from ray.data._internal.datasource_v2.readers.csv_file_reader import CSVFileReader
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     IdentityInMemorySizeEstimator,
 )
@@ -89,91 +78,6 @@ def _supports_line_delimited_chunking(
     return True
 
 
-class _RecordAlignedCSVFileChunker(FileChunker):
-    """Align a delegate's nominal byte ranges to CSV record boundaries.
-
-    The reader aligns every chunk again before parsing, so this pass isn't
-    required for correctness. It runs during listing so that a record spanning
-    many nominal chunks is discovered once per file instead of once per read
-    task, and so the partitioner weighs each chunk by its real byte size.
-    """
-
-    def __init__(self, delegate: FileChunker, *, filesystem: Optional["FileSystem"]):
-        self._delegate = delegate
-        self._filesystem = filesystem
-
-    @property
-    def requires_file_io(self) -> bool:
-        return True
-
-    def generate_chunk_metadatas(self, path: str, file_size: int):
-        chunks = iter(self._delegate.generate_chunk_metadatas(path, file_size))
-        first_chunk = next(chunks, None)
-        if first_chunk is None:
-            return
-        second_chunk = next(chunks, None)
-        if second_chunk is None:
-            # Whole-file reads don't need random access. In particular, small
-            # files on stream-only filesystems must use open_input_stream too.
-            metadata, _ = first_chunk
-            if metadata is None or (
-                metadata["chunk_byte_start_idx"] == 0
-                and metadata["chunk_byte_end_idx"] == file_size
-            ):
-                yield None, file_size
-            else:
-                yield first_chunk
-            return
-
-        # Align the entire file in one forward pass. If one record spans many
-        # nominal chunks, ``previous_end`` lets us discard every covered chunk
-        # without rescanning the same tail once per read task.
-        filesystem = self._filesystem or LocalFileSystem()
-        try:
-            file = filesystem.open_input_file(path)
-        except (pa.ArrowNotImplementedError, NotImplementedError):
-            # Some custom filesystems only support sequential input streams.
-            # Fall back before emitting any chunk so the reader can use
-            # ``open_input_stream`` without losing or duplicating bytes.
-            yield None, file_size
-            return
-
-        with file:
-            actual_file_size = file.size()
-            previous_end = 0
-            for metadata, _ in chain((first_chunk, second_chunk), chunks):
-                if metadata is None:
-                    yield None, actual_file_size
-                    return
-
-                raw_start = min(metadata["chunk_byte_start_idx"], actual_file_size)
-                raw_end = min(metadata["chunk_byte_end_idx"], actual_file_size)
-                if raw_end <= previous_end:
-                    continue
-
-                start = previous_end
-                if raw_start > previous_end:
-                    start = raw_start
-                    if not _is_record_boundary(file, start, actual_file_size):
-                        start = _find_record_boundary(file, start, actual_file_size)
-                if raw_end <= start:
-                    previous_end = start
-                    continue
-
-                end = raw_end
-                if not _is_record_boundary(file, end, actual_file_size):
-                    end = _find_record_boundary(file, end, actual_file_size)
-                if start < end:
-                    yield (
-                        {
-                            "chunk_byte_start_idx": start,
-                            "chunk_byte_end_idx": end,
-                        },
-                        end - start,
-                    )
-                previous_end = end
-
-
 @DeveloperAPI
 class CSVDatasourceV2(DataSourceV2[FileManifest]):
     """V2 CSV datasource with safe line-delimited file chunking."""
@@ -190,7 +94,7 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_csv_args: Optional[Dict[str, Any]] = None,
         open_stream_args: Optional[Dict[str, Any]] = None,
-        file_chunker: Optional[FileChunker] = None,
+        chunk_byte_size: Optional[int] = None,
     ):
         super().__init__(name="CSVV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -218,24 +122,16 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
         )
         self._arrow_csv_args = csv_args
 
-        if file_chunker is not None:
-            selected_file_chunker = file_chunker
-        elif _supports_line_delimited_chunking(
+        # Nominal split size for large uncompressed files. Exposed so tests can
+        # exercise multi-chunk reads on tiny inputs; production reads keep the
+        # indexer's default.
+        self._chunk_byte_size = chunk_byte_size
+        self._split_files = _supports_line_delimited_chunking(
             self._read_options,
             self._parse_options,
             self._arrow_csv_args,
             self._open_stream_args,
-        ):
-            selected_file_chunker = LineDelimitedFileChunker()
-        else:
-            selected_file_chunker = WholeFileChunker()
-
-        if isinstance(selected_file_chunker, WholeFileChunker):
-            self._file_chunker = selected_file_chunker
-        else:
-            self._file_chunker = _RecordAlignedCSVFileChunker(
-                selected_file_chunker, filesystem=self._filesystem
-            )
+        )
 
     @property
     def paths(self) -> List[str]:
@@ -271,10 +167,12 @@ class CSVDatasourceV2(DataSourceV2[FileManifest]):
         return True
 
     def _get_file_indexer(self) -> FileIndexer:
-        return NonSamplingFileIndexer(
+        return RecordAlignedCSVFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
+            filesystem=self._filesystem,
+            split_files=self._split_files,
+            chunk_byte_size=self._chunk_byte_size,
             max_paths_per_output=_MAX_CHUNKS_PER_LIST_FILES_OUTPUT,
-            file_chunker=self._file_chunker,
         )
 
     def get_size_estimator(self) -> IdentityInMemorySizeEstimator:
