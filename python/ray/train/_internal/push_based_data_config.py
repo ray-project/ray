@@ -44,11 +44,11 @@ class PushBasedDataConfig(DataConfig):
             execution_options: Same as :class:`~ray.train.DataConfig`.
             enable_shard_locality: Same as :class:`~ray.train.DataConfig`.
             target_buffer_rows: Explicit override for how many rows each
-                train worker keeps buffered locally (the push credit). By
-                default the credit is derived per iteration from
+                train worker requests ahead (the demand window). By default
+                it is derived per iteration from
                 ``prefetch_batches * batch_size`` (mirroring the pull
-                model's prefetch window), with a one-block floor that keeps
-                pipelining even when a single block exceeds that window.
+                model's prefetch window); whole-block sends keep pipelining
+                even when a single block exceeds that window.
         """
         super().__init__(
             datasets_to_split=datasets_to_split,

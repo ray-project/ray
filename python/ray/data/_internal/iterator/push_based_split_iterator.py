@@ -18,15 +18,18 @@ prefetch and resolve stages are skipped entirely; batching, the
 format/collate threadpool, order restore, and finalize (i.e. everything
 ``iter_torch_batches`` needs) are reused unchanged.
 
-Flow control is poll-based and mirrors the pull model's knobs: each pusher
-periodically polls the consumer for how many rows/blocks it has drained and
-how many rows it wants buffered — by default ``prefetch_batches *
-batch_size`` from the actual ``iter_batches`` call, exactly the pull model's
-prefetch window — and pushes while ``rows_pushed - rows_consumed <
-target_buffer_rows``. Independently, at least ``MIN_PREFETCH_BLOCKS`` whole
-blocks are kept in flight (the analog of the pull model's 1-deep pipelined
-``get``), so flow never degenerates to stop-and-wait when one block exceeds
-the row window.
+Flow control is demand-driven: the consumer tells the coordinator what it
+needs, and the coordinator sends it. At iteration start the consumer requests
+its prefetch window (``prefetch_batches * batch_size`` rows from the actual
+``iter_batches`` call — exactly the pull model's window), and after popping
+each block from its local queue it requests the popped amount again
+(replenish). The coordinator accumulates per-split demand and its pusher
+sends whole blocks while demand is positive (overshooting by at most one
+block), then sleeps on a condition until the next request. Replenish-on-pop
+keeps one block in flight while the previous one is consumed — the analog of
+the pull model's 1-deep pipelined ``get`` — and each request doubles as the
+consumption report that feeds producer pacing. There is no polling: an idle
+or dead consumer simply stops requesting.
 
 Ordering: the consumer actor may be multi-threaded, and multi-threaded actors
 execute tasks out of order (dispatch follows argument readiness; see
@@ -54,30 +57,30 @@ Pipeline overview::
     |   which keeps the executor's num_waiting_consumers signal alive)   |
     +------------------|----------------^--------------------------------+
                        |                |
-     data plane        |                |  flow control (per push burst)
-     (fire-and-forget) |                |
-       __ray_call__(   |                |  (1) __ray_call__(_receiver_poll)
-         _receiver_    |                |      -> rows_consumed,
-         deliver, key, |                |      target_buffer_rows, iterating
-         epoch, seq,   |                |  (2) credit = target_buffer_rows
-         metadata,     |                |        - (rows_pushed - rows_consumed)
-         block BY      |                |  (3) credit > 0: push blocks;
-         VALUE)        |                |      else sleep POLL_INTERVAL_S,
-       EOF: same, seq'd|                |      re-poll
-       errors unseq'd  |                |
+     data plane        |                |  flow control (demand-driven,
+     (fire-and-forget) |                |  fire-and-forget)
+       __ray_call__(   |                |
+         _receiver_    |                |  request_rows(split, epoch,
+         deliver, key, |                |      rows, bytes):
+         epoch, seq,   |                |  (1) once at iteration start:
+         metadata,     |                |      the prefetch window
+         block BY      |                |  (2) after each popped block:
+         VALUE)        |                |      replenish by its rows/bytes
+       EOF: same, seq'd|                |  pusher: send whole blocks while
+       errors unseq'd  |                |  demand > 0, else wait on cond
                        v                |
     +--------------------------------------------------------------------+
     |      consumer actor i (any Ray actor, e.g. a Ray Train worker)     |
     |                                                                    |
     |  actor task thread(s): __ray_call__ deliveries -> reorder buffer   |
     |      (by seq) -> _PushReceiver.queue holding materialized Blocks   |
-    |      (no refs at all, no ray.put); errors jump the queue; polls    |
-    |      read the receiver counters                                    |
+    |      (no refs at all, no ray.put); errors jump the queue           |
     |  iteration thread (e.g. Train's ThreadRunner):                     |
     |      PushBasedDataIterator: register(current_actor) ->             |
     |      start_epoch (barrier RPC, all n splits sync) ->               |
-    |      pop queue -> _MaterializedBatchIterator: batch -> format/     |
-    |      collate threadpool -> finalize (prefetch/resolve skipped)     |
+    |      request_rows(prefetch window) -> pop queue ->                 |
+    |      request_rows(popped rows) -> _MaterializedBatchIterator:      |
+    |      batch -> format/collate threadpool -> finalize                |
     |      finally: notify_split_finished(epoch, i) RPC -> coordinator   |
     +--------------------------------------------------------------------+
 
@@ -92,12 +95,13 @@ Liveness note: the pusher threads block inside
 executor's ``_num_waiting_consumers`` / ``OutputBackpressureGuard`` machinery
 keeps working unchanged.
 
-If a consumer dies mid-epoch, its pusher parks (the split's remaining data
-stays queued in the executor, paced by backpressure) rather than draining, so
-supporting a mid-epoch replacement worker later stays easy — see the TODO in
-_pusher_loop. Until then, recovery is Ray Train's group restart: the next
-epoch's barrier tears the parked pusher down and fresh registrations take
-over.
+If a consumer dies mid-epoch, it simply stops requesting, so its pusher
+parks on the demand condition automatically — no death detection is needed,
+and the split's remaining data stays queued in the executor (paced by
+backpressure) rather than being drained, keeping a future mid-epoch
+replacement worker easy to add (see the TODO in _pusher_loop). Until then,
+recovery is Ray Train's group restart: the next epoch's barrier tears the
+parked pusher down and fresh registrations take over.
 
 Not implemented (prototype): stats/metrics export, byte-based credit,
 locality-aware pushing, mid-epoch consumer replacement.
@@ -125,17 +129,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
-
-
-@dataclass
-class _PollResponse:
-    """Consumer state reported to the coordinator's pusher thread."""
-
-    rows_consumed: int
-    bytes_consumed: int
-    blocks_consumed: int
-    target_buffer_rows: int
-    iterating: bool
 
 
 @dataclass
@@ -182,23 +175,14 @@ class PushSplitCoordinator:
 
     Runs a streaming executor locally (one per epoch, like SplitCoordinator)
     plus one pusher thread per split that pulls from the executor's output
-    iterator and pushes to that split's consumer, gated by poll-based credit.
+    iterator and pushes to that split's consumer, gated by the consumer's
+    outstanding demand (request_rows).
     """
 
-    # How long a pusher sleeps between polls while the consumer has no credit.
-    POLL_INTERVAL_S = 0.05
-    # A failed poll is retried with exponential backoff (transient
-    # GetTimeoutError under load, ActorUnavailableError during restarts);
-    # after this many CONSECUTIVE failures the consumer is treated as dead.
-    # A definitive ActorDiedError skips the retries.
-    POLL_MAX_FAILURES = 3
-    POLL_RETRY_BACKOFF_S = 1.0
-    # Always keep at least this many blocks in flight (queued/undelivered at
-    # the consumer) regardless of the row credit. This is the push analog of
-    # the pull model's 1-deep RPC pipelining (gen_blocks issues the next
-    # `get` before yielding the current block), and prevents stop-and-wait
-    # when blocks are much larger than prefetch_batches * batch_size.
-    MIN_PREFETCH_BLOCKS = 1
+    # A pusher waiting for demand re-checks its stop event at this cadence
+    # (requests wake it immediately via the condition; this only bounds how
+    # long teardown can be ignored).
+    DEMAND_WAIT_TIMEOUT_S = 0.5
 
     def __init__(self, dataset: "Dataset", n: int):
         # Deep copy so updates to the base dataset's context don't affect this
@@ -229,13 +213,24 @@ class PushSplitCoordinator:
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
-        # Push accounting, deliberately lock-free:
-        # - Each per-split entry has a single writer: its own pusher thread
-        #   (_bytes_consumed_reported is additionally written once, benignly
-        #   last-writer-wins, by _finish_split when zeroing a finished
-        #   split's contribution).
+        # Demand-driven flow control: request_rows accumulates per-split
+        # demand under that split's Condition lock; the split's pusher sends
+        # whole blocks while demand is positive and waits on the Condition
+        # otherwise (a request wakes it immediately).
+        self._demand_conds: Dict[int, threading.Condition] = {
+            i: threading.Condition() for i in range(n)
+        }
+        self._demand_rows: Dict[int, int] = dict.fromkeys(range(n), 0)
+
+        # Push accounting:
+        # - _rows_pushed/_bytes_pushed: single writer = the split's pusher
+        #   thread.
+        # - _bytes_consumed_reported: accumulated by request_rows under the
+        #   split's demand-Condition lock (requests double as consumption
+        #   reports); _finish_split additionally zeroes a finished split's
+        #   contribution (benign last-writer-wins — no requests follow it).
         # - Cross-thread readers only compute the heuristic sum in
-        #   _update_external_consumer_bytes, where GIL-atomic int stores and
+        #   _update_external_consumer_bytes, where GIL-atomic int reads and
         #   slight staleness across splits are acceptable.
         # - Keys are fixed (dict.fromkeys at reset), so dict iteration never
         #   races a resize; _reset_state reassigns only after the old
@@ -272,6 +267,32 @@ class PushSplitCoordinator:
     def start_epoch(self, split_idx: int) -> int:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
         return self._barrier(split_idx)
+
+    def request_rows(
+        self, split_idx: int, epoch_id: int, num_rows: int, num_bytes: int
+    ) -> None:
+        """Fire-and-forget demand from a consumer: "send me num_rows more".
+
+        Sent once when iteration starts (the prefetch window, with
+        num_bytes=0) and then after every block the consumer pops from its
+        local queue, replenishing by the popped amount — so it doubles as
+        the consumption report: num_bytes feeds the external-consumer-bytes
+        accounting that paces the producer. Stale-epoch requests are
+        dropped.
+        """
+        if epoch_id != self._cur_epoch:
+            return
+        cond = self._demand_conds[split_idx]
+        with cond:
+            self._demand_rows[split_idx] += num_rows
+            self._bytes_consumed_reported[split_idx] += num_bytes
+            cond.notify()
+        # No _update_external_consumer_bytes here: the pusher refreshes the
+        # executor after every push with the latest consumed counters, and
+        # calling it per request would contend on the resource-manager lock
+        # in the producer's hot path. While a pusher is idle the report goes
+        # stale-low on consumption, which only over-reports consumer-held
+        # bytes (the permissive, bounded direction).
 
     def notify_split_finished(self, epoch_id: int, split_idx: int) -> None:
         """Called by a consumer when it stops iterating ``epoch_id``.
@@ -412,8 +433,8 @@ class PushSplitCoordinator:
                         self._current_executor
                     )
                     # Register the external consumers with the executor's
-                    # resource manager (same as SplitCoordinator); the
-                    # pushers keep the value updated from poll responses.
+                    # resource manager (same as SplitCoordinator); consumer
+                    # requests keep the value updated.
                     self._current_executor.set_external_consumer_bytes(0)
                     self._spawn_pushers()
                     logger.debug(
@@ -439,6 +460,9 @@ class PushSplitCoordinator:
         self._rows_pushed = dict.fromkeys(range(self._n), 0)
         self._bytes_pushed = dict.fromkeys(range(self._n), 0)
         self._bytes_consumed_reported = dict.fromkeys(range(self._n), 0)
+        for i in range(self._n):
+            with self._demand_conds[i]:
+                self._demand_rows[i] = 0
 
     def _spawn_pushers(self) -> None:
         self._pusher_stop_events = {i: threading.Event() for i in range(self._n)}
@@ -458,18 +482,13 @@ class PushSplitCoordinator:
     # ------------------------------------------------------------------
 
     def _make_consumer_ops(self, epoch_id: int, split_idx: int):
-        """Build (poll, push_block, push_eof, push_error) for a consumer.
+        """Build (push_block, push_eof, push_error) for a consumer.
 
         Targets any actor via __ray_call__ + the process-local receiver
         registry; blocks are delivered by value (resolved top-level arg),
         so the consumer buffers materialized Blocks and holds no refs.
         """
         consumer, key = self._consumers[split_idx]
-
-        def poll():
-            return ray.get(
-                consumer.__ray_call__.remote(_receiver_poll, key), timeout=30
-            )
 
         def push_block(seq, entry, num_rows, size_bytes):
             # entry.ref is a TOP-LEVEL arg, so Ray resolves it and delivers
@@ -496,124 +515,65 @@ class PushSplitCoordinator:
         def push_error(error):
             consumer.__ray_call__.remote(_receiver_deliver_error, key, epoch_id, error)
 
-        return poll, push_block, push_eof, push_error
+        return push_block, push_eof, push_error
 
     def _pusher_loop(
         self, epoch_id: int, split_idx: int, stop: threading.Event
     ) -> None:
-        poll, push_block, push_eof, push_error = self._make_consumer_ops(
-            epoch_id, split_idx
-        )
+        push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
         output_iterator = self._output_iterator
+        cond = self._demand_conds[split_idx]
         # Per-split push sequence number. The consumer may be a multi-threaded
         # actor, so Ray may execute receive tasks out of order (dispatch
         # follows argument readiness); the consumer re-sequences by ``seq``.
         seq = 0
-        # Blocks pushed this epoch (exact; only this thread writes it).
-        blocks_pushed = 0
-        # Consecutive poll failures (reset on any successful poll).
-        poll_failures = 0
         try:
             while not stop.is_set():
-                # 1) Poll the consumer.
-                try:
-                    resp: _PollResponse = poll()
-                    poll_failures = 0
-                except Exception as e:
-                    definitely_dead = isinstance(e, ray.exceptions.ActorDiedError)
-                    poll_failures += 1
-                    if not definitely_dead and poll_failures < self.POLL_MAX_FAILURES:
-                        # Possibly transient (e.g. GetTimeoutError under
-                        # load, ActorUnavailableError during a restart):
-                        # retry with exponential backoff.
-                        backoff = self.POLL_RETRY_BACKOFF_S * 2 ** (poll_failures - 1)
-                        logger.warning(
-                            f"Split {split_idx} epoch {epoch_id}: consumer "
-                            f"poll failed ({e}); retry "
-                            f"{poll_failures}/{self.POLL_MAX_FAILURES} in "
-                            f"{backoff:.0f}s."
-                        )
-                        stop.wait(backoff)
+                # 1) Wait for demand. A request_rows call wakes this
+                # immediately; the timeout only bounds how long teardown's
+                # `stop` can go unnoticed. A consumer that died simply stops
+                # requesting, so waiting here doubles as the "park" on
+                # consumer death: the split's remaining data stays queued in
+                # the executor (paced by backpressure) rather than drained.
+                #
+                # TODO(push-split): support a replacement worker joining
+                # mid-epoch. Sketch (validated once in git history):
+                # register() bumps a per-split registration version whose
+                # bump rebinds this thread via _make_consumer_ops and resets
+                # seq + this split's accounting to 0, and start_epoch
+                # fast-paths a split whose consumer was replaced into the
+                # ACTIVE epoch instead of the next-epoch barrier. Rows
+                # already delivered to the dead consumer need the
+                # data-checkpointing integration to be re-read.
+                with cond:
+                    if self._demand_rows[split_idx] <= 0:
+                        cond.wait(self.DEMAND_WAIT_TIMEOUT_S)
                         continue
-                    # Consumer died. PARK instead of draining: keep the
-                    # split's remaining data queued in the executor (paced by
-                    # the normal backpressure) so replacing the worker stays
-                    # possible; the parked thread is cheap. The epoch's
-                    # teardown (or notify_split_finished) sets `stop` and
-                    # releases it.
-                    #
-                    # TODO(push-split): support a replacement worker joining
-                    # mid-epoch. Sketch (validated once in git history):
-                    # register() bumps a per-split registration version that
-                    # wakes this parked thread to rebind via
-                    # _make_consumer_ops and reset seq/blocks/rows/bytes
-                    # accounting to 0, and start_epoch fast-paths a split
-                    # whose pusher is parked into the ACTIVE epoch instead of
-                    # the next-epoch barrier. Rows already delivered to the
-                    # dead consumer need the data-checkpointing integration
-                    # to be re-read.
-                    logger.warning(
-                        f"Split {split_idx} epoch {epoch_id}: consumer poll "
-                        f"failed ({e}); parking this split's pusher (its "
-                        "remaining data stays queued)."
+
+                # 2) Positive demand: send whole blocks until it is covered
+                # (overshooting by at most one block — which is what keeps
+                # one block in flight while the consumer processes the
+                # previous one, like the pull model's 1-deep pipelined get).
+                # get_next is a BLOCKING pull from the executor; it bumps
+                # _num_waiting_consumers, preserving the pull model's
+                # liveness/backpressure semantics, and raises StopIteration
+                # at end of stream.
+                bundle = output_iterator.get_next(split_idx)
+                for entry in bundle.blocks:
+                    num_rows = (
+                        entry.metadata.num_rows
+                        if entry.metadata.num_rows is not None
+                        else 1
                     )
-                    # Rows already delivered to the dead consumer are gone
-                    # (freed at delivery); zero their in-flight contribution.
-                    self._bytes_consumed_reported[split_idx] = self._bytes_pushed[
-                        split_idx
-                    ]
-                    self._update_external_consumer_bytes()
-                    stop.wait()
-                    return
-
-                self._bytes_consumed_reported[split_idx] = resp.bytes_consumed
-                rows_in_flight = self._rows_pushed[split_idx] - resp.rows_consumed
+                    size_bytes = entry.metadata.size_bytes or 0
+                    push_block(seq, entry, num_rows, size_bytes)
+                    seq += 1
+                    with cond:
+                        self._demand_rows[split_idx] -= num_rows
+                    # Single-writer (this thread); see __init__.
+                    self._rows_pushed[split_idx] += num_rows
+                    self._bytes_pushed[split_idx] += size_bytes
                 self._update_external_consumer_bytes()
-
-                # 2) Compute credit. Our push counters are exact; the polled
-                # consumed counts are stale-low, so credit only under-sends.
-                # Row credit mirrors the pull model's prefetch window
-                # (prefetch_batches * batch_size rows, reported by the
-                # consumer); the block floor mirrors its 1-deep pipelined
-                # `get` so at least MIN_PREFETCH_BLOCKS whole blocks stay in
-                # flight even when a single block exceeds the row window.
-                credit_rows = resp.target_buffer_rows - rows_in_flight
-                blocks_in_flight = blocks_pushed - resp.blocks_consumed
-                if not resp.iterating or (
-                    credit_rows <= 0 and blocks_in_flight >= self.MIN_PREFETCH_BLOCKS
-                ):
-                    stop.wait(self.POLL_INTERVAL_S)
-                    continue
-
-                # 3) Push burst: until both the row credit is exhausted and
-                # the block floor is satisfied, then re-poll.
-                while (
-                    credit_rows > 0 or blocks_in_flight < self.MIN_PREFETCH_BLOCKS
-                ) and not stop.is_set():
-                    # Blocking pull from the executor; bumps
-                    # _num_waiting_consumers, preserving liveness/backpressure
-                    # semantics of the pull model. Raises StopIteration at
-                    # end of stream.
-                    bundle = output_iterator.get_next(split_idx)
-                    for entry in bundle.blocks:
-                        num_rows = (
-                            entry.metadata.num_rows
-                            if entry.metadata.num_rows is not None
-                            else 1
-                        )
-                        size_bytes = entry.metadata.size_bytes or 0
-                        push_block(seq, entry, num_rows, size_bytes)
-                        seq += 1
-                        credit_rows -= num_rows
-                        # Local estimate; grows within the burst (the
-                        # consumer may pop meanwhile, which only under-sends
-                        # until the next poll refreshes it).
-                        blocks_in_flight += 1
-                        blocks_pushed += 1
-                        # Single-writer (this thread); see __init__.
-                        self._rows_pushed[split_idx] += num_rows
-                        self._bytes_pushed[split_idx] += size_bytes
-                    self._update_external_consumer_bytes()
         except StopIteration:
             if not stop.is_set():
                 logger.debug(
@@ -661,7 +621,7 @@ class PushSplitCoordinator:
         """Report bytes in flight + buffered at consumers to the executor.
 
         Push-model analog of SplitCoordinator._report_prefetched_bytes_to_executor.
-        This is what paces the PRODUCER: the credit protocol only stops the
+        This is what paces the PRODUCER: consumer demand only stops the
         pushers from popping the executor's output queues, not the read/map
         tasks from filling them. Without this feed,
         DownstreamCapacityBackpressurePolicy never engages for the terminal
@@ -705,28 +665,18 @@ class _PushReceiver:
     drains ``queue`` from its own (fetch) thread — hence the lock.
     """
 
-    def __init__(self, target_buffer_rows: int):
+    def __init__(self):
         self.queue: "queue.Queue[_QueueItem]" = queue.Queue()
         self.lock = threading.Lock()
-        self.target_buffer_rows = target_buffer_rows
-        self.rows_consumed = 0
-        self.bytes_consumed = 0
-        self.blocks_consumed = 0
-        self.iterating = False
         self.cur_epoch: Optional[int] = None
         self.reorder_epoch: Optional[int] = None
         self.reorder_next_seq = 0
         self.reorder_pending: Dict[int, _QueueItem] = {}
 
-    def reset(self, target_buffer_rows: int) -> None:
+    def reset(self) -> None:
         """Reset before re-arriving at the epoch barrier."""
         with self.lock:
             self.cur_epoch = None
-            self.iterating = False
-            self.target_buffer_rows = target_buffer_rows
-            self.rows_consumed = 0
-            self.bytes_consumed = 0
-            self.blocks_consumed = 0
             self.reorder_epoch = None
             self.reorder_next_seq = 0
             self.reorder_pending = {}
@@ -738,20 +688,10 @@ class _PushReceiver:
 
     def begin_epoch(self, epoch: int) -> None:
         with self.lock:
-            # cur_epoch is set together with iterating; the pusher only
-            # pushes after observing iterating=True in a poll.
+            # Set BEFORE the first request_rows is sent: the coordinator
+            # only pushes in response to requests, so no delivery can arrive
+            # while cur_epoch is stale.
             self.cur_epoch = epoch
-            self.iterating = True
-
-    def end_epoch(self) -> None:
-        with self.lock:
-            self.iterating = False
-
-    def record_consumed(self, num_rows: int, size_bytes: int) -> None:
-        with self.lock:
-            self.rows_consumed += num_rows
-            self.bytes_consumed += size_bytes
-            self.blocks_consumed += 1
 
 
 def _receiver_deliver(
@@ -801,22 +741,6 @@ def _receiver_deliver_error(
             receiver.queue.put(error)
 
 
-def _receiver_poll(_actor: Any, key: str) -> _PollResponse:
-    receiver = _RECEIVER_REGISTRY.get(key)
-    if receiver is None:
-        # Not created yet (iterator hasn't started): report not-iterating so
-        # the pusher waits.
-        return _PollResponse(0, 0, 0, 0, False)
-    with receiver.lock:
-        return _PollResponse(
-            rows_consumed=receiver.rows_consumed,
-            bytes_consumed=receiver.bytes_consumed,
-            blocks_consumed=receiver.blocks_consumed,
-            target_buffer_rows=receiver.target_buffer_rows,
-            iterating=receiver.iterating,
-        )
-
-
 class _MaterializedBatchIterator(BatchIterator):
     """BatchIterator over already-materialized blocks.
 
@@ -863,8 +787,8 @@ class PushBasedDataIterator(DataIterator):
         logical op — see ``Dataset.streaming_split_push_based``, which
         mirrors how ``Dataset.streaming_split`` wraps the dataset before
         calling ``StreamSplitDataIterator.create``. ``target_buffer_rows``
-        is an explicit credit override; by default the credit follows the
-        iteration's ``prefetch_batches * batch_size`` window.
+        is an explicit override for the initial request window; by default
+        it follows the iteration's ``prefetch_batches * batch_size``.
         """
         coord_actor = PushSplitCoordinator.options(
             # n concurrent start_epoch calls blocked at the barrier + headroom
@@ -890,11 +814,11 @@ class PushBasedDataIterator(DataIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
-        # Explicit override; when None the target is derived per iteration
-        # from iter_batches' prefetch_batches * batch_size (mirroring the
-        # pull model's prefetch window) in _create_batch_iterator, with the
-        # coordinator's MIN_PREFETCH_BLOCKS floor guaranteeing pipelining
-        # even when one block exceeds that window.
+        # Explicit override for the initial request window; when None it is
+        # derived per iteration from iter_batches' prefetch_batches *
+        # batch_size (mirroring the pull model's prefetch window) in
+        # _create_batch_iterator. Whole-block sends + replenish-on-pop keep
+        # pipelining even when one block exceeds the window.
         self._target_buffer_rows = target_buffer_rows
         self._runtime_target_rows = 256
         self._iter_stats = DatasetStats(metadata={}, parent=None)
@@ -928,11 +852,11 @@ class PushBasedDataIterator(DataIterator):
             with _RECEIVER_REGISTRY_LOCK:
                 receiver = _RECEIVER_REGISTRY.get(key)
                 if receiver is None:
-                    receiver = _PushReceiver(self._target_buffer_rows)
+                    receiver = _PushReceiver()
                     _RECEIVER_REGISTRY[key] = receiver
             # Reset from any previous epoch BEFORE arriving at the barrier;
             # stragglers are dropped by the epoch check in _receiver_deliver.
-            receiver.reset(self._target_buffer_rows or self._runtime_target_rows)
+            receiver.reset()
 
             # Re-registering every epoch is fine (idempotent overwrite).
             ray.get(
@@ -945,6 +869,18 @@ class PushBasedDataIterator(DataIterator):
             )
             self._active_epoch = epoch
             receiver.begin_epoch(epoch)
+            # Demand-driven flow control: ask for the prefetch window up
+            # front, then replenish by each popped block's rows below. The
+            # replenish doubles as the consumption report (popped bytes) for
+            # producer pacing, and — because the coordinator sends whole
+            # blocks — keeps one block in flight while the previous one is
+            # consumed, like the pull model's 1-deep pipelined get.
+            self._coord_actor.request_rows.remote(
+                self._output_split_idx,
+                epoch,
+                self._target_buffer_rows or self._runtime_target_rows,
+                0,
+            )
 
             while True:
                 try:
@@ -960,15 +896,17 @@ class PushBasedDataIterator(DataIterator):
                 if isinstance(item, _ExecutorError):
                     raise item.error
                 assert isinstance(item, _BlockDelivery)
-                receiver.record_consumed(item.num_rows, item.size_bytes)
+                self._coord_actor.request_rows.remote(
+                    self._output_split_idx, epoch, item.num_rows, item.size_bytes
+                )
                 yield ResolvedBlock(block=item.block)
 
         return gen_blocks(), self._iter_stats, None
 
     def _create_batch_iterator(self, ref_bundles_iter, **kwargs):
-        # Derive the push credit from the actual iteration parameters, like
-        # the pull model's prefetch window (prefetch_batches * batch_size
-        # rows). This runs on the consumer thread BEFORE the fetch thread
+        # Derive the initial request window from the actual iteration
+        # parameters, like the pull model's prefetch window
+        # (prefetch_batches * batch_size rows). This runs on the consumer thread BEFORE the fetch thread
         # first pulls the (lazy) block generator, which reads it in
         # receiver.reset().
         self._runtime_target_rows = kwargs.get("prefetch_batches", 1) * (
@@ -990,9 +928,6 @@ class PushBasedDataIterator(DataIterator):
         if epoch is None:
             return
         self._active_epoch = None
-        receiver = _RECEIVER_REGISTRY.get(self._receiver_key())
-        if receiver is not None:
-            receiver.end_epoch()
         self._coord_actor.notify_split_finished.remote(epoch, self._output_split_idx)
 
     def stats(self) -> str:

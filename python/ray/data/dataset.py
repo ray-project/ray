@@ -2780,10 +2780,10 @@ class Dataset:
             locality_hints: A list of node ids corresponding to each iterator
                 location.
             target_buffer_rows: Explicit override for how many rows each
-                consumer keeps buffered locally (the push flow-control
-                credit); ``None`` derives it per iteration from
+                consumer requests ahead (the demand window); ``None``
+                derives it per iteration from
                 ``prefetch_batches * batch_size``, mirroring the pull
-                model's prefetch window (a one-block floor keeps
+                model's prefetch window (whole-block sends keep
                 pipelining regardless).
 
         Returns:
