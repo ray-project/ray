@@ -476,9 +476,7 @@ def test_append_protocol_commits_snapshot_marker_without_ray_cluster(tmp_path):
 
 
 @pytest.mark.parametrize("recover_on_retry", [False, True])
-def test_late_commit_discards_uncommitted_task_checkpoints(
-    tmp_path, recover_on_retry
-):
+def test_late_commit_discards_uncommitted_task_checkpoints(tmp_path, recover_on_retry):
     catalog, catalog_kwargs = _create_catalog(tmp_path)
     checkpoint_path = tmp_path / "checkpoints"
     config = CheckpointConfig(

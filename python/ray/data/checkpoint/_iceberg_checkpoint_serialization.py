@@ -59,9 +59,7 @@ def _deserialize_arrow_table(data: bytes) -> pa.Table:
 
 def _serialize_partition(values: Any) -> bytes:
     """Serialize all partition values for one data file in one IPC stream."""
-    table = pa.table(
-        {f"value_{index}": [value] for index, value in enumerate(values)}
-    )
+    table = pa.table({f"value_{index}": [value] for index, value in enumerate(values)})
     return _serialize_arrow_table(table)
 
 

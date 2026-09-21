@@ -654,9 +654,7 @@ class IcebergCheckpointCoordinator:
             results.append(self.load_task_result(artifact_id))
         return results
 
-    def _discard_task_checkpoint(
-        self, checkpoint_path: str, artifact_id: str
-    ) -> None:
+    def _discard_task_checkpoint(self, checkpoint_path: str, artifact_id: str) -> None:
         # Delete the row checkpoint first. Once it is gone these IDs cannot be
         # incorrectly filtered, even if metadata cleanup is interrupted.
         self._filesystem.delete_file(checkpoint_path)
