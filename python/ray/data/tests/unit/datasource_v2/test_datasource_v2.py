@@ -9,8 +9,8 @@ import pytest
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
     DataSourceV2,
+    DataSourceWithMetadata,
     FileDataSourceV2,
-    TableDataSourceV2,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import (
     FileIndexer,
@@ -59,8 +59,8 @@ class _Members:
         return self.scanner
 
 
-class _TableSource(_Members, TableDataSourceV2):
-    """Implements exactly the abstract members of ``TableDataSourceV2``."""
+class _MetadataSource(_Members, DataSourceWithMetadata):
+    """Implements exactly the abstract members of ``DataSourceWithMetadata``."""
 
     def __init__(self):
         super().__init__("table", DatasourceCategory.DATA_LAKE)
@@ -91,7 +91,7 @@ class _BareSource(_Members, DataSourceV2):
 
 
 def test_table_source_has_no_filesystem_members():
-    source = _TableSource()
+    source = _MetadataSource()
     for member in ("filesystem", "file_extensions", "shuffle"):
         assert not hasattr(source, member), member
     assert source.schema_needs_file_sample is False
@@ -122,7 +122,7 @@ def test_parquet_is_a_file_source():
 
 
 def test_read_passes_none_for_table_source():
-    source = _TableSource()
+    source = _MetadataSource()
     ds = _plan_read(source)
     list_files_op = ds._logical_plan.dag.input_dependencies[0]
     assert list_files_op.filesystem is None
@@ -140,7 +140,7 @@ def test_read_forwards_file_source_members():
 
 
 def test_read_rejects_direct_base_subclass():
-    with pytest.raises(TypeError, match="FileDataSourceV2.*TableDataSourceV2"):
+    with pytest.raises(TypeError, match="FileDataSourceV2.*DataSourceWithMetadata"):
         _plan_read(_BareSource())
 
 

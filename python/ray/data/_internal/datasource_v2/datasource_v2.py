@@ -84,7 +84,7 @@ class DataSourceV2(ABC, Generic[InputSplit]):
 
     - :class:`FileDataSourceV2` when the framework finds the files by walking a
       filesystem (Parquet, CSV, JSON, images).
-    - :class:`TableDataSourceV2` when the source finds its own data through a
+    - :class:`DataSourceWithMetadata` when the source finds its own data through a
       catalog, table metadata or a database (Iceberg, Delta, Hudi, Lance, SQL).
 
     Implementing the abstract members is enough for a new source to work end
@@ -239,7 +239,7 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         Args:
             schema: Schema for the data to read.
             filesystem: :attr:`FileDataSourceV2.filesystem`, or ``None`` for
-                a :class:`TableDataSourceV2`.
+                a :class:`DataSourceWithMetadata`.
             **options: Additional datasource-specific options.
 
         Returns:
@@ -269,7 +269,7 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
     ``ListFiles`` walks :attr:`paths` through :attr:`filesystem`, keeps the
     files matching :attr:`file_extensions` and applies :attr:`shuffle` to the
     listing. Parquet, CSV and every other plain file format belong here; a
-    source that finds its own data extends :class:`TableDataSourceV2` instead.
+    source that finds its own data extends :class:`DataSourceWithMetadata` instead.
     """
 
     @property
@@ -298,7 +298,7 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
 
 
 @DeveloperAPI
-class TableDataSourceV2(DataSourceV2[InputSplit]):
+class DataSourceWithMetadata(DataSourceV2[InputSplit]):
     """Base class for sources that find their own data.
 
     The indexer from :meth:`_get_file_indexer` asks a catalog, a table format's

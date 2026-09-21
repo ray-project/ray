@@ -532,8 +532,8 @@ def _read_datasource_v2(
     import time
 
     from ray.data._internal.datasource_v2.datasource_v2 import (
+        DataSourceWithMetadata,
         FileDataSourceV2,
-        TableDataSourceV2,
     )
     from ray.data._internal.datasource_v2.listing.listing_utils import (
         _build_pruners,
@@ -573,7 +573,7 @@ def _read_datasource_v2(
         filesystem = datasource.filesystem
         file_extensions = datasource.file_extensions
         shuffle = datasource.shuffle
-    elif isinstance(datasource, TableDataSourceV2):
+    elif isinstance(datasource, DataSourceWithMetadata):
         # The source's own indexer finds the data: nothing to walk, nothing to
         # filter by extension, no file shuffle.
         filesystem = None
@@ -583,7 +583,7 @@ def _read_datasource_v2(
         raise TypeError(
             f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
             "FileDataSourceV2 when Ray should list files through a filesystem, "
-            "or TableDataSourceV2 when the source finds its own data."
+            "or DataSourceWithMetadata when the source finds its own data."
         )
 
     pruners = _build_pruners(file_extensions, partition_filter)
