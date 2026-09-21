@@ -560,9 +560,10 @@ void GcsServer::RegisterRpcServices() {
       io_context_provider_.GetIOContext<GcsNodeManager>(),
       MaybeGate(gated_node_info_handler_,
                 *gcs_node_manager_,
-                std::function<void(const rpc::GcsNodeInfo &)>(
+                std::function<bool(const rpc::GcsNodeInfo &)>(
                     [this](const rpc::GcsNodeInfo &node_info) {
-                      gcs_node_manager_->CachePassiveLocalNode(node_info);
+                      return gcs_node_manager_->TryHandlePassiveHeadRegistration(
+                          node_info);
                     })),
       max_rpcs));
 

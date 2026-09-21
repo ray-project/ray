@@ -628,23 +628,32 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   return death_info;
 }
 
-void GcsNodeManager::CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
+bool GcsNodeManager::TryHandlePassiveHeadRegistration(const rpc::GcsNodeInfo &node_info) {
   RAY_CHECK(node_info.is_head_node())
-      << "CachePassiveLocalNode must only cache the local head node.";
+      << "TryHandlePassiveHeadRegistration must only be given the local head node.";
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   absl::MutexLock lock(&mutex_);
-  // Check under mutex_ so the leader check and the cache write are a single critical
-  // section.
-  if (is_leader_fn_()) {
-    return;
-  }
+  // If the node is already known to be alive or dead, then it has already been
+  // registered and we don't need to cache it.
+  // Return true to indicate that the node registrition has been handled.
   if (alive_nodes_.contains(node_id) || dead_nodes_.contains(node_id)) {
-    return;
+    return true;
+  }
+  // If the GCS server is the leader:
+  // 1. If the local head node is already cached, then it will be registered in promotion
+  // process once it is promoted to leader.
+  // 2. If the local head node is not cached, then it should return false to indicate that
+  // the node registration has not been handled and the caller should register it in GCS
+  // table.
+  if (is_leader_fn_()) {
+    return passive_local_node_.has_value() &&
+           passive_local_node_->node_id() == node_info.node_id();
   }
   RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
                    "registration in-memory. node_id: "
                 << node_id;
   passive_local_node_ = node_info;
+  return true;
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {

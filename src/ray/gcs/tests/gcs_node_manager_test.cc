@@ -926,10 +926,10 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLivenessPassiveNode) {
                                    []() { return false; });  // Passive GCS
 
   // Cache the local head node in-memory (passive mode). In production this is done
-  // by LeaderGatedNodeInfoHandler via the cache_local_node_fn callback.
+  // by LeaderGatedNodeInfoHandler via the try_handle_passive_head_fn callback.
   auto head_node = GenNodeInfo();
   head_node->set_is_head_node(true);
-  node_manager.CachePassiveLocalNode(*head_node);
+  node_manager.TryHandlePassiveHeadRegistration(*head_node);
 
   // Test 1: Get all nodes without filter. Should return the passive local node.
   {
@@ -1056,7 +1056,7 @@ TEST_F(GcsNodeManagerTest, TestPassiveLocalNodeNotDoubleCounted) {
 
   // Cache the passive head, then also add the same id to alive_nodes_ directly to
   // simulate the cache not yet being cleared after promotion.
-  node_manager.CachePassiveLocalNode(*head_node);
+  node_manager.TryHandlePassiveHeadRegistration(*head_node);
   node_manager.AddNode(std::make_shared<rpc::GcsNodeInfo>(*head_node));
 
   // No filter: the node appears exactly once and total is not inflated.
@@ -1073,9 +1073,9 @@ TEST_F(GcsNodeManagerTest, TestPassiveLocalNodeNotDoubleCounted) {
   }
 }
 
-TEST_F(GcsNodeManagerTest, TestCachePassiveLocalNodeSkippedWhenAlreadyTracked) {
-  // Write-path de-dup: CachePassiveLocalNode must not cache a node that is already
-  // tracked in alive_nodes_ (or dead_nodes_).
+TEST_F(GcsNodeManagerTest, TestPassiveHeadRegistrationSkippedWhenAlreadyTracked) {
+  // Write-path de-dup: TryHandlePassiveHeadRegistration must not cache a node that is
+  // already tracked in alive_nodes_ (or dead_nodes_).
   bool is_leader = false;
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
@@ -1092,9 +1092,10 @@ TEST_F(GcsNodeManagerTest, TestCachePassiveLocalNodeSkippedWhenAlreadyTracked) {
   head_node->set_is_head_node(true);
   NodeID node_id = NodeID::FromBinary(head_node->node_id());
 
-  // Node is already alive; caching it as passive must be a no-op.
+  // Node is already alive; caching it as passive must be a no-op, and the caller must
+  // still be told it is accounted for.
   node_manager.AddNode(std::make_shared<rpc::GcsNodeInfo>(*head_node));
-  node_manager.CachePassiveLocalNode(*head_node);
+  EXPECT_TRUE(node_manager.TryHandlePassiveHeadRegistration(*head_node));
 
   rpc::GetAllNodeInfoRequest request;
   request.add_node_selectors()->set_node_id(node_id.Binary());
@@ -1192,7 +1193,7 @@ TEST_F(GcsNodeManagerTest, TestPassiveHandleGetAllNodeInfoAndCheckAlive) {
   node_info->set_node_id(passive_node_id.Binary());
   node_info->set_is_head_node(true);
 
-  node_manager.CachePassiveLocalNode(*node_info);
+  node_manager.TryHandlePassiveHeadRegistration(*node_info);
 
   // CheckAlive: passive node reports alive, unknown node does not.
   {
@@ -1380,7 +1381,7 @@ TEST_F(GcsNodeManagerPromotionTest, TestPromoteRegistersCachedHeadAndKillsStaleH
   auto new_head = GenNodeInfo(/*port=*/0, /*address=*/"127.0.0.2");
   new_head->set_is_head_node(true);
   const NodeID new_id = NodeID::FromBinary(new_head->node_id());
-  node_manager->CachePassiveLocalNode(*new_head);
+  node_manager->TryHandlePassiveHeadRegistration(*new_head);
   ASSERT_EQ(AllNodes(*node_manager).size(), 2);
   ASSERT_FALSE(node_manager->GetAliveNode(new_id).has_value());
 
@@ -1416,10 +1417,10 @@ TEST_F(GcsNodeManagerPromotionTest, TestPromoteIsNoopWithoutCachedHead) {
   EXPECT_TRUE(AllNodes(*node_manager).empty());
 }
 
-TEST_F(GcsNodeManagerPromotionTest, TestCachePassiveLocalNodeSkipsWhenPromoted) {
+TEST_F(GcsNodeManagerPromotionTest, TestPassiveHeadRegistrationSkipsWhenPromoted) {
   // Race guard: leader election may promote this GCS between the handler's passive
-  // check and CachePassiveLocalNode. Once promoted, the call must be a no-op (not
-  // crash and not cache), since the promotion path owns registration.
+  // check and TryHandlePassiveHeadRegistration. Once promoted, the call must be a no-op
+  // (not crash and not cache), since the promotion path owns registration.
   auto node_manager = MakeNodeManager();
 
   auto head_node = GenNodeInfo();
@@ -1438,7 +1439,7 @@ TEST_F(GcsNodeManagerPromotionTest, TestCachePassiveLocalNodeSkipsWhenPromoted) 
   };
 
   // Passive: the head is only cached, visible but not registered.
-  node_manager->CachePassiveLocalNode(*head_node);
+  EXPECT_TRUE(node_manager->TryHandlePassiveHeadRegistration(*head_node));
   EXPECT_TRUE(node_visible(node_id));
   EXPECT_FALSE(node_manager->GetAliveNode(node_id).has_value());
 
@@ -1448,12 +1449,16 @@ TEST_F(GcsNodeManagerPromotionTest, TestCachePassiveLocalNodeSkipsWhenPromoted) 
   node_manager->PromoteNodeManager();
   ASSERT_FALSE(node_manager->GetAliveNode(node_id).has_value());
 
-  // The racing handler call: only the leadership check can reject it here, since the
-  // alive/dead de-dup has nothing to match against yet. Using a different head makes
-  // the rejection observable -- the cache must still hold the head being promoted.
+  // The same head racing in is already owned by the in-flight promotion, so it is
+  // accounted for and the caller may acknowledge it.
+  EXPECT_TRUE(node_manager->TryHandlePassiveHeadRegistration(*head_node));
+
+  // A different head is not: nothing would ever register it, so the caller has to be
+  // told to register it rather than acknowledge and drop it. The cache must still hold
+  // the head being promoted.
   auto racing_head = GenNodeInfo(/*port=*/0, /*address=*/"127.0.0.3");
   racing_head->set_is_head_node(true);
-  node_manager->CachePassiveLocalNode(*racing_head);
+  EXPECT_FALSE(node_manager->TryHandlePassiveHeadRegistration(*racing_head));
   auto cached = node_manager->GetPassiveLocalNode();
   ASSERT_TRUE(cached.has_value());
   EXPECT_EQ(NodeID::FromBinary(cached->node_id()), node_id);
@@ -1481,7 +1486,7 @@ TEST_F(GcsNodeManagerPromotionTest, TestHeadStaysVisibleDuringPromotionHandover)
   auto new_head = GenNodeInfo(/*port=*/0, /*address=*/"127.0.0.2");
   new_head->set_is_head_node(true);
   const NodeID new_id = NodeID::FromBinary(new_head->node_id());
-  node_manager->CachePassiveLocalNode(*new_head);
+  node_manager->TryHandlePassiveHeadRegistration(*new_head);
 
   auto check_alive = [&](const NodeID &id) {
     rpc::CheckAliveRequest request;

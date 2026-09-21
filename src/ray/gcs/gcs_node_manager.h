@@ -222,12 +222,17 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
-  /// Cache the local head node in-memory while passive (called by
-  /// LeaderGatedNodeInfoHandler). Only the head node may be cached. No-op if this GCS
-  /// is already the leader or the node is already tracked in alive_nodes_/dead_nodes_.
+  /// Handle a head node registration that arrived while this GCS is passive, by
+  /// caching it in memory instead of persisting it (called by
+  /// LeaderGatedNodeInfoHandler). Only the head node may be handled this way.
   ///
-  /// \param node_info The local head node info to cache.
-  void CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info);
+  /// \param node_info The local head node info.
+  /// \return false if the caller must register the node through HandleRegisterNode
+  /// instead: this GCS was promoted mid-call and the promotion is registering a
+  /// different head, so nothing here will ever register this one. True once the
+  /// registration is handled -- freshly cached, already tracked in
+  /// alive_nodes_/dead_nodes_, or the head the in-flight promotion is registering.
+  bool TryHandlePassiveHeadRegistration(const rpc::GcsNodeInfo &node_info);
 
   /// Get local passive head node cached while passive.
   /// \return a copy of local head node cached while passive, or nullopt if none is
@@ -458,11 +463,11 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ClockInterface &clock_;
   const std::function<bool()> is_leader_fn_;
   /// In-memory cache of the local head node while this GCS is passive. Written by
-  /// CachePassiveLocalNode() (not persisted to Redis) and surfaced by the un-gated
-  /// visibility RPCs (CheckAlive/GetAllNodeInfo/GetAllNodeAddressAndLiveness) so the
-  /// head is visible before and throughout promotion. Released by PromoteNodeManager()
-  /// once the same node is tracked in alive_nodes_; readers also skip it once
-  /// alive_nodes_/dead_nodes_ tracks the id, so it is never double-counted.
+  /// TryHandlePassiveHeadRegistration() (not persisted to Redis) and surfaced by the
+  /// un-gated visibility RPCs (CheckAlive/GetAllNodeInfo/GetAllNodeAddressAndLiveness) so
+  /// the head is visible before and throughout promotion. Released by
+  /// PromoteNodeManager() once the same node is tracked in alive_nodes_; readers also
+  /// skip it once alive_nodes_/dead_nodes_ tracks the id, so it is never double-counted.
   std::optional<rpc::GcsNodeInfo> passive_local_node_ ABSL_GUARDED_BY(mutex_);
 
   // Debug info.
