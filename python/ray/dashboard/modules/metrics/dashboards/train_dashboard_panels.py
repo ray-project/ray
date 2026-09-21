@@ -529,8 +529,14 @@ assert len(all_panel_ids) == len(
 # Must match `ray.train.v2._internal.constants.TRAIN_ANNOTATION_SOURCE`
 TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
 
-# Queries are isolated to prevent annotations appearing in other jobs.
-_RUN_FILTERS = '| ray_train_run_name=~"$TrainRunName" | ray_train_run_id=~"$TrainRunId"'
+# Queries are isolated to prevent annotations appearing in other jobs. The run
+# tags live under the annotation record's `tags`, so each query lifts the ones it
+# filters on into a label of its own; see `ANNOTATION_ENVELOPE_LABELS`.
+_RUN_FILTERS = (
+    '| json ray_train_run_name="event_data.tags.ray_train_run_name"'
+    ', ray_train_run_id="event_data.tags.ray_train_run_id" '
+    '| ray_train_run_name=~"$TrainRunName" | ray_train_run_id=~"$TrainRunId"'
+)
 
 CONTROLLER_STATE_ANNOTATION = GrafanaAnnotation(
     name="Train Controller State Changes",
@@ -548,7 +554,13 @@ REPORT_CALL_ANNOTATION = GrafanaAnnotation(
     ref_id="TrainReportCallAnnotations",
     tag_keys="metrics_pill,checkpoint_pill,validation_pill",
     expr=(
-        f'| event="ray.train.report" {_RUN_FILTERS} | label_format '
+        f'| event="ray.train.report" {_RUN_FILTERS} '
+        '| json metrics="event_data.fields.metrics"'
+        ', has_checkpoint="event_data.fields.has_checkpoint"'
+        ', checkpoint_dir_name="event_data.fields.checkpoint_dir_name"'
+        ', validation="event_data.fields.validation"'
+        ', validation_config="event_data.fields.validation_config" '
+        "| label_format "
         "metrics_pill=`metrics: {{.metrics}}`, "
         'checkpoint_pill=`{{if eq .has_checkpoint "true"}}checkpoint{{if .checkpoint_dir_name}}: {{.checkpoint_dir_name}}{{end}}{{else}}no checkpoint{{end}}`, '
         'validation_pill=`{{if eq .validation "true"}}with validation{{if .validation_config}} {{.validation_config}}{{end}}{{else}}no validation{{end}}` '
@@ -562,19 +574,19 @@ _CUSTOM_ANNOTATION_VARIANTS = [
         "Train Custom Annotations (Info)",
         "rgba(184, 119, 217, 1)",  # purple
         "TrainCustomAnnotationsInfo",
-        "info",
+        "INFO",
     ),
     (
         "Train Custom Annotations (Warnings)",
         "rgba(255, 152, 48, 1)",  # orange
         "TrainCustomAnnotationsWarning",
-        "warning",
+        "WARNING",
     ),
     (
         "Train Custom Annotations (Errors)",
         "rgba(224, 47, 68, 1)",  # red
         "TrainCustomAnnotationsError",
-        "error",
+        "ERROR",
     ),
 ]
 CUSTOM_ANNOTATIONS = [
@@ -587,6 +599,9 @@ CUSTOM_ANNOTATIONS = [
         expr=(
             f'| event="ray.train.annotate" '
             f'| severity="{severity}" {_RUN_FILTERS} '
+            "| json ray_train_worker_world_rank="
+            '"event_data.tags.ray_train_worker_world_rank"'
+            ', fields="event_data.fields.custom_fields" '
             '| ray_train_worker_world_rank=~"$TrainWorkerWorldRank" '
             "| label_format worker=`rank {{.ray_train_worker_world_rank}}` "
             '| line_format "{{.message}}"'

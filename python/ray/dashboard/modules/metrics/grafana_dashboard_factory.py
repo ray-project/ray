@@ -50,6 +50,23 @@ DEFAULT_GRAFANA_ANNOTATION_DATASOURCE_TYPE = "loki"
 GRAFANA_ANNOTATION_STREAM_SELECTOR_ENV_VAR = "RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR"
 DEFAULT_ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
 
+# Ray emits an annotation as an export event, so the record on the wire is the
+# export envelope with the annotation under its `event_data` key. Every query
+# lifts the fields it filters on out of there into a label of its own, rather
+# than relying on the parser flattening the whole record into
+# `event_data_`-prefixed labels: the query then reads the same whichever
+# envelope the annotation travels in, and carries no labels it does not use.
+#
+# These are the fields every annotation record carries; an event-specific query
+# adds its own `| json` stage for its tags and fields.
+ANNOTATION_ENVELOPE_LABELS = (
+    'annotation_source="event_data.annotation_source", '
+    'session_name="event_data.session_name", '
+    'event="event_data.event", '
+    'message="event_data.message", '
+    'severity="event_data.severity"'
+)
+
 # Name of the datasource template variable backing the annotation queries when
 # ``RAY_GRAFANA_ANNOTATION_DATASOURCE_UID`` is unset.
 ANNOTATION_DATASOURCE_VARIABLE = "annotation_datasource"
@@ -237,10 +254,11 @@ def read_annotation_datasource_config() -> Optional[AnnotationDatasourceConfig]:
     Ray emits annotation events as JSON lines to a file in the session logs dir
     (see :class:`ray._common.observability.annotation.Annotation`) but ships no
     log collector, so rendering them needs a collector tailing
-    ``<session_dir>/logs/annotations_*.log`` and a Grafana datasource over
-    whatever backend it ships to. Neither is something Ray can read off the
-    cluster, but the two are unknown in different ways, so each resolves
-    differently and both default to something that works unconfigured:
+    ``<session_dir>/logs/export_events/event_EXPORT_ANNOTATION_*.log`` and a
+    Grafana datasource over whatever backend it ships to. Neither is something
+    Ray can read off the cluster, but the two are unknown in different ways, so
+    each resolves differently and both default to something that works
+    unconfigured:
 
     * The datasource uid is opaque and Grafana-generated, so Ray cannot name it
       but Grafana can find it. It falls back to a ``datasource`` template
@@ -318,8 +336,9 @@ def generate_annotation(
     """Expand a ``GrafanaAnnotation`` into the full Grafana annotation JSON.
 
     Builds the preamble common to every annotation query -- the stream selector,
-    a line pre-filter and ``| json``, then the two fields every Ray annotation
-    record carries -- and appends the annotation's event-specific stages.
+    a line pre-filter, the ``| json`` stage extracting the fields every Ray
+    annotation record carries, then the two of them that identify the emitter --
+    and appends the annotation's event-specific stages.
 
     ``session_name`` is written in as a literal rather than as a reference to the
     dashboard's ``SessionName`` variable. Prometheus is per-cluster, so a viewer
@@ -342,7 +361,8 @@ def generate_annotation(
     """
     datasource = {"type": config.datasource_type, "uid": config.uid}
     expr = (
-        f"{config.stream_selector} |= {json.dumps(annotation.source)} | json "
+        f"{config.stream_selector} |= {json.dumps(annotation.source)} "
+        f"| json {ANNOTATION_ENVELOPE_LABELS} "
         f"| annotation_source={json.dumps(annotation.source)} "
         f"| session_name={json.dumps(session_name)} "
         f"{annotation.expr}"
