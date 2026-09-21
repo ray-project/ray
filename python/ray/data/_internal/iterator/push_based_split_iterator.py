@@ -691,18 +691,8 @@ class _PushReceiver:
             # while cur_epoch is stale.
             self.cur_epoch = epoch
 
-
-class PushSplitReceiverMixin:
-    """Receive endpoints for actors hosting a ``PushBasedDataIterator``.
-
-    Mix into the actor class of any push-split consumer (Ray Train's
-    ``RayTrainWorker`` mixes it in). The coordinator's register() validates
-    that the handle exposes these methods.
-    """
-
-    def _push_split_deliver(
+    def deliver(
         self,
-        key: str,
         epoch_id: int,
         seq: int,
         item: _SequencedItem,
@@ -714,39 +704,66 @@ class PushSplitReceiverMixin:
         passed its ref as a resolved top-level arg — no borrowed refs, no
         ray.put). The block is buffered as-is; for Arrow blocks this is a
         zero-copy view whose buffers pin the local object-store copy while
-        queued.
+        queued. Items from a dead epoch are dropped; the reorder buffer
+        resets lazily on the first item of a new epoch.
         """
-        receiver = _RECEIVER_REGISTRY.get(key)
-        if receiver is None:
-            return
         if isinstance(item, _BlockPush):
             queue_item: _QueueItem = _BlockDelivery(block, item.size_bytes)
         else:
             queue_item = item
-        with receiver.lock:
-            if epoch_id != receiver.cur_epoch:
+        with self.lock:
+            if epoch_id != self.cur_epoch:
                 return
-            if receiver.reorder_epoch != epoch_id:
-                receiver.reorder_epoch = epoch_id
-                receiver.reorder_next_seq = 0
-                receiver.reorder_pending = {}
-            receiver.reorder_pending[seq] = queue_item
-            while receiver.reorder_next_seq in receiver.reorder_pending:
-                receiver.queue.put(
-                    receiver.reorder_pending.pop(receiver.reorder_next_seq)
-                )
-                receiver.reorder_next_seq += 1
+            if self.reorder_epoch != epoch_id:
+                self.reorder_epoch = epoch_id
+                self.reorder_next_seq = 0
+                self.reorder_pending = {}
+            self.reorder_pending[seq] = queue_item
+            while self.reorder_next_seq in self.reorder_pending:
+                self.queue.put(self.reorder_pending.pop(self.reorder_next_seq))
+                self.reorder_next_seq += 1
+
+    def deliver_error(self, epoch_id: int, error: _ExecutorError) -> None:
+        """Deliver an _ExecutorError immediately (fail fast, unsequenced)."""
+        with self.lock:
+            if epoch_id == self.cur_epoch:
+                self.queue.put(error)
+
+
+class PushSplitReceiverMixin:
+    """Remote-callable receive surface for actors hosting PushBasedDataIterators.
+
+    Mix into the actor class of any push-split consumer (Ray Train's
+    ``RayTrainWorker`` mixes it in); the coordinator's register() validates
+    that the handle exposes these methods. Deliberately a thin, STATELESS
+    shim over the ``_PushReceiver`` in the process-local registry:
+
+    - stateless, so it mixes into any actor class without cooperative
+      ``__init__`` chaining;
+    - separate from ``_PushReceiver`` because one actor hosts one receiver
+      per dataset shard (e.g. Train's train + valid iterators), and because
+      the iterator — a plain object with no reference to the actor instance —
+      reaches the same state through the module-level registry.
+    """
+
+    def _push_split_deliver(
+        self,
+        key: str,
+        epoch_id: int,
+        seq: int,
+        item: _SequencedItem,
+        block: Optional[Block] = None,
+    ) -> None:
+        receiver = _RECEIVER_REGISTRY.get(key)
+        if receiver is not None:
+            receiver.deliver(epoch_id, seq, item, block)
 
     def _push_split_deliver_error(
         self, key: str, epoch_id: int, error: _ExecutorError
     ) -> None:
-        """Deliver an _ExecutorError immediately (fail fast, unsequenced)."""
         receiver = _RECEIVER_REGISTRY.get(key)
-        if receiver is None:
-            return
-        with receiver.lock:
-            if epoch_id == receiver.cur_epoch:
-                receiver.queue.put(error)
+        if receiver is not None:
+            receiver.deliver_error(epoch_id, error)
 
 
 class _MaterializedBatchIterator(BatchIterator):
