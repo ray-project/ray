@@ -1650,6 +1650,27 @@ def _validate_rows_per_file_args(
     return min_rows_per_file, max_rows_per_file
 
 
+def _validate_min_bytes_per_file_args(
+    *,
+    min_bytes_per_file: Optional[int] = None,
+    num_rows_per_file: Optional[int] = None,
+    min_rows_per_file: Optional[int] = None,
+    max_rows_per_file: Optional[int] = None,
+) -> None:
+    """Validate the minimum bytes per file and its mutually exclusive arguments."""
+    if min_bytes_per_file is not None and min_bytes_per_file <= 0:
+        raise ValueError("min_bytes_per_file must be a positive integer")
+
+    if min_bytes_per_file is not None and any(
+        value is not None
+        for value in (num_rows_per_file, min_rows_per_file, max_rows_per_file)
+    ):
+        raise ValueError(
+            "min_bytes_per_file cannot be used with min_rows_per_file, "
+            "max_rows_per_file, or num_rows_per_file"
+        )
+
+
 def is_nan(value) -> bool:
     """Returns true if provide value is ``np.nan``"""
 

@@ -180,7 +180,7 @@ class ParquetDatasink(_FileDatasink):
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
-        target_file_size: Optional[int] = None,
+        min_bytes_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -198,7 +198,7 @@ class ParquetDatasink(_FileDatasink):
         self.arrow_parquet_args = arrow_parquet_args
         self.min_rows_per_file = min_rows_per_file
         self.max_rows_per_file = max_rows_per_file
-        self.target_file_size = target_file_size
+        self.min_bytes_per_file = min_bytes_per_file
         self.partition_cols = partition_cols
 
         if self.partition_cols and self.min_rows_per_file is not None:
@@ -211,12 +211,16 @@ class ParquetDatasink(_FileDatasink):
                 stacklevel=3,
             )
 
-        if self.target_file_size is not None and any(
+        if self.min_bytes_per_file is not None and self.min_bytes_per_file <= 0:
+            raise ValueError("min_bytes_per_file must be a positive integer")
+
+        if self.min_bytes_per_file is not None and any(
             value is not None
             for value in (self.min_rows_per_file, self.max_rows_per_file)
         ):
             raise ValueError(
-                "target_file_size cannot be used with min_rows_per_file or max_rows_per_file"
+                "min_bytes_per_file cannot be used with min_rows_per_file or "
+                "max_rows_per_file"
             )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
@@ -412,4 +416,4 @@ class ParquetDatasink(_FileDatasink):
 
     @property
     def min_bytes_per_write(self) -> Optional[int]:
-        return self.target_file_size
+        return self.min_bytes_per_file
