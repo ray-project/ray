@@ -43,11 +43,12 @@ import shlex
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Callable, Dict, List, NoReturn, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, NoReturn, Optional, Tuple
 
 import grpc
 from grpc import StatusCode
 
+from ray.experimental.sandbox.config import ALLOW_ALL_CIDRS, normalize_cidr_allowlist
 from ray.experimental.sandbox.http._proto import (
     sandbox_control_pb2 as api_pb2,
     sandbox_exec_pb2 as sr_pb2,
@@ -148,6 +149,64 @@ def _decode_id(prefix: str, value: str) -> Any:
         return json.loads(base64.urlsafe_b64decode(data))
     except (ValueError, TypeError):
         raise _RpcError(StatusCode.INVALID_ARGUMENT, f"malformed id: {value!r}")
+
+
+def _cidrs_or_invalid(cidrs: Any) -> List[str]:
+    """Normalize client-supplied CIDRs, or fail the RPC with INVALID_ARGUMENT."""
+    try:
+        return normalize_cidr_allowlist(list(cidrs))
+    except ValueError as exc:
+        raise _RpcError(StatusCode.INVALID_ARGUMENT, str(exc))
+
+
+_DOMAIN_ALLOWLIST_UNSUPPORTED = (
+    "domain allowlists (outbound_domain_allowlist) are not supported by the "
+    "Ray Sandbox gRPC facade, which has no TLS-inspecting egress proxy; use "
+    "outbound_cidr_allowlist"
+)
+
+
+def _network_policy(definition: Any) -> Tuple[str, Optional[List[str]]]:
+    """Map a sandbox definition's network access to (network mode, egress allowlist).
+
+    BLOCKED (and the deprecated ``block_network`` flag) is ``network="none"``;
+    OPEN is ``"public"`` with no destination filter; ALLOWLIST is ``"public"``
+    with the listed CIDRs enforced by the runtime. What the runtime cannot
+    enforce is refused, never widened: a sandbox must not run with fewer
+    restrictions than its client believes it has. An inbound allowlist needs
+    no mapping: the facade exposes no inbound path, so it holds trivially.
+    """
+    access = definition.network_access
+    access_type = access.network_access_type
+    if definition.block_network or access_type == api_pb2.NetworkAccess.BLOCKED:
+        return "none", None
+    if access_type != api_pb2.NetworkAccess.ALLOWLIST:
+        return "public", None
+    if access.allowed_domains:
+        raise _RpcError(StatusCode.INVALID_ARGUMENT, _DOMAIN_ALLOWLIST_UNSUPPORTED)
+    return "public", _cidrs_or_invalid(access.allowed_cidrs)
+
+
+def _requested_allowlist(access: Any) -> List[str]:
+    """The egress allowlist a TaskSetNetworkAccess request asks for.
+
+    The SDK sends OPEN for "no restriction", which on a sandbox created with
+    an allowlist is the allow-all list; BLOCKED is not a runtime policy
+    (block_network is a creation-time choice) and is refused.
+    """
+    access_type = access.network_access_type
+    if access_type == api_pb2.NetworkAccess.OPEN:
+        return list(ALLOW_ALL_CIDRS)
+    if access_type != api_pb2.NetworkAccess.ALLOWLIST:
+        raise _RpcError(
+            StatusCode.INVALID_ARGUMENT,
+            "TaskSetNetworkAccess takes an allowlist or open access; a blocked "
+            "policy cannot be set at runtime (create the sandbox with "
+            "block_network=True instead)",
+        )
+    if access.allowed_domains:
+        raise _RpcError(StatusCode.INVALID_ARGUMENT, _DOMAIN_ALLOWLIST_UNSUPPORTED)
+    return _cidrs_or_invalid(access.allowed_cidrs)
 
 
 def _image_ref_from_dockerfile(image: Any) -> str:
@@ -626,18 +685,7 @@ class _ControlServicer(ModalClientServicer):
         else:
             sandbox_id = _new_sandbox_id()
 
-        network_type = definition.network_access.network_access_type
-        if network_type == api_pb2.NetworkAccess.ALLOWLIST:
-            # Refused, not widened: a sandbox created with open egress in
-            # place of the allowlist the client asked for would run with
-            # fewer restrictions than the client believes it has.
-            raise _RpcError(
-                StatusCode.INVALID_ARGUMENT,
-                "network allowlists (cidr_allowlist) are not supported by the "
-                "Ray Sandbox gRPC facade; use block_network=True for no "
-                "network, or omit both for open egress",
-            )
-        network = "none" if network_type == api_pb2.NetworkAccess.BLOCKED else "public"
+        network, cidr_allowlist = _network_policy(definition)
 
         resources = definition.resources
         cpu_request = resources.milli_cpu / 1000.0 if resources.milli_cpu else None
@@ -665,6 +713,7 @@ class _ControlServicer(ModalClientServicer):
             "ttl_seconds": ttl,
             "network": network,
             "dns": None,
+            "cidr_allowlist": cidr_allowlist,
             "shell": "/bin/bash",
             "rootless": True,
             "readonly": False,
@@ -692,10 +741,11 @@ class _ControlServicer(ModalClientServicer):
         )
         handle.boot.remote()
         logger.info(
-            "Created sandbox %s (image=%s, network=%s)",
+            "Created sandbox %s (image=%s, network=%s, cidr_allowlist=%s)",
             sandbox_id,
             spec["image"],
             network,
+            cidr_allowlist,
         )
         return sandbox_id
 
@@ -1139,13 +1189,33 @@ class _RouterServicer(TaskCommandRouterServicer):
 
     @_rpc
     async def TaskSetNetworkAccess(self, request: Any, grpc_context: Any) -> Any:
-        # Refused, not acknowledged: a client that believes it changed the
-        # sandbox's network policy must not keep running under the old one.
-        raise _RpcError(
-            StatusCode.UNIMPLEMENTED,
-            "TaskSetNetworkAccess is not supported by the Ray Sandbox gRPC "
-            "facade: network policy is fixed when the sandbox is created",
+        handle = await self._state.require_handle(request.task_id)
+        cidrs = _requested_allowlist(request.network_access)
+        # The update is idempotent (the ruleset is replaced wholesale), so a
+        # retry after UNAVAILABLE is safe; the extra wait covers nft itself.
+        result = await _bounded(
+            handle.set_network_access.remote(cidrs), extra_wait=10.0
         )
+        error_code = result.get("error_code")
+        if error_code == "invalid":
+            raise _RpcError(
+                StatusCode.INVALID_ARGUMENT,
+                result.get("message", "invalid allowlist"),
+            )
+        if error_code == "conflict":
+            # Refused, not acknowledged: a client that believes it changed
+            # the sandbox's network policy must not keep running under the
+            # old one.
+            raise _RpcError(
+                StatusCode.FAILED_PRECONDITION,
+                result.get("message", "sandbox network policy cannot be changed"),
+            )
+        if error_code:
+            raise _RpcError(
+                StatusCode.INTERNAL,
+                result.get("message", "failed to update the network policy"),
+            )
+        return sr_pb2.TaskSetNetworkAccessResponse()
 
 
 @DeveloperAPI

@@ -1,3 +1,4 @@
+import re
 import sys
 
 import pytest
@@ -5,6 +6,7 @@ import pytest
 from ray.experimental.sandbox.config import (
     GVisorSandboxConfig,
     SandboxConfig,
+    normalize_cidr_allowlist,
     parse_memory_bytes,
 )
 
@@ -86,6 +88,51 @@ def test_dns_only_valid_with_host_side_networking():
             rootless=False,
             dns=["8.8.8.8"],
         )
+
+
+def test_cidr_allowlist_only_with_public_network_and_normalized():
+    config = SandboxConfig(
+        image="python:3.10-slim",
+        network="public",
+        cidr_allowlist=["10.0.1.5/24", "2001:db8::1"],
+    )
+    # Host bits are cleared; bare addresses become single-host networks.
+    assert config.cidr_allowlist == ["10.0.1.0/24", "2001:db8::1/128"]
+    empty = SandboxConfig(image="python:3.10-slim", network="public", cidr_allowlist=[])
+    assert empty.cidr_allowlist == []
+    assert (
+        SandboxConfig(image="python:3.10-slim", network="public").cidr_allowlist is None
+    )
+
+    for mode, rootless in (("none", True), ("host", True), ("sandbox", False)):
+        with pytest.raises(ValueError, match="cidr_allowlist"):
+            SandboxConfig(
+                image="python:3.10-slim",
+                network=mode,
+                rootless=rootless,
+                cidr_allowlist=["10.0.0.0/8"],
+            )
+
+
+@pytest.mark.parametrize(
+    "entry", ["example.com", "", "10.0.0.0/33", "10.0.0.256", "not a cidr"]
+)
+def test_cidr_allowlist_rejects_non_ip_entries(entry):
+    """Entries feed an nftables ruleset, so anything but an IP literal is
+    refused up front, naming the entry."""
+    with pytest.raises(ValueError, match=re.escape(repr(entry))):
+        SandboxConfig(
+            image="python:3.10-slim", network="public", cidr_allowlist=[entry]
+        )
+
+
+def test_normalize_cidr_allowlist():
+    assert normalize_cidr_allowlist(["0.0.0.0/0", "::/0"]) == ["0.0.0.0/0", "::/0"]
+    assert normalize_cidr_allowlist([" 52.0.0.1 "]) == ["52.0.0.1/32"]
+    assert normalize_cidr_allowlist(()) == []
+    # A bare string is a mistake, not a one-entry list.
+    with pytest.raises(ValueError, match="list"):
+        normalize_cidr_allowlist("10.0.0.0/8")
 
 
 def test_sandbox_network_requires_rootful():
