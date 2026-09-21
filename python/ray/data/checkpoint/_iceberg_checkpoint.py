@@ -1,3 +1,19 @@
+"""Coordinate recoverable Ray Data APPEND writes to Iceberg tables.
+
+Row checkpoints alone can tell Ray which source rows completed, but they can't
+recover the ``DataFile`` objects that an Iceberg task wrote before a driver
+failure. This module stores both pieces of state and publishes the row
+checkpoint last. A committed row checkpoint therefore means that matching,
+validated Iceberg task metadata also exists.
+
+Each checkpoint namespace contains one active generation. The generation ID
+also becomes an Iceberg snapshot property when the driver commits the append.
+On recovery, the snapshot property distinguishes an append that definitely did
+not commit from an append whose catalog response was ambiguous. Completed
+generations retain row IDs for filtering, but Ray never commits their data-file
+metadata again.
+"""
+
 import hashlib
 import json
 import logging
@@ -134,6 +150,13 @@ def _data_file_to_row(data_file: "DataFile") -> Dict[str, Any]:
 
 
 def _serialize_write_result(write_result: IcebergWriteResult) -> bytes:
+    """Serialize recoverable Iceberg task output without using pickle.
+
+    The payload contains every ``DataFile`` field needed by PyIceberg's append
+    transaction and the Arrow schemas needed by Iceberg schema reconciliation.
+    Deserialization validates the exact Arrow schema before constructing any
+    PyIceberg objects.
+    """
     if write_result.upsert_keys is not None:
         raise ValueError("Checkpointed Iceberg UPSERT is not supported")
     rows = [_data_file_to_row(data_file) for data_file in write_result.data_files]
@@ -199,6 +222,19 @@ def _deserialize_write_result(data: bytes) -> IcebergWriteResult:
 
 
 class IcebergCheckpointCoordinator:
+    """Manage driver and task artifacts for one Iceberg checkpoint namespace.
+
+    The namespace has three kinds of durable state:
+
+    * Revisioned manifests identify the table and active generation.
+    * Arrow payloads and JSON envelopes preserve each task's ``DataFile`` state.
+    * Top-level Parquet files contain row IDs and act as task commit markers.
+
+    Task metadata always precedes its Parquet marker. Recovery only considers
+    metadata with a committed marker, which prevents partially published task
+    state from filtering source rows.
+    """
+
     def __init__(self, config: "CheckpointConfig", sink: IcebergDatasink):
         self._config = config
         self._filesystem = config.filesystem
@@ -293,6 +329,16 @@ class IcebergCheckpointCoordinator:
         self._write_bytes(path, data)
 
     def initialize(self, table_uuid: str) -> None:
+        """Adopt the active generation or create a new generation.
+
+        Initialization validates that an existing namespace belongs to the
+        same Iceberg table and APPEND mode. A namespace with no manifest but
+        with committed row files is unsafe because it lacks destination-file
+        metadata, so initialization rejects it instead of filtering those rows.
+
+        Args:
+            table_uuid: Stable UUID from the destination Iceberg table metadata.
+        """
         self._table_uuid = table_uuid
         self._filesystem.create_dir(self._root, recursive=True)
         manifest = self._load_manifest(required=False)
@@ -396,6 +442,13 @@ class IcebergCheckpointCoordinator:
         )
 
     def _write_manifest(self, manifest: Dict[str, Any]) -> None:
+        """Publish a manifest revision, then retain two valid revisions.
+
+        Publishing a new immutable file preserves the previous valid state if
+        the write stops midway. After publication succeeds, compaction keeps the
+        current revision and one valid fallback. Invalid interrupted revisions
+        never replace that fallback.
+        """
         self._write_json(self._manifest_path(manifest["revision"]), manifest)
 
         # Keep the current manifest and one valid fallback without retaining an
@@ -469,6 +522,18 @@ class IcebergCheckpointCoordinator:
         checkpoint_path: str,
         write_result: IcebergWriteResult,
     ) -> None:
+        """Publish destination metadata before committing a row checkpoint.
+
+        The Arrow payload preserves the Iceberg write result. The JSON envelope
+        binds that payload to its operation, table, hash, and future Parquet row
+        checkpoint. ``write_task_checkpoint`` publishes the Parquet marker only
+        after this method succeeds.
+
+        Args:
+            artifact_id: Deterministic ID for this operation, write, and task.
+            checkpoint_path: Final path of the task's row checkpoint.
+            write_result: Iceberg data files and schemas produced by the task.
+        """
         if not write_result.data_files:
             raise ValueError(
                 "Iceberg write produced rows without recoverable destination files"
@@ -494,6 +559,12 @@ class IcebergCheckpointCoordinator:
         )
 
     def find_committed_task_checkpoint(self, task_id: str) -> Optional[str]:
+        """Return a task's committed row marker using one exact metadata lookup.
+
+        Deterministic task IDs avoid a namespace-wide object-store listing for
+        every write task. The partition filter still controls whether recovery
+        selects the exact checkpoint.
+        """
         if not task_id or posixpath.basename(task_id) != task_id:
             raise ValueError(f"Invalid Iceberg checkpoint task ID: {task_id!r}")
         path = posixpath.join(self._root, f"{task_id}.parquet")
@@ -507,6 +578,13 @@ class IcebergCheckpointCoordinator:
     def load_task_result_if_present(
         self, artifact_id: str
     ) -> Optional[IcebergWriteResult]:
+        """Load metadata published before an interrupted row-marker commit.
+
+        A task retry can reuse the original destination files and finish the
+        row checkpoint instead of producing a second recoverable task result.
+        A payload without an envelope never completed metadata publication, so
+        the retry removes that partial payload and starts again.
+        """
         envelope_path = posixpath.join(
             self._generation_root(), "tasks", f"{artifact_id}.json"
         )
@@ -601,6 +679,14 @@ class IcebergCheckpointCoordinator:
         return envelope
 
     def load_active_results(self) -> List[IcebergWriteResult]:
+        """Load recoverable task results from the current active generation.
+
+        Terminal generations contribute row IDs to generic checkpoint filtering,
+        but this method intentionally ignores their destination metadata. This
+        separation prevents Ray from appending a completed generation twice.
+        Unknown generations fail closed because Ray can't determine whether
+        their rows and destination files form a valid recovery unit.
+        """
         manifest = self._load_manifest()
         assert manifest is not None
         assert self._table_uuid is not None
@@ -628,7 +714,15 @@ class IcebergCheckpointCoordinator:
         return results
 
     def discard_task_results(self, results: List[IcebergWriteResult]) -> None:
-        """Remove row checkpoints for task results not included in a late commit."""
+        """Remove task checkpoints that a newly visible snapshot didn't commit.
+
+        An ambiguous earlier append can become visible after the current tasks
+        finish. Before terminalizing that earlier generation, remove checkpoints
+        for the current task outputs so their row IDs remain eligible on retry.
+        Delete each row marker before its metadata to preserve that safety rule
+        if cleanup stops midway. Fail closed unless every current data file maps
+        to a checkpoint.
+        """
         current_paths = {
             str(data_file.file_path)
             for result in results
@@ -667,6 +761,7 @@ class IcebergCheckpointCoordinator:
             )
 
     def mark_terminal(self) -> None:
+        """Close the active generation after confirming its Iceberg snapshot."""
         manifest = self._load_manifest()
         assert manifest is not None
         if manifest["active_generation"] != self.operation_id:
@@ -699,6 +794,15 @@ class IcebergCheckpointCoordinator:
 
 
 class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
+    """Add checkpoint recovery and commit detection to an Iceberg datasink.
+
+    Workers still delegate file creation to ``IcebergDatasink``. This wrapper
+    coordinates task metadata and changes driver completion into a recovery
+    protocol: detect an earlier commit, merge active recovered files with this
+    attempt's files, commit them with an operation marker, verify that marker,
+    and only then terminalize or delete checkpoint state.
+    """
+
     def __init__(self, sink: IcebergDatasink, config: "CheckpointConfig"):
         self._sink = sink
         self._config = config
@@ -706,6 +810,14 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         self._checkpointing_active = False
 
     def enable_checkpointing(self) -> None:
+        """Validate supported settings and resolve the generation before reads.
+
+        This method runs before checkpoint filtering. If the active operation's
+        snapshot has become visible since an ambiguous failure, it marks that
+        generation terminal and starts a fresh one. The retained terminal row
+        IDs then filter rows that the snapshot already contains, while new rows
+        enter the fresh generation.
+        """
         if self._checkpointing_active:
             return
         if self._config.checkpoint_manager_cls is not None:
@@ -749,6 +861,7 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         return self._sink.write(blocks, ctx)
 
     def _find_operation_snapshot(self) -> Optional[Any]:
+        """Refresh the table and find this generation's catalog commit marker."""
         self._sink._reload_table()
         for snapshot in self._sink._table.snapshots():
             if (
@@ -763,6 +876,12 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
     def _merge_results(
         recovered: List[IcebergWriteResult], current: List[IcebergWriteResult]
     ) -> List[IcebergWriteResult]:
+        """Merge recovered and current files while detecting path conflicts.
+
+        Task retries can return the same data file more than once. Equal file
+        metadata collapses to one append entry, while the same path with
+        different metadata fails closed.
+        """
         merged = []
         seen: Dict[str, bytes] = {}
         for result in [*recovered, *current]:
@@ -793,6 +912,15 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         return merged
 
     def on_write_complete(self, write_result: WriteResult[IcebergWriteResult]) -> None:
+        """Recover task files, commit once, and finalize checkpoint state.
+
+        The snapshot marker acts as the catalog-side commit record. If the
+        marker appears before this method starts, an earlier attempt committed.
+        If current tasks also produced files, remove their row checkpoints and
+        retry them under a new generation. Otherwise merge active task metadata,
+        append the unique data files, and verify the marker before treating the
+        generation as complete.
+        """
         if not self._checkpointing_active:
             self._sink.on_write_complete(write_result)
             return
@@ -877,6 +1005,7 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
 def wrap_iceberg_datasink(
     datasink: Datasink, config: Optional["CheckpointConfig"]
 ) -> Datasink:
+    """Wrap an Iceberg datasink when the DataContext enables checkpointing."""
     if (
         config is not None
         and isinstance(datasink, IcebergDatasink)
@@ -892,6 +1021,20 @@ def write_task_checkpoint(
     block: BlockAccessor,
     ctx: "TaskContext",
 ) -> None:
+    """Publish one write task's recoverable metadata and row checkpoint.
+
+    The task ID stays stable across task retries. First reuse a committed result
+    or metadata from an interrupted marker commit. For a new result, write the
+    pending row IDs, publish the Iceberg metadata, and finally rename the row
+    checkpoint to its committed path. The final rename makes the task visible
+    to both row filtering and driver-side Iceberg recovery.
+
+    Args:
+        datasink: Checkpoint-aware Iceberg datasink for this write.
+        checkpoint_writer: Writer for pending and committed row-ID Parquet files.
+        block: Input rows handled by this task.
+        ctx: Task context containing the write UUID and Iceberg write result.
+    """
     write_result = ctx.kwargs.get("_datasink_write_return")
     if not isinstance(write_result, IcebergWriteResult):
         raise TypeError("Iceberg write task did not return IcebergWriteResult")

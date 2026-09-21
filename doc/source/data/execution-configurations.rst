@@ -115,5 +115,5 @@ With ``delete_checkpoint_on_success=True``, Iceberg checkpoints are removed only
 after the catalog commit is confirmed. With ``False``, completed generations
 and row IDs remain available for future filtering, but completed data-file
 metadata isn't committed again. Data files created by task attempts that fail
-before publishing recovery metadata can remain as unreferenced Iceberg files;
+before publishing recovery metadata can remain as orphaned Iceberg files;
 manage these with the usual Iceberg orphan-file maintenance procedures.

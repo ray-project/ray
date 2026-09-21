@@ -81,6 +81,21 @@ def plan_write_op_with_checkpoint_writer(
 ) -> PhysicalOperator:
     """Plan a write operation with checkpoint support.
 
+    For checkpointed Iceberg datasinks:
+        Uses a post-write transform because the worker must first produce the
+        Iceberg ``DataFile`` metadata needed for recovery:
+        1. Write: writes Iceberg data files and returns their metadata
+        2. Post-write: writes pending row IDs
+        3. Post-write: publishes recoverable ``DataFile`` metadata
+        4. Post-write: commits the row checkpoint
+
+    The committed row checkpoint is the task completion marker. Ray publishes
+    it only after the matching Iceberg metadata is durable. On recovery, Ray
+    can commit the worker-written data files without writing those rows again.
+    If a task fails before committing the row checkpoint, Ray rereads and
+    rewrites its rows; Iceberg orphan-file maintenance can remove any data file
+    that the interrupted attempt left behind without recovery metadata.
+
     For file-based datasinks (_FileDatasink):
         Uses 2-phase commit for atomicity:
         1. Pre-write: computes expected paths, write pending checkpoints
@@ -328,6 +343,30 @@ def _generate_iceberg_write_checkpoint_transform(
     datasink: IcebergCheckpointDatasink,
     checkpoint_writer: BatchBasedCheckpointWriter,
 ) -> BlockMapTransformFn:
+    """Generate the transform that checkpoints an Iceberg task after its write.
+
+    The Iceberg write transform runs first and stores its ``IcebergWriteResult``
+    in the task context. This transform then combines the task's input blocks,
+    validates the ID column, and calls ``write_task_checkpoint`` to publish the
+    recovery state in this order:
+
+    1. Write pending row IDs.
+    2. Publish the task's Iceberg ``DataFile`` metadata.
+    3. Rename the row checkpoint from pending to committed.
+
+    Publishing the row checkpoint last makes it the task completion marker. A
+    retry ignores pending row IDs, while a committed marker guarantees that the
+    driver can recover the corresponding Iceberg data files.
+
+    Args:
+        data_context: Data context containing the checkpoint configuration.
+        datasink: Checkpoint-aware Iceberg datasink that owns the coordinator.
+        checkpoint_writer: Writer for row-ID Parquet checkpoints.
+
+    Returns:
+        A post-write transform that preserves the original blocks.
+    """
+
     def write_checkpoint(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
         block_list, combined_block = _combine_blocks(blocks)
         block_accessor = BlockAccessor.for_block(combined_block)
