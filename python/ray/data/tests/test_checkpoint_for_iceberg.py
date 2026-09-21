@@ -719,3 +719,9 @@ def test_retained_terminal_checkpoint_starts_new_generation_for_new_rows(
     table = catalog.load_table("db.table")
     assert len(table.snapshots()) == 2
     assert sorted(table.scan().to_arrow()["id"].to_pylist()) == [1, 2, 3, 4]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
