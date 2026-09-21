@@ -204,7 +204,7 @@ APPO scales out on both axes, supporting multiple EnvRunners for sample collecti
 for updating the model.
 ```
 
-**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pendulum_appo.py)
+**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pendulum_appo.py).
 
 **APPO-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
 
