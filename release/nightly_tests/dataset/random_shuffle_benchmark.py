@@ -91,9 +91,6 @@ if __name__ == "__main__":
         default="200e6",
         type=str,
     )
-    parser.add_argument(
-        "--shuffle", help="shuffle instead of sort", action="store_true"
-    )
     # Use 100-byte records to approximately match Cloudsort benchmark.
     parser.add_argument(
         "--row-size-bytes",
@@ -101,16 +98,10 @@ if __name__ == "__main__":
         default=100,
         type=int,
     )
-    parser.add_argument("--use-polars-sort", action="store_true")
     parser.add_argument("--limit-num-blocks", type=int, default=None)
 
     args = parser.parse_args()
 
-    if args.use_polars_sort and not args.shuffle:
-        print("Using polars for sort")
-        ctx = DataContext.get_current()
-        ctx.use_polars_sort = True
-    ctx = DataContext.get_current()
     if args.limit_num_blocks is not None:
         DataContext.get_current().set_config(
             "debug_limit_shuffle_execution_to_num_blocks", args.limit_num_blocks
@@ -140,10 +131,7 @@ if __name__ == "__main__":
             row_size_bytes=args.row_size_bytes,
         )
 
-        if args.shuffle:
-            ds = ds.random_shuffle()
-        else:
-            ds = ds.sort(key="c_0")
+        ds = ds.random_shuffle()
         try:
             holder["ds"] = ds.materialize()
         except Exception as e:
