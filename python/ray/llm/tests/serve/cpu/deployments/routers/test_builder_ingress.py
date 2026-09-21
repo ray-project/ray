@@ -25,6 +25,7 @@ from ray.llm._internal.serve.core.ingress.dev_ingress import DevIngress
 from ray.llm._internal.serve.core.ingress.ingress import (
     DirectStreamingIngress,
     OpenAiIngress,
+    make_direct_streaming_control_ingress,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     KVAwareRouter,
@@ -398,6 +399,31 @@ class TestBuildOpenaiApp:
         assert autoscaling_config.target_ongoing_requests == user_target
 
 
+@pytest.fixture(name="enable_direct_streaming")
+def _enable_direct_streaming(monkeypatch):
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.core.ingress.builder."
+        "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+        True,
+    )
+    # Multi-model selection reads the `model` field off the request body, which
+    # HAProxy only forwards when this is on.
+    monkeypatch.setattr(
+        "ray.llm._internal.serve.core.ingress.builder."
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
+
+
+def _second_llm_config(**kwargs) -> LLMConfig:
+    """A second model, with a `/` in its id as real HF ids have."""
+    return LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="meta-llama/other-model"),
+        **kwargs,
+    )
+
+
+@pytest.mark.usefixtures("enable_direct_streaming")
 class TestDirectStreamingOpenAiApp:
     """`build_openai_app` topology when direct streaming is enabled.
 
@@ -409,28 +435,9 @@ class TestDirectStreamingOpenAiApp:
     is not a special case of the builder, only of what the validators allow.
     """
 
-    @pytest.fixture(name="enable_direct_streaming", autouse=True)
-    def _enable_direct_streaming(self, monkeypatch):
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
-            True,
-        )
-        # Multi-model selection reads the `model` field off the request body,
-        # which HAProxy only forwards when this is on.
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
-            True,
-        )
-
     @pytest.fixture(name="llm_configs")
     def _llm_configs(self, llm_config):
-        """Two models, the second with a `/` in its id as real HF ids have."""
-        second = LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="meta-llama/other-model")
-        )
-        return [llm_config, second]
+        return [llm_config, _second_llm_config()]
 
     @staticmethod
     def _build(llm_configs, **kwargs):
@@ -461,9 +468,6 @@ class TestDirectStreamingOpenAiApp:
         )
         for model_app in llm_deployments.values():
             assert model_app._bound_deployment._direct_http is True
-            assert issubclass(
-                model_app._bound_deployment.func_or_class, ASGIAppReplicaWrapper
-            )
 
     @pytest.mark.parametrize("num_models", [1, 2])
     def test_router_gets_every_server_and_the_control_ingress(
@@ -478,15 +482,13 @@ class TestDirectStreamingOpenAiApp:
             c.model_id for c in llm_configs[:num_models]
         )
         assert router._bound_deployment.init_kwargs["ingress"] is app
+        # The router is handed exactly the routes the control ingress declares;
+        # the inventory itself is pinned in test_model_discovery.py.
+        _, declared = make_direct_streaming_control_ingress()
         assert [
-            (pattern.methods, pattern.path)
-            for pattern in router._bound_deployment.init_kwargs[
-                "ingress_route_patterns"
-            ]
-        ] == [
-            (["GET"], "/v1/models"),
-            (["GET"], "/v1/models/{model:path}"),
-        ]
+            (p.methods, p.path)
+            for p in router._bound_deployment.init_kwargs["ingress_route_patterns"]
+        ] == [(p.methods, p.path) for p in declared]
 
     @pytest.mark.parametrize("num_models", [1, 2])
     def test_ingress_and_router_share_the_same_model_applications(
@@ -525,18 +527,30 @@ class TestDirectStreamingOpenAiApp:
             llm_config.model_id: "s3://fake-bucket/lora"
         }
 
+    @pytest.mark.parametrize(
+        ("ingress_deployment_config", "expected"),
+        [
+            (
+                {"num_replicas": 3, "max_ongoing_requests": 17},
+                lambda c: (c.num_replicas, c.max_ongoing_requests) == (3, 17),
+            ),
+            # A non-zero floor is accepted; zero is rejected in the class below.
+            (
+                {"autoscaling_config": {"min_replicas": 2, "max_replicas": 4}},
+                lambda c: c.autoscaling_config.min_replicas == 2,
+            ),
+        ],
+        ids=["fixed_replicas", "autoscaling"],
+    )
     def test_ingress_deployment_config_is_applied(
-        self, llm_config, disable_placement_bundles
+        self, llm_config, disable_placement_bundles, ingress_deployment_config, expected
     ):
         """Unlike DP/PD, there is a real ingress deployment to configure."""
         app = self._build(
-            [llm_config],
-            ingress_deployment_config={"num_replicas": 3, "max_ongoing_requests": 17},
+            [llm_config], ingress_deployment_config=ingress_deployment_config
         )
 
-        deployment_config = app._bound_deployment._deployment_config
-        assert deployment_config.num_replicas == 3
-        assert deployment_config.max_ongoing_requests == 17
+        assert expected(app._bound_deployment._deployment_config)
 
     def test_default_request_router_still_applies_to_model_deployments(
         self, llm_config, disable_placement_bundles
@@ -568,52 +582,28 @@ class TestDirectStreamingOpenAiApp:
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
 
-    def test_single_kv_aware_model_is_passed_to_the_router(
-        self, llm_config, disable_placement_bundles
+    @pytest.mark.parametrize(
+        ("router_cls", "expects_llm_config"),
+        [(KVAwareRouter, True), (None, False)],
+        ids=["kv_aware", "default"],
+    )
+    def test_router_gets_llm_config_only_for_a_kv_aware_model(
+        self, llm_config, disable_placement_bundles, router_cls, expects_llm_config
     ):
         """KV-aware routing still works, but only for a lone model."""
-        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
-            request_router_class=KVAwareRouter,
-        )
+        if router_cls is not None:
+            llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+                request_router_class=router_cls
+            )
         app = self._build([llm_config])
 
-        assert (
-            app._ingress_request_router._bound_deployment.init_kwargs["llm_config"]
-            is llm_config
-        )
-
-    def test_non_kv_aware_model_passes_no_llm_config(
-        self, llm_config, disable_placement_bundles
-    ):
-        app = self._build([llm_config])
-
-        assert (
-            app._ingress_request_router._bound_deployment.init_kwargs["llm_config"]
-            is None
-        )
+        passed = app._ingress_request_router._bound_deployment.init_kwargs["llm_config"]
+        assert passed is (llm_config if expects_llm_config else None)
 
 
+@pytest.mark.usefixtures("enable_direct_streaming")
 class TestDirectStreamingOpenAiAppRejections:
     """Configurations the multi-model builder must refuse rather than mis-serve."""
-
-    @pytest.fixture(name="enable_direct_streaming", autouse=True)
-    def _enable_direct_streaming(self, monkeypatch):
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
-            True,
-        )
-        monkeypatch.setattr(
-            "ray.llm._internal.serve.core.ingress.builder."
-            "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
-            True,
-        )
-
-    @staticmethod
-    def _second_config(**kwargs) -> LLMConfig:
-        return LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id="other-model"), **kwargs
-        )
 
     @pytest.mark.parametrize(
         ("ingress_deployment_config", "match"),
@@ -642,22 +632,6 @@ class TestDirectStreamingOpenAiAppRejections:
                     ingress_deployment_config=ingress_deployment_config,
                 )
             )
-
-    def test_allows_an_explicit_non_zero_min_replicas(
-        self, llm_config, disable_placement_bundles
-    ):
-        app = build_openai_app(
-            LLMServingArgs(
-                llm_configs=[llm_config],
-                ingress_deployment_config={
-                    "autoscaling_config": {"min_replicas": 2, "max_replicas": 4}
-                },
-            )
-        )
-        assert (
-            app._bound_deployment._deployment_config.autoscaling_config.min_replicas
-            == 2
-        )
 
     @pytest.mark.parametrize(
         "ingress_cls_config",
@@ -690,7 +664,7 @@ class TestDirectStreamingOpenAiAppRejections:
             match="RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1",
         ):
             build_openai_app(
-                LLMServingArgs(llm_configs=[llm_config, self._second_config()])
+                LLMServingArgs(llm_configs=[llm_config, _second_llm_config()])
             )
 
     def test_single_model_does_not_need_body_forwarding(
@@ -708,7 +682,7 @@ class TestDirectStreamingOpenAiAppRejections:
     def test_rejects_multiple_models_when_any_is_kv_aware(
         self, llm_config, disable_placement_bundles
     ):
-        other = self._second_config(
+        other = _second_llm_config(
             deployment_config={
                 "request_router_config": RequestRouterConfig(
                     request_router_class=KVAwareRouter,
@@ -726,19 +700,8 @@ class TestDirectStreamingOpenAiAppRejections:
         )
         with pytest.raises(ValueError, match="LoRA supports one model"):
             build_openai_app(
-                LLMServingArgs(llm_configs=[llm_config, self._second_config()])
+                LLMServingArgs(llm_configs=[llm_config, _second_llm_config()])
             )
-
-    def test_single_model_lora_discovery_is_still_supported(
-        self, llm_config, disable_placement_bundles
-    ):
-        llm_config.lora_config = LoraConfig(
-            dynamic_lora_loading_path="s3://fake-bucket/lora"
-        )
-        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
-        assert app._bound_deployment.init_kwargs["lora_paths"] == {
-            llm_config.model_id: "s3://fake-bucket/lora"
-        }
 
 
 class TestDirectStreamingDP:

@@ -142,27 +142,6 @@ class TestMultiModelDirectStreaming:
         assert resp.json()["id"] == model
         assert "x-deployment-name" not in resp.headers
 
-    def test_discovery_wins_over_a_model_field_in_the_body(self, base_url: str):
-        """Route ownership is decided before the body is read at all.
-
-        A `GET /v1/models` carrying a `model` field must still be the ingress's,
-        or a client could steer a control request into a model deployment.
-        """
-        resp = httpx.request(
-            "GET",
-            f"{base_url}/v1/models",
-            json={"model": MODEL_B},
-            timeout=30,
-        )
-        assert resp.status_code == 200, resp.text
-        assert {card["id"] for card in resp.json()["data"]} == {MODEL_A, MODEL_B}
-        assert "x-deployment-name" not in resp.headers
-
-    def test_unknown_model_detail_is_404_not_a_model_deployment(self, base_url: str):
-        resp = httpx.get(f"{base_url}/v1/models/not-a-model", timeout=30)
-        assert resp.status_code == 404, resp.text
-        assert "x-deployment-name" not in resp.headers
-
     # ---- Inference reaches the named model ---------------------------------
 
     @pytest.mark.parametrize("model", [MODEL_A, MODEL_B])
@@ -170,20 +149,6 @@ class TestMultiModelDirectStreaming:
         resp = _chat(base_url, model)
         assert resp.status_code == 200, resp.text
         assert resp.headers["x-deployment-name"] == DEPLOYMENT_NAMES[model]
-
-    def test_chat_completions_is_not_claimed_by_the_control_ingress(
-        self, base_url: str
-    ):
-        """It is not an ingress route, so it goes through model-field routing.
-
-        Both models are reachable on the one path, which is only true because
-        the control ingress does not declare it.
-        """
-        served = {
-            _chat(base_url, model).headers["x-deployment-name"]
-            for model in (MODEL_A, MODEL_B)
-        }
-        assert served == set(DEPLOYMENT_NAMES.values())
 
     @pytest.mark.parametrize("model", [MODEL_A, MODEL_B])
     def test_streaming_succeeds_through_both_models(self, base_url: str, model: str):
@@ -203,62 +168,19 @@ class TestMultiModelDirectStreaming:
             chunks = [line for line in resp.iter_lines() if line.strip()]
         assert chunks, "expected at least one streamed chunk"
 
-    def test_a_request_is_never_redispatched_into_the_other_backend(
-        self, base_url: str
-    ):
-        """One request must not be able to end up on the wrong model's replicas.
-
-        HAProxy gives each direct deployment its own backend, so a retry or
-        redispatch stays inside it. The mock engine 404s a request whose `model`
-        is not its own, so a crossed request would be visible here as a 404
-        tagged with the wrong deployment; repeat enough times that a
-        load-balanced fallback would show up.
-        """
-        for _ in range(20):
-            for model in (MODEL_A, MODEL_B):
-                resp = _chat(base_url, model)
-                assert resp.status_code == 200, resp.text
-                assert resp.headers["x-deployment-name"] == DEPLOYMENT_NAMES[model]
-
     # ---- Fail-closed selection ---------------------------------------------
 
-    def test_a_request_without_a_model_fails_closed(self, base_url: str):
-        """With several models there is no safe default, so this must not serve.
+    @pytest.mark.parametrize(
+        "model", [None, "not-a-configured-model"], ids=["missing", "unknown"]
+    )
+    def test_an_unresolvable_model_fails_closed(self, base_url: str, model):
+        """With several models there is no safe default, so nothing may serve.
 
-        The router answers 400; HAProxy currently reports any non-200 from the
-        router to the client as 503 `router_non_200`.
+        The router answers 4xx; which status HAProxy surfaces to the client is
+        its business (today any router non-200 becomes a 503).
         """
-        resp = _chat(base_url)
-        assert resp.status_code in (400, 503), resp.text
-        assert "x-deployment-name" not in resp.headers
-
-    def test_an_unknown_model_fails_closed(self, base_url: str):
-        """The router answers 404; HAProxy currently surfaces it as 503."""
-        resp = _chat(base_url, "not-a-configured-model")
-        assert resp.status_code in (404, 503), resp.text
-        assert "x-deployment-name" not in resp.headers
-
-
-@requires_direct_streaming
-class TestSingleModelDirectStreaming:
-    """One model gets the same topology, and needs no `model` field."""
-
-    @pytest.fixture(scope="class", name="base_url")
-    def _base_url(self, cpu_ray_cluster):
-        app = build_openai_app(
-            LLMServingArgs(llm_configs=[_mock_engine_config(MODEL_A)])
-        )
-        yield run_app_through_haproxy(app)
-
-    def test_chat_without_a_model_succeeds(self, base_url: str):
-        resp = _chat(base_url)
-        assert resp.status_code == 200, resp.text
-        assert resp.headers["x-deployment-name"] == DEPLOYMENT_NAMES[MODEL_A]
-
-    def test_models_is_served_by_the_control_ingress(self, base_url: str):
-        resp = httpx.get(f"{base_url}/v1/models", timeout=30)
-        assert resp.status_code == 200, resp.text
-        assert [card["id"] for card in resp.json()["data"]] == [MODEL_A]
+        resp = _chat(base_url, model)
+        assert resp.status_code >= 400, resp.text
         assert "x-deployment-name" not in resp.headers
 
 

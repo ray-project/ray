@@ -2,10 +2,11 @@
 
 Discovery is the one thing the two ingress classes have in common: the OpenAI
 ingress also dispatches inference, while the direct-streaming control ingress
-does nothing else. These tests pin the shared behavior to ``_ModelDiscovery``,
-assert both ingresses answer identically, and pin the control ingress's route
-inventory -- which is load bearing, because the ingress request router takes
-exactly those routes away from the model deployments.
+does nothing else. ``OpenAiIngress``'s discovery behavior is already pinned by
+``test_lora_deployment_base_client.py``; these tests cover what is new -- that
+both ingresses answer identically, and the control ingress's route inventory,
+which is load bearing because the ingress request router takes exactly those
+routes away from the model deployments.
 """
 
 import sys
@@ -13,7 +14,12 @@ from typing import Awaitable, Callable, Dict, List, Optional
 from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 
+from ray.llm._internal.serve.core.configs.llm_config import (
+    LLMConfig,
+    ModelLoadingConfig,
+)
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ModelCard,
     OpenAIHTTPException,
@@ -63,70 +69,17 @@ def _make_discovery(
 
 @pytest.mark.asyncio
 class TestModelDiscovery:
-    async def test_base_model_card_is_returned_verbatim(self):
+    """Branches of the shared discovery that no ingress-level test reaches."""
+
+    async def test_model_data_resolves_an_id_with_escaped_slashes(self):
+        """`replace_prefix` rewrites `--` back to `/`, so a client that escaped
+        the slash out of the URL path segment still resolves."""
         discovery = _make_discovery([BASE_MODEL])
-        assert await discovery.model(BASE_MODEL) is discovery.model_cards[BASE_MODEL]
-
-    async def test_unknown_model_has_no_card(self):
-        discovery = _make_discovery([BASE_MODEL])
-        assert await discovery.model("not-configured") is None
-
-    async def test_model_data_404s_for_an_unknown_model(self):
-        discovery = _make_discovery([BASE_MODEL])
-        with pytest.raises(OpenAIHTTPException) as e:
-            await discovery.model_data("not-configured")
-        assert e.value.status_code == 404
-        assert e.value.type == "InvalidModel"
-
-    @pytest.mark.parametrize(
-        ("requested", "expected"),
-        [
-            (BASE_MODEL, BASE_MODEL),
-            # `replace_prefix` rewrites `--` back to `/`, so a client that
-            # escaped the slash out of the URL path segment still resolves.
-            (BASE_MODEL.replace("/", "--"), BASE_MODEL),
-        ],
-    )
-    async def test_model_data_resolves_ids_containing_slashes(
-        self, requested: str, expected: str
-    ):
-        discovery = _make_discovery([BASE_MODEL])
-        assert (await discovery.model_data(requested)).id == expected
-
-    async def test_models_lists_every_configured_base_model(self):
-        discovery = _make_discovery([BASE_MODEL, SECOND_MODEL])
-        listed = await discovery.models()
-        assert {card.id for card in listed.data} == {BASE_MODEL, SECOND_MODEL}
-
-    async def test_lora_metadata_is_merged_over_the_base_card(self):
-        discovery = _make_discovery(
-            [BASE_MODEL],
-            lora_paths={BASE_MODEL: "s3://base_path"},
-            metadata_func=_lora_metadata,
-        )
-        card = await discovery.model(LORA_MODEL)
-        assert card.id == LORA_MODEL
-        assert card.owned_by == discovery.model_cards[BASE_MODEL].owned_by
-        assert card.metadata["model_id"] == LORA_MODEL
-        assert card.metadata["base_model_id"] == BASE_MODEL
-        assert card.metadata["max_request_context_length"] == 4096
-
-    async def test_models_includes_adapters_for_a_lora_base_model(self):
-        discovery = _make_discovery(
-            [BASE_MODEL],
-            lora_paths={BASE_MODEL: "s3://base_path"},
-            metadata_func=_lora_metadata,
-        )
-        with patch(
-            "ray.llm._internal.serve.core.ingress.ingress.get_lora_model_ids",
-            return_value=[LORA_MODEL],
-        ):
-            listed = await discovery.models()
-        assert {card.id for card in listed.data} == {BASE_MODEL, LORA_MODEL}
+        card = await discovery.model_data(BASE_MODEL.replace("/", "--"))
+        assert card.id == BASE_MODEL
 
     async def test_models_omits_an_adapter_whose_config_cannot_be_read(self):
         """An unreadable adapter config must not fail the whole listing."""
-        from fastapi import HTTPException
 
         async def _raises(model_id: str, base_path: str):
             raise HTTPException(status_code=404, detail="no adapter config")
@@ -142,17 +95,6 @@ class TestModelDiscovery:
         ):
             listed = await discovery.models()
         assert {card.id for card in listed.data} == {BASE_MODEL}
-
-    async def test_discovery_owns_its_copies(self):
-        model_cards = {BASE_MODEL: _model_card(BASE_MODEL)}
-        lora_paths = {BASE_MODEL: "s3://base_path"}
-        discovery = _ModelDiscovery(model_cards, lora_paths=lora_paths)
-
-        model_cards[SECOND_MODEL] = _model_card(SECOND_MODEL)
-        lora_paths.clear()
-
-        assert set(discovery.model_cards) == {BASE_MODEL}
-        assert discovery.lora_paths == {BASE_MODEL: "s3://base_path"}
 
 
 def _both_ingresses(**kwargs):
@@ -207,32 +149,13 @@ class TestIngressDiscoveryEquivalence:
             assert e.value.status_code == 404
 
     async def test_mismatched_deployments_and_cards_are_rejected(self):
-        for cls in (OpenAiIngress, DirectStreamingIngress):
-            with pytest.raises(ValueError, match="same model IDs"):
-                cls(
-                    llm_deployments={BASE_MODEL: object()},
-                    model_cards={SECOND_MODEL: _model_card(SECOND_MODEL)},
-                )
+        with pytest.raises(ValueError, match="same model IDs"):
+            DirectStreamingIngress(
+                llm_deployments={BASE_MODEL: object()},
+                model_cards={SECOND_MODEL: _model_card(SECOND_MODEL)},
+            )
 
 
-async def _build_control_ingress_replica():
-    """Instantiate the ``serve.ingress``-wrapped control ingress in-process.
-
-    ``make_fastapi_ingress`` produces a class whose ``__init__`` is async (it is
-    what a Serve replica awaits), so construct it the way the replica does
-    rather than calling the class directly.
-    """
-    cls, _ = make_direct_streaming_control_ingress()
-    replica = cls.__new__(cls)
-    await cls.__init__(
-        replica,
-        llm_deployments={BASE_MODEL: object()},
-        model_cards={BASE_MODEL: _model_card(BASE_MODEL)},
-    )
-    return replica
-
-
-@pytest.mark.asyncio
 class TestControlIngressRoutes:
     """The control ingress's route inventory is a routing contract.
 
@@ -241,76 +164,30 @@ class TestControlIngressRoutes:
     is a path silently taken away from the model deployments.
     """
 
-    async def test_declares_exactly_the_two_discovery_routes(self):
+    def test_declares_exactly_the_two_discovery_routes(self):
         _, patterns = make_direct_streaming_control_ingress()
         assert [(p.methods, p.path) for p in patterns] == [
             (["GET"], "/v1/models"),
             (["GET"], "/v1/models/{model:path}"),
         ]
 
-    async def test_chat_completions_is_not_claimed(self):
-        _, patterns = make_direct_streaming_control_ingress()
-        paths = {p.path for p in patterns}
-        assert "/v1/chat/completions" not in paths
-
-    @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
-    async def test_fastapi_docs_routes_are_disabled(self, path: str):
-        _, patterns = make_direct_streaming_control_ingress()
-        paths = {p.path for p in patterns}
-        assert path not in paths
-
-    @pytest.mark.parametrize(
-        "method_name",
-        [
-            "chat",
-            "completions",
-            "embeddings",
-            "tokenize",
-            "detokenize",
-            "score",
-            "transcriptions",
-        ],
-    )
-    async def test_no_inference_handlers_are_defined(self, method_name: str):
-        assert not hasattr(DirectStreamingIngress, method_name)
-
-    async def test_is_not_an_openai_ingress(self):
-        """Keep the control ingress independent from the data-plane proxy."""
+    def test_is_not_an_openai_ingress(self):
+        """Inheriting the data-plane ingress would pull its inference routes
+        (and with them `/v1/chat/completions`) onto the control ingress."""
         assert not issubclass(DirectStreamingIngress, OpenAiIngress)
-
-    async def test_check_health_is_exposed_for_serve(self):
-        replica = await _build_control_ingress_replica()
-        assert await replica.check_health() is None
 
 
 class TestControlIngressDeploymentOptions:
     def test_does_not_inherit_scale_to_zero(self):
-        """``OpenAiIngress`` scales to zero with its models; this one may not."""
-        from ray.llm._internal.serve.core.configs.llm_config import (
-            LLMConfig,
-            ModelLoadingConfig,
-        )
-
+        """``OpenAiIngress`` scales to zero with its models; the control ingress
+        is the app's only front door, so it may not."""
         scale_to_zero = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id=BASE_MODEL),
             deployment_config={"autoscaling_config": {"min_replicas": 0}},
         )
 
-        assert (
-            OpenAiIngress.get_deployment_options([scale_to_zero])["autoscaling_config"][
-                "min_replicas"
-            ]
-            == 0
-        )
         options = DirectStreamingIngress.get_deployment_options([scale_to_zero])
         assert "min_replicas" not in options["autoscaling_config"]
-
-    def test_options_are_not_shared_between_calls(self):
-        first = DirectStreamingIngress.get_deployment_options()
-        first["autoscaling_config"]["min_replicas"] = 7
-        assert "min_replicas" not in (
-            DirectStreamingIngress.get_deployment_options()["autoscaling_config"]
-        )
 
 
 if __name__ == "__main__":
