@@ -5463,8 +5463,8 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 # io_service_ for completions (same thread as async_callback / GetAsync)
 # and on the caller for cancel/shutdown/unknown-owner. Takes the GIL.
 # user_callback_ptr is a Py_INCREF'd callable callback(exc).
-# status: OK, ObjectUnknownOwner, or Invalid (cancel, shutdown, or
-# last ObjectRef dropped).
+# status: OK, ObjectUnknownOwner, ObjectNotFound (last ObjectRef
+# dropped), or Invalid (cancel / shutdown).
 cdef void wait_async_callback_impl(CRayStatus status,
                                    void *user_callback_ptr) with gil:
     user_callback = <object>user_callback_ptr
@@ -5472,10 +5472,10 @@ cdef void wait_async_callback_impl(CRayStatus status,
         exc = None
         if not status.ok():
             # Do not call check_status (unsafe across this C++ boundary).
-            # WaitAsync only produces ObjectUnknownOwner and Invalid.
-            # Invalid maps to RaySystemError, not ValueError.
+            # Last-ref is ObjectNotFound (caller dropped the ObjectRef).
+            # Cancel/shutdown stay Invalid → RaySystemError.
             message = status.message().decode("utf-8", "replace")
-            if status.IsObjectUnknownOwner():
+            if status.IsObjectUnknownOwner() or status.IsObjectNotFound():
                 exc = ValueError(message)
             else:
                 exc = RaySystemError(message)

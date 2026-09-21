@@ -741,16 +741,24 @@ StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
 }
 
 bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
+  std::vector<ObjectID> deleted;
+  bool can_gc_lineage = false;
+  {
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    can_gc_lineage = TryDelObjectRefStreamInternal(generator_id, &deleted);
+    if (can_gc_lineage) {
+      RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
+      object_ref_streams_.erase(generator_id);
+    }
+  }
+  if (!deleted.empty() && fail_wait_async_for_deleted_objects_) {
+    fail_wait_async_for_deleted_objects_(deleted);
+  }
   if (!can_gc_lineage) {
     RAY_LOG(DEBUG) << "Generator " << generator_id
                    << " still has lineage in scope, try again later";
     return false;
   }
-
-  RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
-  object_ref_streams_.erase(generator_id);
   return true;
 }
 
@@ -794,6 +802,7 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
 
   Status status;
   std::vector<ObjectID> consumed_object_ids;
+  std::vector<ObjectID> deleted;
   ConsumptionUpdateCallback consumption_update_callback;
   int64_t consumption_total_consumed = 0;
 
@@ -829,9 +838,12 @@ Status TaskManager::TryReadObjectRefStreamN(const ObjectID &generator_id,
     // would dangle for every consumed object, EOF sentinel, or past-EOF ref (the
     // teardown path only releases unconsumed refs). The consumer's peeked ref
     // governs the object lifetime from here on.
-    std::vector<ObjectID> deleted;
     reference_counter_.TryReleaseLocalRefs(consumed_object_ids, &deleted);
     in_memory_store_.Delete(deleted);
+  }
+
+  if (!deleted.empty() && fail_wait_async_for_deleted_objects_) {
+    fail_wait_async_for_deleted_objects_(deleted);
   }
 
   // Fire the consumption update outside the stream lock, matching
@@ -853,7 +865,9 @@ bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) con
   return stream_it->second.IsFinished();
 }
 
-bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
+bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id,
+                                                std::vector<ObjectID> *deleted_out) {
+  RAY_CHECK(deleted_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     ref_stream_consumption_update_callbacks_.erase(generator_id);
@@ -880,6 +894,7 @@ bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
   std::vector<ObjectID> deleted;
   reference_counter_.TryReleaseLocalRefs(unconsumed_ids, &deleted);
   in_memory_store_.Delete(deleted);
+  *deleted_out = std::move(deleted);
 
   int64_t num_objects_generated = stream_it->second.EofIndex();
   if (num_objects_generated == -1) {
@@ -1723,6 +1738,9 @@ void TaskManager::OnTaskDependenciesInlined(
       /*argument_ids_to_add=*/contained_ids,
       /*argument_ids_to_remove=*/inlined_dependency_ids,
       &deleted);
+  if (!deleted.empty() && fail_wait_async_for_deleted_objects_) {
+    fail_wait_async_for_deleted_objects_(deleted);
+  }
   in_memory_store_.Delete(deleted);
 }
 
@@ -1759,6 +1777,9 @@ void TaskManager::RemoveFinishedTaskReferences(
                                                   borrower_addr,
                                                   borrowed_refs,
                                                   &deleted);
+  if (!deleted.empty() && fail_wait_async_for_deleted_objects_) {
+    fail_wait_async_for_deleted_objects_(deleted);
+  }
   in_memory_store_.Delete(deleted);
 }
 

@@ -358,6 +358,20 @@ class TaskManager : public TaskManagerInterface {
         });
   }
 
+  /**
+   * @brief Install the WaitAsync completion hook for last-ref drops.
+   *
+   * CoreWorker sets this after constructing the WaitAsync registry. Completes
+   * waits whose objects this manager just put on a ``deleted`` list.
+   *
+   * @param[in] callback Invoked with object IDs that just went out of scope.
+   * @return None.
+   */
+  void SetFailWaitAsyncForDeletedObjects(
+      std::function<void(const std::vector<ObjectID> &)> callback) {
+    fail_wait_async_for_deleted_objects_ = std::move(callback);
+  }
+
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
                                                    const TaskSpecification &spec,
                                                    const std::string &call_site,
@@ -1063,11 +1077,20 @@ class TaskManager : public TaskManagerInterface {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_);
 
   /**
-   * Helper method for TryDelObjectRefStream. Fails any pending callbacks,
-   * sends consumed-progress teardown, and releases unconsumed refs. Return true if it is
-   * safe to delete the stream and task metadata for the generator.
+   * @brief Tear down a streaming generator's object ref stream.
+   *
+   * Helper for ``TryDelObjectRefStream``. Fails pending consumption callbacks,
+   * marks the caller deleted, and releases unconsumed refs into ``deleted``.
+   * Deletes store entries here (still under the stream lock). The caller
+   * fails WaitAsync after releasing ``object_ref_stream_ops_mu_``.
+   *
+   * @param[in] generator_id The generator return ID whose stream to tear down.
+   * @param[out] deleted_out Object IDs whose last ref this release dropped.
+   * @return True if the stream and task metadata can be erased. False if EOF
+   * is not written yet or lineage is still in scope.
    */
-  bool TryDelObjectRefStreamInternal(const ObjectID &generator_id)
+  bool TryDelObjectRefStreamInternal(const ObjectID &generator_id,
+                                     std::vector<ObjectID> *deleted_out)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /**
@@ -1194,6 +1217,18 @@ class TaskManager : public TaskManagerInterface {
   FreeObjectOnNodesCallback free_stale_unconsumed_generator_objects_async_;
 
   ClockInterface &clock_;
+
+  /**
+   * @brief Completes WaitAsync for objects whose last ref this manager just
+   * dropped.
+   *
+   * CoreWorker sets this after constructing the WaitAsync registry. Empty in
+   * unit tests that do not construct one.
+   *
+   * @param[in] deleted Object IDs that just went out of scope.
+   * @return None.
+   */
+  std::function<void(const std::vector<ObjectID> &)> fail_wait_async_for_deleted_objects_;
 
   friend class TaskManagerTest;
 };

@@ -353,7 +353,80 @@ def test_on_ready_last_ref_dropped(ray_start_regular_shared):
     ref._on_ready(cb)
     del ref
     assert done.wait(timeout=5), "_on_ready was not invoked after the last ref dropped"
-    assert seen and isinstance(seen[0], ray.exceptions.RaySystemError)
+    assert seen and isinstance(seen[0], ValueError)
+    assert not isinstance(seen[0], ray.exceptions.RaySystemError)
+    assert "out of scope" in str(seen[0])
+
+
+@pytest.mark.skipif(
+    client_mode_should_convert(), reason="Different ref counting in Ray client."
+)
+def test_on_ready_peeked_generator_ref_dropped_on_stream_teardown(
+    ray_start_regular_shared,
+):
+    """Stream teardown is the last ref on a peeked generator ObjectRef."""
+    signal = SignalActor.remote()
+
+    @ray.remote(num_returns="streaming")
+    def never_yields():
+        ray.get(signal.wait.remote())
+        yield 1
+
+    g = never_yields.remote()
+    [ref] = g._get_next_ref_n(1)
+    done = threading.Event()
+    seen = []
+
+    def cb(exc):
+        seen.append(exc)
+        done.set()
+
+    ref._on_ready(cb)
+    del ref
+    assert not done.is_set(), "stream still holds a local ref after the ObjectRef drop"
+    del g
+    assert done.wait(
+        timeout=5
+    ), "_on_ready was not invoked after ObjectRefGenerator teardown"
+    assert seen and isinstance(seen[0], ValueError)
+    assert not isinstance(seen[0], ray.exceptions.RaySystemError)
+    assert "out of scope" in str(seen[0])
+
+
+@pytest.mark.skipif(
+    client_mode_should_convert(), reason="Different ref counting in Ray client."
+)
+def test_on_ready_finished_task_arg_last_ref(ray_start_regular_shared):
+    """Finishing a consumer task is the last ref on a dropped argument."""
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def never_ready():
+        ray.get(signal.wait.remote())
+        return 1
+
+    @ray.remote(max_retries=0)
+    def use(x):
+        return x
+
+    arg = never_ready.remote()
+    dep = use.remote(arg)
+    done = threading.Event()
+    seen = []
+
+    def cb(exc):
+        seen.append(exc)
+        done.set()
+
+    arg._on_ready(cb)
+    del arg
+    assert not done.is_set(), "use() still pins the argument after the ObjectRef drop"
+    ray.cancel(dep)
+    assert done.wait(
+        timeout=5
+    ), "_on_ready was not invoked after the consumer task finished"
+    assert seen and isinstance(seen[0], ValueError)
+    assert not isinstance(seen[0], ray.exceptions.RaySystemError)
     assert "out of scope" in str(seen[0])
 
 

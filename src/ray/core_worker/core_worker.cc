@@ -177,7 +177,8 @@ void FailWaitAsyncForDeletedObjects(WaitAsyncRegistry &registry,
     }
   }
   for (uint64_t handle : handles) {
-    CompleteWaitAsync(registry, handle, Status::Invalid("Object ref went out of scope."));
+    CompleteWaitAsync(
+        registry, handle, Status::ObjectNotFound("Object ref went out of scope."));
   }
 }
 
@@ -531,6 +532,10 @@ CoreWorker::CoreWorker(
     absl::MutexLock lock(&wait_async_->mu);
     wait_async_->memory_store = memory_store_.get();
   }
+  task_manager_->SetFailWaitAsyncForDeletedObjects(
+      [registry = wait_async_](const std::vector<ObjectID> &deleted) {
+        FailWaitAsyncForDeletedObjects(*registry, deleted);
+      });
   RAY_CHECK(RayConfig::instance().max_free_local_objects_batch_size() > 0)
       << "max_free_local_objects_batch_size must be positive, got "
       << RayConfig::instance().max_free_local_objects_batch_size();
