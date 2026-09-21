@@ -1,0 +1,65 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+// ExportAnnotationEventData is a point-in-time event that a dashboard renders on
+// the same timeline as its metric panels, such as a Train controller state change
+// or a `ray.train.report` call. A log collector tails the event file and forwards
+// the lines to a log backend, which Grafana queries as an annotation datasource.
+//
+// The schema deliberately depends on nothing in the ExportEvent envelope: every
+// field a dashboard query selects on lives here, so the payload can move to
+// another event envelope without changing what the queries match.
+message ExportAnnotationEventData {
+  // How important the event is. Dashboards color annotations by severity, so a
+  // producer that has no notion of severity leaves it unspecified rather than
+  // picking one.
+  enum Severity {
+    SEVERITY_UNSPECIFIED = 0;
+    INFO = 1;
+    WARNING = 2;
+    ERROR = 3;
+  }
+
+  // The Ray component that emitted the annotation, such as
+  // "ray_train_annotation". Dashboard queries select their own annotations with
+  // it, so that one dashboard does not render another component's events.
+  string annotation_source = 1;
+  // Machine-readable name of the event, such as "controller_state_change". A
+  // dashboard renders one annotation layer per event name.
+  string event = 2;
+  // Seconds since the Unix epoch when the event was emitted. Informational: a
+  // dashboard positions the annotation by the log entry's own timestamp.
+  double timestamp_s = 3;
+  // The Ray session that emitted the event. Dashboard queries pin it so that a
+  // log backend aggregating several clusters cannot render one cluster's
+  // annotations on another cluster's dashboard.
+  string session_name = 4;
+  // Human-readable description of the event, which a dashboard shows as the
+  // annotation text.
+  string message = 5;
+  // Severity of the event.
+  Severity severity = 6;
+  // Identity of the emitter, attached to every event it emits, such as the Ray
+  // Train run name, run ID and world rank. Dashboard queries filter on these to
+  // scope annotations to one run or one worker.
+  map<string, string> tags = 7;
+  // Payload specific to this event, such as the reported metrics of a
+  // `ray.train.report` call. Values are stringified, because a log backend
+  // represents them as string labels.
+  map<string, string> fields = 8;
+}
