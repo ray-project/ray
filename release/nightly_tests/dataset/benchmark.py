@@ -12,9 +12,6 @@ import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data import DataContext
-from ray.data._internal.execution.streaming_executor_state import (
-    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
-)
 from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
@@ -304,8 +301,7 @@ class Benchmark:
         self,
         *,
         max_head_node_memory_bytes: int | None = None,
-        max_sched_loop_duration_s: float
-        | None = 2 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+        max_sched_loop_duration_s: float | None = None,
     ):
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
