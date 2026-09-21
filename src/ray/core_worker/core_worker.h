@@ -70,6 +70,9 @@ namespace ray::core {
  */
 struct WaitAsyncRegistry;
 
+void FailWaitAsyncForDeletedObjects(WaitAsyncRegistry &registry,
+                                    const std::vector<ObjectID> &deleted);
+
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
 /// Tracks stats for inbound tasks (tasks this worker is executing).
@@ -457,6 +460,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
     reference_counter_->RemoveLocalReference(object_id, &deleted);
     // TODO(sang): This seems bad... We should delete the memory store
     // properly from reference counter.
+    FailWaitAsyncForDeletedObjects(*wait_async_, deleted);
     memory_store_->Delete(deleted);
   }
 
@@ -814,10 +818,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    * already present. Cancel and shutdown invoke the callback on the caller.
    * ``Status::OK`` means the object is ready.
    *
-   * WaitAsync does not hold a reference. The caller should keep ``object_id``
-   * in scope until the callback (the Python ``ObjectRef`` already does).
-   * If the object has no owner, the callback is invoked immediately with
-   * ``ObjectUnknownOwner``.
+   * WaitAsync does not hold a reference. If every remaining reference is
+   * dropped before the object is ready, the callback is invoked with
+   * ``Invalid``. ``await ObjectRef._ready()`` keeps ``self`` alive;
+   * ``_on_ready`` does not. If the object has no owner, the callback is
+   * invoked immediately with ``ObjectUnknownOwner``.
    *
    * \param[in] object_id ID of the object to wait for.
    * \param[in] callback Invoked with status and ``callback_arg``.

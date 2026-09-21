@@ -174,7 +174,8 @@ cdef class ObjectRef(BaseID):
 
         Unlike ``_on_completed``, this does not fetch or deserialize the value.
         The callback is ``callback(exc)``: ``exc`` is None when the object is
-        ready.
+        ready. If this ``ObjectRef`` is dropped before the object exists
+        and no other reference remains, ``exc`` is a ``RaySystemError``.
 
         Returns a function that cancels the wait. It is a no-op if the
         callback already ran synchronously.

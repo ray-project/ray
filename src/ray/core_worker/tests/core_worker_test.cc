@@ -1869,6 +1869,57 @@ TEST_F(CoreWorkerTest, WaitAsyncBorrowedObjectReady) {
   ASSERT_TRUE(result.status.ok());
 }
 
+TEST_F(CoreWorkerTest, WaitAsyncLastRefDroppedInvokesCallback) {
+  // WaitAsync does not pin. The last local ref going out of scope must
+  // invoke the callback (Invalid), not hang. Uses the ref-counter
+  // deleted list, not AddObjectOutOfScopeOrFreedCallback.
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+  ASSERT_EQ(result.calls, 0);
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    ASSERT_EQ(memory_store_->object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  core_worker_->RemoveLocalReference(object_id);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.IsInvalid());
+  ASSERT_EQ(result.status.message(), "Object ref went out of scope.");
+  {
+    absl::MutexLock lock(&memory_store_->mu_);
+    EXPECT_FALSE(memory_store_->object_async_get_requests_.contains(object_id));
+  }
+
+  // A second drop is a no-op (already completed; no remaining ref).
+  core_worker_->RemoveLocalReference(object_id);
+  ASSERT_EQ(result.calls, 1);
+}
+
+TEST_F(CoreWorkerTest, WaitAsyncRemainingRefKeepsWait) {
+  ObjectID object_id = ObjectID::FromRandom();
+  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
+  reference_counter_->AddLocalReference(object_id, "");
+
+  WaitAsyncCallbackResult result;
+  uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
+  ASSERT_NE(handle, 0u);
+
+  // One local ref remains.
+  core_worker_->RemoveLocalReference(object_id);
+  ASSERT_EQ(result.calls, 0);
+
+  memory_store_->Put(*MakeRayObject("data", "meta"),
+                     object_id,
+                     reference_counter_->HasReference(object_id));
+  DrainIoUntilWaitAsyncDone(io_service_, result);
+  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
+}
+
 TEST_F(CoreWorkerTest, WaitAsyncCancel) {
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);

@@ -36,6 +36,7 @@
 #include <google/protobuf/util/json_util.h>
 
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "ray/asio/periodical_runner.h"
@@ -103,7 +104,8 @@ constexpr size_t kDefaultSerializationCacheCap = 500;
  * erased under ``registry.mu``.
  * @param[in] handle Token from ``CoreWorker::WaitAsync``. Zero or a missing
  * handle is a no-op.
- * @param[in] status Passed to the user callback (OK, cancel, or shutdown).
+ * @param[in] status Passed to the user callback (OK, cancel, shutdown, or
+ * out of scope).
  * @return None. Missing or already-completed handles return without invoking
  * the user callback.
  */
@@ -138,6 +140,48 @@ void CompleteWaitAsync(WaitAsyncRegistry &registry, uint64_t handle, Status stat
   }
 }
 
+}  // namespace
+
+/**
+ * @brief Complete in-flight WaitAsync requests whose objects just went out of
+ * scope.
+ *
+ * Uses the ref-counter ``deleted`` list (already computed on last-ref drop).
+ * Does not subscribe to ``AddObjectOutOfScopeOrFreedCallback``. A later
+ * posted GetAsync misses the handle.
+ *
+ * @param[in,out] registry In-flight WaitAsync table. Matching requests are
+ * completed via ``CompleteWaitAsync``.
+ * @param[in] deleted Object IDs that just went out of scope.
+ * @return None. An empty ``deleted`` list or a table with no matching
+ * handles is a no-op.
+ */
+void FailWaitAsyncForDeletedObjects(WaitAsyncRegistry &registry,
+                                    const std::vector<ObjectID> &deleted) {
+  if (deleted.empty()) {
+    return;
+  }
+  absl::flat_hash_set<ObjectID> deleted_ids(deleted.begin(), deleted.end());
+  std::vector<uint64_t> handles;
+  {
+    absl::MutexLock lock(&registry.mu);
+    if (registry.requests.empty()) {
+      return;
+    }
+    handles.reserve(registry.requests.size());
+    for (const std::pair<const uint64_t, std::unique_ptr<WaitAsyncState>> &entry :
+         registry.requests) {
+      if (deleted_ids.contains(entry.second->object_id)) {
+        handles.push_back(entry.first);
+      }
+    }
+  }
+  for (uint64_t handle : handles) {
+    CompleteWaitAsync(registry, handle, Status::Invalid("Object ref went out of scope."));
+  }
+}
+
+namespace {
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
 class ScopedTaskMetricSetter {
@@ -3301,6 +3345,7 @@ Status CoreWorker::ExecuteTask(
           {dynamic_return.first}, borrowed_refs, &deleted);
     }
   }
+  FailWaitAsyncForDeletedObjects(*wait_async_, deleted);
   memory_store_->Delete(deleted);
 
   if (task_spec.IsNormalTask() && reference_counter_->NumObjectIDsInScope() != 0) {
@@ -3572,6 +3617,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     std::vector<ObjectID> deleted;
     ReferenceCounterInterface::ReferenceTableProto borrowed_refs;
     reference_counter_->PopAndClearLocalBorrowers(return_ids, &borrowed_refs, &deleted);
+    FailWaitAsyncForDeletedObjects(*wait_async_, deleted);
     memory_store_->Delete(deleted);
   }
 

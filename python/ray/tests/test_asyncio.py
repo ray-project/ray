@@ -333,6 +333,30 @@ async def test_async_wait_for_object_ref_ready_cancel(ray_start_regular_shared):
     assert await ref == "secret"
 
 
+def test_on_ready_last_ref_dropped(ray_start_regular_shared):
+    """Dropping the last ObjectRef must invoke _on_ready with an exception."""
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    done = threading.Event()
+    seen = []
+
+    def cb(exc):
+        seen.append(exc)
+        done.set()
+
+    ref._on_ready(cb)
+    del ref
+    assert done.wait(timeout=5), "_on_ready was not invoked after the last ref dropped"
+    assert seen and isinstance(seen[0], ray.exceptions.RaySystemError)
+    assert "out of scope" in str(seen[0])
+
+
 @pytest.mark.parametrize("raise_in_callback", [False, True])
 @pytest.mark.skipif(
     client_mode_should_convert(), reason="Different ref counting in Ray client."
