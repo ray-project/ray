@@ -242,6 +242,9 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status():
                 _CHILD_TASK_ID, 0, _CHILD_PLAN, ObjectReuseStatus.OBJECT_NEW
             ),
             ExpectPendingChildren(_SEED_TASK_IDS[0], _CHILD_PLAN, {}),
+            # Since there is no active reconstruction plan at this point
+            # (the reconstruction child task has already been submitted),
+            # any objects for this plan should be unrelated.
             ExpectObjectReuseStatus(
                 _SEED_TASK_IDS[0], 0, _CHILD_PLAN, ObjectReuseStatus.OBJECT_UNRELATED
             ),
@@ -319,6 +322,9 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status_multi_input():
                 _CHILD_TASK_ID, 0, _CHILD_PLAN, ObjectReuseStatus.OBJECT_NEW
             ),
             ExpectPendingChildren(_SEED_TASK_IDS[0], _CHILD_PLAN, {}),
+            # Since there is no active reconstruction plan at this point
+            # (the reconstruction child task has already been submitted),
+            # any objects for this plan should be unrelated.
             ExpectObjectReuseStatus(
                 _SEED_TASK_IDS[0], 0, _CHILD_PLAN, ObjectReuseStatus.OBJECT_UNRELATED
             ),
@@ -370,12 +376,15 @@ _REPLAY_SEED_FOR_BOTH_BRANCHES = [
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
     # Second output of the seed is ready to be scheduled.
     Submit(_RIGHT, {_SEED: [1]}, plan=_PLAN),
+    # Because both pending children tasks of the seed task are submitted,
+    # we have removed all the child dependencies of the seed task (specific to this plan),
+    # and any objects queried for this plan should be unrelated.
     ExpectPendingChildren(_SEED, _PLAN, {}),
     ExpectObjectReuseStatus(_SEED, 0, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
-    # Right branch finishes first.
+    # Suppose right branch finishes first.
     ExpectPendingChildren(_RIGHT, _PLAN, _PENDING_COMMON_CHILD),
-    # Left branch finishes second.
+    # Suppose left branch finishes second.
     ExpectPendingChildren(_LEFT, _PLAN, _PENDING_COMMON_CHILD),
 ]
 
@@ -388,6 +397,9 @@ _REPLAY_SEED_FOR_LEFT_BRANCH = [
     Complete(_SEED, plan=_PLAN),
     # Left branch is submitted.
     Submit(_LEFT, {_SEED: [0]}, plan=_PLAN),
+    # Because left child task of the seed task is submitted,
+    # we have removed all child dependencies of the seed task (specific to this plan),
+    # and any objects queried for this plan should be unrelated.
     ExpectPendingChildren(_SEED, _PLAN, {}),
     ExpectObjectReuseStatus(_SEED, 0, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
@@ -403,6 +415,9 @@ _REPLAY_SEED_FOR_RIGHT_BRANCH = [
     Complete(_SEED, plan=_PLAN),
     # Right branch is submitted.
     Submit(_RIGHT, {_SEED: [1]}, plan=_PLAN),
+    # Because right child task of the seed task is submitted,
+    # we have removed all child dependencies of the seed task (specific to this plan),
+    # and any objects queried for this plan should be unrelated.
     ExpectPendingChildren(_SEED, _PLAN, {}),
     ExpectObjectReuseStatus(_SEED, 0, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
@@ -423,6 +438,9 @@ _COMPLETE_RIGHT_ATTEMPT = [
 
 _RESUBMIT_COMMON_CHILD = [
     Submit(_COMMON, {_LEFT: [0], _RIGHT: [0]}, plan=_PLAN),
+    # Since there is no active reconstruction plan at this point
+    # (the reconstruction child task has already been submitted),
+    # any objects for this plan should be unrelated.
     ExpectPendingChildren(_LEFT, _PLAN, {}),
     ExpectObjectReuseStatus(_LEFT, 0, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED),
     ExpectPendingChildren(_RIGHT, _PLAN, {}),
@@ -566,7 +584,15 @@ def _submit_stage(
     positions: Optional[Sequence[int]] = None,
     plan: Optional[PlanRef] = None,
 ) -> List[Action]:
-    """Submit the tasks of ``stage`` against the outputs of the stage above.
+    """
+    Submit the tasks of the given ``stage`` against the outputs of the previous stage
+    (``stage`` - 1) in the graph. This returns a list of submit actions necessary to
+    submit all the given tasks ``positions`` in the given ``stage``.
+
+    E.g. For a graph with layout (1, 5, 5, 1), submitting stage 2 with positions [0, 1]
+    will return a list of Submit actions where each Submit action corresponds to submitting
+    a task in the positions (0, 1) specified in stage 2 that depends on an output from each
+    task in stage 1.
 
     Args:
         graph: The graph to submit the stage of.
@@ -591,7 +617,12 @@ def _complete_stage(
     positions: Optional[Sequence[int]] = None,
     plan: Optional[PlanRef] = None,
 ) -> List[Action]:
-    """Complete the tasks of ``stage``.
+    """Complete the tasks of the given ``stage``. This returns a list of complete actions necessary to
+    complete all the given tasks ``positions`` in the given ``stage``.
+
+    E.g. For a graph with layout (1, 5, 5, 1), completing stage 2 with positions [0, 1]
+    will return a list of Complete actions where each Complete action corresponds to completing
+    the tasks in the positions (0, 1) specified in stage 2.
 
     Args:
         graph: The graph to complete the stage of.
@@ -608,7 +639,7 @@ def _complete_stage(
 
 
 def _fail(graph: AllToAllGraph, stage: int, position: int, plan: PlanRef) -> Action:
-    """Fail one task of ``stage``.
+    """Fail one task of ``stage`` at the position specified.
 
     Args:
         graph: The graph to fail the task of.
@@ -632,8 +663,19 @@ def _expect_claims_on_stage(
     plan: PlanRef,
     pending_positions: Sequence[int],
 ) -> List[Action]:
-    """Verify the given stage only
-    has child dependencies corresponding to the given pending positions.
+    """
+    Verify the given ``stage`` only has child dependencies corresponding to the given pending positions.
+    This returns a list of ExpectPendingChildren and ExpectObjectReuseStatus actions that assert that each
+    task in the given ``stage`` only has pending output block indices corresponding to the given
+    pending positions.
+
+    E.g. For a graph with layout (1, 5, 5, 1), expecting claims on stage 1 with pending
+    positions [0, 1] will return a list where, for each of the five tasks in stage 1, one
+    ExpectPendingChildren action asserts that the only consumers still owed a block are the
+    tasks at positions (0, 1) in stage 2 (each taking the block at its own position), followed
+    by five ExpectObjectReuseStatus actions, one per consumer position in stage 2: positions
+    (0, 1) are OBJECT_REUSED and positions (2, 3, 4) are OBJECT_PRUNED. Passing no pending
+    positions instead expects every consumer position to be OBJECT_UNRELATED.
 
     Args:
         graph: The graph to expect the claims on.
@@ -726,7 +768,8 @@ def _two_grandchildren_fail(graph: AllToAllGraph) -> List[Action]:
         *_complete_stage(graph, 0),
         *_submit_stage(graph, 2),
         *_complete_stage(graph, 1),
-        # The tasks of the failed stage that never fail finished first.
+        # Complete the non-target tasks of the stage with the
+        # target task to fail first.
         *_complete_stage(graph, 2, graph.positions(2)[2:]),
         _fail(graph, stage=2, position=0, plan=_FIRST_FAILURE_PLAN),
         _fail(graph, stage=2, position=1, plan=_SECOND_FAILURE_PLAN),
@@ -780,7 +823,8 @@ def _one_grandchild_fails(graph: AllToAllGraph) -> List[Action]:
         *_complete_stage(graph, 0),
         *_submit_stage(graph, 2),
         *_complete_stage(graph, 1),
-        # The tasks of the failed stage that never fail finished first.
+        # Complete the non-target tasks of the stage with the
+        # target task to fail first.
         *_complete_stage(graph, 2, graph.positions(2)[1:]),
         _fail(graph, stage=2, position=0, plan=_FIRST_FAILURE_PLAN),
         # Trigger seed stage reconstruction
@@ -864,7 +908,8 @@ def _one_child_fails(graph: AllToAllGraph) -> List[Action]:
         *_submit_stage(graph, 0),
         *_submit_stage(graph, 1),
         *_complete_stage(graph, 0),
-        # The tasks of the failed stage that never fail finished first.
+        # Complete the non-target tasks of the stage with the
+        # target task to fail first.
         *_complete_stage(graph, 1, graph.positions(1)[1:]),
         _fail(graph, stage=1, position=0, plan=_FIRST_FAILURE_PLAN),
         # Trigger seed stage reconstruction

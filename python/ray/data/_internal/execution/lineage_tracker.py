@@ -124,14 +124,19 @@ class LineageTracker:
                 attempt.
 
         Raises:
-            ValueError: If a parent task is not registered.
+            ValueError: Raises if a parent task is not registered.
                         Invariant: a task can only be submitted once all
                         of its parents have been submitted.
-                        If an unregistered task is submitted with a ``plan_id``.
+
+                        Raises if a previously unseen task is submitted with a ``plan_id``.
                         Invariant: only a task that has already been submitted
                         can be a re-execution of a reconstruction plan.
-                        If ``plan_id`` no longer claims the task, or no longer
-                        owes it one of the blocks it asks a parent for.
+
+                        Raises if a ``plan_id`` was provided for the task to register,
+                        but the parents of the task has already marked the dependencies
+                        of the task as resolved for the plan. This means the task has
+                        already been submitted for the same plan, and the new task
+                        is a redundant duplicate.
                         Invariant: a plan claims each block it owes exactly
                         once, so within a plan, for any output block, there can
                         be at most one reconstruction of it.
@@ -175,27 +180,34 @@ class LineageTracker:
                     f"Expected parent task {dependency.parent_data_task_id} to "
                     f"be registered before child task {data_task_id} but was not."
                 )
-            child_block_lineages = parent_task_node.plan_to_child_block_lineages
+            parent_task_child_block_lineages = (
+                parent_task_node.plan_to_child_block_lineages
+            )
             # reconstruction task case: remove resolved dependencies from the
             # plan of the parent.
             if plan_id is not None:
-                if plan_id in child_block_lineages:
+                if plan_id in parent_task_child_block_lineages:
                     dependency_to_remove = ChildBlockDependency(
                         child_data_task_id=data_task_id,
                         output_index=dependency.output_index,
                     )
-                    if dependency_to_remove not in child_block_lineages[plan_id]:
+                    if (
+                        dependency_to_remove
+                        not in parent_task_child_block_lineages[plan_id]
+                    ):
                         raise ValueError(
                             f"Expected dependency {dependency_to_remove} to be "
                             f"required by plan {plan_id} as part of the parent's "
                             "dependencies that need to be resubmitted in "
-                            f"{child_block_lineages[plan_id]} but was not. Has "
+                            f"{parent_task_child_block_lineages[plan_id]} but was not. Has "
                             "the plan been correctly updated to reflect the "
                             "dependencies needed for the reconstruction?"
                         )
-                    child_block_lineages[plan_id].remove(dependency_to_remove)
-                    if not child_block_lineages[plan_id]:
-                        del child_block_lineages[plan_id]
+                    parent_task_child_block_lineages[plan_id].remove(
+                        dependency_to_remove
+                    )
+                    if not parent_task_child_block_lineages[plan_id]:
+                        del parent_task_child_block_lineages[plan_id]
             # fresh task case: add dependencies as edge from parent to child.
             else:
                 if dependency.parent_data_task_id not in parent_to_dependencies:
@@ -242,9 +254,9 @@ class LineageTracker:
         Update the task state for the given data task to completed.
 
         Note:
-            Completion does not discharge a plan -- submission does -- so on a
-            re-execution attempt a task may complete before the downstream tasks
-            consuming its blocks are resubmitted.
+            Completing a task does not remove anything from its plan set. Plan set entries are
+            removed in ``register_task_submission``, when the child that consumes the
+            block is resubmitted.
 
         Args:
             data_task_id: The ID of the data task that was completed.
