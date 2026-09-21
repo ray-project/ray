@@ -64,6 +64,8 @@ Catalog
 
    DatabricksUnityCatalog
 
+   GravitinoCatalog
+
 .. autosummary::
    :nosignatures:
    :toctree: doc/

@@ -898,6 +898,65 @@ MaterializedDataset(
 
 :::::
 
+## Read catalog-backed lakehouse tables
+
+Ray Data can resolve existing Iceberg tables through `GravitinoCatalog`. This
+adapter maps table names and configuration to Iceberg REST. Install PyIceberg
+for the format reader and writer; no additional catalog SDK is required:
+
+```console
+pip install "ray[data]" "pyiceberg==0.12.0"
+```
+
+Configure the Iceberg REST endpoint and pass its PyIceberg authentication and
+storage properties in `iceberg_rest_catalog_kwargs`. The adapter makes no
+requests to the catalog service's main API. Keep passwords and tokens in your
+credential source. Don't embed credentials in endpoint URIs. Anonymous REST
+access is configured explicitly; supplied `auth`, `credential`, or `token`
+properties take precedence. Ray doesn't add token acquisition or storage
+credential renewal through this adapter.
+
+The following example assumes an existing table with one optional long integer
+column named `id`.
+
+```{testcode}
+:skipif: True
+
+import ray
+
+catalog = ray.data.GravitinoCatalog(
+    iceberg_rest_uri="http://gravitino:9001/iceberg/",
+)
+
+# The identifier is catalog.schema.table.
+iceberg = ray.data.read_iceberg(
+    table_identifier="iceberg_catalog.sales.orders", catalog=catalog
+)
+# Append data matching the existing table's schema through the REST catalog.
+ray.data.from_items([{"id": 1}]).write_iceberg(
+    "iceberg_catalog.sales.orders", catalog=catalog
+)
+```
+
+The initial scope is existing-table reads and same-schema append writes. The
+underlying Ray writer also exposes schema evolution, `SaveMode.OVERWRITE`, and
+`SaveMode.UPSERT`. These operations haven't been validated through this
+provider. External Delta reads are follow-up work, and Delta and Parquet access
+through this provider are currently rejected. Catalog or table creation isn't
+exposed by this API.
+
+Configure the REST service's dynamic catalog configuration provider and
+`metalake` binding, then select tables with `catalog.schema.table`. The catalog
+component selects the REST `warehouse`. Resolution validates local inputs and
+configuration; actual REST operations check table existence and privileges.
+For catalog authorization in server version 1.3.1, use auxiliary REST mode with
+authorization enabled and the dynamic provider. Standalone REST mode doesn't
+provide equivalent catalog authorization. Configure storage access in the
+backing catalog; a successful table lookup doesn't establish worker access to
+data files. Long-running storage credential renewal and Kerberos/HDFS need
+separate deployment validation. Catalog properties are redacted during Catalog
+serialization; recreate configured Catalog instances before resolving them.
+
 (reading-databases)=
 
 ## Read databases
