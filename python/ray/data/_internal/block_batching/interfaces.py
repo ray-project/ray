@@ -89,11 +89,14 @@ class BatchMetadata:
         batch_idx: The global index of this batch so that downstream operations can
             maintain ordering.
         num_rows: Number of rows in this batch (for ``iter_rows_total``).
+        nbytes: Size of the batch when it was built, used to decrement the
+            consumer's in-flight byte count once the batch is released.
         stage_timings: Per-stage timing windows.
     """
 
     batch_idx: int
     num_rows: int = 0
+    nbytes: int = 0
     stage_timings: BatchStageTimings = field(default_factory=BatchStageTimings)
 
 
