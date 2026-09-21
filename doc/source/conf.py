@@ -133,7 +133,8 @@ llms_txt_exclude = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/*",
+    "rllib/package_ref/doc/*",
+    "rllib/package_ref/env/doc/*",
     # Deprecated pages: surfacing a superseded API/guide to an agent is worse
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
@@ -241,15 +242,8 @@ remove_from_toctrees = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/algorithm/*",
-    "rllib/package_ref/policy/*",
-    "rllib/package_ref/models/*",
-    "rllib/package_ref/catalogs/*",
-    "rllib/package_ref/rl_modules/*",
-    "rllib/package_ref/learner/*",
-    "rllib/package_ref/evaluation/*",
-    "rllib/package_ref/replay-buffers/*",
-    "rllib/package_ref/utils/*",
+    "rllib/package_ref/doc/*",
+    "rllib/package_ref/env/doc/*",
 ]
 
 myst_enable_extensions = [

@@ -18,7 +18,7 @@ This section helps you debug and monitor the execution of your :class:`~ray.data
 Ray Data progress bars
 ----------------------
 
-When you execute a :class:`~ray.data.Dataset`, Ray Data displays a set of progress bars in the console. These progress bars show various execution and progress-related metrics, including the number of rows completed/remaining, resource usage, and task/actor status. See the annotated image for a breakdown of how to interpret the progress bar outputs: 
+When you execute a :class:`~ray.data.Dataset`, Ray Data displays a set of progress bars in the console. These progress bars show various execution and progress-related metrics, including the number of rows completed/remaining, resource usage, and task/actor status. See the annotated image for a breakdown of how to interpret the progress bar outputs:
 
 .. image:: images/dataset-progress-bar.png
    :align: center
@@ -152,6 +152,8 @@ These metrics provide high-level information about dataset execution and resourc
      - CPUs allocated to dataset operators
    * - `data_gpu_usage_cores`
      - GPUs allocated to dataset operators
+   * - `data_memory_usage_bytes`
+     - Heap memory allocated to dataset operators
    * - `data_output_bytes`
      - Bytes outputted by dataset operators
    * - `data_output_rows`
