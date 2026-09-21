@@ -35,7 +35,7 @@ class PushBasedDataConfig(DataConfig):
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
-        target_buffer_rows: Optional[int] = None,
+        target_buffer_blocks: Optional[int] = None,
     ):
         """Construct a PushBasedDataConfig.
 
@@ -43,19 +43,17 @@ class PushBasedDataConfig(DataConfig):
             datasets_to_split: Same as :class:`~ray.train.DataConfig`.
             execution_options: Same as :class:`~ray.train.DataConfig`.
             enable_shard_locality: Same as :class:`~ray.train.DataConfig`.
-            target_buffer_rows: Explicit override for how many rows each
-                train worker requests ahead (the demand window). By default
-                it is derived per iteration from
-                ``prefetch_batches * batch_size`` (mirroring the pull
-                model's prefetch window); whole-block sends keep pipelining
-                even when a single block exceeds that window.
+            target_buffer_blocks: How many blocks each train worker keeps
+                requested ahead; ``None`` uses the default (2: one being
+                consumed plus one in flight, the pull model's effective
+                pipelining).
         """
         super().__init__(
             datasets_to_split=datasets_to_split,
             execution_options=execution_options,
             enable_shard_locality=enable_shard_locality,
         )
-        self._target_buffer_rows = target_buffer_rows
+        self._target_buffer_blocks = target_buffer_blocks
 
     def configure(
         self,
@@ -89,7 +87,7 @@ class PushBasedDataConfig(DataConfig):
                         world_size,
                         equal=True,
                         locality_hints=locality_hints,
-                        target_buffer_rows=self._target_buffer_rows,
+                        target_buffer_blocks=self._target_buffer_blocks,
                     )
                 ):
                     output[i][name] = split

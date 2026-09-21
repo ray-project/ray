@@ -147,11 +147,11 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 PushBasedDataConfig,
             )
 
-            target_buffer_rows = dataloader_config.ray_data_push_target_buffer_rows
+            target_buffer_blocks = dataloader_config.ray_data_push_target_buffer_blocks
             return PushBasedDataConfig(
                 enable_shard_locality=dataloader_config.enable_shard_locality,
-                target_buffer_rows=(
-                    target_buffer_rows if target_buffer_rows > 0 else None
+                target_buffer_blocks=(
+                    target_buffer_blocks if target_buffer_blocks > 0 else None
                 ),
             )
         return ray.train.DataConfig(
