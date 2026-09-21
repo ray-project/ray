@@ -1,6 +1,5 @@
 import os
 import re
-import ssl
 from contextlib import contextmanager
 from inspect import signature
 from ipaddress import ip_address
@@ -271,30 +270,12 @@ class ProtocolsProvider:
                 + cls._MISSING_DEPENDENCIES_WARNING
             ) from exc
 
-        # Require session injection and per-request TLS configuration. Older
-        # smart_open versions would silently ignore our redirect policy.
-        if "session" not in signature(http.open).parameters or not hasattr(
-            requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"
-        ):
+        # Older smart_open versions silently ignore the session parameter.
+        if "session" not in signature(http.open).parameters:
             raise ImportError(
-                "Kerberos downloads require `pip install 'smart_open[http]>=7.1.0' "
-                "'requests>=2.32.3'` for redirect and TLS validation. "
-                + cls._MISSING_DEPENDENCIES_WARNING
+                "Kerberos downloads require `pip install 'smart_open[http]>=7.1.0'` "
+                "for redirect validation. " + cls._MISSING_DEPENDENCIES_WARNING
             )
-
-        class HTTPSAdapter(requests.adapters.HTTPAdapter):
-            def build_connection_pool_key_attributes(self, request, verify, cert=None):
-                host_params, pool_kwargs = super().build_connection_pool_key_attributes(
-                    request, verify, cert
-                )
-                # Isolate CA stores; allow CN fallback when no DNS SAN is present.
-                context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-                context.hostname_checks_common_name = True
-                pool_kwargs["ssl_context"] = context
-                if verify is True:
-                    # Preserve Requests' default CAs when replacing its context.
-                    pool_kwargs["ca_certs"] = requests.utils.DEFAULT_CA_BUNDLE_PATH
-                return host_params, pool_kwargs
 
         class KerberosSession(requests.Session):
             def send(self, request, **kwargs):
@@ -319,9 +300,7 @@ class ProtocolsProvider:
                 prepared_request.hooks = {"response": []}
                 prepared_request.prepare_auth(requests_kerberos.HTTPKerberosAuth())
 
-        session = KerberosSession()
-        session.mount("https://", HTTPSAdapter())
-        return session
+        return KerberosSession()
 
     @classmethod
     def _handle_http_protocol(cls):

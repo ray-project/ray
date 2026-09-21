@@ -62,7 +62,7 @@ def kerberos(monkeypatch):
     )
     monkeypatch.setenv(
         KERBEROS_HOSTS,
-        " FILES.example.org, datanode.example.org ",
+        " FILES.example.org, gateway.example.org ",
     )
     return instances
 
@@ -138,12 +138,12 @@ def test_download_without_kerberos(
         ("http://files.example.org/code.zip", False),
         ("https://unlisted.example.org/code.zip", False),
         ("https://files.example.org.evil.org/code.zip", False),
-        ("https://user:secret@datanode.example.org/code.zip", False),
+        ("https://user:secret@gateway.example.org/code.zip", False),
     ],
 )
 def test_redirects(tmp_path, kerberos, http_transport, target, allowed):
     routes, sent = http_transport
-    intermediate = "https://datanode.example.org/redirect.zip"
+    intermediate = "https://gateway.example.org/redirect.zip"
     routes[PACKAGE_URI] = (307, {"Location": intermediate}, b"")
     routes[intermediate] = (307, {"Location": target}, b"")
     routes[urljoin(intermediate, target)] = (200, {}, b"package")
@@ -174,16 +174,12 @@ def test_bearer_conflict(tmp_path, monkeypatch, kerberos, http_transport):
     assert http_transport[1] == []
 
 
-@pytest.mark.parametrize("dependency", ["requests_kerberos", "smart_open", "requests"])
+@pytest.mark.parametrize("dependency", ["requests_kerberos", "smart_open"])
 def test_missing_or_old_dependency(tmp_path, monkeypatch, kerberos, dependency):
     if dependency == "requests_kerberos":
         monkeypatch.setitem(sys.modules, dependency, None)
-    elif dependency == "smart_open":
-        monkeypatch.setattr(smart_open.http, "open", lambda uri, mode: None)
     else:
-        monkeypatch.delattr(
-            requests.adapters.HTTPAdapter, "build_connection_pool_key_attributes"
-        )
+        monkeypatch.setattr(smart_open.http, "open", lambda uri, mode: None)
     with pytest.raises(ImportError, match="pip install") as exc:
         download(tmp_path)
     assert "preinstalled" in str(exc.value)
@@ -240,14 +236,8 @@ def test_kerberos_failure_does_not_fall_back(
     "certificate",
     [
         "trusted",
-        "default_ca",
         "unknown_ca",
         "wrong_hostname",
-        "cn_only",
-        "cn_wrong_hostname",
-        "cn_unknown_ca",
-        "cn_expired",
-        "cn_redirect_mismatch",
         "expired",
         "redirect_san_mismatch",
     ],
@@ -257,50 +247,29 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
     import trustme
 
     ca = trustme.CA()
-    if certificate.startswith("cn_"):
-        # No SAN identities: hostname verification must use the CN.
-        cert = ca.issue_cert(
-            common_name=(
-                "other.example.org"
-                if certificate == "cn_wrong_hostname"
-                else "localhost"
-            ),
-            not_after=(
-                datetime.now(timezone.utc) - timedelta(days=1)
-                if certificate == "cn_expired"
-                else None
-            ),
-        )
-    elif certificate == "wrong_hostname":
+    if certificate == "wrong_hostname":
         cert = ca.issue_cert("other.example.org", common_name="localhost")
     elif certificate == "redirect_san_mismatch":
-        cert = ca.issue_cert("localhost", common_name="datanode.example.org")
+        cert = ca.issue_cert("localhost", common_name="gateway.example.org")
     elif certificate == "expired":
         cert = ca.issue_cert(
             "localhost", not_after=datetime.now(timezone.utc) - timedelta(days=1)
         )
     else:
         cert = ca.issue_cert(
-            "localhost", "datanode.example.org", common_name="wrong.example.org"
+            "localhost", "gateway.example.org", common_name="wrong.example.org"
         )
     ca_path = tmp_path / "ca.pem"
-    (
-        trustme.CA() if certificate in ("unknown_ca", "cn_unknown_ca") else ca
-    ).cert_pem.write_to_path(ca_path)
+    (trustme.CA() if certificate == "unknown_ca" else ca).cert_pem.write_to_path(
+        ca_path
+    )
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(ca_path))
-    if certificate == "default_ca":
-        # Exercise verify=True as well as an explicit CA bundle. Requests 2.32
-        # uses a preloaded context for its default trust store.
-        monkeypatch.delenv("REQUESTS_CA_BUNDLE")
-        monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)
-        monkeypatch.setattr(requests.utils, "DEFAULT_CA_BUNDLE_PATH", str(ca_path))
-        monkeypatch.setattr(requests.adapters, "DEFAULT_CA_BUNDLE_PATH", str(ca_path))
-    monkeypatch.setenv("NO_PROXY", "localhost,datanode.example.org")
-    monkeypatch.setenv(KERBEROS_HOSTS, "localhost,datanode.example.org")
+    monkeypatch.setenv("NO_PROXY", "localhost,gateway.example.org")
+    monkeypatch.setenv(KERBEROS_HOSTS, "localhost,gateway.example.org")
     getaddrinfo = socket.getaddrinfo
 
     def resolve(host, *args, **kwargs):
-        if host == "datanode.example.org":
+        if host == "gateway.example.org":
             host = "127.0.0.1"
         return getaddrinfo(host, *args, **kwargs)
 
@@ -308,15 +277,13 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     cert.configure_cert(context)
     with HTTPServer(host="localhost", ssl_context=context) as server:
-        target_host = (
-            "localhost" if certificate == "cn_only" else "datanode.example.org"
-        )
+        target_host = "gateway.example.org"
         target = server.url_for("/code.zip").replace("localhost", target_host)
         server.expect_request("/redirect.zip").respond_with_data(
             status=307, headers={"Location": target}
         )
         server.expect_request("/code.zip").respond_with_data(b"package")
-        if certificate in ("trusted", "default_ca", "cn_only"):
+        if certificate == "trusted":
             assert download(tmp_path, server.url_for("/redirect.zip")) == b"package"
             assert [request.headers["Authorization"] for request, _ in server.log] == [
                 "Negotiate localhost:1",
@@ -326,28 +293,8 @@ def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
             with pytest.raises(requests.exceptions.SSLError):
                 download(tmp_path, server.url_for("/redirect.zip"))
             assert len(server.log) == (
-                1
-                if certificate in ("redirect_san_mismatch", "cn_redirect_mismatch")
-                else 0
+                1 if certificate == "redirect_san_mismatch" else 0
             )
-
-
-def test_ca_bundles_are_isolated(tmp_path, kerberos):
-    import trustme
-
-    ca = trustme.CA()
-    trusted, unrelated = tmp_path / "trusted.pem", tmp_path / "unrelated.pem"
-    ca.cert_pem.write_to_path(trusted)
-    trustme.CA().cert_pem.write_to_path(unrelated)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ca.issue_cert("localhost").configure_cert(context)
-    with HTTPServer(host="localhost", ssl_context=context) as server:
-        server.expect_request("/code.zip").respond_with_data(b"package")
-        with ProtocolsProvider._http_kerberos_session({"localhost"}) as session:
-            uri = server.url_for("/code.zip")
-            assert session.get(uri, verify=str(trusted)).content == b"package"
-            with pytest.raises(requests.exceptions.SSLError):
-                session.get(uri, verify=str(unrelated))
 
 
 @pytest.mark.asyncio

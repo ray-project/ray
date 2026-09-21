@@ -978,8 +978,8 @@ Kerberos-authenticated HTTPS packages
 -------------------------------------
 
 To download ``working_dir`` or ``py_modules`` from a Kerberos/SPNEGO-protected
-HTTPS service such as HttpFS, install ``smart_open[http]>=7.1.0``,
-``requests>=2.32.3``, and ``requests-kerberos`` on every node. Before starting Ray,
+HTTPS HttpFS gateway, install ``smart_open[http]>=7.1.0`` and
+``requests-kerberos`` on every node. Before starting Ray,
 make an existing Kerberos credential cache available to its processes (for
 example through ``KRB5CCNAME``) and configure the allowed hosts and any enterprise
 CA bundle:
@@ -1004,9 +1004,9 @@ DataNodes using delegation tokens are not supported. Use an HttpFS gateway
 for this case. Each hop gets a fresh authentication context. Combining
 Kerberos with ``RAY_RUNTIME_ENV_BEARER_TOKEN`` for the same download is an error.
 
-Server hostnames are checked against DNS Subject Alternative Names (SANs),
-falling back to the Common Name (CN) when no DNS SAN is present. CA, hostname,
-and Kerberos mutual verification remain enabled. Dependencies, credentials, and
+Use server certificates with DNS Subject Alternative Names (SANs) matching
+the HTTPS hostnames. Standard CA and hostname verification remain enabled; Ray
+does not add CN-only compatibility. Dependencies, credentials, and
 configuration must be available before package download; setting them in
 ``runtime_env["pip"]`` or ``runtime_env["env_vars"]`` is too late. Ray does not
 acquire or renew tickets or implement HDFS discovery and failover.
