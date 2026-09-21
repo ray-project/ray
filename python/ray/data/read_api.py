@@ -5677,7 +5677,13 @@ def read_lance(
     )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(
+    message=(
+        "``read_clickhouse`` is deprecated and will be removed in a future version "
+        "of Ray."
+    ),
+    warning=True,
+)
 def read_clickhouse(
     *,
     table: str,
