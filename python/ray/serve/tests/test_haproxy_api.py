@@ -3069,7 +3069,9 @@ async def test_ingress_router_fallback_leastconn(
     async def route():
         if router_failed.is_set():
             return Response(status_code=503)
-        return {"replica_id": "a"}
+        # Choose b, not the backend's first/default server. This verifies that
+        # a successful router decision survives the fallback-enabled path.
+        return {"replica_id": "b"}
 
     port = find_free_port()
     server, thread = _serve_fastapi_app(app, port, _healthz_ready(port))
@@ -3108,14 +3110,14 @@ async def test_ingress_router_fallback_leastconn(
                 "POST", "/predict", json={"hold": True}
             ) as response:
                 assert response.status_code == 200
-                assert response.headers["x-replica-id"] == "a"
+                assert response.headers["x-replica-id"] == "b"
                 router_failed.set()
-                # Keep a busy throughout: repeated sequential requests must all
-                # pick b. Round-robin/random would eventually pick busy replica a.
+                # Keep b busy throughout: repeated sequential requests must all
+                # pick a. Round-robin/random would eventually pick busy replica b.
                 for _ in range(10):
                     result = await client.post("/predict", json={})
                     assert result.status_code == 200
-                    assert result.text == "b"
+                    assert result.text == "a"
                 release.set()
                 assert await response.aread() == b"started\ndone\n"
     finally:
