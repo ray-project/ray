@@ -24,7 +24,7 @@ from ray.train.constants import (
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
-from ray.util.tpu import get_tpu_coordinator_env_vars
+from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +213,22 @@ class _TorchBackend(Backend):
         self, worker_group: BaseWorkerGroup, master_addr: str, num_slices: int
     ) -> None:
         """Configures MegaScale coordination environment variables across workers for multi-slice TPU training."""
-        workers_per_slice = max(1, len(worker_group) // num_slices)
+        scaling_config = getattr(
+            getattr(worker_group, "_train_run_context", None), "scaling_config", None
+        )
+        if (
+            scaling_config is not None
+            and scaling_config.topology
+            and scaling_config.accelerator_type
+        ):
+            workers_per_slice, _ = get_tpu_worker_resources(
+                topology=scaling_config.topology,
+                accelerator_type=scaling_config.accelerator_type,
+                resources_per_worker=scaling_config.resources_per_worker,
+                num_slices=1,
+            )
+        else:
+            workers_per_slice = max(1, len(worker_group) // num_slices)
         coordinator_port = str(os.environ.get("MEGASCALE_PORT", DEFAULT_MEGASCALE_PORT))
 
         futures = [

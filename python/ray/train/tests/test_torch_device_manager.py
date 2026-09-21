@@ -355,6 +355,29 @@ def test_setup_tpu_multislice():
         assert tpu_env_vars["MEGASCALE_NUM_SLICES"] == "2"
         assert tpu_env_vars["MEGASCALE_SLICE_ID"] == expected_slice_id
 
+    # Verify topology-capacity resolution when num_workers (12) does not fill
+    # every reserved slice (2 slices of 2x4 TPU-V6E = 8 workers per slice).
+    worker_group.reset_mock()
+    worker_group.__len__.return_value = 12
+    worker_group._train_run_context = MagicMock(
+        scaling_config=MagicMock(
+            topology="2x4",
+            accelerator_type="TPU-V6E",
+            resources_per_worker={"TPU": 1},
+        )
+    )
+    with patch.object(ray, "get"):
+        backend._setup_tpu_multislice(
+            worker_group=worker_group,
+            master_addr="10.0.0.1",
+            num_slices=2,
+        )
+
+    assert worker_group.execute_single_async.call_count == 12
+    for rank, call_args in enumerate(worker_group.execute_single_async.call_args_list):
+        tpu_env_vars = call_args.kwargs["tpu_env_vars"]
+        assert tpu_env_vars["MEGASCALE_SLICE_ID"] == ("0" if rank < 8 else "1")
+
 
 def test_set_tpu_multislice_env_vars():
     with patch.dict(os.environ, {"LOCAL_RANK": "2"}):
