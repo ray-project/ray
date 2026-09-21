@@ -1,14 +1,15 @@
+import hashlib
 from enum import Enum
 from functools import cached_property, partial
 from typing import Any, Iterator, List, Optional, Set, Tuple
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.dataset as pds
 from pyarrow.fs import FileSystem, LocalFileSystem
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource.parquet_datasource import _compute_row_hashes
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.util import iterate_with_retry, make_async_gen
@@ -36,6 +37,38 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
 )
 
 ROW_HASH_COLUMN_NAME = "row_hash"
+
+
+def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
+    """Compute deterministic uint64 hashes from file path and output row position.
+
+    ``start_row`` is the position within the output stream (post-filter), not
+    the physical file offset.  This means hashes are reproducible for a given
+    pipeline configuration (same file + same filter) but will differ across
+    reads with different filters.
+
+    Hashes the file path with MD5 to obtain a 64-bit seed, adds the row indices,
+    then applies the splitmix64 finalizer (a bijective 64-bit mixing function) to
+    produce well-distributed, reproducible hashes.  Fully vectorized via numpy.
+    """
+    path_seed = np.uint64(
+        int.from_bytes(
+            hashlib.md5(file_path.encode("utf-8")).digest()[:8], byteorder="little"
+        )
+    )
+    keys = path_seed + np.arange(start_row, start_row + num_rows, dtype=np.uint64)
+
+    # splitmix64 finalizer – a bijective 64-bit mixing function from
+    # Steele, Lea & Flood, "Fast Splittable Pseudorandom Number Generators",
+    # OOPSLA 2014.  Also used in Java's SplittableRandom.
+    # Reference: https://xorshift.di.unimi.it/splitmix64.c
+    keys ^= keys >> np.uint64(30)
+    keys *= np.uint64(0xBF58476D1CE4E5B9)
+    keys ^= keys >> np.uint64(27)
+    keys *= np.uint64(0x94D049BB133111EB)
+    keys ^= keys >> np.uint64(31)
+
+    return keys
 
 
 class FileFormat(str, Enum):

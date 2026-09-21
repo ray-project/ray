@@ -1265,7 +1265,7 @@ def test_limit_over_partition_filter_without_partitioning_spec(
     ``None`` and planning drops the limit rather than risk truncating listing
     to files the reader discards.
     """
-    from ray.data._internal.datasource_v2.logical_optimizers import (
+    from ray.data._internal.datasource_v2.pushdown import (
         derive_list_files_pushdown,
     )
     from ray.data._internal.datasource_v2.scanners.parquet_scanner import (

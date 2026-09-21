@@ -11,7 +11,7 @@ from ray.data._internal.datasource_v2.listing.file_pruners import (
     FilePruner,
     PartitionPredicatePruner,
 )
-from ray.data._internal.datasource_v2.logical_optimizers import (
+from ray.data._internal.datasource_v2.pushdown import (
     SupportsColumnPruning,
     SupportsFilterPushdown,
     SupportsLimitPushdown,

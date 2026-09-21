@@ -325,7 +325,7 @@ class ReadFiles(
         return BlockMetadata(None, None, None, None)
 
     def supports_projection_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.pushdown import (
             SupportsColumnPruning,
         )
 
@@ -349,7 +349,7 @@ class ReadFiles(
     ) -> "ReadFiles":
         if projection_map is None:
             return self
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.pushdown import (
             SupportsColumnPruning,
         )
 
@@ -364,7 +364,7 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.pushdown import (
             SupportsFilterPushdown,
         )
 
@@ -374,13 +374,11 @@ class ReadFiles(
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        from ray.data._internal.datasource.parquet_datasource import (
-            _split_predicate_by_columns,
-            combine_predicates,
-        )
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.pushdown import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
+            _split_predicate_by_columns,
+            combine_predicates,
         )
         from ray.data._internal.logical.operators.map_operator import Filter
 
