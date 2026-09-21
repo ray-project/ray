@@ -272,10 +272,7 @@ def _generate_variants_internal(
             _, pass_vars = _resolve_domain_vars(
                 resolved_spec, to_resolve, random_state=random_state
             )
-            # `to_resolve` holds only what the first pass could not reach, so the first
-            # pass has to be carried forward here or the variables that were meant to be
-            # held constant across the grid drop out of the reported vars entirely.
-            # `constant_vars` is empty unless `constant_grid_search` filled it.
+            # Hold only what the first pass can not reach.
             resolved_vars = {**constant_vars, **pass_vars}
 
         for resolved, spec in _generate_variants_internal(
