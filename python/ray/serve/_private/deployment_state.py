@@ -3029,7 +3029,7 @@ class DeploymentState:
         # Flag for whether any replicas of the target version has successfully started.
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
-        # Tells the manager to checkpoint status changes made by check_curr_status().
+        # Tells the manager to checkpoint changes to the rolling update state.
         self._target_state_changed: bool = False
         # Set when a deployment-scoped actor fails to start (constructor error).
         # Checked in check_curr_status to transition to DEPLOY_FAILED.
@@ -4515,17 +4515,7 @@ class DeploymentState:
 
         # Once a rolling update fails, keep it failed across autoscaling and
         # controller restarts until deploy() changes the target.
-        if self._target_state.rolling_update and self._replica_startup_failing():
-            if not self._target_state.terminally_failed:
-                self._target_state.terminally_failed = True
-                self._target_state_changed = True
-                self._broadcasted_replicas_set_changed = True
-                logger.warning(
-                    f"Rolling update of {self._id} failed: replicas of the new "
-                    f"version failed to start {self._replica_constructor_retry_counter} "
-                    "times. Stopping the update; replicas of the previous version "
-                    "keep running until a new deploy."
-                )
+        self._mark_rolling_update_failed_if_needed()
         if self._target_state.terminally_failed:
             if self._curr_status_info.status != DeploymentStatus.DEPLOY_FAILED:
                 self._curr_status_info = self._curr_status_info._updated_copy(
@@ -4812,6 +4802,23 @@ class DeploymentState:
 
         return slow_replicas
 
+    def _mark_rolling_update_failed_if_needed(self) -> None:
+        """Mark threshold-reaching rolling updates for checkpointing."""
+        if (
+            self._target_state.rolling_update
+            and self._replica_startup_failing()
+            and not self._target_state.terminally_failed
+        ):
+            self._target_state.terminally_failed = True
+            self._target_state_changed = True
+            self._broadcasted_replicas_set_changed = True
+            logger.warning(
+                f"Rolling update of {self._id} failed: replicas of the new "
+                f"version failed to start {self._replica_constructor_retry_counter} "
+                "times. Stopping the update; replicas of the previous version "
+                "keep running until a new deploy."
+            )
+
     def _rolling_update_failed_message(self) -> str:
         if self._replica_constructor_retry_counter > 0:
             return (
@@ -4870,6 +4877,7 @@ class DeploymentState:
             f"Error:\n{error_msg}"
         )
         self._curr_status_info = self._curr_status_info.update_message(message)
+        self._mark_rolling_update_failed_if_needed()
 
     def _set_health_gauge(self, replica_unique_id: str, value: int) -> None:
         """Set the health-check gauge for *replica_unique_id*, skipping the
@@ -6817,7 +6825,6 @@ class DeploymentStateManager:
             if deleted:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
-            target_state_changed |= deployment_state.consume_target_state_changed()
 
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         # (Replicas are only added in scale_deployment_replicas when deployment
@@ -6829,6 +6836,11 @@ class DeploymentStateManager:
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
+
+        # Scheduling failures can make a rolling update terminal in this tick.
+        # Collect checkpoint changes only after those failures are recorded.
+        for deployment_state in self._deployment_states.values():
+            target_state_changed |= deployment_state.consume_target_state_changed()
 
         # STEP 7: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():

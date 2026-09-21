@@ -1009,10 +1009,11 @@ def _running_replica_pids(client, deployment: str = "FailOnFlag") -> List[int]:
     return sorted(r.pid for r in replicas if r.state == "RUNNING")
 
 
-def _assert_rollout_stopped(client, old_pids: List[int], seconds: float = 10):
+def _assert_rollout_stays_stopped(client, old_pids: List[int], seconds: float = 10):
     """Check that only old_pids serve requests, with no replacements, for seconds."""
-    deadline = time.time() + seconds
-    while time.time() < deadline:
+    deadline = time.monotonic() + seconds
+
+    def check_stays_stopped():
         status = serve.status().applications["default"]
         assert status.status == ApplicationStatus.DEPLOY_FAILED
         replica_states = status.deployments["FailOnFlag"].replica_states
@@ -1021,17 +1022,15 @@ def _assert_rollout_stopped(client, old_pids: List[int], seconds: float = 10):
         assert _running_replica_pids(client) == old_pids
         r = httpx.get("http://localhost:8000/", timeout=10)
         assert r.status_code == 200 and r.text == "ok"
-        time.sleep(0.5)
+        return time.monotonic() >= deadline
 
-
-def _restart_controller(client):
-    """Restart the controller and wait for its replacement.
-
-    Status calls immediately after ray.kill can still reach the old process.
-    """
-    pid = ray.get(client._controller.get_pid.remote())
-    ray.kill(client._controller, no_restart=False)
-    wait_for_condition(lambda: ray.get(client._controller.get_pid.remote()) != pid)
+    # Observe the full interval and fail immediately if any invariant breaks.
+    wait_for_condition(
+        check_stays_stopped,
+        timeout=seconds + 15,
+        retry_interval_ms=500,
+        raise_exceptions=True,
+    )
 
 
 def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
@@ -1093,7 +1092,7 @@ def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
     # flapping version could replace before the update stopped.
     assert set(surviving_pids) <= set(initial_pids)
     assert len(surviving_pids) >= 2
-    _assert_rollout_stopped(client, surviving_pids)
+    _assert_rollout_stays_stopped(client, surviving_pids)
 
 
 def test_terminally_failed_rolling_update_survives_controller_restart(
@@ -1132,10 +1131,15 @@ def test_terminally_failed_rolling_update_survives_controller_restart(
     old_pids = _running_replica_pids(client)
     assert len(old_pids) == 1
 
-    _restart_controller(client)
+    old_controller_pid = ray.get(client._controller.get_pid.remote())
+    ray.kill(client._controller, no_restart=False)
+    # A status request immediately after ray.kill can reach the old process.
+    wait_for_condition(
+        lambda: ray.get(client._controller.get_pid.remote()) != old_controller_pid
+    )
     wait_for_condition(check_deploy_failed, timeout=60)
     assert _running_replica_pids(client) == old_pids
-    _assert_rollout_stopped(client, old_pids)
+    _assert_rollout_stays_stopped(client, old_pids)
     # The restarted controller never retried the failed version: the dead
     # replica list (in memory, empty after the restart) stays empty.
     assert _deployment_details(client).recent_dead_replicas == []
