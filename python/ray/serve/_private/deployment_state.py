@@ -575,12 +575,6 @@ class DeploymentTargetState:
     rolling_update: bool = False
     terminally_failed: bool = False
 
-    def __setstate__(self, state: Dict[str, Any]) -> None:
-        # Use defaults for fields missing from older checkpoints.
-        self.__dict__.update(state)
-        self.__dict__.setdefault("rolling_update", False)
-        self.__dict__.setdefault("terminally_failed", False)
-
     @classmethod
     def default(cls) -> "DeploymentTargetState":
         return cls(None, -1, None, False)

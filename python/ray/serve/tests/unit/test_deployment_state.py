@@ -11485,7 +11485,7 @@ class TestRollingUpdateTerminalFailure:
             assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
         assert not ds._target_state.rolling_update
 
-    def test_old_checkpoint_loads_with_defaults(self):
+    def test_checkpoint_preserves_rolling_update_failure(self):
         info, _ = deployment_info(num_replicas=1, version="1")
         target_state = DeploymentTargetState.create(info, 1)
         target_state.rolling_update = True
@@ -11494,15 +11494,6 @@ class TestRollingUpdateTerminalFailure:
         assert restored.version == target_state.version
         assert restored.rolling_update is True
         assert restored.terminally_failed is True
-
-        legacy_state = dict(target_state.__dict__)
-        del legacy_state["rolling_update"]
-        del legacy_state["terminally_failed"]
-        legacy = DeploymentTargetState.__new__(DeploymentTargetState)
-        legacy.__setstate__(legacy_state)
-        assert legacy.rolling_update is False
-        assert legacy.terminally_failed is False
-        assert legacy.version == target_state.version
 
 
 if __name__ == "__main__":
