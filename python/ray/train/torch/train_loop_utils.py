@@ -710,8 +710,6 @@ class _WrappedDataLoader(DataLoader):
         elif isinstance(item, (tuple, list)):
             for i in item:
                 yield from self._iter_tensors(i)
-        else:
-            yield item
 
     def _wait_for_batch(self, item):
         if self._memcpy_stream is None:
