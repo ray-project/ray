@@ -16,7 +16,7 @@ _PAYLOAD_SCHEMA = pa.schema(
         pa.field("content", pa.int32()),
         pa.field("file_path", pa.string()),
         pa.field("file_format", pa.string()),
-        pa.field("partition_values", pa.list_(pa.binary())),
+        pa.field("partition", pa.binary()),
         pa.field("record_count", pa.int64()),
         pa.field("file_size_in_bytes", pa.int64()),
         pa.field("column_sizes", pa.map_(pa.int32(), pa.int64())),
@@ -57,15 +57,22 @@ def _deserialize_arrow_table(data: bytes) -> pa.Table:
     return table
 
 
-def _serialize_scalar(value: Any) -> bytes:
-    return _serialize_arrow_table(pa.table({"value": [value]}))
+def _serialize_partition(values: Any) -> bytes:
+    """Serialize all partition values for one data file in one IPC stream."""
+    table = pa.table(
+        {f"value_{index}": [value] for index, value in enumerate(values)}
+    )
+    return _serialize_arrow_table(table)
 
 
-def _deserialize_scalar(data: bytes) -> Any:
+def _deserialize_partition(data: bytes) -> List[Any]:
     table = _deserialize_arrow_table(data)
-    if table.column_names != ["value"] or table.num_rows != 1:
-        raise ValueError("Invalid Iceberg partition value in checkpoint payload")
-    return table["value"][0].as_py()
+    expected_names = [f"value_{index}" for index in range(table.num_columns)]
+    if table.column_names != expected_names or (
+        table.num_columns > 0 and table.num_rows != 1
+    ):
+        raise ValueError("Invalid Iceberg partition in checkpoint payload")
+    return [table.column(index)[0].as_py() for index in range(table.num_columns)]
 
 
 def _serialize_schema(schema: pa.Schema) -> bytes:
@@ -88,7 +95,7 @@ def _data_file_to_row(data_file: "DataFile") -> Dict[str, Any]:
         "content": int(_enum_value(data_file.content)),
         "file_path": str(data_file.file_path),
         "file_format": str(_enum_value(data_file.file_format)),
-        "partition_values": [_serialize_scalar(value) for value in data_file.partition],
+        "partition": _serialize_partition(data_file.partition),
         "record_count": data_file.record_count,
         "file_size_in_bytes": data_file.file_size_in_bytes,
         "column_sizes": _map_value(data_file.column_sizes),
@@ -130,9 +137,7 @@ def _row_to_data_file(row: Dict[str, Any]) -> "DataFile":
         content=row["content"],
         file_path=row["file_path"],
         file_format=row["file_format"],
-        partition=Record(
-            *[_deserialize_scalar(value) for value in row["partition_values"]]
-        ),
+        partition=Record(*_deserialize_partition(row["partition"])),
         record_count=row["record_count"],
         file_size_in_bytes=row["file_size_in_bytes"],
         column_sizes=_pairs_to_dict(row["column_sizes"]),

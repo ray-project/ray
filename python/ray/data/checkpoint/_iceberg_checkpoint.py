@@ -48,11 +48,38 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_FORMAT_VERSION = 2
+_FORMAT_VERSION = 1
 _METADATA_DIR = "_iceberg"
 _MANIFEST_DIR = "manifests"
 _MANIFEST_RETENTION = 2
 _GENERATION_PROPERTY = "ray.data.checkpoint.operation-id"
+
+
+def _data_file_metadata(data_file: Any) -> Tuple[Any, ...]:
+    """Return the DataFile metadata that must agree for path deduplication."""
+    try:
+        spec_id = data_file.spec_id
+    except AttributeError:
+        spec_id = None
+    return (
+        data_file.content,
+        str(data_file.file_path),
+        data_file.file_format,
+        tuple(data_file.partition),
+        data_file.record_count,
+        data_file.file_size_in_bytes,
+        data_file.column_sizes,
+        data_file.value_counts,
+        data_file.null_value_counts,
+        data_file.nan_value_counts,
+        data_file.lower_bounds,
+        data_file.upper_bounds,
+        data_file.key_metadata,
+        data_file.split_offsets,
+        data_file.equality_ids,
+        data_file.sort_order_id,
+        spec_id,
+    )
 
 
 class _GenerationStatus(str, Enum):
@@ -627,22 +654,27 @@ class IcebergCheckpointCoordinator:
             results.append(self.load_task_result(artifact_id))
         return results
 
-    def discard_task_results(self, results: List[IcebergWriteResult]) -> None:
-        """Remove task checkpoints that a newly visible snapshot didn't commit.
+    def _discard_task_checkpoint(
+        self, checkpoint_path: str, artifact_id: str
+    ) -> None:
+        # Delete the row checkpoint first. Once it is gone these IDs cannot be
+        # incorrectly filtered, even if metadata cleanup is interrupted.
+        self._filesystem.delete_file(checkpoint_path)
+        for path in (
+            self._paths.task_envelope(self.generation_id, artifact_id),
+            self._paths.task_payload(self.generation_id, artifact_id),
+        ):
+            if self._filesystem.get_file_info(path).type != FileType.NotFound:
+                self._filesystem.delete_file(path)
 
-        An ambiguous earlier append can become visible after the current tasks
-        finish. Before terminalizing that earlier generation, remove checkpoints
-        for the current task outputs so their row IDs remain eligible on retry.
-        Delete each row marker before its metadata to preserve that safety rule
-        if cleanup stops midway. Fail closed unless every current data file maps
-        to a checkpoint.
+    def discard_uncommitted_results(self, committed_paths: set[str]) -> bool:
+        """Discard active task checkpoints whose files aren't in the snapshot.
+
+        Returns whether any complete task checkpoints were discarded. A task
+        that only partially appears in the snapshot is unsafe to recover because
+        its row checkpoint can't identify which rows belong to each data file.
         """
-        current_paths = {
-            str(data_file.file_path)
-            for result in results
-            for data_file in result.data_files
-        }
-        discarded_paths = set()
+        discarded = False
         for checkpoint_path in self._selected_row_checkpoint_paths():
             checkpoint_file = posixpath.basename(checkpoint_path)
             if not checkpoint_file.startswith(f"{self.generation_id}-"):
@@ -650,30 +682,16 @@ class IcebergCheckpointCoordinator:
             artifact_id = checkpoint_file[: -len(".parquet")]
             result = self.load_task_result(artifact_id)
             result_paths = {str(data_file.file_path) for data_file in result.data_files}
-            if not result_paths.intersection(current_paths):
+            committed = result_paths.intersection(committed_paths)
+            if committed == result_paths:
                 continue
-            if not result_paths.issubset(current_paths):
+            if committed:
                 raise ValueError(
-                    "Iceberg task checkpoint only partially matches late task results"
+                    "Iceberg snapshot only contains part of a task checkpoint"
                 )
-
-            # Delete the row checkpoint first. Once it is gone these IDs cannot be
-            # incorrectly filtered, even if metadata cleanup is interrupted.
-            self._filesystem.delete_file(checkpoint_path)
-            for path in (
-                self._paths.task_envelope(self.generation_id, artifact_id),
-                self._paths.task_payload(self.generation_id, artifact_id),
-            ):
-                if self._filesystem.get_file_info(path).type != FileType.NotFound:
-                    self._filesystem.delete_file(path)
-            discarded_paths.update(result_paths)
-
-        if discarded_paths != current_paths:
-            missing = sorted(current_paths - discarded_paths)
-            raise ValueError(
-                "Could not identify row checkpoints for late Iceberg task results: "
-                f"{missing}"
-            )
+            self._discard_task_checkpoint(checkpoint_path, artifact_id)
+            discarded = True
+        return discarded
 
     def mark_terminal(self) -> None:
         """Close the active generation after confirming its Iceberg snapshot."""
@@ -716,10 +734,11 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         """Validate supported settings and resolve the generation before reads.
 
         This method runs before checkpoint filtering. If the active generation's
-        snapshot has become visible since an ambiguous failure, it marks that
-        generation terminal and starts a fresh one. The retained terminal row
-        IDs then filter rows that the snapshot already contains, while new rows
-        enter the fresh generation.
+        snapshot has become visible since an ambiguous failure, it discards task
+        checkpoints whose files aren't in that snapshot before marking the
+        generation terminal and starting a fresh one. Retained terminal row IDs
+        then filter rows that the snapshot contains, while discarded rows enter
+        the fresh generation.
         """
         if self._checkpointing_active:
             return
@@ -744,7 +763,10 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         self._sink._reload_table()
         table_uuid = str(self._sink._table.metadata.table_uuid)
         self._coordinator.initialize(table_uuid)
-        if self._find_generation_snapshot() is not None:
+        snapshot = self._find_generation_snapshot()
+        if snapshot is not None:
+            committed_paths = self._snapshot_added_file_paths(snapshot)
+            self._coordinator.discard_uncommitted_results(committed_paths)
             self._coordinator.mark_terminal()
             self._coordinator.initialize(table_uuid)
         self._checkpointing_active = True
@@ -775,6 +797,23 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
                 return snapshot
         return None
 
+    def _snapshot_added_file_paths(self, snapshot: Any) -> set[str]:
+        """Return data-file paths added by the generation's marked snapshot."""
+        from pyiceberg.manifest import ManifestEntryStatus
+
+        io = self._sink._table.io
+        paths = set()
+        for manifest in snapshot.manifests(io):
+            if manifest.added_snapshot_id != snapshot.snapshot_id:
+                continue
+            for entry in manifest.fetch_manifest_entry(io, discard_deleted=False):
+                if (
+                    entry.status == ManifestEntryStatus.ADDED
+                    and entry.snapshot_id == snapshot.snapshot_id
+                ):
+                    paths.add(str(entry.data_file.file_path))
+        return paths
+
     @staticmethod
     def _merge_results(
         recovered: List[IcebergWriteResult], current: List[IcebergWriteResult]
@@ -786,27 +825,21 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         different metadata fails closed.
         """
         merged = []
-        seen: Dict[str, bytes] = {}
+        seen: Dict[str, Tuple[Tuple[Any, ...], Tuple[pa.Schema, ...]]] = {}
         for result in [*recovered, *current]:
             unique_files = []
             for data_file in result.data_files:
                 path = str(data_file.file_path)
-                fingerprint = hashlib.sha256(
-                    serialize_write_result(
-                        IcebergWriteResult(
-                            data_files=[data_file], schemas=result.schemas
-                        )
-                    )
-                ).digest()
+                metadata = (_data_file_metadata(data_file), tuple(result.schemas))
                 previous = seen.get(path)
                 if previous is not None:
-                    if previous != fingerprint:
+                    if previous != metadata:
                         raise ValueError(
                             "Conflicting Iceberg checkpoint metadata for data file "
                             f"{path}"
                         )
                     continue
-                seen[path] = fingerprint
+                seen[path] = metadata
                 unique_files.append(data_file)
             if unique_files:
                 merged.append(
@@ -824,23 +857,21 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
             if result is not None and (result.data_files or not require_files)
         ]
 
-    def _handle_visible_snapshot(
-        self, write_result: WriteResult[IcebergWriteResult]
-    ) -> bool:
+    def _handle_visible_snapshot(self) -> bool:
         """Resolve a generation whose snapshot became visible during the write."""
-        if self._find_generation_snapshot() is None:
+        snapshot = self._find_generation_snapshot()
+        if snapshot is None:
             return False
 
-        current = self._current_results(write_result, require_files=True)
-        if current:
-            self._coordinator.discard_task_results(current)
-            self._coordinator.mark_terminal()
+        committed_paths = self._snapshot_added_file_paths(snapshot)
+        discarded = self._coordinator.discard_uncommitted_results(committed_paths)
+        self._coordinator.mark_terminal()
+        if discarded:
             raise RuntimeError(
                 "Iceberg checkpoint generation was committed concurrently while "
                 "new task results were being written; late task checkpoints were "
                 "discarded and will be retried"
             )
-        self._coordinator.mark_terminal()
         self._cleanup_after_success()
         return True
 
@@ -875,7 +906,7 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         if not self._checkpointing_active:
             self._sink.on_write_complete(write_result)
             return
-        if self._handle_visible_snapshot(write_result):
+        if self._handle_visible_snapshot():
             return
 
         merged = self._merge_results(

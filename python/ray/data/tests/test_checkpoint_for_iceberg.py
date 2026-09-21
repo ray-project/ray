@@ -475,7 +475,10 @@ def test_append_protocol_commits_snapshot_marker_without_ray_cluster(tmp_path):
     )
 
 
-def test_late_commit_discards_uncommitted_task_checkpoints(tmp_path):
+@pytest.mark.parametrize("recover_on_retry", [False, True])
+def test_late_commit_discards_uncommitted_task_checkpoints(
+    tmp_path, recover_on_retry
+):
     catalog, catalog_kwargs = _create_catalog(tmp_path)
     checkpoint_path = tmp_path / "checkpoints"
     config = CheckpointConfig(
@@ -518,17 +521,22 @@ def test_late_commit_discards_uncommitted_task_checkpoints(tmp_path):
         late_context,
     )
 
-    with pytest.raises(RuntimeError, match="late task checkpoints were discarded"):
-        wrapped.on_write_complete(WriteResult(1, late_block.nbytes, [late_result]))
+    if recover_on_retry:
+        retry = IcebergCheckpointDatasink(
+            IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
+        )
+        retry.enable_checkpointing()
+    else:
+        with pytest.raises(RuntimeError, match="late task checkpoints were discarded"):
+            wrapped.on_write_complete(WriteResult(1, late_block.nbytes, [late_result]))
+        retry = IcebergCheckpointDatasink(
+            IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
+        )
+        retry.enable_checkpointing()
 
     row_checkpoints = sorted(checkpoint_path.glob("*.parquet"))
     assert len(row_checkpoints) == 1
     assert "committed" in row_checkpoints[0].name
-
-    retry = IcebergCheckpointDatasink(
-        IcebergDatasink("db.table", catalog_kwargs=catalog_kwargs), config
-    )
-    retry.enable_checkpointing()
     assert retry.coordinator.load_active_results() == []
 
 
