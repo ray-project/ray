@@ -64,6 +64,27 @@ class GcsNodeManagerTest : public ::testing::Test {
   }
 
  protected:
+  void PutNodeInStorage(const rpc::GcsNodeInfo &node) {
+    bool done = false;
+    gcs_table_storage_->NodeTable().Put(
+        NodeID::FromBinary(node.node_id()),
+        node,
+        {[&done](const Status &) { done = true; }, *io_context_});
+    while (!done) {
+      io_context_->run_one();
+    }
+  }
+
+  gcs::GcsInitData LoadInitData() {
+    gcs::GcsInitData init_data(*gcs_table_storage_);
+    bool done = false;
+    init_data.AsyncLoad({[&done] { done = true; }, *io_context_});
+    while (!done) {
+      io_context_->run_one();
+    }
+    return init_data;
+  }
+
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -366,6 +387,40 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   for (int i = 0; i < node_count; ++i) {
     ASSERT_EQ(added_nodes[i]->node_id(), removed_nodes[i]->node_id());
   }
+}
+
+// Restoring the cache from storage is not a node-added event. On the promotion path
+// Initialize() runs with the listeners already installed, and
+// GcsServer::HydrateManagers() feeds the downstream managers itself, so notifying here
+// would apply every node twice.
+TEST_F(GcsNodeManagerTest, TestInitializeDoesNotNotifyNodeAddedListeners) {
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  int notifications = 0;
+  node_manager.AddNodeAddedListener(
+      [&notifications](std::shared_ptr<const rpc::GcsNodeInfo>) { ++notifications; },
+      *io_context_);
+
+  auto node = GenNodeInfo();
+  node->set_state(rpc::GcsNodeInfo::ALIVE);  // Initialize() skips every other state.
+  PutNodeInStorage(*node);
+  auto init_data = LoadInitData();
+  ASSERT_EQ(init_data.Nodes().size(), 1);
+
+  node_manager.Initialize(init_data);
+  // Listeners are Post()ed, so a notification would only surface after draining.
+  while (io_context_->poll() > 0) {
+  }
+
+  EXPECT_EQ(notifications, 0);
+  EXPECT_TRUE(node_manager.GetAliveNode(NodeID::FromBinary(node->node_id())).has_value());
 }
 
 // Register a node-added listener that calls back into

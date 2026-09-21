@@ -205,6 +205,9 @@ class GcsServer {
   /// Initialize gcs health check manager.
   void InitGcsHealthCheckManager(const GcsInitData &gcs_init_data);
 
+  /// Start health checking every alive node in the loaded tables.
+  void HydrateHealthCheckManager(const GcsInitData &gcs_init_data);
+
   /// Start the IOContextMonitor that probes the GCS io_contexts and determines the gRPC
   /// health check status.
   void InitIOContextMonitor();

@@ -836,6 +836,23 @@ class GcsLeaderElectionTestBase : public GcsServerTest {
     return node_info_list;
   }
 
+  std::vector<rpc::TotalResources> GetAllTotalResourcesFrom(rpc::GcsRpcClient &client) {
+    std::vector<rpc::TotalResources> resources;
+    std::promise<bool> promise;
+    client.GetAllTotalResources(
+        rpc::GetAllTotalResourcesRequest(),
+        [&resources, &promise](const Status &status,
+                               const rpc::GetAllTotalResourcesReply &reply) {
+          RAY_CHECK_OK(status);
+          for (const auto &entry : reply.resources_list()) {
+            resources.push_back(entry);
+          }
+          promise.set_value(true);
+        });
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
+    return resources;
+  }
+
   Status RegisterNodeOn(rpc::GcsRpcClient &client, const rpc::GcsNodeInfo &node_info) {
     rpc::RegisterNodeRequest request;
     request.mutable_node_info()->CopyFrom(node_info);
@@ -990,6 +1007,7 @@ class GcsLeaderElectionTest : public GcsLeaderElectionTestBase {
 TEST_F(GcsLeaderElectionTest, TestPromotionActivatesTheServer) {
   // Seed storage through the current leader.
   auto seeded_node = GenNodeInfo(1, "127.0.0.1", "seeded_node");
+  (*seeded_node->mutable_resources_total())["CPU"] = 4;
   ASSERT_TRUE(RegisterNodeOn(LeaderClient(), *seeded_node).ok());
 
   auto passive = StartPassiveServer();
@@ -1010,6 +1028,15 @@ TEST_F(GcsLeaderElectionTest, TestPromotionActivatesTheServer) {
   ASSERT_EQ(nodes.size(), 1);
   EXPECT_EQ(nodes[0].node_id(), seeded_node->node_id());
   EXPECT_EQ(nodes[0].state(), rpc::GcsNodeInfo::ALIVE);
+
+  // Hydration has to reach the resource manager too, not just the node table. The node
+  // table load no longer fans out to the node-added listeners, so nothing else would
+  // populate this view, and the managers hydrated after it schedule against it.
+  auto resources = GetAllTotalResourcesFrom(passive->Client());
+  ASSERT_EQ(resources.size(), 1);
+  EXPECT_EQ(resources[0].node_id(), seeded_node->node_id());
+  ASSERT_EQ(resources[0].resources_total().count("CPU"), 1);
+  EXPECT_EQ(resources[0].resources_total().at("CPU"), 4);
 
   // The gate is open: the registration that was rejected while passive now succeeds.
   ASSERT_TRUE(RegisterNodeOn(passive->Client(), *rejected_node).ok());

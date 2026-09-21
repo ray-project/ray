@@ -283,8 +283,10 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
-  void AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  /// \param notify_listeners Whether to post to the node-added listeners. False when
+  /// the caller hydrates the downstream managers itself.
+  void AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node,
+                      bool notify_listeners = true) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Add the dead node to the cache. If the cache is full, the earliest dead node is
   /// evicted.

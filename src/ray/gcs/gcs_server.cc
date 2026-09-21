@@ -489,19 +489,18 @@ void GcsServer::StartMetricsReporting() {
 }
 
 void GcsServer::HydrateManagers(const GcsInitData &gcs_init_data) {
-  // Here we only hydrate the managers that require a full table load to restore their
-  // state. The resource, autoscaler and health check managers are deliberately absent:
-  // for them hydration is per-alive-node work that the node-added listener already
-  // performs, and unlike in DoStart that listener is installed by the time we get here,
-  // so the node table load below drives it.
-  //
-  // Hydrating them again applies every node twice,
-  // which GcsHealthCheckManager::AddNode RAY_CHECKs against.
+  // Same order as DoStart: the placement group and actor managers schedule as part of
+  // Initialize() and need the resource view already populated. GcsNodeManager does not
+  // fan out to the node-added listeners, which here -- unlike in DoStart -- are already
+  // installed, so every manager below is hydrated exactly once.
   gcs_node_manager_->Initialize(gcs_init_data);
+  gcs_resource_manager_->Initialize(gcs_init_data);
+  HydrateHealthCheckManager(gcs_init_data);
   gcs_job_manager_->Initialize(gcs_init_data);
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   gcs_actor_manager_->Initialize(gcs_init_data);
   gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
+  gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 }
 
 void GcsServer::PromoteToLeader() {
@@ -701,6 +700,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
                                     node_death_callback,
                                     metrics_.health_check_rpc_latency_ms_histogram,
                                     clock_);
+  HydrateHealthCheckManager(gcs_init_data);
+}
+
+void GcsServer::HydrateHealthCheckManager(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =

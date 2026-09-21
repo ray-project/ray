@@ -652,14 +652,17 @@ void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   AddNodeToCache(node);
 }
 
-void GcsNodeManager::AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
+void GcsNodeManager::AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node,
+                                    bool notify_listeners) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
-    // Notify all listeners by posting back on their io_context
-    for (auto &listener : node_added_listeners_) {
-      listener.Post("NodeManager.AddNodeCallback", node);
+    if (notify_listeners) {
+      // Notify all listeners by posting back on their io_context
+      for (auto &listener : node_added_listeners_) {
+        listener.Post("NodeManager.AddNodeCallback", node);
+      }
     }
   }
 }
@@ -826,7 +829,10 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::MutexLock lock(&mutex_);
   for (const auto &[node_id, node_info] : gcs_init_data.Nodes()) {
     if (node_info.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info));
+      // Restoring the cache is not a node-added event: the caller hydrates the
+      // downstream managers itself. See GcsServer::HydrateManagers().
+      AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info),
+                     /*notify_listeners=*/false);
 
       // Ask the raylet to do initialization in case of GCS restart.
       // The protocol is correct because when a new node joined, Raylet will do:
