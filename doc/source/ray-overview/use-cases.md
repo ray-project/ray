@@ -141,7 +141,7 @@ Learn more about reinforcement learning with the following resources.
 - [[Blog] Intro to RLlib: Example Environments](https://medium.com/distributed-computing-with-ray/intro-to-rllib-example-environments-3a113f532c70)
 - {doc}`[Guide] Getting Started with RLlib </rllib/getting-started>`
 - [[Talk] Deep reinforcement learning at Riot Games](https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games)
-- {doc}`[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`
+- {doc}`[Gallery] RLlib Examples Gallery </rllib/examples>`
 - [[Gallery] More RL Use Cases on the Blog](https://www.anyscale.com/blog?tag=rllib)
 
 (ref-use-cases-ml-platform)=

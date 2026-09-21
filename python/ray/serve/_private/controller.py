@@ -22,6 +22,7 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -409,8 +410,13 @@ class ServeController:
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(replica_metric_report, bytes):
+            decompress_start = time.monotonic()
             replica_metric_report = decompress_metric_report(replica_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
         self._record_metrics_delay(
@@ -422,12 +428,40 @@ class ServeController:
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
         )
+        self._health_metrics_tracker.record_replica_ingest(
+            (time.monotonic() - ingest_start) * 1000
+        )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
+            if autoscaling_metrics_codec.is_columnar(handle_metric_report):
+                # Wire-detected on the frame magic, so a mixed fleet mid-rollout is
+                # read correctly whatever each sender chose to emit. Timed apart from
+                # decompress: separating the two codecs is the point of the metric.
+                decode_start = time.monotonic()
+                d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
+                self._health_metrics_tracker.record_columnar_decode(
+                    (time.monotonic() - decode_start) * 1000
+                )
+                self._record_metrics_delay(
+                    d["timestamp"],
+                    d["deployment_id"],
+                    self.handle_metrics_delay_histogram.observe,
+                    self._health_metrics_tracker.record_handle_metrics_delay,
+                )
+                self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
+                self._health_metrics_tracker.record_handle_ingest(
+                    (time.monotonic() - ingest_start) * 1000
+                )
+                return
+            decompress_start = time.monotonic()
             handle_metric_report = decompress_metric_report(handle_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
         # Decompression (above) always yields a HandleMetricReport.
         handle_metric_report = cast(HandleMetricReport, handle_metric_report)
         self._record_metrics_delay(
@@ -438,6 +472,9 @@ class ServeController:
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
+        )
+        self._health_metrics_tracker.record_handle_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_async_inference_task_queue(
