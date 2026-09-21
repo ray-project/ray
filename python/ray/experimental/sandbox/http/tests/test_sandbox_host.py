@@ -3,11 +3,13 @@
 import asyncio
 import sys
 import threading
+import time
 
 import pytest
 
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
+    SandboxError,
     SandboxExecError,
     SandboxTimeoutError,
 )
@@ -174,6 +176,63 @@ def test_network_mode_passed_through_natively() -> None:
 
     (create_call,) = runtime.create_calls
     assert create_call["network"] == "sandbox"
+
+
+def test_cidr_allowlist_passed_through_and_reported() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(
+        runtime, spec_overrides={"network": "public", "cidr_allowlist": ["10.0.0.0/8"]}
+    )
+    asyncio.run(host.boot())
+
+    (create_call,) = runtime.create_calls
+    assert create_call["cidr_allowlist"] == ["10.0.0.0/8"]
+    assert asyncio.run(host.describe())["cidr_allowlist"] == ["10.0.0.0/8"]
+
+
+def test_set_network_access_updates_runtime_and_info() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(
+        runtime, spec_overrides={"network": "public", "cidr_allowlist": ["0.0.0.0/0"]}
+    )
+    asyncio.run(host.boot())
+
+    info = asyncio.run(host.set_network_access(["52.0.0.1", "10.0.1.5/24"]))
+    assert info["cidr_allowlist"] == ["52.0.0.1/32", "10.0.1.0/24"]
+    assert runtime.allowlist_calls == [
+        {"instance_id": runtime.instance_id, "cidrs": ["52.0.0.1/32", "10.0.1.0/24"]}
+    ]
+
+    assert asyncio.run(host.set_network_access(["nope"]))["error_code"] == "invalid"
+
+    runtime.allowlist_error = SandboxError("nft: Protocol not supported")
+    result = asyncio.run(host.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "internal"
+    assert "Protocol not supported" in result["message"]
+    # The reported allowlist is the one still in force.
+    assert asyncio.run(host.describe())["cidr_allowlist"] == [
+        "52.0.0.1/32",
+        "10.0.1.0/24",
+    ]
+
+
+def test_set_network_access_conflicts() -> None:
+    """A sandbox created without an allowlist has a fixed policy, and nothing
+    is changed before the sandbox runs."""
+    runtime = FakeSandboxRuntime()
+    fixed = _make_host(runtime, spec_overrides={"network": "public"})
+    asyncio.run(fixed.boot())
+    result = asyncio.run(fixed.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "conflict"
+    assert "without a cidr_allowlist" in result["message"]
+
+    not_running = _make_host(
+        FakeSandboxRuntime(),
+        spec_overrides={"network": "public", "cidr_allowlist": []},
+    )
+    result = asyncio.run(not_running.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "conflict"
+    assert runtime.allowlist_calls == []
 
 
 def test_explicit_capabilities_passed_through() -> None:
@@ -568,7 +627,7 @@ def test_write_failure_is_reported_not_raised() -> None:
 
 
 def test_work_is_refused_while_terminating() -> None:
-    """Execs and file ops that arrive while terminate() is deleting the
+    """Execs, file ops, and network updates that arrive while terminate() is deleting the
     container are refused, although the status still reads running."""
     runtime = FakeSandboxRuntime()
     runtime.delete_gate = threading.Event()
@@ -582,15 +641,50 @@ def test_work_is_refused_while_terminating() -> None:
             await host.start_exec(["true"]),
             await host.write_file("/f", b"x"),
             await host.read_file("/f"),
+            await host.set_network_access(["1.1.1.1/32"]),
         ]
         runtime.delete_gate.set()
         await terminate
         return results
 
     results = asyncio.run(scenario())
-    assert [r["error_code"] for r in results] == ["conflict"] * 3
+    assert [r["error_code"] for r in results] == ["conflict"] * 4
     assert all("terminating" in r["message"] for r in results)
     assert runtime.exec_calls == []
+
+
+def test_network_updates_are_serialized() -> None:
+    """Concurrent set_network_access calls swap the ruleset one at a time,
+    and the recorded allowlist is the one applied last."""
+    runtime = FakeSandboxRuntime()
+    inside = [0, 0]  # [current, peak]
+    counter_lock = threading.Lock()
+
+    def slow_update(instance_id, cidrs):
+        with counter_lock:
+            inside[0] += 1
+            inside[1] = max(inside[1], inside[0])
+        time.sleep(0.05)
+        runtime.allowlist_calls.append({"instance_id": instance_id, "cidrs": cidrs})
+        with counter_lock:
+            inside[0] -= 1
+
+    runtime.set_egress_allowlist = slow_update
+    host = _make_host(
+        runtime,
+        spec_overrides={"network": "public", "cidr_allowlist": ["0.0.0.0/0"]},
+    )
+
+    async def scenario():
+        await host.boot()
+        await asyncio.gather(
+            *(host.set_network_access([c]) for c in ("1.1.1.1", "1.0.0.1", "9.9.9.9"))
+        )
+        return await host.describe()
+
+    info = asyncio.run(scenario())
+    assert inside[1] == 1
+    assert info["cidr_allowlist"] == runtime.allowlist_calls[-1]["cidrs"]
 
 
 if __name__ == "__main__":

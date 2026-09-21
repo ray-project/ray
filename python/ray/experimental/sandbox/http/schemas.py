@@ -9,7 +9,7 @@ in ``tests/test_http_schemas.py`` deliberately when you do.
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Re-exported so the wire contract documents its default in one place; the
 # canonical definition (and rationale) lives in the core sandbox config.
@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 from ray.experimental.sandbox.config import (  # noqa: E402
     DOCKER_DEFAULT_CAPABILITIES,
     VALID_NETWORK_MODES,
+    normalize_cidr_allowlist,
 )
 from ray.util.annotations import PublicAPI
 
@@ -101,6 +102,16 @@ class CreateSandboxRequest(BaseModel):
             "'public'; overrides the host file for network='host'."
         ),
     )
+    cidr_allowlist: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Egress allowlist for network='public': only the listed IPv4/IPv6 "
+            "networks are reachable (any protocol), plus UDP/TCP port 53 to "
+            "the dns resolvers. null leaves egress unrestricted; [] allows "
+            "nothing but DNS. Entries are normalized (10.0.1.5/24 becomes "
+            "10.0.1.0/24) and must be IP literals, not host names."
+        ),
+    )
     shell: Optional[str] = Field(
         default=None,
         description=(
@@ -142,6 +153,14 @@ class CreateSandboxRequest(BaseModel):
             raise ValueError(f"network must be one of {VALID_NETWORK_MODES}")
         return network
 
+    @model_validator(mode="after")
+    def _validate_cidr_allowlist(self) -> "CreateSandboxRequest":
+        if self.cidr_allowlist is not None:
+            if self.network != "public":
+                raise ValueError("cidr_allowlist is only valid with network='public'")
+            self.cidr_allowlist = normalize_cidr_allowlist(self.cidr_allowlist)
+        return self
+
     @field_validator("labels")
     @classmethod
     def _validate_labels(cls, labels: Dict[str, str]) -> Dict[str, str]:
@@ -168,6 +187,13 @@ class SandboxInfo(BaseModel):
     ttl_seconds: Optional[int] = None
     expires_at: Optional[datetime] = None
     network: str
+    cidr_allowlist: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Egress allowlist in force (null: unrestricted). Present only "
+            "for network='public' sandboxes created with one."
+        ),
+    )
     labels: Dict[str, str] = Field(default_factory=dict)
     error: Optional[str] = Field(
         default=None, description="Failure detail when status is 'error'."

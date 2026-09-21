@@ -48,6 +48,7 @@ from typing import (
     Union,
 )
 
+from ray.experimental.sandbox.config import normalize_cidr_allowlist
 from ray.experimental.sandbox.exceptions import SandboxError, SandboxTimeoutError
 from ray.experimental.sandbox.http.schemas import DOCKER_DEFAULT_CAPABILITIES
 from ray.util.annotations import DeveloperAPI
@@ -79,6 +80,7 @@ class SandboxSpec(_SandboxSpecBase, total=False):
     ttl_seconds: Optional[int]
     network: str
     dns: Optional[List[str]]
+    cidr_allowlist: Optional[List[str]]
     shell: Optional[str]
     rootless: bool
     readonly: bool
@@ -190,6 +192,9 @@ class SandboxHost:
         # (the new instance lands in _instance_id) before deleting.
         self._creating = False
         self._create_settled = asyncio.Event()
+        # set_network_access runs nft in a worker thread; this keeps two
+        # updates from interleaving their ruleset swaps.
+        self._network_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -281,6 +286,7 @@ class SandboxHost:
                     rootless=bool(self._spec.get("rootless", True)),
                     network=self._spec.get("network", "none"),
                     dns=self._spec.get("dns"),
+                    cidr_allowlist=self._spec.get("cidr_allowlist"),
                     capabilities=capabilities,
                     readonly=bool(self._spec.get("readonly", True)),
                     **create_kwargs,
@@ -438,6 +444,7 @@ class SandboxHost:
             "ttl_seconds": ttl_seconds,
             "expires_at": expires_at.isoformat() if expires_at else None,
             "network": self._spec.get("network", "none"),
+            "cidr_allowlist": self._spec.get("cidr_allowlist"),
             "labels": dict(self._spec.get("labels") or {}),
             "error": self._error,
         }
@@ -596,3 +603,41 @@ class SandboxHost:
             # overwhelmingly common failure, so report it as such.
             return {"error_code": "file_not_found", "message": str(exc)}
         return {"ok": True, "content": content}
+
+    # ------------------------------------------------------------------
+    # Network policy
+    # ------------------------------------------------------------------
+
+    async def set_network_access(self, cidr_allowlist: List[str]) -> Dict[str, Any]:
+        """Replace the sandbox's egress allowlist.
+
+        Only a sandbox created with ``cidr_allowlist`` can be changed; the
+        runtime keeps its ruleset and swaps it atomically. Returns the
+        updated info, or an ``error_code`` dict like the other methods.
+        """
+        error = self._not_running_error()
+        if error is not None:
+            return error
+        if self._spec.get("cidr_allowlist") is None:
+            return {
+                "error_code": "conflict",
+                "message": (
+                    f"sandbox {self._sandbox_id} was created without a "
+                    "cidr_allowlist, so its egress policy is fixed; create it "
+                    "with one (['0.0.0.0/0', '::/0'] for open egress) to "
+                    "change it later"
+                ),
+            }
+        try:
+            cidrs = normalize_cidr_allowlist(cidr_allowlist)
+        except ValueError as exc:
+            return {"error_code": "invalid", "message": str(exc)}
+        async with self._network_lock:
+            try:
+                await asyncio.to_thread(
+                    self._runtime.set_egress_allowlist, self._instance_id, cidrs
+                )
+            except (SandboxError, NotImplementedError) as exc:
+                return {"error_code": "internal", "message": str(exc)}
+            self._spec["cidr_allowlist"] = cidrs
+            return self._info()

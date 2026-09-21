@@ -2,6 +2,7 @@ import os
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,12 @@ import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
 from ray.experimental.sandbox.backend.base import SandboxStatus
-from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import GVisorSandboxConfig
+from ray.experimental.sandbox.backend.gvisor import (
+    GVisorSandboxBackend,
+    _render_egress_ruleset,
+    _write_egress_ruleset,
+)
+from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -352,11 +357,16 @@ def _public_config() -> GVisorSandboxConfig:
     )
 
 
-def _run_argv(network: str, rootless: bool = True, **backend_kwargs) -> list:
+def _run_argv(
+    network: str, rootless: bool = True, cidr_allowlist=None, **backend_kwargs
+) -> list:
     """`_build_run_command` over fixed paths — pure argv, no side effects."""
     backend = GVisorSandboxBackend(**backend_kwargs)
     cfg = GVisorSandboxConfig(
-        image="busybox:latest", network=network, rootless=rootless
+        image="busybox:latest",
+        network=network,
+        rootless=rootless,
+        cidr_allowlist=cidr_allowlist,
     )
     return backend._build_run_command(cfg, "/tmp/rd", "sb-1")
 
@@ -595,6 +605,237 @@ def test_create_sandbox_requires_slirp4netns(monkeypatch):
     assert "slirp4netns" in str(err.value)
 
 
+def test_render_egress_ruleset_pins_the_policy():
+    """The ruleset is the enforcement, so pin its exact text: default drop,
+    loopback, one accept per network in its family, and DNS to the resolvers
+    on port 53 only."""
+    text = _render_egress_ruleset(
+        ["52.0.0.0/8", "10.0.1.5/24", "2001:db8::/32"], ["8.8.8.8"]
+    )
+    assert text == (
+        "flush ruleset\n"
+        "table inet ray_sandbox_egress {\n"
+        "    chain output {\n"
+        "        type filter hook output priority 0; policy drop;\n"
+        '        oif "lo" accept\n'
+        "        ip daddr 52.0.0.0/8 accept\n"
+        "        ip daddr 10.0.1.0/24 accept\n"
+        "        ip6 daddr 2001:db8::/32 accept\n"
+        "        ip daddr 8.8.8.8 udp dport 53 accept\n"
+        "        ip daddr 8.8.8.8 tcp dport 53 accept\n"
+        "    }\n"
+        "}\n"
+    )
+
+
+def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
+    text = _render_egress_ruleset([], ["8.8.8.8", "1.1.1.1"])
+    assert "ip daddr 8.8.8.8 udp dport 53 accept" in text
+    assert "ip daddr 1.1.1.1 tcp dport 53 accept" in text
+    # Loopback plus two resolvers times two protocols: nothing else.
+    assert text.count(" accept") == 5
+    with pytest.raises(ValueError, match="dns"):
+        _render_egress_ruleset([], ["resolver.internal"])
+
+
+def test_write_egress_ruleset_defaults_to_public_dns(tmp_path):
+    path = _write_egress_ruleset(str(tmp_path), ["10.0.0.0/8"], None)
+    assert path == str(tmp_path / "egress.nft")
+    text = (tmp_path / "egress.nft").read_text()
+    assert "ip daddr 10.0.0.0/8 accept" in text
+    for server in DEFAULT_PUBLIC_DNS:
+        assert f"ip daddr {server} udp dport 53 accept" in text
+    # Written atomically: no temp file remains.
+    assert [p.name for p in tmp_path.iterdir()] == ["egress.nft"]
+
+
+def test_build_run_command_public_allowlist_installs_ruleset_before_runsc():
+    """The ruleset goes in once the tap is up and before runsc starts, and a
+    failed install aborts the start instead of leaving egress open."""
+    script = _run_argv("public", cidr_allowlist=["10.0.0.0/8"])[2]
+    install = (
+        "nsenter --preserve-credentials -U -n -t $NSPID -- nft -f /tmp/rd/egress.nft || "
+        '{ echo "egress allowlist install failed" >&2; exit 1; }; '
+    )
+    assert install in script
+    tap_ready = script.index("[ -s /tmp/rd/slirp4netns.ready ] ||")
+    runsc_start = script.index(
+        "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc"
+    )
+    assert tap_ready < script.index(install) < runsc_start
+    # Without an allowlist the chain is untouched.
+    assert "nft" not in _run_argv("public")[2]
+
+
+def test_create_sandbox_requires_nft_for_allowlist(monkeypatch):
+    """A missing nft fails fast, before the image pull, with remediation."""
+
+    class _NoPullImageManager:
+        def pull_image(self, *args, **kwargs):
+            raise AssertionError("image pull must not run when nft is missing")
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.shutil.which",
+        lambda name: None if name == "nft" else f"/usr/bin/{name}",
+    )
+    backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["10.0.0.0/8"],
+    )
+    with pytest.raises(SandboxCreationError, match="nft"):
+        backend.create_sandbox(cfg)
+
+
+def test_set_egress_allowlist_requires_an_existing_allowlist(tmp_path):
+    """Only a sandbox created with an allowlist can be changed, and the change
+    never runs without the namespace holder pid (`flush ruleset` must not run
+    anywhere but inside the sandbox's own namespace)."""
+    backend = GVisorSandboxBackend(image_manager=object())
+    with pytest.raises(SandboxNotFoundError):
+        backend.set_egress_allowlist("nope", ["10.0.0.0/8"])
+
+    backend._sandbox_metadata["sb-open"] = {
+        "root_dir": str(tmp_path),
+        "config": _public_config(),
+        "egress_allowlist": None,
+    }
+    with pytest.raises(SandboxError, match="without a cidr_allowlist"):
+        backend.set_egress_allowlist("sb-open", ["10.0.0.0/8"])
+
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", network="public", cidr_allowlist=[]
+    )
+    backend._sandbox_metadata["sb-allow"] = {
+        "root_dir": str(tmp_path),
+        "config": cfg,
+        "egress_allowlist": [],
+    }
+    with pytest.raises(ValueError, match="example.com"):
+        backend.set_egress_allowlist("sb-allow", ["example.com"])
+    with pytest.raises(SandboxError, match="namespace holder"):
+        backend.set_egress_allowlist("sb-allow", ["10.0.0.0/8"])
+    assert not (tmp_path / "egress.nft").exists()
+
+
+def test_set_egress_allowlist_reinstalls_ruleset_in_the_namespace(
+    tmp_path, monkeypatch
+):
+    """The update rewrites the ruleset and loads it through the holder's
+    namespaces; a failed load keeps the file describing the rules in force."""
+    (tmp_path / "netns.pid").write_text("4242\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["0.0.0.0/0"],
+        dns=["10.0.0.2"],
+    )
+    _write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns)
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = {
+        "root_dir": str(tmp_path),
+        "config": cfg,
+        "egress_allowlist": ["0.0.0.0/0"],
+    }
+
+    class _Completed:
+        def __init__(self, returncode, stderr=b""):
+            self.returncode = returncode
+            self.stderr = stderr
+
+    calls = []
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
+        lambda args, **kwargs: (calls.append(args), _Completed(0))[1],
+    )
+    backend.set_egress_allowlist("sb-1", ["52.0.0.1"])
+    assert calls == [
+        [
+            "nsenter",
+            "--preserve-credentials",
+            "-U",
+            "-n",
+            "-t",
+            "4242",
+            "--",
+            "nft",
+            "-f",
+            str(tmp_path / "egress.nft"),
+        ]
+    ]
+    text = (tmp_path / "egress.nft").read_text()
+    assert "ip daddr 52.0.0.1/32 accept" in text
+    assert "0.0.0.0/0" not in text
+    assert "ip daddr 10.0.0.2 udp dport 53 accept" in text
+    assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["52.0.0.1/32"]
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
+        lambda args, **kwargs: _Completed(1, b"Error: Protocol not supported"),
+    )
+    with pytest.raises(SandboxError, match="Protocol not supported"):
+        backend.set_egress_allowlist("sb-1", ["10.0.0.0/8"])
+    assert "ip daddr 52.0.0.1/32 accept" in (tmp_path / "egress.nft").read_text()
+    assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["52.0.0.1/32"]
+
+
+def test_set_egress_allowlist_serializes_concurrent_updates(tmp_path, monkeypatch):
+    """Overlapping updates run one at a time, so the ruleset loaded last is
+    the list the backend records."""
+    (tmp_path / "netns.pid").write_text("4242\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["0.0.0.0/0"],
+        dns=["10.0.0.2"],
+    )
+    _write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns)
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = {
+        "root_dir": str(tmp_path),
+        "config": cfg,
+        "egress_allowlist": ["0.0.0.0/0"],
+    }
+    loaded = []
+    inside = [0, 0]  # [current, peak]
+    counter_lock = threading.Lock()
+
+    class _Completed:
+        returncode = 0
+        stderr = b""
+
+    def slow_nft(args, **kwargs):
+        with counter_lock:
+            inside[0] += 1
+            inside[1] = max(inside[1], inside[0])
+        loaded.append((tmp_path / "egress.nft").read_text())
+        time.sleep(0.05)
+        with counter_lock:
+            inside[0] -= 1
+        return _Completed()
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", slow_nft
+    )
+    threads = [
+        threading.Thread(target=backend.set_egress_allowlist, args=("sb-1", [cidr]))
+        for cidr in ("52.0.0.1", "52.0.0.2", "52.0.0.3")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert inside[1] == 1
+    (recorded,) = backend._sandbox_metadata["sb-1"]["egress_allowlist"]
+    assert f"ip daddr {recorded} accept" in loaded[-1]
+    assert f"ip daddr {recorded} accept" in (tmp_path / "egress.nft").read_text()
+
+
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
     hostfwd contract): each reaches its own listener, the bind never surfaces in
@@ -647,6 +888,67 @@ def test_netns_egress_and_dns(ensure_slirp4netns):
         )
         assert res.exit_code == 0, res.stderr
         assert "Example" in res.stdout
+    finally:
+        backend.delete_sandbox(sb)
+
+
+# Exit 0 when a TCP connection to 1.1.1.1:80 succeeds; the connect times out
+# (exit 1) when the egress filter drops the SYN.
+_CONNECT_PROBE = (
+    'python3 -c "import socket; '
+    "socket.create_connection(('1.1.1.1', 80), timeout=5).close()\""
+)
+
+
+def test_netns_egress_allowlist_enforced(ensure_nft_egress):
+    """Only allowlisted destinations are reachable, DNS to the resolvers stays
+    open although they are not listed, and everything else is dropped."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(
+        image="python:3.10-slim", network="public", cidr_allowlist=["1.1.1.1/32"]
+    )
+    sb = backend.create_sandbox(cfg)
+    try:
+        res = backend.exec_command(sb, _CONNECT_PROBE, timeout=60)
+        assert res.exit_code == 0, res.stderr
+
+        # An unlisted address: the SYN is dropped, so the connect times out.
+        # Widening to it afterwards proves the policy, not the network,
+        # blocked it.
+        other = _CONNECT_PROBE.replace("1.1.1.1", "1.0.0.1")
+        res = backend.exec_command(sb, other, timeout=60)
+        assert res.exit_code != 0
+        assert "timed out" in res.stderr, res.stderr
+        backend.set_egress_allowlist(sb, ["1.1.1.1", "1.0.0.1"])
+        res = backend.exec_command(sb, other, timeout=60)
+        assert res.exit_code == 0, res.stderr
+
+        res = backend.exec_command(
+            sb,
+            "python3 -c \"import socket; print(socket.gethostbyname('example.com'))\"",
+            timeout=60,
+        )
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.strip().count(".") == 3
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_netns_egress_allowlist_runtime_update(ensure_nft_egress):
+    """A sandbox created with an allowlist can be widened and narrowed while
+    it runs; each change applies to the next connection."""
+    backend = GVisorSandboxBackend()
+    cfg = GVisorSandboxConfig(
+        image="python:3.10-slim", network="public", cidr_allowlist=[]
+    )
+    sb = backend.create_sandbox(cfg)
+    try:
+        assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
+        backend.set_egress_allowlist(sb, ["1.1.1.1"])
+        res = backend.exec_command(sb, _CONNECT_PROBE, timeout=60)
+        assert res.exit_code == 0, res.stderr
+        backend.set_egress_allowlist(sb, [])
+        assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
     finally:
         backend.delete_sandbox(sb)
 
