@@ -2611,6 +2611,7 @@ def test_get_serve_instance_details_json_serializable(
                                 "request_router_config": {
                                     "request_router_class": "ray.serve._private.request_router:PowerOfTwoChoicesRequestRouter",
                                     "request_router_kwargs": {},
+                                    "ingress_router_fallback": False,
                                     "request_routing_stats_period_s": 10.0,
                                     "request_routing_stats_timeout_s": 30.0,
                                     "initial_backoff_s": 0.025,
@@ -2671,6 +2672,7 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "ingress_router_fallback": False,
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
