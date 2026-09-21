@@ -1236,6 +1236,58 @@ class TestGangControllerRecovery:
             serve.delete(app_name)
         serve.shutdown()
 
+    def test_gang_pg_removed_after_controller_recovery(self, ray_cluster):
+        """A recovered gang replica holds no PG handle, so deletion must still
+        clean the gang PG up."""
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=1)
+        cluster.add_node(num_cpus=1)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start()
+
+        @serve.deployment(
+            num_replicas=4,
+            ray_actor_options={"num_cpus": 0.25},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class GangRecoveryCleanup:
+            def __call__(self):
+                return "ok"
+
+        app_name = "gang_recovery_cleanup_app"
+        pg_name_prefix = f"{GANG_PG_NAME_PREFIX}{app_name}_GangRecoveryCleanup_"
+
+        def gang_pgs_live():
+            return any(
+                name.startswith(pg_name_prefix)
+                for name in get_all_live_placement_group_names()
+            )
+
+        serve.run(GangRecoveryCleanup.bind(), name=app_name)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
+        wait_for_condition(gang_pgs_live, timeout=WAIT_TIMEOUT_S)
+
+        # Restart the controller with the replicas left alive: recovery looks a
+        # replica's PG up by actor name, which never matches a gang PG.
+        controller = serve.context._get_global_client()._controller
+        original_controller_pid = ray.get(controller.get_pid.remote())
+        ray.kill(controller, no_restart=False)
+
+        def controller_restarted():
+            try:
+                pid = ray.get(controller.get_pid.remote(), timeout=5)
+                return pid != original_controller_pid
+            except Exception:
+                return False
+
+        wait_for_condition(controller_restarted, timeout=WAIT_TIMEOUT_S)
+        wait_for_condition(check_apps_running, apps=[app_name], timeout=WAIT_TIMEOUT_S)
+
+        serve.delete(app_name)
+        wait_for_condition(lambda: not gang_pgs_live(), timeout=WAIT_TIMEOUT_S)
+        serve.shutdown()
+
     @pytest.mark.parametrize("same_gang", [True, False])
     def test_gang_replica_crash_during_controller_downtime(
         self, ray_cluster, same_gang

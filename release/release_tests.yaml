@@ -151,7 +151,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - HELLO_WORLD_TEST=1
+        HELLO_WORLD_TEST: "1"
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -575,8 +575,8 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_memory_usage_threshold=0.5
-        - automatic_object_spilling_enabled=0
+        RAY_memory_usage_threshold: "0.5"
+        automatic_object_spilling_enabled: "0"
     cluster_compute: frequent_pausing/compute_config_aws.yaml
 
   run:
@@ -922,7 +922,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -960,7 +960,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -1000,7 +1000,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_4.yaml
 
   run:
@@ -1042,7 +1042,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -1082,7 +1082,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -1122,7 +1122,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -1162,7 +1162,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1_large.yaml
 
   run:
@@ -1202,7 +1202,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1_c5.yaml
 
   run:
@@ -1242,7 +1242,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
+        RLLIB_TEST_NO_JAX_IMPORT: "1"
     cluster_compute: tpl_cpu_1.yaml
 
   run:
@@ -1496,6 +1496,38 @@
         cluster_compute: rte_gce_small.yaml
 
 
+- name: runtime_env_local_working_dir
+  python: "3.10"
+  group: Runtime env tests
+  working_dir: runtime_env_tests
+
+  frequency: nightly
+  team: core
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      post_build_script: byod_local_working_dir.sh
+    cluster_compute: rte_small.yaml
+
+  run:
+    timeout: 600
+    script: python workloads/rte_local_working_dir.py
+    wait_for_nodes:
+      num_nodes: 4
+
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: rte_gce_small.yaml
+
+
 - name: runtime_env_wheel_urls
   python: "3.10"
   group: Runtime env tests
@@ -1577,7 +1609,7 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
+            RAY_SERVE_ENABLE_HA_PROXY: "1"
 
 - name: pytest_serve_multi_deployment_1k_noop_replica
   python: "3.10"
@@ -1608,7 +1640,7 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
+            RAY_SERVE_ENABLE_HA_PROXY: "1"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1646,7 +1678,7 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
+            RAY_SERVE_ENABLE_HA_PROXY: "1"
 
 - name: serve_controller_benchmark_haproxy
   python: "3.10"
@@ -1664,8 +1696,8 @@
         # proxy the benchmark profile changes significantly.
         # Given that haproxy is going to be the path forward, make sense
         # to use that here.
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S: "0.01"
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1730,9 +1762,9 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
-        - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
-        - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+        RAY_SERVE_THROUGHPUT_OPTIMIZED: "1"
+        RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S: "0.01"
+        RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH: "10500000"
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1750,10 +1782,7 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
-            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
-            - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
-            - RAY_SERVE_ENABLE_HA_PROXY=1
+            RAY_SERVE_ENABLE_HA_PROXY: "1"
       run:
         timeout: 7200
         long_running: false
@@ -1801,8 +1830,8 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-            - RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
+            RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD: "0"
+            RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP: "0"
       run:
         timeout: 7200
         long_running: false
@@ -1857,7 +1886,7 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_SERVE_ENABLE_HA_PROXY=1
+            RAY_SERVE_ENABLE_HA_PROXY: "1"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1882,9 +1911,10 @@
     byod:
       runtime_env:
         # Enable verbose stats for resource manager
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        RAY_DATA_DEBUG_RESOURCE_MANAGER: "1"
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
 
       # 'type: torch-cu128' means: use the 'ray-torch' image.
       type: torch-cu128
@@ -1956,8 +1986,8 @@
       cluster:
         byod:
           runtime_env:
-            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
+            # Only Ray OOM kills fail this test; workers are killed intentionally.
+            RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "0"
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: full_training.s3_url
@@ -2062,11 +2092,12 @@
     byod:
       runtime_env:
         # Enable verbose stats for resource manager
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        RAY_DATA_DEBUG_RESOURCE_MANAGER: "1"
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
         # Fail the test if a node dies
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        RAYTEST_FAIL_ON_DEAD_NODES: "1"
 
       # 'type: torch-cu128' means: use the 'ray-torch' image.
       type: torch-cu128
@@ -2096,11 +2127,12 @@
     byod:
       runtime_env:
         # Enable verbose stats for resource manager
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        RAY_DATA_DEBUG_RESOURCE_MANAGER: "1"
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
         # Fail the test if a node dies
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        RAYTEST_FAIL_ON_DEAD_NODES: "1"
 
       # 'type: torch-cu128' means: use the 'ray-torch' image.
       type: torch-cu128
@@ -2130,8 +2162,9 @@
   cluster:
     byod:
       runtime_env:
-        # Fail the test if a worker OOMs
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
+        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
+        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
       type: gpu
       post_build_script: byod_install_torchrec.sh
     anyscale_sdk_2026: true
@@ -2992,8 +3025,8 @@
       type: llm-cu130 # llm image already has nixl
       post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
       runtime_env: # env vars for nixl
-        - UCX_TLS=all
-        - UCX_NET_DEVICES=all
+        UCX_TLS: "all"
+        UCX_NET_DEVICES: "all"
     cluster_compute: experimental/compute_a100_gpu.yaml
 
   run:
@@ -3083,8 +3116,8 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
-        - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
+        RAY_MAX_LIMIT_FROM_API_SERVER: "1000000000"
+        RAY_MAX_LIMIT_FROM_DATA_SOURCE: "1000000000"
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
@@ -3136,8 +3169,8 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
-        - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
+        RAY_MAX_LIMIT_FROM_API_SERVER: "1000000000"
+        RAY_MAX_LIMIT_FROM_DATA_SOURCE: "1000000000"
     cluster_compute: shuffle/shuffle_compute_single.yaml
 
   run:
@@ -3350,7 +3383,7 @@
       runtime_env:
         # Lower the memory usage threshold at which the Ray memory monitor will kill
         # running tasks so that it does not compete with the system OOM killer.
-        - RAY_memory_usage_threshold=0.7
+        RAY_memory_usage_threshold: "0.7"
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
 
   run:
@@ -3500,7 +3533,7 @@
   cluster:
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: single_node.yaml
     anyscale_sdk_2026: true
 
@@ -3529,7 +3562,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: object_store.yaml
 
   run:
@@ -3558,7 +3591,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: object_store/callback_throughput.yaml
 
   run:
@@ -3582,7 +3615,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: object_store/small_objects.yaml
 
   run:
@@ -3606,7 +3639,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: object_store/large_objects.yaml
 
   run:
@@ -3630,7 +3663,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: distributed.yaml
 
   run:
@@ -3659,7 +3692,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -3681,7 +3714,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: distributed.yaml
 
   run:
@@ -3711,7 +3744,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: distributed.yaml
 
   run:
@@ -3741,7 +3774,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: distributed_smoke_test.yaml
 
   run:
@@ -3763,7 +3796,7 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: many_nodes.yaml
 
   run:
@@ -3790,7 +3823,7 @@
   cluster:
     byod:
       runtime_env:
-        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
+        LD_PRELOAD: "/usr/lib/x86_64-linux-gnu/libjemalloc.so"
     cluster_compute: scheduling.yaml
     anyscale_sdk_2026: true
 
@@ -3935,10 +3968,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_health_check_period_ms=10000
-        - RAY_health_check_timeout_ms=100000
-        - RAY_health_check_failure_threshold=10
-        - RAY_gcs_rpc_server_connect_timeout_s=60
+        RAY_health_check_period_ms: "10000"
+        RAY_health_check_timeout_ms: "100000"
+        RAY_health_check_failure_threshold: "10"
+        RAY_gcs_rpc_server_connect_timeout_s: "60"
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -4039,10 +4072,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_health_check_period_ms=10000
-        - RAY_health_check_timeout_ms=100000
-        - RAY_health_check_failure_threshold=10
-        - RAY_gcs_rpc_server_connect_timeout_s=60
+        RAY_health_check_period_ms: "10000"
+        RAY_health_check_timeout_ms: "100000"
+        RAY_health_check_failure_threshold: "10"
+        RAY_gcs_rpc_server_connect_timeout_s: "60"
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -4143,10 +4176,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_health_check_period_ms=10000
-        - RAY_health_check_timeout_ms=100000
-        - RAY_health_check_failure_threshold=10
-        - RAY_gcs_rpc_server_connect_timeout_s=60
+        RAY_health_check_period_ms: "10000"
+        RAY_health_check_timeout_ms: "100000"
+        RAY_health_check_failure_threshold: "10"
+        RAY_gcs_rpc_server_connect_timeout_s: "60"
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -4247,10 +4280,10 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        - RAY_health_check_period_ms=10000
-        - RAY_health_check_timeout_ms=100000
-        - RAY_health_check_failure_threshold=10
-        - RAY_gcs_rpc_server_connect_timeout_s=60
+        RAY_health_check_period_ms: "10000"
+        RAY_health_check_timeout_ms: "100000"
+        RAY_health_check_failure_threshold: "10"
+        RAY_gcs_rpc_server_connect_timeout_s: "60"
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -4283,7 +4316,7 @@
     byod:
       type: gpu
       runtime_env:
-        - RAY_INTERNAL_MEM_PROFILE_COMPONENTS=dashboard_agent
+        RAY_INTERNAL_MEM_PROFILE_COMPONENTS: "dashboard_agent"
       post_build_script: byod_agent_stress_test.sh
     cluster_compute: agent_stress_compute.yaml
 
@@ -4664,9 +4697,9 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4691,9 +4724,9 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4738,9 +4771,9 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4763,7 +4796,8 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
+        # For test_llm_serve_prefill_decode_with_data_parallelism
+        RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY: "1"
     anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
@@ -4783,10 +4817,11 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        # For test_llm_serve_prefill_decode_with_data_parallelism
+        RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY: "1"
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
@@ -4950,8 +4985,8 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
@@ -5057,9 +5092,9 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -5103,9 +5138,9 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -5150,7 +5185,7 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
+        RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES: "1"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
@@ -5172,10 +5207,10 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES: "1"
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_sglang_test.sh
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
@@ -5195,10 +5230,10 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
-        - RAY_SERVE_DEFAULT_HTTP_HOST=0.0.0.0
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
     # Kept in this working_dir rather than referenced across dirs
@@ -5220,9 +5255,9 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
     cluster_compute: llm_2x_1xl4.yaml
@@ -5242,10 +5277,10 @@
     byod:
       type: llm-cu130
       runtime_env:
-        - RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-        - RAY_SERVE_ENABLE_HA_PROXY=1
-        - RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
-        - RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE=2
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
+        RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE: "2"
       post_build_script: byod_llm_kv_router_test.sh
     anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
@@ -5330,7 +5365,7 @@
   cluster:
     byod:
       runtime_env:
-        - VLLM_DISABLE_COMPILE_CACHE=1
+        VLLM_DISABLE_COMPILE_CACHE: "1"
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
