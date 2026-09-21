@@ -534,6 +534,33 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ctx.target_max_block_size = old_target_max_block_size
 
 
+@pytest.mark.parametrize(
+    "filter_kwargs, map_batches_kwargs",
+    [
+        # Map->Map fusion refused: compute strategies differ.
+        ({"compute": ray.data.TaskPoolStrategy(size=2)}, {"batch_size": None}),
+        # Map->Map fusion refused: Filter can modify #rows and MapBatches sets
+        # batch_size.
+        ({}, {"batch_size": 5}),
+    ],
+)
+def test_random_shuffle_fuses_at_most_one_upstream_map(
+    ray_start_regular_shared_2_cpus, filter_kwargs, map_batches_kwargs
+):
+    # Two MapOperators left unfused by map fusion must not both be fused into the
+    # shuffle: only one `ctx.upstream_map_transformer` survives, so the outer map
+    # (here, Filter) would be silently dropped.
+    ds = ray.data.from_items(list(range(100)), override_num_blocks=10)
+    ds = ds.filter(lambda r: r["item"] % 2 == 0, **filter_kwargs)
+    ds = ds.map_batches(lambda b: b, **map_batches_kwargs)
+    ds = ds.random_shuffle()
+
+    assert sorted(extract_values("item", ds.take_all())) == list(range(0, 100, 2))
+    stats = ds.stats()
+    assert "Filter(<lambda>)->MapBatches(<lambda>)->RandomShuffle" not in stats
+    assert "MapBatches(<lambda>)->RandomShuffle" in stats
+
+
 @pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
     ray_start_regular_shared_2_cpus, shuffle, configure_shuffle_method
