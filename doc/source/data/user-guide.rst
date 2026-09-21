@@ -33,7 +33,7 @@ shows you how to achieve several tasks.
     monitoring-your-workload
     execution-configurations
     concurrent-dataset-execution
-    batch_inference
+    batch-inference
     performance-tips
     scaling-collation-functions
     custom-datasource-example
