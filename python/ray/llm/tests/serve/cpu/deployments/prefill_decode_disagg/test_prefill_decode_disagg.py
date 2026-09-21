@@ -243,6 +243,88 @@ class TestServingArgsParsing:
 
 
 class TestPDOrchestratorMixin:
+    def test_pd_skips_chat_tokenization(self):
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        decode_request = SimpleNamespace(
+            kv_transfer_params={"remote_engine_id": "prefill-1"}
+        )
+        server._forward_prefill_token_ids(
+            decode_request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+
+        online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
+
+        class Renderer:
+            tokenizer = object()
+
+            async def render_chat_async(self, *args, **kwargs):
+                raise AssertionError("vLLM should skip chat rendering and tokenization")
+
+        class ChatParams:
+            def with_defaults(self, *args, **kwargs):
+                return self
+
+        decode_request.cache_salt = None
+        decode_request.tool_choice = "none"
+        decode_request.build_tok_params = lambda model_config: object()
+        decode_request.build_chat_params = lambda *args: ChatParams()
+        renderer = online_renderer.OnlineRenderer.__new__(
+            online_renderer.OnlineRenderer
+        )
+        renderer.renderer = Renderer()
+        renderer.model_config = SimpleNamespace(
+            multimodal_config=None, enable_prompt_embeds=False
+        )
+        renderer.parser = None
+
+        conversation, engine_inputs = asyncio.run(
+            renderer.preprocess_chat(
+                decode_request,
+                messages=[{"role": "user", "content": "not rendered"}],
+                default_template=None,
+                default_template_content_format="auto",
+                default_template_kwargs=None,
+            )
+        )
+
+        assert conversation == []
+        assert engine_inputs[0]["prompt_token_ids"] == [1, 2, 3]
+
+    def test_pd_skips_completion_tokenization(self):
+        server = PDDecodeServer.__new__(PDDecodeServer)
+        server._pd_tokenize_once = True
+        decode_request = CompletionRequest(model="test-model", prompt="not-tokenized")
+
+        server._forward_prefill_token_ids(
+            decode_request, SimpleNamespace(prompt_token_ids=[1, 2, 3])
+        )
+
+        assert decode_request.prompt == [1, 2, 3]
+
+        online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
+
+        class Renderer:
+            async def render_cmpl_async(self, prompts, params, **kwargs):
+                return prompts
+
+        decode_request.build_tok_params = lambda model_config: object()
+        renderer = online_renderer.OnlineRenderer.__new__(
+            online_renderer.OnlineRenderer
+        )
+        renderer.renderer = Renderer()
+        renderer.model_config = SimpleNamespace(is_encoder_decoder=False)
+
+        engine_inputs = asyncio.run(
+            renderer.preprocess_completion(
+                decode_request,
+                prompt_input=decode_request.prompt,
+                prompt_embeds=None,
+            )
+        )
+
+        assert engine_inputs == [{"prompt_token_ids": [1, 2, 3]}]
+
     def test_prepare_prefill_request_limits_chat_to_one_token(self):
         from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
             DefaultConnectorBackend,
