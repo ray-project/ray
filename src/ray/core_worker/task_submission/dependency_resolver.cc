@@ -24,7 +24,7 @@ namespace core {
 namespace {
 
 void InlineDependencies(
-    const absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> &dependencies,
+    const absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> &dependencies,
     TaskSpecification &task,
     std::vector<ObjectID> *inlined_dependency_ids,
     std::vector<ObjectID> *contained_ids,
@@ -131,10 +131,7 @@ void LocalDependencyResolver::ResolveDependencies(
   }
 
   for (const auto &obj_id : local_dependency_ids) {
-    auto resolve_object_dependency = [this, task_id, obj_id](
-                                         std::shared_ptr<RayObject> obj) {
-      RAY_CHECK(obj != nullptr);
-
+    auto resolve_object_dependency = [this, task_id, obj_id](const RayObject &obj) {
       std::unique_ptr<TaskState> resolved_task_state = nullptr;
       std::vector<ObjectID> inlined_dependency_ids;
       std::vector<ObjectID> contained_ids;
@@ -148,7 +145,8 @@ void LocalDependencyResolver::ResolveDependencies(
           return;
         }
         auto &state = it->second;
-        state->local_dependencies[obj_id] = std::move(obj);
+        // Retain past this callback: remaining deps may arrive later.
+        state->local_dependencies[obj_id] = obj.Copy();
         if (--state->obj_dependencies_remaining == 0) {
           InlineDependencies(state->local_dependencies,
                              state->task,
@@ -179,7 +177,7 @@ void LocalDependencyResolver::ResolveDependencies(
     if (existing != nullptr) {
       RAY_LOG(DEBUG).WithField(obj_id) << "Object already exists in in-memory store, "
                                           "resolving dependency synchronously";
-      resolve_object_dependency(std::move(existing));
+      resolve_object_dependency(*existing);
     } else {
       RAY_LOG(DEBUG).WithField(obj_id) << "Object does not exist in in-memory store, "
                                           "resolving dependency asynchronously";

@@ -90,8 +90,8 @@ class LocalDependencyResolver {
     /// The task to be run.
     TaskSpecification task;
     /// The local dependencies to resolve for this task. Objects are nullptr if not yet
-    /// resolved.
-    absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> local_dependencies;
+    /// resolved. Each entry is this resolver's copy (not the store's).
+    absl::flat_hash_map<ObjectID, std::unique_ptr<RayObject>> local_dependencies;
     /// Number of local dependencies that aren't yet resolved (have nullptrs in the above
     /// map).
     size_t actor_dependencies_remaining;

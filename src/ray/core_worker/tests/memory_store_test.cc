@@ -88,10 +88,10 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   ASSERT_EQ(unhandled_count, 0);
 
   // Check delete after async get.
-  memory_store->GetAsync({id2}, [](std::shared_ptr<RayObject> obj) {});
+  memory_store->GetAsync({id2}, [](const RayObject &) {});
   memory_store->Put(obj1, id1, /*has_reference=*/true);
   memory_store->Put(obj2, id2, /*has_reference=*/true);
-  memory_store->GetAsync({id1}, [](std::shared_ptr<RayObject> obj) {});
+  memory_store->GetAsync({id1}, [](const RayObject &) {});
   memory_store->Delete({id1, id2});
   ASSERT_EQ(unhandled_count, 0);
 }
@@ -103,10 +103,12 @@ TEST(TestMemoryStore, GetAsyncInvokesWhenObjectArrives) {
   const ObjectID object_id = ObjectID::FromRandom();
   RayObject obj(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
 
-  std::promise<std::shared_ptr<RayObject>> done;
+  std::promise<void> done;
   const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = memory_store.GetAsync(
-      object_id,
-      [&done](std::shared_ptr<RayObject> object) { done.set_value(std::move(object)); });
+      object_id, [&done](const RayObject &object) {
+        ASSERT_TRUE(object.HasMetadata());
+        done.set_value();
+      });
   ASSERT_NE(callback_id, 0u);
 
   memory_store.Put(obj, object_id, /*has_reference=*/true);
@@ -122,13 +124,71 @@ TEST(TestMemoryStore, GetAsyncInvokesWhenAlreadyPresent) {
   RayObject obj(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   memory_store.Put(obj, object_id, /*has_reference=*/true);
 
-  std::promise<std::shared_ptr<RayObject>> done;
+  std::promise<void> done;
   const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = memory_store.GetAsync(
-      object_id,
-      [&done](std::shared_ptr<RayObject> object) { done.set_value(std::move(object)); });
+      object_id, [&done](const RayObject &object) {
+        ASSERT_TRUE(object.HasMetadata());
+        done.set_value();
+      });
   ASSERT_EQ(callback_id, 0u);
   ASSERT_EQ(done.get_future().wait_for(std::chrono::seconds(5)),
             std::future_status::ready);
+}
+
+TEST(TestMemoryStore, GetAsyncBorrowsStoredObject) {
+  InstrumentedIOContextWithThread io_context("GetAsyncBorrowsStoredObject");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+  auto buffer = MakeLocalMemoryBufferFromString("hello");
+  RayObject obj(buffer, nullptr, std::vector<rpc::ObjectReference>(), /*copy_data=*/true);
+  memory_store.Put(obj, object_id, /*has_reference=*/true);
+
+  const std::shared_ptr<RayObject> stored = memory_store.GetIfExists(object_id);
+  ASSERT_NE(stored, nullptr);
+
+  std::promise<void> first_done;
+  std::promise<void> second_done;
+  ASSERT_EQ(memory_store.GetAsync(object_id,
+                                  [&first_done, stored](const RayObject &object) {
+                                    ASSERT_EQ(&object, stored.get());
+                                    std::unique_ptr<RayObject> copy = object.Copy();
+                                    ASSERT_NE(copy.get(), stored.get());
+                                    ASSERT_EQ(copy->GetData()->Data(),
+                                              stored->GetData()->Data());
+                                    first_done.set_value();
+                                  }),
+            0u);
+  ASSERT_EQ(memory_store.GetAsync(object_id,
+                                  [&second_done, stored](const RayObject &object) {
+                                    ASSERT_EQ(&object, stored.get());
+                                    second_done.set_value();
+                                  }),
+            0u);
+
+  ASSERT_EQ(first_done.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+  ASSERT_EQ(second_done.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+  ASSERT_NE(memory_store.GetIfExists(object_id), nullptr);
+}
+
+TEST(TestMemoryStore, RayObjectCopyPreservesDataFactory) {
+  auto metadata = MakeLocalMemoryBufferFromString("1");
+  int calls = 0;
+  auto factory = [&calls]() -> std::shared_ptr<Buffer> {
+    ++calls;
+    return MakeLocalMemoryBufferFromString("hello");
+  };
+  RayObject original(metadata, std::vector<rpc::ObjectReference>(), factory);
+  std::unique_ptr<RayObject> copy = original.Copy();
+  ASSERT_NE(copy.get(), &original);
+  const std::shared_ptr<Buffer> first = copy->GetData();
+  const std::shared_ptr<Buffer> second = copy->GetData();
+  ASSERT_EQ(calls, 2);
+  ASSERT_NE(first.get(), second.get());
+  ASSERT_NE(original.GetData(), nullptr);
+  ASSERT_EQ(calls, 3);
 }
 
 TEST(TestMemoryStore, CancelAsyncGetRemovesCallback) {
@@ -138,7 +198,7 @@ TEST(TestMemoryStore, CancelAsyncGetRemovesCallback) {
   const ObjectID object_id = ObjectID::FromRandom();
 
   const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id =
-      memory_store.GetAsync(object_id, [](std::shared_ptr<RayObject>) {});
+      memory_store.GetAsync(object_id, [](const RayObject &) {});
   ASSERT_NE(callback_id, 0u);
   {
     absl::MutexLock lock(&memory_store.mu_);

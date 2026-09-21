@@ -1220,7 +1220,7 @@ Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
   // resolves some race conditions in resource release (#16025).
   auto existing_object = memory_store_->GetIfExists(object_id);
   if (existing_object != nullptr) {
-    PopulateObjectStatus(object_id, existing_object, &object_status);
+    PopulateObjectStatus(object_id, *existing_object, &object_status);
   }
   *serialized_object_status = object_status.SerializeAsString();
   return Status::OK();
@@ -1852,7 +1852,7 @@ uint64_t CoreWorker::WaitAsync(const ObjectID &object_id,
       // ``this``; CompleteWaitAsync returns if the handle is already gone.
       std::shared_ptr<WaitAsyncRegistry> registry = wait_async_;
       wait_async_->requests[handle]->memory_callback_id = memory_store_->GetAsync(
-          object_id, [registry, handle](std::shared_ptr<RayObject>) {
+          object_id, [registry, handle](const RayObject &) {
             CompleteWaitAsync(*registry, handle, Status::OK());
           });
     }
@@ -4085,14 +4085,14 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
   // its ref count is > 0.
   memory_store_->GetAsync(object_id,
                           [this, object_id, reply, send_reply_callback](
-                              const std::shared_ptr<RayObject> &obj) {
+                              const RayObject &obj) {
                             PopulateObjectStatus(object_id, obj, reply);
                             send_reply_callback(Status::OK(), nullptr, nullptr);
                           });
 }
 
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
-                                      const std::shared_ptr<RayObject> &obj,
+                                      const RayObject &obj,
                                       rpc::GetObjectStatusReply *reply) {
   // If obj is the concrete object value, it is small, so we
   // send the object back to the caller in the GetObjectStatus
@@ -4102,15 +4102,15 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
   // have to facilitate a Plasma object transfer to get the
   // object value.
   auto *object = reply->mutable_object();
-  if (obj->HasData()) {
-    const auto &data = obj->GetData();
+  if (obj.HasData()) {
+    const auto &data = obj.GetData();
     object->set_data(data->Data(), data->Size());
   }
-  if (obj->HasMetadata()) {
-    const auto &metadata = obj->GetMetadata();
+  if (obj.HasMetadata()) {
+    const auto &metadata = obj.GetMetadata();
     object->set_metadata(metadata->Data(), metadata->Size());
   }
-  for (const auto &nested_ref : obj->GetNestedRefs()) {
+  for (const auto &nested_ref : obj.GetNestedRefs()) {
     object->add_nested_inlined_refs()->CopyFrom(nested_ref);
   }
   reply->set_status(rpc::GetObjectStatusReply::CREATED);
@@ -4876,11 +4876,14 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
        python_user_callback,
        success_callback = std::move(success_callback),
        fallback_callback =
-           std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
-        if (ray_object->IsInPlasmaError()) {
-          fallback_callback(ray_object, object_id, python_user_callback);
+           std::move(fallback_callback)](const RayObject &ray_object) {
+        // SetResultCallback is the Cython ABI (shared_ptr). Copy so Python can
+        // retain past this callback.
+        std::shared_ptr<RayObject> shared_object(ray_object.Copy());
+        if (shared_object->IsInPlasmaError()) {
+          fallback_callback(shared_object, object_id, python_user_callback);
         } else {
-          success_callback(ray_object, object_id, python_user_callback);
+          success_callback(shared_object, object_id, python_user_callback);
         }
       });
 }

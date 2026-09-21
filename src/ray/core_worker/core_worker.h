@@ -1702,7 +1702,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
-                            const std::shared_ptr<RayObject> &obj,
+                            const RayObject &obj,
                             rpc::GetObjectStatusReply *reply);
 
   ///

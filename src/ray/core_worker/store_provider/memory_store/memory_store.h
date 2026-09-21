@@ -118,7 +118,9 @@ class CoreWorkerMemoryStore {
    * @brief Asynchronously get an object from the object store.
    *
    * The object is not removed from storage after GetAsync (TODO(ekl): integrate
-   * this with object GC).
+   * this with object GC). The callback borrows the stored object; it is valid
+   * only until the callback returns (the posted work holds a ``shared_ptr``).
+   * Callers that need the value afterward must ``RayObject::Copy()``.
    *
    * @param[in] object_id The object id to get.
    * @param[in] callback Invoked with the retrieved object once it is available.
@@ -127,7 +129,7 @@ class CoreWorkerMemoryStore {
    * context.
    */
   AsyncGetCallbackId GetAsync(const ObjectID &object_id,
-                              std::function<void(std::shared_ptr<RayObject>)> callback);
+                              std::function<void(const RayObject &)> callback);
 
   /**
    * @brief Remove a callback previously queued by GetAsync.
@@ -247,7 +249,7 @@ class CoreWorkerMemoryStore {
 
   struct AsyncGetRequest {
     AsyncGetCallbackId id;
-    std::function<void(std::shared_ptr<RayObject>)> callback;
+    std::function<void(const RayObject &)> callback;
   };
 
   /// Map from object ID to its async get requests.

@@ -142,7 +142,7 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
       object_allocator_(std::move(object_allocator)) {}
 
 CoreWorkerMemoryStore::AsyncGetCallbackId CoreWorkerMemoryStore::GetAsync(
-    const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
+    const ObjectID &object_id, std::function<void(const RayObject &)> callback) {
   absl::MutexLock lock(&mu_);
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>::iterator iter =
       objects_.find(object_id);
@@ -158,8 +158,10 @@ CoreWorkerMemoryStore::AsyncGetCallbackId CoreWorkerMemoryStore::GetAsync(
   }
   std::shared_ptr<RayObject> &object_ptr = iter->second;
   object_ptr->SetAccessed();
+  // post() takes std::function (copyable). The captured shared_ptr keeps the
+  // borrow valid for the callback; do not Copy() unless the caller retains.
   io_context_.post(
-      [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
+      [callback = std::move(callback), object_ptr]() { callback(*object_ptr); },
       "CoreWorkerMemoryStore.GetAsync.Callback");
   return 0;
 }
@@ -269,7 +271,7 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
   io_context_.post(
       [async_callbacks = std::move(async_callbacks), object_entry]() {
         for (const AsyncGetRequest &request : async_callbacks) {
-          request.callback(object_entry);
+          request.callback(*object_entry);
         }
       },
       "CoreWorkerMemoryStore.Put.get_async_callbacks");
