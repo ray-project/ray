@@ -103,7 +103,7 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
     assert handle.remote().result() == "from_f"
-    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get("http://127.0.0.1:8000/say_hi_f").text == "from_f"
 
     serve.context._global_client = None
     ray.shutdown()
@@ -118,8 +118,8 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
     assert handle.remote().result() == "from_g"
-    assert httpx.get("http://localhost:8000/say_hi_g").text == "from_g"
-    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get("http://127.0.0.1:8000/say_hi_g").text == "from_g"
+    assert httpx.get("http://127.0.0.1:8000/say_hi_f").text == "from_f"
 
 
 def test_connect(ray_shutdown):
@@ -583,7 +583,7 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
 
     # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/").text == "May I take your order?",
+        lambda: httpx.get("http://127.0.0.1:8000/").text == "May I take your order?",
         timeout=60,
     )
 
