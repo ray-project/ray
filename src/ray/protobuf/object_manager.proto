@@ -36,6 +36,13 @@ message PushRequest {
   uint64 metadata_size = 7;
   // The chunk data
   bytes data = 8;
+  // Plasma move semantics: set by the producer when this push is the move
+  // target for the object (producer will free its copy once the transfer is
+  // acked). Tells the consumer to pin the received copy as the new primary and
+  // report the primary-location move to the owner as part of the receive path,
+  // before acking the sealing chunk. False for non-move pushes (e.g. ray.put
+  // objects, or when move semantics is disabled).
+  bool is_move = 9;
 }
 
 message PullRequest {

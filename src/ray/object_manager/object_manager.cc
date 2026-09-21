@@ -211,7 +211,11 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
-  object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
+  // If this node move-freed the object as a producer, tag the REMOVED update so
+  // the owner fires the "freed on producer" callback (fire-once: erase here).
+  const bool freed_by_move = move_freed_object_ids_.erase(object_id) > 0;
+  object_directory_->ReportObjectRemoved(
+      object_id, self_node_id_, object_info, freed_by_move);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
   // it was needed by an active pull request.
@@ -519,29 +523,70 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
-  push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
-        rpc_service_.post(
-            [=]() {
-              // Post to the multithreaded RPC event loop so that data is copied
-              // off of the main thread.
-              SendObjectChunk(
-                  push_id,
-                  object_id,
-                  node_id,
-                  chunk_id,
-                  rpc_client,
-                  [=](const Status &status) {
-                    // Post back to the main event loop because the
-                    // PushManager is not thread-safe.
-                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
-                                        "ObjectManager.Push");
-                  },
-                  chunk_reader,
-                  from_disk);
-            },
-            "ObjectManager.Push");
-      });
+  const int64_t num_chunks = chunk_reader->GetNumChunks();
+  const bool move_semantics_enabled =
+      RayConfig::instance().enable_plasma_move_semantics();
+  // A move (producer frees its copy) applies only to non-put objects — put
+  // objects are lineage-ineligible and must keep the producer's primary copy.
+  const bool is_move = move_semantics_enabled && !ObjectID::IsForPut(object_id);
+
+  if (move_semantics_enabled) {
+    push_ack_tracking_[std::make_pair(object_id, node_id)] =
+        PushAckState{num_chunks, /*acked_chunks=*/0, /*failed=*/false, is_move};
+  }
+
+  push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
+    rpc_service_.post(
+        [=]() {
+          // Post to the multithreaded RPC event loop so that data is copied
+          // off of the main thread.
+          SendObjectChunk(
+              push_id,
+              object_id,
+              node_id,
+              chunk_id,
+              rpc_client,
+              [=](const Status &status) {
+                // Post back to the main event loop because the
+                // PushManager is not thread-safe.
+                main_service_->post(
+                    [this, object_id, node_id, status, move_semantics_enabled]() {
+                      push_manager_->OnChunkComplete();
+                      if (!move_semantics_enabled) {
+                        return;
+                      }
+                      auto it =
+                          push_ack_tracking_.find(std::make_pair(object_id, node_id));
+                      if (it == push_ack_tracking_.end()) {
+                        return;
+                      }
+                      if (!status.ok()) {
+                        it->second.failed = true;
+                      }
+                      it->second.acked_chunks++;
+                      if (it->second.acked_chunks == it->second.total_chunks) {
+                        const bool success = !it->second.failed;
+                        const bool chunk_is_move = it->second.is_move;
+                        push_ack_tracking_.erase(it);
+                        if (success && chunk_is_move) {
+                          // The producer will free its copy (on_push_complete_
+                          // below). Remember so HandleObjectDeleted tags the
+                          // eventual REMOVED update as a move free.
+                          move_freed_object_ids_.insert(object_id);
+                        }
+                        if (success && on_push_complete_) {
+                          on_push_complete_(object_id, node_id, chunk_is_move);
+                        }
+                      }
+                    },
+                    "ObjectManager.Push");
+              },
+              chunk_reader,
+              from_disk,
+              is_move);
+        },
+        "ObjectManager.Push");
+  });
 }
 
 void ObjectManager::SendObjectChunk(
@@ -552,7 +597,8 @@ void ObjectManager::SendObjectChunk(
     std::shared_ptr<rpc::ObjectManagerClientInterface> rpc_client,
     std::function<void(const Status &)> on_complete,
     std::shared_ptr<ChunkObjectReader> chunk_reader,
-    bool from_disk) {
+    bool from_disk,
+    bool is_move) {
   double start_time = absl::GetCurrentTimeNanos() / 1e9;
   rpc::PushRequest push_request;
   // Set request header
@@ -564,6 +610,7 @@ void ObjectManager::SendObjectChunk(
   push_request.set_data_size(chunk_reader->GetObject().GetObjectSize());
   push_request.set_metadata_size(chunk_reader->GetObject().GetMetadataSize());
   push_request.set_chunk_index(chunk_index);
+  push_request.set_is_move(is_move);
 
   // read a chunk into push_request and handle errors.
   auto optional_chunk = chunk_reader->GetChunk(chunk_index);
@@ -609,11 +656,21 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
   uint64_t chunk_index = request.chunk_index();
   uint64_t metadata_size = request.metadata_size();
   uint64_t data_size = request.data_size();
-  const rpc::Address &owner_address = request.owner_address();
+  const bool is_move = request.is_move();
+  // Copy the owner address: `request` does not outlive a deferred (posted) reply.
+  rpc::Address owner_address = request.owner_address();
   const std::string &data = request.data();
 
-  bool success = ReceiveObjectChunk(
-      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
+  bool object_sealed = false;
+  bool success = ReceiveObjectChunk(node_id,
+                                    object_id,
+                                    owner_address,
+                                    data_size,
+                                    metadata_size,
+                                    chunk_index,
+                                    data,
+                                    is_move,
+                                    &object_sealed);
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
@@ -621,6 +678,34 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
                   << " of object " << object_id << ": overall "
                   << num_chunks_received_total_failed_ << "/"
                   << num_chunks_received_total_ << " failed";
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  if (is_move && object_sealed) {
+    // Plasma move semantics: the object is sealed but its buffer-pool
+    // create-reference is deliberately held (WriteChunk deferred the release),
+    // so it is refcount>0 and cannot be LRU-evicted. Pin it as the new primary
+    // on the main service (LocalObjectManager is main-thread-only), then drop
+    // the buffer-pool reference, and only then ack this chunk — so the producer
+    // (which frees its copy once the whole push is acked) releases only after
+    // the consumer is durably pinned. On pin failure we ack not-OK; the
+    // producer keeps its copy and the move falls back to a normal copy.
+    main_service_->post(
+        [this, object_id, owner_address, send_reply_callback]() {
+          const bool pinned = on_moved_object_received_ &&
+                              on_moved_object_received_(object_id, owner_address);
+          // Release the buffer-pool create-reference now that the pin holds its
+          // own reference (or, on failure, so the sealed copy can be reclaimed).
+          buffer_pool_.ReleaseObject(object_id);
+          send_reply_callback(pinned
+                                  ? Status::OK()
+                                  : Status::IOError("move-semantics consumer pin failed"),
+                              nullptr,
+                              nullptr);
+        },
+        "ObjectManager.MovePinAndAck");
+    return;
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -632,7 +717,10 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t data_size,
                                        uint64_t metadata_size,
                                        uint64_t chunk_index,
-                                       const std::string &data) {
+                                       const std::string &data,
+                                       bool is_move,
+                                       bool *object_sealed) {
+  *object_sealed = false;
   num_bytes_received_total_ += data.size();
   RAY_LOG(DEBUG).WithField(object_id)
       << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
@@ -660,7 +748,14 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
 
   if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
+    // For a move push, defer the buffer-pool release so the sealed object stays
+    // pinned (refcount>0) until the consumer pins it — see HandlePush.
+    *object_sealed = buffer_pool_.WriteChunk(object_id,
+                                             data_size,
+                                             metadata_size,
+                                             chunk_index,
+                                             data,
+                                             /*defer_release=*/is_move);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
