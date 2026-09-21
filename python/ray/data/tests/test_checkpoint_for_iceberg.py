@@ -20,12 +20,15 @@ from ray.data._internal.savemode import SaveMode
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint._iceberg_checkpoint import (
-    _OPERATION_PROPERTY,
+    _GENERATION_PROPERTY,
     IcebergCheckpointCoordinator,
     IcebergCheckpointDatasink,
-    _deserialize_write_result,
-    _serialize_write_result,
+    _TaskCheckpointState,
     write_task_checkpoint,
+)
+from ray.data.checkpoint._iceberg_checkpoint_serialization import (
+    deserialize_write_result,
+    serialize_write_result,
 )
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
@@ -82,8 +85,7 @@ def _coordinator(tmp_path, table_uuid="table-uuid", **config_kwargs):
 
 def _publish_task(config, coordinator, artifact_suffix="task", result=None):
     result = result or _write_result()
-    task_id = f"{coordinator.operation_id}-{artifact_suffix}"
-    artifact_id = coordinator.task_artifact_id(task_id, result)
+    artifact_id = f"{coordinator.generation_id}-{artifact_suffix}"
     writer = BatchBasedCheckpointWriter(config)
     pending = writer.write_pending_checkpoint(pa.array([1, 2]), artifact_id)
     assert pending is not None
@@ -94,7 +96,7 @@ def _publish_task(config, coordinator, artifact_suffix="task", result=None):
 
 def test_write_result_arrow_round_trip():
     result = _write_result()
-    restored = _deserialize_write_result(_serialize_write_result(result))
+    restored = deserialize_write_result(serialize_write_result(result))
 
     assert len(restored.data_files) == 1
     restored_file = restored.data_files[0]
@@ -109,19 +111,19 @@ def test_write_result_rejects_upsert_keys():
     result = _write_result()
     result.upsert_keys = pa.table({"id": [1]})
     with pytest.raises(ValueError, match="UPSERT"):
-        _serialize_write_result(result)
+        serialize_write_result(result)
 
 
 def test_manifest_adoption_terminal_and_new_generation(tmp_path):
     config, coordinator = _coordinator(tmp_path)
-    operation_id = coordinator.operation_id
+    generation_id = coordinator.generation_id
     _publish_task(config, coordinator)
 
     adopted = IcebergCheckpointCoordinator(
         config, SimpleNamespace(table_identifier="db.table")
     )
     adopted.initialize("table-uuid")
-    assert adopted.operation_id == operation_id
+    assert adopted.generation_id == generation_id
     assert len(adopted.load_active_results()) == 1
 
     adopted.mark_terminal()
@@ -129,14 +131,14 @@ def test_manifest_adoption_terminal_and_new_generation(tmp_path):
         config, SimpleNamespace(table_identifier="db.table")
     )
     fresh.initialize("table-uuid")
-    assert fresh.operation_id != operation_id
+    assert fresh.generation_id != generation_id
     assert fresh.load_active_results() == []
     fresh.discard_empty_generation()
 
 
 def test_interrupted_manifest_publication_preserves_previous_version(tmp_path):
     config, coordinator = _coordinator(tmp_path)
-    operation_id = coordinator.operation_id
+    generation_id = coordinator.generation_id
     manifest_dir = tmp_path / "_iceberg" / "manifests"
     original_manifest = manifest_dir / "00000000000000000000.json"
     assert original_manifest.exists()
@@ -148,7 +150,7 @@ def test_interrupted_manifest_publication_preserves_previous_version(tmp_path):
     )
     adopted.initialize("table-uuid")
 
-    assert adopted.operation_id == operation_id
+    assert adopted.generation_id == generation_id
     assert original_manifest.exists()
     adopted.mark_terminal()
     assert original_manifest.exists()
@@ -174,7 +176,7 @@ def test_namespace_identity_mismatch(tmp_path):
 def test_missing_and_corrupt_task_metadata_fail_closed(tmp_path):
     config, coordinator = _coordinator(tmp_path)
     writer = BatchBasedCheckpointWriter(config)
-    artifact_id = f"{coordinator.operation_id}-missing"
+    artifact_id = f"{coordinator.generation_id}-missing"
     pending = writer.write_pending_checkpoint(pa.array([1]), artifact_id)
     assert pending is not None
     writer.commit_checkpoint(pending)
@@ -186,7 +188,7 @@ def test_missing_and_corrupt_task_metadata_fail_closed(tmp_path):
     payload_path = _publish_task(config, coordinator, artifact_suffix="corrupt")
     del payload_path
     task_dir = (
-        tmp_path / "_iceberg" / "generations" / coordinator.operation_id / "tasks"
+        tmp_path / "_iceberg" / "generations" / coordinator.generation_id / "tasks"
     )
     arrow_path = next(task_dir.glob("*.arrow"))
     arrow_path.write_bytes(b"corrupt")
@@ -197,8 +199,7 @@ def test_missing_and_corrupt_task_metadata_fail_closed(tmp_path):
 def test_metadata_without_row_checkpoint_is_ignored(tmp_path):
     config, coordinator = _coordinator(tmp_path)
     result = _write_result()
-    task_id = f"{coordinator.operation_id}-orphan"
-    artifact_id = coordinator.task_artifact_id(task_id, result)
+    artifact_id = f"{coordinator.generation_id}-orphan"
     checkpoint_path = tmp_path / f"{artifact_id}.parquet"
     coordinator.persist_task_result(artifact_id, str(checkpoint_path), result)
     assert coordinator.load_active_results() == []
@@ -254,14 +255,18 @@ def test_task_checkpoint_retry_reuses_committed_result(tmp_path):
 def test_task_checkpoint_lookup_does_not_list_namespace(tmp_path):
     config, coordinator = _coordinator(tmp_path)
     path = _publish_task(config, coordinator, artifact_suffix="task")
-    task_id = f"{coordinator.operation_id}-task"
+    task_id = f"{coordinator.generation_id}-task"
 
     with patch.object(
         coordinator,
         "_selected_row_checkpoint_paths",
         side_effect=AssertionError("namespace listing is not allowed"),
     ):
-        assert coordinator.find_committed_task_checkpoint(task_id) == path
+        checkpoint = coordinator.resolve_task_checkpoint(task_id)
+
+    assert checkpoint.state is _TaskCheckpointState.COMMITTED
+    assert checkpoint.result is not None
+    assert path.endswith(f"{task_id}.parquet")
 
 
 def test_task_checkpoint_retry_recovers_metadata_before_row_commit(tmp_path):
@@ -269,9 +274,9 @@ def test_task_checkpoint_retry_recovers_metadata_before_row_commit(tmp_path):
     sink = SimpleNamespace(coordinator=coordinator, _config=config)
     writer = BatchBasedCheckpointWriter(config)
     block = BlockAccessor.for_block(pa.table({"id": [1]}))
-    task_id = f"{coordinator.operation_id}-write-0"
+    task_id = f"{coordinator.generation_id}-write-0"
     result = _write_result("file:///first")
-    artifact_id = coordinator.task_artifact_id(task_id, result)
+    artifact_id = task_id
     pending = writer.write_pending_checkpoint(pa.array([1]), artifact_id)
     assert pending is not None
     coordinator.persist_task_result(artifact_id, pending.committed_path, result)
@@ -345,7 +350,7 @@ def test_legacy_row_only_checkpoint_fails(tmp_path):
 
 def test_merge_results_deduplicates_and_rejects_conflicts():
     first = _write_result("file:///same")
-    duplicate = _deserialize_write_result(_serialize_write_result(first))
+    duplicate = deserialize_write_result(serialize_write_result(first))
     merged = IcebergCheckpointDatasink._merge_results([first], [duplicate])
     assert len(merged) == 1
     assert len(merged[0].data_files) == 1
@@ -399,7 +404,7 @@ def test_checkpointed_iceberg_rejects_unsupported_modes(tmp_path, mode):
 def test_checkpointed_iceberg_rejects_reserved_snapshot_property(tmp_path):
     config = CheckpointConfig(id_column="id", checkpoint_path=str(tmp_path))
     sink = IcebergDatasink(
-        "db.table", snapshot_properties={_OPERATION_PROPERTY: "user-value"}
+        "db.table", snapshot_properties={_GENERATION_PROPERTY: "user-value"}
     )
     wrapped = IcebergCheckpointDatasink(sink, config)
     with pytest.raises(ValueError, match="reserved"):
@@ -465,8 +470,8 @@ def test_append_protocol_commits_snapshot_marker_without_ray_cluster(tmp_path):
     snapshots = table.snapshots()
     assert len(snapshots) == 1
     assert (
-        snapshots[0].summary.get(_OPERATION_PROPERTY)
-        == wrapped.coordinator.operation_id
+        snapshots[0].summary.get(_GENERATION_PROPERTY)
+        == wrapped.coordinator.generation_id
     )
 
 
@@ -496,7 +501,7 @@ def test_late_commit_discards_uncommitted_task_checkpoints(tmp_path):
     )
 
     wrapped._sink._snapshot_properties = {
-        _OPERATION_PROPERTY: wrapped.coordinator.operation_id
+        _GENERATION_PROPERTY: wrapped.coordinator.generation_id
     }
     wrapped._sink.on_write_complete(
         WriteResult(1, committed_block.nbytes, [committed_result])
