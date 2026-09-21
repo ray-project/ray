@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--shuffle-strategy",
         required=False,
-        default=ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
+        default=ShuffleStrategy.SHUFFLE_V2.value,
         nargs="?",
         type=str,
         help="Strategy to use when shuffling data (see ShuffleStrategy for accepted values)",
