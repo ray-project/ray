@@ -1,6 +1,7 @@
+import ipaddress
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Iterable, List, Optional, Union
 
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
@@ -11,6 +12,48 @@ VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
+
+# The egress allowlist that permits every destination: what an "open"
+# network policy becomes when a sandbox created with an allowlist is widened
+# back at runtime.
+ALLOW_ALL_CIDRS = ("0.0.0.0/0", "::/0")
+
+
+def normalize_cidr_allowlist(cidrs: Iterable[str]) -> List[str]:
+    """Validate egress allowlist entries and return them in canonical form.
+
+    Every entry must be an IPv4 or IPv6 address or network (``10.0.1.5`` or
+    ``10.0.1.0/24``); host bits are cleared, so ``10.0.1.5/24`` becomes
+    ``10.0.1.0/24``. The entries end up in an nftables ruleset, so anything
+    that is not an address literal, such as a host name, is rejected here
+    rather than at sandbox start.
+
+    Args:
+        cidrs: The entries to validate.
+
+    Returns:
+        The canonical ``str(ipaddress.ip_network(...))`` of each entry, in
+        the original order.
+
+    Raises:
+        ValueError: If an entry is not an IP address or network.
+    """
+    if isinstance(cidrs, (str, bytes)):
+        raise ValueError(
+            f"cidr_allowlist must be a list of CIDR strings, not {cidrs!r}"
+        )
+    normalized: List[str] = []
+    for entry in cidrs:
+        try:
+            network = ipaddress.ip_network(str(entry).strip(), strict=False)
+        except ValueError as err:
+            raise ValueError(
+                f"cidr_allowlist entry {entry!r} is not an IP address or "
+                f"CIDR network: {err}"
+            ) from None
+        normalized.append(str(network))
+    return normalized
+
 
 # Docker's default capability set (see
 # https://docs.docker.com/engine/containers/run/#runtime-privilege-and-linux-capabilities,
@@ -114,6 +157,16 @@ class SandboxConfig:
             read-only (like ``docker --dns``); useful when public DNS is
             blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public";
             overrides the host file for "host". Only valid with those modes.
+        cidr_allowlist: Egress allowlist for network="public". None
+            (default) leaves egress unrestricted; a list restricts every
+            protocol to destinations inside the listed IPv4/IPv6 networks,
+            enforced by an nftables ruleset in the sandbox's private network
+            namespace that code inside the sandbox cannot see or change. The
+            one exception: UDP and TCP port 53 to the resolvers in ``dns``
+            stays open so names still resolve. ``[]`` allows nothing but
+            DNS. Entries are normalized (``10.0.1.5/24`` -> ``10.0.1.0/24``)
+            and rejected if they are not IP literals. Requires the ``nft``
+            binary on the node. Only valid with network="public".
         capabilities: Linux capabilities for the container process. None
             (default) keeps the runtime default (what ``runsc spec`` emits);
             otherwise the bounding/effective/permitted sets are written
@@ -141,6 +194,7 @@ class SandboxConfig:
     rootless: bool = True
     network: str = "none"
     dns: Optional[List[str]] = None
+    cidr_allowlist: Optional[List[str]] = None
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
     readonly: bool = True
@@ -170,6 +224,14 @@ class SandboxConfig:
                 "dns is only valid with network='public' or network='host'; "
                 f"network={self.network!r} does not mount a resolv.conf."
             )
+        if self.cidr_allowlist is not None:
+            if self.network != "public":
+                raise ValueError(
+                    "cidr_allowlist is only valid with network='public', the "
+                    "mode that gives the sandbox a private network namespace "
+                    f"to filter in; network={self.network!r} has none."
+                )
+            self.cidr_allowlist = normalize_cidr_allowlist(self.cidr_allowlist)
 
 
 GVisorSandboxConfig = SandboxConfig

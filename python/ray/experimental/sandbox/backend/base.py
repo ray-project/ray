@@ -152,3 +152,18 @@ class BaseSandboxBackend(ABC):
             Current SandboxStatus value.
         """
         pass
+
+    def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of a running sandbox.
+
+        Optional: a backend without a per-sandbox destination filter leaves
+        this unimplemented.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            cidrs: The new allowlist; see ``SandboxConfig.cidr_allowlist``.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support changing a sandbox's "
+            "egress allowlist"
+        )

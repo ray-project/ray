@@ -9,6 +9,7 @@ import grpclib.client
 if typing.TYPE_CHECKING:
     import grpclib.server
 
+import ray.experimental.sandbox.http._proto.sandbox_control_pb2
 import ray.experimental.sandbox.http._proto.sandbox_exec_pb2
 
 

@@ -43,6 +43,7 @@ EXPECTED_MODEL_FIELDS = {
         "client_token",
         "dns",
         "shell",
+        "cidr_allowlist",
     },
     "ResourceSpec": {
         "cpu_request",
@@ -59,6 +60,7 @@ EXPECTED_MODEL_FIELDS = {
         "ttl_seconds",
         "expires_at",
         "network",
+        "cidr_allowlist",
         "labels",
         "error",
     },
@@ -128,6 +130,27 @@ def test_sandbox_status_enum_is_stable() -> None:
         "error",
         "terminated",
     }
+
+
+def test_cidr_allowlist_is_normalized_and_public_only() -> None:
+    from ray.experimental.sandbox.http.schemas import CreateSandboxRequest
+
+    request = CreateSandboxRequest(
+        image="python:3.12",
+        network="public",
+        cidr_allowlist=["10.0.1.5/24", "52.0.0.1"],
+    )
+    assert request.cidr_allowlist == ["10.0.1.0/24", "52.0.0.1/32"]
+    assert (
+        CreateSandboxRequest(image="python:3.12", network="public").cidr_allowlist
+        is None
+    )
+    with pytest.raises(ValueError, match="network='public'"):
+        CreateSandboxRequest(image="python:3.12", cidr_allowlist=["10.0.0.0/8"])
+    with pytest.raises(ValueError, match="example.com"):
+        CreateSandboxRequest(
+            image="python:3.12", network="public", cidr_allowlist=["example.com"]
+        )
 
 
 def test_network_modes_track_the_core_config() -> None:

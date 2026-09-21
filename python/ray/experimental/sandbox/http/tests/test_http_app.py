@@ -640,6 +640,31 @@ def test_invalid_network_mode_is_422(fake_resolver: FakeResolver) -> None:
     assert response.status_code == 422
 
 
+def test_create_passes_cidr_allowlist_and_reports_it(
+    fake_resolver: FakeResolver,
+) -> None:
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, network="public", cidr_allowlist=["10.0.1.5/24"])
+        assert info["cidr_allowlist"] == ["10.0.1.0/24"]
+        running = _wait_running(client, info["sandbox_id"])
+        assert running["status"] == "running", running
+        assert running["network"] == "public"
+        assert running["cidr_allowlist"] == ["10.0.1.0/24"]
+        (runtime,) = fake_resolver.runtimes
+        assert runtime.create_calls[0]["cidr_allowlist"] == ["10.0.1.0/24"]
+
+
+def test_cidr_allowlist_without_public_network_is_422(
+    fake_resolver: FakeResolver,
+) -> None:
+    client = _client(fake_resolver)
+    response = client.post(
+        f"{BASE}/sandboxes",
+        json={"image": "python:3.12", "cidr_allowlist": ["10.0.0.0/8"]},
+    )
+    assert response.status_code == 422
+
+
 def test_chunked_file_upload_via_append(fake_resolver: FakeResolver) -> None:
     """PUT ?append=true extends the file, so clients can chunk large uploads
     under proxy body-size limits."""

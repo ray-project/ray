@@ -26,7 +26,11 @@ from ray.experimental.sandbox.http.tests.conftest import (
 try:
     import modal
     from grpclib.server import Server
-    from modal.exception import InvalidError, SandboxFilesystemNotFoundError
+    from modal.exception import (
+        ConflictError,
+        InvalidError,
+        SandboxFilesystemNotFoundError,
+    )
 
     from ray.experimental.sandbox.http.grpc_facade import build_servicers
 
@@ -162,14 +166,43 @@ def test_network_policies_map_onto_the_runtime(facade) -> None:
 
     blocked = _create(client, block_network=True)
     open_egress = _create(client)
+    allowlisted = _create(client, outbound_cidr_allowlist=["1.1.1.1/32"])
     assert _host(resolver, blocked)._spec["network"] == "none"
-    assert _host(resolver, open_egress)._spec["network"] == "public"
+    open_spec = _host(resolver, open_egress)._spec
+    assert (open_spec["network"], open_spec["cidr_allowlist"]) == ("public", None)
+    allow_spec = _host(resolver, allowlisted)._spec
+    assert (allow_spec["network"], allow_spec["cidr_allowlist"]) == (
+        "public",
+        ["1.1.1.1/32"],
+    )
     # Refused rather than granted wider than the client asked for.
-    with pytest.raises(InvalidError, match="allowlist"):
-        _create(client, outbound_cidr_allowlist=["1.1.1.1/32"])
-    with pytest.raises(InvalidError, match="allowlist"):
+    with pytest.raises(InvalidError, match="domain allowlists"):
         _create(client, outbound_domain_allowlist=["pypi.org"])
-    blocked.terminate()
+    for sandbox in (blocked, open_egress, allowlisted):
+        sandbox.terminate()
+
+
+def test_runtime_network_policy_updates(facade) -> None:
+    resolver, client = facade
+    runtime = FakeSandboxRuntime()
+    resolver.next_runtime = runtime
+
+    allowlisted = _create(client, outbound_cidr_allowlist=["1.1.1.1/32"])
+    allowlisted._experimental_set_outbound_network_policy(
+        outbound_cidr_allowlist=["1.0.0.1/32"]
+    )
+    allowlisted._experimental_set_outbound_network_policy()
+    assert [call["cidrs"] for call in runtime.allowlist_calls] == [
+        ["1.0.0.1/32"],
+        ["0.0.0.0/0", "::/0"],
+    ]
+    # A sandbox created with open egress has no ruleset to narrow later.
+    open_egress = _create(client)
+    with pytest.raises(ConflictError, match="without a cidr_allowlist"):
+        open_egress._experimental_set_outbound_network_policy(
+            outbound_cidr_allowlist=["1.1.1.1/32"]
+        )
+    allowlisted.terminate()
     open_egress.terminate()
 
 

@@ -92,8 +92,12 @@ async def _make_sandbox(
     control: ModalClientStub,
     name: str = "test-session",
     app_name: str = "facade-test",
+    **definition: Any,
 ) -> str:
-    """Drive the create handshake the client SDK performs, over the wire."""
+    """Drive the create handshake the client SDK performs, over the wire.
+
+    ``definition`` overrides fields of the ``Sandbox`` definition message.
+    """
     app = await control.AppGetOrCreate(api_pb2.AppGetOrCreateRequest(app_name=app_name))
     image = await control.ImageGetOrCreate(
         api_pb2.ImageGetOrCreateRequest(
@@ -116,10 +120,19 @@ async def _make_sandbox(
                 timeout_secs=3600,
                 name=name,
                 resources=api_pb2.Resources(milli_cpu=2000, memory_mb=1024),
+                **definition,
             ),
         )
     )
     return created.sandbox_id
+
+
+def _allowlist(*cidrs: str, domains: Tuple[str, ...] = ()) -> Any:
+    return api_pb2.NetworkAccess(
+        network_access_type=api_pb2.NetworkAccess.ALLOWLIST,
+        allowed_cidrs=list(cidrs),
+        allowed_domains=list(domains),
+    )
 
 
 async def _wait_running(control: ModalClientStub, sandbox_id: str) -> None:
@@ -481,48 +494,118 @@ def test_exec_start_retry_joins_an_in_flight_start(monkeypatch) -> None:
     assert asyncio.run(scenario()) == (1, 1)
 
 
-def test_network_allowlist_is_refused() -> None:
-    """An allowlist the facade cannot enforce fails the create, so no sandbox
-    runs with less restriction than its client asked for."""
+def test_network_policy_maps_to_runtime_config() -> None:
+    """BLOCKED (and the deprecated flag) is network="none"; OPEN is "public";
+    an allowlist is "public" with the normalized CIDRs the runtime enforces."""
     port = next(_next_port)
 
-    async def scenario() -> int:
+    async def scenario() -> list:
         resolver = FakeResolver()
         async with _Facade(resolver, port):
             channel, control, _router = _channel(port)
             try:
-                app = await control.AppGetOrCreate(
-                    api_pb2.AppGetOrCreateRequest(app_name="facade-test")
+                blocked = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.BLOCKED
                 )
-                image = await control.ImageGetOrCreate(
-                    api_pb2.ImageGetOrCreateRequest(
-                        image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
-                    )
-                )
-                with pytest.raises(GRPCError) as failed:
-                    await control.SandboxCreate(
-                        api_pb2.SandboxCreateRequest(
-                            app_id=app.app_id,
-                            definition=api_pb2.Sandbox(
-                                image_id=image.image_id,
-                                network_access=api_pb2.NetworkAccess(
-                                    network_access_type=api_pb2.NetworkAccess.ALLOWLIST
-                                ),
-                            ),
-                        )
-                    )
-                assert failed.value.status == Status.INVALID_ARGUMENT
-                assert "allowlist" in failed.value.message
-                return len(resolver.handles)
+                cases = [
+                    ("blocked", {"network_access": blocked}),
+                    ("legacy-blocked", {"block_network": True}),
+                    ("open", {}),
+                    (
+                        "allow",
+                        {"network_access": _allowlist("52.0.0.0/8", "10.0.1.5/24")},
+                    ),
+                ]
+                seen = []
+                for name, overrides in cases:
+                    sandbox_id = await _make_sandbox(control, name=name, **overrides)
+                    await _wait_running(control, sandbox_id)
+                    call = resolver.runtimes[-1].create_calls[0]
+                    seen.append((call["network"], call["cidr_allowlist"]))
+                return seen
             finally:
                 channel.close()
 
-    assert asyncio.run(scenario()) == 0
+    assert asyncio.run(scenario()) == [
+        ("none", None),
+        ("none", None),
+        ("public", None),
+        ("public", ["52.0.0.0/8", "10.0.1.0/24"]),
+    ]
 
 
-def test_set_network_access_is_refused() -> None:
-    """Network policy is fixed at creation; a change request fails loudly
-    instead of being acknowledged and ignored."""
+def test_unenforceable_network_policy_is_refused() -> None:
+    """Domain allowlists and malformed CIDRs fail the create with
+    INVALID_ARGUMENT before any sandbox exists, so no sandbox runs with less
+    restriction than its client asked for."""
+    port = next(_next_port)
+
+    async def scenario() -> Any:
+        resolver = FakeResolver()
+        async with _Facade(resolver, port):
+            channel, control, _router = _channel(port)
+            try:
+                results = []
+                for access in (
+                    _allowlist("10.0.0.0/8", domains=("api.openai.com",)),
+                    _allowlist("example.com"),
+                ):
+                    with pytest.raises(GRPCError) as failed:
+                        await _make_sandbox(
+                            control, name="refused", network_access=access
+                        )
+                    results.append((failed.value.status, failed.value.message))
+                return results, len(resolver.handles)
+            finally:
+                channel.close()
+
+    (domains, bad_cidr), handles = asyncio.run(scenario())
+    assert domains[0] == Status.INVALID_ARGUMENT and "domain" in domains[1]
+    assert bad_cidr[0] == Status.INVALID_ARGUMENT and "example.com" in bad_cidr[1]
+    assert handles == 0
+
+
+def test_set_network_access_replaces_the_allowlist() -> None:
+    """A sandbox created with an allowlist can be narrowed or reopened at
+    runtime; OPEN is the allow-all list."""
+    port = next(_next_port)
+
+    async def scenario() -> Any:
+        resolver = FakeResolver()
+        runtime = FakeSandboxRuntime()
+        resolver.next_runtime = runtime
+        async with _Facade(resolver, port):
+            channel, control, router = _channel(port)
+            try:
+                sandbox_id = await _make_sandbox(
+                    control, network_access=_allowlist("0.0.0.0/0")
+                )
+                await _wait_running(control, sandbox_id)
+                await router.TaskSetNetworkAccess(
+                    sr_pb2.TaskSetNetworkAccessRequest(
+                        task_id=sandbox_id, network_access=_allowlist("52.0.0.1")
+                    )
+                )
+                await router.TaskSetNetworkAccess(
+                    sr_pb2.TaskSetNetworkAccessRequest(
+                        task_id=sandbox_id,
+                        network_access=api_pb2.NetworkAccess(
+                            network_access_type=api_pb2.NetworkAccess.OPEN
+                        ),
+                    )
+                )
+                return runtime.allowlist_calls
+            finally:
+                channel.close()
+
+    calls = asyncio.run(scenario())
+    assert [c["cidrs"] for c in calls] == [["52.0.0.1/32"], ["0.0.0.0/0", "::/0"]]
+    assert {c["instance_id"] for c in calls} == {"ray-sandbox-fake0001"}
+
+
+def test_set_network_access_refusals() -> None:
+    """A change the runtime cannot make is refused, never acknowledged: a
+    client that believes it changed the policy must not run under the old one."""
     port = next(_next_port)
 
     async def scenario() -> Any:
@@ -530,17 +613,44 @@ def test_set_network_access_is_refused() -> None:
         async with _Facade(resolver, port):
             channel, control, router = _channel(port)
             try:
-                sandbox_id = await _make_sandbox(control)
-                await _wait_running(control, sandbox_id)
-                with pytest.raises(GRPCError) as failed:
-                    await router.TaskSetNetworkAccess(
-                        sr_pb2.TaskSetNetworkAccessRequest()
-                    )
-                return failed.value.status
+                open_id = await _make_sandbox(control, name="open")
+                await _wait_running(control, open_id)
+                allow_id = await _make_sandbox(
+                    control, name="allow", network_access=_allowlist("10.0.0.0/8")
+                )
+                await _wait_running(control, allow_id)
+                blocked = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.BLOCKED
+                )
+                attempts = [
+                    ("fixed", open_id, _allowlist("10.0.0.0/8")),
+                    ("domains", allow_id, _allowlist(domains=("*.github.com",))),
+                    ("blocked", allow_id, blocked),
+                    ("bad-cidr", allow_id, _allowlist("nope")),
+                    ("unknown", "sb-missing", _allowlist("10.0.0.0/8")),
+                ]
+                results = {}
+                for label, task_id, access in attempts:
+                    with pytest.raises(GRPCError) as failed:
+                        await router.TaskSetNetworkAccess(
+                            sr_pb2.TaskSetNetworkAccessRequest(
+                                task_id=task_id, network_access=access
+                            )
+                        )
+                    results[label] = failed.value.status
+                return results, [len(r.allowlist_calls) for r in resolver.runtimes]
             finally:
                 channel.close()
 
-    assert asyncio.run(scenario()) == Status.UNIMPLEMENTED
+    results, calls = asyncio.run(scenario())
+    assert results == {
+        "fixed": Status.FAILED_PRECONDITION,
+        "domains": Status.INVALID_ARGUMENT,
+        "blocked": Status.INVALID_ARGUMENT,
+        "bad-cidr": Status.INVALID_ARGUMENT,
+        "unknown": Status.NOT_FOUND,
+    }
+    assert calls == [0, 0]
 
 
 def test_exec_table_evicts_finished_records(monkeypatch) -> None:
