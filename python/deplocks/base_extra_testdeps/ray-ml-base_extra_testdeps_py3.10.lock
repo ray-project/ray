@@ -6298,9 +6298,9 @@ six==1.17.0 \
     #   rouge-score
     #   triad
     #   trueskill
-smart-open==7.1.0 \
-    --hash=sha256:4b8489bb6058196258bafe901730c7db0dcf4f083f316e97269c66f45502055b \
-    --hash=sha256:a4f09f84f0f6d3637c6543aca7b5487438877a21360e7368ccf1f704789752ba
+smart-open==6.2.0 \
+    --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
+    --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -c release/ray_release/byod/requirements_compiled.txt
@@ -7317,7 +7317,6 @@ wrapt==1.17.3 \
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyscale
     #   dm-tree
-    #   smart-open
 xgboost==2.1.0 \
     --hash=sha256:19d145eb847b070c32342b1bf2d7331c102783e07a484f8b13b7d759d707c6b0 \
     --hash=sha256:43b16205689249d7509daf7a6ab00ad0e6c570b3a9c263cb32b26e39d9477bb3 \

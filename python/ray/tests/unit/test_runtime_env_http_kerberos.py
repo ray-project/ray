@@ -1,17 +1,15 @@
 """Exercise the HTTP transport without requiring a KDC or a Ray cluster."""
 
 import io
-import socket
 import ssl
 import sys
 import types
 import zipfile
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import pytest
 import requests
-import smart_open
 from pytest_httpserver import HTTPServer
 
 from ray._private.runtime_env.protocol import (
@@ -131,33 +129,20 @@ def test_download_without_kerberos(
 
 
 @pytest.mark.parametrize(
-    "target,allowed",
-    [
-        ("/code.zip", True),
-        ("https://files.example.org:50475/code.zip?op=OPEN", True),
-        ("http://files.example.org/code.zip", False),
-        ("https://unlisted.example.org/code.zip", False),
-        ("https://files.example.org.evil.org/code.zip", False),
-        ("https://user:secret@gateway.example.org/code.zip", False),
-    ],
+    "host", ["files.example.org", "gateway.example.org", "vip.example.org"]
 )
-def test_redirects(tmp_path, kerberos, http_transport, target, allowed):
+def test_configured_httpfs_host(tmp_path, monkeypatch, kerberos, http_transport, host):
+    hosts = " FILES.example.org, gateway.example.org "
+    monkeypatch.setenv(
+        KERBEROS_HOSTS, "vip.example.org" if host.startswith("vip.") else hosts
+    )
+    uri = PACKAGE_URI.replace("files.example.org", host)
     routes, sent = http_transport
-    intermediate = "https://gateway.example.org/redirect.zip"
-    routes[PACKAGE_URI] = (307, {"Location": intermediate}, b"")
-    routes[intermediate] = (307, {"Location": target}, b"")
-    routes[urljoin(intermediate, target)] = (200, {}, b"package")
+    routes[uri] = (200, {}, b"package")
 
-    if allowed:
-        assert download(tmp_path) == b"package"
-        assert len(sent) == 3
-        assert len({request.headers["Authorization"] for request in sent}) == 3
-        assert all(len(request.hooks["response"]) == 1 for request in sent)
-    else:
-        with pytest.raises(ValueError, match="Kerberos downloads and redirects") as exc:
-            download(tmp_path)
-        assert "secret" not in str(exc.value)
-        assert len(sent) == 2  # Reject the target before sending to it.
+    assert download(tmp_path, uri) == b"package"
+    assert len(sent) == len(kerberos) == 1
+    assert sent[0].headers["Authorization"] == f"Negotiate {host}:1"
 
 
 def test_embedded_credentials_rejected(tmp_path, kerberos, http_transport):
@@ -174,13 +159,9 @@ def test_bearer_conflict(tmp_path, monkeypatch, kerberos, http_transport):
     assert http_transport[1] == []
 
 
-@pytest.mark.parametrize("dependency", ["requests_kerberos", "smart_open"])
-def test_missing_or_old_dependency(tmp_path, monkeypatch, kerberos, dependency):
-    if dependency == "requests_kerberos":
-        monkeypatch.setitem(sys.modules, dependency, None)
-    else:
-        monkeypatch.setattr(smart_open.http, "open", lambda uri, mode: None)
-    with pytest.raises(ImportError, match="pip install") as exc:
+def test_missing_kerberos_dependency(tmp_path, monkeypatch, kerberos):
+    monkeypatch.setitem(sys.modules, "requests_kerberos", None)
+    with pytest.raises(ImportError, match="pip install requests-kerberos") as exc:
         download(tmp_path)
     assert "preinstalled" in str(exc.value)
 
@@ -239,62 +220,38 @@ def test_kerberos_failure_does_not_fall_back(
         "unknown_ca",
         "wrong_hostname",
         "expired",
-        "redirect_san_mismatch",
     ],
 )
 def test_local_https_download(tmp_path, monkeypatch, kerberos, certificate):
-    """Check real TLS verification and redirects with simulated Kerberos tokens."""
+    """Check real TLS verification with simulated Kerberos tokens."""
     import trustme
 
     ca = trustme.CA()
     if certificate == "wrong_hostname":
         cert = ca.issue_cert("other.example.org", common_name="localhost")
-    elif certificate == "redirect_san_mismatch":
-        cert = ca.issue_cert("localhost", common_name="gateway.example.org")
     elif certificate == "expired":
         cert = ca.issue_cert(
             "localhost", not_after=datetime.now(timezone.utc) - timedelta(days=1)
         )
     else:
-        cert = ca.issue_cert(
-            "localhost", "gateway.example.org", common_name="wrong.example.org"
-        )
+        cert = ca.issue_cert("localhost", common_name="wrong.example.org")
     ca_path = tmp_path / "ca.pem"
     (trustme.CA() if certificate == "unknown_ca" else ca).cert_pem.write_to_path(
         ca_path
     )
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(ca_path))
-    monkeypatch.setenv("NO_PROXY", "localhost,gateway.example.org")
-    monkeypatch.setenv(KERBEROS_HOSTS, "localhost,gateway.example.org")
-    getaddrinfo = socket.getaddrinfo
-
-    def resolve(host, *args, **kwargs):
-        if host == "gateway.example.org":
-            host = "127.0.0.1"
-        return getaddrinfo(host, *args, **kwargs)
-
-    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    monkeypatch.setenv(KERBEROS_HOSTS, "localhost")
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     cert.configure_cert(context)
     with HTTPServer(host="localhost", ssl_context=context) as server:
-        target_host = "gateway.example.org"
-        target = server.url_for("/code.zip").replace("localhost", target_host)
-        server.expect_request("/redirect.zip").respond_with_data(
-            status=307, headers={"Location": target}
-        )
         server.expect_request("/code.zip").respond_with_data(b"package")
         if certificate == "trusted":
-            assert download(tmp_path, server.url_for("/redirect.zip")) == b"package"
-            assert [request.headers["Authorization"] for request, _ in server.log] == [
-                "Negotiate localhost:1",
-                f"Negotiate {target_host}:2",
-            ]
+            assert download(tmp_path, server.url_for("/code.zip")) == b"package"
+            assert server.log[0][0].headers["Authorization"] == "Negotiate localhost:1"
         else:
             with pytest.raises(requests.exceptions.SSLError):
-                download(tmp_path, server.url_for("/redirect.zip"))
-            assert len(server.log) == (
-                1 if certificate == "redirect_san_mismatch" else 0
-            )
+                download(tmp_path, server.url_for("/code.zip"))
+            assert not server.log
 
 
 @pytest.mark.asyncio

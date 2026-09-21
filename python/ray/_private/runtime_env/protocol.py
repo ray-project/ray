@@ -1,7 +1,5 @@
 import os
 import re
-from contextlib import contextmanager
-from inspect import signature
 from ipaddress import ip_address
 from urllib.parse import urlparse
 
@@ -258,51 +256,6 @@ class ProtocolsProvider:
         return hosts
 
     @classmethod
-    def _http_kerberos_session(cls, hosts):
-        try:
-            import requests
-            import requests_kerberos
-            from smart_open import http
-        except ImportError as exc:
-            raise ImportError(
-                "You must `pip install 'smart_open[http]>=7.1.0' requests-kerberos` "
-                "to fetch Kerberos-protected HTTPS URIs. "
-                + cls._MISSING_DEPENDENCIES_WARNING
-            ) from exc
-
-        # Older smart_open versions silently ignore the session parameter.
-        if "session" not in signature(http.open).parameters:
-            raise ImportError(
-                "Kerberos downloads require `pip install 'smart_open[http]>=7.1.0'` "
-                "for redirect validation. " + cls._MISSING_DEPENDENCIES_WARNING
-            )
-
-        class KerberosSession(requests.Session):
-            def send(self, request, **kwargs):
-                parsed = urlparse(request.url)
-                if (
-                    parsed.scheme != "https"
-                    or parsed.hostname not in hosts
-                    or parsed.username is not None
-                    or parsed.password is not None
-                ):
-                    raise ValueError(
-                        "Kerberos downloads and redirects require HTTPS URLs "
-                        "without embedded credentials and hosts listed in "
-                        f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR}."
-                    )
-                return super().send(request, **kwargs)
-
-            def rebuild_auth(self, prepared_request, response):
-                # Never forward a previous hop's token. Use a fresh Kerberos
-                # context (including mutual authentication) for each redirect.
-                prepared_request.headers.pop("Authorization", None)
-                prepared_request.hooks = {"response": []}
-                prepared_request.prepare_auth(requests_kerberos.HTTPKerberosAuth())
-
-        return KerberosSession()
-
-    @classmethod
     def _handle_http_protocol(cls):
         """Set up HTTP/HTTPS protocol handling with curl-like headers."""
 
@@ -314,7 +267,6 @@ class ProtocolsProvider:
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
 
-        @contextmanager
         def open_file(uri, mode, *, transport_params=None):
             params = {
                 "headers": cls._http_headers(),
@@ -336,13 +288,20 @@ class ProtocolsProvider:
                         f"{RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR} or remove the host "
                         f"from {RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR}."
                     )
-                with cls._http_kerberos_session(hosts) as session:
-                    params.update(kerberos=True, session=session)
-                    with smart_open_open(uri, mode, transport_params=params) as stream:
-                        yield stream
-            else:
-                with smart_open_open(uri, mode, transport_params=params) as stream:
-                    yield stream
+                if parsed.username is not None or parsed.password is not None:
+                    raise ValueError(
+                        "Kerberos downloads require URLs without embedded credentials."
+                    )
+                try:
+                    import requests_kerberos  # noqa: F401
+                except ImportError as exc:
+                    raise ImportError(
+                        "You must `pip install requests-kerberos` to fetch "
+                        "Kerberos-protected HTTPS URIs. "
+                        + cls._MISSING_DEPENDENCIES_WARNING
+                    ) from exc
+                params["kerberos"] = True
+            return smart_open_open(uri, mode, transport_params=params)
 
         return open_file, None
 

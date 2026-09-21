@@ -3527,9 +3527,9 @@ six==1.17.0 \
     #   opencensus
     #   python-dateutil
     #   rfc3339-validator
-smart-open==7.1.0 \
-    --hash=sha256:4b8489bb6058196258bafe901730c7db0dcf4f083f316e97269c66f45502055b \
-    --hash=sha256:a4f09f84f0f6d3637c6543aca7b5487438877a21360e7368ccf1f704789752ba
+smart-open==6.2.0 \
+    --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
+    --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   -r docker/base-deps/requirements.in
@@ -4012,7 +4012,6 @@ wrapt==1.17.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   anyscale
     #   dm-tree
-    #   smart-open
 yarl==1.23.0 \
     --hash=sha256:03214408cfa590df47728b84c679ae4ef00be2428e11630277be0727eba2d7cc \
     --hash=sha256:041b1a4cefacf65840b4e295c6985f334ba83c30607441ae3cf206a0eed1a2e4 \
