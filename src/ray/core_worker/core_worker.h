@@ -820,7 +820,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
    *
    * WaitAsync does not hold a reference. If every remaining reference is
    * dropped before the object is ready, the callback is invoked with
-   * ``Invalid``. ``await ObjectRef._ready()`` keeps ``self`` alive;
+   * ``ObjectNotFound``. ``await ObjectRef._ready()`` keeps ``self`` alive;
    * ``_on_ready`` does not. If the object has no owner, the callback is
    * invoked immediately with ``ObjectUnknownOwner``.
    *
