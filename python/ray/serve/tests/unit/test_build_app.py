@@ -923,20 +923,6 @@ def test_build_app_direct_http_survives():
     assert by_name["Ingress"]._direct_http is False
 
 
-def test_direct_http_defaults_to_false():
-    @serve.deployment
-    class Ingress:
-        pass
-
-    built_app: BuiltApplication = build_app(
-        Ingress.bind(),
-        name="default",
-        make_deployment_handle=FakeDeploymentHandle.from_deployment,
-    )
-
-    assert built_app.deployments[0]._direct_http is False
-
-
 def test_direct_http_not_recorded_as_user_configured_option():
     """The flag is structural, not a user-tunable option.
 

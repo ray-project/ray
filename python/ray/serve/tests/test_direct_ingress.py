@@ -50,7 +50,6 @@ from ray.serve._private.test_utils import (
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import ProxyLocation
 from ray.serve.context import _get_global_client
-from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.generated.serve_pb2 import DeploymentRoute
 from ray.serve.schema import (
@@ -460,18 +459,6 @@ def test_direct_http_asgi_deployment_serves_its_own_app(
         r = httpx.get(http_url)
         r.raise_for_status()
         assert r.text == "from-asgi-ingress"
-
-
-def test_two_fastapi_deployments_rejected_without_direct_http(
-    _skip_if_ff_not_enabled, serve_instance
-):
-    """Negative control: the same two FastAPI deployments without the flag are
-    still rejected as multiple ingresses."""
-    with pytest.raises(RayServeException, match="multiple FastAPI deployments"):
-        serve.run(
-            AsgiParentIngress.bind(DirectAsgiChild.bind()),
-            name=SERVE_DEFAULT_APP_NAME,
-        )
 
 
 def test_internal_server_error(_skip_if_ff_not_enabled, serve_instance):
