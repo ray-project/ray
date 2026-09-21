@@ -8,9 +8,7 @@ myst:
 
 **TLDR:** Avoid closure capturing large objects in remote functions or classes, use object store instead.
 
-When you define a {func}`ray.remote <ray.remote>` function or class,
-it is easy to accidentally capture large (more than a few MB) objects implicitly in the definition.
-This can lead to slow performance or even OOM since Ray is not designed to handle serialized functions or classes that are very large.
+When you define a {func}`ray.remote <ray.remote>` function or class, it is easy to accidentally capture large (more than a few MB) objects implicitly in the definition. This can lead to slow performance or even OOM since Ray is not designed to handle serialized functions or classes that are very large.
 
 For such large objects, there are two options to resolve this problem:
 

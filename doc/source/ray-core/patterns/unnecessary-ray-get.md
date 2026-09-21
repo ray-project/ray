@@ -40,8 +40,7 @@ Typically, it’s best practice to wait as long as possible before calling `ray.
 
 Notice in the anti-pattern example, we call `ray.get()` which forces us to transfer the large rollout to the driver, then again to the *reduce* worker.
 
-In the fixed version, we only pass the reference to the object to the *reduce* task.
-The `reduce` worker will implicitly call `ray.get()` to fetch the actual rollout data directly from the `generate_rollout` worker, avoiding the extra copy to the driver.
+In the fixed version, we only pass the reference to the object to the *reduce* task. The `reduce` worker will implicitly call `ray.get()` to fetch the actual rollout data directly from the `generate_rollout` worker, avoiding the extra copy to the driver.
 
 Other `ray.get()` related anti-patterns are:
 

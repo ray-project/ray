@@ -30,5 +30,4 @@ To handle this problem, we should be careful about parallelizing too much. If yo
 :end-before: __batching_end__
 ```
 
-As we can see from the example above, over-parallelizing has higher overhead and the program runs slower than the serial version.
-Through batching with a proper batch size, we are able to amortize the overhead and achieve the expected speedup.
+As we can see from the example above, over-parallelizing has higher overhead and the program runs slower than the serial version. Through batching with a proper batch size, we are able to amortize the overhead and achieve the expected speedup.

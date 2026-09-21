@@ -8,11 +8,7 @@ myst:
 
 **TLDR:** Avoid redefining the same remote function or class.
 
-Decorating the same function or class multiple times using the {func}`ray.remote <ray.remote>` decorator leads to slow performance in Ray.
-For each Ray remote function or class, Ray will pickle it and upload to GCS.
-Later on, the worker that runs the task or actor will download and unpickle it.
-Each decoration of the same function or class generates a new remote function or class from Ray's perspective.
-As a result, the pickle, upload, download and unpickle work will happen every time we redefine and run the remote function or class.
+Decorating the same function or class multiple times using the {func}`ray.remote <ray.remote>` decorator leads to slow performance in Ray. For each Ray remote function or class, Ray will pickle it and upload to GCS. Later on, the worker that runs the task or actor will download and unpickle it. Each decoration of the same function or class generates a new remote function or class from Ray's perspective. As a result, the pickle, upload, download and unpickle work will happen every time we redefine and run the remote function or class.
 
 ## Code example
 
