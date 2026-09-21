@@ -7,7 +7,8 @@ repository root with ``pytest release/nightly_tests/dataset/test_benchmark.py``.
 """
 import json
 import os
-from unittest.mock import patch
+from contextlib import contextmanager
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -33,6 +34,22 @@ def _all_checks_off(**overrides):
     )
     kwargs.update(overrides)
     return Benchmark(**kwargs)
+
+
+@contextmanager
+def _mocked_cluster():
+    """Stub out Ray access in ``run_fn`` with JSON-serializable metrics."""
+    sampler = MagicMock()
+    sampler.return_value.__enter__.return_value.peak_used_bytes = 0
+    sampler.return_value.__enter__.return_value.peak_utilization = 0.0
+    with patch.object(benchmark_module, "get_state_from_address"), patch.object(
+        benchmark_module, "_get_spilled_bytes_total", return_value=0
+    ), patch.object(
+        benchmark_module, "ObjectStoreMemorySampler", sampler
+    ), patch.object(
+        benchmark_module.ray, "get_runtime_context"
+    ):
+        yield
 
 
 def _with_run_window(benchmark, start=100.0, end=200.0):
@@ -151,11 +168,7 @@ def test_write_result_skips_checks_when_a_case_failed(tmp_path, monkeypatch):
     def boom():
         raise ValueError("workload failed")
 
-    with patch.object(benchmark_module, "get_state_from_address"), patch.object(
-        benchmark_module, "_get_spilled_bytes_total", return_value=0
-    ), patch.object(benchmark_module, "ObjectStoreMemorySampler"), patch.object(
-        benchmark_module.ray, "get_runtime_context"
-    ):
+    with _mocked_cluster():
         with pytest.raises(ValueError, match="workload failed"):
             benchmark.run_fn("main", boom)
 
@@ -177,15 +190,12 @@ def test_write_result_skips_checks_when_a_post_case_assertion_failed(
         max_sched_loop_duration_s=None,
     )
 
-    with patch.object(benchmark_module, "get_state_from_address"), patch.object(
-        benchmark_module, "_get_spilled_bytes_total", return_value=0
-    ), patch.object(benchmark_module, "ObjectStoreMemorySampler"), patch.object(
-        benchmark_module.ray, "get_runtime_context"
-    ), patch.object(
+    with _mocked_cluster(), patch.object(
         benchmark_module, "_get_peak_head_node_memory_used_bytes", return_value=2.0
     ):
         with pytest.raises(AssertionError, match="head-node physical memory"):
             benchmark.run_fn("main", lambda: None)
+    assert benchmark.result["main"][BenchmarkMetric.RUNTIME.value] >= 0
 
     with patch.object(
         benchmark_module, "_get_unexpectedly_dead_nodes", return_value=["n1"]
