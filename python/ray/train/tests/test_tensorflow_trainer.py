@@ -13,6 +13,8 @@ from ray.data.preprocessors import Concatenator
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
+
 if sys.version_info >= (3, 12):
     # Tensorflow is not installed for Python 3.12 because of keras compatibility.
     sys.exit(0)
