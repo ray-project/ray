@@ -18,6 +18,19 @@ class ChunkMetadata(TypedDict):
 _ChunkMetadataT = TypeVar("_ChunkMetadataT", bound=ChunkMetadata)
 
 
+class LineDelimitedFileChunkMetadata(ChunkMetadata):
+    """A byte range of a line-delimited file (CSV, JSONL).
+
+    Produced by indexers that split large uncompressed files for parallel
+    reads. The range is aligned to record boundaries by the indexer; the reader
+    aligns it again before parsing, so a stale or unaligned range is never
+    read twice or skipped.
+    """
+
+    chunk_byte_start_idx: int
+    chunk_byte_end_idx: int
+
+
 def create_chunk_metadata(cls: Type[_ChunkMetadataT], **kwargs) -> _ChunkMetadataT:
     """Create a metadata instance with validation, ensure the keys are correct."""
     required_keys = list(get_type_hints(cls).keys())

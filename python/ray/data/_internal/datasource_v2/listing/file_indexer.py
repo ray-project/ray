@@ -32,6 +32,16 @@ class FileIndexer(ABC):
     manifest rows is the implementation's business, not this interface's.
     """
 
+    @property
+    def requires_file_io(self) -> bool:
+        """Whether listing opens files in addition to reading their metadata.
+
+        Metadata-only listing is fast, so ``plan_list_files_op`` runs it
+        without backpressure. An indexer that reads headers or footers while
+        listing returns ``True`` to keep normal backpressure.
+        """
+        return False
+
     def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
         """An equivalent indexer that emits each file exactly once, or ``None``.
 
