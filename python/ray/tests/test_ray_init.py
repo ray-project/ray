@@ -306,6 +306,25 @@ os.kill(os.getpid(), signal.SIGTERM)
     assert test_child.returncode == signal.SIGTERM and not os.path.exists(TEST_FILENAME)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Checks for SIGSEGV.")
+def test_import_ray_with_malformed_ray_config_env_var():
+    """A malformed RAY_* env var must not segfault on `import ray`.
+
+    Regression test for https://github.com/ray-project/ray/issues/49222.
+    """
+    env = {**os.environ, "RAY_memory_monitor_refresh_ms": "0# comment"}
+    proc = subprocess.run(
+        [sys.executable, "-c", "import ray"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    # The import must fail, but with a readable error rather than a crash.
+    assert proc.returncode != -signal.SIGSEGV, proc.stderr
+    assert proc.returncode != 0
+    assert 'Cannot parse "0# comment" to uint64_t' in proc.stderr, proc.stderr
+
+
 @pytest.fixture
 def runtime_env_working_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:

@@ -125,10 +125,14 @@ class DelayManager {
   std::pair<int64_t, int64_t> default_delay_range_us_ = {0, 0};
 };
 
-auto &delay_manager = []() -> DelayManager & {
+// Lazily construct the DelayManager on first use. It must not be constructed during
+// static initialization, because it reads RayConfig, and RayConfig can fail (e.g. on a
+// malformed RAY_* environment variable) and try to log before the logging statics are
+// initialized, which crashes the process on `import ray`.
+DelayManager &GetDelayManager() {
   static auto *manager = new DelayManager();
   return *manager;
-}();
+}
 
 }  // namespace
 
@@ -136,10 +140,10 @@ int64_t GetDelayUs(const std::string &name) {
   if (RayConfig::instance().testing_asio_delay_us().empty()) {
     return 0;
   }
-  return delay_manager.GetMethodDelay(name);
+  return GetDelayManager().GetMethodDelay(name);
 }
 
-void Init() { return delay_manager.Init(); }  // namespace testing
+void Init() { return GetDelayManager().Init(); }  // namespace testing
 
 }  // namespace testing
 }  // namespace asio
