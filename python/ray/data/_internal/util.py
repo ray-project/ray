@@ -1889,8 +1889,8 @@ class MemoryProfiler:
             self._sample_memory()
             if self._measurement_failed:
                 return None
-        assert self._max_uss is not None
-        return self._max_uss
+            assert self._max_uss is not None
+            return self._max_uss
 
     def reset(self):
         with self._max_uss_lock:
