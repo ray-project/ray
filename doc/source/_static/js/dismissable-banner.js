@@ -9,6 +9,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const banners = Array.from(region.querySelectorAll('[data-banner-key]'));
 
+  // localStorage access throws in restricted environments (Safari private mode,
+  // strict privacy settings), so guard every read and write. A failure here just
+  // means the banner isn't remembered as dismissed, which is the safe fallback.
+  function isDismissed(bannerKey) {
+    try {
+      return localStorage.getItem(bannerKey) === 'true';
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function markDismissed(bannerKey) {
+    try {
+      localStorage.setItem(bannerKey, 'true');
+    } catch (e) {
+      /* storage unavailable; the banner reappears on the next load */
+    }
+  }
+
   function hide(banner) {
     banner.style.display = 'none';
     // Collapse the region once nothing is left, so no empty strip remains.
@@ -20,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function () {
   banners.forEach(function (banner) {
     const bannerKey = banner.dataset.bannerKey;
 
-    if (localStorage.getItem(bannerKey) === 'true') {
+    if (isDismissed(bannerKey)) {
       hide(banner);
       return;
     }
@@ -28,7 +47,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const closeButton = banner.querySelector('.ray-banner__close');
     if (closeButton) {
       closeButton.addEventListener('click', function () {
-        localStorage.setItem(bannerKey, 'true');
+        markDismissed(bannerKey);
         hide(banner);
       });
     }
