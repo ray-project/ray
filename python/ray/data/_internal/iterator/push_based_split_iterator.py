@@ -6,21 +6,20 @@ blocks to the workers, which iterate from a local queue.
 
 How it works:
 
-- The coordinator runs the streaming executor (recreated each epoch, like the
-  pull model's SplitCoordinator) plus one pusher thread per split.
-- Flow control mirrors the pull model: a consumer requests one block at
-  iteration start and one more after consuming each block, so the next block
-  is always in flight while the previous one is processed. There is no
-  polling — an idle or dead consumer simply stops requesting.
-- Blocks are delivered BY VALUE: consumers hold no ObjectRefs, and the
-  executor can free each block as soon as it is delivered.
-- Deliveries carry per-split sequence numbers and are reordered on arrival,
-  since Ray may execute a multi-threaded actor's tasks out of order.
+- The coordinator runs the streaming executor and one pusher thread per
+  split; both are recreated every epoch, like the pull model.
+- Flow control is demand-driven: a consumer requests one block up front and
+  one more after each block it consumes, so the next block is always in
+  flight. No polling — a dead or idle consumer just stops requesting.
+- Blocks are pushed by value, so consumers hold no ObjectRefs and the
+  executor frees each block as soon as it is delivered.
+- Deliveries are sequence-numbered and reordered on arrival (Ray may run a
+  multi-threaded actor's tasks out of order).
 - Consumers reuse the standard batching pipeline (batch -> format/collate ->
-  finalize), so ``iter_torch_batches`` etc. work unchanged; only the
-  ref-level prefetch/resolve stages are skipped.
-- A consumer is any actor whose class mixes in ``PushSplitReceiverMixin``
-  (Ray Train's ``RayTrainWorker`` does).
+  finalize), so ``iter_torch_batches`` works unchanged; only the ref-level
+  prefetch/resolve stages are skipped.
+- A consumer is any actor that mixes in ``PushSplitReceiverMixin`` (Ray
+  Train's ``RayTrainWorker`` does).
 
 Overview::
 
@@ -71,8 +70,8 @@ BLOCKED_CLIENT_WARN_TIMEOUT = 30
 
 @dataclass
 class _BlockPush:
-    """Wire format of one pushed block (the block itself travels by value as
-    a resolved top-level task arg, so no ObjectRef crosses the wire)."""
+    """Wire header for one pushed block; the block itself travels by value
+    as a resolved top-level task arg."""
 
     size_bytes: int
 
@@ -167,9 +166,9 @@ class PushSplitCoordinator:
         consumer: ray.actor.ActorHandle,
         key: str,
     ) -> None:
-        """Register the consumer actor for a split; it must mix
-        ``PushSplitReceiverMixin`` into its actor class. Re-registering is
-        allowed (happens once per epoch)."""
+        """Register the consumer actor for a split (called once per epoch;
+        re-registering is fine). The actor class must mix in
+        ``PushSplitReceiverMixin``."""
         if not hasattr(consumer, "_push_split_deliver"):
             raise ValueError(
                 f"The consumer actor for split {split_idx} does not expose "
@@ -193,17 +192,15 @@ class PushSplitCoordinator:
         """
         cond = self._demand_conds[split_idx]
         with cond:
-            # The epoch check must be atomic with the apply (and the bump in
-            # _try_start_new_epoch must precede _reset_state); otherwise a
-            # stale request could leave phantom demand in the new epoch and
-            # trigger a push before the consumer is ready.
+            # Checked under the cond so a stale request from a previous epoch
+            # can never leave demand behind (see _try_start_new_epoch).
             if epoch_id != self._cur_epoch:
                 return
             self._demand_blocks[split_idx] += 1
             self._bytes_consumed_reported[split_idx] += consumed_bytes
             cond.notify()
-        # The pusher refreshes set_external_consumer_bytes after each push;
-        # doing it per request would contend with the producer's hot path.
+        # Producer pacing is refreshed by the pusher after each push
+        # (cheaper than doing it per request).
 
     def notify_split_finished(self, epoch_id: int, split_idx: int) -> None:
         """Consumer stopped iterating ``epoch_id``; stale epochs are ignored."""
@@ -417,22 +414,19 @@ class PushSplitCoordinator:
         seq = 0
         try:
             while not stop.is_set():
-                # Wait for demand (a request wakes this immediately). A dead
-                # consumer just stops requesting, so this wait also serves as
-                # the "park" on consumer death: its remaining data stays
-                # queued in the executor for a future replacement worker.
-                # TODO(push-split): support a replacement worker joining
-                # mid-epoch (design sketch validated in git history at
-                # 48df73dd0e).
+                # Wait for demand; a request wakes this immediately. A dead
+                # consumer stops requesting, which parks this thread with the
+                # split's remaining data kept in the executor.
+                # TODO(push-split): let a replacement worker resume a parked
+                # split mid-epoch (design validated at 48df73dd0e).
                 with cond:
                     if self._demand_blocks[split_idx] <= 0:
                         cond.wait(self.DEMAND_WAIT_TIMEOUT_S)
                         continue
 
-                # get_next blocks like a pull consumer would (preserving the
-                # executor's liveness/backpressure signals) and raises
-                # StopIteration at end of stream. A multi-block bundle is
-                # sent whole, overshooting demand by a little.
+                # Blocks like a pull consumer would (preserving the
+                # executor's backpressure signals); raises StopIteration at
+                # end of stream. A multi-block bundle is sent whole.
                 bundle = output_iterator.get_next(split_idx)
                 for entry in bundle.blocks:
                     size_bytes = entry.metadata.size_bytes or 0
@@ -483,12 +477,11 @@ class PushSplitCoordinator:
             executor_to_shutdown.shutdown(force=True)
 
     def _update_external_consumer_bytes(self) -> None:
-        """Report bytes buffered at consumers, which paces the PRODUCER.
+        """Report bytes buffered at consumers; this paces the producer.
 
-        Demand only stops the pushers from draining the executor's output
-        queues; this feed (the analog of the pull model's prefetched-bytes
-        reports) is what stops the read tasks from over-producing and
-        spilling when consumers are slow. Do not remove it.
+        Demand only gates the pushers. Without this feed (the analog of the
+        pull model's prefetched-bytes reports), a fast producer runs the
+        whole epoch ahead of slow consumers and spills.
         """
         executor = self._current_executor
         if executor is None:
@@ -582,10 +575,9 @@ class PushSplitReceiverMixin:
     """Receive methods for actors hosting PushBasedDataIterators; mix into
     the consumer's actor class (Ray Train's ``RayTrainWorker`` does).
 
-    Deliberately a stateless shim (no ``__init__`` cooperation needed) over
-    the per-(coordinator, split) ``_PushReceiver`` states in the registry:
-    one actor may host several shards, and the iterator reaches the same
-    state through the registry.
+    A stateless shim over the registry, so it needs no ``__init__``
+    cooperation: one actor may host several shards, and the iterator reaches
+    the same ``_PushReceiver`` state through the registry.
     """
 
     def _push_split_deliver(
@@ -703,13 +695,12 @@ class PushBasedDataIterator(DataIterator):
             )
             self._active_epoch = epoch
             receiver.begin_epoch(epoch)
-            # Ask for one block up front; one more is requested after each
-            # popped block below, keeping the next block in flight while the
-            # previous one is processed.
+            # One block up front; one more per popped block below, keeping
+            # the next block in flight while the previous one is processed.
             self._coord_actor.request_block.remote(self._output_split_idx, epoch, 0)
-            # This epoch's queue (reset() swaps in a fresh one per epoch so a
-            # lingering generator from an early-exited epoch can't steal
-            # deliveries; the loop condition reaps such generators).
+            # reset() gave this epoch a fresh queue, so a lingering
+            # generator from an early-exited epoch can't steal deliveries;
+            # the loop condition below reaps such generators.
             epoch_queue = receiver.queue
 
             while self._active_epoch == epoch:
