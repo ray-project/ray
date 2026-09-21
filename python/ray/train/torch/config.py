@@ -201,7 +201,11 @@ def _set_tpu_multislice_env_vars(tpu_env_vars: Dict[str, str]) -> None:
     to prevent port bind collisions when multiple workers share a single TPU host.
     """
     os.environ.update(tpu_env_vars)
-    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    local_rank = (
+        int(os.environ["LOCAL_RANK"])
+        if "LOCAL_RANK" in os.environ
+        else ray.train.get_context().get_local_rank()
+    )
     base_port = int(tpu_env_vars.get("MEGASCALE_PORT", DEFAULT_MEGASCALE_PORT))
     os.environ["MEGASCALE_PORT"] = str(base_port + local_rank)
 
@@ -284,11 +288,6 @@ class _TorchBackend(Backend):
                     f"be either 'env' or 'tcp'."
                 )
 
-            # PyTorch distributed backends require LOCAL_RANK and other env vars
-            # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
-            if not isinstance(worker_group, V1WorkerGroup):
-                worker_group.execute(_set_torch_distributed_env_vars)
-
             if backend == "tpu_dist":
                 _validate_tpu_resources(worker_group)
                 num_slices = (
@@ -298,6 +297,11 @@ class _TorchBackend(Backend):
                 )
                 if num_slices > 1:
                     self._setup_tpu_multislice(worker_group, master_addr, num_slices)
+
+            # PyTorch distributed backends require LOCAL_RANK and other env vars
+            # before init_process_group. See https://pytorch.org/docs/stable/distributed.html
+            if not isinstance(worker_group, V1WorkerGroup):
+                worker_group.execute(_set_torch_distributed_env_vars)
 
             setup_futures = []
             for i in range(len(worker_group)):

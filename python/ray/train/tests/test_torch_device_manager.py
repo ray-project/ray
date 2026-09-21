@@ -380,7 +380,7 @@ def test_setup_tpu_multislice():
 
 
 def test_set_tpu_multislice_env_vars():
-    with patch.dict(os.environ, {"LOCAL_RANK": "2"}):
+    with patch.dict(os.environ, {"LOCAL_RANK": "2"}, clear=True):
         _set_tpu_multislice_env_vars(
             {
                 "MEGASCALE_COORDINATOR_ADDRESS": "10.0.0.1:8081",
@@ -393,6 +393,23 @@ def test_set_tpu_multislice_env_vars():
         assert os.environ["MEGASCALE_PORT"] == "8083"
         assert os.environ["MEGASCALE_NUM_SLICES"] == "2"
         assert os.environ["MEGASCALE_SLICE_ID"] == "1"
+
+    # When _setup_tpu_multislice runs before _set_torch_distributed_env_vars,
+    # LOCAL_RANK is not yet in os.environ; verify fallback to TrainContext.get_local_rank().
+    mock_context = MagicMock()
+    mock_context.get_local_rank.return_value = 3
+    with patch.dict(os.environ, {}, clear=True), patch(
+        "ray.train.get_context", return_value=mock_context
+    ):
+        _set_tpu_multislice_env_vars(
+            {
+                "MEGASCALE_COORDINATOR_ADDRESS": "10.0.0.1:8081",
+                "MEGASCALE_PORT": "8081",
+                "MEGASCALE_NUM_SLICES": "2",
+                "MEGASCALE_SLICE_ID": "0",
+            }
+        )
+        assert os.environ["MEGASCALE_PORT"] == "8084"
 
 
 def test_tpu_torch_import_error():
