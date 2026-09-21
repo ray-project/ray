@@ -19,7 +19,7 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     handling-dependencies
     scheduling/index.rst
     fault-tolerance
-    patterns/index.rst
+    patterns/index
     direct-transport/direct-transport
     compiled-graph/ray-compiled-graph
     resource-isolation-with-cgroupv2

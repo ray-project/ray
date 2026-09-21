@@ -1,8 +1,10 @@
-.. meta::
-   :description: Anti-pattern: global variables don't propagate between Ray workers; pass state explicitly or hold it in an actor.
+---
+myst:
+  html_meta:
+    description: "Anti-pattern: global variables don't propagate between Ray workers; pass state explicitly or hold it in an actor."
+---
 
-Anti-pattern: Using global variables to share state between tasks and actors
-============================================================================
+# Anti-pattern: Using global variables to share state between tasks and actors
 
 **TLDR:** Don't use global variables to share state with tasks and actors. Instead, encapsulate the global variables in an actor and pass the actor handle to other tasks and actors.
 
@@ -15,19 +17,20 @@ The solution is to use an actor's instance variables to hold the global state an
 Note that using class variables to manage state between instances of the same class is not supported.
 Each actor instance is instantiated in its own process, so each actor will have its own copy of the class variables.
 
-Code example
-------------
+## Code example
 
 **Anti-pattern:**
 
-.. literalinclude:: ../doc_code/anti_pattern_global_variables.py
-    :language: python
-    :start-after: __anti_pattern_start__
-    :end-before: __anti_pattern_end__
+```{literalinclude} ../doc_code/anti_pattern_global_variables.py
+:language: python
+:start-after: __anti_pattern_start__
+:end-before: __anti_pattern_end__
+```
 
 **Better approach:**
 
-.. literalinclude:: ../doc_code/anti_pattern_global_variables.py
-    :language: python
-    :start-after: __better_approach_start__
-    :end-before: __better_approach_end__
+```{literalinclude} ../doc_code/anti_pattern_global_variables.py
+:language: python
+:start-after: __better_approach_start__
+:end-before: __better_approach_end__
+```
