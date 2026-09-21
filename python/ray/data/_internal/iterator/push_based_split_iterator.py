@@ -8,9 +8,12 @@ How it works:
 
 - The coordinator runs the streaming executor and one pusher thread per
   split; both are recreated every epoch, like the pull model.
-- Flow control is demand-driven: a consumer requests one block up front and
-  one more after each block it consumes, so the next block is always in
-  flight. No polling — a dead or idle consumer just stops requesting.
+- Flow control is demand-driven: a consumer keeps enough one-block requests
+  outstanding to cover the same ``prefetch_batches * batch_size`` row window
+  the pull model prefetches, topping the window up after each block it
+  consumes. The local queue stores the prefetched blocks, keeping several
+  transfers in flight. No polling — a dead or idle consumer just stops
+  requesting.
 - Blocks are pushed by value, so consumers hold no ObjectRefs and the
   executor frees each block as soon as it is delivered.
 - Deliveries are sequence-numbered and reordered on arrival (Ray may run a
@@ -31,8 +34,9 @@ Overview::
     |     pusher 0      pusher 1          pusher n-1   |
     +---------|-------------^--------------------------+
               | blocks      | request_block()
-              | (by value,  | (one at start, one per
-              |  sequenced) |  consumed block)
+              | (by value,  | (window of requests kept
+              |  sequenced) |  outstanding; topped up
+              |             |  per consumed block)
               v             |
     +--------------------------------------------------+
     |  consumer actor i  (mixes PushSplitReceiverMixin)|
@@ -45,6 +49,7 @@ mid-epoch consumer replacement.
 """
 
 import logging
+import math
 import queue
 import threading
 import time
@@ -74,14 +79,16 @@ class _BlockPush:
     as a resolved top-level task arg."""
 
     size_bytes: int
+    num_rows: int
 
 
 @dataclass
 class _BlockDelivery:
-    """Local queue entry: one materialized Block + its byte size."""
+    """Local queue entry: one materialized Block + its size."""
 
     block: Block
     size_bytes: int
+    num_rows: int
 
 
 @dataclass
@@ -183,12 +190,20 @@ class PushSplitCoordinator:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
         return self._barrier(split_idx)
 
-    def request_block(self, split_idx: int, epoch_id: int, consumed_bytes: int) -> None:
-        """Fire-and-forget demand from a consumer: "send me one more block".
+    def request_block(
+        self,
+        split_idx: int,
+        epoch_id: int,
+        consumed_bytes: int,
+        num_blocks: int = 1,
+    ) -> None:
+        """Fire-and-forget demand from a consumer: "send me ``num_blocks``
+        more blocks".
 
-        Sent once at iteration start and again after every consumed block
-        (the pull model's one-``get``-per-block, inverted). ``consumed_bytes``
-        doubles as the consumption report that paces the producer.
+        Sent once per consumed block; the consumer sizes ``num_blocks`` to
+        keep its prefetch window full (0 is a pure consumption report).
+        ``consumed_bytes`` doubles as the consumption report that paces the
+        producer.
         """
         cond = self._demand_conds[split_idx]
         with cond:
@@ -196,7 +211,7 @@ class PushSplitCoordinator:
             # can never leave demand behind (see _try_start_new_epoch).
             if epoch_id != self._cur_epoch:
                 return
-            self._demand_blocks[split_idx] += 1
+            self._demand_blocks[split_idx] += num_blocks
             self._bytes_consumed_reported[split_idx] += consumed_bytes
             cond.notify()
         # Producer pacing is refreshed by the pusher after each push
@@ -386,12 +401,12 @@ class PushSplitCoordinator:
         PushSplitReceiverMixin methods."""
         consumer, key = self._consumers[split_idx]
 
-        def push_block(seq, entry, size_bytes):
+        def push_block(seq, entry, size_bytes, num_rows):
             # entry.ref is a top-level arg, so Ray resolves it and the
             # consumer receives the Block by value — no ObjectRef crosses
             # the wire, and the executor can free the block once delivered.
             consumer._push_split_deliver.remote(
-                key, epoch_id, seq, _BlockPush(size_bytes), entry.ref
+                key, epoch_id, seq, _BlockPush(size_bytes, num_rows), entry.ref
             )
 
         def push_eof(seq):
@@ -430,7 +445,8 @@ class PushSplitCoordinator:
                 bundle = output_iterator.get_next(split_idx)
                 for entry in bundle.blocks:
                     size_bytes = entry.metadata.size_bytes or 0
-                    push_block(seq, entry, size_bytes)
+                    num_rows = entry.metadata.num_rows or 0
+                    push_block(seq, entry, size_bytes, num_rows)
                     seq += 1
                     with cond:
                         self._demand_blocks[split_idx] -= 1
@@ -549,7 +565,9 @@ class _PushReceiver:
         """Deliver one sequenced item, releasing items to the queue in seq
         order. Stale-epoch items are dropped."""
         if isinstance(item, _BlockPush):
-            queue_item: _QueueItem = _BlockDelivery(block, item.size_bytes)
+            queue_item: _QueueItem = _BlockDelivery(
+                block, item.size_bytes, item.num_rows
+            )
         else:
             queue_item = item
         with self.lock:
@@ -654,6 +672,10 @@ class PushBasedDataIterator(DataIterator):
         # Epoch this split is currently consuming (see
         # StreamSplitDataIterator._active_epoch for the threading protocol).
         self._active_epoch: Optional[int] = None
+        # Prefetch window, refreshed by _create_batch_iterator from the
+        # user's iter_batches() arguments (same knobs as the pull model).
+        self._prefetch_batches = 1
+        self._prefetch_batch_size: Optional[int] = None
 
     def _receiver_key(self) -> str:
         return f"{self._coord_actor._actor_id.hex()}:{self._output_split_idx}"
@@ -695,9 +717,47 @@ class PushBasedDataIterator(DataIterator):
             )
             self._active_epoch = epoch
             receiver.begin_epoch(epoch)
-            # One block up front; one more per popped block below, keeping
-            # the next block in flight while the previous one is processed.
-            self._coord_actor.request_block.remote(self._output_split_idx, epoch, 0)
+
+            # Prefetch window: keep enough one-block requests outstanding to
+            # cover the same `prefetch_batches * batch_size` row window the
+            # pull model holds prefetched, plus one pipelined request (the
+            # pull model's 1-deep get()). Blocks the coordinator has pushed
+            # but we have not consumed sit in the local receiver queue — that
+            # queue IS the prefetch buffer, and it keeps several transfers in
+            # flight instead of one.
+            prefetch_batches = self._prefetch_batches
+            window_rows = (
+                prefetch_batches * self._prefetch_batch_size
+                if prefetch_batches > 0 and self._prefetch_batch_size is not None
+                else None
+            )
+            outstanding = 0  # requested but not yet popped
+            rows_seen = 0
+            blocks_seen = 0
+
+            def target_outstanding() -> int:
+                if prefetch_batches <= 0:
+                    return 1
+                if window_rows is None:
+                    # No batch size: window in blocks, like the pull model.
+                    return prefetch_batches + 1
+                if blocks_seen == 0:
+                    # Rows-per-block unknown until the first delivery.
+                    return 2
+                avg_rows = max(1.0, rows_seen / blocks_seen)
+                return math.ceil(window_rows / avg_rows) + 1
+
+            def report_and_top_up(consumed_bytes: int) -> None:
+                # One RPC per consumed block: reports consumption (producer
+                # pacing) and refills the request window.
+                nonlocal outstanding
+                num_blocks = max(0, target_outstanding() - outstanding)
+                self._coord_actor.request_block.remote(
+                    self._output_split_idx, epoch, consumed_bytes, num_blocks
+                )
+                outstanding += num_blocks
+
+            report_and_top_up(0)
             # reset() gave this epoch a fresh queue, so a lingering
             # generator from an early-exited epoch can't steal deliveries;
             # the loop condition below reaps such generators.
@@ -716,14 +776,19 @@ class PushBasedDataIterator(DataIterator):
                 if isinstance(item, _ExecutorError):
                     raise item.error
                 assert isinstance(item, _BlockDelivery)
-                self._coord_actor.request_block.remote(
-                    self._output_split_idx, epoch, item.size_bytes
-                )
+                outstanding -= 1
+                blocks_seen += 1
+                rows_seen += item.num_rows
+                report_and_top_up(item.size_bytes)
                 yield ResolvedBlock(block=item.block)
 
         return gen_blocks(), self._iter_stats, None
 
     def _create_batch_iterator(self, ref_bundles_iter, **kwargs):
+        # Capture the prefetch window before iteration starts; gen_blocks
+        # reads it lazily on its first next().
+        self._prefetch_batches = kwargs.get("prefetch_batches", 1)
+        self._prefetch_batch_size = kwargs.get("batch_size")
         # The iterator yields ResolvedBlocks (see _to_ref_bundle_iterator).
         return _MaterializedBatchIterator(ref_bundles_iter, **kwargs)
 
