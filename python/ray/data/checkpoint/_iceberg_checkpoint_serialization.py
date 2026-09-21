@@ -1,4 +1,4 @@
-"""Serialize recoverable Iceberg write results without using pickle."""
+"""Serialize recoverable Iceberg write results for checkpoint recovery"""
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
