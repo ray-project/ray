@@ -1259,11 +1259,9 @@ class RequestRouter(ABC):
                         ):
                             self._pending_requests_to_fulfill.popleft()
 
-                        # Finish an owned request before retiring its routing task.
-                        if (
-                            len(self._routing_tasks) > self.target_num_routing_tasks
-                            and pending_request.future.done()
-                        ):
+                        # Stop selecting for completed or cancelled requests. The
+                        # outer loop decides whether this task should retire.
+                        if pending_request.future.done():
                             break
 
                         replica = await self._select_from_candidate_replicas(
@@ -1273,7 +1271,11 @@ class RequestRouter(ABC):
                             self._fulfill_next_pending_request(
                                 replica, request_metadata
                             )
-                            break
+                            # A routing policy may fulfill a different request.
+                            # Keep routing until this task's request is done.
+                            if pending_request.future.done():
+                                break
+                            continue
 
                         backoff_index += 1
                         if backoff_index >= 50 and backoff_index % 50 == 0:
