@@ -10847,6 +10847,18 @@ def test_compact_node(mock_deployment_state_manager):
     assert dsB.curr_status_info.status == DeploymentStatus.HEALTHY
     assert dsC.curr_status_info.status == DeploymentStatus.HEALTHY
 
+    # The emptied node stays the compaction target until the autoscaler
+    # drains it, so nothing new lands there in the meantime.
+    scheduler = dsm._deployment_scheduler
+    assert scheduler._compacting_node.target_node_id == node3
+    assert scheduler._num_succeeded_compactions == 0
+
+    cluster_node_info_cache.draining_nodes[node3] = 10**9
+    dsm.update()
+    assert scheduler._compacting_node is None
+    assert scheduler._num_succeeded_compactions == 1
+    check_counts(dsB, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
 
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."

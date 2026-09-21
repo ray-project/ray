@@ -285,9 +285,9 @@ Pack scheduling automatically falls back to spread scheduling when any deploymen
 
 Pack scheduling only decides where new replicas go. As deployments scale down or get deleted, nodes end up partially used, so the scheduler also actively compacts the cluster.
 
-Once every deployment has stayed `HEALTHY` for `RAY_SERVE_NODE_COMPACTION_DELAY_S` seconds and no node is draining, the scheduler looks for a worker node whose replicas all fit onto the other non-idle nodes. If several nodes qualify, it picks the one with the most total resources, then the one with the fewest replicas to move. It migrates those replicas with a start-then-stop pattern. It starts a replacement on another node and stops the old replica only after the replacement is running, so serving capacity never dips. Once the node is empty, the autoscaler can release it.
+Once every deployment has stayed `HEALTHY` for `RAY_SERVE_NODE_COMPACTION_DELAY_S` seconds and no node is draining, the scheduler looks for a worker node whose replicas all fit onto the other non-idle nodes. If several nodes qualify, it picks the one with the most total resources, then the one with the fewest replicas to move. It migrates those replicas with a start-then-stop pattern. It starts a replacement on another node and stops the old replica only after the replacement is running, so serving capacity never dips. Once the node is empty, the scheduler keeps new replicas off it until the autoscaler drains it, and counts the compaction as complete only then.
 
-The scheduler cancels a compaction when new replicas land on the target node, such as an upscale that no longer fits elsewhere, or when the compaction doesn't finish within `RAY_SERVE_COMPACTION_TIMEOUT_S`. After each cancellation it doubles the wait before the next attempt, up to `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`. The scheduler never compacts the head node or a node that runs a replica of a deployment with `gang_scheduling_config`. An ingress request router replica doesn't block compaction. Ray Serve pins one to each proxy node, and the proxy leaves the node with its router replica once the other replicas have left. When a scan of a stable cluster finds nothing to compact, the scheduler waits 10 seconds before scanning again. Compaction turns off whenever pack scheduling has fallen back to spread scheduling. The `serve_num_compacted_nodes` metric counts completed compactions.
+The scheduler cancels a compaction when new replicas land on the target node, when a replica it places has no room on any other node, or when the compaction, including the wait for the drain, doesn't finish within `RAY_SERVE_COMPACTION_TIMEOUT_S`. After each cancellation it doubles the wait before the next attempt, up to `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`. The scheduler never compacts the head node or a node that runs a replica of a deployment with `gang_scheduling_config`. An ingress request router replica doesn't block compaction. Ray Serve pins one to each proxy node, and the proxy leaves the node with its router replica once the other replicas have left. When a scan of a stable cluster finds nothing to compact, the scheduler waits 10 seconds before scanning again. Compaction turns off whenever pack scheduling has fallen back to spread scheduling. The `serve_num_compacted_nodes` metric counts completed compactions.
 
 ### `RAY_SERVE_NODE_COMPACTION_DELAY_S`
 
@@ -299,7 +299,7 @@ How long every deployment must stay `HEALTHY` before the scheduler starts a new 
 
 **Default**: `1800`
 
-How long an in-progress node compaction may run before the scheduler cancels it. The controller logs a warning after one minute and again after 10 minutes.
+How long an in-progress node compaction may run, including the wait for the autoscaler to drain the emptied node, before the scheduler cancels it. The controller logs a warning after one minute and again after 10 minutes.
 
 ### `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`
 

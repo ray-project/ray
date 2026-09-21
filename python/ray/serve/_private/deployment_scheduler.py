@@ -377,6 +377,10 @@ class CompactingNodeInfo:
     start_timestamp_s: float
     cached_running_replicas_on_target_node: Set[ReplicaID]
     last_logged_timeout_warning: Optional[float] = None
+    # Set once every movable replica has left the node. The compaction is only
+    # complete when the node itself leaves the active set, since until then it
+    # could still take new replicas.
+    migration_done_timestamp_s: Optional[float] = None
 
 
 def _flatten(
@@ -1192,15 +1196,18 @@ class DeploymentScheduler:
 
         replica_id = scheduling_request.replica_id
 
-        if target_node is None and self._only_fits_on_compacting_node(
-            scheduling_request,
-            placement_candidates,
-            available_resources_per_node,
-            all_node_labels,
+        if (
+            target_node is None
+            and self._compacting_node is not None
+            and self._pack_decides_placement(scheduling_request)
         ):
-            # The node being compacted is the only one with room, so the plan is
-            # already infeasible. Cancel now and place the replica next update.
-            assert self._compacting_node is not None
+            # No node other than the one being compacted has room, so the
+            # migration plan is no longer feasible. Either this replica needs
+            # the target, or it is a migration replacement whose predecessor
+            # still holds the only room in the cluster and would otherwise sit
+            # pending until the compaction timed out. Cancel now. Next update
+            # the migrating replicas return to RUNNING and this replica either
+            # places on the former target or is scaled away as surplus.
             logger.info(
                 f"Canceling compaction of {self._compacting_node.target_node_id} "
                 f"because {replica_id} "
@@ -1414,43 +1421,19 @@ class DeploymentScheduler:
             if node_labels_match_selector(node_labels.get(node_id, {}), required_labels)
         }
 
-    def _only_fits_on_compacting_node(
-        self,
-        scheduling_request: ReplicaSchedulingRequest,
-        placement_candidates: List[Tuple[RequestedResources, List[Dict[str, str]]]],
-        available_resources_per_node: Dict[str, AvailableNodeResources],
-        node_labels: Dict[str, Dict[str, str]],
+    def _pack_decides_placement(
+        self, scheduling_request: ReplicaSchedulingRequest
     ) -> bool:
-        """Whether a request that fits nowhere would fit on the compacting node.
+        """Whether the pack decision, not the request itself, picks the node.
 
-        Only asked of requests whose node the pack decision actually picks: a
-        pinned replica follows its proxy and a gang member follows its reserved
-        placement group, so neither says anything about the compaction.
+        A pinned replica follows its proxy and a gang member follows its
+        reserved placement group, so where either lands says nothing about
+        whether the compaction plan is still feasible.
         """
-        if self._compacting_node is None:
-            return False
-        if (
-            scheduling_request.target_node_id is not None
-            or scheduling_request.gang_placement_group is not None
-        ):
-            return False
-
-        target_node = self._compacting_node.target_node_id
-        if target_node not in available_resources_per_node:
-            return False
-
-        for required_resources, required_labels_list in placement_candidates:
-            candidate = {target_node: available_resources_per_node[target_node]}
-            for required_labels in required_labels_list or []:
-                candidate = self._filter_nodes_by_label_selector(
-                    candidate, required_labels, node_labels
-                )
-                if not candidate:
-                    break
-            if candidate and self._best_fit_node(required_resources, candidate):
-                return True
-
-        return False
+        return (
+            scheduling_request.target_node_id is None
+            and scheduling_request.gang_placement_group is None
+        )
 
     def _find_best_fit_node_for_pack(
         self,
@@ -1604,37 +1587,62 @@ class DeploymentScheduler:
         now = time.time()
 
         if target_node not in self._cluster_node_info_cache.get_active_node_ids():
-            # The node died or a real drain took over, so there is nothing
-            # left to compact and nothing to count as a success or failure.
-            logger.info(
-                f"Dropping compaction of {target_node} because the node is "
-                "no longer active."
-            )
-            self._compacting_node = None
+            if info.migration_done_timestamp_s is None:
+                # The node died or a real drain took over mid migration, so
+                # there is nothing left to compact and nothing to count as a
+                # success or failure.
+                logger.info(
+                    f"Dropping compaction of {target_node} because the node is "
+                    "no longer active."
+                )
+                self._compacting_node = None
+            else:
+                # The emptied node is draining or gone, so it can no longer
+                # take new replicas. Only now has the compaction succeeded.
+                logger.info(
+                    f"Successfully compacted {target_node}. The node is no "
+                    "longer active."
+                )
+                self._compacting_node = None
+                self._num_consecutive_failed_compactions = 0
+                self._next_allowed_compaction_timestamp_s = 0
+                self._num_succeeded_compactions += 1
+                self._num_compacted_nodes_counter.inc()
+                ServeUsageTag.NUM_NODE_COMPACTIONS.record(
+                    str(self._num_succeeded_compactions)
+                )
         elif new_replicas:
             logger.info(
                 f"Canceling compaction of {target_node} because new replicas "
                 f"have been scheduled on {target_node}: {new_replicas}."
             )
             self._fail_compaction()
-        elif not current_replicas:
-            logger.info(f"Successfully migrated replicas off of {target_node}.")
-            self._compacting_node = None
-            self._num_consecutive_failed_compactions = 0
-            self._next_allowed_compaction_timestamp_s = 0
-            self._num_succeeded_compactions += 1
-            self._num_compacted_nodes_counter.inc()
-            ServeUsageTag.NUM_NODE_COMPACTIONS.record(
-                str(self._num_succeeded_compactions)
-            )
         elif now >= info.start_timestamp_s + RAY_SERVE_COMPACTION_TIMEOUT_S:
-            logger.info(
-                f"Migrating replicas off of node {target_node} timed out after "
-                f"{RAY_SERVE_COMPACTION_TIMEOUT_S} seconds. Canceling compaction "
-                f"of node {target_node}. Replicas still running on node "
-                f"{target_node}: {current_replicas}."
-            )
+            if info.migration_done_timestamp_s is None:
+                logger.info(
+                    f"Migrating replicas off of node {target_node} timed out after "
+                    f"{RAY_SERVE_COMPACTION_TIMEOUT_S} seconds. Canceling compaction "
+                    f"of node {target_node}. Replicas still running on node "
+                    f"{target_node}: {current_replicas}."
+                )
+            else:
+                logger.warning(
+                    f"Migrated every replica off of node {target_node}, but the "
+                    f"node was not drained within {RAY_SERVE_COMPACTION_TIMEOUT_S} "
+                    f"seconds. Canceling compaction of node {target_node}. Check "
+                    "that the autoscaler can release idle nodes."
+                )
             self._fail_compaction()
+        elif not current_replicas:
+            if info.migration_done_timestamp_s is None:
+                # Every replica has been told to stop, but the actors may still
+                # be shutting down and the node is still active. Keep it marked
+                # so pack scheduling stays off it until the autoscaler drains it.
+                info.migration_done_timestamp_s = now
+                logger.info(
+                    f"Migrated every replica off of {target_node}. Keeping new "
+                    "replicas off the node until it is drained."
+                )
         else:
             for threshold_s, amount in ((600, "10 minutes"), (60, "1 minute")):
                 threshold = info.start_timestamp_s + threshold_s

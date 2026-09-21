@@ -20,6 +20,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_COMPACTION_TIMEOUT_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
@@ -2351,8 +2352,126 @@ class TestActiveCompaction:
         scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
         scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
 
+        # Every replica has been told to stop, but the node is still active,
+        # so the compaction holds until the autoscaler drains it.
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        assert scheduler._num_succeeded_compactions == 0
+
+        cluster_node_info_cache.draining_nodes["node2"] = 10**9
         assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
         assert scheduler._compacting_node is None
+        assert scheduler._num_succeeded_compactions == 1
+        assert scheduler._num_consecutive_failed_compactions == 0
+
+    def test_compaction_holds_node_until_it_drains(self):
+        """An upscale during the drain wait packs elsewhere, not onto the target."""
+        d_id = DeploymentID(name="deployment1")
+
+        node1 = NodeID.from_random().hex()
+        node2 = NodeID.from_random().hex()
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node1, {"CPU": 4})
+        cluster_node_info_cache.add_node(node2, {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), node1)
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), node1)
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), node2)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == node2
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), node1)
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node2
+
+        # node2 is empty and idle, but still the compaction target.
+        on_scheduled_mock = Mock()
+        replica_id = ReplicaID("replica4", d_id)
+        request = _replica_request(replica_id, on_scheduled_mock)
+        scheduler._pending_replicas[d_id][replica_id] = request
+        assert _pack(scheduler, cluster_node_info_cache, request) == node1
+        strategy = on_scheduled_mock.call_args.args[0]._options["scheduling_strategy"]
+        assert isinstance(strategy, NodeAffinitySchedulingStrategy)
+        assert strategy.node_id == node1
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node2
+
+        cluster_node_info_cache.alive_node_ids.discard(node2)
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._num_succeeded_compactions == 1
+
+    def test_upscale_onto_emptied_node_cancels_compaction(self):
+        """A replica that fits only on the emptied target is a failure, not a success."""
+        d_id = DeploymentID(name="deployment1")
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node("node1", {"CPU": 3})
+        cluster_node_info_cache.add_node("node2", {"CPU": 2})
+        scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+        scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+
+        # node1 is full, so the only room is on the node being held for drain.
+        on_scheduled_mock = Mock()
+        replica_id = ReplicaID("replica4", d_id)
+        request = _replica_request(replica_id, on_scheduled_mock)
+        scheduler._pending_replicas[d_id][replica_id] = request
+        assert _pack(scheduler, cluster_node_info_cache, request) is None
+        on_scheduled_mock.assert_not_called()
+        assert scheduler._compacting_node is None
+        assert scheduler._num_succeeded_compactions == 0
+        assert scheduler._num_consecutive_failed_compactions == 1
+
+    def test_compaction_times_out_waiting_for_drain(self):
+        timer = MockTimer()
+        with mock.patch("time.time", new=timer.time):
+            d_id = DeploymentID(name="deployment1")
+
+            cluster_node_info_cache = MockClusterNodeInfoCache()
+            cluster_node_info_cache.add_node("node1", {"CPU": 3})
+            cluster_node_info_cache.add_node("node2", {"CPU": 2})
+            scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+            scheduler.on_deployment_deployed(
+                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+            )
+
+            scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica1", d_id), "node1")
+            scheduler.on_replica_running(ReplicaID("replica2", d_id), "node2")
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+            scheduler.on_replica_running(ReplicaID("replica3", d_id), "node1")
+            scheduler.on_replica_stopping(ReplicaID("replica2", d_id))
+            timer.advance(1000)
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+
+            # The autoscaler never drains the node, so the timeout still applies.
+            timer.advance(RAY_SERVE_COMPACTION_TIMEOUT_S)
+            assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+            assert scheduler._compacting_node is None
+            assert scheduler._num_succeeded_compactions == 0
+            assert scheduler._num_consecutive_failed_compactions == 1
 
     def test_compaction_dropped_when_target_node_dies(self):
         d_id = DeploymentID(name="deployment1")
@@ -2979,8 +3098,13 @@ def test_active_compaction_prefers_idle_node_over_source_node():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-def test_compaction_survives_replica_that_fits_nowhere():
-    """A replica too big for every node, target included, leaves compaction alone."""
+def test_compaction_cancelled_when_replica_fits_nowhere():
+    """A replica with no room on any node cancels the compaction.
+
+    A migration replacement looks exactly like this while its predecessor still
+    holds the only room in the cluster, and would otherwise sit pending until the
+    compaction timed out.
+    """
     dep_id = DeploymentID(name="deployment1")
     big_dep_id = DeploymentID(name="big")
     cluster_node_info_cache = MockClusterNodeInfoCache()
@@ -2998,9 +3122,13 @@ def test_compaction_survives_replica_that_fits_nowhere():
     scheduler._pending_replicas[big_dep_id][replica_id] = request
 
     assert _pack(scheduler, cluster_node_info_cache, request) is None
-    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == node_id_1
-    assert scheduler._num_consecutive_failed_compactions == 0
-    # The replica still falls back to default scheduling.
+    on_scheduled_mock.assert_not_called()
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+
+    # With no compaction in flight the replica falls back to default scheduling.
+    assert _pack(scheduler, cluster_node_info_cache, request) is None
     assert on_scheduled_mock.call_args.args[0]._options["scheduling_strategy"] == (
         "DEFAULT"
     )
@@ -3163,6 +3291,9 @@ def test_get_node_to_compact_ignores_pinned_replicas():
 
     scheduler.on_replica_stopping(ReplicaID("p0", pinned_dep_id))
     scheduler.on_replica_stopping(ReplicaID("p1", pinned_dep_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node1"
+
+    cluster_node_info_cache.alive_node_ids.discard("node1")
     assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
     assert scheduler._num_succeeded_compactions == 1
 
