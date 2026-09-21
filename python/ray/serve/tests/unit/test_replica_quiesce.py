@@ -1,6 +1,6 @@
 import asyncio
 import sys
-import time
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +15,25 @@ def _make_metadata(*, is_direct_ingress: bool) -> RequestMetadata:
         internal_request_id="test-internal-request",
         is_direct_ingress=is_direct_ingress,
     )
+
+
+@contextmanager
+def _record_sleeps(events):
+    """Records `asyncio.sleep` calls into `events` instead of waiting.
+
+    Asserting on measured wall clock instead needs a margin above the platform
+    clock resolution, which is 15.625ms on Windows (CPython < 3.13).
+    """
+    real_sleep = asyncio.sleep
+
+    async def fake_sleep(delay, result=None, *args, **kwargs):
+        events.append(("sleep", delay))
+        # Still yield, so ordering against the other awaits is unchanged.
+        await real_sleep(0)
+        return result
+
+    with patch("asyncio.sleep", fake_sleep):
+        yield
 
 
 class FakeUvicornServer:
@@ -319,12 +338,14 @@ class TestDrainBehindHAProxy:
         """
         fake, events = self._make_fake()
 
-        start = time.monotonic()
-        await Replica._drain_behind_haproxy(fake, 0.05)
-        elapsed = time.monotonic() - start
+        with _record_sleeps(events):
+            await Replica._drain_behind_haproxy(fake, 0.05)
 
-        assert elapsed >= 0.05
-        assert [e[0] for e in events] == ["http_should_exit", "drain"]
+        assert events == [
+            ("sleep", 0.05),
+            ("http_should_exit", True),
+            ("drain", 0.0, True),
+        ]
 
     @pytest.mark.asyncio
     async def test_no_http_server_is_a_no_op(self):
@@ -340,10 +361,17 @@ class TestDrainBehindHAProxy:
 class TestDrainOngoingRequests:
     @staticmethod
     def _make_fake(wait_loop_period_s: float, num_ongoing: int = 0):
+        """Returns the fake and its ordered list of sleeps and count checks."""
+        events = []
         fake = MagicMock()
         fake._deployment_config.graceful_shutdown_wait_loop_s = wait_loop_period_s
-        fake.get_num_ongoing_requests = lambda: num_ongoing
-        return fake
+
+        def get_num_ongoing_requests():
+            events.append(("check",))
+            return num_ongoing
+
+        fake.get_num_ongoing_requests = get_num_ongoing_requests
+        return fake, events
 
     @pytest.mark.asyncio
     async def test_check_immediately_skips_the_first_sleep(self):
@@ -353,22 +381,22 @@ class TestDrainOngoingRequests:
         wait loop can overrun the controller's force-kill deadline, which
         would cut the shutdown short before the servers close gracefully.
         """
-        fake = self._make_fake(wait_loop_period_s=10)
+        fake, events = self._make_fake(wait_loop_period_s=10)
 
-        start = time.monotonic()
-        await Replica._drain_ongoing_requests(fake, check_immediately=True)
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake, check_immediately=True)
 
-        assert time.monotonic() - start < 1
+        assert events == [("check",)]
 
     @pytest.mark.asyncio
     async def test_sleeps_before_the_first_check_by_default(self):
         """Without the flag, the request count is checked after a wait loop."""
-        fake = self._make_fake(wait_loop_period_s=0.05)
+        fake, events = self._make_fake(wait_loop_period_s=0.05)
 
-        start = time.monotonic()
-        await Replica._drain_ongoing_requests(fake)
+        with _record_sleeps(events):
+            await Replica._drain_ongoing_requests(fake)
 
-        assert time.monotonic() - start >= 0.05
+        assert events == [("sleep", 0.05), ("check",)]
 
 
 class TestGracefulShutdownIsIdempotent:

@@ -5,6 +5,7 @@ FROM $BASE_IMAGE
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.10
 ARG CUDA_VERSION=12.8.1
+ARG NCCL_VERSION=2.28.9-1+cuda12.9
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -51,6 +52,11 @@ ln -s /usr/bin/clang-format-14 /usr/bin/clang-format
 ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
 ln -s /usr/bin/clang-14 /usr/bin/clang
 
+apt-get install -y -qq --allow-change-held-packages --allow-downgrades "libnccl2=${NCCL_VERSION}" "libnccl-dev=${NCCL_VERSION}"
+apt-mark hold libnccl2 libnccl-dev
+command -v ncclras  # Fail the build if the pin did not stick or the client binary is missing.
+dpkg-query -W -f='${Package} ${Version}\n' libnccl2 libnccl-dev
+
 # Install docker CLI
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -64,7 +70,7 @@ apt-get install -y docker-ce-cli
 
 echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
 
-curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 EOF
 

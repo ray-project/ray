@@ -143,6 +143,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
+    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
     from ray.data.catalog import Catalog
 
 T = TypeVar("T")
@@ -489,7 +490,7 @@ def _resolve_read_remote_args(
 
 @wrap_auto_init
 def _read_datasource_v2(
-    datasource,
+    datasource: "DataSourceV2",
     *,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -522,9 +523,18 @@ def _read_datasource_v2(
 
     Schema inference happens once on the driver by sampling the first
     file — no caching layer needed.
+
+    This function is the whole framework <-> datasource contract: every
+    attribute it reads is declared on ``DataSourceV2`` or, behind the one
+    ``isinstance`` check below, on ``FileDataSourceV2``. The object is not
+    referenced after it returns (``ReadFiles`` keeps only ``datasource.name``).
     """
     import time
 
+    from ray.data._internal.datasource_v2.datasource_v2 import (
+        DataSourceWithMetadata,
+        FileDataSourceV2,
+    )
     from ray.data._internal.datasource_v2.listing.listing_utils import (
         _build_pruners,
         sample_files,
@@ -559,18 +569,41 @@ def _read_datasource_v2(
         ctx=ctx,
     )
 
-    pruners = _build_pruners(datasource.file_extensions, partition_filter)
+    if isinstance(datasource, FileDataSourceV2):
+        filesystem = datasource.filesystem
+        file_extensions = datasource.file_extensions
+        shuffle = datasource.shuffle
+    elif isinstance(datasource, DataSourceWithMetadata):
+        # The source's own indexer finds the data: nothing to walk, nothing to
+        # filter by extension, no file shuffle.
+        filesystem = None
+        file_extensions = None
+        shuffle = None
+    else:
+        raise TypeError(
+            f"{type(datasource).__name__} extends DataSourceV2 directly. Extend "
+            "FileDataSourceV2 when Ray should list files through a filesystem, "
+            "or DataSourceWithMetadata when the source finds its own data."
+        )
+
+    pruners = _build_pruners(file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
 
-    # Sample a few files for schema inference. Listed again (cheaply) during
-    # execution inside the ListFiles op — no caching layer needed.
-    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
-    if len(sample) == 0:
-        raise ValueError(
-            f"no files found under {datasource.paths!r}. Check the path and any "
-            "configured `partition_filter` or `file_extensions` filters."
-        )
+    # Stays ``None`` when the schema doesn't come from the files: then nothing is
+    # listed or opened here, so an empty table still reads and no partitioning is
+    # derived from paths.
+    sample = None
+    if datasource.schema_needs_file_sample:
+        # Sample a few files for schema inference. Listed again (cheaply) during
+        # execution inside the ListFiles op — no caching layer needed.
+        sample = sample_files(indexer, datasource.paths, filesystem, pruners)
+        if len(sample) == 0:
+            raise ValueError(
+                f"no files found under {datasource.paths!r}. Check the path and any "
+                "configured `partition_filter` or `file_extensions` filters."
+            )
+
     schema = datasource.infer_schema(sample)
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
@@ -585,7 +618,7 @@ def _read_datasource_v2(
     resolved_partitioning = datasource.resolve_partitioning(sample)
     scanner = datasource.create_scanner(
         schema=schema,
-        filesystem=datasource.filesystem,
+        filesystem=filesystem,
         partitioning=resolved_partitioning,
     )
 
@@ -623,8 +656,6 @@ def _read_datasource_v2(
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
     #       time, rather than at the composition time (for backward-compatibility)
-    shuffle = getattr(datasource, "shuffle", None)
-
     def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
         return (
             FileShuffleConfig(seed=time.time_ns() % INT32_MAX)
@@ -635,10 +666,10 @@ def _read_datasource_v2(
     list_files_op = ListFiles(
         paths=list(datasource.paths),
         file_indexer=indexer,
-        filesystem=datasource.filesystem,
+        filesystem=filesystem,
         source_paths=list(datasource.paths),
         file_partitioner=partitioner,
-        file_extensions=datasource.file_extensions,
+        file_extensions=file_extensions,
         partition_filter=partition_filter,
         shuffle_config_factory=_shuffle_config_factory,
     )
@@ -790,8 +821,7 @@ def read_datasource(
         placement_group=cur_pg,
     )
 
-    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here after
-    # removing LazyBlockList code path.
+    # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
