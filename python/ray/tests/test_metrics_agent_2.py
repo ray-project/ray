@@ -538,7 +538,21 @@ def test_metrics_exclusion_config_keeps_valid_rules(monkeypatch):
     assert logged_errors[0][1] == "(invalid"
 
 
-def test_metrics_exclusion_config_caches_pattern_results():
+@pytest.mark.parametrize(
+    "argument, value",
+    [("exclude_names", "tasks"), ("exclude_patterns", "grpc_.*")],
+)
+def test_metrics_exclusion_config_rejects_bare_strings(argument, value):
+    kwargs = {"exclude_names": [], "exclude_patterns": []}
+    kwargs[argument] = value
+    with pytest.raises(TypeError, match="must be an iterable of strings, not a string"):
+        MetricsExclusionConfig(**kwargs)
+
+
+def test_metrics_exclusion_config_caches_pattern_results(monkeypatch):
+    monkeypatch.delenv(RAY_METRICS_EXCLUDE_NAMES, raising=False)
+    monkeypatch.delenv(RAY_METRICS_EXCLUDE_PATTERNS, raising=False)
+
     config = MetricsExclusionConfig()
     assert not config.is_excluded("resources")
     assert config._matches_pattern.cache_info().misses == 0

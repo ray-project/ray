@@ -41,13 +41,20 @@ RAY_METRICS_EXCLUDE_PATTERNS='grpc_.*' \
 ray start ...
 ```
 
-The filter applies to metrics emitted by Ray components and by the Dashboard Agent,
-with both the OpenTelemetry and legacy OpenCensus metrics backends. Unset variables
-preserve the default behavior. Invalid regular expressions are logged and ignored
-without affecting other rules. Excluding metrics used by Ray's built-in Grafana
-dashboards causes the corresponding panels to show no data.
+The filter applies to system and application metrics exported through each node's
+Dashboard Agent, including metrics created with `ray.util.metrics` and metrics
+produced by the agent itself. It supports both the OpenTelemetry and legacy
+OpenCensus metrics backends. The separate Prometheus endpoints for the head
+Dashboard and Autoscaler aren't covered by these rules.
 
-Filtering at the Ray endpoint reduces its payload and processing overhead. Prometheus
+Unset variables preserve the default behavior. Invalid regular expressions are
+logged and ignored without affecting other rules. Excluding metrics used by Ray's
+built-in Grafana dashboards causes the corresponding panels to show no data.
+
+Filtering reduces the node metrics endpoint's scrape payload and avoids agent-side
+metric registration, observation storage, and export work for excluded families.
+It doesn't stop the originating Ray processes from collecting metrics or sending
+them to the agent. Prometheus
 [`metric_relabel_configs`](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#metric_relabel_configs)
 remains useful when you only need to prevent scraped samples from entering Prometheus
 storage.

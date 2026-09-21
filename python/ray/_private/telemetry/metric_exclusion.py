@@ -66,6 +66,10 @@ class MetricsExclusionConfig:
 
     @staticmethod
     def _normalize(values: Iterable[str]) -> Iterable[str]:
+        if isinstance(values, str):
+            raise TypeError(
+                "Metric exclusions must be an iterable of strings, not a string."
+            )
         return (value.strip() for value in values if value.strip())
 
     @staticmethod
