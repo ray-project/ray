@@ -9,23 +9,13 @@ myst:
 # Ray Generators
 ## Choosing a generator API
 
-Ray's streaming generator API, also called the regular generator API, is the
-recommended way to consume generator results. It returns an
-`ObjectRefGenerator`. Use it when a task yields a known or naturally bounded
-stream of results. You can iterate over it, call `ray.get` on each reference, or pass
-it to `ray.wait`.
+Ray's streaming generator API, also called the regular generator API, is the recommended way to consume generator results. It returns an `ObjectRefGenerator`. Use it when a task yields a known or naturally bounded stream of results. You can iterate over it, call `ray.get` on each reference, or pass it to `ray.wait`.
 
-The deprecated dynamic generator API is only needed to support existing code
-that sets `num_returns="dynamic"`. It returns a `DynamicObjectRefGenerator`
-through a single `ObjectRef`. New code should use the streaming generator
-API instead. Ray plans to remove the dynamic generator API in an upcoming
-version; see {ref}`Dynamic generators <dynamic_generators>` for details.
+The deprecated dynamic generator API is only needed to support existing code that sets `num_returns="dynamic"`. It returns a `DynamicObjectRefGenerator` through a single `ObjectRef`. New code should use the streaming generator API instead. Ray plans to remove the dynamic generator API in an upcoming version; see {ref}`Dynamic generators <dynamic_generators>` for details.
 
-[Python generators](https://docs.python.org/3/howto/functional.html#generators) are functions
-that behave like iterators, yielding one value per iteration. Ray also supports the generators API.
+[Python generators](https://docs.python.org/3/howto/functional.html#generators) are functions that behave like iterators, yielding one value per iteration. Ray also supports the generators API.
 
-Any generator function decorated with `ray.remote` becomes a Ray generator task.
-Generator tasks stream outputs back to the caller before the task finishes.
+Any generator function decorated with `ray.remote` becomes a Ray generator task. Generator tasks stream outputs back to the caller before the task finishes.
 
 ```diff
 +import ray
@@ -45,10 +35,7 @@ Generator tasks stream outputs back to the caller before the task finishes.
 +    print(ray.get(obj_ref))
 ```
 
-The above Ray generator yields the output every 5 seconds 5 times.
-With a normal Ray task, you have to wait 25 seconds to access the output.
-With a Ray generator, the caller can access the object reference
-before the task `f` finishes.
+The above Ray generator yields the output every 5 seconds 5 times. With a normal Ray task, you have to wait 25 seconds to access the output. With a Ray generator, the caller can access the object reference before the task `f` finishes.
 
 **The Ray generator is useful when**
 
@@ -68,8 +55,7 @@ before the task `f` finishes.
 - Ray generators work with Ray APIs such as {ref}`ray.wait <generators-wait>`, {ref}`ray.cancel <generators-cancel>`, etc.
 
 ## Getting started
-Define a Python generator function and decorate it with `ray.remote`
-to create a Ray generator.
+Define a Python generator function and decorate it with `ray.remote` to create a Ray generator.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -77,18 +63,11 @@ to create a Ray generator.
 :end-before: __streaming_generator_define_end__
 ```
 
-The Ray generator task returns an `ObjectRefGenerator` object, which is
-compatible with generator and async generator APIs. You can access the
-`next`, `__iter__`, `__anext__`, `__aiter__` APIs from the class.
+The Ray generator task returns an `ObjectRefGenerator` object, which is compatible with generator and async generator APIs. You can access the `next`, `__iter__`, `__anext__`, `__aiter__` APIs from the class.
 
-Whenever a task invokes `yield`, a corresponding output is ready and available from a generator as a Ray object reference.
-You can call `next(gen)` to obtain an object reference.
-If `next` has no more items to generate, it raises `StopIteration`. If `__anext__` has no more items to generate, it raises
-`StopAsyncIteration`
+Whenever a task invokes `yield`, a corresponding output is ready and available from a generator as a Ray object reference. You can call `next(gen)` to obtain an object reference. If `next` has no more items to generate, it raises `StopIteration`. If `__anext__` has no more items to generate, it raises `StopAsyncIteration`
 
-The `next` API blocks the thread until the task generates a next object reference with `yield`.
-Since the `ObjectRefGenerator` is just a Python generator, you can also use a for loop to
-iterate object references.
+The `next` API blocks the thread until the task generates a next object reference with `yield`. Since the `ObjectRefGenerator` is just a Python generator, you can also use a for loop to iterate object references.
 
 If you want to avoid blocking a thread, you can either use asyncio or {ref}`ray.wait API <generators-wait>`.
 
@@ -99,15 +78,12 @@ If you want to avoid blocking a thread, you can either use asyncio or {ref}`ray.
 ```
 
 :::{note}
-For a normal Python generator, a generator function is paused and resumed when `next` function is
-called on a generator. Ray eagerly executes a generator task to completion regardless of whether the caller is polling the partial results or not.
+For a normal Python generator, a generator function is paused and resumed when `next` function is called on a generator. Ray eagerly executes a generator task to completion regardless of whether the caller is polling the partial results or not.
 :::
 
 ## Error handling
 
-If a generator task has a failure (by an application exception or system error such as an unexpected node failure),
-the `next(gen)` returns an object reference that contains an exception. When you call `ray.get`,
-Ray raises the exception.
+If a generator task has a failure (by an application exception or system error such as an unexpected node failure), the `next(gen)` returns an object reference that contains an exception. When you call `ray.get`, Ray raises the exception.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -115,17 +91,10 @@ Ray raises the exception.
 :end-before: __streaming_generator_exception_end__
 ```
 
-In the above example, if an application fails the task, Ray returns the object reference with an exception
-in a correct order. For example, if Ray raises the exception after the second yield, the third
-`next(gen)` returns an object reference with an exception all the time. If a system error fails the task,
-(e.g., a node failure or worker process failure), `next(gen)` returns the object reference that contains the system level exception
-at any time without an ordering guarantee.
-It means when you have N yields, the generator can create from 1 to N + 1 object references
-(N output + ref with a system-level exception) when there failures occur.
+In the above example, if an application fails the task, Ray returns the object reference with an exception in a correct order. For example, if Ray raises the exception after the second yield, the third `next(gen)` returns an object reference with an exception all the time. If a system error fails the task, (e.g., a node failure or worker process failure), `next(gen)` returns the object reference that contains the system level exception at any time without an ordering guarantee. It means when you have N yields, the generator can create from 1 to N + 1 object references (N output + ref with a system-level exception) when there failures occur.
 
 ## Generator from Actor Tasks
-The Ray generator is compatible with **all actor execution models**. It seamlessly works with
-regular actors, {ref}`async actors <async-actors>`, and {ref}`threaded actors <threaded-actors>`.
+The Ray generator is compatible with **all actor execution models**. It seamlessly works with regular actors, {ref}`async actors <async-actors>`, and {ref}`threaded actors <threaded-actors>`.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -134,8 +103,7 @@ regular actors, {ref}`async actors <async-actors>`, and {ref}`threaded actors <t
 ```
 
 ## Using the Ray generator with asyncio
-The returned `ObjectRefGenerator` is also compatible with asyncio. You can
-use `__anext__` or `async for` loops.
+The returned `ObjectRefGenerator` is also compatible with asyncio. You can use `__anext__` or `async for` loops.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -144,8 +112,7 @@ use `__anext__` or `async for` loops.
 ```
 
 ## Garbage collection of object references
-The returned ref from `next(generator)` is just a regular Ray object reference and is distributed ref counted in the same way.
-If references are not consumed from a generator by the `next` API, references are garbage collected (GC’ed) when the generator is GC’ed.
+The returned ref from `next(generator)` is just a regular Ray object reference and is distributed ref counted in the same way. If references are not consumed from a generator by the `next` API, references are garbage collected (GC’ed) when the generator is GC’ed.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -153,12 +120,10 @@ If references are not consumed from a generator by the `next` API, references ar
 :end-before: __streaming_generator_gc_end__
 ```
 
-In the following example, Ray counts `ref1` as a normal Ray object reference after Ray returns it. Other references
-that aren't consumed with `next(gen)` are removed when the generator is GC'ed. In this example, garbage collection happens when you call `del gen`.
+In the following example, Ray counts `ref1` as a normal Ray object reference after Ray returns it. Other references that aren't consumed with `next(gen)` are removed when the generator is GC'ed. In this example, garbage collection happens when you call `del gen`.
 
 ## Fault tolerance
-{ref}`Fault tolerance features <fault-tolerance>` work with
-Ray generator tasks and actor tasks. For example;
+{ref}`Fault tolerance features <fault-tolerance>` work with Ray generator tasks and actor tasks. For example;
 
 - {ref}`Task fault tolerance features <task-fault-tolerance>`: `max_retries`, `retry_exceptions`
 - {ref}`Actor fault tolerance features <actor-fault-tolerance>`: `max_restarts`, `max_task_retries`
@@ -167,26 +132,20 @@ Ray generator tasks and actor tasks. For example;
 (generators-cancel)=
 
 ## Cancellation
-The {func}`ray.cancel() <ray.cancel>` function works with both Ray generator tasks and actor tasks.
-Semantic-wise, cancelling a generator task isn't different from cancelling a regular task.
-When you cancel a task, `next(gen)` can return the reference that contains {class}`TaskCancelledError <ray.exceptions.TaskCancelledError>` without any special ordering guarantee.
+The {func}`ray.cancel() <ray.cancel>` function works with both Ray generator tasks and actor tasks. Semantic-wise, cancelling a generator task isn't different from cancelling a regular task. When you cancel a task, `next(gen)` can return the reference that contains {class}`TaskCancelledError <ray.exceptions.TaskCancelledError>` without any special ordering guarantee.
 
 (generators-wait)=
 
 ## How to wait for generator without blocking a thread (compatibility to ray.wait and ray.get)
-When using a generator, `next` API blocks its thread until a next object reference is available.
-However, you may not want this behavior all the time. You may want to wait for a generator without blocking a thread.
-Unblocking wait is possible with the Ray generator in the following ways:
+When using a generator, `next` API blocks its thread until a next object reference is available. However, you may not want this behavior all the time. You may want to wait for a generator without blocking a thread. Unblocking wait is possible with the Ray generator in the following ways:
 
 **Wait until a generator task completes**
 
-`ObjectRefGenerator` has an API `completed`. It returns an object reference that is available when a generator task finishes or errors.
-For example, you can do `ray.get(<generator_instance>.completed())` to wait until a task completes. Note that using `ray.get` to `ObjectRefGenerator` isn't allowed.
+`ObjectRefGenerator` has an API `completed`. It returns an object reference that is available when a generator task finishes or errors. For example, you can do `ray.get(<generator_instance>.completed())` to wait until a task completes. Note that using `ray.get` to `ObjectRefGenerator` isn't allowed.
 
 **Use asyncio and await**
 
-`ObjectRefGenerator` is compatible with asyncio. You can create multiple asyncio tasks that create a generator task
-and wait for it to avoid blocking a thread.
+`ObjectRefGenerator` is compatible with asyncio. You can create multiple asyncio tasks that create a generator task and wait for it to avoid blocking a thread.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -196,8 +155,7 @@ and wait for it to avoid blocking a thread.
 
 **Use ray.wait**
 
-You can pass `ObjectRefGenerator` as an input to `ray.wait`. The generator is "ready" if a `next item`
-is available. Once Ray finds from a ready list, `next(gen)` returns the next object reference immediately without blocking. See the example below for more details.
+You can pass `ObjectRefGenerator` as an input to `ray.wait`. The generator is "ready" if a `next item` is available. Once Ray finds from a ready list, `next(gen)` returns the next object reference immediately without blocking. See the example below for more details.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
@@ -207,8 +165,7 @@ is available. Once Ray finds from a ready list, `next(gen)` returns the next obj
 
 All the input arguments (such as `timeout`, `num_returns`, and `fetch_local`) from `ray.wait` works with a generator.
 
-`ray.wait` can mix regular Ray object references with generators for inputs. In this case, the application should handle
-all input arguments (such as `timeout`, `num_returns`, and `fetch_local`) from `ray.wait` work with generators.
+`ray.wait` can mix regular Ray object references with generators for inputs. In this case, the application should handle all input arguments (such as `timeout`, `num_returns`, and `fetch_local`) from `ray.wait` work with generators.
 
 ```{literalinclude} doc_code/streaming_generator.py
 :language: python
