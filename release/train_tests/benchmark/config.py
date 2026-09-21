@@ -58,9 +58,6 @@ class RayDataConfig(DataLoaderConfig):
     # PROTOTYPE: use the push-based streaming split (PushBasedDataConfig)
     # instead of the default pull-based streaming_split.
     ray_data_push_based_split: bool = False
-    # How many blocks each train worker keeps requested ahead in the
-    # push-based split; -1 uses the default (2).
-    ray_data_push_target_buffer_blocks: int = -1
 
 
 class TorchConfig(DataLoaderConfig):

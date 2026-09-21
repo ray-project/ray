@@ -2763,7 +2763,6 @@ class Dataset:
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
-        target_buffer_blocks: Optional[int] = None,
     ) -> List[DataIterator]:
         """PROTOTYPE: push-based variant of :meth:`streaming_split`.
 
@@ -2779,10 +2778,6 @@ class Dataset:
                 number of rows.
             locality_hints: A list of node ids corresponding to each iterator
                 location.
-            target_buffer_blocks: How many blocks each consumer keeps
-                requested ahead; ``None`` uses the default (2: one being
-                consumed plus one in flight, the pull model's effective
-                pipelining).
 
         Returns:
             The output iterator splits.
@@ -2801,7 +2796,7 @@ class Dataset:
         split_dataset = Dataset._from_parent(self, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
-        return PushBasedDataIterator.create(split_dataset, n, target_buffer_blocks)
+        return PushBasedDataIterator.create(split_dataset, n)
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)
