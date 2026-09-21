@@ -146,10 +146,7 @@ class MedianStoppingRule(FIFOScheduler):
         trials = self._trials_beyond_time(time)
         trials.remove(trial)
 
-        # A trial is only a usable sample if it has a real running mean at `time`. It does not when
-        # it reported nothing inside [grace_period, time] (`np.mean` of an empty window is nan) or
-        # when its own reports were nan. One nan makes the median nan, and nan compares worse than
-        # every real score under both modes, so a single such trial stops every other trial.
+        # Exclude `np.nan` and `np.inf` values.
         running_means = [
             running_mean
             for running_mean in (self._running_mean(other, time) for other in trials)
@@ -217,14 +214,6 @@ class MedianStoppingRule(FIFOScheduler):
             if self._results[trial][-1][self._time_attr] >= time
         ]
         return trials
-
-    def _median_result(self, trials: List[Trial], time: float):
-        running_means = [
-            running_mean
-            for running_mean in (self._running_mean(trial, time) for trial in trials)
-            if np.isfinite(running_mean)
-        ]
-        return np.median(running_means) if running_means else np.nan
 
     def _running_mean(self, trial: Trial, time: float) -> np.ndarray:
         results = self._results[trial]
