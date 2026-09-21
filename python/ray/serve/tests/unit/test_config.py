@@ -653,6 +653,30 @@ class TestReplicaConfig:
                 max_replicas_per_node=-1,
             )
 
+    def test_topology_spread_validation(self):
+        class Class:
+            pass
+
+        spread = {"ray.io/node-id": 2, "zone": 1}
+        config = ReplicaConfig.create(Class, tuple(), dict(), topology_spread=spread)
+        assert config.topology_spread == spread
+        # Survives the trip to the controller.
+        round_trip = ReplicaConfig.from_proto_bytes(config.to_proto_bytes())
+        assert round_trip.topology_spread == spread
+        assert ReplicaConfig.create(Class, tuple(), dict()).topology_spread is None
+
+        with pytest.raises(TypeError, match="Got invalid type"):
+            ReplicaConfig.create(Class, tuple(), dict(), topology_spread=[("zone", 2)])
+
+        with pytest.raises(ValueError, match="Keys must be non-empty"):
+            ReplicaConfig.create(Class, tuple(), dict(), topology_spread={"": 2})
+
+        with pytest.raises(TypeError, match="Expected a positive integer"):
+            ReplicaConfig.create(Class, tuple(), dict(), topology_spread={"zone": "2"})
+
+        with pytest.raises(ValueError, match="Expected a positive integer"):
+            ReplicaConfig.create(Class, tuple(), dict(), topology_spread={"zone": 0})
+
     def test_placement_group_options_validation(self):
         class Class:
             pass

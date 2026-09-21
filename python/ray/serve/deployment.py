@@ -232,6 +232,7 @@ class Deployment:
             List[Dict[str, str]]
         ] = DEFAULT.VALUE,
         max_replicas_per_node: Default[int] = DEFAULT.VALUE,
+        topology_spread: Default[Dict[str, int]] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
@@ -376,6 +377,9 @@ class Deployment:
         if max_replicas_per_node is DEFAULT.VALUE:
             max_replicas_per_node = self._replica_config.max_replicas_per_node
 
+        if topology_spread is DEFAULT.VALUE:
+            topology_spread = self._replica_config.topology_spread
+
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
@@ -428,6 +432,12 @@ class Deployment:
                 "gang_scheduling_config is provided."
             )
 
+        if gc is not None and topology_spread is not None:
+            raise ValueError(
+                "Setting topology_spread is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
         if gc is not None and placement_group_strategy is not None:
             raise ValueError(
                 "Setting placement_group_strategy is not allowed when "
@@ -445,6 +455,7 @@ class Deployment:
             placement_group_bundle_label_selector=placement_group_bundle_label_selector,
             placement_group_fallback_strategy=placement_group_fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            topology_spread=topology_spread,
         )
 
         return Deployment(
@@ -510,6 +521,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "placement_group_strategy": d._replica_config.placement_group_strategy,
         "placement_group_bundles": d._replica_config.placement_group_bundles,
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
+        "topology_spread": d._replica_config.topology_spread,
         "logging_config": d._deployment_config.logging_config,
         "request_router_config": d._deployment_config.request_router_config,
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
@@ -564,6 +576,11 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         max_replicas_per_node = s.max_replicas_per_node
 
+    if s.topology_spread is DEFAULT.VALUE:
+        topology_spread = None
+    else:
+        topology_spread = s.topology_spread
+
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
@@ -593,6 +610,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
         max_replicas_per_node=max_replicas_per_node,
+        topology_spread=topology_spread,
     )
 
     return Deployment(

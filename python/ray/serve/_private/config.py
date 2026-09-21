@@ -692,6 +692,7 @@ class ReplicaConfig:
         placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
+        topology_spread: Optional[Dict[str, int]] = None,
         needs_pickle: bool = True,
     ):
         """Construct a ReplicaConfig with serialized properties.
@@ -722,6 +723,7 @@ class ReplicaConfig:
         self.placement_group_fallback_strategy = placement_group_fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
+        self.topology_spread = topology_spread
 
         self._normalize_bundle_label_selector()
         self._validate()
@@ -751,6 +753,7 @@ class ReplicaConfig:
         self._validate_ray_actor_options()
         self._validate_placement_group_options()
         self._validate_max_replicas_per_node()
+        self._validate_topology_spread()
 
         if (
             self.max_replicas_per_node is not None
@@ -769,6 +772,7 @@ class ReplicaConfig:
         placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
+        topology_spread: Optional[Dict[str, int]] = None,
     ):
         self.ray_actor_options = ray_actor_options
 
@@ -780,6 +784,7 @@ class ReplicaConfig:
         self.placement_group_fallback_strategy = placement_group_fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
+        self.topology_spread = topology_spread
 
         self._normalize_bundle_label_selector()
         self._validate()
@@ -798,6 +803,7 @@ class ReplicaConfig:
         placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
+        topology_spread: Optional[Dict[str, int]] = None,
         deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
@@ -856,6 +862,7 @@ class ReplicaConfig:
             placement_group_bundle_label_selector=placement_group_bundle_label_selector,
             placement_group_fallback_strategy=placement_group_fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            topology_spread=topology_spread,
         )
 
         config._deployment_def = deployment_def
@@ -915,6 +922,32 @@ class ReplicaConfig:
                 "Valid values are None or an integer "
                 f"in the range of [1, {MAX_REPLICAS_PER_NODE_MAX_VALUE}]."
             )
+
+    def _validate_topology_spread(self) -> None:
+        if self.topology_spread is None:
+            return
+        if not isinstance(self.topology_spread, dict):
+            raise TypeError(
+                f"Got invalid type '{type(self.topology_spread)}' for "
+                "topology_spread. Expected None or a dict from a node label key "
+                "to a positive integer."
+            )
+        for key, min_domains in self.topology_spread.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError(
+                    f"Invalid topology_spread key {key!r}. Keys must be non-empty "
+                    "node label keys such as 'ray.io/node-id'."
+                )
+            if isinstance(min_domains, bool) or not isinstance(min_domains, int):
+                raise TypeError(
+                    f"Got invalid type '{type(min_domains)}' for topology_spread"
+                    f"[{key!r}]. Expected a positive integer."
+                )
+            if min_domains < 1:
+                raise ValueError(
+                    f"Invalid topology_spread[{key!r}] = {min_domains}. Expected a "
+                    "positive integer."
+                )
 
     def _validate_placement_group_options(self) -> None:
         if self.placement_group_strategy is not None:
@@ -1091,6 +1124,9 @@ class ReplicaConfig:
             max_replicas_per_node=(
                 proto.max_replicas_per_node if proto.max_replicas_per_node else None
             ),
+            topology_spread=(
+                json.loads(proto.topology_spread) if proto.topology_spread else None
+            ),
             needs_pickle=needs_pickle,
         )
 
@@ -1133,6 +1169,11 @@ class ReplicaConfig:
             placement_group_bundle_label_selector=bundle_label_selector,
             placement_group_fallback_strategy=fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            topology_spread=(
+                json.dumps(self.topology_spread)
+                if self.topology_spread is not None
+                else ""
+            ),
         )
 
     def to_proto_bytes(self):
@@ -1148,4 +1189,5 @@ class ReplicaConfig:
             "placement_group_bundle_label_selector": self.placement_group_bundle_label_selector,
             "placement_group_fallback_strategy": self.placement_group_fallback_strategy,
             "max_replicas_per_node": self.max_replicas_per_node,
+            "topology_spread": self.topology_spread,
         }

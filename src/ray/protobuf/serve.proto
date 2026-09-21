@@ -341,6 +341,7 @@ message DeploymentVersion {
   int32 max_replicas_per_node = 6;
   string placement_group_bundle_label_selector = 7;
   string placement_group_fallback_strategy = 8;
+  string topology_spread = 9;
 }
 
 message ReplicaConfig {
@@ -354,6 +355,9 @@ message ReplicaConfig {
   int32 max_replicas_per_node = 8;
   string placement_group_bundle_label_selector = 9;
   string placement_group_fallback_strategy = 10;
+  // JSON dict from a node label key to the minimum number of distinct
+  // values the deployment's replicas must cover before they may pack.
+  string topology_spread = 11;
 }
 
 enum TargetCapacityDirection {
