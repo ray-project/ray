@@ -917,6 +917,7 @@ def batch(
     _validate_batch_size_fn(batch_size_fn)
 
     def _batch_decorator(_func):
+        signature_parameters = extract_signature(_func)
         lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
             max_batch_size,
             batch_wait_timeout_s,
@@ -940,12 +941,32 @@ def batch(
                     break
 
         def enqueue_request(args, kwargs) -> asyncio.Future:
-            flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
+            flattened_args: List = flatten_args(signature_parameters, args, kwargs)
 
             # If the function is a method, remove self as an argument.
             self = extract_self_if_method_call(args, _func)
             if self is not None:
                 flattened_args = flattened_args[2:]
+
+            if batch_size_fn is not None:
+                input_parameters = (
+                    signature_parameters[1:]
+                    if self is not None
+                    else signature_parameters
+                )
+                if not flattened_args:
+                    raise TypeError(
+                        "A batch handler using `batch_size_fn` requires an input "
+                        "value to pass to `batch_size_fn`."
+                    )
+
+                _, keyword_args = recover_args(flattened_args)
+                if len(input_parameters) > 1 and keyword_args:
+                    raise TypeError(
+                        "When using `batch_size_fn`, keyword arguments are only "
+                        "supported for batch handlers with a single input parameter. "
+                        "Pass all arguments positionally instead."
+                    )
 
             batch_queue = lazy_batch_queue_wrapper.queue
 
