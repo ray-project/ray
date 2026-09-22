@@ -106,6 +106,12 @@ Ray Serve's request router probes replicas for their queue lengths to make intel
 - `RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The maximum timeout (in seconds) for queue length responses. When retrying with exponential backoff, the deadline increases but is capped at this value. Default is `1.0`.
 - `RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S`: How long (in seconds) cached queue length information from replicas is considered valid. After this timeout, the cache entry expires and the router must probe the replica again. Default is `10.0`.
 
+### Limit concurrent replica handle lookups
+
+The request router resolves new replicas' actor handles in a thread pool so blocking GCS lookups don't stall request routing. All routers in a process share this pool.
+
+- `RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS`: The maximum number of concurrent replica handle lookups per process. Default is `16`.
+
 ### Configure locality-based routing
 
 Ray Serve routes requests to replicas based on locality to reduce network latency. The system applies locality routing in two scenarios: proxy-to-replica communication (HTTP/gRPC requests) and inter-deployment communication (replica-to-replica calls through `DeploymentHandle`).

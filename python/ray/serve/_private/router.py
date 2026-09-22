@@ -633,6 +633,7 @@ class AsyncioRouter:
         # By default, deployment is available unless we receive news
         # otherwise through a long poll broadcast from the controller.
         self._deployment_available = True
+        self._is_shutdown = False
 
         # The request router will be lazy loaded to decouple form the initialization.
         self._request_router: Optional[RequestRouter] = request_router
@@ -780,7 +781,6 @@ class AsyncioRouter:
                 else None,
                 # Streaming ObjectRefGenerators are not supported in Ray Client
                 use_replica_queue_len_cache=self._enable_strict_max_ongoing_requests,
-                create_replica_wrapper_func=lambda r: RunningReplica(r),
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
@@ -808,6 +808,8 @@ class AsyncioRouter:
         return self._running_replicas_populated
 
     def update_deployment_targets(self, deployment_target_info: DeploymentTargetInfo):
+        if self._is_shutdown:
+            return
         self._deployment_available = deployment_target_info.is_available
 
         running_replicas = deployment_target_info.running_replicas
@@ -824,6 +826,8 @@ class AsyncioRouter:
             self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
+        if self._is_shutdown:
+            return
         self._request_router_class = (
             deployment_config.request_router_config.get_request_router_class()
         )
@@ -1572,9 +1576,8 @@ class AsyncioRouter:
     ) -> List[ReplicaResult]:
         """Send a request to all running replicas in parallel.
 
-        Bypasses the normal load-balancing path and sends the request
-        directly to every replica. Waits for the request router to be
-        initialized so the replica set is populated.
+        Waits for router initialization and pending replica lookups, then
+        bypasses load balancing to send directly to every replica.
         """
         # Propagate tracing context, matching assign_request behavior.
         if is_span_recording():
@@ -1588,6 +1591,10 @@ class AsyncioRouter:
 
         await self._request_router_initialized.wait()
 
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        await self._active_request_router._wait_for_replica_resolution()
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
@@ -1652,6 +1659,10 @@ class AsyncioRouter:
         return results
 
     async def shutdown(self):
+        self._is_shutdown = True
+        self.long_poll_client.stop()
+        if self._request_router is not None:
+            await self._request_router._shutdown_replica_resolution()
         await self._metrics_manager.shutdown()
 
 

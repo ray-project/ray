@@ -1494,6 +1494,12 @@ def test_proxy_location_normalize():
         ProxyLocation._normalize({"some_other_obj"})
 
 
+def test_default_request_router_class_serializes_by_value():
+    """Serializing the default router must not capture its lookup executor."""
+    router_cls = RequestRouterConfig().get_request_router_class()
+    assert router_cls.__name__ == PowerOfTwoChoicesRequestRouter.__name__
+
+
 @pytest.mark.parametrize(
     "policy",
     [
