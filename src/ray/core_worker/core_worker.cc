@@ -4182,6 +4182,10 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
       reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     }
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
+  } else if (!reference_exists) {
+    // The ref may be dropped and free objects sent before this report arrives, so free
+    // the additional objects here.
+    FreeObjectOnNodesAsync(object_id, {node_id});
   }
 }
 

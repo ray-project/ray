@@ -158,7 +158,9 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+        [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+          core_worker_->FreeObjectOnNodesAsync(object_id, locations);
+        },
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
@@ -1792,6 +1794,43 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
   }
   EXPECT_EQ(total, kNumObjects);  // Nothing dropped past the warn threshold.
   warn_objects = prev;
+}
+
+// Tests that a location report arriving after the ref was dropped and the free was
+// sent still frees that copy.
+TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
+  const NodeID node_id = core_worker_->GetCurrentNodeId();
+  auto report_location = [&](const ObjectID &object_id) {
+    rpc::UpdateObjectLocationBatchRequest request;
+    request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    request.set_node_id(node_id.Binary());
+    auto *update = request.add_object_location_updates();
+    update->set_object_id(object_id.Binary());
+    update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+    rpc::UpdateObjectLocationBatchReply reply;
+    core_worker_->HandleUpdateObjectLocationBatch(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  report_location(object_id);
+  EXPECT_TRUE(local_raylet_client_->free_local_objects_batches.empty());
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects());
+
+  report_location(object_id);
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1, 1}));
 }
 
 }  // namespace core
