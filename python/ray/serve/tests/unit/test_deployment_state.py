@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_NODE_COMPACTION_DELAY_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
@@ -11087,6 +11088,8 @@ def test_ingress_request_router_ignores_compaction_drain(
         replica._actor.set_ready()
     dsm.update(proxy_nodes={n1, n2})
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+    scheduler_info = dsm._deployment_scheduler._deployments[TEST_DEPLOYMENT_ID]
+    assert scheduler_info.pins_replicas is True
 
     ds.migrate_replicas_on_draining_nodes({n1: float("inf")}, compacting_node_id=n1)
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
@@ -11199,8 +11202,10 @@ def test_compaction_keeps_drain_deadline_of_compacting_node(
     dsm.update()
     assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
 
-    # The compacting node starts a real drain. Its deadline must win over the
-    # compaction's infinite deadline.
+    # The compacting node starts a real drain. The compaction is dropped, which
+    # is what keeps the node's own deadline instead of the infinite one. The
+    # scheduler only ever offers a node that is still active, and active excludes
+    # draining, so the infinite deadline can never reach a really draining node.
     cluster_node_info_cache.draining_nodes = {node2: 10**12}
     with patch.object(
         ds,
@@ -11210,6 +11215,105 @@ def test_compaction_keeps_drain_deadline_of_compacting_node(
         dsm.update()
     migrate.assert_called_once()
     assert migrate.call_args.args[0] == {node2: 10**12}
+    assert migrate.call_args.kwargs["compacting_node_id"] is None
+    assert dsm._deployment_scheduler._compacting_node is None
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_does_not_split_a_gang_on_a_real_drain(
+    mock_deployment_state_manager,
+):
+    """A real drain migrates a whole gang even while another node is compacting.
+
+    Compaction never targets a gang's node, so a gang deployment must ignore the
+    compaction entirely. Acting on it would park one member on the compaction
+    target while the rest of its gang moves, leaving a partial gang running.
+    """
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    n1, n2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+    for node in (n1, n2):
+        cluster_node_info_cache.add_node(node)
+    dsm: DeploymentStateManager = create_dsm(
+        create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
+    )
+    info, _ = deployment_info(
+        num_replicas=2,
+        version="v1",
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm._deployment_scheduler.schedule_gang_placement_groups = Mock(
+        return_value={
+            TEST_DEPLOYMENT_ID: GangReservationResult(
+                success=True,
+                gang_pgs=[Mock()],
+                gang_ids=["gang_0"],
+                gang_pg_names=["SERVE_GANG::pg-0"],
+            )
+        }
+    )
+    dsm.update()
+    assert dsm._deployment_scheduler._deployments[TEST_DEPLOYMENT_ID].is_gang is True
+
+    # One member is RUNNING on n1, the other is still STARTING on n2.
+    replicas = ds._replicas.get([ReplicaState.STARTING])
+    assert len(replicas) == 2
+    replicas[0]._actor.set_node_id(n1)
+    replicas[0]._actor.set_ready()
+    replicas[1]._actor.set_node_id(n2)
+    dsm.update()
+
+    # n1 really drains while n2 is the compaction target.
+    ds.migrate_replicas_on_draining_nodes(
+        {n1: 10**12, n2: float("inf")}, compacting_node_id=n2
+    )
+
+    # The whole gang moves together. No member is left parked on n2.
+    assert ds._replicas.count(states=[ReplicaState.STARTING]) == 0
+    moving = ds._replicas.count(
+        states=[ReplicaState.PENDING_MIGRATION, ReplicaState.STOPPING]
+    )
+    assert moving == 2
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_waits_for_the_stability_delay(mock_deployment_state_manager):
+    """No compaction starts until every deployment has been healthy long enough."""
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica, node in zip(ds._replicas.get(), [node1, node1, node2]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # Just short of the delay, nothing starts.
+    timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S - 1)
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node is None
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
+
+    # One tick past it, the compaction starts.
+    timer.advance(2)
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
 
 
 if __name__ == "__main__":

@@ -5545,16 +5545,20 @@ class DeploymentState:
                 for node, deadline in draining_nodes.items()
                 if node != compacting_node_id
             }
+            # Drop the id as well, so the keep-STARTING branch below stays inert
+            # for this deployment. A real drain elsewhere migrates the whole gang,
+            # and leaving one member parked on the compaction target would split it.
+            compacting_node_id = None
 
-        # Fast path: no draining nodes and deployment is in steady state —
-        # no PENDING_MIGRATION replicas to move back and no replicas to
+        # Fast path: no draining nodes and deployment is in steady state, so
+        # there are no PENDING_MIGRATION replicas to move back and no replicas to
         # migrate, so skip the O(N) pop-and-readd. A compaction cancelled after
         # its replacements are RUNNING leaves PENDING_MIGRATION replicas behind
         # with _in_transition already False, so check for them explicitly.
         if (
             not draining_nodes
             and not self._in_transition
-            and self._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 0
+            and self._replicas.count_state(ReplicaState.PENDING_MIGRATION) == 0
         ):
             return
 
@@ -6626,11 +6630,12 @@ class DeploymentStateManager:
                 allow_new_compaction=allow_new_compaction
             )
             if node_info:
+                # Only ever a node that is still active, and active excludes
+                # draining, so this never overwrites a real drain deadline. A real
+                # drain of the target drops the compaction instead.
                 target_node_id, deadline = node_info
-                # A real drain of the compacting node keeps its own deadline.
-                if target_node_id not in draining_nodes:
-                    compacting_node_id = target_node_id
-                    draining_nodes = {**draining_nodes, target_node_id: deadline}
+                compacting_node_id = target_node_id
+                draining_nodes = {**draining_nodes, target_node_id: deadline}
 
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(

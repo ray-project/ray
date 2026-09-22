@@ -2314,6 +2314,24 @@ class TestActiveCompaction:
 
         assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
 
+        # Control: give node1 the room node2's replica needs and node2 is
+        # compacted, so the None above is the fit check and not inaction.
+        roomy = MockClusterNodeInfoCache()
+        roomy.add_node("node1", {"GPU": 8, "CPU": 8})
+        roomy.add_node("node2", {"GPU": 10, "CPU": 2})
+        other = _compaction_scheduler(roomy)
+        other.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_deployed(
+            d_id1, rconfig(ray_actor_options={"num_gpus": 1, "num_cpus": 2})
+        )
+        other.on_deployment_deployed(
+            d_id2, rconfig(ray_actor_options={"num_gpus": 2, "num_cpus": 1})
+        )
+        other.on_replica_running(ReplicaID("replica0", d_id1), "node1")
+        other.on_replica_running(ReplicaID("replica3", d_id2), "node2")
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
     def test_idle_nodes(self):
         d_id = DeploymentID(name="deployment1")
 
@@ -2329,6 +2347,19 @@ class TestActiveCompaction:
 
         scheduler.on_replica_running(ReplicaID("replica0", d_id), "node1")
         assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        # Control: with node2 non idle, node1 is compacted, so the None above is
+        # the idle node rule and not inaction. node1 is the larger of the two so
+        # the winner does not depend on which node is scanned first.
+        roomy = MockClusterNodeInfoCache()
+        roomy.add_node("node1", {"CPU": 4})
+        roomy.add_node("node2", {"CPU": 3})
+        other = _compaction_scheduler(roomy)
+        other.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+        other.on_replica_running(ReplicaID("replica0", d_id), "node1")
+        other.on_replica_running(ReplicaID("replica1", d_id), "node2")
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == "node1"
 
     def test_compaction_completes(self):
         d_id = DeploymentID(name="deployment1")
@@ -2659,6 +2690,17 @@ class TestActiveCompaction:
         scheduler.on_replica_running(ReplicaID("replica0", d_id), "head-node-id")
         scheduler.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
         assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+
+        # Control: the same cluster with the head elsewhere does compact the
+        # 1 CPU node, so the None above is the head node rule and not inaction.
+        other = _compaction_scheduler(cluster_node_info_cache, "some-other-node")
+        other.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        other.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+        other.on_replica_running(ReplicaID("replica0", d_id), "head-node-id")
+        other.on_replica_running(ReplicaID("replica1", d_id), "worker-node-id")
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == (
+            "head-node-id"
+        )
 
     def test_custom_resources(self):
         d1_id = DeploymentID(name="deployment1")
@@ -3409,6 +3451,265 @@ def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
 
     scheduler.on_deployment_deleted(pg_id)
     assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
+
+
+def _two_node_compaction_scheduler(cache, d_id, big="node1", small="node2"):
+    """node1 holds two replicas, node2 holds one, so node2 is the target."""
+    cache.add_node(big, {"CPU": 3})
+    cache.add_node(small, {"CPU": 2})
+    scheduler = _compaction_scheduler(cache)
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_replica_running(ReplicaID("r0", d_id), big)
+    scheduler.on_replica_running(ReplicaID("r1", d_id), big)
+    scheduler.on_replica_running(ReplicaID("r2", d_id), small)
+    return scheduler
+
+
+def test_compaction_off_without_pack_scheduling():
+    """With pack scheduling disabled the scheduler never compacts anything."""
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    with mock.patch(
+        "ray.serve._private.deployment_scheduler."
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+        False,
+    ):
+        scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        assert scheduler._compacting_node is None
+
+    # Control: the identical cluster compacts as soon as the flag is on, so the
+    # None above is the flag and not the cluster shape.
+    with mock.patch(
+        "ray.serve._private.deployment_scheduler."
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
+        True,
+    ):
+        other = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+        assert other.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+@pytest.mark.parametrize("scan_order", [("node_a", "node_b"), ("node_b", "node_a")])
+def test_tie_break_prefers_fewest_migrations(scan_order):
+    """Two equal sized candidates: the one moving fewer replicas wins.
+
+    The scan order is pinned both ways. Without the tie break, whichever node is
+    scanned first would win, so only the tie break can make node_b win in both.
+    """
+    d_id = DeploymentID(name="deployment1")
+    big_id = DeploymentID(name="big")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("node_a", {"CPU": 3})
+    cluster_node_info_cache.add_node("node_b", {"CPU": 3})
+    cluster_node_info_cache.add_node("node_c", {"CPU": 8})
+    scheduler = _compaction_scheduler(cluster_node_info_cache)
+
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_created(big_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    scheduler.on_deployment_deployed(big_id, rconfig(ray_actor_options={"num_cpus": 6}))
+
+    scheduler.on_replica_running(ReplicaID("a0", d_id), "node_a")
+    scheduler.on_replica_running(ReplicaID("a1", d_id), "node_a")
+    scheduler.on_replica_running(ReplicaID("b0", d_id), "node_b")
+    # node_c is the largest node but its 6 CPU replica fits nowhere else, so it
+    # is never a candidate and cannot win on size.
+    scheduler.on_replica_running(ReplicaID("c0", big_id), "node_c")
+
+    # Pin the order the candidates are scanned in, so the result cannot depend
+    # on dict ordering.
+    real = scheduler._get_available_resources_per_node
+
+    def ordered():
+        resources = real()
+        keys = list(scan_order) + [k for k in resources if k not in scan_order]
+        return {k: resources[k] for k in keys}
+
+    scheduler._get_available_resources_per_node = ordered
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node_b"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_backoff_is_capped():
+    """The wait between attempts stops doubling at the configured ceiling."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    with mock.patch("time.time", new=timer.time), mock.patch(
+        "ray.serve._private.deployment_scheduler."
+        "RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S",
+        8,
+    ):
+        scheduler = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # 2, 4, 8, then the cap holds it at 8 instead of 16 and 32.
+        for expected in (2, 4, 8, 8, 8):
+            scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+            assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+            scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+            assert scheduler._next_allowed_compaction_timestamp_s == (
+                timer.time() + expected
+            )
+            timer.advance(expected)
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_backoff_resets_after_a_success():
+    """One success clears the failure streak, so the next failure waits 2s again."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    with mock.patch("time.time", new=timer.time):
+        scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # Two failures in a row take the wait to 4 seconds.
+        for expected in (2, 4):
+            scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+            assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+            scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+            timer.advance(expected)
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+            )
+        assert scheduler._num_consecutive_failed_compactions == 2
+
+        # Now let it finish: the replica moves off and the node leaves.
+        scheduler.on_replica_running(ReplicaID("r2-new", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+        # Empty but still active, so the compaction is held, not yet counted.
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        assert scheduler._num_succeeded_compactions == 0
+
+        cluster_node_info_cache.draining_nodes["node2"] = 10**9
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._num_succeeded_compactions == 1
+        assert scheduler._num_consecutive_failed_compactions == 0
+        assert scheduler._next_allowed_compaction_timestamp_s == 0
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_metric_counts_only_successes():
+    """The exported counter rises once per success and never on a failure."""
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+    counter = Mock()
+    scheduler._num_compacted_nodes_counter = counter
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    # A cancelled compaction records nothing.
+    scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+    counter.inc.assert_not_called()
+
+    # Neither does emptying the node while it is still active.
+    scheduler._next_allowed_compaction_timestamp_s = 0
+    scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+    scheduler.on_replica_running(ReplicaID("r2-new", d_id), "node1")
+    scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+    assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+    counter.inc.assert_not_called()
+
+    # Only the drain does.
+    cluster_node_info_cache.draining_nodes["node2"] = 10**9
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    counter.inc.assert_called_once()
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_launching_replica_on_target_cancels_compaction():
+    """A replica still launching on the target counts as a new arrival."""
+    d_id = DeploymentID(name="deployment1")
+    scheduler = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+    # Not yet RUNNING, so only the launching set can see it.
+    scheduler._on_replica_launching(ReplicaID("r3", d_id), target_node_id="node2")
+    assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+    assert scheduler._compacting_node is None
+    assert scheduler._num_consecutive_failed_compactions == 1
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_slow_compaction_warns_once_at_each_threshold():
+    """The one minute and ten minute warnings each fire once, in that order."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    with mock.patch("time.time", new=timer.time), mock.patch(
+        "ray.serve._private.deployment_scheduler.logger"
+    ) as logger:
+        scheduler = _two_node_compaction_scheduler(MockClusterNodeInfoCache(), d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        def warnings():
+            return [c.args[0] for c in logger.warning.call_args_list]
+
+        timer.advance(30)
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        assert warnings() == []
+
+        timer.advance(31)
+        for _ in range(3):
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+        assert len(warnings()) == 1
+        assert "more than 1 minute" in warnings()[0]
+
+        timer.advance(600)
+        for _ in range(3):
+            assert (
+                scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+            )
+        assert len(warnings()) == 2
+        assert "more than 10 minutes" in warnings()[1]
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_deployment_flags_reach_the_scheduler():
+    """`is_gang` and `pins_replicas` are refreshed on every deploy."""
+    d_id = DeploymentID(name="deployment1")
+    scheduler = _compaction_scheduler(MockClusterNodeInfoCache())
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    assert scheduler._deployments[d_id].is_gang is False
+    assert scheduler._deployments[d_id].pins_replicas is False
+
+    scheduler.on_deployment_deployed(
+        d_id,
+        rconfig(ray_actor_options={"num_cpus": 1}),
+        is_gang=True,
+        pins_replicas=True,
+    )
+    assert scheduler._deployments[d_id].is_gang is True
+    assert scheduler._deployments[d_id].pins_replicas is True
+
+    # Dropping the flags on a redeploy clears them again.
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    assert scheduler._deployments[d_id].is_gang is False
+    assert scheduler._deployments[d_id].pins_replicas is False
 
 
 if __name__ == "__main__":
