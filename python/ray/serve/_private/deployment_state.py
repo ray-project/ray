@@ -4511,12 +4511,17 @@ class DeploymentState:
         # controller restarts until deploy() changes the target.
         self._mark_rolling_update_failed_if_needed()
         if self._target_state.terminally_failed:
+            message = self._rolling_update_failed_message()
             if self._curr_status_info.status != DeploymentStatus.DEPLOY_FAILED:
                 self._curr_status_info = self._curr_status_info._updated_copy(
                     status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=self._rolling_update_failed_message(),
+                    message=message,
                 )
+            elif self._curr_status_info.message != message:
+                # Health failures may have already set DEPLOY_FAILED before the
+                # rollout became terminal. Refresh the message, keeping the trigger.
+                self._curr_status_info = self._curr_status_info.update_message(message)
             return False, any_replicas_recovering
 
         # Got to make a call to complete current deploy() goal after

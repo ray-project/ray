@@ -11194,7 +11194,20 @@ class TestRollingUpdateTerminalFailure:
             ds.curr_status_info.status_trigger
             == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
         )
+        failure_message = ds.curr_status_info.message
+        assert "The update is stopped" in failure_message
+        assert "until a new deploy" in failure_message
+        assert (
+            "Error:\nA replica of the new version failed its health check."
+            in failure_message
+        )
+        assert "until the replica recovers" not in failure_message
         _assert_rollout_frozen(dsm, ds, v1, num_old=running_v1)
+        assert ds.curr_status_info.message == failure_message
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
 
     @pytest.mark.parametrize("num_unhealthy_members", [1, 2])
     def test_gang_health_failure_counts_once_per_restart(
