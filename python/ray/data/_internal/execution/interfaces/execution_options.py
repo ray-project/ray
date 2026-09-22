@@ -341,11 +341,19 @@ class ExecutionResources:
             # Explicitly handle the zero case, because `0 * inf` is undefined.
             return ExecutionResources.zero()
 
+        def _mul(a: float) -> float:
+            # A resource requirement of 0 stays 0 regardless of the scaling
+            # factor. Handle this explicitly because `0 * inf` is NaN (e.g. when
+            # scaling by an infinite task count).
+            if a == 0:
+                return 0.0
+            return a * f
+
         return ExecutionResources(
-            cpu=self.cpu * f,
-            gpu=self.gpu * f,
-            object_store_memory=self.object_store_memory * f,
-            memory=self.memory * f,
+            cpu=_mul(self.cpu),
+            gpu=_mul(self.gpu),
+            object_store_memory=_mul(self.object_store_memory),
+            memory=_mul(self.memory),
         )
 
     def floordiv(self, other: "ExecutionResources") -> "ExecutionResources":

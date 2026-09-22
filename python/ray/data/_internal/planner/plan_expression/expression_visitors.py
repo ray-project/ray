@@ -15,6 +15,7 @@ from ray.data.expressions import (
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UnnestExpr,
     UUIDExpr,
     _CallableClassUDF,
     _ExprVisitor,
@@ -191,6 +192,11 @@ class _IdempotencyVisitor(_ExprVisitor[bool]):
 
     def visit_star(self, expr: StarExpr) -> bool:
         return True
+
+    def visit_unnest(self, expr: UnnestExpr) -> bool:
+        # Unnesting only reshapes the wrapped value into columns, so the
+        # wrapped expression alone decides idempotency.
+        return expr.expr.is_idempotent()
 
     def visit_download(self, expr: DownloadExpr) -> bool:
         # ``DownloadExpr`` is a leaf with no Expr children. It is idempotent (same URI
@@ -551,6 +557,13 @@ class _TreeReprVisitor(_ExprVisitor[str]):
 
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
+
+    def visit_unnest(self, expr: "UnnestExpr") -> str:
+        return self._make_tree_lines(
+            "UNNEST",
+            children=[("", expr.expr)],
+            expr=expr,
+        )
 
     def visit_monotonically_increasing_id(
         self, expr: "MonotonicallyIncreasingIdExpr"

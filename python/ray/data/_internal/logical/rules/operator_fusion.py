@@ -391,15 +391,15 @@ class FuseOperators(Rule):
         self._op_map.pop(down_op)
 
         if isinstance(up_op, ExternalHashShuffleReduceOp):
-            # External is single-input by design (no Join support).
             fused_op = ExternalHashShuffleReduceOp(
-                up_op.input_dependencies[0],
+                up_op.input_dependencies,
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 reduce_ray_remote_args=up_op._reduce_ray_remote_args,
                 peak_memory_multiplier=up_op._peak_memory_multiplier,
+                should_emit_empty_partitions=up_op._emit_empty_partitions,
                 name=name,
                 fused_output_map_transformer=down_op.get_map_transformer(),
                 fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),

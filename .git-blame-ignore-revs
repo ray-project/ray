@@ -1,2 +1,5 @@
 # Formatted Python code with Black
 7f1bacc7dc9caf6d0ec042e39499bbf1d9a7d065
+
+# Soft-wrapped the converted RLlib doc pages to one sentence per line (#66214)
+77c68c7472afa07ea60cc02c8bbeb4d88dabd803

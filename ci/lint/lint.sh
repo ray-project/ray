@@ -32,6 +32,7 @@ pre_commit() {
     shellcheck
     docstyle
     check-import-order
+    data-tests-location
     check-cpp-files-inclusion
     end-of-file-fixer
     check-json
@@ -56,11 +57,6 @@ pre_commit_pydoclint() {
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
-}
-
-semgrep_lint() {
-  pip install -c python/requirements_compiled.txt semgrep pre-commit
-  pre-commit run semgrep --all-files --show-diff-on-failure
 }
 
 # Use system python to avoid conflicts with uv python in forge image
