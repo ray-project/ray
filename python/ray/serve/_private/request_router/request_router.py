@@ -1,5 +1,6 @@
 import asyncio
 import enum
+import inspect
 import logging
 import math
 import random
@@ -8,6 +9,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import (
     AsyncGenerator,
+    Awaitable,
     Callable,
     DefaultDict,
     Deque,
@@ -16,6 +18,8 @@ from typing import (
     Optional,
     Set,
     Tuple,
+    Union,
+    cast,
 )
 
 from ray.actor import ActorHandle
@@ -480,6 +484,11 @@ class RequestRouter(ABC):
         self_actor_handle: Optional[ActorHandle] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
+        create_replica_wrapper_func: Optional[
+            Callable[
+                [RunningReplicaInfo], Union[RunningReplica, Awaitable[RunningReplica]]
+            ]
+        ] = None,
         initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -490,6 +499,11 @@ class RequestRouter(ABC):
         self._handle_source = handle_source
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
+        self._create_replica_wrapper_func = (
+            create_replica_wrapper_func
+            if create_replica_wrapper_func is not None
+            else self._create_default_replica_wrapper
+        )
         self._get_curr_time_s = get_curr_time_s if get_curr_time_s else time.time
 
         # Backoff parameters for request routing, from RequestRouterConfig.
@@ -787,6 +801,28 @@ class RequestRouter(ABC):
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         """Get the replica queue length cache."""
         return self._replica_queue_len_cache
+
+    def create_replica_wrapper(
+        self, replica_info: RunningReplicaInfo
+    ) -> Union[RunningReplica, Awaitable[RunningReplica]]:
+        """Invoke the wrapper factory, which must not block the router loop.
+
+        Args:
+            replica_info: Metadata for the replica to wrap.
+
+        Returns:
+            A wrapper, or an awaitable resolving to one.
+        """
+        assert self._create_replica_wrapper_func is not None
+        return self._create_replica_wrapper_func(replica_info)
+
+    async def _create_default_replica_wrapper(
+        self, replica_info: RunningReplicaInfo
+    ) -> RunningReplica:
+        actor_handle = await self._event_loop.run_in_executor(
+            get_replica_handle_executor(), replica_info.get_actor_handle
+        )
+        return RunningReplica(replica_info, actor_handle=actor_handle)
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
@@ -1379,10 +1415,10 @@ class RequestRouter(ABC):
     async def _resolve_replica(
         self, replica_info: RunningReplicaInfo
     ) -> RunningReplica:
-        actor_handle = await self._event_loop.run_in_executor(
-            get_replica_handle_executor(), replica_info.get_actor_handle
-        )
-        return RunningReplica(replica_info, actor_handle=actor_handle)
+        replica = self.create_replica_wrapper(replica_info)
+        if inspect.isawaitable(replica):
+            return await replica
+        return cast(RunningReplica, replica)
 
     def _schedule_replica_update(self, task: asyncio.Task) -> None:
         # Retrieve exceptions even for tasks removed before this callback runs.

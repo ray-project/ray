@@ -8,7 +8,7 @@ import threading
 import time
 from collections import Counter, defaultdict
 from dataclasses import replace
-from types import SimpleNamespace
+from types import SimpleNamespace, coroutine
 from typing import Optional, Set
 from unittest.mock import AsyncMock, Mock
 
@@ -2361,6 +2361,55 @@ async def test_completed_lookup_invalidated_before_commit(pow_2_router, remove):
     await asyncio.sleep(0)
     assert not router.curr_replicas
     await router._shutdown_replica_resolution()
+
+
+@pytest.mark.parametrize("override", [False, True])
+@pytest.mark.parametrize("factory_kind", ["sync", "async", "generator"])
+async def test_custom_replica_factory_runs_on_router_loop(override, factory_kind):
+    loop = asyncio.get_running_loop()
+    replica = FakeRunningReplica("custom")
+    replica.set_queue_len_response(0)
+
+    def sync_factory(info):
+        assert asyncio.get_running_loop() is loop
+        return replica
+
+    async def async_factory(info):
+        await asyncio.sleep(0)
+        return sync_factory(info)
+
+    @coroutine
+    def generator_factory(info):
+        yield from asyncio.sleep(0).__await__()
+        return sync_factory(info)
+
+    factory = Mock(
+        side_effect={
+            "sync": sync_factory,
+            "async": async_factory,
+            "generator": generator_factory,
+        }[factory_kind]
+    )
+
+    class CustomRouter(PowerOfTwoChoicesRequestRouter):
+        def create_replica_wrapper(self, info):
+            return factory(info)
+
+    router_cls = CustomRouter if override else PowerOfTwoChoicesRequestRouter
+    router = router_cls(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        **({} if override else {"create_replica_wrapper_func": factory}),
+    )
+    info = replica_info("custom")
+    try:
+        router._update_running_replicas([info])
+        await async_wait_for_condition(lambda: bool(router.curr_replicas))
+        assert router.curr_replicas[replica.replica_id] is replica
+        router._update_running_replicas([info])
+        factory.assert_called_once_with(info)
+    finally:
+        await router._shutdown_replica_resolution()
 
 
 async def test_completed_replica_lookups_are_batched(
