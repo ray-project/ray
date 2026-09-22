@@ -194,6 +194,7 @@ class AllToAllOperator(
         for bundle in output_buffer:
             for entry in bundle.blocks:
                 if entry.ref in input_refs:
+                    # skip calling on_block_produced for forwarded blocks
                     continue
                 self._block_ref_counter.on_block_produced(
                     entry.ref, entry.metadata.size_bytes or 0, self.id
