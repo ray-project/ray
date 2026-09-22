@@ -4,13 +4,16 @@ footer indexer.
 These used to live in the legacy
 ``ray.data._internal.datasource.parquet_datasource`` module. They moved here so
 that ``datasource_v2`` does not depend on the legacy package; the legacy module
-imports them from here instead. This module has no Ray Data imports of its own,
-so it can be imported from anywhere without creating import cycles.
+imports them from here instead. Its only Ray Data import is the size constant
+from ``ray.data._internal.util``, so it can be imported from anywhere without
+creating import cycles.
 """
 
 from typing import TYPE_CHECKING, List, Optional
 
 import pyarrow as pa
+
+from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     import pyarrow.dataset
@@ -21,7 +24,7 @@ PARQUET_FILE_EXTENSIONS: List[str] = ["parquet"]
 
 # Arrow's nested type chunking limit
 # See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
-_ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
+_ARROW_CHUNK_LIMIT = 2 * GiB
 
 
 def check_for_legacy_tensor_type(schema: pa.Schema) -> None:
