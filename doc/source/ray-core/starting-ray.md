@@ -267,8 +267,6 @@ ray.init()
 
 Note that the machine calling `ray up` will not be considered as part of the Ray cluster, and therefore calling `ray.init` on that same machine will not attach to the cluster.
 
-(what-s-next)=
-
 ## What's next?
 
 Check out our {doc}`Deployment section <../cluster/getting-started>` for more information on deploying Ray in different settings, including {doc}`Kubernetes <../cluster/kubernetes/index>`, {doc}`YARN <../cluster/vms/user-guides/community/yarn>`, and {doc}`SLURM <../cluster/vms/user-guides/community/slurm>`.
