@@ -5,7 +5,7 @@ import sys
 import time
 from collections import deque
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,6 +20,7 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     parse_ras_schema,
 )
 from ray.train.v2._internal.constants import (
+    HANG_DETECTOR_DIRNAME,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
     NCCL_RAS_ACTION_OBSERVE,
@@ -507,7 +508,7 @@ def make_nccl_ras_callback(
 
     def capture(tool):
         captured.append(tool)
-        return f"/exp/{nccl_ras._DIAGNOSTICS_DIR}/{tool}"
+        return f"/exp/{HANG_DETECTOR_DIRNAME}/{tool}"
 
     callback.dump_ras_query_history = lambda _report=None: capture(
         nccl_ras._NCCL_RAS_TOOL
@@ -1244,6 +1245,170 @@ def test_ras_history_upload_skipped_when_empty(uploads):
     # empty directory to leave behind in the user's experiment directory.
     assert make_diagnostics_callback().dump_ras_query_history() is None
     assert uploads == []
+
+
+def make_stack_dump_callback(
+    monkeypatch: pytest.MonkeyPatch,
+    ranks: List[int],
+    launch_errors: Optional[Dict[int, Exception]] = None,
+    results: Optional[Dict[int, Union[str, Exception]]] = None,
+):
+    """A callback whose workers answer a stack dump with scripted outcomes.
+
+    Args:
+        monkeypatch: Used to stub out ``ray.wait``/``ray.get``.
+        ranks: The world rank of each worker in the group.
+        launch_errors: ``{rank: exception}`` raised by ``execute_async``.
+        results: ``{rank: str | Exception}`` -- what ``ray.get`` returns for that
+            rank's dump, or raises. A rank left out never becomes ready, which is
+            how a dump that outlived the wait timeout looks.
+
+    Returns:
+        The callback and the ``{rank: worker}`` mapping it fans out to.
+    """
+    launch_errors = launch_errors or {}
+    results = results or {}
+
+    workers = {}
+    for rank in ranks:
+        worker = MagicMock()
+        worker.distributed_context.world_rank = rank
+        if rank in launch_errors:
+            worker.execute_async.side_effect = launch_errors[rank]
+        else:
+            # Stands in for the ObjectRef the dump is launched with; the
+            # rank it carries is what the stubbed ray.wait/ray.get key off.
+            worker.execute_async.return_value = MagicMock(rank=rank)
+        workers[rank] = worker
+
+    callback = make_diagnostics_callback()
+    callback._worker_group.get_workers.return_value = list(workers.values())
+
+    def fake_wait(refs, num_returns, timeout):
+        ready = [ref for ref in refs if ref.rank in results]
+        return ready, [ref for ref in refs if ref not in ready]
+
+    def fake_get(ref):
+        result = results[ref.rank]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(nccl_ras.ray, "wait", fake_wait)
+    monkeypatch.setattr(nccl_ras.ray, "get", fake_get)
+    return callback, workers
+
+
+def test_stack_traces_upload_one_file_per_rank(monkeypatch, uploads):
+    # The whole group is dumped in parallel and each rank's trace lands in its
+    # own file, named by world rank so it can be matched to the RAS report.
+    callback, workers = make_stack_dump_callback(
+        monkeypatch,
+        ranks=[0, 1, 2],
+        results={rank: f"trace of rank {rank}" for rank in (0, 1, 2)},
+    )
+
+    fs_path = callback.dump_workers_stack_traces()
+
+    assert fs_path == "/exp/hang_detector/stack_traces"
+    ((uploaded_path, files),) = uploads
+    assert uploaded_path == fs_path
+    assert files == {f"rank_{rank}.log": f"trace of rank {rank}" for rank in (0, 1, 2)}
+    # py-spy has to give up before the controller stops waiting, otherwise the
+    # wait times out with nothing to show for it.
+    for worker in workers.values():
+        worker.execute_async.assert_called_once_with(
+            nccl_ras.dump_stack_trace, nccl_ras._STACK_DUMP_TIMEOUT_S - 5
+        )
+
+
+def test_stack_traces_record_a_rank_that_could_not_be_launched(monkeypatch, uploads):
+    # A worker that is unreachable (already dead, actor call refused) still gets
+    # a file, so a rank missing from the diagnostics is never silent.
+    callback, _ = make_stack_dump_callback(
+        monkeypatch,
+        ranks=[0, 1],
+        launch_errors={1: RuntimeError("actor unavailable")},
+        results={0: "trace of rank 0"},
+    )
+
+    callback.dump_workers_stack_traces()
+
+    ((_, files),) = uploads
+    assert files["rank_0.log"] == "trace of rank 0"
+    assert files["rank_1.log"] == "failed to launch stack dump: actor unavailable\n"
+
+
+def test_stack_traces_record_a_rank_that_timed_out(
+    monkeypatch, uploads, caplog, propagate_logs
+):
+    # The hung rank is the interesting one, so a dump that never comes back must
+    # not hold up (or drop) the traces the other ranks did return.
+    callback, _ = make_stack_dump_callback(
+        monkeypatch, ranks=[0, 1], results={0: "trace of rank 0"}
+    )
+
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        callback.dump_workers_stack_traces()
+
+    ((_, files),) = uploads
+    assert files["rank_0.log"] == "trace of rank 0"
+    assert files["rank_1.log"] == (
+        f"stack dump timed out after {nccl_ras._STACK_DUMP_TIMEOUT_S:.0f}s"
+    )
+    assert "Stack dump on rank 1 did not finish" in caplog.text
+
+
+def test_stack_traces_record_a_rank_whose_dump_failed(monkeypatch, uploads):
+    # The dump was launched and returned, but as an error (the worker died while
+    # dumping): report that against the rank rather than losing every trace.
+    callback, _ = make_stack_dump_callback(
+        monkeypatch,
+        ranks=[0, 1],
+        results={0: "trace of rank 0", 1: RuntimeError("worker died")},
+    )
+
+    callback.dump_workers_stack_traces()
+
+    ((_, files),) = uploads
+    assert files["rank_1.log"] == "failed to collect stack trace: worker died"
+
+
+def test_stack_traces_skipped_without_workers(monkeypatch, uploads):
+    # The group can be empty by the time the hang is confirmed (already torn
+    # down): there is no empty directory to leave in the experiment directory.
+    callback, _ = make_stack_dump_callback(monkeypatch, ranks=[])
+
+    assert callback.dump_workers_stack_traces() is None
+    assert uploads == []
+
+
+def test_dump_stack_trace_falls_back_to_python_when_py_spy_is_missing(monkeypatch):
+    # py-spy is an optional dependency; without it the native frames are lost but
+    # the Python stacks of every thread are still worth having.
+    def no_py_spy(*args, **kwargs):
+        raise FileNotFoundError("py-spy")
+
+    monkeypatch.setattr(nccl_ras.subprocess, "run", no_py_spy)
+
+    trace = nccl_ras.dump_stack_trace(1.0)
+
+    assert "py-spy unavailable: py-spy not installed" in trace
+    assert "test_dump_stack_trace_falls_back_to_python_when_py_spy_is_missing" in trace
+
+
+def test_dump_stack_trace_returns_the_py_spy_dump(monkeypatch):
+    # The native dump is what shows a rank blocked inside NCCL, so it is returned
+    # verbatim rather than summarised.
+    monkeypatch.setattr(
+        nccl_ras.subprocess,
+        "run",
+        lambda *args, **kwargs: MagicMock(
+            returncode=0, stdout="native stack", stderr=""
+        ),
+    )
+
+    assert nccl_ras.dump_stack_trace(1.0) == "native stack"
 
 
 def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):

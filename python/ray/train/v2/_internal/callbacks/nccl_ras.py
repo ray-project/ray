@@ -51,6 +51,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
     DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S,
+    HANG_DETECTOR_DIRNAME,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
     NCCL_RAS_ACTION_OBSERVE,
@@ -72,8 +73,8 @@ logger = logging.getLogger(__name__)
 _STACK_DUMP_TIMEOUT_S: float = 30.0
 _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 
-# Every diagnostic is uploaded to `<experiment_fs_path>/hang_detector/<tool>/`.
-_DIAGNOSTICS_DIR: str = "hang_detector"
+# Every diagnostic is uploaded to
+# `<experiment_fs_path>/<HANG_DETECTOR_DIRNAME>/<tool>/`.
 _STACK_TRACES_TOOL: str = "stack_traces"
 _NCCL_RAS_TOOL: str = "nccl_ras"
 
@@ -1006,7 +1007,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """
         storage_context = self._worker_group._storage_context
         fs_path = os.path.join(
-            storage_context.experiment_fs_path, _DIAGNOSTICS_DIR, tool
+            storage_context.experiment_fs_path, HANG_DETECTOR_DIRNAME, tool
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             for name, contents in files.items():
