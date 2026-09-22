@@ -3016,8 +3016,9 @@ class DeploymentState:
 
         self._prev_startup_warning: float = time.time()
         self._replica_failure_message: Optional[str] = None
-        # Startup failures plus target-version health failures during a rolling
-        # update. Reset on a new deployment attempt or convergence to HEALTHY;
+        # Counts startup failures for all deployments. During rolling updates,
+        # also counts subsequent health-check failures of target-version replicas.
+        # Reset on a new deployment attempt or convergence to HEALTHY;
         # count-only updates of terminally failed rolling updates preserve it.
         self._replica_failure_count: int = 0
         # Flag for whether any replicas of the target version has successfully started.
