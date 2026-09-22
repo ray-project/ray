@@ -79,13 +79,11 @@ def test_lance_namespace_kwargs_fallback_uses_lance_version(monkeypatch):
         "ray.data._internal.datasource.lance_utils.signature",
         lambda target: (_ for _ in ()).throw(ValueError("no signature")),
     )
-    monkeypatch.setattr(lance, "__version__", "6.0.1")
-
-    def write_fragments():
-        pass
-
     assert get_lance_namespace_kwargs(
-        write_fragments, "dir", {"path": "/tmp/ns"}, ["db", "table"]
+        lance.fragment.write_fragments,
+        "dir",
+        {"path": "/tmp/ns"},
+        ["db", "table"],
     ) == {"namespace_client": namespace, "table_id": ["db", "table"]}
 
 
@@ -104,35 +102,8 @@ def test_lance_namespace_kwargs_fallback_supports_legacy_api(monkeypatch):
         "ray.data._internal.datasource.lance_utils.signature",
         lambda target: (_ for _ in ()).throw(TypeError("no signature")),
     )
-    monkeypatch.setattr(lance, "__version__", "4.0.0")
-
     def write_fragments():
-        pass
-
-    assert get_lance_namespace_kwargs(
-        write_fragments, "dir", {"path": "/tmp/ns"}, ["db", "table"]
-    ) == {"storage_options_provider": provider}
-
-
-def test_lance_namespace_kwargs_fallback_handles_missing_version(monkeypatch):
-    namespace = object()
-    provider = object()
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.lance_utils.get_or_create_namespace",
-        lambda namespace_impl, namespace_properties: namespace,
-    )
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.lance_utils.create_storage_options_provider",
-        lambda namespace_impl, namespace_properties, table_id: provider,
-    )
-    monkeypatch.setattr(
-        "ray.data._internal.datasource.lance_utils.signature",
-        lambda target: (_ for _ in ()).throw(ValueError("no signature")),
-    )
-    monkeypatch.delattr(lance, "__version__", raising=False)
-
-    def write_fragments():
-        pass
+        "storage_options_provider"
 
     assert get_lance_namespace_kwargs(
         write_fragments, "dir", {"path": "/tmp/ns"}, ["db", "table"]

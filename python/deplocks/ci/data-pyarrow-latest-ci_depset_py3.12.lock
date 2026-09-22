@@ -2194,18 +2194,14 @@ kombu==5.6.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   celery
-lance-namespace==0.6.1 \
-    --hash=sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be \
-    --hash=sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131
-    # via
-    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-    #   pylance
-lance-namespace-urllib3-client==0.6.1 \
-    --hash=sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87 \
-    --hash=sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b
-    # via
-    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
-    #   lance-namespace
+lance-namespace==0.7.7 \
+    --hash=sha256:477a7ca6b5e1f673a2c9ba52f42d6e8e3ff7c27a601392a21eb90fba98d0309b \
+    --hash=sha256:d00b525f2e26993a6c61668e798bca6c808605ab8a79f29f86a1a1af92d91ae2
+    # via pylance
+lance-namespace-urllib3-client==0.7.7 \
+    --hash=sha256:4d8c066628c17c6a10cf643b51a7f7ae1bfb8a614d9cc54a5af38a4ba2b4b102 \
+    --hash=sha256:9221c3e00fd89f0c811953d94b32d2ea527765280460a174f5872dc8a74c0ed6
+    # via lance-namespace
 lerobot==0.5.1 \
     --hash=sha256:4a05a9d10f013bf8fc408c7bd9c32a261209250cb66987b796416911c96a6fd3 \
     --hash=sha256:bbd11021023fde0947b6d1ff1c52fe91c86a28ab09a96359892f3ef7e8866862
@@ -4169,14 +4165,13 @@ pyjwt==2.12.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   snowflake-connector-python
-pylance==2.0.1 \
-    --hash=sha256:51d089429b40cd81c89d7993191e758059e580dd7239fd2748bedd2e1021b592 \
-    --hash=sha256:7fc5ba370514e6ba3e67f49b51e75687534b37e2eefdb91755d4fb20b3f6fe0b \
-    --hash=sha256:804fcfb351a97fd3aad532df1fedafbc0109088e7b0ac3051c3512c3100a4a45 \
-    --hash=sha256:a67f7a96d40a5012b04205879fe7ae50b6bf856fd79e97868582e449cfedbd1b \
-    --hash=sha256:bff6452cdb8c56e84102a52291b7a9b4c08c87248d620afef05793b97de32341 \
-    --hash=sha256:d740d7a7ff9905e358a70d2adae2178ab9d6798cf3ef47729371223463c442e6
-    # via -r python/requirements/data/pyarrow-latest.txt
+pylance==6.0.1 \
+    --hash=sha256:5f2c7b6ee21e53cdc760a2f0618f97017c43b127bc67069fdd21bfa8d4a2c1fc \
+    --hash=sha256:6bb7b1d85f19dc3bdb80e9a4dc7d2a8929346f1f941b8f43f856d24aca6adb0a \
+    --hash=sha256:7b0b9b53b2723ca28d20f442c92db78e5b0ad30cc568b2e0fd03f6f869baa879 \
+    --hash=sha256:b7032fc1970030402af0621d9a6c7337c45aa677e454b8a696b1ece2628c085d \
+    --hash=sha256:c68dd8a6e356afe2c50034705cbc06829d63f05f88a6ba2d2ad693a94e8d8205 \
+    --hash=sha256:eb78d63560727e0f8ec51fa8bbe5288fc5d45bde64cc3d149cc1750d996347b1
 pynput==1.8.2 \
     --hash=sha256:8cc38cf13a6ab2749cb375678be8a0fd705d7ce49c8001ff5db4007a723bbef1 \
     --hash=sha256:f493c87157cd3861b4468f7f896857051762f44ed26f1b641e7cc5840a457087

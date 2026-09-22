@@ -1013,11 +1013,13 @@ kubernetes==24.2.0
     # via -r python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lance-namespace==0.6.1
-    # via
-    #   -r python/requirements/ml/data-requirements.txt
-    #   pylance
-lance-namespace-urllib3-client==0.6.1
+lance-namespace==0.7.7 \
+    --hash=sha256:477a7ca6b5e1f673a2c9ba52f42d6e8e3ff7c27a601392a21eb90fba98d0309b \
+    --hash=sha256:d00b525f2e26993a6c61668e798bca6c808605ab8a79f29f86a1a1af92d91ae2
+    # via pylance
+lance-namespace-urllib3-client==0.7.7 \
+    --hash=sha256:4d8c066628c17c6a10cf643b51a7f7ae1bfb8a614d9cc54a5af38a4ba2b4b102 \
+    --hash=sha256:9221c3e00fd89f0c811953d94b32d2ea527765280460a174f5872dc8a74c0ed6
     # via lance-namespace
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
@@ -1762,8 +1764,13 @@ pyjwt==2.12.1
     #   azure-cli-core
     #   msal
     #   snowflake-connector-python
-pylance==4.0.0
-    # via -r python/requirements/ml/data-test-requirements.txt
+pylance==6.0.1 \
+    --hash=sha256:5f2c7b6ee21e53cdc760a2f0618f97017c43b127bc67069fdd21bfa8d4a2c1fc \
+    --hash=sha256:6bb7b1d85f19dc3bdb80e9a4dc7d2a8929346f1f941b8f43f856d24aca6adb0a \
+    --hash=sha256:7b0b9b53b2723ca28d20f442c92db78e5b0ad30cc568b2e0fd03f6f869baa879 \
+    --hash=sha256:b7032fc1970030402af0621d9a6c7337c45aa677e454b8a696b1ece2628c085d \
+    --hash=sha256:c68dd8a6e356afe2c50034705cbc06829d63f05f88a6ba2d2ad693a94e8d8205 \
+    --hash=sha256:eb78d63560727e0f8ec51fa8bbe5288fc5d45bde64cc3d149cc1750d996347b1
 pymars==0.10.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
 pymongo==4.3.2

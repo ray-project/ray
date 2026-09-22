@@ -2113,19 +2113,14 @@ kombu==5.6.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   celery
-lance-namespace==0.6.1 \
-    --hash=sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be \
-    --hash=sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/data-requirements.txt
-    #   pylance
-lance-namespace-urllib3-client==0.6.1 \
-    --hash=sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87 \
-    --hash=sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   lance-namespace
+lance-namespace==0.7.7 \
+    --hash=sha256:477a7ca6b5e1f673a2c9ba52f42d6e8e3ff7c27a601392a21eb90fba98d0309b \
+    --hash=sha256:d00b525f2e26993a6c61668e798bca6c808605ab8a79f29f86a1a1af92d91ae2
+    # via pylance
+lance-namespace-urllib3-client==0.7.7 \
+    --hash=sha256:4d8c066628c17c6a10cf643b51a7f7ae1bfb8a614d9cc54a5af38a4ba2b4b102 \
+    --hash=sha256:9221c3e00fd89f0c811953d94b32d2ea527765280460a174f5872dc8a74c0ed6
+    # via lance-namespace
 libclang==18.1.1 \
     --hash=sha256:0b2e143f0fac830156feb56f9231ff8338c20aecfe72b4ffe96f19e5a1dbb69a \
     --hash=sha256:3f0e1f49f04d3cd198985fea0511576b0aee16f9ff0e0f0cad7f9c57ec3c20e8 \
@@ -4144,16 +4139,13 @@ pyjwt==2.12.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   snowflake-connector-python
-pylance==4.0.0 \
-    --hash=sha256:57f6a521b1b4b77a62d791850213a854093719c7d76b9641e8abcd445eb73e56 \
-    --hash=sha256:7310892f3089eeddb1af1fe5c398b71cc483a3015646caceaa2f62fc92b227b2 \
-    --hash=sha256:9261c32d3bd6aaab33025a45b20c2f2554804e1bc2a1ec2bfcb06f0c9d2e59b9 \
-    --hash=sha256:9ca03f97f22e0b75f06378c4006d587aba26408122fd066f0e43e2b7a019c67e \
-    --hash=sha256:e433d6bddd66de99c58e472bc3e8ed1590c7ff4ff7948479254c1c2111a601a8 \
-    --hash=sha256:f36dce83c11cd5d598cb0f64bad7c51fc21ed43df868b9029184a385c6bf4d84
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/data-test-requirements.txt
+pylance==6.0.1 \
+    --hash=sha256:5f2c7b6ee21e53cdc760a2f0618f97017c43b127bc67069fdd21bfa8d4a2c1fc \
+    --hash=sha256:6bb7b1d85f19dc3bdb80e9a4dc7d2a8929346f1f941b8f43f856d24aca6adb0a \
+    --hash=sha256:7b0b9b53b2723ca28d20f442c92db78e5b0ad30cc568b2e0fd03f6f869baa879 \
+    --hash=sha256:b7032fc1970030402af0621d9a6c7337c45aa677e454b8a696b1ece2628c085d \
+    --hash=sha256:c68dd8a6e356afe2c50034705cbc06829d63f05f88a6ba2d2ad693a94e8d8205 \
+    --hash=sha256:eb78d63560727e0f8ec51fa8bbe5288fc5d45bde64cc3d149cc1750d996347b1
 pymars==0.10.0 ; python_full_version < '3.12' \
     --hash=sha256:00457464432670a76e0691242f58ee6d7287bcb9051556565d222534a41860e1 \
     --hash=sha256:017f8fffbc33a1323d20e1c975a479789bfe08970e532d7d2ab49f83d90c1542 \
