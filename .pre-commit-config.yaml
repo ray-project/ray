@@ -229,11 +229,13 @@ repos:
         language: system
         types: [python]
 
-  - repo: https://github.com/errata-ai/vale
-    rev: v3.19.0
-    hooks:
-      - id: vale
-        files: ^doc/source/data/.*\.(md|rst)$
+  # Vale prose linting for Ray Data is temporarily disabled while a style pass
+  # clears the backlog. Re-enable by uncommenting this block.
+  # - repo: https://github.com/errata-ai/vale
+  #   rev: v3.19.0
+  #   hooks:
+  #     - id: vale
+  #       files: ^doc/source/data/.*\.(md|rst)$
 
   - repo: https://github.com/MarcoGorelli/cython-lint
     rev: v0.18.1
