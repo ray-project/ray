@@ -491,42 +491,18 @@ class RouterMetricsManager:
     def _get_metrics_report(self) -> HandleMetricReport:
         timestamp = time.time()
         running_requests = dict()
-        avg_running_requests = dict()
         autoscaling_config = self.autoscaling_config
         assert autoscaling_config is not None
         look_back_period = autoscaling_config.look_back_period_s
         self.metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
-        avg_queued_requests = self.metrics_store.aggregate_avg([QUEUED_REQUESTS_KEY])[0]
-        if avg_queued_requests is None:
-            # If the queued requests timeseries is empty, we set the
-            # average to the current number of queued requests.
-            avg_queued_requests = self.num_queued_requests
-        # If the queued requests timeseries is empty, we set the number of data points to 1.
-        # This is to avoid division by zero.
-        num_data_points = self.metrics_store.timeseries_count(QUEUED_REQUESTS_KEY) or 1
         queued_requests = self.metrics_store.data.get(
             QUEUED_REQUESTS_KEY, [TimeStampedValue(timestamp, self.num_queued_requests)]
         )
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
-                # Calculate avg running requests.
-                # NOTE (abrar): The number of data points from queued requests is often higher than
-                # those from running requests. This is because replica metrics are only collected
-                # once a replica is up, whereas queued request metrics are collected continuously
-                # as long as the handle is alive. To approximate the true average of ongoing requests,
-                # we should normalize by using the same number of data points for both queued and
-                # running request time series.
-                running_requests_sum = self.metrics_store.aggregate_sum([replica_id])[0]
-                if running_requests_sum is None:
-                    # If the running requests timeseries is empty, we set the sum
-                    # to the current number of requests.
-                    running_requests_sum = num_requests
-                replica_str = replica_id.to_full_id_str()
-                avg_running_requests[replica_str] = (
-                    running_requests_sum / num_data_points
-                )
-                # Get running requests data
-                running_requests[replica_str] = self.metrics_store.data.get(
+                running_requests[
+                    replica_id.to_full_id_str()
+                ] = self.metrics_store.data.get(
                     replica_id, [TimeStampedValue(timestamp, num_requests)]
                 )
         handle_metric_report = HandleMetricReport(
@@ -534,11 +510,7 @@ class RouterMetricsManager:
             handle_id=self._handle_id,
             actor_id=self._self_actor_id,
             handle_source=self._handle_source,
-            aggregated_queued_requests=avg_queued_requests,
             queued_requests=queued_requests,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: avg_running_requests,
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: running_requests,
             },
@@ -1319,23 +1291,18 @@ class AsyncioRouter:
             if reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
             else:
-                # Fast path: synchronously ask the configured RequestRouter to
-                # pick a replica from the current snapshot, bypassing the
-                # _pending_requests_to_fulfill queue and the routing-task
-                # workers. Safe because there's no reservation -> no rejection
-                # -> no retry, so the queue's ordering/backoff guarantees are
-                # unused.
-                ranks = await self._active_request_router.choose_replicas(
-                    candidate_replicas=self._active_request_router._replicas_list,
-                    pending_request=pr,
+                # Policies can return no candidates temporarily (e.g. while
+                # waiting for multiplexed model metadata). Reuse their selection
+                # retry loop with the same PendingRequest, without probing or
+                # reserving capacity on replicas. Close the generator to clean up
+                # its backoff accounting on success and cancellation.
+                candidates = self._active_request_router._choose_replicas_with_backoff(
+                    pr
                 )
-                flat = [r for rank in ranks for r in rank]
-                candidate = flat[0] if flat else None
-                if candidate is None:
-                    raise RuntimeError(
-                        f"no replicas available for {self.deployment_id}"
-                    )
-                replica = candidate
+                try:
+                    replica = (await candidates.__anext__())[0]
+                finally:
+                    await candidates.aclose()
                 slot_token = None
 
             selection = ReplicaSelection(
@@ -1826,17 +1793,24 @@ class SingletonThreadRouter(Router):
             except Exception:
                 logger.exception("Failed to release reserved replica slot.")
 
+        reserve = request_kwargs.get("_reserve", True)
         future = asyncio.run_coroutine_threadsafe(
             enter_context(), cast(asyncio.AbstractEventLoop, self._asyncio_loop)
         )
-        # Shield so a caller cancellation does not propagate through wrap_future
-        # and cancel ``enter_context``: __aenter__ finishes and returns, so the
-        # entered CM stays reachable for release. Otherwise the CM is discarded
-        # mid-entry and the slot leaks until GC.
         try:
-            selection, context_manager = await asyncio.shield(
-                asyncio.wrap_future(future)
-            )
+            if reserve:
+                # Shield so a caller cancellation does not propagate through wrap_future
+                # and cancel ``enter_context``: __aenter__ finishes and returns, so the
+                # entered CM stays reachable for release. Otherwise the CM is discarded
+                # mid-entry and the slot leaks until GC.
+                selection, context_manager = await asyncio.shield(
+                    asyncio.wrap_future(future)
+                )
+            else:
+                # Unlike reserved requests, which shield cancellation until
+                # ``__aenter__`` completes so their slot can be released, do not shield:
+                # propagate cancellation from unreserved callers to stop selection retries.
+                selection, context_manager = await asyncio.wrap_future(future)
         except BaseException:
             # Honor the cancellation now; release the orphaned slot on the
             # router loop instead of making the cancelled caller wait on it.
