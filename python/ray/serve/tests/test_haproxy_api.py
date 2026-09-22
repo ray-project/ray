@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import json
 import logging
 import os
 import signal
@@ -1079,7 +1080,7 @@ def _create_replica_server(port: int, replica_id_header: str):
                 res.headers[f"echo-{name}"] = value
         res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
-        return {"replica": replica_id_header, "echo": body.decode("utf-8")}
+        return {"replica": replica_id_header, "body_length": len(body)}
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
@@ -1263,6 +1264,24 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
+
+            # A leading-space word is typically one token with common BPE
+            # tokenizers. Verify that a request approximating a million-token
+            # prompt (and well over the old 256 KiB cap) reaches both the
+            # router and selected replica intact.
+            large_body = json.dumps({"prompt": " token" * 1_000_000})
+            large_body_size = len(large_body.encode())
+            assert 262144 < large_body_size < 16 * 1024 * 1024
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                data=large_body,
+                headers={"content-type": "application/json"},
+                timeout=30,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert resp.json()["body_length"] == large_body_size
+            assert router_captured["bodies"][-1] == large_body
 
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.
