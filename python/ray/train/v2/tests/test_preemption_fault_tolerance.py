@@ -384,22 +384,22 @@ def _run_slow_checkpoint_trainer(tmp_path, grace_s):
             return
 
         rank = ray.train.get_context().get_world_rank()
-        # A deadline only 5s out, far shorter than the checkpoint below.
+        # A deadline only 3s out, shorter than the checkpoint below.
         get_train_context().preemption_context.preemption_info = PreemptionInfo(
-            deadline_ms=int((time.time() + 5) * 1000),
+            deadline_ms=int((time.time() + 3) * 1000),
             preempted_node_to_ranks={"mock-node": [1]},
         )
 
         if rank == 1:
-            time.sleep(120)  # reclaimed; never reports
+            time.sleep(60)  # reclaimed; never reports
             return
 
-        # Survivor: a checkpoint that takes far longer than the drain window.
-        time.sleep(15)
+        # Survivor: a checkpoint that takes longer than the 3s drain window.
+        time.sleep(5)
         with tempfile.TemporaryDirectory() as t:
             json.dump({"step": 42}, open(os.path.join(t, "s.json"), "w"))
             ray.train.report({"step": 42}, checkpoint=Checkpoint.from_directory(t))
-        time.sleep(120)
+        time.sleep(60)
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -408,7 +408,7 @@ def _run_slow_checkpoint_trainer(tmp_path, grace_s):
             storage_path=str(tmp_path),
             failure_config=FailureConfig(
                 max_failures=0,
-                max_preemption_failures=2,
+                max_preemption_failures=1,
                 relax_collectives_on_preemption=True,
                 preemption_grace_s=grace_s,
             ),
@@ -418,8 +418,14 @@ def _run_slow_checkpoint_trainer(tmp_path, grace_s):
 
 
 def test_survivor_finishes_checkpoint_past_the_deadline(tmp_path):
-    """With grace, a checkpoint that outlasts the drain window still commits."""
-    result = _run_slow_checkpoint_trainer(tmp_path, grace_s=60.0)
+    """With grace, a checkpoint that outlasts the drain window still commits.
+
+    `grace_s` only has to outlast the checkpoint. The survivor keeps training
+    after committing, so `finished` never becomes true and the controller waits
+    out the whole grace before restarting -- an over-large value here just makes
+    the test slow.
+    """
+    result = _run_slow_checkpoint_trainer(tmp_path, grace_s=8.0)
 
     assert result.error is None
     assert result.metrics["resumed_from"] == 42
@@ -428,12 +434,46 @@ def test_survivor_finishes_checkpoint_past_the_deadline(tmp_path):
 def test_survivor_is_torn_down_at_the_deadline_without_grace(tmp_path):
     """Without grace the same checkpoint is lost -- the default behavior.
 
-    The survivor is torn down mid-checkpoint, so nothing ever commits: every
-    restart repeats the same preemption from scratch until the preemption
-    budget runs out.
+    Note the survivor is not waited on: the controller tears it down the moment
+    the deadline passes, part-way through the checkpoint. Nothing ever commits,
+    so every restart repeats the same preemption from scratch until the
+    preemption budget runs out.
     """
     with pytest.raises(PreemptionError):
         _run_slow_checkpoint_trainer(tmp_path, grace_s=0.0)
+
+
+def test_preemption_grace_shifts_the_deadline_without_removing_it():
+    """`preemption_grace_s` moves the teardown point; it never waits forever.
+
+    The end-to-end tests above are slow because they start a worker group and
+    restart it. The arithmetic itself needs no cluster, so it is pinned here.
+    """
+    import time as _time
+
+    from ray.train.v2._internal.execution.controller.controller import TrainController
+    from ray.train.v2.api.preemption import PreemptionInfo
+
+    now = _time.time()
+    detected_at_s = now - 5
+    # A deadline that passed 5 seconds ago.
+    info = PreemptionInfo(
+        deadline_ms=int((now - 5) * 1000),
+        preempted_node_to_ranks={"mock-node": [1]},
+    )
+
+    # No grace: the deadline has passed, so the survivors are torn down.
+    assert TrainController._is_preemption_deadline_exceeded(info, detected_at_s)
+
+    # A grace longer than that holds the teardown off...
+    assert not TrainController._is_preemption_deadline_exceeded(
+        info, detected_at_s, extra_grace_s=60.0
+    )
+
+    # ...but it is still bounded: a shorter one has already elapsed.
+    assert TrainController._is_preemption_deadline_exceeded(
+        info, detected_at_s, extra_grace_s=1.0
+    )
 
 
 if __name__ == "__main__":

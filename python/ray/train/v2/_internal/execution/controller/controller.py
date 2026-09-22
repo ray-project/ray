@@ -667,7 +667,7 @@ class TrainController:
             # PreemptingState to wait out the grace window before restarting.
             preemption_info = worker_group_status.get_preemption_info()
             if preemption_info is not None:
-                self._relax_collectives_for_preemption(preemption_info)
+                self._relax_collectives_during_preemption(preemption_info)
                 return TrainControllerLoopIterationResult(
                     run_attempt_id=self._get_run_attempt_id(),
                     previous_state=controller_state,
@@ -752,7 +752,7 @@ class TrainController:
             deadline_ms = (detected_at_s + DEFAULT_PREEMPTION_DEADLINE_S) * 1000
         return time_seconds() * 1000 >= deadline_ms + extra_grace_s * 1000
 
-    def _relax_collectives_for_preemption(
+    def _relax_collectives_during_preemption(
         self, preemption_info: "PreemptionInfo"
     ) -> None:
         """Let healthy ranks finish collectives without the preempted ones.
@@ -781,9 +781,8 @@ class TrainController:
         # instead.
         if 0 in preempted:
             logger.info(
-                "Rank 0 is being preempted (preempted ranks: %s), so the "
-                "report barrier is left strict and this run will recover from "
-                "the last committed checkpoint.",
+                "Rank 0 is being preempted (preempted ranks: %s), so "
+                "`relax_collectives_during_preemption` is ignored.",
                 sorted(preempted),
             )
             return
@@ -791,14 +790,12 @@ class TrainController:
             return
 
         try:
-            applied = worker_group.set_expected_barrier_ranks(surviving)
+            applied = worker_group.set_required_barrier_ranks(surviving)
         except Exception:
             # Never let this wedge the control loop: without it the survivors
             # just fall back to the last committed checkpoint, as before.
             logger.warning(
-                "Failed to relax the synchronization barrier to ranks %s. "
-                "Healthy workers will fall back to the last committed "
-                "checkpoint.",
+                "Failed to relax the synchronization barrier to ranks %s.",
                 surviving,
                 exc_info=True,
             )
@@ -807,7 +804,7 @@ class TrainController:
         if not applied:
             return
 
-        self._report_handler.set_expected_ranks(surviving)
+        self._report_handler.set_required_ranks(surviving)
         logger.info(
             "Preemption detected on ranks %s. Relaxed the report barrier to "
             "ranks %s so they can commit a just-in-time checkpoint without "

@@ -155,7 +155,7 @@ async def test_relaxed_gate_consolidates_without_preempted_rank():
     callback.after_report.assert_not_called()
 
     # Relax to the survivors and replay: now it commits.
-    handler.set_expected_ranks([0, 1, 2])
+    handler.set_required_ranks([0, 1, 2])
     handler.after_worker_group_poll_status(_poll_status({0, 1, 2}, num_workers))
 
     callback.after_report.assert_called_once()
@@ -179,7 +179,7 @@ async def test_relaxed_gate_drops_skipped_ranks_stale_reports():
     handler.after_worker_group_poll_status(_poll_status({2}, num_workers))
     assert len(handler._training_report_queues[2]) == 1
 
-    handler.set_expected_ranks([0, 1])
+    handler.set_required_ranks([0, 1])
     handler.after_worker_group_poll_status(_poll_status({0, 1}, num_workers))
 
     callback.after_report.assert_called_once()
@@ -191,24 +191,43 @@ async def test_relaxed_gate_drops_skipped_ranks_stale_reports():
 
 
 @pytest.mark.asyncio
-async def test_expected_ranks_reset_on_worker_group_restart():
+async def test_required_ranks_reset_on_worker_group_restart():
     """A relaxed gate belongs to the preemption, not to the next worker group."""
     num_workers = 3
     callback = MagicMock()
     handler, worker_group = _make_handler(num_workers, callback)
 
-    handler.set_expected_ranks([0, 1])
-    assert handler._get_expected_indices() == [0, 1]
+    handler.set_required_ranks([0, 1])
+    assert handler._get_required_ranks() == [0, 1]
 
     handler.before_worker_group_shutdown(worker_group)
-    assert handler._expected_ranks is None
+    assert handler._required_ranks is None
 
     handler.after_worker_group_start(worker_group)
-    assert handler._get_expected_indices() == [0, 1, 2]
+    assert handler._get_required_ranks() == [0, 1, 2]
 
     # And the strict gate really is back: rank 2 must report again.
     handler.after_worker_group_poll_status(_poll_status({0, 1}, num_workers))
     callback.after_report.assert_not_called()
+
+    handler.before_worker_group_shutdown(worker_group)
+    worker_group.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_empty_required_ranks_is_rejected():
+    """An empty expected set is a caller bug, not a silent no-op.
+
+    `all([])` is True, so an empty set would otherwise sail past the queue
+    check and consolidate a report with no metrics behind it.
+    """
+    handler, worker_group = _make_handler(2, MagicMock())
+
+    with pytest.raises(AssertionError):
+        handler.set_required_ranks([])
+
+    # The gate is untouched, so consolidation still requires every rank.
+    assert handler._get_required_ranks() == [0, 1]
 
     handler.before_worker_group_shutdown(worker_group)
     worker_group.shutdown()

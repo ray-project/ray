@@ -155,7 +155,7 @@ def test_reset():
     assert all([each == "data-0" for each in ray.get(remote_tasks)])
 
 
-def test_set_expected_ranks_releases_blocked_workers():
+def test_set_required_ranks_releases_blocked_workers():
     """Relaxing the barrier releases ranks already waiting on a lost rank.
 
     This is the ordering that matters in practice: the healthy ranks reach the
@@ -168,19 +168,19 @@ def test_set_expected_ranks_releases_blocked_workers():
     done, _ = ray.wait(tasks, num_returns=len(tasks), timeout=3)
     assert not done, "Tasks should be hanging until the barrier is relaxed."
 
-    assert ray.get(sync_actor.set_expected_ranks.remote([0, 1, 2]))
+    assert ray.get(sync_actor.set_required_ranks.remote([0, 1, 2]))
     assert ray.get(tasks) == ["data-0"] * 3
-    assert ray.get(sync_actor.get_expected_ranks.remote()) == [0, 1, 2]
+    assert ray.get(sync_actor.get_required_ranks.remote()) == [0, 1, 2]
 
 
-def test_set_expected_ranks_before_arrival():
+def test_set_required_ranks_before_arrival():
     """A barrier entered after relaxation releases on the expected ranks."""
     sync_actor = SynchronizationActor.remote()
-    assert ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
+    assert ray.get(sync_actor.set_required_ranks.remote([0, 1]))
     assert ray.get([_broadcast(sync_actor, r, 4) for r in (0, 1)]) == ["data-0"] * 2
 
 
-def test_expected_ranks_persist_across_barriers():
+def test_required_ranks_persist_across_barriers():
     """One preemption window spans several barriers, so the set must persist.
 
     `ray.train.get_preemption_info()` broadcasts, then `report()` broadcasts
@@ -188,17 +188,17 @@ def test_expected_ranks_persist_across_barriers():
     controller installs on `PreemptingState` entry.
     """
     sync_actor = SynchronizationActor.remote()
-    ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
     for _ in range(3):
         assert ray.get([_broadcast(sync_actor, r, 4) for r in (0, 1)]) == ["data-0"] * 2
-    assert ray.get(sync_actor.get_expected_ranks.remote()) == [0, 1]
+    assert ray.get(sync_actor.get_required_ranks.remote()) == [0, 1]
 
 
-def test_set_expected_ranks_rejects_set_without_rank_0():
+def test_set_required_ranks_rejects_set_without_rank_0():
     """Rank 0 is the sole writer of the payload, so it can never be dropped."""
     sync_actor = SynchronizationActor.remote()
-    assert not ray.get(sync_actor.set_expected_ranks.remote([1, 2, 3]))
-    assert ray.get(sync_actor.get_expected_ranks.remote()) is None
+    assert not ray.get(sync_actor.set_required_ranks.remote([1, 2, 3]))
+    assert ray.get(sync_actor.get_required_ranks.remote()) is None
 
     # The barrier stayed strict, so ranks 1-3 still wait for rank 0.
     tasks = [_broadcast(sync_actor, rank, 4) for rank in (1, 2, 3)]
@@ -206,11 +206,11 @@ def test_set_expected_ranks_rejects_set_without_rank_0():
     assert not done, "Tasks should be hanging: the relaxation was rejected."
 
 
-def test_set_expected_ranks_none_restores_strict_barrier():
+def test_set_required_ranks_none_restores_strict_barrier():
     sync_actor = SynchronizationActor.remote()
-    ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
-    ray.get(sync_actor.set_expected_ranks.remote(None))
-    assert ray.get(sync_actor.get_expected_ranks.remote()) is None
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
+    ray.get(sync_actor.set_required_ranks.remote(None))
+    assert ray.get(sync_actor.get_required_ranks.remote()) is None
 
     tasks = [_broadcast(sync_actor, rank, 4) for rank in (0, 1)]
     done, _ = ray.wait(tasks, num_returns=len(tasks), timeout=3)
@@ -224,7 +224,7 @@ def test_non_relaxable_collective_still_requires_every_rank():
     user barrier taken during a drain still waits for every worker.
     """
     sync_actor = SynchronizationActor.remote()
-    ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
 
     # Ranks 0 and 1 are the expected set, but this collective did not opt in.
     tasks = [_broadcast(sync_actor, r, 4, relaxable=False) for r in (0, 1)]
@@ -246,7 +246,7 @@ def test_straggler_from_an_earlier_collective_is_not_released():
     checkpoint directory name in answer to `get_preemption_info`, say.
     """
     sync_actor = SynchronizationActor.remote()
-    ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
 
     # Rank 3 is still arriving at collective 1.
     straggler = _broadcast(sync_actor, 3, 4, seq=1)
@@ -255,7 +255,7 @@ def test_straggler_from_an_earlier_collective_is_not_released():
     # The expected ranks have already moved on to collective 2.
     expected = [_broadcast(sync_actor, r, 4, seq=2) for r in (0, 1)]
     assert ray.get(expected) == ["data-0"] * 2
-    assert ray.get(sync_actor.get_released_seq.remote()) == 2
+    assert ray.get(sync_actor.get_last_released_seq.remote()) == 2
 
     done, _ = ray.wait([straggler], num_returns=1, timeout=5)
     assert not done, "Straggler was released with another collective's payload."
@@ -264,7 +264,7 @@ def test_straggler_from_an_earlier_collective_is_not_released():
 def test_straggler_in_the_current_collective_is_still_released():
     """A straggler that really is in the current collective rides along."""
     sync_actor = SynchronizationActor.remote()
-    ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
 
     straggler = _broadcast(sync_actor, 3, 4, seq=1)
     _wait_until_parked(sync_actor, 1)
@@ -274,10 +274,10 @@ def test_straggler_in_the_current_collective_is_still_released():
     assert ray.get(straggler, timeout=30) == "data-0"
 
 
-def test_expected_ranks_progress_while_a_straggler_is_parked():
+def test_required_ranks_progress_while_a_straggler_is_parked():
     """A parked straggler must not stall the expected ranks' next barrier."""
     sync_actor = SynchronizationActor.remote()
-    ray.get(sync_actor.set_expected_ranks.remote([0, 1]))
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
 
     parked = _broadcast(sync_actor, 3, 4, seq=1)
     _wait_until_parked(sync_actor, 1)
@@ -290,6 +290,31 @@ def test_expected_ranks_progress_while_a_straggler_is_parked():
 
     done, _ = ray.wait([parked], num_returns=1, timeout=3)
     assert not done, "Straggler should still be parked."
+
+
+def test_straggler_does_not_satisfy_a_non_relaxable_collective():
+    """A rank parked in an earlier collective must not count toward a later one.
+
+    Once the barrier is relaxed, lockstep is gone and a straggler can sit here
+    from an earlier collective. A non-relaxable collective still requires every
+    rank, so counting that straggler would release it without all of its own
+    participants.
+    """
+    sync_actor = SynchronizationActor.remote()
+    ray.get(sync_actor.set_required_ranks.remote([0, 1]))
+
+    # Rank 3 is left behind in collective 1.
+    straggler = _broadcast(sync_actor, 3, 4, seq=1)
+    _wait_until_parked(sync_actor, 1)
+
+    # Ranks 0-2 take a non-relaxable collective in collective 2. Rank 3 is not
+    # in it, so this must keep waiting.
+    tasks = [_broadcast(sync_actor, r, 4, seq=2, relaxable=False) for r in (0, 1, 2)]
+    done, _ = ray.wait(tasks, num_returns=len(tasks), timeout=5)
+    assert not done, "non-relaxable collective released without all of its ranks"
+
+    done, _ = ray.wait([straggler], num_returns=1, timeout=1)
+    assert not done, "straggler should still be parked"
 
 
 if __name__ == "__main__":

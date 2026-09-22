@@ -680,7 +680,7 @@ class WorkerGroup(ExecutionGroup):
         for callback in self._callbacks:
             callback.after_worker_group_abort(self._worker_group_context)
 
-    def set_expected_barrier_ranks(self, ranks: Optional[Collection[int]]) -> bool:
+    def set_required_barrier_ranks(self, ranks: Optional[Collection[int]]) -> bool:
         """Release the synchronization barrier once `ranks` have joined.
 
         Used during a node preemption so healthy workers are not stranded
@@ -694,7 +694,7 @@ class WorkerGroup(ExecutionGroup):
             True if the barrier accepted the set.
         """
         sync_actor = self._worker_group_state.sync_actor
-        return ray.get(sync_actor.set_expected_ranks.remote(ranks))
+        return ray.get(sync_actor.set_required_ranks.remote(ranks))
 
     #####################################################################################
     # Polling Worker Group

@@ -41,7 +41,7 @@ class SynchronizationActor:
 
     The expected set defaults to all ``world_size`` ranks. During a node
     preemption the controller may narrow it to the surviving ranks via
-    :meth:`set_expected_ranks`, so that a rank already reclaimed by the cloud
+    :meth:`set_required_ranks`, so that a rank already reclaimed by the cloud
     provider does not strand the healthy ranks at the barrier.
     """
 
@@ -54,16 +54,21 @@ class SynchronizationActor:
         self._world_size: int = 0
         # Ranks currently inside the barrier.
         self._arrived_ranks: Set[int] = set()
-        # Sequence numbers of the collectives that each rank is currently inside.
+        # rank -> the collective that rank is currently inside. A rank can be
+        # inside only one at a time, so this says which one is holding it.
         self._arrived_seq: Dict[int, Optional[int]] = {}
         # Whether the collective currently at the barrier opted in to
         # relaxation. Currently only Ray Train's own preemption and checkpoint
         # collectives do.
         self._relaxable_collective: bool = False
-        # Ranks that must join before the barrier releases. None means strict barrier.
-        self._expected_ranks: Optional[Set[int]] = None
-        # Sequence number of the collective that most recently released the barrier.
-        self._released_seq: Optional[int] = None
+        # Ranks that must join before the barrier releases. None means every
+        # rank must, which is the default; during a preemption it is narrowed
+        # to the survivors so the ranks that have gone do not hold them back.
+        self._required_ranks: Optional[Set[int]] = None
+        # The collective that most recently released the barrier. A worker
+        # leaves only for a release carrying its own, so one left behind in an
+        # earlier collective is not woken by a later one's release.
+        self._last_released_seq: Optional[int] = None
         self._condition = asyncio.Condition()
         self._reduced_data = None
         self._reset = False
@@ -87,13 +92,13 @@ class SynchronizationActor:
         """Returns the current value of the reduced_data."""
         return self._reduced_data
 
-    def get_expected_ranks(self) -> Optional[List[int]]:
+    def get_required_ranks(self) -> Optional[List[int]]:
         """The relaxed expected-rank set, or None if all ranks are required."""
-        if self._expected_ranks is None:
+        if self._required_ranks is None:
             return None
-        return sorted(self._expected_ranks)
+        return sorted(self._required_ranks)
 
-    async def set_expected_ranks(self, ranks: Optional[Collection[int]]) -> bool:
+    async def set_required_ranks(self, ranks: Optional[Collection[int]]) -> bool:
         """Release the barrier once `ranks` have joined, instead of every rank.
 
         Args:
@@ -105,7 +110,7 @@ class SynchronizationActor:
         """
         async with self._condition:
             if ranks is None:
-                self._expected_ranks = None
+                self._required_ranks = None
                 return True
 
             expected = set(ranks)
@@ -119,7 +124,7 @@ class SynchronizationActor:
                 )
                 return False
 
-            self._expected_ranks = expected
+            self._required_ranks = expected
             logger.info(
                 "Synchronization barrier relaxed to expect ranks %s.",
                 sorted(expected),
@@ -131,36 +136,55 @@ class SynchronizationActor:
                     self._relaxable_collective
                 )
                 if should_release:
-                    self._released_seq = release_seq
+                    self._last_released_seq = release_seq
                     self._condition.notify_all()
             return True
 
-    def _effective_expected_ranks(self) -> Set[int]:
+    def _effective_required_ranks(self) -> Set[int]:
         """The ranks that must join before the barrier releases."""
-        if self._expected_ranks is None:
+        if self._required_ranks is None:
             return set(range(self._world_size))
-        return self._expected_ranks
+        return self._required_ranks
 
-    def _barrier_release(self, relaxable: bool) -> Tuple[bool, Optional[int]]:
+    def _barrier_release(
+        self, relaxable: bool, collective_seq: Optional[int] = None
+    ) -> Tuple[bool, Optional[int]]:
         """Whether to release the barrier, and which collective is released.
 
         Args:
             relaxable: Whether the collective being evaluated opted in to
                 relaxation.
+            collective_seq: The collective being evaluated, used to tell its
+                participants from stragglers left behind in an earlier one.
 
         Returns:
             ``(False, None)`` to keep waiting. Otherwise ``(True, seq)``, where
             ``seq`` is the collective being released, or ``None`` when the
             barrier released without consulting sequence numbers.
         """
-        if self._expected_ranks is None or not relaxable:
+        if self._required_ranks is None:
+            # Nothing relaxed yet, so everyone here is in the same collective.
             if len(self._arrived_ranks) < self._world_size:
                 return False, None
             return True, None
 
-        if not self._expected_ranks.issubset(self._arrived_ranks):
+        if not relaxable:
+            # Still needs every rank, and specifically every rank *in this
+            # collective*: the relaxed barrier has already broken lockstep, so a
+            # straggler can be parked here from an earlier one.
+            if collective_seq is None:
+                arrived = len(self._arrived_ranks)
+            else:
+                arrived = sum(
+                    1 for seq in self._arrived_seq.values() if seq == collective_seq
+                )
+            if arrived < self._world_size:
+                return False, None
+            return True, collective_seq
+
+        if not self._required_ranks.issubset(self._arrived_ranks):
             return False, None
-        seqs = {self._arrived_seq.get(rank) for rank in self._expected_ranks}
+        seqs = {self._arrived_seq.get(rank) for rank in self._required_ranks}
         if len(seqs) != 1:
             return False, None
         return True, seqs.pop()
@@ -178,7 +202,7 @@ class SynchronizationActor:
             self._arrived_ranks.clear()
             self._arrived_seq.clear()
             self._relaxable_collective = False
-            self._released_seq = None
+            self._last_released_seq = None
             self._reset = False
             self._condition.notify_all()
 
@@ -233,13 +257,13 @@ class SynchronizationActor:
 
         return asyncio.get_event_loop().time() - min(start_times)
 
-    def get_released_seq(self) -> Optional[int]:
+    def get_last_released_seq(self) -> Optional[int]:
         """The collective most recently released, for tests and debugging."""
-        return self._released_seq
+        return self._last_released_seq
 
     def _get_missing_ranks(self) -> List[int]:
         """Returns the expected ranks that have not entered the barrier."""
-        return sorted(self._effective_expected_ranks() - self._arrived_ranks)
+        return sorted(self._effective_required_ranks() - self._arrived_ranks)
 
     def _generate_broadcast_periodic_warning(self, caller_method_name: str) -> str:
         """Generates the warning message for the broadcast periodic warning."""
@@ -291,7 +315,7 @@ class SynchronizationActor:
                 these agree across workers. Defaults to None, which restores
                 the unsequenced behavior.
             relaxable: Whether this collective may be released without the
-                ranks excluded by :meth:`set_expected_ranks`. Currently only Ray Train's
+                ranks excluded by :meth:`set_required_ranks`. Currently only Ray Train's
                 own preemption and checkpoint collectives opt in; the public
                 ``ray.train.collective.*`` APIs keep their all-rank contract
                 even while a preemption is in progress. Defaults to False.
@@ -310,15 +334,18 @@ class SynchronizationActor:
                 world_rank, world_size, data, collective_seq, relaxable
             ):
                 # Once every expected rank has joined, notify all the workers to continue.
-                should_release, release_seq = self._barrier_release(relaxable)
+                should_release, release_seq = self._barrier_release(
+                    relaxable, collective_seq
+                )
                 if should_release:
-                    self._released_seq = release_seq
+                    self._last_released_seq = release_seq
                     self._condition.notify_all()
                     return self._reduced_data
+                # A non-relaxable collective now releases with its own
+                # sequence number too, so its waiters can be filtered the same
+                # way -- otherwise another collective's notify would wake them.
                 use_seq = (
-                    relaxable
-                    and self._expected_ranks is not None
-                    and collective_seq is not None
+                    self._required_ranks is not None and collective_seq is not None
                 )
                 try:
                     current_time = asyncio.get_event_loop().time()
@@ -326,7 +353,8 @@ class SynchronizationActor:
                     await wait_with_logging(
                         self._condition,
                         predicate=(
-                            lambda: self._reset or self._released_seq == collective_seq
+                            lambda: self._reset
+                            or self._last_released_seq == collective_seq
                         )
                         if use_seq
                         else None,
