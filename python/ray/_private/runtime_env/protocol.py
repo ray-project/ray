@@ -261,7 +261,7 @@ class ProtocolsProvider:
         open_file = None
 
         if protocol == "file":
-            source_uri = url2pathname(urlparse(source_uri).path)
+            source_uri = url2pathname(source_uri[len("file://") :])
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
