@@ -80,8 +80,8 @@ For how to configure batch inference, see :ref:`the configuration guide<batch_in
             # Use 2 parallel actors for inference. Each actor predicts on a
             # different partition of data.
             predictions = ds.map_batches(
-                HuggingFacePredictor, 
-                compute=ray.data.ActorPoolStrategy(size=2), 
+                HuggingFacePredictor,
+                compute=ray.data.ActorPoolStrategy(size=2),
                 batch_size="auto"
             )
             # Step 3: Show one prediction output.

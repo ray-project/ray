@@ -559,9 +559,9 @@ charset-normalizer==3.4.7 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   requests
-click==8.3.2 \
-    --hash=sha256:14162b8b3b3550a7d479eafa77dfd3c38d9dc8951f6f69c78913a8f9a7540fd5 \
-    --hash=sha256:1924d2c27c5653561cd2cae4548d1406039cb79b858b747cfea24924bbc1616d
+click==8.5.0 \
+    --hash=sha256:255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360 \
+    --hash=sha256:ba0d2089de75ea0310e2dde03160e6ca10009947fb95a182f9b54021bb272e34
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   anyscale
@@ -1313,9 +1313,14 @@ grpcio==1.75.0 \
     #   google-api-core
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   ray
+grpcio-reflection==1.75.0 \
+    --hash=sha256:60bb9865f5411ad589420eadcdd7e0c338c0aabedf5d4cd07363d5bf7da9c972 \
+    --hash=sha256:cef02b79eea9a1a5e379e13e503a5eaa32a4bc1ad2f1c24d3a6e28a95db5569f
+    # via ray
 grpcio-status==1.75.0 \
     --hash=sha256:69d5b91be1b8b926f086c1c483519a968c14640773a0ccdd6c04282515dbedf7 \
     --hash=sha256:de62557ef97b7e19c3ce6da19793a12c5f6c1fbbb918d233d9671aba9d9e1d78
@@ -2444,9 +2449,9 @@ ormsgpack==1.12.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   ray
-packaging==26.1 \
-    --hash=sha256:5d9c0669c6285e491e0ced2eee587eaf67b670d94a19e94e3984a481aba6802f \
-    --hash=sha256:f042152b681c4bfac5cae2742a55e103d27ab2ec0f3d88037136b6bfe7c9c5de
+packaging==25.0 \
+    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
+    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.12.txt
     #   anyscale
@@ -2741,6 +2746,7 @@ protobuf==6.33.6 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-proto

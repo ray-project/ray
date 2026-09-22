@@ -131,6 +131,10 @@ class StreamSplitDataIterator(DataIterator):
 
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted")
 
+        # The prefetched bytes stat should not accumulate across different executions
+        # because this stat is used by the StreamingExecutor for backpressure decisions.
+        self._iter_stats.iter_prefetched_bytes = 0
+
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
         return gen_blocks(), self._iter_stats, None

@@ -1282,7 +1282,11 @@ class DataIterator(abc.ABC):
         from ray.data.dataset import MaterializedDataset
 
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
-        ref_bundles = list(ref_bundles_iter)
+
+        ref_bundles = []
+        for ref_bundle in ref_bundles_iter:
+            stats.iter_prefetched_bytes += ref_bundle.size_bytes()
+            ref_bundles.append(ref_bundle)
         context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
