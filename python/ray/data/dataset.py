@@ -134,6 +134,7 @@ from ray.data.block import (
     _apply_batch_format,
     _take_first_non_empty_schema,
 )
+from ray.data.checkpoint._iceberg_checkpoint import wrap_iceberg_datasink
 from ray.data.collate_fn import CollateFn
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
@@ -6803,6 +6804,8 @@ class Dataset:
         """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
+
+        datasink = wrap_iceberg_datasink(datasink, self.context.checkpoint_config)
 
         if not datasink.supports_distributed_writes:
             if ray.util.client.ray.is_connected():

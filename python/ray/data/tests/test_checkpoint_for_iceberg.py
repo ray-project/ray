@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pyarrow as pa
@@ -9,11 +10,15 @@ from pyiceberg.schema import Schema
 from pyiceberg.typedef import Record
 from pyiceberg.types import LongType, NestedField, StringType
 
+import ray
 from ray.data._internal.datasource.iceberg_datasink import (
     IcebergDatasink,
     IcebergWriteResult,
 )
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.planner.checkpoint.plan_write_op import (
+    _generate_iceberg_write_checkpoint_transform,
+)
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.savemode import SaveMode
 from ray.data.block import BlockAccessor
@@ -21,6 +26,7 @@ from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint._iceberg_checkpoint import (
     _GENERATION_PROPERTY,
     IcebergCheckpointDatasink,
+    wrap_iceberg_datasink,
     write_task_checkpoint,
 )
 from ray.data.checkpoint.checkpoint_filter import (
@@ -83,6 +89,8 @@ def _create_catalog(tmp_path):
         NestedField(2, "value", StringType(), required=False),
     )
     catalog.create_table("db.table", schema=schema)
+    source = catalog.create_table("db.source", schema=schema)
+    source.append(pa.table({"id": [1, 2, 3], "value": ["a", "b", "c"]}))
     catalog_kwargs = {
         "name": "checkpoint_catalog",
         "type": "sql",
@@ -193,6 +201,40 @@ def test_merge_results_deduplicates_and_rejects_conflicts():
     conflicting = _write_result("file:///same", record_count=3)
     with pytest.raises(ValueError, match="Conflicting Iceberg checkpoint metadata"):
         IcebergCheckpointDatasink._merge_results([first], [conflicting])
+
+
+def test_private_wrapper_activates_only_for_checkpointed_iceberg(tmp_path):
+    config = CheckpointConfig(id_column="id", checkpoint_path=str(tmp_path))
+    iceberg = IcebergDatasink("db.table")
+    wrapped = wrap_iceberg_datasink(iceberg, config)
+
+    assert isinstance(wrapped, IcebergCheckpointDatasink)
+    assert wrap_iceberg_datasink(iceberg, None) is iceberg
+    assert wrap_iceberg_datasink(wrapped, config) is wrapped
+
+
+def test_iceberg_post_write_transform_publishes_recoverable_result(tmp_path):
+    _, _, config, wrapped = _wrapper(tmp_path)
+    writer = BatchBasedCheckpointWriter(config)
+    transform = _generate_iceberg_write_checkpoint_transform(
+        SimpleNamespace(checkpoint_config=config), wrapped, writer
+    )
+    block = pa.table({"id": [1], "value": ["a"]})
+    context = TaskContext(
+        0,
+        "Write",
+        kwargs={
+            WRITE_UUID_KWARG_NAME: "write",
+            _WRITE_RETURN_KWARG: _write_result("file:///written"),
+        },
+    )
+
+    output = list(transform._apply_transform(context, [block]))
+
+    assert output == [block]
+    loaded = wrapped.state.load_active_results()
+    assert len(loaded) == 1
+    assert str(loaded[0].result.data_files[0].file_path) == "file:///written"
 
 
 def test_task_checkpoint_reuses_committed_result(tmp_path):
@@ -401,6 +443,115 @@ def test_late_commit_discards_uncommitted_task_checkpoints(tmp_path, recover_on_
     table = catalog.load_table("db.table")
     assert len(table.snapshots()) == 1
     assert table.scan().to_arrow().to_pydict() == {"id": [1], "value": ["a"]}
+
+
+def _iceberg_input_dataset(catalog_kwargs):
+    return ray.data.read_iceberg(
+        table_identifier="db.source", catalog_kwargs=catalog_kwargs
+    )
+
+
+@pytest.mark.parametrize("delete_checkpoint_on_success", [True, False])
+def test_append_recovers_after_failure_before_commit(
+    ray_start_10_cpus_shared,
+    restore_data_context,
+    tmp_path,
+    delete_checkpoint_on_success,
+):
+    catalog, catalog_kwargs = _create_catalog(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints"
+    ray.data.DataContext.get_current().checkpoint_config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path=str(checkpoint_path),
+        delete_checkpoint_on_success=delete_checkpoint_on_success,
+    )
+
+    dataset = _iceberg_input_dataset(catalog_kwargs)
+    with patch.object(
+        IcebergDatasink,
+        "on_write_complete",
+        side_effect=RuntimeError("failure before catalog commit"),
+    ):
+        with pytest.raises(RuntimeError, match="failure before catalog commit"):
+            dataset.write_iceberg("db.table", catalog_kwargs=catalog_kwargs)
+
+    assert catalog.load_table("db.table").current_snapshot() is None
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
+
+    table = catalog.load_table("db.table")
+    assert table.scan().to_arrow().sort_by("id").to_pydict() == {
+        "id": [1, 2, 3],
+        "value": ["a", "b", "c"],
+    }
+    assert len(table.snapshots()) == 1
+    assert checkpoint_path.exists() is (not delete_checkpoint_on_success)
+
+
+def test_ambiguous_append_starts_new_generation_for_new_rows(
+    ray_start_10_cpus_shared, restore_data_context, tmp_path
+):
+    catalog, catalog_kwargs = _create_catalog(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints"
+    ray.data.DataContext.get_current().checkpoint_config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path=str(checkpoint_path),
+        delete_checkpoint_on_success=False,
+    )
+    original = IcebergDatasink.on_write_complete
+
+    def commit_then_raise(self, write_result):
+        original(self, write_result)
+        raise RuntimeError("ambiguous catalog response")
+
+    with patch.object(IcebergDatasink, "on_write_complete", commit_then_raise):
+        with pytest.raises(RuntimeError, match="ambiguous catalog response"):
+            _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+                "db.table", catalog_kwargs=catalog_kwargs
+            )
+
+    assert len(catalog.load_table("db.table").snapshots()) == 1
+    catalog.load_table("db.source").append(pa.table({"id": [4], "value": ["d"]}))
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
+
+    table = catalog.load_table("db.table")
+    assert len(table.snapshots()) == 2
+    assert table.scan().to_arrow().sort_by("id").to_pydict() == {
+        "id": [1, 2, 3, 4],
+        "value": ["a", "b", "c", "d"],
+    }
+
+
+def test_retained_terminal_checkpoint_starts_new_generation_for_new_rows(
+    ray_start_10_cpus_shared, restore_data_context, tmp_path
+):
+    catalog, catalog_kwargs = _create_catalog(tmp_path)
+    checkpoint_path = tmp_path / "checkpoints"
+    ray.data.DataContext.get_current().checkpoint_config = CheckpointConfig(
+        id_column="id",
+        checkpoint_path=str(checkpoint_path),
+        delete_checkpoint_on_success=False,
+    )
+
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
+    assert len(catalog.load_table("db.table").snapshots()) == 1
+
+    catalog.load_table("db.source").append(pa.table({"id": [4], "value": ["d"]}))
+    _iceberg_input_dataset(catalog_kwargs).write_iceberg(
+        "db.table", catalog_kwargs=catalog_kwargs
+    )
+
+    table = catalog.load_table("db.table")
+    assert len(table.snapshots()) == 2
+    assert sorted(table.scan().to_arrow()["id"].to_pylist()) == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":
