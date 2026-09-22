@@ -118,8 +118,6 @@ class PushSplitCoordinator:
     # How often a demand-waiting pusher re-checks its stop event; requests
     # wake it immediately.
     DEMAND_WAIT_TIMEOUT_S = 0.5
-    # How often each pusher logs its progress/wait breakdown.
-    PROGRESS_LOG_INTERVAL_S = 10.0
 
     def __init__(self, dataset: "Dataset", n: int):
         # Deep copy, same as SplitCoordinator.
@@ -436,14 +434,8 @@ class PushSplitCoordinator:
         push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
         output_iterator = self._output_iterator
         cond = self._demand_conds[split_idx]
-        last_log_time = time.monotonic()
         try:
             while not stop.is_set():
-                now = time.monotonic()
-                if now - last_log_time >= self.PROGRESS_LOG_INTERVAL_S:
-                    last_log_time = now
-                    self._log_pusher_progress(epoch_id, split_idx)
-
                 # Wait for demand; a request wakes this immediately. A dead
                 # consumer stops requesting, which parks this thread with the
                 # split's remaining data kept in the executor.
@@ -490,25 +482,13 @@ class PushSplitCoordinator:
                     push_error(_ExecutorError(RuntimeError(repr(e))))
             return
 
-    def _log_pusher_progress(self, epoch_id: int, split_idx: int) -> None:
-        """Rate-limited pusher progress line: where this split's time goes.
-
-        wait_demand = pusher idle because the consumer's row window is full
-        (consumer-bound); wait_output = pusher blocked in the executor's
-        output queue (producer-bound).
-        """
-        logger.info(
-            f"[push-split] split={split_idx} epoch={epoch_id} "
-            f"pushed={self._blocks_pushed[split_idx]} blocks "
-            f"({self._bytes_pushed[split_idx] / (1024**3):.2f}GiB) "
-            f"demand_rows={self._demand_rows[split_idx]} "
-            f"in_flight={(self._bytes_pushed[split_idx] - self._bytes_consumed_reported[split_idx]) / (1024**2):.0f}MiB "
-            f"wait_demand={self._wait_demand_s[split_idx]:.1f}s "
-            f"wait_output={self._wait_output_s[split_idx]:.1f}s"
-        )
-
     def debug_state(self) -> Dict[str, Dict[int, float]]:
-        """Snapshot of per-split flow-control state, for debugging/tests."""
+        """Snapshot of per-split flow-control state, for debugging/tests.
+
+        ``wait_demand_s`` = pusher idle because the consumer's row window is
+        full (consumer-bound); ``wait_output_s`` = pusher blocked in the
+        executor's output queue (producer-bound).
+        """
         return {
             "demand_rows": dict(self._demand_rows),
             "blocks_pushed": dict(self._blocks_pushed),
@@ -774,8 +754,6 @@ class PushBasedDataIterator(DataIterator):
                 target_rows = 1
             requested_rows = 0
             popped_rows = 0
-            popped_blocks = 0
-            last_log_time = time.monotonic()
 
             def report_and_top_up(consumed_bytes: int) -> None:
                 # One RPC per consumed block: reports consumption (producer
@@ -813,19 +791,9 @@ class PushBasedDataIterator(DataIterator):
                 if isinstance(item, _ExecutorError):
                     raise item.error
                 assert isinstance(item, _BlockDelivery)
-                popped_blocks += 1
                 popped_rows += item.num_rows
                 report_and_top_up(pending_consumed)
                 pending_consumed = item.size_bytes
-                now = time.monotonic()
-                if now - last_log_time >= 10.0:
-                    last_log_time = now
-                    logger.info(
-                        f"[push-split] consumer split={self._output_split_idx} "
-                        f"epoch={epoch} popped={popped_blocks} blocks "
-                        f"({popped_rows} rows) qsize={epoch_queue.qsize()} "
-                        f"queue_wait={self._iter_stats.iter_get_ref_bundles_s.get():.1f}s"
-                    )
                 yield ResolvedBlock(block=item.block)
 
         return gen_blocks(), self._iter_stats, None
