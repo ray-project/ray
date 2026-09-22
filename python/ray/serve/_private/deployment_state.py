@@ -3016,9 +3016,9 @@ class DeploymentState:
 
         self._prev_startup_warning: float = time.time()
         self._replica_constructor_error_msg: Optional[str] = None
-        # Counter for how many times replicas failed to start. This is reset to 0 when:
-        # (1) The deployment is deployed / re-deployed.
-        # (2) The deployment reaches the HEALTHY state.
+        # Startup failures plus target-version health failures during a rolling
+        # update. Reset on a new deployment attempt or convergence to HEALTHY;
+        # count-only updates of terminally failed rolling updates preserve it.
         self._replica_constructor_retry_counter: int = 0
         # Flag for whether any replicas of the target version has successfully started.
         # This is reset to False when the deployment is re-deployed.
@@ -4852,6 +4852,21 @@ class DeploymentState:
         self._target_state_changed = False
         return changed
 
+    def _record_replica_failure(self, error_msg: str) -> None:
+        """Consume one failure from the replica retry budget.
+
+        Startup failures and target-version health failures during a rolling
+        update share this budget. Callers decide which failures count, including
+        deduplicating gang failures and excluding healthy gang siblings.
+        """
+        self._replica_constructor_retry_counter += 1
+        self._replica_constructor_error_msg = error_msg
+        # Exhausting the budget affects availability and must be checkpointed
+        # even when the failure is recorded after this tick's status checks.
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
+        self._mark_rolling_update_failed_if_needed()
+
     def record_replica_startup_failure(self, error_msg: str):
         """Record that a replica failed to start."""
 
@@ -4859,12 +4874,7 @@ class DeploymentState:
         if self._target_state.target_num_replicas == 0:
             return
 
-        # Increase startup failure counter (may change _terminally_failed()
-        # result, which affects broadcasted availability).
-        self._replica_constructor_retry_counter += 1
-        self._broadcasted_replicas_set_changed = True
-        self._in_transition = True
-        self._replica_constructor_error_msg = error_msg
+        self._record_replica_failure(error_msg)
 
         # Update the deployment message only if replicas are failing during
         # the very first time the controller is trying to start replicas of
@@ -4883,7 +4893,6 @@ class DeploymentState:
             f"Error:\n{error_msg}"
         )
         self._curr_status_info = self._curr_status_info.update_message(message)
-        self._mark_rolling_update_failed_if_needed()
 
     def _set_health_gauge(self, replica_unique_id: str, value: int) -> None:
         """Set the health-check gauge for *replica_unique_id*, skipping the
@@ -5019,14 +5028,11 @@ class DeploymentState:
         self._stop_replica(replica, graceful_stop=graceful_stop)
         if replica.version == self._target_state.version:
             if self._target_state.rolling_update and count_failure:
-                # Count health check failures too, so an unstable new version
-                # eventually stops replacing old replicas.
-                self._replica_constructor_retry_counter += 1
-                self._broadcasted_replicas_set_changed = True
-                if self._replica_constructor_error_msg is None:
-                    self._replica_constructor_error_msg = (
-                        "A replica of the new version failed its health check."
-                    )
+                # Preserve a constructor exception if one was already recorded.
+                error_msg = self._replica_constructor_error_msg
+                if error_msg is None:
+                    error_msg = "A replica of the new version failed its health check."
+                self._record_replica_failure(error_msg)
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
                 message="A replica's health check failed. This "
