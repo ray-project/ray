@@ -240,7 +240,7 @@ class LimitPushdownRule(Rule):
                         num_outputs=op.num_outputs,
                     )
                 if isinstance(op, ReadFiles):
-                    from ray.data._internal.datasource_v2.pushdown import (
+                    from ray.data._internal.datasource_v2.logical_optimizers import (
                         SupportsLimitPushdown,
                     )
 
