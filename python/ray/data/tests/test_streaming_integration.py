@@ -281,6 +281,25 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 assert lengths == [300, 300, 400], lengths
 
 
+def test_streaming_split_over_materialized_all_to_all(ray_start_10_cpus_shared):
+    """Regression test: pass-through all-to-all op over a materialized dataset.
+
+    `randomize_block_order` reorders its input bundles instead of producing new
+    blocks, so the blocks it emits are still owned by whoever built the
+    materialized dataset -- the caller, not the `SplitCoordinator` actor that
+    runs the split's plan. The operator must not register an object
+    out-of-scope callback on a block it doesn't own; doing so raises
+    "Cannot register an out-of-scope/freed callback ... not owned by this
+    worker" and fails the whole execution before a single row is read.
+    """
+    ds = ray.data.range(100, override_num_blocks=10).materialize()
+    ds = ds.randomize_block_order()
+
+    (it,) = ds.streaming_split(1, equal=True)
+
+    assert sorted(row["id"] for row in it.iter_rows()) == list(range(100))
+
+
 def test_streaming_split_barrier(ray_start_10_cpus_shared):
     ds = ray.data.range(20, override_num_blocks=20)
     (
