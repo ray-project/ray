@@ -3015,11 +3015,11 @@ class DeploymentState:
         self._dirty_set_rr_cursor: int = 0
 
         self._prev_startup_warning: float = time.time()
-        self._replica_constructor_error_msg: Optional[str] = None
+        self._replica_failure_message: Optional[str] = None
         # Startup failures plus target-version health failures during a rolling
         # update. Reset on a new deployment attempt or convergence to HEALTHY;
         # count-only updates of terminally failed rolling updates preserve it.
-        self._replica_constructor_retry_counter: int = 0
+        self._replica_failure_count: int = 0
         # Flag for whether any replicas of the target version has successfully started.
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
@@ -3441,8 +3441,7 @@ class DeploymentState:
         """
         return (
             self._target_state.target_num_replicas > 0
-            and self._replica_constructor_retry_counter
-            >= self._failed_to_start_threshold
+            and self._replica_failure_count >= self._failed_to_start_threshold
         )
 
     def _terminally_failed(self) -> bool:
@@ -3846,8 +3845,8 @@ class DeploymentState:
             f"Deploying new version of {self._id} "
             f"(initial target replicas: {target_num_replicas})."
         )
-        self._replica_constructor_retry_counter = 0
-        self._replica_constructor_error_msg = None
+        self._replica_failure_count = 0
+        self._replica_failure_message = None
         self._replica_has_started = False
         self._deployment_actor_failed = None
         self._deployment_actor_retry_counter = 0
@@ -4560,11 +4559,11 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
                 message=(
                     "The deployment failed to start "
-                    f"{self._replica_constructor_retry_counter} times "
+                    f"{self._replica_failure_count} times "
                     "in a row. This may be due to a problem with its "
                     "constructor or initial health check failing. See "
                     "controller logs for details. Error:\n"
-                    f"{self._replica_constructor_error_msg}"
+                    f"{self._replica_failure_message}"
                 ),
             )
             return False, any_replicas_recovering
@@ -4614,8 +4613,8 @@ class DeploymentState:
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
-                self._replica_constructor_retry_counter = 0
-                self._replica_constructor_error_msg = None
+                self._replica_failure_count = 0
+                self._replica_failure_message = None
                 if self._target_state.rolling_update:
                     # The rolling update converged; later failures follow the
                     # steady state rules again.
@@ -4820,21 +4819,21 @@ class DeploymentState:
             self._broadcasted_replicas_set_changed = True
             logger.warning(
                 f"Rolling update of {self._id} failed: replicas of the new "
-                f"version failed to start {self._replica_constructor_retry_counter} "
+                f"version failed to start {self._replica_failure_count} "
                 "times. Stopping the update; replicas of the previous version "
                 "keep running until a new deploy."
             )
 
     def _rolling_update_failed_message(self) -> str:
-        if self._replica_constructor_retry_counter > 0:
+        if self._replica_failure_count > 0:
             return (
                 "The deployment failed to start "
-                f"{self._replica_constructor_retry_counter} times "
+                f"{self._replica_failure_count} times "
                 "in a row during a rolling update. This may be due to a problem "
                 "with its constructor, initial health check or health checks "
                 "failing. The update is stopped and replicas of the previous "
                 "version keep running until a new deploy. See controller logs "
-                f"for details. Error:\n{self._replica_constructor_error_msg}"
+                f"for details. Error:\n{self._replica_failure_message}"
             )
         # After a controller restart the counter starts from zero but the
         # checkpointed target state remembers the failure.
@@ -4859,8 +4858,8 @@ class DeploymentState:
         update share this budget. Callers decide which failures count, including
         deduplicating gang failures and excluding healthy gang siblings.
         """
-        self._replica_constructor_retry_counter += 1
-        self._replica_constructor_error_msg = error_msg
+        self._replica_failure_count += 1
+        self._replica_failure_message = error_msg
         # Exhausting the budget affects availability and must be checkpointed
         # even when the failure is recorded after this tick's status checks.
         self._broadcasted_replicas_set_changed = True
@@ -4882,8 +4881,7 @@ class DeploymentState:
         retrying_msg = ""
         if not self._replica_has_started or self._target_state.rolling_update:
             remaining_retries = max(
-                self._failed_to_start_threshold
-                - self._replica_constructor_retry_counter,
+                self._failed_to_start_threshold - self._replica_failure_count,
                 0,
             )
             retrying_msg = f" {remaining_retries} more time(s)"
@@ -5029,7 +5027,7 @@ class DeploymentState:
         if replica.version == self._target_state.version:
             if self._target_state.rolling_update and count_failure:
                 # Preserve a constructor exception if one was already recorded.
-                error_msg = self._replica_constructor_error_msg
+                error_msg = self._replica_failure_message
                 if error_msg is None:
                     error_msg = "A replica of the new version failed its health check."
                 self._record_replica_failure(error_msg)
