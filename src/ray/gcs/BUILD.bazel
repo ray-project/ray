@@ -315,6 +315,7 @@ ray_cc_library(
         ":gcs_placement_group",
         ":gcs_table_storage",
         "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
