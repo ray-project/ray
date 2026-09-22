@@ -17,8 +17,7 @@ Be sure to have {ref}`installed Ray <installation>` before following the instruc
 
 ## What is the Ray runtime?
 
-Ray programs are able to parallelize and distribute by leveraging an underlying *Ray runtime*.
-The Ray runtime consists of multiple services/processes started in the background for communication, data transfer, scheduling, and more. The Ray runtime can be started on a laptop, a single server, or multiple servers.
+Ray programs are able to parallelize and distribute by leveraging an underlying *Ray runtime*. The Ray runtime consists of multiple services/processes started in the background for communication, data transfer, scheduling, and more. The Ray runtime can be started on a laptop, a single server, or multiple servers.
 
 There are three ways of starting the Ray runtime:
 
@@ -26,9 +25,7 @@ There are three ways of starting the Ray runtime:
 * Explicitly via CLI ({ref}`start-ray-cli`)
 * Explicitly via the cluster launcher ({ref}`start-ray-up`)
 
-In all cases, `ray.init()` will try to automatically find a Ray instance to
-connect to. It checks, in order:
-1\. The `RAY_ADDRESS` OS environment variable.
+In all cases, `ray.init()` will try to automatically find a Ray instance to connect to. It checks, in order: 1\. The `RAY_ADDRESS` OS environment variable.
 2. The concrete address passed to `ray.init(address=<address>)`.
 3. If no address is provided, the latest Ray instance that was started on the same machine using `ray start`.
 
@@ -199,8 +196,7 @@ Ray runtime started.
 ```
 
 
-You can connect to this Ray instance by starting a driver process on the same node as where you ran `ray start`.
-`ray.init()` will now automatically connect to the latest Ray instance.
+You can connect to this Ray instance by starting a driver process on the same node as where you ran `ray start`. `ray.init()` will now automatically connect to the latest Ray instance.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -253,8 +249,7 @@ You can connect other nodes to the head node, creating a Ray cluster by also cal
 
 ## Launching a Ray cluster (`ray up`)
 
-Ray clusters can be launched with the {ref}`Cluster Launcher <cluster-index>`.
-The `ray up` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls `ray start` to create a Ray cluster.
+Ray clusters can be launched with the {ref}`Cluster Launcher <cluster-index>`. The `ray up` command uses the Ray cluster launcher to start a cluster on the cloud, creating a designated "head node" and worker nodes. Underneath the hood, it automatically calls `ray start` to create a Ray cluster.
 
 Your code **only** needs to execute on one machine in the cluster (usually the head node). Read more about {ref}`running programs on a Ray cluster <cluster-index>`.
 

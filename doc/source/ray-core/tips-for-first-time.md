@@ -6,10 +6,7 @@ myst:
 
 # Tips for first-time users
 
-Ray provides a highly flexible, yet minimalist and easy to use API.
-On this page, we describe several tips that can help first-time Ray users to avoid some
-common mistakes that can significantly hurt the performance of their programs.
-For an in-depth treatment of advanced design patterns, please read {ref}`core design patterns <core-patterns>`.
+Ray provides a highly flexible, yet minimalist and easy to use API. On this page, we describe several tips that can help first-time Ray users to avoid some common mistakes that can significantly hurt the performance of their programs. For an in-depth treatment of advanced design patterns, please read {ref}`core design patterns <core-patterns>`.
 
 ```{list-table} The core Ray API we use in this document.
 :header-rows: 1
@@ -42,14 +39,9 @@ For an in-depth treatment of advanced design patterns, please read {ref}`core de
 ```
 
 
-All the results reported in this page were obtained on a 13-inch MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM.
-While `ray.init()` automatically detects the number of cores when it runs on a single machine,
-to reduce the variability of the results you observe on your machine when running the code below,
-here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
+All the results reported in this page were obtained on a 13-inch MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM. While `ray.init()` automatically detects the number of cores when it runs on a single machine, to reduce the variability of the results you observe on your machine when running the code below, here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
 
-Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel.
-As a result, our Ray system consists of one driver executing the program,
-and up to four workers running remote tasks or actors.
+Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel. As a result, our Ray system consists of one driver executing the program, and up to four workers running remote tasks or actors.
 
 (tip-delay-get)=
 
@@ -374,8 +366,7 @@ duration = 7.82636022567749
 result =  6
 ```
 
-Waiting for the last task to finish when the others tasks might have finished much earlier unnecessarily increases the program running time. A better solution would be to process the data as soon it becomes available.
-Fortunately, Ray allows you to do exactly this by calling `ray.wait()` on a list of object IDs. Without specifying any other parameters, this function returns as soon as an object in its argument list is ready. This call has two returns: (1) the ID of the ready object, and (2) the list containing the IDs of the objects not ready yet. The modified program is below. Note that one change we need to do is to replace `process_results()` with `process_incremental()` that processes one result at a time.
+Waiting for the last task to finish when the others tasks might have finished much earlier unnecessarily increases the program running time. A better solution would be to process the data as soon it becomes available. Fortunately, Ray allows you to do exactly this by calling `ray.wait()` on a list of object IDs. Without specifying any other parameters, this function returns as soon as an object in its argument list is ready. This call has two returns: (1) the ID of the ready object, and (2) the list containing the IDs of the objects not ready yet. The modified program is below. Note that one change we need to do is to replace `process_results()` with `process_incremental()` that processes one result at a time.
 
 ```{testcode}
 import time

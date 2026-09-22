@@ -9,10 +9,7 @@ myst:
 
 # Actors
 
-Actors extend the Ray API from functions (tasks) to classes.
-An actor is essentially a stateful worker (or a service).
-When you instantiate a new actor, Ray creates a new worker and schedules methods of the actor on
-that specific worker. The methods can access and mutate the state of that worker.
+Actors extend the Ray API from functions (tasks) to classes. An actor is essentially a stateful worker (or a service). When you instantiate a new actor, Ray creates a new worker and schedules methods of the actor on that specific worker. The methods can access and mutate the state of that worker.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -150,9 +147,7 @@ ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote
 
 ## Calling the actor
 
-You can interact with the actor by calling its methods with the `remote`
-operator. You can then call `get` on the object ref to retrieve the actual
-value.
+You can interact with the actor by calling its methods with the `remote` operator. You can then call `get` on the object ref to retrieve the actual value.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -443,38 +438,19 @@ Cancel Actor Tasks by calling {func}`ray.cancel() <ray.cancel>` on the returned 
 
 In Ray, Task cancellation behavior is contingent on the Task's current state:
 
-**Unscheduled tasks**:
-If Ray hasn't scheduled an Actor Task yet, Ray attempts to cancel the scheduling.
-When Ray successfully cancels at this stage, it invokes `ray.get(actor_task_ref)`
-which produces a {class}`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
+**Unscheduled tasks**: If Ray hasn't scheduled an Actor Task yet, Ray attempts to cancel the scheduling. When Ray successfully cancels at this stage, it invokes `ray.get(actor_task_ref)` which produces a {class}`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
 
-**Running actor tasks (regular actor, threaded actor)**:
-For tasks classified as a single-threaded Actor or a multi-threaded Actor,
-Ray sets a cancellation flag that can be checked via `ray.get_runtime_context().is_canceled()`.
-This allows for graceful cancellation by periodically checking the cancellation status within the task.
+**Running actor tasks (regular actor, threaded actor)**: For tasks classified as a single-threaded Actor or a multi-threaded Actor, Ray sets a cancellation flag that can be checked via `ray.get_runtime_context().is_canceled()`. This allows for graceful cancellation by periodically checking the cancellation status within the task.
 
-**Running async actor tasks**:
-For Tasks classified as {ref}`async Actors <async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
-This cancellation approach aligns with the standards presented in
-[asyncio task cancellation](https://docs.python.org/3/library/asyncio-task.html#task-cancellation).
-Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
-Note: `ray.get_runtime_context().is_canceled()` is not supported for async actors and will raise a `RuntimeError`.
+**Running async actor tasks**: For Tasks classified as {ref}`async Actors <async-actors>`, Ray seeks to cancel the associated `asyncio.Task`. This cancellation approach aligns with the standards presented in [asyncio task cancellation](https://docs.python.org/3/library/asyncio-task.html#task-cancellation). Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function. Note: `ray.get_runtime_context().is_canceled()` is not supported for async actors and will raise a `RuntimeError`.
 
-**Cancellation guarantee**:
-Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.
-For example, if the cancellation request doesn't get through to the executor,
-the Task might not be cancelled.
-You can check if a Task was successfully cancelled using `ray.get(actor_task_ref)`.
+**Cancellation guarantee**: Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed. For example, if the cancellation request doesn't get through to the executor, the Task might not be cancelled. You can check if a Task was successfully cancelled using `ray.get(actor_task_ref)`.
 
-**Recursive cancellation**:
-Ray tracks all child and Actor Tasks. When the `recursive=True` argument is given,
-it cancels all child and Actor Tasks.
+**Recursive cancellation**: Ray tracks all child and Actor Tasks. When the `recursive=True` argument is given, it cancels all child and Actor Tasks.
 
 ### Detecting cancellation in running actor tasks
 
-For non-async actor tasks, you can periodically check whether a cancellation has been requested
-by calling `ray.get_runtime_context().is_canceled()`. This allows tasks to detect cancellation
-and perform cleanup operations before exiting gracefully.
+For non-async actor tasks, you can periodically check whether a cancellation has been requested by calling `ray.get_runtime_context().is_canceled()`. This allows tasks to detect cancellation and perform cleanup operations before exiting gracefully.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -493,20 +469,11 @@ and perform cleanup operations before exiting gracefully.
 
 ## Scheduling
 
-For each actor, Ray chooses a node to run it on,
-and bases the scheduling decision on a few factors like
-{ref}`the actor's resource requirements <ray-scheduling-resources>`
-and {ref}`the specified scheduling strategy <ray-scheduling-strategies>`.
-See {ref}`Ray scheduling <ray-scheduling>` for more details.
+For each actor, Ray chooses a node to run it on, and bases the scheduling decision on a few factors like {ref}`the actor's resource requirements <ray-scheduling-resources>` and {ref}`the specified scheduling strategy <ray-scheduling-strategies>`. See {ref}`Ray scheduling <ray-scheduling>` for more details.
 
 ## Fault Tolerance
 
-By default, Ray actors won't be {ref}`restarted <fault-tolerance-actors>` and
-actor tasks won't be retried when actors crash unexpectedly.
-You can change this behavior by setting
-`max_restarts` and `max_task_retries` options
-in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`.
-See {ref}`Ray fault tolerance <fault-tolerance>` for more details.
+By default, Ray actors won't be {ref}`restarted <fault-tolerance-actors>` and actor tasks won't be retried when actors crash unexpectedly. You can change this behavior by setting `max_restarts` and `max_task_retries` options in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. See {ref}`Ray fault tolerance <fault-tolerance>` for more details.
 
 ## FAQ: Actors, Workers and Resources
 
@@ -520,22 +487,15 @@ Ray treats a worker differently for tasks and actors. For tasks, Ray uses a "Ray
 
 * **Actor**: A Ray Actor is also a "Ray worker" but you instantiate it at runtime with `actor_cls.remote()`. All of its methods run on the same process, using the same resources Ray designates when you define the Actor. Note that unlike tasks, Ray doesn't reuse the Python processes that run Ray Actors. Ray terminates them when you delete the Actor.
 
-To maximally utilize your resources, you want to maximize the time that
-your workers work. You also want to allocate enough cluster resources
-so Ray can run all of your needed actors and any other tasks you
-define. This also implies that Ray schedules tasks more flexibly,
-and that if you don't need the stateful part of an actor, it's better
-to use tasks.
+To maximally utilize your resources, you want to maximize the time that your workers work. You also want to allocate enough cluster resources so Ray can run all of your needed actors and any other tasks you define. This also implies that Ray schedules tasks more flexibly, and that if you don't need the stateful part of an actor, it's better to use tasks.
 
 ## Task Events
 
-By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
-that Ray dashboard and {ref}`State API <state-api-overview-ref>` use.
+By default, Ray traces the execution of actor tasks, reporting task status events and profiling events that Ray dashboard and {ref}`State API <state-api-overview-ref>` use.
 
 You can disable task event reporting for the actor by setting the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.actor.ActorClass.options>`. This setting reduces the overhead of task execution by reducing the amount of data Ray sends to the Ray dashboard.
 
-You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
-Method settings override the actor setting:
+You can also disable task event reporting for some actor methods by setting the `enable_task_events` option to `False` in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` on the actor method. Method settings override the actor setting:
 
 ```{literalinclude} doc_code/actors.py
 :language: python

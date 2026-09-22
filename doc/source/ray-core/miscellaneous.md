@@ -83,9 +83,7 @@ obj = f.options(name="special_f").remote(3)
 assert ray.get(obj) == 4
 ```
 
-This name will appear as the task name in the machine view of the dashboard, will appear
-as the worker process name when this task is executing (if a Python task), and will
-appear as the task name in the logs.
+This name will appear as the task name in the machine view of the dashboard, will appear as the worker process name when this task is executing (if a Python task), and will appear as the task name in the logs.
 
 ```{image} images/task_name_dashboard.png
 ```
@@ -151,8 +149,7 @@ Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
 
 ## Inspecting Cluster State
 
-Applications written on top of Ray will often want to have some information
-or diagnostics about the cluster. Some common questions include:
+Applications written on top of Ray will often want to have some information or diagnostics about the cluster. Some common questions include:
 
 > 1. How many nodes are in my autoscaling cluster?
 > 2. What resources are currently available in my cluster, both used and total?
@@ -225,34 +222,21 @@ To get information about the current available resource capacity of your cluster
 
 ## Running Large Ray Clusters
 
-Here are some tips to run Ray with more than 1k nodes. When running Ray with such
-a large number of nodes, several system settings may need to be tuned to enable
-communication between such a large number of machines.
+Here are some tips to run Ray with more than 1k nodes. When running Ray with such a large number of nodes, several system settings may need to be tuned to enable communication between such a large number of machines.
 
 ### Tuning Operating System Settings
 
-Because all nodes and workers connect to the GCS, many network connections will
-be created and the operating system has to support that number of connections.
+Because all nodes and workers connect to the GCS, many network connections will be created and the operating system has to support that number of connections.
 
 #### Maximum open files
 
-The OS has to be configured to support opening many TCP connections since every
-worker and raylet connects to the GCS. In POSIX systems, the current limit can
-be checked by `ulimit -n` and if it's small, it should be increased according to
-the OS manual.
+The OS has to be configured to support opening many TCP connections since every worker and raylet connects to the GCS. In POSIX systems, the current limit can be checked by `ulimit -n` and if it's small, it should be increased according to the OS manual.
 
 #### ARP cache
 
-Another thing that needs to be configured is the ARP cache. In a large cluster,
-all the worker nodes connect to the head node, which adds a lot of entries to
-the ARP table. Ensure that the ARP cache size is large enough to handle this
-many nodes.
-Failure to do this will result in the head node hanging. When this happens,
-`dmesg` will show errors like `neighbor table overflow message`.
+Another thing that needs to be configured is the ARP cache. In a large cluster, all the worker nodes connect to the head node, which adds a lot of entries to the ARP table. Ensure that the ARP cache size is large enough to handle this many nodes. Failure to do this will result in the head node hanging. When this happens, `dmesg` will show errors like `neighbor table overflow message`.
 
-In Ubuntu, the ARP cache size can be tuned in `/etc/sysctl.conf` by increasing
-the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`.
-For more details, please refer to the OS manual.
+In Ubuntu, the ARP cache size can be tuned in `/etc/sysctl.conf` by increasing the value of `net.ipv4.neigh.default.gc_thresh1` - `net.ipv4.neigh.default.gc_thresh3`. For more details, please refer to the OS manual.
 
 ### Benchmark
 

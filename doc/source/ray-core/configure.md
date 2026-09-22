@@ -12,8 +12,7 @@ myst:
 For running Java applications, see [Java Applications](#java-applications).
 :::
 
-This page discusses the various ways to configure Ray, both from the Python API
-and from the command line. Take a look at the `ray.init` {doc}`documentation <api/index>` for a complete overview of the configurations.
+This page discusses the various ways to configure Ray, both from the Python API and from the command line. Take a look at the `ray.init` {doc}`documentation <api/index>` for a complete overview of the configurations.
 
 :::{important}
 For the multi-node setting, you must first run `ray start` on the command line to start the Ray cluster services on the machine before `ray.init` in Python to connect to the cluster services. On a single machine, you can run `ray.init()` without `ray start`, which both starts the Ray cluster services and connects to them.
@@ -90,13 +89,9 @@ ray.init(address=<address>)
 
 ## Worker gRPC threads on high-CPU nodes
 
-Each Ray worker process has its own gRPC runtime. By default, each runtime assumes it
-owns the whole machine and sizes its internal threads from the machine's CPU count. On
-nodes with many worker processes, this can create a high aggregate thread count.
+Each Ray worker process has its own gRPC runtime. By default, each runtime assumes it owns the whole machine and sizes its internal threads from the machine's CPU count. On nodes with many worker processes, this can create a high aggregate thread count.
 
-Set `RAY_worker_num_grpc_internal_threads` to a positive integer before starting Ray
-to reduce the worker-side gRPC runtime's CPU-count hint. Set it on every Ray node where
-you want the setting to apply. For example:
+Set `RAY_worker_num_grpc_internal_threads` to a positive integer before starting Ray to reduce the worker-side gRPC runtime's CPU-count hint. Set it on every Ray node where you want the setting to apply. For example:
 
 ```bash
 # Head node.
@@ -106,8 +101,7 @@ RAY_worker_num_grpc_internal_threads=4 ray start --head
 RAY_worker_num_grpc_internal_threads=4 ray start --address=<HEAD_ADDRESS>
 ```
 
-The best value depends on the workload. Test small values such as 1, 2, and 4 while
-measuring task throughput and RPC latency.
+The best value depends on the workload. Test small values such as 1, 2, and 4 while measuring task throughput and RPC latency.
 
 To diagnose high worker thread counts, see {ref}`debug-worker-thread-count`.
 
@@ -115,17 +109,9 @@ To diagnose high worker thread counts, see {ref}`debug-worker-thread-count`.
 
 ## Logging and debugging
 
-Each Ray session has a unique name. By default, the name is
-`session_{timestamp}_{pid}`. The format of `timestamp` is
-`%Y-%m-%d_%H-%M-%S_%f` (See [Python time format](https://strftime.org/) for details);
-the pid belongs to the startup process (the process calling `ray.init()` or
-the Ray process executed by a shell in `ray start`).
+Each Ray session has a unique name. By default, the name is `session_{timestamp}_{pid}`. The format of `timestamp` is `%Y-%m-%d_%H-%M-%S_%f` (See [Python time format](https://strftime.org/) for details); the pid belongs to the startup process (the process calling `ray.init()` or the Ray process executed by a shell in `ray start`).
 
-For each session, Ray places all its temporary files under the
-*session directory*. A *session directory* is a subdirectory of the
-*root temporary path* (`/tmp/ray` by default),
-so the default session directory is `/tmp/ray/{ray_session_name}`.
-You can sort by their names to find the latest session.
+For each session, Ray places all its temporary files under the *session directory*. A *session directory* is a subdirectory of the *root temporary path* (`/tmp/ray` by default), so the default session directory is `/tmp/ray/{ray_session_name}`. You can sort by their names to find the latest session.
 
 Change the *root temporary directory* by passing `--temp-dir={your temp path}` to `ray start`.
 
@@ -158,8 +144,7 @@ The following options specify the range of ports used by worker processes across
 
 Port numbers are how Ray differentiates input and output to and from multiple workers on a single node. Each worker takes input and gives output on a single port number. Therefore, by default, there's a maximum of 10,000 workers on each node, irrespective of number of CPUs.
 
-In general, you should give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging, it's useful to explicitly specify a short list of worker ports such as `--worker-port-list=10000,10001,10002,10003,10004`
-Note that this practice limits the number of workers, just like specifying a narrow range.
+In general, you should give Ray a wide range of possible worker ports, in case any of those ports happen to be in use by some other program on your machine. However, when debugging, it's useful to explicitly specify a short list of worker ports such as `--worker-port-list=10000,10001,10002,10003,10004` Note that this practice limits the number of workers, just like specifying a narrow range.
 
 Each raylet hands out its worker ports in a random order, so don't rely on the first worker binding to `--min-worker-port` or to the first entry of `--worker-port-list`. Randomizing keeps raylets that share a network namespace from all starting at the same end of the range. It only lowers the odds of a collision: if you run several raylets on one host, prefer giving each one a non-overlapping port range, or pass `--min-worker-port=0 --max-worker-port=0` so that each worker binds port 0 and the OS assigns a free port. Note that `ray start` defaults to `10002-19999`, so omitting these options doesn't select the port 0 behavior.
 
@@ -173,8 +158,7 @@ In addition to ports specified in the preceding section, the head node needs to 
 
 - If `--include-dashboard` is true (the default), then the head node must open `--dashboard-port`. Default: 8265.
 
-If `--include-dashboard` is true but the `--dashboard-port` isn't open on
-the head node, you won't be able to access the dashboard, and you repeatedly get
+If `--include-dashboard` is true but the `--dashboard-port` isn't open on the head node, you won't be able to access the dashboard, and you repeatedly get
 
 ```bash
 WARNING worker.py:1114 -- The agent on node <hostname of node that tried to run a task> failed with the following error:
@@ -187,8 +171,7 @@ grpc.aio._call.AioRpcError: <AioRpcError of RPC that terminated with:
   debug_error_string = "{"description":"Failed to pick subchannel","file":"src/core/ext/filters/client_channel/client_channel.cc","file_line":4165,"referenced_errors":[{"description":"failed to connect to all addresses","file":"src/core/ext/filters/client_channel/lb_policy/pick_first/pick_first.cc","file_line":397,"grpc_status":14}]}"
 ```
 
-If you see that error, check whether the `--dashboard-port` is accessible
-through `nc`, `nmap`, or your hello browser.
+If you see that error, check whether the `--dashboard-port` is accessible through `nc`, `nmap`, or your hello browser.
 
 ```bash
 $ nmap -sV --reason -p 8265 $HEAD_ADDRESS
@@ -200,39 +183,22 @@ PORT     STATE SERVICE REASON         VERSION
 Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
 ```
 
-Note that the dashboard runs as a separate subprocess which can crash invisibly
-in the background, so even if you checked port 8265 earlier, the port might be
-closed *now* (for the prosaic reason that there's no longer a service running
-on it). This also means that if you `ray stop` and `ray start` when the port is
-unreachable, it may become reachable again due to the dashboard restarting.
+Note that the dashboard runs as a separate subprocess which can crash invisibly in the background, so even if you checked port 8265 earlier, the port might be closed *now* (for the prosaic reason that there's no longer a service running on it). This also means that if you `ray stop` and `ray start` when the port is unreachable, it may become reachable again due to the dashboard restarting.
 
 
 If you don't want the dashboard, set `--include-dashboard=false`.
 
 ## TLS authentication
 
-You can configure Ray to use TLS on its gRPC channels.
-This means that connecting to the Ray head requires
-an appropriate set of credentials and also that data exchanged between
-various processes (client, head, workers) is encrypted.
+You can configure Ray to use TLS on its gRPC channels. This means that connecting to the Ray head requires an appropriate set of credentials and also that data exchanged between various processes (client, head, workers) is encrypted.
 
-TLS uses the private key and public key for encryption and decryption. The owner
-keeps the private key secret and TLS shares the public key with the other party.
-This pattern ensures that only the intended recipient can read the message.
+TLS uses the private key and public key for encryption and decryption. The owner keeps the private key secret and TLS shares the public key with the other party. This pattern ensures that only the intended recipient can read the message.
 
-A Certificate Authority (CA) is a trusted third party that certifies the identity of the
-public key owner. The digital certificate issued by the CA contains the public key itself,
-the identity of the public key owner, and the expiration date of the certificate. Note that
-if the owner of the public key doesn't want to obtain a digital certificate from a CA,
-they can generate a self-signed certificate with tools like OpenSSL.
+A Certificate Authority (CA) is a trusted third party that certifies the identity of the public key owner. The digital certificate issued by the CA contains the public key itself, the identity of the public key owner, and the expiration date of the certificate. Note that if the owner of the public key doesn't want to obtain a digital certificate from a CA, they can generate a self-signed certificate with tools like OpenSSL.
 
-To obtain a digital certificate, the owner of the public key must generate a Certificate Signing
-Request (CSR). The CSR contains information about the owner of the public
-key and the public key itself. Ray requires additional steps for achieving
-a successful TLS encryption.
+To obtain a digital certificate, the owner of the public key must generate a Certificate Signing Request (CSR). The CSR contains information about the owner of the public key and the public key itself. Ray requires additional steps for achieving a successful TLS encryption.
 
-Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using
-a self-signed certificates:
+Here is a step-by-step guide for adding TLS Authentication to a static Kubernetes Ray cluster using a self-signed certificates:
 
 ### Step 1: Generate a private key and self-signed certificate for CA
 
@@ -245,8 +211,7 @@ openssl req -x509 \
             -keyout ca.key -out ca.crt
 ```
 
-Use the following command to encode the private key file and the self-signed certificate file,
-then paste encoded strings to the secret.yaml.
+Use the following command to encode the private key file and the self-signed certificate file, then paste encoded strings to the secret.yaml.
 
 ```bash
 cat ca.key | base64
@@ -260,15 +225,9 @@ kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-
 
 ### Step 2: Generate individual private keys and self-signed certificates for the Ray head and workers
 
-The [YAML file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml), has a ConfigMap named `tls` that
-includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key
-and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer
-of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section.
+The [YAML file](https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.tls.yaml), has a ConfigMap named `tls` that includes two shell scripts: `gencert_head.sh` and `gencert_worker.sh`. These scripts produce the private key and self-signed certificate files (`tls.key` and `tls.crt`) for both head and worker Pods in the initContainer of each deployment. By using the initContainer, we can dynamically retrieve the `POD_IP` to the `[alt_names]` section.
 
-The scripts perform the following steps: first, it generates a 2048-bit RSA private key and saves the key as
-`/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file
-and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using
-the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
+The scripts perform the following steps: first, it generates a 2048-bit RSA private key and saves the key as `/etc/ray/tls/tls.key`. Then, a Certificate Signing Request (CSR) is generated using the `tls.key` file and the `csr.conf` configuration file. Finally, a self-signed certificate (`tls.crt`) is created using the Certificate Authority's (`ca.key and ca.crt`) keypair and the CSR (`ca.csr`).
 
 ### Step 3: Set the environment variables for both Ray head and worker to enable TLS
 
@@ -297,11 +256,7 @@ ray health-check --address service-ray-head:6379
 ```
 
 
-Enabling TLS causes a performance hit due to the extra overhead of mutual
-authentication and encryption.
-Testing has shown that this overhead is large for small workloads and becomes
-relatively smaller for large workloads.
-The exact overhead depends on the nature of your workload.
+Enabling TLS causes a performance hit due to the extra overhead of mutual authentication and encryption. Testing has shown that this overhead is large for small workloads and becomes relatively smaller for large workloads. The exact overhead depends on the nature of your workload.
 
 ## Java applications
 
