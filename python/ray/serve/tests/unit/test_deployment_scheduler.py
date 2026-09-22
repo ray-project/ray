@@ -40,6 +40,7 @@ from ray.serve._private.test_utils import (
     MockPlacementGroup,
     MockTimer,
 )
+from ray.serve._private.usage import ServeUsageTag
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import (
     In,
@@ -3710,6 +3711,62 @@ def test_deployment_flags_reach_the_scheduler():
     scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
     assert scheduler._deployments[d_id].is_gang is False
     assert scheduler._deployments[d_id].pins_replicas is False
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_compaction_records_the_telemetry_tag():
+    """The usage tag tracks the running count of successful compactions."""
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+    with mock.patch.object(ServeUsageTag.NUM_NODE_COMPACTIONS, "record") as record:
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        scheduler.on_replica_running(ReplicaID("r2-new", d_id), "node1")
+        scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+        assert scheduler.get_node_to_compact(allow_new_compaction=False)[0] == "node2"
+        record.assert_not_called()
+
+        cluster_node_info_cache.draining_nodes["node2"] = 10**9
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        record.assert_called_once_with("1")
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_only_a_success_clears_the_failure_streak():
+    """A dropped compaction and a fruitless scan both leave the streak alone."""
+    timer = MockTimer(0)
+    d_id = DeploymentID(name="deployment1")
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    with mock.patch("time.time", new=timer.time):
+        scheduler = _two_node_compaction_scheduler(cluster_node_info_cache, d_id)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+
+        # One cancellation puts the streak at 1.
+        scheduler.on_replica_running(ReplicaID("r3", d_id), "node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+        assert scheduler._num_consecutive_failed_compactions == 1
+        backoff_at = scheduler._next_allowed_compaction_timestamp_s
+
+        # The target dies before it is emptied. That is neither a success nor a
+        # failure, so the streak and the backoff both survive it.
+        timer.advance(2)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
+        cluster_node_info_cache.alive_node_ids.discard("node2")
+        assert scheduler.get_node_to_compact(allow_new_compaction=False) is None
+        assert scheduler._num_succeeded_compactions == 0
+        assert scheduler._num_consecutive_failed_compactions == 1
+        assert scheduler._next_allowed_compaction_timestamp_s == backoff_at
+
+        # A scan that finds nothing does not clear it either.
+        timer.advance(100)
+        assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
+        assert scheduler._num_consecutive_failed_compactions == 1
 
 
 if __name__ == "__main__":

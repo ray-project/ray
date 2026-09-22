@@ -11316,5 +11316,120 @@ def test_compaction_waits_for_the_stability_delay(mock_deployment_state_manager)
     assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_no_new_compaction_while_a_node_really_drains(mock_deployment_state_manager):
+    """A real drain anywhere in the cluster blocks starting a new compaction."""
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1, node2, node3 = (NodeID.from_random().hex() for _ in range(3))
+    cluster_node_info_cache.add_node(node1, {"CPU": 3})
+    cluster_node_info_cache.add_node(node2, {"CPU": 3})
+    cluster_node_info_cache.add_node(node3, {"CPU": 3})
+
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica, node in zip(ds._replicas.get(), [node1, node1, node2]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S + 5)
+
+    # An unrelated node is draining, so no compaction starts.
+    cluster_node_info_cache.draining_nodes = {node3: 10**12}
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node is None
+
+    # Control: the drain clearing is what lets it start.
+    cluster_node_info_cache.draining_nodes = {}
+    dsm.update()
+    assert dsm._deployment_scheduler._compacting_node.target_node_id == node2
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_no_new_compaction_while_a_replica_is_still_stopping(
+    mock_deployment_state_manager,
+):
+    """A deployment above its target blocks a new compaction until it settles.
+
+    The scheduler's own guard only sees pending, launching and recovering
+    replicas. A replica shutting down is none of those, so the health gate in
+    the state manager is the only thing holding the compaction back here.
+    """
+    create_dsm, timer, cluster_node_info_cache, _ = mock_deployment_state_manager
+    timer.reset(0)
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node1, {"CPU": 4})
+    cluster_node_info_cache.add_node(node2, {"CPU": 4})
+
+    dsm: DeploymentStateManager = create_dsm()
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=4, version="1")[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    # Two replicas per node, so whichever one stops the other node can still
+    # absorb what is left and a compaction stays possible.
+    for replica, node in zip(ds._replicas.get(), [node1, node1, node2, node2]):
+        replica._actor.set_node_id(node)
+        replica._actor.set_ready()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # Scale down. One replica starts shutting down and lingers there.
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(num_replicas=3, version="1")[0])
+    dsm.update()
+    assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 1
+    scheduler = dsm._deployment_scheduler
+    assert not any(scheduler._pending_replicas.values())
+    assert not any(scheduler._launching_replicas.values())
+    assert not any(scheduler._recovering_replicas.values())
+
+    timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S + 5)
+    dsm.update()
+    assert scheduler._compacting_node is None
+
+    # Control: once the replica is gone the deployment settles and, after the
+    # delay, a compaction starts.
+    ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S + 5)
+    dsm.update()
+    assert scheduler._compacting_node is not None
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_recovered_deployment_reports_its_flags(mock_deployment_state_manager):
+    """Recovery from a checkpoint re-registers gang and pinning with the scheduler."""
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    timer.reset(0)
+    dsm: DeploymentStateManager = create_dsm()
+    info, _ = deployment_info(
+        num_replicas=2,
+        version="v1",
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    # Forget the flags, then recover the same target state from its checkpoint.
+    scheduler_info = dsm._deployment_scheduler._deployments[TEST_DEPLOYMENT_ID]
+    scheduler_info.is_gang = False
+    scheduler_info.pins_replicas = False
+    ds.recover_target_state_from_checkpoint(ds._target_state)
+    assert dsm._deployment_scheduler._deployments[TEST_DEPLOYMENT_ID].is_gang is True
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
