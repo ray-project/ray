@@ -233,7 +233,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Setup the streaming DAG topology and start the runner thread.
         self._lineage_tracker = (
             LineageTracker()
-            if self._data_context.enable_seed_input_lineage_recovery
+            if self._data_context.enable_ray_data_reconstruction
             else None
         )
         self._block_ref_counter = BlockRefCounter()

@@ -27,6 +27,7 @@ from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.data.tests.util import create_map_transformer_from_block_fn
 from ray.exceptions import ObjectLostError
+from ray.job_config import JobConfig
 from ray.tests.conftest import *  # noqa: F401, F403
 
 
@@ -48,11 +49,17 @@ def trackers(monkeypatch):
     return created
 
 
-@pytest.fixture
-def recovery_enabled(restore_data_context):  # noqa: F405
-    ctx = ray.data.DataContext.get_current()
-    ctx.enable_seed_input_lineage_recovery = True
-    return ctx
+# Ray Data reconstruction has no switch of its own. The gate,
+# ``DataContext.enable_ray_data_reconstruction``, resolves from the job config and is
+# on exactly when the job turns Ray Core's lineage reconstruction off. So "recovery
+# enabled" is a property of the Ray instance, not of the context, and a test that needs
+# it starts the shared instance that way.
+recovery_enabled = pytest.mark.parametrize(
+    "ray_start_regular_shared",
+    [{"job_config": JobConfig(_disable_job_level_lineage_reconstruction=True)}],
+    indirect=True,
+    ids=["core_lineage_off"],
+)
 
 
 def _slot(data_task_id, output_index=0):
@@ -146,7 +153,10 @@ def losses_in_operator(monkeypatch):
 
 
 def test_flag_off_builds_no_tracker(ray_start_regular_shared, trackers):  # noqa: F405
-    """With the feature off, execution must not touch the lineage machinery."""
+    """By default the job leaves reconstruction to Ray Core, so execution must not
+    touch the lineage machinery.
+    """
+    assert not DataContext.get_current().enable_ray_data_reconstruction
     result = ray.data.range(50, override_num_blocks=4).map(
         lambda row: {"id": row["id"]}
     )
@@ -154,9 +164,9 @@ def test_flag_off_builds_no_tracker(ray_start_regular_shared, trackers):  # noqa
     assert trackers == []
 
 
+@recovery_enabled
 def test_execution_registers_a_connected_graph(
     ray_start_regular_shared,
-    recovery_enabled,
     trackers,  # noqa: F405
 ):
     """The regression test for the wiring.
@@ -185,9 +195,9 @@ def test_execution_registers_a_connected_graph(
             assert child.data_task_id in node.child_task_block_dependencies
 
 
+@recovery_enabled
 def test_unfused_chain_records_parent_edges(
     ray_start_regular_shared,
-    recovery_enabled,
     trackers,  # noqa: F405
 ):
     """A task consuming another task's output must record that dependency."""
@@ -217,9 +227,9 @@ def test_unfused_chain_records_parent_edges(
             assert task_id in _nodes(tracker)[parent_id].child_task_block_dependencies
 
 
+@recovery_enabled
 def test_reconstruction_does_not_grow_a_duplicate_node(
     ray_start_regular_shared,  # noqa: F405
-    recovery_enabled,
     trackers,
     loss_in_operator,
 ):
@@ -433,9 +443,9 @@ def _assert_matches_baseline(rows, expected):
 
 
 @pytest.mark.parametrize("reads_before_loss", [0, 1])
+@recovery_enabled
 def test_recovery_output_matches_a_no_loss_baseline(
     ray_start_regular_shared,  # noqa: F405
-    recovery_enabled,
     object_loss_injector,
     reads_before_loss,
 ):
@@ -464,9 +474,9 @@ def test_recovery_output_matches_a_no_loss_baseline(
     _assert_matches_baseline(rows, expected)
 
 
+@recovery_enabled
 def test_recovery_across_two_operators_matches_baseline(
     ray_start_regular_shared,  # noqa: F405
-    recovery_enabled,
     object_loss_injector,
 ):
     """Recovery through a real multi-operator chain.
@@ -490,9 +500,10 @@ def test_recovery_across_two_operators_matches_baseline(
     _assert_matches_baseline(rows, expected)
 
 
+@recovery_enabled
 def test_two_losses_under_one_seed_match_baseline(
     ray_start_regular_shared,  # noqa: F405
-    recovery_enabled,
+    restore_data_context,  # noqa: F405
     losses_in_operator,
 ):
     """Two lost children of one seed, through real execution, reproduce the baseline.
@@ -503,7 +514,7 @@ def test_two_losses_under_one_seed_match_baseline(
     the shared re-run itself is pinned by the operator-level tests above; this holds
     the correctness bar for either outcome: every row exactly once.
     """
-    recovery_enabled.target_max_block_size = 1
+    restore_data_context.target_max_block_size = 1
     losses_in_operator["arm"]("MapBatches", {0, 1})
     expected = sorted(i + 1 for i in range(20))
 
@@ -540,9 +551,9 @@ def _task_counts_per_op(tracker):
 # `resolve_dependencies` pops on first use, so the graph records the whole output index
 # for the first consumer and nothing at all for the second.
 @pytest.mark.parametrize("batch_size", [30, 25])
+@recovery_enabled
 def test_fan_in_child_recovers_against_its_whole_input_set(
     ray_start_regular_shared,  # noqa: F405
-    recovery_enabled,
     trackers,
     loss_in_operator,
     batch_size,
@@ -826,9 +837,9 @@ def test_held_reconstruction_outputs_keep_the_operator_from_completing(
 
 
 @pytest.mark.parametrize("reads_before_loss", [0, 1])
+@recovery_enabled
 def test_iter_batches_recovery_matches_baseline(
     ray_start_regular_shared,  # noqa: F405
-    recovery_enabled,
     object_loss_injector,
     reads_before_loss,
 ):
