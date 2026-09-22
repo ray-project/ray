@@ -184,9 +184,7 @@ class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.
 
-    Args:
-        replica_info: Metadata for the running replica.
-        actor_handle: An already resolved handle. If omitted, resolve it synchronously.
+    If no actor handle is supplied, resolve it synchronously.
     """
 
     def __init__(
@@ -198,8 +196,6 @@ class RunningReplica:
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
-        # Fetch and cache the actor handle once per RunningReplica instance.
-        # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
         if actor_handle is None:
             actor_handle = replica_info.get_actor_handle()
         if replica_info.is_cross_language:

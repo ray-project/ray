@@ -518,8 +518,7 @@ class RequestRouter(ABC):
         # Cached list of replicas to avoid O(n) dict-to-list conversion on every
         # routing iteration. Updated only when replicas change via `update_replicas`.
         self._replicas_list: List[RunningReplica] = []
-        # Latest complete controller list. Retain one lookup task per replica
-        # across updates; reconcile results on the router loop.
+        # Includes replicas whose actor handles are still being resolved.
         self._desired_replica_infos: Dict[ReplicaID, RunningReplicaInfo] = {}
         self._replica_lookup_tasks: Dict[ReplicaID, asyncio.Task[RunningReplica]] = {}
         self._replica_update_handle: Optional[asyncio.Handle] = None
@@ -805,15 +804,7 @@ class RequestRouter(ABC):
     def create_replica_wrapper(
         self, replica_info: RunningReplicaInfo
     ) -> Union[RunningReplica, Awaitable[RunningReplica]]:
-        """Invoke the wrapper factory, which must not block the router loop.
-
-        Args:
-            replica_info: Metadata for the replica to wrap.
-
-        Returns:
-            A wrapper, or an awaitable resolving to one.
-        """
-        assert self._create_replica_wrapper_func is not None
+        """Factories run on the router loop and must not block it."""
         return self._create_replica_wrapper_func(replica_info)
 
     async def _create_default_replica_wrapper(
@@ -1424,19 +1415,13 @@ class RequestRouter(ABC):
         # Retrieve exceptions even for tasks removed before this callback runs.
         if not task.cancelled():
             task.exception()
-        if (
-            not self._is_shutdown
-            and self._replica_lookup_tasks
-            and self._replica_update_handle is None
-        ):
-            # Use a fixed window, not a sliding debounce: ready replicas must not
-            # wait indefinitely for a continuous stream of lookup completions.
+        if self._replica_lookup_tasks and self._replica_update_handle is None:
+            # Do not reset the window on later completions; ready replicas must progress.
             self._replica_update_handle = self._event_loop.call_later(
                 _REPLICA_UPDATE_INTERVAL_S, self._apply_resolved_replicas
             )
 
     def _apply_resolved_replicas(self) -> None:
-        # Batch currently completed lookups into one routing-index rebuild.
         if self._replica_update_handle is not None:
             self._replica_update_handle.cancel()
             self._replica_update_handle = None
@@ -1467,8 +1452,7 @@ class RequestRouter(ABC):
             self.update_replicas(list(replicas.values()))
 
     async def _wait_for_replica_resolution(self) -> None:
-        # Broadcasts wait for all known replicas. Cancelling a broadcast must
-        # not cancel the shared lookups, so use asyncio.wait instead of gather.
+        # asyncio.wait keeps broadcast cancellation from cancelling shared lookups.
         while self._replica_lookup_tasks:
             await asyncio.wait(list(self._replica_lookup_tasks.values()))
             self._apply_resolved_replicas()
