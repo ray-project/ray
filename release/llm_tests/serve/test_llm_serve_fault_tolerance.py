@@ -1,9 +1,10 @@
 import time
-from typing import Literal, List, Generator
+from typing import Generator, List, Literal
 
 import pytest
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.serve.llm import LLMConfig, ModelLoadingConfig, build_llm_deployment
 
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
@@ -44,50 +45,68 @@ def kill_replica(replica_id: str) -> None:
     ray.kill(actor)
 
 
-@pytest.fixture(name="app", scope="function")
+@pytest.fixture(name="startup_s", scope="function")
 def start_ray_serve(
     tensor_parallel_size: int = 1,
-) -> Generator:
-    """Start Ray Serve with specified parallelism parameters."""
+) -> Generator[float, None, None]:
+    """Start Ray Serve and yield the startup time in seconds."""
     llm_config: LLMConfig = get_llm_config(tensor_parallel_size)
     app = build_llm_deployment(llm_config, name_prefix="LLM:")
+    start = time.time()
     serve.run(app, blocking=False)
-    yield app
+    yield time.time() - start
     serve.shutdown()
 
 
 def wait_for_deployment_status(
-    deployment_name: str, status: Literal["HEALTHY", "UNHEALTHY"], timeout_s: int = 120
+    deployment_name: str,
+    status: Literal["HEALTHY", "UNHEALTHY"],
+    timeout_s: float = 120,
 ) -> None:
-    s = time.time()
-    while time.time() - s < timeout_s:
+    def check() -> bool:
         print(f"Waiting for deployment {deployment_name} to become {status}")
         state = serve.status()
-        if state.applications["default"].deployments[deployment_name].status == status:
-            return
-        time.sleep(1)
-    raise TimeoutError(
-        f"Deployment {deployment_name} did not become "
-        f"{status} within {timeout_s} seconds"
-    )
+        return (
+            state.applications["default"].deployments[deployment_name].status == status
+        )
+
+    wait_for_condition(check, timeout=timeout_s, retry_interval_ms=1000)
 
 
-def test_recovery_from_replica_failure(app) -> None:
+def test_recovery_from_replica_failure(startup_s: float) -> None:
     """Tests that the deployment recovers from replica failure."""
     dname = "LLM:test"
     wait_for_deployment_status(dname, "HEALTHY", timeout_s=60)
 
     # Kill both replicas
-    replica_ids = find_replica_ids(dname)
-    for replica_id in replica_ids:
+    old_replica_ids = find_replica_ids(dname)
+    assert len(old_replica_ids) == 2, old_replica_ids
+    for replica_id in old_replica_ids:
         print(f"Killing replica {replica_id}")
         kill_replica(replica_id)
+
+    # Start the clock once the actors are gone. UNHEALTHY lags by a health check.
+    wait_for_condition(
+        lambda: set(old_replica_ids).isdisjoint(find_replica_ids(dname)),
+        timeout=60,
+        retry_interval_ms=1000,
+    )
+    recovery_start = time.time()
 
     # wait for deployment to get unhealthy
     wait_for_deployment_status(dname, "UNHEALTHY", timeout_s=60)
 
-    # Wait again for deployment to get healthy
-    wait_for_deployment_status(dname, "HEALTHY", timeout_s=60)
+    # Recovery is a cold start of the same replicas. Budget from measured startup.
+    recovery_budget_s = max(120, 2 * startup_s)
+    wait_for_deployment_status(dname, "HEALTHY", timeout_s=recovery_budget_s)
+    recovery_s = time.time() - recovery_start
+    print(f"Startup took {startup_s:.1f}s, recovery took {recovery_s:.1f}s")
+
+    new_replica_ids = find_replica_ids(dname)
+    assert set(old_replica_ids).isdisjoint(new_replica_ids), (
+        old_replica_ids,
+        new_replica_ids,
+    )
 
 
 if __name__ == "__main__":
