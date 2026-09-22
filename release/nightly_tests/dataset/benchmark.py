@@ -261,7 +261,7 @@ class BenchmarkMetric(Enum):
     OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
     OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
     HEAD_NODE_MEMORY_USED_PEAK_GB = "head_node_memory_used_peak_gb"
-    SCHED_LOOP_DURATION_P90_S = "sched_loop_duration_p90_s"
+    SCHED_LOOP_DURATIONS_P90_S = "sched_loop_durations_p90_s"
 
 
 class Benchmark:
@@ -392,12 +392,11 @@ class Benchmark:
         # This includes executions that finished before `run_fn` was called.
         # The code assumes this isn't an issue to simplify the implementation.
         stats_summaries = ray.data.list_stats_summaries()
-        # Report the worst p90 across datasets, since a case can execute several and
-        # the metric is meant to flag the slowest scheduling loop in the case.
-        if stats_summaries:
-            curr_case_metrics[BenchmarkMetric.SCHED_LOOP_DURATION_P90_S.value] = max(
-                summary.streaming_exec_schedule_p90_s for summary in stats_summaries
-            )
+        # A case can execute several datasets, so report one p90 per dataset rather
+        # than collapsing them into a single number.
+        curr_case_metrics[BenchmarkMetric.SCHED_LOOP_DURATIONS_P90_S.value] = [
+            summary.streaming_exec_schedule_p90_s for summary in stats_summaries
+        ]
 
         print(f"Result of case {name}: {curr_case_metrics}")
 
