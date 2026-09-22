@@ -773,8 +773,7 @@ def _reconstruct_lost_object(
         )
 
     logger.warning(
-        "Reconstructing lost object for task %s via plan %s from "
-        "seed task(s) %s.",
+        "Reconstructing lost object for task %s via plan %s from seed task(s) %s.",
         task.data_task_id,
         plan_id,
         ", ".join(seed_task_ids),
@@ -964,8 +963,11 @@ def process_completed_tasks(
                                 "reconstruction (lineage_tracker="
                                 f"{'on' if lineage_tracker else 'off'})."
                             )
-                            if lineage_tracker is not None and _reconstruct_lost_object(
-                                topology, lineage_tracker, state, task, e
+                            if (
+                                lineage_tracker is not None
+                                and _reconstruct_lost_object(
+                                    topology, lineage_tracker, state, task, e
+                                )
                             ):
                                 continue
                             logger.info(
