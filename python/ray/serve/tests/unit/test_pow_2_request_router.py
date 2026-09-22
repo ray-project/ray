@@ -7,7 +7,7 @@ import threading
 import time
 from collections import Counter, defaultdict
 from dataclasses import replace
-from types import SimpleNamespace, coroutine
+from types import SimpleNamespace
 from typing import Optional, Set
 from unittest.mock import AsyncMock, Mock
 
@@ -2065,18 +2065,8 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
             model_ids=set(replica_info.multiplexed_model_ids),
         )
 
-    router = PowerOfTwoChoicesRequestRouter(
-        deployment_id=deploy_id,
-        handle_source=DeploymentHandleSource.REPLICA,
-        prefer_local_node_routing=False,
-        prefer_local_az_routing=False,
-        self_node_id=ROUTER_NODE_ID,
-        self_actor_id="fake-actor-id",
-        self_actor_handle=None,
-        use_replica_queue_len_cache=False,
-        get_curr_time_s=TIMER.time,
-        create_replica_wrapper_func=create_fake_replica,
-    )
+    router = pow_2_router
+    router._resolve_replica = AsyncMock(side_effect=create_fake_replica)
     router.initialize_state()
 
     # First update: replica r1 has model m1 only
@@ -2232,7 +2222,7 @@ async def test_removed_replica_lookup_cannot_commit(pow_2_router, actor_lookup, 
     await async_wait_for_condition(actor_lookup.finished["removed"].is_set)
     await asyncio.sleep(0)
     assert not router.curr_replicas
-    assert not router._replica_wrapper_tasks
+    assert not router._replica_lookup_tasks
     assert actor_lookup.calls["removed"] == 1
     assert router._replica_update_handle is None
 
@@ -2269,7 +2259,7 @@ async def test_removed_then_readded_replica_uses_new_lookup(pow_2_router):
     info = replica_info("replica")
     first = FakeRunningReplica("replica")
     second = FakeRunningReplica("replica")
-    router._create_replica_wrapper_func = Mock(side_effect=[first, second])
+    router._resolve_replica = AsyncMock(side_effect=[first, second])
     router._update_running_replicas([info])
     await asyncio.sleep(0)
     # Invalidate a ready result, then start a replacement lookup with the same ID
@@ -2293,7 +2283,7 @@ async def test_replica_lookup_failure_isolated_and_retried_on_update(
     actor_lookup.release["good"].set()
     actor_lookup.release["bad"].set()
     router._update_running_replicas([good, bad])
-    await async_wait_for_condition(lambda: not router._replica_wrapper_tasks)
+    await async_wait_for_condition(lambda: not router._replica_lookup_tasks)
     assert set(router.curr_replicas) == {good.replica_id}
     assert "Failed to" in caplog.text
     if isinstance(error, RuntimeError):
@@ -2350,12 +2340,12 @@ async def test_resolution_wait_follows_replacement_snapshot(pow_2_router, actor_
 async def test_completed_lookup_invalidated_before_commit(pow_2_router, remove):
     router = pow_2_router
     info = replica_info("ready")
-    wrapper = FakeRunningReplica("ready")
-    router._create_replica_wrapper_func = lambda _: wrapper
+    replica = FakeRunningReplica("ready")
+    router._resolve_replica = AsyncMock(return_value=replica)
     router._update_running_replicas([info])
-    # Run the factory, but invalidate its result before the completion callback.
+    # Resolve the replica, but invalidate it before the completion callback.
     await asyncio.sleep(0)
-    assert router._replica_wrapper_tasks[info.replica_id].done()
+    assert router._replica_lookup_tasks[info.replica_id].done()
     if remove == "snapshot":
         router._update_running_replicas([])
     elif remove == "death":
@@ -2368,47 +2358,10 @@ async def test_completed_lookup_invalidated_before_commit(pow_2_router, remove):
     await router._shutdown_replica_resolution()
 
 
-@pytest.mark.parametrize("override", [False, True])
-@pytest.mark.parametrize("factory_kind", ["sync", "async", "generator"])
-async def test_custom_replica_factory_runs_on_router_loop(
-    pow_2_router, override, factory_kind
-):
-    router = pow_2_router
-    loop = asyncio.get_running_loop()
-    wrapper = FakeRunningReplica("custom")
-
-    def sync_factory(info):
-        assert asyncio.get_running_loop() is loop
-        return wrapper
-
-    async def async_factory(info):
-        await asyncio.sleep(0)
-        return sync_factory(info)
-
-    @coroutine
-    def generator_factory(info):
-        yield from asyncio.sleep(0).__await__()
-        return sync_factory(info)
-
-    factory = {
-        "sync": sync_factory,
-        "async": async_factory,
-        "generator": generator_factory,
-    }[factory_kind]
-    if override:
-        router.create_replica_wrapper = factory
-    else:
-        router._create_replica_wrapper_func = factory
-    router._update_running_replicas([replica_info("custom")])
-    await async_wait_for_condition(lambda: bool(router.curr_replicas))
-    assert router.curr_replicas[wrapper.replica_id] is wrapper
-    await router._shutdown_replica_resolution()
-
-
 async def test_completed_replica_lookups_are_batched(pow_2_router, monkeypatch):
     router = pow_2_router
-    router._create_replica_wrapper_func = lambda info: FakeRunningReplica(
-        info.replica_id.unique_id
+    router._resolve_replica = AsyncMock(
+        side_effect=lambda info: FakeRunningReplica(info.replica_id.unique_id)
     )
     update = Mock(wraps=router.update_replicas)
     monkeypatch.setattr(router, "update_replicas", update)

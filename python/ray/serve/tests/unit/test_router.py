@@ -266,9 +266,6 @@ class FakeRequestRouter(RequestRouter):
         self.on_request_routed_called = False
         self.completed_requests: List[Tuple[ReplicaID, str]] = []
 
-    def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
-        return FakeReplica(replica_info)
-
     async def _shutdown_replica_resolution(self):
         pass
 
@@ -3448,7 +3445,6 @@ class TestCustomRequestRouterAPIs:
         r = MinimalRouter(
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
-            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
         )
         assert r.supports_rejection_protocol is True
 
@@ -3466,7 +3462,6 @@ class TestCustomRequestRouterAPIs:
         r = NoRejectionRouter(
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
-            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
         )
         assert r.supports_rejection_protocol is False
 
@@ -3480,7 +3475,6 @@ class TestCustomRequestRouterAPIs:
         r = MinimalRouter(
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
-            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
         )
 
         b0 = r._compute_backoff_s(0)
@@ -3499,7 +3493,6 @@ class TestCustomRequestRouterAPIs:
         r = CustomBackoffRouter(
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
-            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
             backoff_multiplier=1.5,
         )
 
@@ -3521,7 +3514,6 @@ class TestCustomRequestRouterAPIs:
         r = MinimalRouter(
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
-            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
         )
 
         for attempt in [50, 100, 1000]:
@@ -3537,7 +3529,6 @@ class TestCustomRequestRouterAPIs:
         r = MinimalRouter(
             deployment_id=DeploymentID(name="test"),
             handle_source=DeploymentHandleSource.UNKNOWN,
-            create_replica_wrapper_func=lambda ri: FakeReplica(ri),
         )
         # Should complete without error.
         await r._backoff(0)
