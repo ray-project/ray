@@ -8268,6 +8268,43 @@ def test_broadcasted_replicas_set_changed_flag_set_on_lightweight_broadcast_conf
         mock_get_infos.assert_not_called()
 
 
+def test_redeploy_onto_deleting_state_republishes(mock_deployment_state_manager):
+    """A redeploy reusing a deleting DeploymentState must republish its snapshots.
+
+    Deleting tombstones DEPLOYMENT_TARGETS, and that tombstone is evicted on
+    redeploy so routers don't inherit it. The reused state must also forget what
+    it last broadcast, or `*_if_changed` compares against the evicted snapshots
+    and never republishes them.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    dsm.save_checkpoint()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    ds.broadcast_deployment_config_if_changed()
+
+    # Start deleting; the state sticks around while the replica drains.
+    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+    assert ds.deleting
+
+    # Redeploy the *identical* config onto the still-deleting state.
+    ds._long_poll_host.reset_mock()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds._long_poll_host.remove_keys.assert_called_once()
+
+    # The config is unchanged, so without forgetting the last broadcast this
+    # short-circuits and the evicted key stays missing.
+    ds.broadcast_deployment_config_if_changed()
+    ds._long_poll_host.notify_changed.assert_called()
+
+
 def test_broadcast_deferred_while_replicas_recovering(mock_deployment_state_manager):
     """Regression test: During controller recovery, broadcast_running_replicas_if_changed() must
     be deferred until all RECOVERING replicas have transitioned, then fire once with

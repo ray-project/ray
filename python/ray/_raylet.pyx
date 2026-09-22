@@ -5186,6 +5186,13 @@ cdef class CoreWorker:
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
 
+    def get_disable_job_level_lineage_reconstruction(self):
+        """
+        Return whether the current job has Ray Core lineage reconstruction
+        disabled.
+        """
+        return self.get_job_config().disable_job_level_lineage_reconstruction
+
     def get_local_memory_store_bytes_used(self):
         cdef:
             int64_t num_bytes_used
