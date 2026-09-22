@@ -151,10 +151,16 @@ async def test_downscale_drains_tasks():
 
 
 @pytest.mark.asyncio
-async def test_request_fulfilled_by_another_task():
+async def test_shared_request_id_cancels_stale_task():
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     first_request = fake_pending_request()
+    second_request = fake_pending_request()
+    # Dependent handle calls share their parent's internal request ID even though
+    # they are separate pending requests.
+    second_request.metadata.internal_request_id = (
+        first_request.metadata.internal_request_id
+    )
 
     class Router(FIFOMixin, RequestRouter):
         async def choose_replicas(self, candidate_replicas, pending_request=None):
@@ -177,7 +183,7 @@ async def test_request_fulfilled_by_another_task():
     router.update_replicas([replica])
     tasks = [
         asyncio.create_task(router._choose_replica_for_request(request))
-        for request in (first_request, fake_pending_request())
+        for request in (first_request, second_request)
     ]
     try:
         # The second task selects first, but fulfills request 1.

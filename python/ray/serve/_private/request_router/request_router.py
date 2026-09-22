@@ -528,9 +528,12 @@ class RequestRouter(ABC):
         # as new tasks will be routed when a request comes in or new replicas are
         # added, but it will not exceed self.max_num_routing_tasks.
         self._routing_tasks: Set[asyncio.Task] = set()
-        # Maps a request to the task currently routing it. If another task fulfills
-        # or cancels the request, this task no longer has useful work to do.
-        self._routing_task_by_pending_request_id: Dict[str, asyncio.Task] = {}
+        # Maps each pending request's future to the task currently routing it. An
+        # internal request ID can be shared by dependent handle calls, while every
+        # pending request has a distinct future.
+        self._routing_task_by_pending_request_future: Dict[
+            asyncio.Future, asyncio.Task
+        ] = {}
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
@@ -1132,8 +1135,9 @@ class RequestRouter(ABC):
 
     def _cancel_routing_task_for_pending_request(self, pending_request: PendingRequest):
         """Cancel the task routing a request that no longer needs an assignment."""
-        request_id = pending_request.metadata.internal_request_id
-        routing_task = self._routing_task_by_pending_request_id.get(request_id)
+        routing_task = self._routing_task_by_pending_request_future.get(
+            pending_request.future
+        )
         if routing_task is not None and routing_task is not asyncio.current_task(
             loop=self._event_loop
         ):
@@ -1263,8 +1267,9 @@ class RequestRouter(ABC):
                 request_metadata = pending_request.metadata
                 routing_task = asyncio.current_task(loop=self._event_loop)
                 assert routing_task is not None
-                request_id = request_metadata.internal_request_id
-                self._routing_task_by_pending_request_id[request_id] = routing_task
+                self._routing_task_by_pending_request_future[
+                    pending_request.future
+                ] = routing_task
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
@@ -1317,10 +1322,14 @@ class RequestRouter(ABC):
                             logger.warning(warning_log)
                 finally:
                     if (
-                        self._routing_task_by_pending_request_id.get(request_id)
+                        self._routing_task_by_pending_request_future.get(
+                            pending_request.future
+                        )
                         is routing_task
                     ):
-                        self._routing_task_by_pending_request_id.pop(request_id)
+                        self._routing_task_by_pending_request_future.pop(
+                            pending_request.future
+                        )
                     await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
