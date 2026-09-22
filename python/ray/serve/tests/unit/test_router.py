@@ -425,7 +425,7 @@ async def test_initial_replica_lookup_does_not_hold_up_target_updates(
 
     def lookup(info):
         assert threading.get_ident() != loop_thread
-        if info.actor_name == "old":
+        if info.replica_id.unique_id == "old":
             started.set()
             assert release.wait(10)
         return Mock()
@@ -439,18 +439,11 @@ async def test_initial_replica_lookup_does_not_hold_up_target_updates(
     context = Mock()
     context.get_actor_id.return_value = None
     monkeypatch.setattr(ray, "get_runtime_context", lambda: context)
-    old = RunningReplicaInfo(
-        replica_id=ReplicaID(unique_id="old", deployment_id=router.deployment_id),
-        node_id="node",
-        node_ip="127.0.0.1",
-        availability_zone=None,
-        actor_name="old",
-        max_ongoing_requests=10,
+    old = running_replica_info(
+        ReplicaID(unique_id="old", deployment_id=router.deployment_id)
     )
-    new = replace(
-        old,
-        replica_id=ReplicaID(unique_id="new", deployment_id=router.deployment_id),
-        actor_name="new",
+    new = running_replica_info(
+        ReplicaID(unique_id="new", deployment_id=router.deployment_id)
     )
     try:
         if not targets_first:
@@ -460,7 +453,7 @@ async def test_initial_replica_lookup_does_not_hold_up_target_updates(
         )
         if targets_first:
             router.update_deployment_config(deployment_config)
-        assert await asyncio.to_thread(started.wait, 5)
+        await async_wait_for_condition(started.is_set)
         assert router._request_router_initialized.is_set()
 
         # A newer snapshot must become usable before the old GCS call finishes.

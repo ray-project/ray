@@ -1,10 +1,8 @@
 import asyncio
 import pickle
 import sys
-import threading
 from types import SimpleNamespace
 from typing import Union
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,7 +12,6 @@ from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError, TaskCancelledError
 from ray.serve._private.common import (
-    DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -23,9 +20,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.request_router.common import PendingRequest
-from ray.serve._private.request_router.pow_2_router import (
-    PowerOfTwoChoicesRequestRouter,
-)
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve._private.utils import Semaphore
@@ -194,45 +188,6 @@ def setup_fake_replica(ray_instance) -> RunningReplica:
         max_ongoing_requests=10,
         is_cross_language=False,
     )
-
-
-async def test_router_resolves_real_actor_off_event_loop(
-    setup_fake_replica, monkeypatch
-):
-    loop_thread = threading.get_ident()
-    get_actor = ray.get_actor
-    lookup_threads = []
-
-    def lookup(*args, **kwargs):
-        lookup_threads.append(threading.get_ident())
-        assert threading.get_ident() != loop_thread
-        return get_actor(*args, **kwargs)
-
-    monkeypatch.setattr(ray, "get_actor", lookup)
-    router = PowerOfTwoChoicesRequestRouter(
-        deployment_id=setup_fake_replica.replica_id.deployment_id,
-        handle_source=DeploymentHandleSource.REPLICA,
-    )
-    # The fake actor implements request transport but not queue-length probing.
-    monkeypatch.setattr(router, "_probe_queue_lens", AsyncMock(return_value=[]))
-    try:
-        router._update_running_replicas([setup_fake_replica])
-        await router._wait_for_replica_resolution()
-        replica = router.curr_replicas[setup_fake_replica.replica_id]
-        result = replica.try_send_request(
-            PendingRequest(
-                args=["Hello"],
-                kwargs={"is_streaming": False},
-                metadata=RequestMetadata(
-                    request_id="lookup", internal_request_id="lookup"
-                ),
-            ),
-            with_rejection=False,
-        )
-        assert await result.get_async() == "Hello"
-        assert len(lookup_threads) == 1
-    finally:
-        await router._shutdown_replica_resolution()
 
 
 def test_update_replica_info_refreshes_backend_http_endpoint(setup_fake_replica):
