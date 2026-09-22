@@ -404,7 +404,7 @@ class TestAsWholeFileIndexer:
 
 
 class TestFileShuffle:
-    """File shuffle runs after path discovery and before chunking/metadata."""
+    """File shuffle runs after path discovery and before metadata reads."""
 
     def _write_files(self, tmp_path, n=10):
         paths = []
@@ -510,6 +510,15 @@ class TestFooterIndexerFileShuffle:
         flattened = [p for batch in batches for p, _ in batch]
         assert flattened == [fi.path for fi in shuffled]
         assert len(batches) > 1
+
+
+def test_list_file_infos_rejects_missing_filesystem():
+    # The FileIndexer base accepts ``filesystem=None`` for indexers that do
+    # their own IO; this one cannot, and must say so instead of failing on a
+    # ``None`` attribute deep inside path expansion.
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    with pytest.raises(ValueError, match="NonSamplingFileIndexer.*filesystem=None"):
+        list(indexer.list_file_infos(pa.array(["a.csv"]), filesystem=None))
 
 
 if __name__ == "__main__":

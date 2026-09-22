@@ -107,6 +107,7 @@ from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
+    _validate_min_bytes_per_file_args,
     _validate_rows_per_file_args,
     explain_plan,
     get_compute_strategy,
@@ -4857,6 +4858,7 @@ class Dataset:
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
+        min_bytes_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -4866,7 +4868,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         If pyarrow can't represent your data, this method errors.
@@ -4946,6 +4948,18 @@ class Dataset:
                 might write more or fewer rows to each file. If both ``min_rows_per_file``
                 and ``max_rows_per_file`` are specified, ``max_rows_per_file`` takes
                 precedence when they cannot both be satisfied.
+            min_bytes_per_file: [Experimental] The minimum in-memory size, in bytes,
+                of input blocks to combine for each write. This must be a positive
+                integer. Ray Data combines small input blocks until their total
+                in-memory size reaches this value. Note that
+                since this is compared against the uncompressed in-memory size, the
+                resulting on-disk files will typically be much smaller than this value
+                due to Parquet compression and encoding. Ray Data doesn't split blocks
+                or write inputs that exceed this value, so output files can be larger.
+                Partitioning can also cause actual file sizes to differ. Operator
+                fusion is disabled when this parameter is set. You can't use this
+                parameter with ``min_rows_per_file``, ``max_rows_per_file``, or
+                ``num_rows_per_file``.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5009,6 +5023,12 @@ class Dataset:
                     )
                 filesystem = resolved.filesystem
 
+        _validate_min_bytes_per_file_args(
+            min_bytes_per_file=min_bytes_per_file,
+            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=min_rows_per_file,
+            max_rows_per_file=max_rows_per_file,
+        )
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
             min_rows_per_file=min_rows_per_file,
@@ -5022,6 +5042,7 @@ class Dataset:
             arrow_parquet_args=arrow_parquet_args,
             min_rows_per_file=effective_min_rows,
             max_rows_per_file=effective_max_rows,
+            min_bytes_per_file=min_bytes_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,

@@ -998,4 +998,5 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
+    # Forward bazel `args` (the -k filter in BUILD.bazel) through to pytest.
+    sys.exit(pytest.main(["-v", "-s", __file__] + sys.argv[1:]))

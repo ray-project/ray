@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
+from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
@@ -371,6 +372,12 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+# Retain the stats summary of each finished execution so it can be read back with
+# `ray.data.list_stats_summaries()`, disabled by default.
+DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION = env_bool(
+    "RAY_DATA_ENABLE_STATS_SUMMARY_COLLECTION", False
+)
+
 DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
@@ -592,6 +599,31 @@ def _default_fixed_shape_tensor_format():
     from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
     return FixedShapeTensorFormat.V2
+
+
+def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
+    """Read this job's core-level lineage reconstruction setting.
+
+    Reads ``disable_job_level_lineage_reconstruction`` off the core worker to
+    determine whether Ray Data's application-level fault tolerance mechanism
+    should be enabled.
+    """
+    if not global_worker.connected:
+        return None
+
+    try:
+        return bool(
+            global_worker.core_worker.get_disable_job_level_lineage_reconstruction()
+        )
+    except Exception:
+        logger.warning(
+            "Couldn't read `disable_job_level_lineage_reconstruction` from the "
+            "core worker. Ray Data may be running without fault tolerance "
+            "mechanism. Is the job level lineage reconstruction config correctly "
+            "propagated to the core worker?",
+            exc_info=True,
+        )
+        return False
 
 
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
@@ -869,6 +901,9 @@ class DataContext:
         use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        enable_stats_summary_collection: Retain the stats summary of each finished
+            execution so it can be read back with `ray.data.list_stats_summaries()`,
+            disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
             store memory limit. If `None`, uses Ray's default.
         memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
@@ -913,6 +948,11 @@ class DataContext:
             otherwise, the system launches map tasks and actors with no logical
             ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
             for some APIs but not others. Defaults to ``False``.
+        enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
+            itself rather than relying on Ray Core lineage reconstruction.
+            This parameter should only be set using the job config. Explicitly setting
+            data reconstruction for context will not propagate the configuration to the
+            ray cluster.
     """
 
     # `None` means the block size is infinite.
@@ -1085,6 +1125,7 @@ class DataContext:
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
+    enable_stats_summary_collection: bool = DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
@@ -1122,6 +1163,8 @@ class DataContext:
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
+
+    _enable_ray_data_reconstruction: Optional[bool] = None
 
     object_store_reservation_overshoot_ratio: Optional[
         float
@@ -1514,6 +1557,28 @@ class DataContext:
             raise TypeError(
                 "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
             )
+
+    @property
+    def enable_ray_data_reconstruction(self) -> bool:
+        """Whether Ray Data reconstructs lost objects itself."""
+        resolved = _resolve_enable_ray_data_reconstruction()
+        if self._enable_ray_data_reconstruction is not None:
+            if (
+                resolved is not None
+                and resolved != self._enable_ray_data_reconstruction
+            ):
+                raise ValueError(
+                    "The enable_ray_data_reconstruction value does not match "
+                    "the disable_job_level_lineage_reconstruction value in the "
+                    "cluster. When job level lineage reconstruction is disabled, "
+                    "data reconstruction must be enabled. When job level lineage "
+                    "reconstruction is enabled, data reconstruction must be "
+                    "disabled as core is configured to handle reconstruction in "
+                    "that configuration."
+                )
+            return self._enable_ray_data_reconstruction
+
+        return False if resolved is None else resolved
 
 
 # Backwards compatibility alias.
