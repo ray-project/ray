@@ -29,8 +29,8 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TimeStampedValue,
 )
-from ray.serve._private.controller import ServeController
 from ray.serve._private.constants import RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S
+from ray.serve._private.controller import ServeController
 from ray.serve._private.utils import compress_metric_report, decompress_metric_report
 from ray.serve.config import AggregationFunction, AutoscalingConfig
 
@@ -445,7 +445,9 @@ def test_columnar_handle_drops_are_logged(monkeypatch):
         assert "h1" in log.call_args[0][0]
 
 
-def _object_report(hid, *, timestamp, actor_id=None, source=DeploymentHandleSource.UNKNOWN):
+def _object_report(
+    hid, *, timestamp, actor_id=None, source=DeploymentHandleSource.UNKNOWN
+):
     return HandleMetricReport(
         deployment_id=DEP,
         handle_id=hid,
@@ -478,9 +480,7 @@ def test_drop_keeps_fresh_report_when_producer_clock_behind(monkeypatch):
     producer_ts = controller_now - timeout - 5
 
     monkeypatch.setattr(A.time, "monotonic", lambda: controller_now)
-    assert st._handle_store.accept(
-        _object_report("h", timestamp=producer_ts)
-    )
+    assert st._handle_store.accept(_object_report("h", timestamp=producer_ts))
     st.drop_stale_handle_metrics(set())
     assert "h" in st._handle_store.objects
     assert st._handle_store.received_at("h") == controller_now
@@ -496,9 +496,7 @@ def test_drop_prunes_when_producer_clock_ahead_past_receive_timeout(monkeypatch)
     producer_ts = receive_mono + 3600.0
 
     monkeypatch.setattr(A.time, "monotonic", lambda: receive_mono)
-    assert st._handle_store.accept(
-        _object_report("h", timestamp=producer_ts)
-    )
+    assert st._handle_store.accept(_object_report("h", timestamp=producer_ts))
     # Still within receive timeout: keep.
     monkeypatch.setattr(A.time, "monotonic", lambda: receive_mono + timeout - 0.1)
     st.drop_stale_handle_metrics(set())

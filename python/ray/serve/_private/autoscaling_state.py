@@ -615,9 +615,7 @@ class DeploymentAutoscalingState:
                 and report.actor_id not in alive_serve_actor_ids
             )
             received_at = self._handle_store.received_at(report.handle_id)
-            timed_out = (
-                received_at is not None and now_mono - received_at >= timeout_s
-            )
+            timed_out = received_at is None or now_mono - received_at >= timeout_s
             if not (dead_actor or timed_out):
                 continue
             self._handle_store.forget(report.handle_id)
