@@ -4179,7 +4179,7 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   }
   if (!reference_counter_->AddObjectLocation(object_id, node_id)) {
     // The ref may be dropped and free objects sent before this report arrives, so free
-    // the additional objects here.
+    // the additional copies here.
     FreeObjectOnNodesAsync(object_id, {node_id});
   }
 }
