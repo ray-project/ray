@@ -23,6 +23,8 @@ from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
+    RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
 )
@@ -1052,11 +1054,15 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         if forward_body:
             assert "wait-for-body" in cfg, cfg
-            assert "tune.bufsize 8388608" in cfg, cfg
+            assert (
+                f"tune.bufsize {RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE}"
+                in cfg
+            ), cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+        assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
         assert (
             "http-request del-header x-serve-router- -m beg "
             "if has_ingress_request_router_app"
