@@ -135,6 +135,8 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
   // Schedule and grant leases.
   void ScheduleAndGrantLeases() override;
 
+  void ScheduleAndGrantPendingLeases() override;
+
   /// Record the internal metrics.
   void RecordMetrics() const override;
 

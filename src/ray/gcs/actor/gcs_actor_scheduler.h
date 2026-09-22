@@ -135,6 +135,17 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param actor to be scheduled.
   void Schedule(std::shared_ptr<GcsActor> actor) override;
 
+  /// Set the raylets that hold a cluster resource view when
+  /// `ray_syncer_resource_view_fanout_node_count` > 0. Lease forwarding is sharded
+  /// across them (by placement group id, falling back to the actor id) instead of
+  /// targeting the actor owner's raylet, which no longer receives a resource view
+  /// under that setting. Must be called on the same io_context that `Schedule`
+  /// runs on.
+  ///
+  /// \param nodes The view-holder nodes; an empty list restores the default
+  /// forwarding behavior.
+  void SetViewHolderNodes(std::vector<NodeID> nodes);
+
   /// Reschedule the specified actor after gcs server restarts.
   ///
   /// \param actor to be scheduled.
@@ -348,6 +359,11 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       node_to_workers_when_creating_;
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
+  /// The raylets holding a cluster resource view when
+  /// `ray_syncer_resource_view_fanout_node_count` > 0; lease forwarding is sharded
+  /// across them. Empty (the default) keeps the standard forwarding behavior. Only
+  /// accessed on the scheduling io_context.
+  std::vector<NodeID> view_holder_nodes_;
   /// The handler to handle the scheduling failures.
   GcsActorSchedulerFailureCallback schedule_failure_handler_;
   /// The handler to handle the successful scheduling.

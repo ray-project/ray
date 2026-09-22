@@ -52,8 +52,8 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
                                       cluster_resource_manager.GetResourceView(),
                                       is_node_available) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  SchedulingResult Schedule(const ResourceRequest &resource_request,
+                            SchedulingOptions options) override;
 
  private:
   HybridSchedulingPolicy hybrid_policy_;

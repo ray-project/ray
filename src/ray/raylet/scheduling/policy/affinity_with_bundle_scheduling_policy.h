@@ -33,8 +33,8 @@ class AffinityWithBundleSchedulingPolicy : public ISchedulingPolicy {
         is_node_alive_(is_node_alive),
         bundle_location_index_(pg_location_index) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  SchedulingResult Schedule(const ResourceRequest &resource_request,
+                            SchedulingOptions options) override;
 
   const scheduling::NodeID local_node_id_;
   const absl::flat_hash_map<scheduling::NodeID, Node> &nodes_;

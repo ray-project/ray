@@ -58,8 +58,8 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
         bitgen_(),
         bitgenref_(bitgen_) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  SchedulingResult Schedule(const ResourceRequest &resource_request,
+                            SchedulingOptions options) override;
 
  private:
   enum class NodeFilter {
@@ -112,16 +112,17 @@ class HybridSchedulingPolicy : public ISchedulingPolicy {
   /// scheduler guarantees k is at least equal to this fraction * the number of
   /// nodes in the cluster.
   ///
-  /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
-  /// schedule on.
-  scheduling::NodeID ScheduleImpl(const ResourceRequest &resource_request,
-                                  float spread_threshold,
-                                  bool force_spillback,
-                                  bool require_available,
-                                  NodeFilter node_filter,
-                                  const std::string &preferred_node,
-                                  int32_t schedule_top_k_absolute,
-                                  float scheduler_top_k_fraction);
+  /// \return Success with the selected node; Failed when feasible nodes exist
+  /// but none is available and require_available is set; Infeasible when no
+  /// feasible node exists.
+  SchedulingResult ScheduleImpl(const ResourceRequest &resource_request,
+                                float spread_threshold,
+                                bool force_spillback,
+                                bool require_available,
+                                NodeFilter node_filter,
+                                const std::string &preferred_node,
+                                int32_t schedule_top_k_absolute,
+                                float scheduler_top_k_fraction);
 
   /// Identifier of local node.
   const scheduling::NodeID local_node_id_;

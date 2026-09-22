@@ -61,6 +61,19 @@ namespace {
 constexpr double kTestTotalCpuResource = 10.0;
 constexpr double kTestObjectStoreMemory = 1024 * 1024 * 1024;  // 1 GiB
 
+// Counts scheduling passes, including the one QueueAndScheduleLease runs internally.
+class CountingClusterLeaseManager : public ClusterLeaseManager {
+ public:
+  using ClusterLeaseManager::ClusterLeaseManager;
+
+  void ScheduleAndGrantLeases() override {
+    ++num_schedule_and_grant_leases;
+    ClusterLeaseManager::ScheduleAndGrantLeases();
+  }
+
+  int num_schedule_and_grant_leases = 0;
+};
+
 class FakeLocalObjectManager : public LocalObjectManagerInterface {
  public:
   FakeLocalObjectManager(
@@ -426,7 +439,7 @@ class NodeManagerTest : public ::testing::Test {
         scheduler_metrics,
         clock_);
 
-    cluster_lease_manager_ = std::make_unique<ClusterLeaseManager>(
+    cluster_lease_manager_ = std::make_unique<CountingClusterLeaseManager>(
         raylet_node_id_,
         *cluster_resource_scheduler_,
         get_node_info_func,
@@ -482,7 +495,7 @@ class NodeManagerTest : public ::testing::Test {
   ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
-  std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
+  std::unique_ptr<CountingClusterLeaseManager> cluster_lease_manager_;
   std::unique_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
   std::shared_ptr<FakeLocalObjectManager> local_object_manager_;
   std::unique_ptr<LeaseDependencyManager> lease_dependency_manager_;
@@ -783,7 +796,7 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
   EXPECT_FALSE(failed_pin_reply.successes(0));
 }
 
-TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
+TEST_F(NodeManagerTest, TestConsumeSyncMessages) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
@@ -799,7 +812,8 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
   msg.set_message_type(syncer::MessageType::RESOURCE_VIEW);
   msg.set_sync_message(serialized);
 
-  node_manager_->ConsumeSyncMessage(std::make_shared<syncer::RaySyncMessage>(msg));
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW,
+                                     {std::make_shared<syncer::RaySyncMessage>(msg)});
 
   // Verify node resources and labels were updated.
   const auto &node_resources =
@@ -810,6 +824,46 @@ TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
             kTestTotalCpuResource);
   EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
             kTestTotalCpuResource);
+}
+
+// Tests that a batch of resource views is applied in full with one scheduling pass.
+TEST_F(NodeManagerTest, TestConsumeSyncMessagesSchedulesOncePerBatch) {
+  auto make_resource_view = [](const NodeID &node_id) {
+    syncer::ResourceViewSyncMessage payload;
+    payload.mutable_resources_total()->insert({"CPU", kTestTotalCpuResource});
+    payload.mutable_resources_available()->insert({"CPU", kTestTotalCpuResource});
+    payload.mutable_labels()->insert({"label1", "value1"});
+    std::string serialized;
+    RAY_CHECK(payload.SerializeToString(&serialized));
+    auto msg = std::make_shared<syncer::RaySyncMessage>();
+    msg->set_node_id(node_id.Binary());
+    msg->set_message_type(syncer::MessageType::RESOURCE_VIEW);
+    msg->set_version(1);
+    msg->set_sync_message(serialized);
+    return msg;
+  };
+  const std::vector<NodeID> node_ids = {
+      NodeID::FromRandom(), NodeID::FromRandom(), NodeID::FromRandom()};
+
+  const int passes_before = cluster_lease_manager_->num_schedule_and_grant_leases;
+  node_manager_->ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW,
+                                     {make_resource_view(node_ids[0]),
+                                      make_resource_view(node_ids[1]),
+                                      make_resource_view(node_ids[2])});
+
+  for (const auto &node_id : node_ids) {
+    const auto &cluster_resource_manager =
+        cluster_resource_scheduler_->GetClusterResourceManager();
+    ASSERT_TRUE(cluster_resource_manager.HasNode(scheduling::NodeID(node_id.Binary())));
+    const auto &node_resources =
+        cluster_resource_manager.GetNodeResources(scheduling::NodeID(node_id.Binary()));
+    EXPECT_EQ(node_resources.total.Get(scheduling::ResourceID("CPU")).Double(),
+              kTestTotalCpuResource);
+    EXPECT_EQ(node_resources.GetAvailableSum(scheduling::ResourceID("CPU")).Double(),
+              kTestTotalCpuResource);
+    EXPECT_EQ(node_resources.labels.at("label1"), "value1");
+  }
+  EXPECT_EQ(passes_before + 1, cluster_lease_manager_->num_schedule_and_grant_leases);
 }
 
 TEST_F(NodeManagerTest, TestResizeLocalResourceInstancesSuccessful) {
@@ -1078,6 +1132,72 @@ TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
   ASSERT_EQ(leased_workers_[lease_id]->WorkerId(),
             WorkerID::FromBinary(reply1.worker_address().worker_id()));
   ASSERT_EQ(reply1.worker_address(), reply2.worker_address());
+}
+
+TEST_F(NodeManagerTest, TestReturnWorkerLeaseOfExitingWorkerReschedulesWaitingLeases) {
+  // Lease A takes every CPU on the node, so lease B has to wait for it. B asks
+  // for a different amount so it lands in its own scheduling class: the
+  // per-class worker cap would otherwise hold it back for unrelated reasons.
+  auto lease_spec_a = BuildLeaseSpec({{"CPU", kTestTotalCpuResource}});
+  auto lease_spec_b = BuildLeaseSpec({{"CPU", kTestTotalCpuResource - 1}});
+  LeaseID lease_id_a = LeaseID::FromRandom();
+  LeaseID lease_id_b = LeaseID::FromRandom();
+  lease_spec_a.GetMutableMessage().set_lease_id(lease_id_a.Binary());
+  lease_spec_b.GetMutableMessage().set_lease_id(lease_id_b.Binary());
+
+  std::vector<PopWorkerCallback> pop_worker_callbacks;
+  EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+      .Times(2)
+      .WillRepeatedly(
+          [&](const LeaseSpecification &ls, const PopWorkerCallback &callback) {
+            pop_worker_callbacks.push_back(callback);
+          });
+
+  rpc::RequestWorkerLeaseRequest request_a;
+  rpc::RequestWorkerLeaseReply reply_a;
+  request_a.mutable_lease_spec()->CopyFrom(lease_spec_a.GetMessage());
+  request_a.set_backlog_size(1);
+  node_manager_->HandleRequestWorkerLease(
+      request_a,
+      &reply_a,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(pop_worker_callbacks.size(), 1);
+  auto worker_a = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  pop_worker_callbacks[0](worker_a, PopWorkerStatus::OK, "");
+  ASSERT_EQ(leased_workers_.size(), 1);
+
+  rpc::RequestWorkerLeaseRequest request_b;
+  rpc::RequestWorkerLeaseReply reply_b;
+  request_b.mutable_lease_spec()->CopyFrom(lease_spec_b.GetMessage());
+  request_b.set_backlog_size(1);
+  node_manager_->HandleRequestWorkerLease(
+      request_b,
+      &reply_b,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  // No CPU is left, so B waits and no worker is requested for it yet.
+  ASSERT_EQ(pop_worker_callbacks.size(), 1);
+
+  // A's worker returns its lease while exiting (e.g. it reached max_calls but
+  // still owns objects): it is not pushed back to the pool, but the CPUs it held
+  // are free again and B must be granted from this return alone.
+  rpc::ReturnWorkerLeaseRequest return_request;
+  rpc::ReturnWorkerLeaseReply return_reply;
+  return_request.set_lease_id(lease_id_a.Binary());
+  return_request.set_worker_exiting(true);
+  node_manager_->HandleReturnWorkerLease(
+      return_request,
+      &return_reply,
+      [](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+      });
+  ASSERT_EQ(pop_worker_callbacks.size(), 2);
+  auto worker_b = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+  pop_worker_callbacks[1](worker_b, PopWorkerStatus::OK, "");
+  ASSERT_TRUE(leased_workers_.contains(lease_id_b));
 }
 
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseScheduledLeaseIdempotent) {

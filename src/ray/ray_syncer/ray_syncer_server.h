@@ -19,6 +19,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "ray/ray_syncer/common.h"
 #include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
@@ -39,7 +40,8 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       grpc::CallbackServerContext *server_context,
       instrumented_io_context &io_context,
       const std::string &local_node_id,
-      std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+      std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
+          message_processor,
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
       std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
       ray::rpc::AuthenticationTokenValidator &auth_token_validator,
