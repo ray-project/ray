@@ -1051,6 +1051,7 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         if forward_body:
             assert "wait-for-body" in cfg, cfg
+            assert "tune.bufsize 16777216" in cfg, cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
