@@ -329,5 +329,3 @@ The list of available driver options:
   - The namespace of this job. Ray uses it for isolation between jobs. Jobs in different namespaces can't access each other. If it's not specified, Ray uses a randomized value.
   - Type: `String`
   - Default: A random UUID string value.
-
-<!-- _`Apache Arrow`: https://arrow.apache.org/ -->
