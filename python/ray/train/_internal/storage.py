@@ -215,9 +215,6 @@ def _upload_to_fs_path(
     """
 
     if os.path.isfile(local_path):
-        # Upload a single file to `fs_path` (a file path), creating only its
-        # parent directory — mirroring `_download_from_fs_path`. `exclude` does
-        # not apply to a single file.
         parent = posixpath.dirname(fs_path)
         if parent:
             _create_directory(fs=fs, fs_path=parent)
