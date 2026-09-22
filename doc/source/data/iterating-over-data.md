@@ -21,9 +21,7 @@ This guide shows you how to:
 
 ## Iterating over rows
 
-To iterate over the rows of your dataset, call
-{meth}`Dataset.iter_rows() <ray.data.Dataset.iter_rows>`. Ray Data represents each row
-as a dictionary.
+To iterate over the rows of your dataset, call {meth}`Dataset.iter_rows() <ray.data.Dataset.iter_rows>`. Ray Data represents each row as a dictionary.
 
 ```{testcode}
 import ray
@@ -42,16 +40,13 @@ for row in ds.iter_rows():
 ```
 
 
-For more information on working with rows, see
-{ref}`Transforming rows <transforming_rows>` and
-{ref}`Inspecting rows <inspecting-rows>`.
+For more information on working with rows, see {ref}`Transforming rows <transforming_rows>` and {ref}`Inspecting rows <inspecting-rows>`.
 
 (iterating-over-batches)=
 
 ## Iterating over batches
 
-A batch contains data from multiple rows. Iterate over batches of dataset in different
-formats by calling one of the following methods:
+A batch contains data from multiple rows. Iterate over batches of dataset in different formats by calling one of the following methods:
 
 * `Dataset.iter_batches() <ray.data.Dataset.iter_batches>`
 * `Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
@@ -156,26 +151,16 @@ tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dty
 
 ::::
 
-For more information on working with batches, see
-{ref}`Transforming batches <transforming_batches>` and
-{ref}`Inspecting batches <inspecting-batches>`.
+For more information on working with batches, see {ref}`Transforming batches <transforming_batches>` and {ref}`Inspecting batches <inspecting-batches>`.
 
 (iterating-over-batches-with-shuffling)=
 
 ## Iterating over batches with shuffling
 
-{class}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow because it
-shuffles all rows. If a full global shuffle isn't required, you can shuffle a subset of
-rows up to a provided buffer size during iteration by specifying
-`local_shuffle_buffer_size`. While this isn't a true global shuffle like
-`random_shuffle`, it's more performant because it doesn't require excessive data
-movement. For more details about these options, see {doc}`Shuffling Data <shuffling-data>`.
+{class}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` is slow because it shuffles all rows. If a full global shuffle isn't required, you can shuffle a subset of rows up to a provided buffer size during iteration by specifying `local_shuffle_buffer_size`. While this isn't a true global shuffle like `random_shuffle`, it's more performant because it doesn't require excessive data movement. For more details about these options, see {doc}`Shuffling Data <shuffling-data>`.
 
 :::{tip}
-To configure `local_shuffle_buffer_size`, choose the smallest value that achieves
-sufficient randomness. Higher values result in more randomness at the cost of slower
-iteration. See {ref}`Local shuffle when iterating over batches <local_shuffle_buffer>`
-on how to diagnose slowdowns.
+To configure `local_shuffle_buffer_size`, choose the smallest value that achieves sufficient randomness. Higher values result in more randomness at the cost of slower iteration. See {ref}`Local shuffle when iterating over batches <local_shuffle_buffer>` on how to diagnose slowdowns.
 :::
 
 ::::{tab-set}
@@ -292,14 +277,10 @@ tf.Tensor([5.  5.8], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dty
 
 ## Splitting datasets for distributed parallel training
 
-If you're performing distributed data parallel training, call
-{meth}`Dataset.streaming_split <ray.data.Dataset.streaming_split>` to split your dataset
-into disjoint shards.
+If you're performing distributed data parallel training, call {meth}`Dataset.streaming_split <ray.data.Dataset.streaming_split>` to split your dataset into disjoint shards.
 
 :::{note}
-If you're using {ref}`Ray Train <train-docs>`, you don't need to split the dataset.
-Ray Train automatically splits your dataset for you. To learn more, see
-{ref}`Data Loading for ML Training guide <data-ingest-torch>`.
+If you're using {ref}`Ray Train <train-docs>`, you don't need to split the dataset. Ray Train automatically splits your dataset for you. To learn more, see {ref}`Data Loading for ML Training guide <data-ingest-torch>`.
 :::
 
 ```{testcode}

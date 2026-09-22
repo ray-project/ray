@@ -41,20 +41,13 @@ Ray Data supports the following join types. See {meth}`Dataset.join <ray.data.Da
 
 **Semi joins:**
 
-- Left Semi, Right Semi return all rows that have at least one matching row in the other table,
-  returning only columns from the requested side.
+- Left Semi, Right Semi return all rows that have at least one matching row in the other table, returning only columns from the requested side.
 
 **Anti joins:**
 
-- Left Anti, Right Anti return rows that have no matching rows in the other table, returning only
-  columns from the requested side.
+- Left Anti, Right Anti return rows that have no matching rows in the other table, returning only columns from the requested side.
 
-Internally, joins use a hash-shuffle backend, and each hash partition is joined with Polars.
-Joins use {ref}`shuffle v2 <shuffle-v2>` (`ShuffleStrategy.SHUFFLE_V2`) by default. See
-{ref}`Tuning shuffle v2 <tuning-shuffle-v2>` for the memory-related settings.
-To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set the shuffle
-strategy before creating a `Dataset`:
-`ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`.
+Internally, joins use a hash-shuffle backend, and each hash partition is joined with Polars. Joins use {ref}`shuffle v2 <shuffle-v2>` (`ShuffleStrategy.SHUFFLE_V2`) by default. See {ref}`Tuning shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set the shuffle strategy before creating a `Dataset`: `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`.
 
 ## Configuring joins
 
