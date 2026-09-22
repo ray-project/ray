@@ -8,11 +8,9 @@ myst:
 
 # Using Namespaces
 
-A namespace is a logical grouping of jobs and named actors. When an actor is
-named, its name must be unique within the namespace.
+A namespace is a logical grouping of jobs and named actors. When an actor is named, its name must be unique within the namespace.
 
-In order to set your applications namespace, it should be specified when you
-first connect to the cluster.
+In order to set your applications namespace, it should be specified when you first connect to the cluster.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -134,8 +132,7 @@ ray::Shutdown();
 
 ## Specifying namespace for named actors
 
-You can specify a namespace for a named actor while creating it. The created actor belongs to
-the specified namespace, no matter what namespace of the current job is.
+You can specify a namespace for a named actor while creating it. The created actor belongs to the specified namespace, no matter what namespace of the current job is.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -182,9 +179,7 @@ ray::Shutdown();
 
 ## Anonymous namespaces
 
-When a namespace is not specified, Ray will place your job in an anonymous
-namespace. In an anonymous namespace, your job will have its own namespace and
-will not have access to actors in other namespaces.
+When a namespace is not specified, Ray will place your job in an anonymous namespace. In an anonymous namespace, your job will have its own namespace and will not have access to actors in other namespaces.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -241,9 +236,7 @@ ray::Shutdown();
 ::::
 
 :::{note}
-Anonymous namespaces are implemented as UUID's. This makes it possible for
-a future job to manually connect to an existing anonymous namespace, but
-it is not recommended.
+Anonymous namespaces are implemented as UUID's. This makes it possible for a future job to manually connect to an existing anonymous namespace, but it is not recommended.
 :::
 
 
