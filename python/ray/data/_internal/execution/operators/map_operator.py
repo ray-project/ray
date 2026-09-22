@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 import ray
 from ray import ObjectRef
@@ -530,8 +531,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self,
         options: "ExecutionOptions",
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ):
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()

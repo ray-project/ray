@@ -664,14 +664,6 @@ class PhysicalOperator(Operator):
         """Return a unique identifier for this operator."""
         return self._id
 
-    def set_lineage_tracker(self, tracker: Optional["LineageTracker"]) -> None:
-        """Attach the executor's lineage tracker, or detach it with ``None``.
-
-        Called once per execution by ``build_streaming_topology`` after ``start``.
-        Operators record task lineage through it if set.
-        """
-        self._lineage_tracker = tracker
-
     def owns_data_task(self, data_task_id: str) -> bool:
         """Whether this operator minted ``data_task_id`` for one of its tasks.
 
@@ -982,6 +974,7 @@ class PhysicalOperator(Operator):
         self,
         options: ExecutionOptions,
         block_ref_counter: BlockRefCounter,
+        lineage_tracker: Optional["LineageTracker"] = None,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -989,8 +982,11 @@ class PhysicalOperator(Operator):
             options: The global options used for the overall execution.
             block_ref_counter: The executor-wide shared counter for tracking
                 object-store memory.
+            lineage_tracker: The executor-wide lineage metadata tracker, which
+            helps trigger lineage reconstruction on object loss.
         """
         self._block_ref_counter = block_ref_counter
+        self._lineage_tracker = lineage_tracker
         self._started = True
 
     def can_add_input(self) -> bool:

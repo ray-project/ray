@@ -633,8 +633,7 @@ def build_streaming_topology(
         # Create state.
         op_state = OpState(op, inqueues)
         topology[op] = op_state
-        op.start(options, block_ref_counter)
-        op.set_lineage_tracker(lineage_tracker)
+        op.start(options, block_ref_counter, lineage_tracker)
         return op_state
 
     setup_state(dag)
