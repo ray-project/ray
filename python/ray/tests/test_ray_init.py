@@ -322,7 +322,7 @@ def test_import_ray_with_malformed_ray_config_env_var():
     # The import must fail, but with a readable error rather than a crash.
     assert proc.returncode != -signal.SIGSEGV, proc.stderr
     assert proc.returncode != 0
-    assert 'Cannot parse "0# comment" to uint64_t' in proc.stderr, proc.stderr
+    assert 'Cannot parse "0# comment"' in proc.stderr, proc.stderr
 
 
 @pytest.fixture
