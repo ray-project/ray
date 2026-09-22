@@ -1,7 +1,11 @@
 import pytest
 
 import ray
-from ray.data.context import ShuffleStrategy, _deduce_default_shuffle_compression
+from ray.data.context import (
+    ShuffleStrategy,
+    _deduce_default_enable_disk_shuffle,
+    _deduce_default_shuffle_compression,
+)
 from ray.job_config import JobConfig
 from ray.util.annotations import RayDeprecationWarning
 
@@ -101,6 +105,31 @@ def test_hash_shuffle_compression_alias(monkeypatch):
     assert _deduce_default_shuffle_compression() == "lz4"
     monkeypatch.setenv("RAY_DATA_SHUFFLE_COMPRESSION", "none")
     assert _deduce_default_shuffle_compression() == "none"
+
+
+def test_use_external_hash_shuffle_alias(monkeypatch):
+    """`use_external_hash_shuffle` remains a deprecated alias of
+    `use_disk_based_hash_shuffle`."""
+
+    ctx = ray.data.DataContext()
+
+    with pytest.warns(DeprecationWarning, match="use_external_hash_shuffle") as record:
+        ctx.use_external_hash_shuffle = True
+    assert ctx.use_disk_based_hash_shuffle is True
+    # Warning has to be blamed on the caller, otherwise Python's default
+    # filters drop it (`pytest.warns` alone passes at any `stacklevel`)
+    assert record[0].filename == __file__
+
+    ctx.use_disk_based_hash_shuffle = False
+    with pytest.warns(DeprecationWarning, match="use_external_hash_shuffle") as record:
+        assert ctx.use_external_hash_shuffle is False
+    assert record[0].filename == __file__
+
+    # Deprecated env var is still honored, but the current one wins
+    monkeypatch.setenv("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", "1")
+    assert _deduce_default_enable_disk_shuffle() is True
+    monkeypatch.setenv("RAY_DATA_ENABLE_DISK_SHUFFLE", "0")
+    assert _deduce_default_enable_disk_shuffle() is False
 
 
 @pytest.mark.parametrize("job_setting", [False, True])

@@ -152,7 +152,19 @@ DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
-DEFAULT_ENABLE_DISK_SHUFFLE = env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", False)
+
+def _deduce_default_enable_disk_shuffle() -> bool:
+    legacy = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+    if "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE" in os.environ:
+        logger.warning(
+            "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE is deprecated, please use "
+            "RAY_DATA_ENABLE_DISK_SHUFFLE instead"
+        )
+
+    return env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", legacy)
+
+
+DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -882,7 +894,9 @@ class DataContext:
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
             disk-based (file-transport) shuffle instead of the object
             store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
-            environment variable (``False`` when unset).
+            environment variable (``False`` when unset). Deprecated
+            aliases: ``use_external_hash_shuffle`` and the
+            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1418,6 +1432,32 @@ class DataContext:
         warnings.warn(
             "`hash_shuffle_compression` is deprecated, please configure "
             "`shuffle_compression` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+
+    # Deprecated alias of `use_disk_based_hash_shuffle`
+    @property
+    def use_external_hash_shuffle(self) -> bool:
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=3)
+
+        return self.use_disk_based_hash_shuffle
+
+    @use_external_hash_shuffle.setter
+    def use_external_hash_shuffle(self, value: bool) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=4)
+
+        self.use_disk_based_hash_shuffle = value
+
+    @staticmethod
+    def _warn_use_external_hash_shuffle_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`use_external_hash_shuffle` is deprecated, please configure "
+            "`use_disk_based_hash_shuffle` instead.",
             DeprecationWarning,
             stacklevel=stacklevel,
         )
