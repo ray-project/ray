@@ -4161,11 +4161,6 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;
   }
-  auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
-  if (!reference_exists) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
-  }
-
   // For generator tasks where we haven't yet received the task reply, the
   // internal ObjectRefs may not be added yet, so we don't find out about these
   // until the task finishes.
@@ -4181,8 +4176,8 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
       // ObjectID so that we can update its location.
       reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     }
-    RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
-  } else if (!reference_exists) {
+  }
+  if (!reference_counter_->AddObjectLocation(object_id, node_id)) {
     // The ref may be dropped and free objects sent before this report arrives, so free
     // the additional objects here.
     FreeObjectOnNodesAsync(object_id, {node_id});

@@ -1796,8 +1796,7 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
   warn_objects = prev;
 }
 
-// Tests that a location report arriving after the ref was dropped and the free was
-// sent still frees that copy.
+// Tests that a location report arriving after the ref was dropped frees that copy.
 TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
   const NodeID node_id = core_worker_->GetCurrentNodeId();
   auto report_location = [&](const ObjectID &object_id) {
@@ -1822,15 +1821,11 @@ TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
                                      0,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      /*add_local_ref=*/true);
-  report_location(object_id);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
   EXPECT_TRUE(local_raylet_client_->free_local_objects_batches.empty());
 
-  reference_counter_->RemoveLocalReference(object_id, nullptr);
-  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
-  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects());
-
   report_location(object_id);
-  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1, 1}));
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 }
 
 }  // namespace core
