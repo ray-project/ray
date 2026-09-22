@@ -99,9 +99,12 @@ class LLMRouter:
         ``ConsistentHashRouter``) pin all turns of a session to one replica.
 
     Responses:
-        200 ``{"host": str, "port": int, "replica_id": str, "request_headers"?: dict}``:
-            pick succeeded. ``request_headers["x-serve-router-kv-token-key"]``
-            is present only when prompt token IDs were enqueued to the selected
+        200 ``{"host": str, "port": int, "deployment": str, "replica_id": str,
+        "request_headers"?: dict}``:
+            pick succeeded. ``deployment`` and ``replica_id`` together address
+            the chosen replica;
+            ``request_headers["x-serve-router-kv-token-key"]`` is present only
+            when prompt token IDs were enqueued to the selected
             replica's best-effort ZMQ side channel; the engine falls back to
             tokenization when it is absent or missing at consume time.
         4xx/5xx FastAPI ``{"detail": str}``: informational only; HAProxy
@@ -212,7 +215,12 @@ class LLMRouter:
         except (RuntimeError, DeploymentUnavailableError) as e:
             raise HTTPException(status_code=503, detail=str(e))
 
-        response = {"host": host, "port": port, "replica_id": replica_id}
+        response = {
+            "host": host,
+            "port": port,
+            "deployment": self._handle.deployment_id.name,
+            "replica_id": replica_id,
+        }
         if request_token_ids:
             token_key = self._push_prompt_tokens(
                 token_endpoint=token_endpoint,

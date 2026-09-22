@@ -1,6 +1,7 @@
 import asyncio
 import csv
 import functools
+import hashlib
 import io
 import json
 import logging
@@ -137,25 +138,35 @@ def _load_lua_template() -> string.Template:
         ) from e
 
 
+@dataclass
+class _DeploymentTargets:
+    """HAProxy backend and replica lookup for one Serve deployment."""
+
+    # HAProxy backend containing the deployment's replicas.
+    backend_name: str
+
+    # Raw replica ID returned by the router -> HAProxy server name.
+    replicas: Dict[str, str] = field(default_factory=dict)
+
+
 def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
-) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router pool and replica map, restricted to backends with both.
+) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, Dict[str, _DeploymentTargets]]]":
+    """Build the router pools and deployment target maps used by Lua.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
-    is co-located.
+    is co-located. Applications without both a router and deployment targets are
+    omitted.
     """
     routers: Dict[str, List[ServerConfig]] = {}
-    targets: Dict[str, List[Tuple[str, str]]] = {}
+    deployment_targets_by_backend: Dict[str, Dict[str, _DeploymentTargets]] = {}
     for backend in backends:
         if not backend.ingress_request_router_servers:
             continue
-        entries = [
-            (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
-        ]
-        if not entries:
+        deployment_targets = backend.get_deployment_targets()
+        if not deployment_targets:
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
@@ -164,8 +175,8 @@ def _routers_and_targets_by_backend(
         else:
             pool = [min(candidates, key=lambda s: (s.host, s.port))]
         routers[backend.name] = pool
-        targets[backend.name] = entries
-    return routers, targets
+        deployment_targets_by_backend[backend.name] = deployment_targets
+    return routers, deployment_targets_by_backend
 
 
 def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
@@ -185,14 +196,28 @@ def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
 
 
 def _format_replica_targets_lua(
-    targets: "Dict[str, List[Tuple[str, str]]]",
+    deployment_targets_by_backend: "Dict[str, Dict[str, _DeploymentTargets]]",
 ) -> str:
-    """Render {backend_name: {replica_id: server_name}} as nested Lua tables."""
+    """Render application, deployment, and replica lookups as a Lua table."""
+
+    def _deployment_lua(
+        deployment_name: str, deployment_targets: _DeploymentTargets
+    ) -> str:
+        replicas = ",\n".join(
+            f"            [{json.dumps(rid)}] = {json.dumps(sname)}"
+            for rid, sname in deployment_targets.replicas.items()
+        )
+        return (
+            f"        [{json.dumps(deployment_name)}] = "
+            f"{{ b = {json.dumps(deployment_targets.backend_name)}, "
+            "r = {\n" + replicas + "\n        } }"
+        )
+
     backends_lua = []
-    for backend_name, entries in targets.items():
+    for backend_name, deployment_targets in deployment_targets_by_backend.items():
         inner = ",\n".join(
-            f"        [{json.dumps(rid)}] = {json.dumps(sname)}"
-            for rid, sname in entries
+            _deployment_lua(deployment_name, target_config)
+            for deployment_name, target_config in deployment_targets.items()
         )
         backends_lua.append(
             f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
@@ -459,6 +484,20 @@ class ServerConfig:
 
 
 @dataclass
+class DirectTargetConfig:
+    """A non-ingress deployment that owns HTTP ports, rendered as its own backend."""
+
+    # Serve deployment name.
+    deployment_name: str
+
+    # Generated HAProxy backend name.
+    name: str
+
+    # Replicas of this deployment only.
+    servers: List[ServerConfig] = field(default_factory=list)
+
+
+@dataclass
 class BackendConfig:
     """Configuration for a single application backend."""
 
@@ -519,6 +558,10 @@ class BackendConfig:
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
 
+    # Non-ingress `_direct_http` deployments of this app, each rendered as its own
+    # backend. Selected by the Lua routing action, never by path.
+    direct_target_configs: List[DirectTargetConfig] = field(default_factory=list)
+
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
 
@@ -534,6 +577,36 @@ class BackendConfig:
     # gRPC backends are header-routed (by the `application` gRPC metadata) and
     # speak HTTP/2 cleartext to replica direct-ingress gRPC servers.
     protocol: RequestProtocol = RequestProtocol.HTTP
+
+    @property
+    def via_ingress_request_router_backend_name(self) -> str:
+        """Backend used for replica-pinned ingress requests."""
+        return f"{self.name or 'unknown'}-via-ingress-request-router"
+
+    def get_deployment_targets(self) -> Dict[str, "_DeploymentTargets"]:
+        """Map router-selectable deployments to their HAProxy backends and servers."""
+        targets: "Dict[str, _DeploymentTargets]" = {}
+
+        if self.ingress_deployment_name:
+            ingress_replicas = {
+                s.replica_id: s.name for s in self.servers if s.replica_id is not None
+            }
+            if ingress_replicas:
+                targets[self.ingress_deployment_name] = _DeploymentTargets(
+                    backend_name=self.via_ingress_request_router_backend_name,
+                    replicas=ingress_replicas,
+                )
+
+        for direct in self.direct_target_configs:
+            replicas = {
+                s.replica_id: s.name for s in direct.servers if s.replica_id is not None
+            }
+            if replicas:
+                targets[direct.deployment_name] = _DeploymentTargets(
+                    backend_name=direct.name, replicas=replicas
+                )
+
+        return targets
 
     def build_health_check_config(self, global_config: "HAProxyConfig") -> dict:
         """Build health check configuration for HAProxy backend.
@@ -1031,6 +1104,11 @@ class HAProxyApi(ProxyApi):
             # to zero for backends that have a fallback.
             if backend_config.fallback_server is not None:
                 expected.add((backend_name, backend_config.fallback_server.name))
+            # Direct-HTTP deployments render their own backends, so their servers
+            # show up in `reported`; without this the gauge never converges to 0.
+            for direct in backend_config.direct_target_configs:
+                for server in direct.servers:
+                    expected.add((direct.name, server.name))
 
         # Note that if an entire backend scaled down (when an app is removed),
         # get_all_stats will filter out that entire backend, so there could be
@@ -1059,6 +1137,13 @@ class HAProxyApi(ProxyApi):
         stats = self._parse_haproxy_csv_stats(
             await self._send_socket_command("show stat")
         )
+        # Direct-HTTP backend names carry a hash suffix and so cannot be stripped
+        # back to their app the way the via-router suffix can; map them explicitly.
+        direct_backend_to_app = {
+            direct.name: app_backend_name
+            for app_backend_name, backend_config in self.backend_configs.items()
+            for direct in backend_config.direct_target_configs
+        }
         total = 0
         for backend_name, servers in stats.items():
             # The via-router backend is rendered from its app's BackendConfig but
@@ -1066,7 +1151,7 @@ class HAProxyApi(ProxyApi):
             base = (
                 backend_name[: -len(suffix)]
                 if backend_name.endswith(suffix)
-                else backend_name
+                else direct_backend_to_app.get(backend_name, backend_name)
             )
             backend_config = self.backend_configs.get(base)
             if (
@@ -1239,12 +1324,13 @@ class HAProxyApi(ProxyApi):
     ) -> Optional[str]:
         """Render the ingress-request-router Lua action and write it to disk.
 
-        Returns the script path, or None if no backend has both ingress
-        request routers AND replicas with replica IDs.
+        Returns the script path, or None if no backend has both ingress request
+        routers AND a router-selectable deployment with replica IDs.
         """
         routers, targets = _routers_and_targets_by_backend(
             backends, local_host=get_localhost_ip()
         )
+
         if not routers:
             return None
 
@@ -1352,6 +1438,7 @@ class HAProxyApi(ProxyApi):
                     "config": self.cfg,
                     "backends": http_backends,
                     "health_info": health_route_info,
+                    "has_ingress_request_router": has_ingress_request_router,
                 }
             )
             grpc_healthz_template = env.from_string(HAPROXY_GRPC_HEALTHZ_RULES_TEMPLATE)
@@ -1462,16 +1549,24 @@ class HAProxyApi(ProxyApi):
             logger.error(f"Failed to initialize and start HAProxy configuration: {e}")
             raise
 
+    def _configured_backend_names(self) -> Set[str]:
+        """Every backend name this config renders, including direct-HTTP backends."""
+        names = set(self.backend_configs)
+        for backend_config in self.backend_configs.values():
+            names.update(direct.name for direct in backend_config.direct_target_configs)
+        return names
+
     async def get_all_stats(self) -> Dict[str, Dict[str, ServerStats]]:
         """Get statistics for all servers in all backends (implements abstract method).
 
-        Returns only application backends configured in self.backend_configs,
+        Returns backends for all configured application backend servers,
         excluding HAProxy internal components (frontends, default_backend, stats).
         Also excludes BACKEND aggregate entries, returning only individual servers.
         """
         try:
             stats_output = await self._send_socket_command("show stat")
             all_stats = self._parse_haproxy_csv_stats(stats_output)
+            configured_backend_names = self._configured_backend_names()
 
             # Filter to only return application backends (ones in backend_configs)
             # Exclude HAProxy internal components like frontends, default_backend, stats
@@ -1483,7 +1578,7 @@ class HAProxyApi(ProxyApi):
                     if server_name != "BACKEND"
                 }
                 for backend_name, servers in all_stats.items()
-                if backend_name in self.backend_configs
+                if backend_name in configured_backend_names
             }
         except Exception as e:
             logger.error(f"Failed to get HAProxy stats: {e}")
@@ -1650,7 +1745,8 @@ class HAProxyApi(ProxyApi):
         self.backend_configs = backend_configs
 
         self.cfg.has_received_servers = self.cfg.has_received_servers or any(
-            len(bc.servers) > 0 for bc in backend_configs.values()
+            bc.servers or any(direct.servers for direct in bc.direct_target_configs)
+            for bc in backend_configs.values()
         )
 
     def set_grpc_fallback_server(self, server: Optional[ServerConfig]) -> None:
@@ -1926,12 +2022,7 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
-            desired_backend_servers = {
-                self._generate_backend_name(tg): {
-                    self._generate_server_name(target) for target in tg.targets
-                }
-                for tg in self._target_groups
-            }
+            desired_backend_servers = self._desired_backend_servers()
             fallback_servers = {
                 self._generate_server_name(target)
                 for target in (
@@ -1960,6 +2051,17 @@ class HAProxyManager(ProxyActorInterface):
                 pass
             if not ready_to_serve:
                 await asyncio.sleep(0.2)
+
+    def _desired_backend_servers(self) -> Dict[str, Set[str]]:
+        """Backend name -> server names that `serving()` waits to see UP."""
+        desired: Dict[str, Set[str]] = {}
+        for tg in self._target_groups:
+            backend = self._create_backend_config(tg, fallback_target=None)
+            desired[backend.name] = {server.name for server in backend.servers}
+            for direct in backend.direct_target_configs:
+                desired[direct.name] = {server.name for server in direct.servers}
+
+        return desired
 
     def _is_draining(self) -> bool:
         """Whether is haproxy is in the draining status or not."""
@@ -2074,6 +2176,16 @@ class HAProxyManager(ProxyActorInterface):
             f"{target_group.protocol.value.lower()}-{target_group.app_name}"
         )
 
+    def _generate_direct_backend_name(
+        self, app_backend_name: str, deployment_name: str
+    ) -> str:
+        """Generate a backend name that remains unique after sanitization."""
+        # Hash the raw name because distinct names can sanitize to the same value.
+        digest = hashlib.sha1(deployment_name.encode()).hexdigest()[:12]
+        return self.get_safe_name(
+            f"{app_backend_name}-direct-{deployment_name}-{digest}"
+        )
+
     def _create_backend_config(
         self,
         target_group: TargetGroup,
@@ -2087,15 +2199,36 @@ class HAProxyManager(ProxyActorInterface):
             for target in target_group.ingress_request_router_targets
         ]
 
+        backend_name = self._generate_backend_name(target_group)
+
+        # Direct backends are only reachable through the app's request router.
+        direct_target_configs = (
+            [
+                DirectTargetConfig(
+                    deployment_name=deployment_name,
+                    name=self._generate_direct_backend_name(
+                        backend_name, deployment_name
+                    ),
+                    servers=[self._target_to_server(target) for target in targets],
+                )
+                for deployment_name, targets in sorted(
+                    target_group.direct_http_targets.items()
+                )
+            ]
+            if ingress_request_router_servers
+            else []
+        )
+
         fallback_server = None
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
-            name=self._generate_backend_name(target_group),
+            name=backend_name,
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            direct_target_configs=direct_target_configs,
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
