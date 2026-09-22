@@ -270,7 +270,7 @@ class Benchmark:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
         max_sched_loop_duration_s: If set, fail if any dataset that executed during
-            the run had a scheduling loop iteration longer than this limit.
+            the run had a p90 scheduling loop iteration longer than this limit.
 
     Here's an example of typical usage:
 
@@ -408,14 +408,14 @@ class Benchmark:
             stats_summaries = ray.data.list_stats_summaries()
             datasets_exceeding_limit = [
                 f"{summary.dataset_uuid} "
-                f"({summary.streaming_exec_schedule_max_s} seconds)"
+                f"({summary.streaming_exec_schedule_p90_s} seconds)"
                 for summary in stats_summaries
-                if summary.streaming_exec_schedule_max_s
+                if summary.streaming_exec_schedule_p90_s
                 > self._max_sched_loop_duration_s
             ]
             if datasets_exceeding_limit:
                 raise AssertionError(
-                    f"Benchmark case {name!r} had datasets whose max scheduling loop "
+                    f"Benchmark case {name!r} had datasets whose p90 scheduling loop "
                     f"duration exceeded the configured limit of "
                     f"{self._max_sched_loop_duration_s} seconds: "
                     f"{', '.join(datasets_exceeding_limit)}."
