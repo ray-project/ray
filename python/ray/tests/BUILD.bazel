@@ -604,6 +604,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -622,6 +623,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
