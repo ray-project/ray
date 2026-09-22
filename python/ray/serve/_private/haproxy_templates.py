@@ -234,8 +234,9 @@ frontend http_frontend
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
-    # TODO: Route all methods after the router supports ingress route ownership.
-    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    # Route every method so the router can prioritize ingress-owned routes.
+    # Request-body buffering remains POST-only above.
+    http-request lua.route_via_ingress_request_router if has_ingress_request_router_app
     # An ingress pin-miss is recoverable only if its app has a fallback proxy.
     # Mark it per app so the 503 below fails loud for apps with none.
     {%- for backend in backends %}

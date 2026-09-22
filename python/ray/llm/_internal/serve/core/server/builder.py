@@ -45,6 +45,7 @@ def build_llm_deployment(
     bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
     deployment_cls: Optional[Type[LLMServer]] = None,
+    direct_http: bool = False,
 ) -> Application:
     """Build an LLMServer deployment.
 
@@ -56,6 +57,8 @@ def build_llm_deployment(
         override_serve_options: The optional serve options to override the
             default options.
         deployment_cls: The deployment class to use. Defaults to LLMServer.
+        direct_http: Give every replica its own HTTP listener that HAProxy can
+            address directly.
 
     Returns:
         The Ray Serve Application for the LLMServer deployment.
@@ -84,6 +87,8 @@ def build_llm_deployment(
     logger.info("============== Deployment Options ==============")
     logger.info(pprint.pformat(deployment_options))
 
-    return serve.deployment(deployment_cls, **deployment_options).bind(
-        llm_config=llm_config, **bind_kwargs
-    )
+    deployment = serve.deployment(deployment_cls, **deployment_options)
+    if direct_http:
+        deployment = deployment.options(_direct_http=True)
+
+    return deployment.bind(llm_config=llm_config, **bind_kwargs)

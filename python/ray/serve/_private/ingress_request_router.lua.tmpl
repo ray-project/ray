@@ -139,6 +139,12 @@ end
 -- caller; only the silent early returns in the action handler skip timing
 -- because no routing was attempted.
 local function _route_via_ingress_request_router(txn, app, pool, replica_map)
+    -- Method and path are available for every request. Only POST bodies are
+    -- buffered and forwarded; ingress-owned non-POST routes select entirely
+    -- from these headers.
+    local method = txn.sf:method()
+    local path = txn.sf:path()
+
     -- FORWARD_BODY=false: don't read or forward the body; call the router
     -- with body="" so a Content-Length: 0 POST still goes through routing
     -- (any policy that needs the body must opt in via FORWARD_BODY=true).
@@ -147,7 +153,7 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- we don't synthesize a sentinel for it here.
     local body = ""
     local truncated = nil
-    if FORWARD_BODY then
+    if FORWARD_BODY and method == "POST" then
         body = txn.sf:req_body() or ""
         if body ~= "" then
             truncated = truncated_full_length(txn, body)
@@ -195,8 +201,6 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     -- connection failure try the next router. A non-200 is the router's answer
     -- and is not retried.
     -- `path` is the normalized path with the query string excluded.
-    local method = txn.sf:method()
-    local path = txn.sf:path()
 
     local n = #pool
     local start = _rr_cursor[app] or 0
