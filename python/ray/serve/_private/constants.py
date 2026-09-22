@@ -446,6 +446,12 @@ SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# Kill switch for the columnar handle-metric wire format. On by default; set to 0 to
+# fall back to cloudpickle without a redeploy. The controller reads either format.
+RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS = get_env_bool(
+    "RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS", "1"
+)
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
