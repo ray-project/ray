@@ -57,6 +57,18 @@ def _read_all(path: str) -> List[Dict[str, Any]]:
     return ray.data.read_delta(path).take_all()
 
 
+def _read_committed_parquet_rows(path: str) -> List[Dict[str, Any]]:
+    """Read committed files with their physical schemas, without schema casts."""
+    import pyarrow.parquet as pq
+    from deltalake import DeltaTable
+
+    return [
+        row
+        for uri in DeltaTable(path).file_uris()
+        for row in pq.ParquetFile(uri).read().to_pylist()
+    ]
+
+
 def _log_exists(path: str) -> bool:
     return os.path.isdir(os.path.join(path, "_delta_log"))
 
@@ -972,6 +984,18 @@ def test_append_nested_fields_evolves_schema(temp_delta_path):
     assert event_label.nullable
     assert attribute_y.nullable
 
+    assert (
+        sorted(_read_committed_parquet_rows(temp_delta_path), key=lambda row: row["id"])
+        == base.to_pylist() + incoming.to_pylist()
+    )
+
+    # Arrow < 19 cannot fill missing struct fields when reading old files.
+    # The schema and committed data are checked above on every version.
+    # https://github.com/apache/arrow/issues/44555
+    assert _pa_version is not None
+    if _pa_version < parse_version("19.0.0"):
+        return
+
     out = sorted(_read_all(temp_delta_path), key=lambda row: row["id"])
     assert out == [
         {
@@ -1039,6 +1063,23 @@ def test_append_map_nested_fields(temp_delta_path, side, schema_mode):
         assert evolved.key_type.field("y").nullable
     if value_added:
         assert evolved.item_type.field("y").nullable
+
+    assert (
+        sorted(
+            _read_committed_parquet_rows(temp_delta_path),
+            key=lambda row: row["m"][0][0]["x"],
+        )
+        == base.to_pylist() + incoming.to_pylist()
+    )
+
+    # Reading evolved structs needs Arrow >= 19 (GH-44555). The value-only
+    # case also casts a nullable key child to non-nullable, needing Arrow >= 20
+    # (https://github.com/apache/arrow/issues/33592).
+    min_read_version = "20.0.0" if side == "value" else "19.0.0"
+    assert _pa_version is not None
+    if _pa_version < parse_version(min_read_version):
+        return
+
     old_key = {"x": 1, **({"y": None} if key_added else {})}
     old_value = {"x": 10, **({"y": None} if value_added else {})}
     out = sorted(_read_all(temp_delta_path), key=lambda row: row["m"][0][0]["x"])
@@ -1068,6 +1109,7 @@ def test_map_value_evolution_preserves_key_field():
     )
     patch, paths = _nested_schema_additions(existing, incoming)
     assert paths == ["m{value}.b"]
+    assert patch is not None
     assert patch.type.key_field.equals(existing_key, check_metadata=True)
     assert patch.type.keys_sorted
 
