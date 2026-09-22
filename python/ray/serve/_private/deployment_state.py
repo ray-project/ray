@@ -563,7 +563,7 @@ class DeploymentTargetState:
     deleting: whether the deployment is being deleted.
     rolling_update: whether this version is replacing an older version.
         Cleared when the deployment reaches HEALTHY.
-    terminally_failed: whether the rolling update reached the startup failure
+    rolling_update_failed: whether the rolling update reached the startup failure
         threshold. No more replicas are replaced until `deploy()` changes
         the target. This flag survives controller restarts.
     """
@@ -573,7 +573,7 @@ class DeploymentTargetState:
     version: Optional[DeploymentVersion]
     deleting: bool
     rolling_update: bool = False
-    terminally_failed: bool = False
+    rolling_update_failed: bool = False
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
@@ -3459,7 +3459,7 @@ class DeploymentState:
             not self._replica_has_started or self._target_state.rolling_update
         ) and self._replica_startup_failing()
         return (
-            self._target_state.terminally_failed
+            self._target_state.rolling_update_failed
             or replica_failed
             or self.deployment_actor_terminally_failed()
         )
@@ -3692,7 +3692,9 @@ class DeploymentState:
         if self._target_state.version == new_target_state.version:
             # Changing only the replica count must not clear a failed update.
             new_target_state.rolling_update = self._target_state.rolling_update
-            new_target_state.terminally_failed = self._target_state.terminally_failed
+            new_target_state.rolling_update_failed = (
+                self._target_state.rolling_update_failed
+            )
             # Record either num replica or autoscaling config lightweight update
             # Versions are equal here, and the new target state's version is
             # always set, so the old one is too.
@@ -3791,7 +3793,7 @@ class DeploymentState:
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
-        if not self._target_state.terminally_failed:
+        if not self._target_state.rolling_update_failed:
             self._target_state.rolling_update = (
                 RAY_SERVE_STOP_FAILED_ROLLING_UPDATES
                 and self._replicas.count(
@@ -3814,7 +3816,7 @@ class DeploymentState:
         # version is unchanged. A count-only config reapply must not reset the
         # retry budget or resume replacing healthy old replicas. Scaling down
         # (including to zero) is still handled by scale_deployment_replicas().
-        if self._target_state.terminally_failed:
+        if self._target_state.rolling_update_failed:
             return True
 
         # Determine if the updated target state simply scales the current state.
@@ -4517,12 +4519,11 @@ class DeploymentState:
         # Once a rolling update fails, keep it failed across autoscaling and
         # controller restarts until deploy() changes the target.
         self._mark_rolling_update_failed_if_needed()
-        if self._target_state.terminally_failed:
+        if self._target_state.rolling_update_failed:
             message = self._rolling_update_failed_message()
             if self._curr_status_info.status != DeploymentStatus.DEPLOY_FAILED:
-                self._curr_status_info = self._curr_status_info._updated_copy(
-                    status=DeploymentStatus.DEPLOY_FAILED,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.ROLLING_UPDATE_FAILED,
                     message=message,
                 )
             elif self._curr_status_info.message != message:
@@ -4813,9 +4814,9 @@ class DeploymentState:
         if (
             self._target_state.rolling_update
             and self._replica_startup_failing()
-            and not self._target_state.terminally_failed
+            and not self._target_state.rolling_update_failed
         ):
-            self._target_state.terminally_failed = True
+            self._target_state.rolling_update_failed = True
             self._target_state_changed = True
             self._broadcasted_replicas_set_changed = True
             logger.warning(
@@ -6774,7 +6775,6 @@ class DeploymentStateManager:
         any_recovering = False
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
-        target_state_changed = False
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
@@ -6848,11 +6848,6 @@ class DeploymentStateManager:
         for deployment_id, scheduling_requests in upscales.items():
             self._handle_scheduling_request_failures(deployment_id, scheduling_requests)
 
-        # Scheduling failures can make a rolling update terminal in this tick.
-        # Collect checkpoint changes only after those failures are recorded.
-        for deployment_state in self._deployment_states.values():
-            target_state_changed |= deployment_state.consume_target_state_changed()
-
         # STEP 7: Broadcast long poll information
         for deployment_id, deployment_state in self._deployment_states.items():
             running_set_changed = (
@@ -6923,6 +6918,10 @@ class DeploymentStateManager:
 
         if len(deleted_ids):
             self._record_deployment_usage()
+
+        target_state_changed = False
+        for deployment_state in self._deployment_states.values():
+            target_state_changed |= deployment_state.consume_target_state_changed()
 
         if target_state_changed:
             self.save_checkpoint()

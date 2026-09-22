@@ -247,6 +247,7 @@ class DeploymentStatusInternalTrigger(str, Enum):
     MANUALLY_INCREASE_NUM_REPLICAS = "MANUALLY_INCREASE_NUM_REPLICAS"
     MANUALLY_DECREASE_NUM_REPLICAS = "MANUALLY_DECREASE_NUM_REPLICAS"
     REPLICA_STARTUP_FAILED = "REPLICA_STARTUP_FAILED"
+    ROLLING_UPDATE_FAILED = "ROLLING_UPDATE_FAILED"
     DEPLOYMENT_ACTOR_FAILED = "DEPLOYMENT_ACTOR_FAILED"
     HEALTH_CHECK_FAILED = "HEALTH_CHECK_FAILED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
@@ -356,6 +357,15 @@ class DeploymentStatusInfo:
             return self._updated_copy(
                 status=DeploymentStatus.UPDATING,
                 status_trigger=DeploymentStatusTrigger.DELETING,
+                message=message,
+            )
+
+        # A stopped rolling update is a deployment failure even if autoscaling
+        # or an earlier health failure changed the current status.
+        elif trigger == DeploymentStatusInternalTrigger.ROLLING_UPDATE_FAILED:
+            return self._updated_copy(
+                status=DeploymentStatus.DEPLOY_FAILED,
+                status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                 message=message,
             )
 
