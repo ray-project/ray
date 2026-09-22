@@ -3791,24 +3791,31 @@ class DeploymentState:
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
-        self._target_state.terminally_failed = False
-        self._target_state.rolling_update = (
-            RAY_SERVE_STOP_FAILED_ROLLING_UPDATES
-            and self._replicas.count(
-                exclude_version=self._target_state.version,
-                states=[
-                    ReplicaState.STARTING,
-                    ReplicaState.UPDATING,
-                    ReplicaState.RECOVERING,
-                    ReplicaState.RUNNING,
-                    ReplicaState.PENDING_MIGRATION,
-                ],
+        if not self._target_state.terminally_failed:
+            self._target_state.rolling_update = (
+                RAY_SERVE_STOP_FAILED_ROLLING_UPDATES
+                and self._replicas.count(
+                    exclude_version=self._target_state.version,
+                    states=[
+                        ReplicaState.STARTING,
+                        ReplicaState.UPDATING,
+                        ReplicaState.RECOVERING,
+                        ReplicaState.RUNNING,
+                        ReplicaState.PENDING_MIGRATION,
+                    ],
+                )
+                > 0
             )
-            > 0
-        )
         self._deployment_scheduler.on_deployment_deployed(
             self._id, deployment_info.replica_config
         )
+
+        # _set_target_state preserves terminal failures when the deployment
+        # version is unchanged. A count-only config reapply must not reset the
+        # retry budget or resume replacing healthy old replicas. Scaling down
+        # (including to zero) is still handled by scale_deployment_replicas().
+        if self._target_state.terminally_failed:
+            return True
 
         # Determine if the updated target state simply scales the current state.
         # Although the else branch handles the CONFIG_UPDATE, we also take this branch
