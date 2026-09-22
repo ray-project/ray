@@ -1273,8 +1273,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
 
             # A leading-space word is typically one token with common BPE
             # tokenizers. Verify that a request approximating a million-token
-            # prompt (and well over the old 256 KiB cap) reaches both the
-            # router and selected replica intact.
+            # prompt reaches both the  router and selected replica intact.
             large_body = json.dumps({"prompt": " token" * 1_000_000})
             large_body_size = len(large_body.encode())
             assert 262144 < large_body_size < 8 * 1024 * 1024
