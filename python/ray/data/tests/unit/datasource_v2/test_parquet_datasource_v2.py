@@ -166,7 +166,7 @@ def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
     """
     import pyarrow.dataset as pds
 
-    from ray.data._internal.datasource import parquet_datasource
+    from ray.data._internal.datasource_v2.readers import parquet_file_reader
     from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
         ParquetFileReader,
     )
@@ -184,10 +184,10 @@ def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
     unified_schema = pa.schema([("a", pa.int64()), ("b", pa.int64())])
     predicate = col("b") > 15
 
-    # Force the fallback path; the source-module attribute is what V2's
-    # function-local import resolves to on each call.
+    # Force the fallback path by patching the name the reader module resolves
+    # at call time.
     monkeypatch.setattr(
-        parquet_datasource, "_needs_nested_type_fallback", lambda *a, **kw: True
+        parquet_file_reader, "_needs_nested_type_fallback", lambda *a, **kw: True
     )
 
     reader = ParquetFileReader(
