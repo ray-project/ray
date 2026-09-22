@@ -55,11 +55,13 @@ TEST_F(SchedulingIDsTest, PrepopulateResourceIDTest) {
 }
 
 TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
+  ASSERT_NE(RayConfig::instance().custom_unit_instance_resources().find("MLU"),
+            std::string::npos);
   RayConfig::instance().initialize(
       R"(
 {
   "predefined_unit_instance_resources": "CPU,GPU",
-  "custom_unit_instance_resources": "neuron_cores,TPU,custom1"
+  "custom_unit_instance_resources": "neuron_cores,TPU,MLU,custom1"
 }
   )");
   ASSERT_TRUE(scheduling::ResourceID::CPU().IsUnitInstanceResource());
@@ -67,6 +69,7 @@ TEST_F(SchedulingIDsTest, UnitInstanceResourceTest) {
   ASSERT_TRUE(scheduling::ResourceID("custom1").IsUnitInstanceResource());
   ASSERT_TRUE(scheduling::ResourceID("neuron_cores").IsUnitInstanceResource());
   ASSERT_TRUE(scheduling::ResourceID("TPU").IsUnitInstanceResource());
+  ASSERT_TRUE(scheduling::ResourceID("MLU").IsUnitInstanceResource());
 
   ASSERT_FALSE(scheduling::ResourceID::Memory().IsUnitInstanceResource());
   ASSERT_FALSE(scheduling::ResourceID("custom2").IsUnitInstanceResource());
