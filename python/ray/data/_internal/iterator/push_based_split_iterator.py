@@ -1,4 +1,4 @@
-"""PROTOTYPE: push-based streaming_split.
+"""Push-based streaming_split.
 
 A push-based alternative to ``stream_split_iterator.py``: instead of each
 train worker calling ``coordinator.get()`` per block, the coordinator pushes
@@ -12,13 +12,10 @@ How it works:
   same ``prefetch_batches * batch_size`` row window the pull model
   prefetches requested ahead, topping it up after each block it consumes;
   the coordinator pushes whole blocks while a split's row demand is
-  positive. The local queue stores the prefetched blocks. No polling — a
-  dead or idle consumer just stops requesting.
-- Blocks are pushed by value, so consumers hold no ObjectRefs and the
-  executor frees each block as soon as it is delivered.
-- Delivery order relies on the consumer actor executing tasks in submission
-  order, which holds for default single-threaded actors (Ray Train workers
-  are one; the training loop runs on a separate thread inside the actor).
+  positive. The local queue stores the prefetched blocks.
+- Deliveries are sequence-numbered and reordered on arrival, so consumers
+  work regardless of the hosting actor's concurrency (Ray executes a
+  multi-threaded actor's tasks out of order).
 - Consumers reuse the standard batching pipeline (batch -> format/collate ->
   finalize), so ``iter_torch_batches`` works unchanged; only the ref-level
   prefetch/resolve stages are skipped.
@@ -41,12 +38,12 @@ Overview::
               v             |
     +--------------------------------------------------+
     |  consumer actor i  (mixes PushSplitReceiverMixin)|
-    |    deliveries -> local queue                     |
-    |    PushBasedDataIterator: pop -> batch -> train  |
+    |    deliveries -> reorder by seq -> local queue   |
+    |    PushBasedDataIterator: pop -> batch           |
     +--------------------------------------------------+
 
-Not implemented (prototype): stats/metrics export, locality-aware pushing,
-mid-epoch consumer replacement.
+In the next PRs: stats/metrics export, locality-aware pushing, mid-epoch
+consumer replacement.
 """
 
 import logging
@@ -101,8 +98,8 @@ class _ExecutorError:
     error: Exception
 
 
-# Ordered deliveries; errors arrive out of band (fail fast).
-_PushedItem = Union[_BlockPush, _EndOfEpoch]
+# Sequenced deliveries; errors arrive unsequenced (fail fast).
+_SequencedItem = Union[_BlockPush, _EndOfEpoch]
 _QueueItem = Union[_BlockDelivery, _EndOfEpoch, _ExecutorError]
 
 
@@ -120,7 +117,6 @@ class PushSplitCoordinator:
     DEMAND_WAIT_TIMEOUT_S = 0.5
 
     def __init__(self, dataset: "Dataset", n: int):
-        # Deep copy, same as SplitCoordinator.
         self._data_context = dataset.context.copy()
         ray.data.DataContext._set_current(self._data_context)
 
@@ -412,16 +408,18 @@ class PushSplitCoordinator:
         PushSplitReceiverMixin methods."""
         consumer, key = self._consumers[split_idx]
 
-        def push_block(entry, size_bytes, num_rows):
+        def push_block(seq, entry, size_bytes, num_rows):
             # entry.ref is a top-level arg, so Ray resolves it and the
             # consumer receives the Block by value — no ObjectRef crosses
             # the wire, and the executor can free the block once delivered.
             consumer._push_split_deliver.remote(
-                key, epoch_id, _BlockPush(size_bytes, num_rows), entry.ref
+                key, epoch_id, seq, _BlockPush(size_bytes, num_rows), entry.ref
             )
 
-        def push_eof():
-            consumer._push_split_deliver.remote(key, epoch_id, _EndOfEpoch(epoch_id))
+        def push_eof(seq):
+            consumer._push_split_deliver.remote(
+                key, epoch_id, seq, _EndOfEpoch(epoch_id)
+            )
 
         def push_error(error):
             consumer._push_split_deliver_error.remote(key, epoch_id, error)
@@ -434,6 +432,8 @@ class PushSplitCoordinator:
         push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
         output_iterator = self._output_iterator
         cond = self._demand_conds[split_idx]
+        # Deliveries carry a sequence number; the receiver reorders them.
+        seq = 0
         try:
             while not stop.is_set():
                 # Wait for demand; a request wakes this immediately. A dead
@@ -457,7 +457,8 @@ class PushSplitCoordinator:
                 for entry in bundle.blocks:
                     size_bytes = entry.metadata.size_bytes or 0
                     num_rows = entry.metadata.num_rows or 0
-                    push_block(entry, size_bytes, num_rows)
+                    push_block(seq, entry, size_bytes, num_rows)
+                    seq += 1
                     with cond:
                         self._demand_rows[split_idx] -= num_rows
                     self._bytes_pushed[split_idx] += size_bytes
@@ -468,9 +469,9 @@ class PushSplitCoordinator:
                 logger.debug(
                     f"Split {split_idx} epoch {epoch_id} exhausted; sending EOF."
                 )
-                # In-order actor execution means EOF cannot overtake blocks
-                # that are still fetching their args.
-                push_eof()
+                # EOF is sequenced too, so it cannot overtake blocks that
+                # are still fetching their args.
+                push_eof(seq)
             return
         except Exception as e:
             if not stop.is_set():
@@ -551,20 +552,22 @@ _RECEIVER_REGISTRY: Dict[str, "_PushReceiver"] = {}
 
 
 class _PushReceiver:
-    """Receive state for one (coordinator, split) pair: the local block queue.
+    """Receive state for one (coordinator, split) pair: the local block
+    queue plus the sequence-reorder buffer.
 
-    Deliveries are enqueued in arrival order. This is push order only because
-    the hosting actor executes tasks in submission order (default
-    single-threaded, non-async actor — Ray Train workers qualify).
-    TODO(push-split): to support consumers with ``max_concurrency > 1``
-    (where Ray forces out-of-order execution), re-add sequence numbers and
-    the reorder buffer removed here (see git history at commit 129532a536).
+    The reorder buffer makes delivery order independent of the hosting
+    actor's concurrency: a default single-threaded actor (like a Ray Train
+    worker) already executes deliveries in push order, but an actor with
+    ``max_concurrency > 1`` runs them out of order.
     """
 
     def __init__(self):
         self.queue: "queue.Queue[_QueueItem]" = queue.Queue()
         self.lock = threading.Lock()
         self.cur_epoch: Optional[int] = None
+        self.reorder_epoch: Optional[int] = None
+        self.reorder_next_seq = 0
+        self.reorder_pending: Dict[int, _QueueItem] = {}
 
     def reset(self) -> None:
         """Reset before re-arriving at the epoch barrier.
@@ -575,6 +578,9 @@ class _PushReceiver:
         """
         with self.lock:
             self.cur_epoch = None
+            self.reorder_epoch = None
+            self.reorder_next_seq = 0
+            self.reorder_pending = {}
             self.queue = queue.Queue()
 
     def begin_epoch(self, epoch: int) -> None:
@@ -586,10 +592,12 @@ class _PushReceiver:
     def deliver(
         self,
         epoch_id: int,
-        item: _PushedItem,
+        seq: int,
+        item: _SequencedItem,
         block: Optional[Block] = None,
     ) -> None:
-        """Enqueue one pushed item; stale-epoch items are dropped."""
+        """Deliver one sequenced item, releasing items to the queue in seq
+        order. Stale-epoch items are dropped."""
         if isinstance(item, _BlockPush):
             queue_item: _QueueItem = _BlockDelivery(
                 block, item.size_bytes, item.num_rows
@@ -599,10 +607,17 @@ class _PushReceiver:
         with self.lock:
             if epoch_id != self.cur_epoch:
                 return
-            self.queue.put(queue_item)
+            if self.reorder_epoch != epoch_id:
+                self.reorder_epoch = epoch_id
+                self.reorder_next_seq = 0
+                self.reorder_pending = {}
+            self.reorder_pending[seq] = queue_item
+            while self.reorder_next_seq in self.reorder_pending:
+                self.queue.put(self.reorder_pending.pop(self.reorder_next_seq))
+                self.reorder_next_seq += 1
 
     def deliver_error(self, epoch_id: int, error: _ExecutorError) -> None:
-        """Deliver an _ExecutorError immediately (fail fast, out of band)."""
+        """Deliver an _ExecutorError immediately (fail fast, unsequenced)."""
         with self.lock:
             if epoch_id == self.cur_epoch:
                 self.queue.put(error)
@@ -621,12 +636,13 @@ class PushSplitReceiverMixin:
         self,
         key: str,
         epoch_id: int,
-        item: _PushedItem,
+        seq: int,
+        item: _SequencedItem,
         block: Optional[Block] = None,
     ) -> None:
         receiver = _RECEIVER_REGISTRY.get(key)
         if receiver is not None:
-            receiver.deliver(epoch_id, item, block)
+            receiver.deliver(epoch_id, seq, item, block)
 
     def _push_split_deliver_error(
         self, key: str, epoch_id: int, error: _ExecutorError
@@ -650,17 +666,12 @@ class _MaterializedBatchIterator(BatchIterator):
 
 
 class PushBasedDataIterator(DataIterator):
-    """PROTOTYPE: DataIterator over one split of a push-based streaming split.
+    """DataIterator over one split of a push-based streaming split.
 
     Picklable; ship it into any actor whose class mixes in
     ``PushSplitReceiverMixin`` (e.g. a Ray Train worker). At iteration time
     it registers the hosting actor with the coordinator, then iterates the
     blocks the coordinator pushes into the local receiver queue.
-
-    The hosting actor must execute tasks in submission order (default
-    single-threaded, non-async actor; run the consuming loop on a background
-    thread, as Ray Train does) — see _PushReceiver for the TODO on
-    out-of-order hosts.
     """
 
     @staticmethod

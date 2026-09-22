@@ -1,4 +1,4 @@
-"""PROTOTYPE: DataConfig variant that shards datasets with the push-based split.
+"""DataConfig variant that shards datasets with the push-based split.
 
 Drop-in replacement for :class:`ray.train.DataConfig`::
 
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class PushBasedDataConfig(DataConfig):
-    """PROTOTYPE: shard Train datasets via the push-based streaming split."""
+    """Shard Train datasets via the push-based streaming split."""
 
     def __init__(
         self,

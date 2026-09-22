@@ -55,7 +55,7 @@ class RayDataConfig(DataLoaderConfig):
     enable_shard_locality: bool = True
     preserve_order: bool = False
     ray_data_pin_memory: bool = False
-    # PROTOTYPE: use the push-based streaming split (PushBasedDataConfig)
+    # Use the push-based streaming split (PushBasedDataConfig)
     # instead of the default pull-based streaming_split.
     ray_data_push_based_split: bool = False
 

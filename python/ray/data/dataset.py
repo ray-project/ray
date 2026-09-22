@@ -2769,7 +2769,7 @@ class Dataset:
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
     ) -> List[DataIterator]:
-        """PROTOTYPE: push-based variant of :meth:`streaming_split`.
+        """Push-based variant of :meth:`streaming_split`.
 
         Same contract as ``streaming_split``, but the returned iterators are
         served by a coordinator that PUSHES blocks to the consuming actors

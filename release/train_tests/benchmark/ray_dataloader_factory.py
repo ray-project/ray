@@ -141,7 +141,7 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
     def get_ray_data_config(self) -> ray.train.DataConfig:
         dataloader_config = self.get_dataloader_config()
         if dataloader_config.ray_data_push_based_split:
-            # PROTOTYPE: push-based streaming split (coordinator pushes
+            # Push-based streaming split (coordinator pushes
             # blocks to train workers instead of workers pulling).
             from ray.train._internal.push_based_data_config import (
                 PushBasedDataConfig,
