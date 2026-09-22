@@ -26,10 +26,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     BlockTransformer,
     PartitionFn,
-    _external_shuffle_map_task,
+    _disk_shuffle_map_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     make_partition_sentinel,
@@ -51,17 +51,17 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-_MAPPER_ID_SENTINEL = "__external_mapper__"
+_MAPPER_ID_SENTINEL = "__disk_mapper__"
 
 
 def _make_mapper_sentinel(mapper_id: int) -> Tuple[str, ...]:
     return (f"{_MAPPER_ID_SENTINEL}{mapper_id}",)
 
 
-class ExternalHashShuffleMapOp(
+class DiskHashShuffleMapOp(
     InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin
 ):
-    """External-shuffle map operator. See module docstring."""
+    """Disk-shuffle map operator. See module docstring."""
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
 
@@ -75,7 +75,7 @@ class ExternalHashShuffleMapOp(
         block_transformer: Optional[BlockTransformer] = None,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
-        name: str = "ExternalHashShuffleMap",
+        name: str = "DiskHashShuffleMap",
     ):
         super().__init__(
             name=name,
@@ -128,7 +128,7 @@ class ExternalHashShuffleMapOp(
         self._map_bar: Optional["BaseProgressBar"] = None
 
         # =====================================================================
-        # External-shuffle-specific state below.
+        # Disk-shuffle-specific state below.
         # =====================================================================
 
         # -- Per-shuffle identity & on-disk staging --------------------------
@@ -138,7 +138,7 @@ class ExternalHashShuffleMapOp(
         # is the last-resort fallback since ``base_dir`` sits under ``$TMPDIR``.
         self._shuffle_id: str = secrets.token_hex(8)
         _prefix = os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_external_{self._shuffle_id}"
+            tempfile.gettempdir(), f"ray_shuffle_disk_{self._shuffle_id}"
         )
         # Map writes shards to _map_dir (also the ShuffleFileServer's served base);
         # reducers stage prefetch files under _reduce_dir. Both cleaned at teardown.
@@ -239,7 +239,7 @@ class ExternalHashShuffleMapOp(
         # go through, so they can't disagree on the codec.
         compression: Optional[str] = self.data_context.shuffle_compression
 
-        handle_ref = _external_shuffle_map_task.options(**ray_options).remote(
+        handle_ref = _disk_shuffle_map_task.options(**ray_options).remote(
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
@@ -478,7 +478,7 @@ class ExternalHashShuffleMapOp(
            Short bounded wait so cleanup gets a chance before the driver
            exits; failures fall back to OS ``tmpwatch``.
         """
-        from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
+        from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
             _SHUFFLE_FILE_SERVER_NAMESPACE,
             _cleanup_shuffle_dir,
             _file_server_name,

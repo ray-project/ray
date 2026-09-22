@@ -252,11 +252,11 @@
   variations:
     - __suffix__: regular
 
-    - __suffix__: external
+    - __suffix__: disk
       cluster:
         byod:
           runtime_env:
-            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
 - name: aggregate_groups_high_cardinality
   python: "3.10"
@@ -283,11 +283,11 @@
   variations:
     - __suffix__: regular
 
-    - __suffix__: external
+    - __suffix__: disk
       cluster:
         byod:
           runtime_env:
-            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
 # map_groups (keyed repartition under the hood).
 - name: map_groups_high_cardinality
@@ -314,15 +314,15 @@
       cluster:
         byod:
           runtime_env:
-            # Footer read tuning. The external variant leaves this at the
+            # Footer read tuning. The disk variant leaves this at the
             # 128 MiB default.
             RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
 
-    - __suffix__: external
+    - __suffix__: disk
       cluster:
         byod:
           runtime_env:
-            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
 # map_groups v2 on the 84-group key stays at SF100 because there's data skew in partition that makes the task unschedulable.
 - name: map_groups_low_cardinality
@@ -349,15 +349,15 @@
       cluster:
         byod:
           runtime_env:
-            # Footer read tuning. The external variant leaves this at the
+            # Footer read tuning. The disk variant leaves this at the
             # 128 MiB default.
             RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
 
-    - __suffix__: external
+    - __suffix__: disk
       cluster:
         byod:
           runtime_env:
-            RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+            RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
 
 ###############
 # Join tests
@@ -440,16 +440,16 @@
       --join_type {{join_type}}
       --num_partitions 1000
 
-# Joins through the external (on-disk, file-transport) hash shuffle:
-# the shuffle_v2 variants above with RAY_DATA_ENABLE_EXTERNAL_SHUFFLE=1.
-- name: "joins_{{dataset}}_{{join_type}}_shuffle_v2_external"
+# Joins through the disk-based (file-transport) hash shuffle:
+# the shuffle_v2 variants above with RAY_DATA_ENABLE_DISK_SHUFFLE=1.
+- name: "joins_{{dataset}}_{{join_type}}_shuffle_v2_disk"
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
         RAY_DATA_DEFAULT_SHUFFLE_STRATEGY: "shuffle_v2"
-        RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
+        RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.

@@ -1,6 +1,6 @@
-"""External-shuffle file-transport runtime: Arrow Flight transport, per-node
+"""Disk-shuffle file-transport runtime: Arrow Flight transport, per-node
 ShuffleFileServer actor, prefetch layout, error hierarchy. Imported by the
-map/reduce task bodies in ``external_shuffle_tasks``."""
+map/reduce task bodies in ``disk_shuffle_tasks``."""
 
 import errno
 import json
@@ -41,7 +41,7 @@ from ray.exceptions import (
 logger = logging.getLogger(__name__)
 
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
-_SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_external"
+_SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_disk"
 
 # Endpoint resolution polls while the actor restarts (Ray raises
 # ActorUnavailableError): the poll interval, and the warn cadence (in polls) so

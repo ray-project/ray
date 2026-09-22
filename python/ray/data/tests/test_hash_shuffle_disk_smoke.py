@@ -1,5 +1,5 @@
-"""Smoke test for the external-shuffle operator pair
-(``ExternalHashShuffleMapOp`` + ``ExternalHashShuffleReduceOp``).
+"""Smoke test for the disk-shuffle operator pair
+(``DiskHashShuffleMapOp`` + ``DiskHashShuffleReduceOp``).
 
 Wires the operators directly — bypassing the Ray Data planner — to verify
 the simplest end-to-end story: feed N input blocks, hash-partition into K
@@ -7,7 +7,7 @@ partitions, reduce each with ``_concat_reduce``, then check row count and
 partition count. Catches wiring bugs (RefBundle shape, sentinel metadata,
 callback ordering, ShuffleFileServer lifecycle, empty-partition gating)
 that the planner-driven tests in
-``test_hash_shuffle_external_repartition.py`` don't isolate.
+``test_hash_shuffle_disk_repartition.py`` don't isolate.
 """
 
 from typing import List, Optional, Sequence, cast
@@ -31,11 +31,11 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-    ExternalHashShuffleMapOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
-    ExternalHashShuffleReduceOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
 )
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.stats import Timer
@@ -79,7 +79,7 @@ def _arrow_ref_bundles(tables: Sequence[pa.Table]) -> List[RefBundle]:
     return bundles
 
 
-def _drive_external_shuffle(
+def _drive_disk_shuffle(
     input_bundles: List[RefBundle],
     *,
     key_columns: List[str],
@@ -97,19 +97,19 @@ def _drive_external_shuffle(
     block_ref_counter = BlockRefCounter()
     upstream.start(ExecutionOptions(), block_ref_counter)
 
-    map_op = ExternalHashShuffleMapOp(
+    map_op = DiskHashShuffleMapOp(
         upstream,
         ctx,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(key_columns, num_partitions),
-        name="ExternalHashShuffleMap-smoke",
+        name="DiskHashShuffleMap-smoke",
     )
-    reduce_op = ExternalHashShuffleReduceOp(
+    reduce_op = DiskHashShuffleReduceOp(
         map_op,
         ctx,
         num_partitions=num_partitions,
         reduce_fn=_concat_reduce,
-        name="ExternalHashShuffleReduce-smoke",
+        name="DiskHashShuffleReduce-smoke",
         fused_output_map_transformer=fused_output_map_transformer,
     )
 
@@ -137,7 +137,7 @@ def _shutdown_ops(*ops) -> None:
 
 
 @pytest.mark.parametrize("num_blocks,rows,num_parts", [(4, 250, 4), (8, 100, 3)])
-def test_external_repartition_smoke(
+def test_disk_repartition_smoke(
     ray_start_regular_shared_2_cpus, num_blocks, rows, num_parts
 ):
     """End-to-end: map → reduce, verify total row count preserved."""
@@ -146,7 +146,7 @@ def test_external_repartition_smoke(
     )
     expected_total_rows = num_blocks * rows
 
-    map_output, reduce_op, map_op, upstream = _drive_external_shuffle(
+    map_output, reduce_op, map_op, upstream = _drive_disk_shuffle(
         input_bundles, key_columns=["id"], num_partitions=num_parts
     )
     try:
@@ -175,7 +175,7 @@ def test_empty_partition_fast_path(ray_start_regular_shared_2_cpus):
     num_parts = 20
     rows = [{"k": i % 3, "v": i} for i in range(60)]
     table = pa.Table.from_pylist(rows)
-    map_output, reduce_op, map_op, upstream = _drive_external_shuffle(
+    map_output, reduce_op, map_op, upstream = _drive_disk_shuffle(
         _arrow_ref_bundles([table]),
         key_columns=["k"],
         num_partitions=num_parts,
@@ -223,7 +223,7 @@ def test_null_typed_not_gated_as_empty(ray_start_regular_shared_2_cpus):
     assert table.nbytes == 0
 
     num_parts = 4
-    map_output, reduce_op, map_op, upstream = _drive_external_shuffle(
+    map_output, reduce_op, map_op, upstream = _drive_disk_shuffle(
         _arrow_ref_bundles([table]),
         key_columns=["k"],
         num_partitions=num_parts,
@@ -275,7 +275,7 @@ def test_fused_map_on_empty_partitions(ray_start_regular_shared_2_cpus):
     num_parts = 12
     rows = [{"k": i % 2, "v": i} for i in range(20)]
     table = pa.Table.from_pylist(rows)
-    map_output, reduce_op, map_op, upstream = _drive_external_shuffle(
+    map_output, reduce_op, map_op, upstream = _drive_disk_shuffle(
         _arrow_ref_bundles([table]),
         key_columns=["k"],
         num_partitions=num_parts,

@@ -1,4 +1,4 @@
-"""Unit / integration tests for the external-shuffle runtime primitives.
+"""Unit / integration tests for the disk-shuffle runtime primitives.
 
 Covers the Arrow Flight fetch transport, ``ShuffleFileServer`` actor lifecycle,
 the shard codec, prefetch layout, and error classification.
@@ -15,9 +15,9 @@ import pytest
 
 from ray.actor import ActorClass, ActorHandle
 from ray.data._internal.execution.operators.shuffle_operators import (
-    external_shuffle_runtime as _runtime,
+    disk_shuffle_runtime as _runtime,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
     _ENDPOINT_CACHE,
     _ENDPOINT_CACHE_LOCK,
     _SHUFFLE_FILE_SERVER_NAMESPACE,

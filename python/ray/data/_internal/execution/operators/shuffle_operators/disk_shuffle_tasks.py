@@ -21,7 +21,7 @@ from ray._raylet import (
 )
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_runtime import (  # noqa: E402,E501
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E402,E501
     _SHUFFLE_FILE_SERVER_NAMESPACE,
     ShuffleDiskError,
     ShuffleFileServer,
@@ -68,7 +68,7 @@ _DEFAULT_FETCH_THREADS = 16
 
 
 @ray.remote  # pyrefly: ignore[no-matching-overload]
-def _external_shuffle_map_task(
+def _disk_shuffle_map_task(
     *blocks: Block,
     partition_fn: PartitionFn,
     num_partitions: int,
@@ -171,7 +171,7 @@ def _external_shuffle_map_task(
             else:
                 expected_size = 0
             assert final_size_on_close == expected_size, (
-                f"_external_shuffle_map_task: file size mismatch, wrote "
+                f"_disk_shuffle_map_task: file size mismatch, wrote "
                 f"{final_size_on_close} bytes, index implies {expected_size}"
             )
 
@@ -211,7 +211,7 @@ def _external_shuffle_map_task(
 
 
 @ray.remote  # pyrefly: ignore[no-matching-overload]
-def _external_shuffle_reduce_task(
+def _disk_shuffle_reduce_task(
     *handles_by_input: List[ShuffleHandle],
     partition_id: int,
     reduce_fn: ReduceFn,
@@ -339,7 +339,7 @@ def _external_shuffle_reduce_task(
     else:
         shuffle_id = next(s for srcs in sources_by_input for s in srcs).shuffle_id
         staging_dir = os.path.join(
-            tempfile.gettempdir(), f"ray_shuffle_external_{shuffle_id}_reduce"
+            tempfile.gettempdir(), f"ray_shuffle_disk_{shuffle_id}_reduce"
         )
         os.makedirs(staging_dir, exist_ok=True)
         prefetch_file = os.path.join(staging_dir, f"reduce_p{partition_id}.bin")

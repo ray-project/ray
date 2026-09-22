@@ -152,7 +152,7 @@ DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
-DEFAULT_ENABLE_EXTERNAL_SHUFFLE = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+DEFAULT_ENABLE_DISK_SHUFFLE = env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", False)
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -869,7 +869,7 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Applies to the
-            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
             Other shuffle strategies ignore it. Input blocks are buffered per
             node and
             processed as a batch once this size is reached; remaining
@@ -878,10 +878,10 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_external_hash_shuffle: Whether keyed ``repartition()``,
+        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
-            external (on-disk, file-transport) shuffle instead of the object
-            store. Defaults to the ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``
+            disk-based (file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
             environment variable (``False`` when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
@@ -1031,7 +1031,7 @@ class DataContext:
     # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
     # hash-shuffle operations (keyed repartition, aggregations, joins).
     # When False, use the object-store path.
-    use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
+    use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
 
     ################################################################
     # GPU Shuffle configuration
