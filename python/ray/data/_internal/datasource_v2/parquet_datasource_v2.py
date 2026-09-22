@@ -23,7 +23,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 )
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
-    DataSourceV2,
+    FileDataSourceV2,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class ParquetDatasourceV2(DataSourceV2[FileManifest]):
+class ParquetDatasourceV2(FileDataSourceV2):
     """V2 Parquet datasource.
 
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the

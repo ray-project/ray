@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 _BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
+_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME = "__rd_internal_num_rows"
 
 
 def _is_user_visible_column(name: str) -> bool:
@@ -499,6 +500,56 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return ret, BlockMetadataWithSchema.from_block(
             ret, block_exec_stats=stats.build()
         )
+
+    def _get_group_boundaries_sorted(self, keys: List[str]) -> np.ndarray:
+        """Compute group boundaries natively in Arrow.
+
+        Overrides the base implementation, which first converts the key columns
+        to NumPy. That conversion is free for fixed-width numeric columns, but
+        for string, binary and decimal columns it materializes one Python object
+        per row, and for any column holding nulls it copies the values and
+        promotes them to ``float64``.
+
+        NOTE: THIS METHOD ASSUMES THAT PROVIDED BLOCK IS ALREADY SORTED
+        """
+        import pyarrow.compute as pac
+
+        if self.num_rows() == 0:
+            return np.array([], dtype=np.int32)
+        elif not keys:
+            # If no keys are specified, whole block is considered a single group
+            return np.array([0, self.num_rows()])
+
+        # This method computes offsets for individual groups with a
+        # following algorithm:
+        #
+        #   - Column with single int value of 1 (for every row) is appended
+        ones = np.ones(self._table.num_rows, dtype=np.int32)
+
+        extended_table = self._table.append_column(
+            _INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME, pyarrow.array(ones)
+        )
+
+        #   - Block is aggregated based on the target group-key, where
+        #       newly added column is summed up (computing the size of the group)
+        aggregated_extended_table = (
+            extended_table.group_by(keys).aggregate(
+                [(_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME, "sum")]
+            )
+            # NOTE: Arrow performs hash-based aggregations and hence returned
+            #       table could be out of order
+            .sort_by([(k, "ascending") for k in keys])
+        )
+
+        group_size_column = aggregated_extended_table[
+            f"{_INTERNAL_NUM_ROWS_COUNTER_COLUMN_NAME}_sum"
+        ]
+
+        #   - Column with respective sizes of the group is transformed into
+        #       an array of offsets (by running cumulative sum on it)
+        offsets_col = pac.cumulative_sum(group_size_column)
+
+        return np.concatenate([[0], offsets_col.to_numpy()])
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
