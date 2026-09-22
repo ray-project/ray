@@ -29,8 +29,9 @@ class BlockRefCounter:
                 global_worker.core_worker.add_object_out_of_scope_callback  # pyrefly: ignore[missing-attribute]
             )
         self._add_callback_fn = add_object_out_of_scope_callback
-        # IDs of live blocks. Stale callbacks (fired after clear()) check
-        # membership here and no-op, preventing negative _bytes_by_producer.
+        # IDs of live blocks. A repeat notification for an ID that is already
+        # gone checks membership here and no-ops, so _bytes_by_producer cannot
+        # go negative.
         self._registered_ids: set[bytes] = set()
         # (producer_id -> total live bytes); maintained incrementally for O(1) reads.
         self._bytes_by_producer: Dict[str, int] = defaultdict(int)
@@ -63,7 +64,7 @@ class BlockRefCounter:
         def _on_object_freed(id_bytes: bytes) -> None:
             with self._lock:
                 if id_bytes not in self._registered_ids:
-                    # Already cleared (e.g. by clear()), nothing to do.
+                    # Already freed; a repeat notification is a no-op.
                     return
                 self._registered_ids.discard(id_bytes)
                 self._bytes_by_producer[producer_id] -= size_bytes
