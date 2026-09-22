@@ -81,8 +81,7 @@ A couple of things to note:
 
 ## Ensuring batch size alignment
 
-Typically, collate functions are used to create complete batches of data with a target batch size.
-However, if you move the collate function to Ray Data using {meth}`ray.data.Dataset.map_batches`, it doesn't guarantee the batch size for each function call by default.
+Typically, collate functions are used to create complete batches of data with a target batch size. However, if you move the collate function to Ray Data using {meth}`ray.data.Dataset.map_batches`, it doesn't guarantee the batch size for each function call by default.
 
 There are two common problems that you may encounter.
 

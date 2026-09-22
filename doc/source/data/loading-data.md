@@ -18,10 +18,7 @@ Ray Data loads data from various sources. This guide shows you how to:
 
 ## Reading files
 
-Ray Data reads files from shared local storage or cloud storage in a variety of
-file formats.
-To view the full list of supported file formats, see the
-{ref}`Loading Data API <loading-data-api>`.
+Ray Data reads files from shared local storage or cloud storage in a variety of file formats. To view the full list of supported file formats, see the {ref}`Loading Data API <loading-data-api>`.
 
 :::::{tab-set}
 
@@ -48,18 +45,14 @@ variety       string
 ```
 
 :::{tip}
-When reading parquet files, you can take advantage of column pruning to
-efficiently filter columns at the file scan level. See
-{ref}`Parquet column pruning <parquet_column_pruning>` for more details
-on the projection pushdown feature.
+When reading parquet files, you can take advantage of column pruning to efficiently filter columns at the file scan level. See {ref}`Parquet column pruning <parquet_column_pruning>` for more details on the projection pushdown feature.
 :::
 
 ::::
 
 ::::{tab-item} Images
 
-To read raw images, call {func}`~ray.data.read_images`. Ray Data represents
-images as NumPy ndarrays.
+To read raw images, call {func}`~ray.data.read_images`. Ray Data represents images as NumPy ndarrays.
 
 ```{testcode}
 import ray
@@ -183,14 +176,10 @@ ds = ray.data.read_zarr("s3://anonymous@ray-example-data/mnist-tiny.zarr")
 
 ### Reading files from shared local storage
 
-To read files from a shared local filesystem, put the files on storage such as
-NFS, and mount that storage at the same path on every Ray node. Then, call a
-function like {func}`~ray.data.read_parquet` with the mounted path. Paths can
-point to files or directories.
+To read files from a shared local filesystem, put the files on storage such as NFS, and mount that storage at the same path on every Ray node. Then, call a function like {func}`~ray.data.read_parquet` with the mounted path. Paths can point to files or directories.
 
 :::{warning}
-Don't use the deprecated `local://` scheme. Use cloud storage or a shared
-filesystem path that's available on every Ray node instead.
+Don't use the deprecated `local://` scheme. Use cloud storage or a shared filesystem path that's available on every Ray node instead.
 :::
 
 To read formats other than Parquet, see the {ref}`Loading Data API <loading-data-api>`.
@@ -217,9 +206,7 @@ variety       string
 
 ### Reading files from cloud storage
 
-To read files in cloud storage, authenticate all nodes with your cloud service provider.
-Then, call a method like {func}`~ray.data.read_parquet` and specify URIs with the
-appropriate schema. URIs can point to buckets, folders, or objects.
+To read files in cloud storage, authenticate all nodes with your cloud service provider. Then, call a method like {func}`~ray.data.read_parquet` and specify URIs with the appropriate schema. URIs can point to buckets, folders, or objects.
 
 To read formats other than Parquet, see the {ref}`Loading Data API <loading-data-api>`.
 
@@ -247,16 +234,13 @@ petal.width   double
 variety       string
 ```
 
-Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
-your credentials to be compatible with PyArrow, see their
-[S3 Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#s3).
+Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure your credentials to be compatible with PyArrow, see their [S3 Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#s3).
 
 :::
 
 :::{tab-item} GCS
 
-To read files from Google Cloud Storage, install the
-[Filesystem interface to Google Cloud Storage](https://gcsfs.readthedocs.io/en/latest/)
+To read files from Google Cloud Storage, install the [Filesystem interface to Google Cloud Storage](https://gcsfs.readthedocs.io/en/latest/)
 
 ```console
 pip install gcsfs
@@ -288,16 +272,13 @@ petal.width   double
 variety       string
 ```
 
-Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
-to configure your credentials to be compatible with PyArrow, see their
-[GCS Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
+Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [GCS Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
 
 :::
 
 :::{tab-item} ABS
 
-To read files from Azure Blob Storage, install the
-[Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
+To read files from Azure Blob Storage, install the [Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
 
 ```console
 pip install adlfs
@@ -329,9 +310,7 @@ petal.width   double
 variety       string
 ```
 
-Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
-to configure your credentials to be compatible with PyArrow, see their
-[fsspec-compatible filesystems docs](https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow).
+Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [fsspec-compatible filesystems docs](https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow).
 
 :::
 
@@ -339,12 +318,7 @@ to configure your credentials to be compatible with PyArrow, see their
 
 ### Reading files from the Hadoop Distributed File System
 
-To read files from the Hadoop Distributed File System (HDFS), install the Hadoop client
-on every relevant Ray node and set `HADOOP_HOME`, `JAVA_HOME`, and `CLASSPATH` so
-that [PyArrow can load the native HDFS library and the Hadoop Java client](https://arrow.apache.org/docs/python/filesystems.html#hadoop-file-system-hdfs). If
-`libhdfs.so` isn't under `$HADOOP_HOME/lib/native`, also set
-`ARROW_LIBHDFS_DIR`. Then, pass a fully qualified `hdfs://` URI to a supported read
-API. For example:
+To read files from the Hadoop Distributed File System (HDFS), install the Hadoop client on every relevant Ray node and set `HADOOP_HOME`, `JAVA_HOME`, and `CLASSPATH` so that [PyArrow can load the native HDFS library and the Hadoop Java client](https://arrow.apache.org/docs/python/filesystems.html#hadoop-file-system-hdfs). If `libhdfs.so` isn't under `$HADOOP_HOME/lib/native`, also set `ARROW_LIBHDFS_DIR`. Then, pass a fully qualified `hdfs://` URI to a supported read API. For example:
 
 ```{testcode}
 :skipif: True
@@ -355,17 +329,12 @@ ds = ray.data.read_parquet("hdfs://hostname:8020/path/to/data")
 ```
 
 :::{warning}
-PyArrow HDFS embeds a Java Virtual Machine (JVM) in the Python process. On Linux,
-its signal handling can conflict with Ray and cause the process to exit with
-`SIGSEGV` or `SIGABRT` and create an `hs_err_pid*.log` file. See
-{ref}`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot signal-chaining
-configuration and the last-resort fallback.
+PyArrow HDFS embeds a Java Virtual Machine (JVM) in the Python process. On Linux, its signal handling can conflict with Ray and cause the process to exit with `SIGSEGV` or `SIGABRT` and create an `hs_err_pid*.log` file. See {ref}`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot signal-chaining configuration and the last-resort fallback.
 :::
 
 ### Handling compressed files
 
-To read a compressed file, specify `compression` in `arrow_open_stream_args`.
-You can use any [codec supported by Arrow](https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html).
+To read a compressed file, specify `compression` in `arrow_open_stream_args`. You can use any [codec supported by Arrow](https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html).
 
 ```{testcode}
 import ray
@@ -416,9 +385,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
 
 :::{tab-item} Python objects
 
-To create a {class}`~ray.data.dataset.Dataset` from Python objects, call
-{func}`~ray.data.from_items` and pass in a list of `Dict`. Ray Data treats
-each `Dict` as a row.
+To create a {class}`~ray.data.dataset.Dataset` from Python objects, call {func}`~ray.data.from_items` and pass in a list of `Dict`. Ray Data treats each `Dict` as a row.
 
 ```{testcode}
 import ray
@@ -446,8 +413,7 @@ shape: (3, 2)
 (Showing 3 of 3 rows)
 ```
 
-You can also create a {class}`~ray.data.dataset.Dataset` from a list of regular
-Python objects. In the schema, the column name defaults to "item".
+You can also create a {class}`~ray.data.dataset.Dataset` from a list of regular Python objects. In the schema, the column name defaults to "item".
 
 ```{testcode}
 import ray
@@ -477,9 +443,7 @@ shape: (5, 1)
 
 :::{tab-item} NumPy
 
-To create a {class}`~ray.data.dataset.Dataset` from a NumPy array, call
-{func}`~ray.data.from_numpy`. Ray Data treats the outer axis as the row
-dimension.
+To create a {class}`~ray.data.dataset.Dataset` from a NumPy array, call {func}`~ray.data.from_numpy`. Ray Data treats the outer axis as the row dimension.
 
 ```{testcode}
 import numpy as np
@@ -509,8 +473,7 @@ shape: (3, 1)
 
 :::{tab-item} pandas
 
-To create a {class}`~ray.data.dataset.Dataset` from a pandas DataFrame, call
-{func}`~ray.data.from_pandas`.
+To create a {class}`~ray.data.dataset.Dataset` from a pandas DataFrame, call {func}`~ray.data.from_pandas`.
 
 ```{testcode}
 import pandas as pd
@@ -543,8 +506,7 @@ shape: (3, 2)
 
 :::{tab-item} PyArrow
 
-To create a {class}`~ray.data.dataset.Dataset` from an Arrow table, call
-{func}`~ray.data.from_arrow`.
+To create a {class}`~ray.data.dataset.Dataset` from an Arrow table, call {func}`~ray.data.from_arrow`.
 
 ```{testcode}
 import pyarrow as pa
@@ -580,22 +542,17 @@ shape: (3, 2)
 
 ### Loading data from distributed DataFrame libraries
 
-Ray Data interoperates with distributed data processing frameworks like [Daft](https://www.daft.ai),
-{ref}`Dask <dask-on-ray>`, {ref}`Spark <spark-on-ray>`, {ref}`Modin <modin-on-ray>`, and
-{ref}`Mars <mars-on-ray>`.
+Ray Data interoperates with distributed data processing frameworks like [Daft](https://www.daft.ai), {ref}`Dask <dask-on-ray>`, {ref}`Spark <spark-on-ray>`, {ref}`Modin <modin-on-ray>`, and {ref}`Mars <mars-on-ray>`.
 
 :::{note}
-The Ray Community provides these operations but may not actively maintain them. If you run into issues,
-create a GitHub issue [here](https://github.com/ray-project/ray/issues).
+The Ray Community provides these operations but may not actively maintain them. If you run into issues, create a GitHub issue [here](https://github.com/ray-project/ray/issues).
 :::
 
 ::::{tab-set}
 
 :::{tab-item} Daft
 
-To create a {class}`~ray.data.dataset.Dataset` from a [Daft DataFrame](https://docs.daft.ai/en/stable/api/dataframe/), call
-{func}`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a `Dataset` backed by the resultant arrow data produced
-by your Daft query.
+To create a {class}`~ray.data.dataset.Dataset` from a [Daft DataFrame](https://docs.daft.ai/en/stable/api/dataframe/), call {func}`~ray.data.from_daft`. This function executes the Daft dataframe and constructs a `Dataset` backed by the resultant arrow data produced by your Daft query.
 
 ```{testcode}
 :skipif: True
@@ -619,11 +576,7 @@ ds.show(3)
 
 :::{tab-item} Dask
 
-To create a {class}`~ray.data.dataset.Dataset` from a
-[Dask DataFrame](https://docs.dask.org/en/stable/dataframe.html), call
-{func}`~ray.data.from_dask`. This function constructs a
-`Dataset` backed by the distributed Pandas DataFrame partitions that underly
-the Dask DataFrame.
+To create a {class}`~ray.data.dataset.Dataset` from a [Dask DataFrame](https://docs.dask.org/en/stable/dataframe.html), call {func}`~ray.data.from_dask`. This function constructs a `Dataset` backed by the distributed Pandas DataFrame partitions that underly the Dask DataFrame.
 
 <!--
 We skip the code snippet below because `from_dask` doesn't work with PyArrow
@@ -655,9 +608,7 @@ ds.show(3)
 
 :::{tab-item} Spark
 
-To create a {class}`~ray.data.dataset.Dataset` from a [Spark DataFrame](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html),
-call {func}`~ray.data.from_spark`. This function creates a `Dataset` backed by
-the distributed Spark DataFrame partitions that underly the Spark DataFrame.
+To create a {class}`~ray.data.dataset.Dataset` from a [Spark DataFrame](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html), call {func}`~ray.data.from_spark`. This function creates a `Dataset` backed by the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
 <!--
 TODO: This code snippet might not work correctly. We should test it.
@@ -689,9 +640,7 @@ ds.show(3)
 
 :::{tab-item} Iceberg
 
-To create a {class}`~ray.data.dataset.Dataset` from an [Iceberg Table](https://iceberg.apache.org),
-call {func}`~ray.data.read_iceberg`. This function creates a `Dataset` backed by
-the distributed files that underlie the Iceberg table.
+To create a {class}`~ray.data.dataset.Dataset` from an [Iceberg Table](https://iceberg.apache.org), call {func}`~ray.data.read_iceberg`. This function creates a `Dataset` backed by the distributed files that underlie the Iceberg table.
 
 ```{testcode}
 :skipif: True
@@ -719,9 +668,7 @@ ds.show(3)
 
 :::{tab-item} Modin
 
-To create a {class}`~ray.data.dataset.Dataset` from a Modin DataFrame, call
-{func}`~ray.data.from_modin`. This function constructs a `Dataset` backed by
-the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
+To create a {class}`~ray.data.dataset.Dataset` from a Modin DataFrame, call {func}`~ray.data.from_modin`. This function constructs a `Dataset` backed by the distributed Pandas DataFrame partitions that underly the Modin DataFrame.
 
 ```{testcode}
 import modin.pandas as md
@@ -746,10 +693,7 @@ ds.show(3)
 
 :::{tab-item} Mars
 
-To create a {class}`~ray.data.dataset.Dataset` from a Mars DataFrame, call
-{func}`~ray.data.from_mars`. This function constructs a `Dataset`
-backed by the distributed Pandas DataFrame partitions that underly the Mars
-DataFrame.
+To create a {class}`~ray.data.dataset.Dataset` from a Mars DataFrame, call {func}`~ray.data.from_mars`. This function constructs a `Dataset` backed by the distributed Pandas DataFrame partitions that underly the Mars DataFrame.
 
 ```{testcode}
 :skipif: True
@@ -783,9 +727,7 @@ ds.show(3)
 
 ### Loading Hugging Face datasets
 
-To read datasets from the Hugging Face Hub, use {func}`~ray.data.read_parquet` (or other
-read functions) with the `HfFileSystem` filesystem. This approach provides better
-performance and scalability than loading datasets into memory first.
+To read datasets from the Hugging Face Hub, use {func}`~ray.data.read_parquet` (or other read functions) with the `HfFileSystem` filesystem. This approach provides better performance and scalability than loading datasets into memory first.
 
 First, install the required dependencies
 
@@ -793,16 +735,13 @@ First, install the required dependencies
 pip install huggingface_hub
 ```
 
-Set your Hugging Face token to authenticate. While public datasets can be read without
-a token, Hugging Face rate limits are more aggressive without a token. To read Hugging
-Face datasets without a token, simply set the filesystem argument to `HfFileSystem()`.
+Set your Hugging Face token to authenticate. While public datasets can be read without a token, Hugging Face rate limits are more aggressive without a token. To read Hugging Face datasets without a token, simply set the filesystem argument to `HfFileSystem()`.
 
 ```console
 export HF_TOKEN=<YOUR HUGGING FACE TOKEN>
 ```
 
-For most Hugging Face datasets, the data is stored in Parquet files. You can directly
-read from the dataset path:
+For most Hugging Face datasets, the data is stored in Parquet files. You can directly read from the dataset path:
 
 ```{testcode}
 :skipif: True
@@ -845,10 +784,7 @@ Ray Data interoperates with PyTorch and TensorFlow datasets.
 
 ::::{tab-item} HuggingFace
 
-To load a HuggingFace Dataset into Ray Data, use the HuggingFace Hub `HfFileSystem`
-with {func}`~ray.data.read_parquet`, {func}`~ray.data.read_csv`, or {func}`~ray.data.read_json`.
-Since HuggingFace datasets are often backed by these file formats, this approach enables efficient distributed
-reads directly from the Hub.
+To load a HuggingFace Dataset into Ray Data, use the HuggingFace Hub `HfFileSystem` with {func}`~ray.data.read_parquet`, {func}`~ray.data.read_csv`, or {func}`~ray.data.read_json`. Since HuggingFace datasets are often backed by these file formats, this approach enables efficient distributed reads directly from the Hub.
 
 ```{testcode}
 :skipif: True
@@ -906,8 +842,7 @@ Dataset(num_rows=50000, schema={item: object})
 To convert a TensorFlow dataset to a Ray Dataset, call {func}`~ray.data.from_tf`.
 
 :::{warning}
-{class}`~ray.data.from_tf` doesn't support parallel reads. Only use this
-function with small datasets like MNIST or CIFAR.
+{class}`~ray.data.from_tf` doesn't support parallel reads. Only use this function with small datasets like MNIST or CIFAR.
 :::
 
 ```{testcode}
@@ -953,16 +888,13 @@ Ray Data reads from databases like MySQL, PostgreSQL, MongoDB, and BigQuery.
 
 ### Reading SQL databases
 
-Call {func}`~ray.data.read_sql` to read data from a database that provides a
-[Python DB API2-compliant](https://peps.python.org/pep-0249/) connector.
+Call {func}`~ray.data.read_sql` to read data from a database that provides a [Python DB API2-compliant](https://peps.python.org/pep-0249/) connector.
 
 ::::{tab-set}
 
 :::{tab-item} MySQL
 
-To read from MySQL, install
-[MySQL Connector/Python](https://dev.mysql.com/doc/connector-python/en/). It's the
-first-party MySQL database connector.
+To read from MySQL, install [MySQL Connector/Python](https://dev.mysql.com/doc/connector-python/en/). It's the first-party MySQL database connector.
 
 ```console
 pip install mysql-connector-python
@@ -1002,8 +934,7 @@ dataset = ray.data.read_sql(
 
 :::{tab-item} PostgreSQL
 
-To read from PostgreSQL, install [Psycopg 2](https://www.psycopg.org/docs). It's
-the most popular PostgreSQL database connector.
+To read from PostgreSQL, install [Psycopg 2](https://www.psycopg.org/docs). It's the most popular PostgreSQL database connector.
 
 ```console
 pip install psycopg2-binary
@@ -1042,8 +973,7 @@ dataset = ray.data.read_sql(
 
 :::{tab-item} Snowflake
 
-To read from Snowflake, install the
-[Snowflake Connector for Python](https://docs.snowflake.com/en/user-guide/python-connector).
+To read from Snowflake, install the [Snowflake Connector for Python](https://docs.snowflake.com/en/user-guide/python-connector).
 
 ```console
 pip install snowflake-connector-python
@@ -1082,22 +1012,19 @@ dataset = ray.data.read_sql(
 
 :::{tab-item} Databricks
 
-To read from Databricks, set the `DATABRICKS_TOKEN` environment variable to
-your Databricks warehouse access token.
+To read from Databricks, set the `DATABRICKS_TOKEN` environment variable to your Databricks warehouse access token.
 
 ```console
 export DATABRICKS_TOKEN=...
 ```
 
-If you're not running your program on the Databricks runtime, also set the
-`DATABRICKS_HOST` environment variable.
+If you're not running your program on the Databricks runtime, also set the `DATABRICKS_HOST` environment variable.
 
 ```console
 export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 ```
 
-Then, call {func}`ray.data.read_databricks_tables` to read from the Databricks
-SQL warehouse.
+Then, call {func}`ray.data.read_databricks_tables` to read from the Databricks SQL warehouse.
 
 ```{testcode}
 :skipif: True
@@ -1116,8 +1043,7 @@ dataset = ray.data.read_databricks_tables(
 
 :::{tab-item} BigQuery
 
-To read from BigQuery, install the
-[Python Client for Google BigQuery](https://cloud.google.com/python/docs/reference/bigquery/latest) and the [Python Client for Google BigQueryStorage](https://cloud.google.com/python/docs/reference/bigquerystorage/latest).
+To read from BigQuery, install the [Python Client for Google BigQuery](https://cloud.google.com/python/docs/reference/bigquery/latest) and the [Python Client for Google BigQueryStorage](https://cloud.google.com/python/docs/reference/bigquerystorage/latest).
 
 ```console
 pip install google-cloud-bigquery
@@ -1159,9 +1085,7 @@ ds.write_bigquery(
 
 ### Reading MongoDB
 
-To read data from MongoDB, call {func}`~ray.data.read_mongo` and specify
-the source URI, database, and collection. You also need to specify a pipeline to
-run against the collection.
+To read data from MongoDB, call {func}`~ray.data.read_mongo` and specify the source URI, database, and collection. You also need to specify a pipeline to run against the collection.
 
 ```{testcode}
 :skipif: True
@@ -1199,10 +1123,7 @@ Ray Data reads from message queues like Kafka.
 
 (reading_kafka)=
 
-To read data from Kafka topics, call {func}`~ray.data.read_kafka` and specify
-the topic names and broker addresses. Ray Data performs bounded reads between
-a start and end offset. You can specify offsets as integers, `"earliest"`/`"latest"`
-strings, or `datetime` objects for time-based ranges.
+To read data from Kafka topics, call {func}`~ray.data.read_kafka` and specify the topic names and broker addresses. Ray Data performs bounded reads between a start and end offset. You can specify offsets as integers, `"earliest"`/`"latest"` strings, or `datetime` objects for time-based ranges.
 
 First, install the required dependencies:
 
@@ -1278,9 +1199,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
 :::{tab-item} Int Range
 
-To create a synthetic {class}`~ray.data.Dataset` from a range of integers, call
-{func}`~ray.data.range`. Ray Data stores the integer range in a single column called
-"id".
+To create a synthetic {class}`~ray.data.Dataset` from a range of integers, call {func}`~ray.data.range`. Ray Data stores the integer range in a single column called "id".
 
 ```{testcode}
 import ray
@@ -1300,9 +1219,7 @@ id      int64
 
 :::{tab-item} Tensor Range
 
-To create a synthetic {class}`~ray.data.Dataset` containing arrays, call
-{func}`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
-the provided shape. In the schema, the column name defaults to "data".
+To create a synthetic {class}`~ray.data.Dataset` containing arrays, call {func}`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of the provided shape. In the schema, the column name defaults to "data".
 
 ```{testcode}
 import ray
@@ -1324,12 +1241,7 @@ data    ArrowTensorTypeV2(shape=(64, 64), dtype=int64)
 
 ## Loading other datasources
 
-If Ray Data can't load your data, subclass
-{class}`~ray.data.Datasource`. Then, construct an instance of your custom
-datasource and pass it to {func}`~ray.data.read_datasource`. To write results, you might
-also need to subclass {class}`ray.data.Datasink`. Then, create an instance of your custom
-datasink and pass it to {func}`~ray.data.Dataset.write_datasink`. For more details, see
-{ref}`Advanced: Read and Write Custom File Types <custom_datasource>`.
+If Ray Data can't load your data, subclass {class}`~ray.data.Datasource`. Then, construct an instance of your custom datasource and pass it to {func}`~ray.data.read_datasource`. To write results, you might also need to subclass {class}`ray.data.Datasink`. Then, create an instance of your custom datasink and pass it to {func}`~ray.data.Dataset.write_datasink`. For more details, see {ref}`Advanced: Read and Write Custom File Types <custom_datasource>`.
 
 ```{testcode}
 :skipif: True
@@ -1343,21 +1255,13 @@ ds.write_datasink(YourCustomDatasink())
 
 ## Community-maintained connectors
 
-The following connectors are maintained by the community and provide integrations
-with additional data systems:
+The following connectors are maintained by the community and provide integrations with additional data systems:
 
 * [Apache Doris Ray Connector](https://github.com/jiangxt2/ray-doris) - Read and write data between Ray Data and [Apache Doris](https://doris.apache.org/).
 * [Kinetica Ray Connector](https://github.com/kineticadb/kinetica-ray) - Read and write data between Ray Data and [Kinetica](https://www.kinetica.com/).
 
 ## Performance considerations
 
-By default, the number of output blocks from all read tasks is dynamically decided
-based on input data size and available resources. It should work well in most cases.
-However, you can also override the default value by setting the `override_num_blocks`
-argument. Ray Data decides internally how many read tasks to run concurrently to best
-utilize the cluster, ranging from `1...override_num_blocks` tasks. In other words,
-the higher the `override_num_blocks`, the smaller the data blocks in the Dataset and
-hence more opportunities for parallel execution.
+By default, the number of output blocks from all read tasks is dynamically decided based on input data size and available resources. It should work well in most cases. However, you can also override the default value by setting the `override_num_blocks` argument. Ray Data decides internally how many read tasks to run concurrently to best utilize the cluster, ranging from `1...override_num_blocks` tasks. In other words, the higher the `override_num_blocks`, the smaller the data blocks in the Dataset and hence more opportunities for parallel execution.
 
-For more information on how to tune the number of output blocks and other suggestions
-for optimizing read performance, see [Optimizing reads](performance-tips.md#optimizing-reads).
+For more information on how to tune the number of output blocks and other suggestions for optimizing read performance, see [Optimizing reads](performance-tips.md#optimizing-reads).

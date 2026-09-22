@@ -8,18 +8,15 @@ myst:
 
 # Execution Configurations
 
-Ray Data provides a number of configuration options that control various aspects
-of execution of Ray Data's {class}`~ray.data.Dataset` on top of configuration of the Ray Core cluster itself.
+Ray Data provides a number of configuration options that control various aspects of execution of Ray Data's {class}`~ray.data.Dataset` on top of configuration of the Ray Core cluster itself.
 
-Ray Data's configuration is primarily controlled through either of {class}`~ray.data.ExecutionOptions`
-or {class}`~ray.data.DataContext`.
+Ray Data's configuration is primarily controlled through either of {class}`~ray.data.ExecutionOptions` or {class}`~ray.data.DataContext`.
 
 This guide describes the most important of these configurations and when to use them.
 
 ## Configuring {class}`~ray.data.ExecutionOptions`
 
-The {class}`~ray.data.ExecutionOptions` class is used to configure options during Ray Dataset execution.
-To use it, modify the attributes in the current {class}`~ray.data.DataContext` object's `execution_options`. For example:
+The {class}`~ray.data.ExecutionOptions` class is used to configure options during Ray Dataset execution. To use it, modify the attributes in the current {class}`~ray.data.DataContext` object's `execution_options`. For example:
 
 ```{testcode}
 :hide:
@@ -43,8 +40,7 @@ For more details on each of the preceding options, see {class}`~ray.data.Executi
 
 ## Configuring {class}`~ray.data.DataContext`
 
-The {class}`~ray.data.DataContext` class is used to configure more general options for Ray Data usage, such as observability/logging options,
-error handling/retry behavior, and internal data formats. To use it, modify the attributes in the current {class}`~ray.data.DataContext` object. For example:
+The {class}`~ray.data.DataContext` class is used to configure more general options for Ray Data usage, such as observability/logging options, error handling/retry behavior, and internal data formats. To use it, modify the attributes in the current {class}`~ray.data.DataContext` object. For example:
 
 ```{testcode}
 :hide:
@@ -57,8 +53,7 @@ ctx = ray.data.DataContext.get_current()
 ctx.verbose_stats_logs = True
 ```
 
-Many of the options in {class}`~ray.data.DataContext` are intended for advanced use cases or debugging,
-and most users shouldn't need to modify them. However, some of the most important options are:
+Many of the options in {class}`~ray.data.DataContext` are intended for advanced use cases or debugging, and most users shouldn't need to modify them. However, some of the most important options are:
 
 * `max_errored_blocks`: Max number of blocks that are allowed to have errors, unlimited if negative. This option allows application-level exceptions in block processing tasks. These exceptions may be caused by UDFs (for example, due to corrupted data samples) or IO errors. Data in the failed blocks are dropped. This option can be useful to prevent a long-running job from failing due to a small number of bad blocks. By default, no retries are allowed.
 * `write_file_retry_on_errors`: A list of sub-strings of error messages that should trigger a retry when writing files. This is useful for handling transient errors when writing to remote storage systems. By default, retries on common transient AWS S3 errors.
@@ -70,14 +65,9 @@ For more details on each of the preceding options, see {class}`~ray.data.DataCon
 
 ### Job-level Checkpointing
 
-Ray Data supports job-level checkpointing to improve fault tolerance for
-long-running batch pipelines. When enabled, Ray Data can resume a failed job
-by skipping rows that were successfully processed in a previous run, instead
-of restarting from the beginning.
+Ray Data supports job-level checkpointing to improve fault tolerance for long-running batch pipelines. When enabled, Ray Data can resume a failed job by skipping rows that were successfully processed in a previous run, instead of restarting from the beginning.
 
-To configure job-level checkpointing, specify a
-{class}`~ray.data.checkpoint.CheckpointConfig` on the current
-{class}`~ray.data.DataContext`.
+To configure job-level checkpointing, specify a {class}`~ray.data.checkpoint.CheckpointConfig` on the current {class}`~ray.data.DataContext`.
 
 **Example configuration:**
 

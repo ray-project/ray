@@ -12,8 +12,7 @@ Ray Data provides a flexible and performant API for performing aggregations on {
 
 ## Basic aggregations
 
-Ray Data provides several built-in aggregation functions like {class}`~ray.data.Dataset.max`,
-{class}`~ray.data.Dataset.min`, {class}`~ray.data.Dataset.sum`.
+Ray Data provides several built-in aggregation functions like {class}`~ray.data.Dataset.max`, {class}`~ray.data.Dataset.min`, {class}`~ray.data.Dataset.sum`.
 
 These can be used directly on a Dataset or a GroupedData object, as shown below:
 

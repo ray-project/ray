@@ -13,8 +13,7 @@ myst:
 
 There are two main concepts in Ray Data: Datasets and Blocks.
 
-A {class}`Dataset <ray.data.Dataset>` represents a distributed data collection and defines data loading and processing operations and is the primary user-facing API for Ray Data.
-Users typically use the API by creating a {class}`Dataset <ray.data.Dataset>` from external storage or in-memory data, applying transformations to the data, and writing the outputs to external storage or feeding the outputs to training workers.
+A {class}`Dataset <ray.data.Dataset>` represents a distributed data collection and defines data loading and processing operations and is the primary user-facing API for Ray Data. Users typically use the API by creating a {class}`Dataset <ray.data.Dataset>` from external storage or in-memory data, applying transformations to the data, and writing the outputs to external storage or feeding the outputs to training workers.
 
 The Dataset API is lazy, meaning that operations aren't executed until you materialize or consume the dataset, with methods like {meth}`~ray.data.Dataset.show`. This allows Ray Data to optimize the execution plan and execute operations in a pipelined, streaming fashion.
 
@@ -23,11 +22,7 @@ A *block* is a set of rows representing single partition of the dataset. Blocks,
  1. Every dataset is partitioned into a number of blocks, then
  2. Processing of the whole dataset is distributed and parallelized at the block level (blocks are processed in parallel and for the most part independently)
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-Ray Data holds the {class}`~ray.data.Dataset` on the process that triggers execution
-(which is usually the entrypoint of the program, referred to as the {term}`driver`)
-and stores the blocks as objects in Ray's shared-memory {ref}`object store <objects-in-ray>`. Internally, Ray Data can natively handle blocks either
-as Pandas `DataFrame` or PyArrow `Table`.
+The following figure visualizes a dataset with three blocks, each holding 1000 rows. Ray Data holds the {class}`~ray.data.Dataset` on the process that triggers execution (which is usually the entrypoint of the program, referred to as the {term}`driver`) and stores the blocks as objects in Ray's shared-memory {ref}`object store <objects-in-ray>`. Internally, Ray Data can natively handle blocks either as Pandas `DataFrame` or PyArrow `Table`.
 
 ```{image} images/dataset-arch-with-blocks.svg
 ```
