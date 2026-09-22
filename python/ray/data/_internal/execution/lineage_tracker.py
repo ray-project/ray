@@ -117,7 +117,7 @@ class LineageTracker:
     ) -> None:
         """
         Record which task produced a block, so that whichever task later
-        consumes it can declare the dependency.
+        consumes it can fetch the dependency easily with the block ID.
 
         Args:
             data_task_id: The ID of the data task that produced the block.

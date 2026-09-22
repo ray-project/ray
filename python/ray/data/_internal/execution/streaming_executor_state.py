@@ -692,7 +692,7 @@ def _recover_lost_object(
     the executor thread, where an exception tears down the whole dataset.
     """
     if not isinstance(task, DataOpTask) or task.data_task_id is None:
-        logger.info(
+        logger.warning(
             "[lineage-recovery] Lost object for task %s on operator %r is not "
             "tracked by the lineage graph; cannot recover.",
             task.task_index(),
@@ -700,8 +700,8 @@ def _recover_lost_object(
         )
         return False
 
-    # A reconstruction that re-fails stays in the plan it serves; a fresh failure
-    # opens its own. Plans keep separate buckets on shared ancestors, so concurrent
+    # A retry of a failed reconstruction attempt reuses its original reconstruction plan; a fresh failure
+    # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
     try:
         traced_seed_ids, plan_id = lineage_tracker.register_task_failed(
