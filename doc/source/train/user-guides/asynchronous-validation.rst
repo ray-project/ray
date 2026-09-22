@@ -286,11 +286,6 @@ You can tune the following knobs to overlap validation and training as closely a
   Also note that breaking early from a Ray Data iterator may lead to resource leaks - this will be
   fixed in a future release.
 
-Ray Data production vs consumption
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See :ref:`balancing-data-production-consumption` for tips on balancing data production and consumption rates.
-
 Checkpoint metrics lifecycle
 -----------------------------
 

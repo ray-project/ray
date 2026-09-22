@@ -40,10 +40,8 @@ class GrpcDeployment:
 g = GrpcDeployment.options(name="grpc-deployment").bind()
 
 
-# NOTE: model multiplexing is kept on a separate deployment (not the shared `g`)
-# because it is not supported on the ingress deployment when direct ingress /
-# HAProxy is enabled (the multiplexed model ID is not propagated to the replica).
-# Tests that exercise it must be skipped under those modes.
+# Model multiplexing is kept on a separate deployment from the shared `g` so tests can
+# exercise model-specific behavior independently.
 @serve.deployment
 class MultiplexedGrpcDeployment:
     def __call__(self, user_message):
