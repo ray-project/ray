@@ -218,6 +218,66 @@ def test_multiple_returns(init):
         assert pool.get_next(timeout=None) == [1, 2]
 
 
+def test_submit_returns_ref_when_actor_is_idle(init):
+    @ray.remote
+    class MyActor:
+        def double(self, x):
+            return 2 * x
+
+    pool = ActorPool([MyActor.remote()])
+
+    ref = pool.submit(lambda a, v: a.double.remote(v), 1)
+    assert ray.get(ref) == 2
+    # The pool still owns the result until it is drained.
+    assert pool.get_next() == 2
+
+
+def test_submit_returns_none_when_all_actors_are_busy(init):
+    @ray.remote
+    class MyActor:
+        def double(self, x):
+            return 2 * x
+
+    pool = ActorPool([MyActor.remote()])
+
+    assert pool.submit(lambda a, v: a.double.remote(v), 1) is not None
+    # The only actor is now busy, so this submission is queued instead.
+    assert pool.submit(lambda a, v: a.double.remote(v), 2) is None
+
+    # Draining frees the actor, which dispatches the queued submission.
+    assert pool.get_next() == 2
+    assert pool.get_next() == 4
+
+
+def test_submit_return_value_does_not_disturb_ordering(init):
+    @ray.remote
+    class MyActor:
+        def double(self, x):
+            return 2 * x
+
+    pool = ActorPool([MyActor.remote() for _ in range(2)])
+
+    refs = [pool.submit(lambda a, v: a.double.remote(v), i) for i in range(2)]
+    assert all(ref is not None for ref in refs)
+
+    # Results still come back in submission order, and match the returned refs.
+    for ref in refs:
+        assert pool.get_next() == ray.get(ref)
+
+
+def test_submit_returns_multiple_returns(init):
+    @ray.remote
+    class Foo:
+        @ray.method(num_returns=2)
+        def bar(self):
+            return 1, 2
+
+    pool = ActorPool([Foo.remote()])
+
+    refs = pool.submit(lambda a, v: a.bar.remote(), None)
+    assert ray.get(refs) == [1, 2]
+
+
 def test_pop_idle(init):
     @ray.remote
     class MyActor:
