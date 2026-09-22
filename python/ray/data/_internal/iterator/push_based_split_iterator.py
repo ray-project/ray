@@ -8,12 +8,12 @@ How it works:
 
 - The coordinator runs the streaming executor and one pusher thread per
   split; both are recreated every epoch, like the pull model.
-- Flow control is demand-driven: a consumer keeps enough one-block requests
-  outstanding to cover the same ``prefetch_batches * batch_size`` row window
-  the pull model prefetches, topping the window up after each block it
-  consumes. The local queue stores the prefetched blocks, keeping several
-  transfers in flight. No polling — a dead or idle consumer just stops
-  requesting.
+- Flow control is demand-driven and measured in rows: a consumer keeps the
+  same ``prefetch_batches * batch_size`` row window the pull model
+  prefetches requested ahead, topping it up after each block it consumes;
+  the coordinator pushes whole blocks while a split's row demand is
+  positive. The local queue stores the prefetched blocks. No polling — a
+  dead or idle consumer just stops requesting.
 - Blocks are pushed by value, so consumers hold no ObjectRefs and the
   executor frees each block as soon as it is delivered.
 - Delivery order relies on the consumer actor executing tasks in submission
@@ -34,10 +34,10 @@ Overview::
     |         |             |                  |       |
     |     pusher 0      pusher 1          pusher n-1   |
     +---------|-------------^--------------------------+
-              | blocks      | request_block()
-              | (by value,  | (window of requests kept
-              |  sequenced) |  outstanding; topped up
-              |             |  per consumed block)
+              | blocks      | request_rows()
+              | (by value)  | (row window kept covered;
+              |             |  topped up per consumed
+              |             |  block)
               v             |
     +--------------------------------------------------+
     |  consumer actor i  (mixes PushSplitReceiverMixin)|
@@ -50,7 +50,6 @@ mid-epoch consumer replacement.
 """
 
 import logging
-import math
 import queue
 import threading
 import time
@@ -113,12 +112,14 @@ class PushSplitCoordinator:
 
     Runs the streaming executor (one per epoch, like SplitCoordinator) plus
     one pusher thread per split, gated by the consumer's demand
-    (request_block).
+    (request_rows).
     """
 
     # How often a demand-waiting pusher re-checks its stop event; requests
     # wake it immediately.
     DEMAND_WAIT_TIMEOUT_S = 0.5
+    # How often each pusher logs its progress/wait breakdown.
+    PROGRESS_LOG_INTERVAL_S = 10.0
 
     def __init__(self, dataset: "Dataset", n: int):
         # Deep copy, same as SplitCoordinator.
@@ -147,20 +148,27 @@ class PushSplitCoordinator:
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
-        # Per-split demand (in blocks), guarded by that split's Condition;
+        # Per-split demand (in rows), guarded by that split's Condition;
         # the pusher sends while demand > 0 and waits on the Condition
-        # otherwise (a request wakes it immediately).
+        # otherwise (a request wakes it immediately). Pushing a block may
+        # drive demand negative (whole blocks are sent), which just delays
+        # the next push until requests catch up.
         self._demand_conds: Dict[int, threading.Condition] = {
             i: threading.Condition() for i in range(n)
         }
-        self._demand_blocks: Dict[int, int] = dict.fromkeys(range(n), 0)
+        self._demand_rows: Dict[int, int] = dict.fromkeys(range(n), 0)
 
         # Byte accounting for producer pacing. Each entry has one writer
         # (_bytes_pushed: the split's pusher; _bytes_consumed_reported:
-        # request_block under the split's Condition); readers tolerate
+        # request_rows under the split's Condition); readers tolerate
         # staleness, so no extra locking is needed.
         self._bytes_pushed: Dict[int, int] = dict.fromkeys(range(n), 0)
         self._bytes_consumed_reported: Dict[int, int] = dict.fromkeys(range(n), 0)
+
+        # Observability counters (one writer: the split's pusher).
+        self._blocks_pushed: Dict[int, int] = dict.fromkeys(range(n), 0)
+        self._wait_demand_s: Dict[int, float] = dict.fromkeys(range(n), 0.0)
+        self._wait_output_s: Dict[int, float] = dict.fromkeys(range(n), 0.0)
 
         logger.debug(f"PushSplitCoordinator created: {n=}")
 
@@ -191,20 +199,21 @@ class PushSplitCoordinator:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
         return self._barrier(split_idx)
 
-    def request_block(
+    def request_rows(
         self,
         split_idx: int,
         epoch_id: int,
         consumed_bytes: int,
-        num_blocks: int = 1,
+        num_rows: int,
     ) -> None:
-        """Fire-and-forget demand from a consumer: "send me ``num_blocks``
-        more blocks".
+        """Fire-and-forget demand from a consumer: "keep me covered for
+        ``num_rows`` more rows".
 
-        Sent once per consumed block; the consumer sizes ``num_blocks`` to
-        keep its prefetch window full (0 is a pure consumption report).
-        ``consumed_bytes`` doubles as the consumption report that paces the
-        producer.
+        Sent once per consumed block; the consumer sizes ``num_rows`` to keep
+        its row window full (0 is a pure consumption report). The pusher
+        sends whole blocks while row demand is positive, so any positive
+        demand yields at least one block. ``consumed_bytes`` doubles as the
+        consumption report that paces the producer.
         """
         cond = self._demand_conds[split_idx]
         with cond:
@@ -212,7 +221,7 @@ class PushSplitCoordinator:
             # can never leave demand behind (see _try_start_new_epoch).
             if epoch_id != self._cur_epoch:
                 return
-            self._demand_blocks[split_idx] += num_blocks
+            self._demand_rows[split_idx] += num_rows
             self._bytes_consumed_reported[split_idx] += consumed_bytes
             cond.notify()
         # Producer pacing is refreshed by the pusher after each push
@@ -336,7 +345,7 @@ class PushSplitCoordinator:
     def _try_start_new_epoch(self, starting_epoch: int) -> None:
         with self._lock:
             # Start the epoch exactly once. The bump must precede
-            # _reset_state (see request_block).
+            # _reset_state (see request_rows).
             if self._cur_epoch == starting_epoch:
                 self._cur_epoch += 1
                 self._reset_state()
@@ -376,9 +385,12 @@ class PushSplitCoordinator:
         # reassignment is safe here.
         self._bytes_pushed = dict.fromkeys(range(self._n), 0)
         self._bytes_consumed_reported = dict.fromkeys(range(self._n), 0)
+        self._blocks_pushed = dict.fromkeys(range(self._n), 0)
+        self._wait_demand_s = dict.fromkeys(range(self._n), 0.0)
+        self._wait_output_s = dict.fromkeys(range(self._n), 0.0)
         for i in range(self._n):
             with self._demand_conds[i]:
-                self._demand_blocks[i] = 0
+                self._demand_rows[i] = 0
 
     def _spawn_pushers(self) -> None:
         self._pusher_stop_events = {i: threading.Event() for i in range(self._n)}
@@ -424,29 +436,40 @@ class PushSplitCoordinator:
         push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
         output_iterator = self._output_iterator
         cond = self._demand_conds[split_idx]
+        last_log_time = time.monotonic()
         try:
             while not stop.is_set():
+                now = time.monotonic()
+                if now - last_log_time >= self.PROGRESS_LOG_INTERVAL_S:
+                    last_log_time = now
+                    self._log_pusher_progress(epoch_id, split_idx)
+
                 # Wait for demand; a request wakes this immediately. A dead
                 # consumer stops requesting, which parks this thread with the
                 # split's remaining data kept in the executor.
                 # TODO(push-split): let a replacement worker resume a parked
                 # split mid-epoch (design validated at 48df73dd0e).
                 with cond:
-                    if self._demand_blocks[split_idx] <= 0:
+                    if self._demand_rows[split_idx] <= 0:
+                        t0 = time.monotonic()
                         cond.wait(self.DEMAND_WAIT_TIMEOUT_S)
+                        self._wait_demand_s[split_idx] += time.monotonic() - t0
                         continue
 
                 # Blocks like a pull consumer would (preserving the
                 # executor's backpressure signals); raises StopIteration at
                 # end of stream. A multi-block bundle is sent whole.
+                t0 = time.monotonic()
                 bundle = output_iterator.get_next(split_idx)
+                self._wait_output_s[split_idx] += time.monotonic() - t0
                 for entry in bundle.blocks:
                     size_bytes = entry.metadata.size_bytes or 0
                     num_rows = entry.metadata.num_rows or 0
                     push_block(entry, size_bytes, num_rows)
                     with cond:
-                        self._demand_blocks[split_idx] -= 1
+                        self._demand_rows[split_idx] -= num_rows
                     self._bytes_pushed[split_idx] += size_bytes
+                    self._blocks_pushed[split_idx] += 1
                 self._update_external_consumer_bytes()
         except StopIteration:
             if not stop.is_set():
@@ -466,6 +489,34 @@ class PushSplitCoordinator:
                     # e.g. unpicklable exception.
                     push_error(_ExecutorError(RuntimeError(repr(e))))
             return
+
+    def _log_pusher_progress(self, epoch_id: int, split_idx: int) -> None:
+        """Rate-limited pusher progress line: where this split's time goes.
+
+        wait_demand = pusher idle because the consumer's row window is full
+        (consumer-bound); wait_output = pusher blocked in the executor's
+        output queue (producer-bound).
+        """
+        logger.info(
+            f"[push-split] split={split_idx} epoch={epoch_id} "
+            f"pushed={self._blocks_pushed[split_idx]} blocks "
+            f"({self._bytes_pushed[split_idx] / (1024**3):.2f}GiB) "
+            f"demand_rows={self._demand_rows[split_idx]} "
+            f"in_flight={(self._bytes_pushed[split_idx] - self._bytes_consumed_reported[split_idx]) / (1024**2):.0f}MiB "
+            f"wait_demand={self._wait_demand_s[split_idx]:.1f}s "
+            f"wait_output={self._wait_output_s[split_idx]:.1f}s"
+        )
+
+    def debug_state(self) -> Dict[str, Dict[int, float]]:
+        """Snapshot of per-split flow-control state, for debugging/tests."""
+        return {
+            "demand_rows": dict(self._demand_rows),
+            "blocks_pushed": dict(self._blocks_pushed),
+            "bytes_pushed": dict(self._bytes_pushed),
+            "bytes_consumed_reported": dict(self._bytes_consumed_reported),
+            "wait_demand_s": dict(self._wait_demand_s),
+            "wait_output_s": dict(self._wait_output_s),
+        }
 
     def _finish_split(self, epoch_id: int, split_idx: int) -> None:
         executor_to_shutdown = None
@@ -548,7 +599,7 @@ class _PushReceiver:
 
     def begin_epoch(self, epoch: int) -> None:
         with self.lock:
-            # Set before the first request_block, so no delivery can arrive
+            # Set before the first request_rows, so no delivery can arrive
             # while cur_epoch is stale.
             self.cur_epoch = epoch
 
@@ -710,45 +761,31 @@ class PushBasedDataIterator(DataIterator):
             self._active_epoch = epoch
             receiver.begin_epoch(epoch)
 
-            # Prefetch window: keep enough one-block requests outstanding to
-            # cover the same buffering the pull consumer holds — its
-            # `prefetch_batches * batch_size` row window, plus one block in
-            # the resolve stage and one just handed over (the pull path
-            # counts ~window + 2 blocks per worker as prefetched). Blocks the
-            # coordinator has pushed but we have not consumed sit in the
-            # local receiver queue — that queue IS the prefetch buffer, and
-            # it keeps several transfers in flight instead of one.
-            prefetch_batches = self._prefetch_batches
-            window_rows = (
-                prefetch_batches * self._prefetch_batch_size
-                if prefetch_batches > 0 and self._prefetch_batch_size is not None
-                else None
-            )
-            outstanding = 0  # requested but not yet popped
-            rows_seen = 0
-            blocks_seen = 0
-
-            def target_outstanding() -> int:
-                if prefetch_batches <= 0:
-                    return 1
-                if window_rows is None:
-                    # No batch size: window in blocks, like the pull model.
-                    return prefetch_batches + 2
-                if blocks_seen == 0:
-                    # Rows-per-block unknown until the first delivery.
-                    return 3
-                avg_rows = max(1.0, rows_seen / blocks_seen)
-                return math.ceil(window_rows / avg_rows) + 2
+            # Prefetch window, in rows like the pull model's local window:
+            # keep `prefetch_batches * batch_size` rows requested ahead. The
+            # pusher sends whole blocks while row demand is positive, so any
+            # positive demand yields at least one block; blocks pushed but
+            # not yet consumed sit in the local receiver queue — that queue
+            # IS the prefetch buffer. Without a batch size the window
+            # degenerates to one block in flight.
+            if self._prefetch_batches > 0 and self._prefetch_batch_size:
+                target_rows = self._prefetch_batches * self._prefetch_batch_size
+            else:
+                target_rows = 1
+            requested_rows = 0
+            popped_rows = 0
+            popped_blocks = 0
+            last_log_time = time.monotonic()
 
             def report_and_top_up(consumed_bytes: int) -> None:
                 # One RPC per consumed block: reports consumption (producer
-                # pacing) and refills the request window.
-                nonlocal outstanding
-                num_blocks = max(0, target_outstanding() - outstanding)
-                self._coord_actor.request_block.remote(
-                    self._output_split_idx, epoch, consumed_bytes, num_blocks
+                # pacing) and refills the row window.
+                nonlocal requested_rows
+                deficit = max(0, target_rows - (requested_rows - popped_rows))
+                self._coord_actor.request_rows.remote(
+                    self._output_split_idx, epoch, consumed_bytes, deficit
                 )
-                outstanding += num_blocks
+                requested_rows += deficit
 
             # Consumption is reported one block late: the block currently
             # being batched still counts as consumer-held, matching what the
@@ -762,7 +799,10 @@ class PushBasedDataIterator(DataIterator):
 
             while self._active_epoch == epoch:
                 try:
-                    item = epoch_queue.get(timeout=1.0)
+                    # Queue-wait time lands in the get_ref_bundles iterator
+                    # stat: the push analog of waiting on the coordinator.
+                    with self._iter_stats.iter_get_ref_bundles_s.timer():
+                        item = epoch_queue.get(timeout=1.0)
                 except queue.Empty:
                     continue
                 if isinstance(item, _EndOfEpoch):
@@ -773,11 +813,19 @@ class PushBasedDataIterator(DataIterator):
                 if isinstance(item, _ExecutorError):
                     raise item.error
                 assert isinstance(item, _BlockDelivery)
-                outstanding -= 1
-                blocks_seen += 1
-                rows_seen += item.num_rows
+                popped_blocks += 1
+                popped_rows += item.num_rows
                 report_and_top_up(pending_consumed)
                 pending_consumed = item.size_bytes
+                now = time.monotonic()
+                if now - last_log_time >= 10.0:
+                    last_log_time = now
+                    logger.info(
+                        f"[push-split] consumer split={self._output_split_idx} "
+                        f"epoch={epoch} popped={popped_blocks} blocks "
+                        f"({popped_rows} rows) qsize={epoch_queue.qsize()} "
+                        f"queue_wait={self._iter_stats.iter_get_ref_bundles_s.get():.1f}s"
+                    )
                 yield ResolvedBlock(block=item.block)
 
         return gen_blocks(), self._iter_stats, None
