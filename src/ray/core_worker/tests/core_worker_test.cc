@@ -1796,7 +1796,8 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
   warn_objects = prev;
 }
 
-// Tests that a location report arriving after the ref was dropped frees that copy.
+// Tests that if a raylet location report to the owner arrives after the ref was dropped,
+// we still free that copy.
 TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
   const NodeID node_id = core_worker_->GetCurrentNodeId();
   auto report_location = [&](const ObjectID &object_id) {
