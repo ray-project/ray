@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+from types import SimpleNamespace
 from typing import List, Literal, Union
 
 import numpy as np
@@ -47,6 +48,7 @@ from ray.data.checkpoint.interfaces import (
     CheckpointBackend,
     InvalidCheckpointingConfig,
 )
+from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
@@ -945,6 +947,75 @@ def test_commit_checkpoint_neither_exists(fs, base_path):
     # Commit should raise FileNotFoundError
     with pytest.raises(FileNotFoundError):
         writer.commit_checkpoint(pending)
+
+
+@pytest.mark.parametrize(
+    "fs,base_path",
+    [
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+    ids=["local", "s3"],
+)
+def test_load_checkpoint_excludes_pending_files(
+    ray_start_10_cpus_shared, fs, base_path
+):
+    """Pending row checkpoints must not filter rows during restoration."""
+    ctx = ray.data.DataContext.get_current()
+    checkpoint_path = os.path.join(base_path, "checkpoint")
+    fs.create_dir(_unwrap_protocol(checkpoint_path))
+    ctx.checkpoint_config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=checkpoint_path,
+        delete_checkpoint_on_success=False,
+        override_filesystem=fs,
+    )
+
+    writer = BatchBasedCheckpointWriter(ctx.checkpoint_config)
+    committed = writer.write_pending_checkpoint(
+        pa.array([1]), checkpoint_id="committed"
+    )
+    assert committed is not None
+    writer.commit_checkpoint(committed)
+    pending = writer.write_pending_checkpoint(pa.array([2]), checkpoint_id="pending")
+    assert pending is not None
+
+    checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
+    checkpoint_ref, checkpoint_size = checkpoint_manager.load_checkpoint()
+
+    assert checkpoint_ref is not None
+    assert checkpoint_size > 0
+    assert ray.get(checkpoint_ref).tolist() == [1]
+    assert fs.get_file_info(pending.pending_path).type != FileType.NotFound
+
+
+def test_load_checkpoint_ignores_non_parquet_files(tmp_path):
+    (tmp_path / "metadata.json").write_text("{}")
+    config = CheckpointConfig(id_column=ID_COL, checkpoint_path=str(tmp_path))
+    manager = IdColumnCheckpointManager(
+        checkpoint_config=config,
+        data_context=ray.data.DataContext.get_current(),
+    )
+
+    assert manager.load_checkpoint() == (None, 0)
+
+
+@pytest.mark.parametrize("defer_cleanup", [True, False])
+def test_checkpoint_callback_can_defer_success_cleanup(tmp_path, defer_cleanup):
+    config = CheckpointConfig(
+        id_column=ID_COL,
+        checkpoint_path=str(tmp_path),
+        delete_checkpoint_on_success=True,
+    )
+    (tmp_path / "checkpoint.parquet").touch()
+    callback = LoadCheckpointCallback(
+        config, delete_on_execution_success=not defer_cleanup
+    )
+    executor = SimpleNamespace(_data_context=SimpleNamespace(checkpoint_config=config))
+
+    callback.after_execution_succeeds(executor)
+
+    assert tmp_path.exists() is defer_cleanup
 
 
 @pytest.mark.parametrize("data_file_exists", [True, False])
