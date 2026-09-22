@@ -151,7 +151,7 @@ async def test_downscale_drains_tasks():
 
 
 @pytest.mark.asyncio
-async def test_fifo_request_not_abandoned():
+async def test_request_fulfilled_by_another_task():
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     first_request = fake_pending_request()
@@ -180,11 +180,11 @@ async def test_fifo_request_not_abandoned():
         for request in (first_request, fake_pending_request())
     ]
     try:
-        # The second task selects first, but FIFO assigns its replica to request 1.
+        # The second task selects first, but fulfills request 1.
         assert await asyncio.wait_for(tasks[0], timeout=2) == replica
-        # Request 2 must complete without waiting for request 1's slow selector,
-        # since an available replica has already been found by its own task.
+        # Request 2 completes without waiting for request 1's slow selector.
         assert await asyncio.wait_for(tasks[1], timeout=2) == replica
+        assert router.curr_num_routing_tasks == 0
     finally:
         release_first.set()
         for task in tasks:

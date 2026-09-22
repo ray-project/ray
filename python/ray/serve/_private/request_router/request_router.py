@@ -395,6 +395,7 @@ class FIFOMixin:
     _pending_requests_to_fulfill: Deque[PendingRequest]
     _record_queue_wait_time: Callable[[PendingRequest], None]
     _remove_pending_request_from_indices: Callable[[PendingRequest], None]
+    _cancel_routing_task_for_pending_request: Callable[[PendingRequest], None]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -431,6 +432,7 @@ class FIFOMixin:
             request_metadata
         )
         if matched_pending_request is not None:
+            self._cancel_routing_task_for_pending_request(matched_pending_request)
             self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
             # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
@@ -442,6 +444,7 @@ class FIFOMixin:
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
             if not pr.future.done():
+                self._cancel_routing_task_for_pending_request(pr)
                 self._record_queue_wait_time(pr)
                 pr.future.set_result(replica)
                 self._remove_pending_request_from_indices(pr)
@@ -525,6 +528,9 @@ class RequestRouter(ABC):
         # as new tasks will be routed when a request comes in or new replicas are
         # added, but it will not exceed self.max_num_routing_tasks.
         self._routing_tasks: Set[asyncio.Task] = set()
+        # Maps a request to the task currently routing it. If another task fulfills
+        # or cancels the request, this task no longer has useful work to do.
+        self._routing_task_by_pending_request_id: Dict[str, asyncio.Task] = {}
 
         # We keep two separate queues of pending requests:
         # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
@@ -1124,6 +1130,15 @@ class RequestRouter(ABC):
         queue_wait_time_ms = (time.time() - pending_request.created_at) * 1000
         self.queue_wait_time_ms_histogram.observe(queue_wait_time_ms)
 
+    def _cancel_routing_task_for_pending_request(self, pending_request: PendingRequest):
+        """Cancel the task routing a request that no longer needs an assignment."""
+        request_id = pending_request.metadata.internal_request_id
+        routing_task = self._routing_task_by_pending_request_id.get(request_id)
+        if routing_task is not None and routing_task is not asyncio.current_task(
+            loop=self._event_loop
+        ):
+            routing_task.cancel()
+
     def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
@@ -1140,6 +1155,7 @@ class RequestRouter(ABC):
             self._get_pending_request_matching_internal_request_id(request_metadata)
         )
         if matched_pending_request is not None:
+            self._cancel_routing_task_for_pending_request(matched_pending_request)
             self._record_queue_wait_time(matched_pending_request)
             matched_pending_request.future.set_result(replica)
             # O(1) removal from dict indices. Don't remove from deque - use lazy cleanup.
@@ -1245,6 +1261,10 @@ class RequestRouter(ABC):
                 if pending_request is None:
                     break
                 request_metadata = pending_request.metadata
+                routing_task = asyncio.current_task(loop=self._event_loop)
+                assert routing_task is not None
+                request_id = request_metadata.internal_request_id
+                self._routing_task_by_pending_request_id[request_id] = routing_task
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
@@ -1296,6 +1316,11 @@ class RequestRouter(ABC):
                                     )
                             logger.warning(warning_log)
                 finally:
+                    if (
+                        self._routing_task_by_pending_request_id.get(request_id)
+                        is routing_task
+                    ):
+                        self._routing_task_by_pending_request_id.pop(request_id)
                     await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
@@ -1363,6 +1388,7 @@ class RequestRouter(ABC):
             replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
+            self._cancel_routing_task_for_pending_request(pending_request)
             self._remove_pending_request_from_indices(pending_request)
 
             raise e from None
