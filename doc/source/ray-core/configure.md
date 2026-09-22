@@ -218,7 +218,7 @@ cat ca.key | base64
 cat ca.crt | base64
 ```
 
-# Alternatively, this command automatically encode and create the secret for the CA key pair.
+\# Alternatively, this command automatically encode and create the secret for the CA key pair.
 ```bash
 kubectl create secret generic ca-tls --from-file=ca.crt=<path-to-ca.crt> --from-file=ca.key=<path-to-ca.key>
 ```
