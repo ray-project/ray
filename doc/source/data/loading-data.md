@@ -341,8 +341,7 @@ to configure your credentials to be compatible with PyArrow, see their
 
 To read files from the Hadoop Distributed File System (HDFS), install the Hadoop client
 on every relevant Ray node and set `HADOOP_HOME`, `JAVA_HOME`, and `CLASSPATH` so
-that [PyArrow can load the native HDFS library and the Hadoop Java client
-](https://arrow.apache.org/docs/python/filesystems.html#hadoop-file-system-hdfs). If
+that [PyArrow can load the native HDFS library and the Hadoop Java client](https://arrow.apache.org/docs/python/filesystems.html#hadoop-file-system-hdfs). If
 `libhdfs.so` isn't under `$HADOOP_HOME/lib/native`, also set
 `ARROW_LIBHDFS_DIR`. Then, pass a fully qualified `hdfs://` URI to a supported read
 API. For example:
@@ -656,8 +655,7 @@ ds.show(3)
 
 :::{tab-item} Spark
 
-To create a {class}`~ray.data.dataset.Dataset` from a [Spark DataFrame
-](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html),
+To create a {class}`~ray.data.dataset.Dataset` from a [Spark DataFrame](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html),
 call {func}`~ray.data.from_spark`. This function creates a `Dataset` backed by
 the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
@@ -691,8 +689,7 @@ ds.show(3)
 
 :::{tab-item} Iceberg
 
-To create a {class}`~ray.data.dataset.Dataset` from an [Iceberg Table
-](https://iceberg.apache.org),
+To create a {class}`~ray.data.dataset.Dataset` from an [Iceberg Table](https://iceberg.apache.org),
 call {func}`~ray.data.read_iceberg`. This function creates a `Dataset` backed by
 the distributed files that underlie the Iceberg table.
 
