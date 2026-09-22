@@ -1,18 +1,26 @@
 """Manage durable namespace state for recoverable Iceberg writes."""
 
+import hashlib
 import json
 import logging
 import posixpath
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Tuple
 
 from pyarrow.fs import FileSelector, FileType
 
 from ray.data._internal.util import call_with_retry
+from ray.data.checkpoint._iceberg_checkpoint_serialization import (
+    deserialize_write_result,
+    serialize_write_result,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
+
+if TYPE_CHECKING:
+    from ray.data._internal.datasource.iceberg_datasink import IcebergWriteResult
 
 logger = logging.getLogger(__name__)
 
@@ -165,6 +173,76 @@ class CheckpointManifest:
         )
 
 
+@dataclass(frozen=True)
+class TaskEnvelope:
+    """Bind one serialized task result to its row-checkpoint marker."""
+
+    generation_id: str
+    table_uuid: str
+    checkpoint_file: str
+    payload_file: str
+    payload_sha256: str
+
+    @classmethod
+    def from_json(cls, value: Dict[str, Any], artifact_id: str) -> "TaskEnvelope":
+        required = {
+            "format_version",
+            "generation_id",
+            "table_uuid",
+            "checkpoint_file",
+            "payload_file",
+            "payload_sha256",
+        }
+        string_fields = required - {"format_version"}
+        digest = value.get("payload_sha256")
+        if (
+            set(value) != required
+            or value.get("format_version") != _FORMAT_VERSION
+            or not all(isinstance(value.get(field), str) for field in string_fields)
+            or not _is_generation_id(value["generation_id"])
+            or value["checkpoint_file"] != f"{artifact_id}.parquet"
+            or value["payload_file"] != f"{artifact_id}.arrow"
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise ValueError("Invalid Iceberg checkpoint task envelope")
+        return cls(
+            generation_id=value["generation_id"],
+            table_uuid=value["table_uuid"],
+            checkpoint_file=value["checkpoint_file"],
+            payload_file=value["payload_file"],
+            payload_sha256=digest,
+        )
+
+    def to_json(self) -> Dict[str, Any]:
+        return {"format_version": _FORMAT_VERSION, **self.__dict__}
+
+
+class TaskCheckpointState(str, Enum):
+    """Publication state for one deterministic task checkpoint."""
+
+    ABSENT = "absent"
+    METADATA_PUBLISHED = "metadata_published"
+    COMMITTED = "committed"
+
+
+@dataclass(frozen=True)
+class LoadedTaskResult:
+    """A validated task result and the row checkpoint that made it eligible."""
+
+    artifact_id: str
+    checkpoint_path: str
+    result: "IcebergWriteResult"
+
+
+@dataclass(frozen=True)
+class TaskCheckpoint:
+    """Resolved publication state for one deterministic task checkpoint."""
+
+    state: TaskCheckpointState
+    loaded_result: Optional[LoadedTaskResult] = None
+
+
 def _is_generation_id(value: Any) -> bool:
     return (
         isinstance(value, str)
@@ -273,6 +351,173 @@ class IcebergCheckpointState:
         assert manifest is not None
         self._validate_identity(manifest)
         return manifest
+
+    def persist_task_result(
+        self,
+        artifact_id: str,
+        checkpoint_path: str,
+        write_result: "IcebergWriteResult",
+    ) -> None:
+        """Publish task metadata before its row checkpoint becomes committed.
+
+        The Arrow payload is content-bound to a JSON envelope. The envelope
+        also binds the payload to this table and generation and names the exact
+        Parquet row checkpoint that can later make the result recoverable.
+        """
+        self._validate_artifact_id(artifact_id)
+        self._load_active_manifest()
+        expected_checkpoint_file = f"{artifact_id}.parquet"
+        if posixpath.basename(checkpoint_path) != expected_checkpoint_file:
+            raise ValueError(
+                "Iceberg task metadata does not match its row checkpoint: "
+                f"expected {expected_checkpoint_file}, found "
+                f"{posixpath.basename(checkpoint_path)}"
+            )
+        if not write_result.data_files:
+            raise ValueError(
+                "Iceberg write produced rows without recoverable destination files"
+            )
+
+        payload = serialize_write_result(write_result)
+        payload_path = self.paths.task_payload(self.generation_id, artifact_id)
+        envelope_path = self.paths.task_envelope(self.generation_id, artifact_id)
+        envelope = TaskEnvelope(
+            generation_id=self.generation_id,
+            table_uuid=self.table_uuid,
+            checkpoint_file=expected_checkpoint_file,
+            payload_file=posixpath.basename(payload_path),
+            payload_sha256=hashlib.sha256(payload).hexdigest(),
+        )
+        self._write_bytes(payload_path, payload)
+        self._write_json(envelope_path, envelope.to_json())
+
+    def resolve_task_checkpoint(
+        self,
+        artifact_id: str,
+        partition_filter: Optional[Callable[[List[str]], List[str]]] = None,
+    ) -> TaskCheckpoint:
+        """Resolve one task using direct file checks rather than a namespace list."""
+        self._validate_artifact_id(artifact_id)
+        checkpoint_path = self.paths.row_checkpoint(artifact_id)
+        checkpoint_info = self.filesystem.get_file_info(checkpoint_path)
+        if checkpoint_info.type != FileType.NotFound and self._path_is_selected(
+            checkpoint_path, partition_filter
+        ):
+            return TaskCheckpoint(
+                TaskCheckpointState.COMMITTED,
+                self.load_task_result(artifact_id),
+            )
+
+        envelope_path = self.paths.task_envelope(self.generation_id, artifact_id)
+        envelope_info = self.filesystem.get_file_info(envelope_path)
+        if envelope_info.type != FileType.NotFound:
+            return TaskCheckpoint(
+                TaskCheckpointState.METADATA_PUBLISHED,
+                self.load_task_result(artifact_id),
+            )
+
+        # A payload without its envelope did not complete metadata publication.
+        # Removing it lets a deterministic task retry publish its own payload.
+        payload_path = self.paths.task_payload(self.generation_id, artifact_id)
+        if self.filesystem.get_file_info(payload_path).type != FileType.NotFound:
+            self.filesystem.delete_file(payload_path)
+        return TaskCheckpoint(TaskCheckpointState.ABSENT)
+
+    def load_task_result(self, artifact_id: str) -> LoadedTaskResult:
+        """Load and validate one task envelope and serialized write result."""
+        self._validate_artifact_id(artifact_id)
+        envelope = self._load_task_envelope(artifact_id)
+        payload_path = self.paths.task_payload(self.generation_id, artifact_id)
+        if self.filesystem.get_file_info(payload_path).type == FileType.NotFound:
+            raise ValueError(f"Iceberg checkpoint payload is missing: {payload_path}")
+        payload = self._read_bytes(payload_path)
+        if hashlib.sha256(payload).hexdigest() != envelope.payload_sha256:
+            raise ValueError(f"Corrupt Iceberg checkpoint payload: {payload_path}")
+        try:
+            result = deserialize_write_result(payload)
+        except ValueError as exc:
+            raise ValueError(
+                f"Corrupt Iceberg checkpoint payload: {payload_path}"
+            ) from exc
+        return LoadedTaskResult(
+            artifact_id=artifact_id,
+            checkpoint_path=posixpath.join(self.paths.root, envelope.checkpoint_file),
+            result=result,
+        )
+
+    def load_active_results(
+        self,
+        partition_filter: Optional[Callable[[List[str]], List[str]]] = None,
+    ) -> List[LoadedTaskResult]:
+        """Load task results made eligible by selected row checkpoints.
+
+        Metadata without a committed row marker is ignored. Selected markers
+        from terminal generations continue to filter source rows but are never
+        eligible for another destination commit. Every other selected marker
+        must belong to the active generation and have valid matching metadata.
+        """
+        manifest = self._load_active_manifest()
+        results = []
+        for checkpoint_path in self._selected_row_checkpoint_paths(partition_filter):
+            checkpoint_file = posixpath.basename(checkpoint_path)
+            generation_id = checkpoint_file.split("-", 1)[0]
+            status = manifest.generations.get(generation_id)
+            if status is GenerationStatus.TERMINAL:
+                continue
+            if (
+                generation_id != self.generation_id
+                or status is not GenerationStatus.ACTIVE
+            ):
+                raise ValueError(
+                    "Found an Iceberg row checkpoint without a known recoverable "
+                    f"generation: {checkpoint_file}"
+                )
+            artifact_id = checkpoint_file[: -len(".parquet")]
+            loaded = self.load_task_result(artifact_id)
+            if loaded.checkpoint_path != checkpoint_path:
+                raise ValueError(
+                    "Iceberg task metadata names a different row checkpoint: "
+                    f"{checkpoint_file}"
+                )
+            results.append(loaded)
+        return results
+
+    def discard_uncommitted_results(
+        self,
+        committed_paths: Set[str],
+        partition_filter: Optional[Callable[[List[str]], List[str]]] = None,
+    ) -> bool:
+        """Discard tasks wholly absent from a visible Iceberg snapshot.
+
+        A partially committed task is unsafe to discard or recover because its
+        row checkpoint cannot identify which rows belong to each data file.
+        The row marker is always deleted before task metadata so an interrupted
+        cleanup cannot filter rows whose destination files are uncommitted.
+
+        Args:
+            committed_paths: Canonical paths of data files added by the visible
+                destination snapshot.
+            partition_filter: Optional selector applied to committed row
+                checkpoint paths before reconciliation.
+
+        Returns:
+            Whether at least one complete task checkpoint was discarded.
+        """
+        discarded = False
+        for loaded in self.load_active_results(partition_filter):
+            result_paths = {
+                str(data_file.file_path) for data_file in loaded.result.data_files
+            }
+            committed = result_paths.intersection(committed_paths)
+            if committed == result_paths:
+                continue
+            if committed:
+                raise ValueError(
+                    "Iceberg snapshot contains only part of a task checkpoint"
+                )
+            self._discard_task_checkpoint(loaded)
+            discarded = True
+        return discarded
 
     def _read_bytes(self, path: str) -> bytes:
         def _read() -> bytes:
@@ -424,6 +669,78 @@ class IcebergCheckpointState:
                 "Iceberg checkpoint active generation changed concurrently"
             )
         return manifest
+
+    def _validate_artifact_id(self, artifact_id: str) -> None:
+        if (
+            not artifact_id
+            or posixpath.basename(artifact_id) != artifact_id
+            or not artifact_id.startswith(f"{self.generation_id}-")
+        ):
+            raise ValueError(f"Invalid Iceberg checkpoint artifact ID: {artifact_id!r}")
+
+    def _load_task_envelope(self, artifact_id: str) -> TaskEnvelope:
+        envelope_path = self.paths.task_envelope(self.generation_id, artifact_id)
+        if self.filesystem.get_file_info(envelope_path).type == FileType.NotFound:
+            raise ValueError(
+                "Iceberg row checkpoint is missing its destination metadata: "
+                f"{artifact_id}.parquet"
+            )
+        try:
+            envelope = TaskEnvelope.from_json(
+                self._load_json(envelope_path), artifact_id
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid Iceberg checkpoint task envelope: {envelope_path}"
+            ) from exc
+        if (
+            envelope.generation_id != self.generation_id
+            or envelope.table_uuid != self.table_uuid
+        ):
+            raise ValueError(f"Incompatible Iceberg checkpoint task: {envelope_path}")
+        return envelope
+
+    def _selected_row_checkpoint_paths(
+        self,
+        partition_filter: Optional[Callable[[List[str]], List[str]]],
+    ) -> List[str]:
+        entries = self.filesystem.get_file_info(
+            FileSelector(
+                self.paths.root,
+                recursive=partition_filter is not None,
+                allow_not_found=True,
+            )
+        )
+        metadata_prefix = f"{self.paths.metadata_root}/"
+        paths = sorted(
+            entry.path
+            for entry in entries
+            if entry.type == FileType.File
+            and entry.path.endswith(".parquet")
+            and not entry.path.endswith(".pending.parquet")
+            and not entry.path.startswith(metadata_prefix)
+        )
+        if partition_filter is not None:
+            paths = list(partition_filter(paths))
+        return paths
+
+    @staticmethod
+    def _path_is_selected(
+        path: str,
+        partition_filter: Optional[Callable[[List[str]], List[str]]],
+    ) -> bool:
+        return partition_filter is None or path in partition_filter([path])
+
+    def _discard_task_checkpoint(self, loaded: LoadedTaskResult) -> None:
+        # Removing the row marker first preserves the recovery invariant if
+        # metadata cleanup stops midway: these rows will be processed again.
+        self.filesystem.delete_file(loaded.checkpoint_path)
+        for path in (
+            self.paths.task_envelope(self.generation_id, loaded.artifact_id),
+            self.paths.task_payload(self.generation_id, loaded.artifact_id),
+        ):
+            if self.filesystem.get_file_info(path).type != FileType.NotFound:
+                self.filesystem.delete_file(path)
 
     def _reject_legacy_row_checkpoints(self) -> None:
         entries = self.filesystem.get_file_info(
