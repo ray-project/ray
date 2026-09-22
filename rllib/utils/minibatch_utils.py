@@ -114,11 +114,12 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         sequences.
         """
         if len(module_batch) == 0:
-            # `__iter__` refuses to cycle a batch with nothing in it; raise the same
-            # way here, since the count is computed before the loop starts. A batch
-            # with NO timesteps at all is handled earlier (`Learner._should_skip_update`
-            # skips the update), so reaching this means only some of the modules are
-            # empty, which the iterator cannot make equal-sized minibatches from.
+            # A minibatch takes `minibatch_size` rows from every module, so a module
+            # with none makes the whole batch unusable -- `__iter__` refuses to cycle
+            # it, and this raises the same way because the count is worked out before
+            # the loop starts. A Learner never reaches either: `_should_skip_update`
+            # skips any batch with an empty module. This guards direct users of the
+            # iterator.
             raise ValueError(
                 "One of the module batches is empty! Minibatches need "
                 "`minibatch_size` samples from every module_id."

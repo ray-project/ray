@@ -1278,12 +1278,12 @@ class Learner(Checkpointable):
                 wants_to_skip = self._should_skip_update(batch)
                 # With several Learners, shards may hold different amounts of data, and
                 # the number of minibatches `MiniBatchCyclicIterator` derives from a
-                # shard would then differ per Learner -- a DDP desync just like a lone
-                # skip. Unless the caller fixed `num_total_minibatches`, each Learner
-                # proposes its own count and the group settles on one. (Without
+                # shard differs per Learner. Unless the caller fixes `num_total_minibatches`,
+                # each Learner proposes its own count and the group settles on one. (Without
                 # `minibatch_size` the count is `num_epochs` or 1 on every Learner.)
                 if (
-                    not num_total_minibatches
+                    not wants_to_skip
+                    and not num_total_minibatches
                     and self.config.num_learners > 1
                     and minibatch_size
                 ):
@@ -1369,11 +1369,10 @@ class Learner(Checkpointable):
 
         Called once per `update()` with the train batch (after modules not in
         `policies_to_train` have been removed). By default an update is skipped when
-        there are no timesteps to train on for any module, which happens e.g. when
-        all sampled episodes were lost to EnvRunner or node failures. Note that a
-        batch can carry ModuleIDs and still hold nothing: `ShardBatchIterator` keeps
-        every ModuleID when it splits a batch, so a Learner's shard can come out with
-        zero rows for each of them.
+        ANY module has no timesteps to train on.
+        That covers a batch that is empty outright (all sampled episodes lost to
+        EnvRunner or node failures) and one that still carries its ModuleIDs
+        with nothing under them.
 
         Override to add conditions, based on any information available on this
         Learner -- it need not be consistent across Learners. In a multi-Learner
@@ -1390,8 +1389,12 @@ class Learner(Checkpointable):
         Returns:
             True to skip this update.
         """
-        return not any(
-            len(module_batch) for module_batch in batch.policy_batches.values()
+        return (
+            min(
+                (len(module_batch) for module_batch in batch.policy_batches.values()),
+                default=0,
+            )
+            == 0
         )
 
     def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:

@@ -386,6 +386,14 @@ class TestLearner(unittest.TestCase):
             env_steps=0,
         )
         self.assertTrue(learner._should_skip_update(empty_module_batch))
+        partly_empty_batch = MultiAgentBatch(
+            {
+                DEFAULT_MODULE_ID: SampleBatch({"obs": np.zeros((64, 4), np.float32)}),
+                "other_module": SampleBatch({"obs": np.zeros((0, 4), np.float32)}),
+            },
+            env_steps=64,
+        )
+        self.assertTrue(learner._should_skip_update(partly_empty_batch))
         reader = get_cartpole_dataset_reader(batch_size=64)
         self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))
         for plan in (

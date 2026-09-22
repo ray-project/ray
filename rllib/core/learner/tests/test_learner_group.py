@@ -338,6 +338,26 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 128, with_data[ALL_MODULES][LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME]
             )
 
+            # The same, but with `minibatch_size` set and the starved Learner handed a
+            # batch that still carries its ModuleIDs with no rows under them -- what
+            # `ShardBatchIterator` produces when there is not enough data to give every
+            # Learner a row.
+            before = weights()
+            with_data, starved = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(128), fake_batch(0)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                )
+            )
+            check(before, weights())
+            self.assertEqual(
+                1, starved[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+            )
+            self.assertEqual(
+                1, with_data[ALL_MODULES][LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME]
+            )
+
             # Both Learners have data, but unequal amounts of it. On their own they
             # would step through ceil(256/32) = 8 and ceil(64/32) = 2 minibatches;
             # the group settles on the average, 5, and stays in sync.
