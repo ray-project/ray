@@ -60,6 +60,12 @@ const (
 	LanguageGo Language = 3
 )
 
+// ConstructorName is the reserved method name of an actor constructor
+// descriptor, matching Java's FunctionManager.CONSTRUCTOR_NAME. It lets the
+// actor execution path distinguish actor construction from regular actor
+// method calls.
+const ConstructorName = "<init>"
+
 // GoFunctionDescriptor implements FunctionDescriptor for Go functions.
 //
 // This struct contains all information needed to identify and load a Go function
@@ -296,11 +302,108 @@ func (f *GoFunctionDescriptor) String() string {
 	return fmt.Sprintf("%s.%s", f.ModuleName, f.FunctionName)
 }
 
+// PythonFunctionDescriptor implements FunctionDescriptor for Python functions.
+//
+// This struct contains all information needed to identify and load a Python
+// function in worker processes. The descriptor is serialized and sent with
+// task specs.
+type PythonFunctionDescriptor struct {
+	// ModuleName is the Python module path (e.g., "my_module" or "package.submodule").
+	ModuleName string
+	// ClassName is the optional class name for Python class methods (e.g., "Calculator").
+	// Empty for module-level functions.
+	ClassName string
+	// FunctionName is the name of the function (e.g., "add").
+	FunctionName string
+	// FunctionHash is the optional function hash used for cache invalidation.
+	FunctionHash string
+}
+
+// NewPythonFunctionDescriptor creates a new PythonFunctionDescriptor.
+//
+// Parameters:
+//   - moduleName: The Python module path (e.g., "my_module"). Required.
+//   - className: The Python class name for class methods. Empty for module-level functions.
+//   - functionName: The Python function name (e.g., "add"). Required.
+//   - functionHash: Optional function hash for cache invalidation.
+//
+// Returns:
+//   - *PythonFunctionDescriptor: The created function descriptor.
+//   - error: An error if validation fails.
+func NewPythonFunctionDescriptor(moduleName, className, functionName, functionHash string) (*PythonFunctionDescriptor, error) {
+	if moduleName == "" {
+		return nil, fmt.Errorf("module name is required")
+	}
+	if !isValidPythonModuleName(moduleName) {
+		return nil, fmt.Errorf("invalid module name '%s': must contain only letters, digits, underscores, and dots", moduleName)
+	}
+	if functionName == "" {
+		return nil, fmt.Errorf("function name is required")
+	}
+	if !isValidFunctionName(functionName) {
+		return nil, fmt.Errorf("invalid function name '%s': must start with letter/underscore and contain only letters, digits, and underscores", functionName)
+	}
+	if className != "" && !isValidFunctionName(className) {
+		return nil, fmt.Errorf("invalid class name '%s': must start with letter/underscore and contain only letters, digits, and underscores", className)
+	}
+
+	return &PythonFunctionDescriptor{
+		ModuleName:   moduleName,
+		ClassName:    className,
+		FunctionName: functionName,
+		FunctionHash: functionHash,
+	}, nil
+}
+
+// ToList returns a list of strings that uniquely identifies the function.
+// Format: [moduleName, className, functionName, functionHash]
+// This matches the 4-element format expected by C++ FunctionDescriptorBuilder::FromVector.
+func (f *PythonFunctionDescriptor) ToList() []string {
+	return []string{f.ModuleName, f.ClassName, f.FunctionName, f.FunctionHash}
+}
+
+// GetLanguage returns the language of the function (LanguagePython).
+func (f *PythonFunctionDescriptor) GetLanguage() Language {
+	return LanguagePython
+}
+
+// Hash returns a hash code for the function descriptor.
+func (f *PythonFunctionDescriptor) Hash() int {
+	return hashStrings(f.ModuleName, f.ClassName, f.FunctionName, f.FunctionHash)
+}
+
+// isValidPythonModuleName validates a Python module name.
+// A valid Python module name may contain letters, digits, underscores, and dots
+// (dots separate package components, e.g., "numpy.linalg").
+func isValidPythonModuleName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.') {
+			return false
+		}
+	}
+	return true
+}
+
 // hashString computes a simple hash for a string.
 func hashString(s string) int {
 	h := 0
 	for i := 0; i < len(s); i++ {
 		h = h*31 + int(s[i])
+	}
+	return h
+}
+
+// hashStrings combines the given fields into a single hash code using the same
+// 17/31 rolling scheme as hashString. It is shared by GoFunctionDescriptor and
+// PythonFunctionDescriptor so the hashing algorithm stays in sync.
+func hashStrings(fields ...string) int {
+	h := 17
+	for _, field := range fields {
+		h = h*31 + hashString(field)
 	}
 	return h
 }

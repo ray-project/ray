@@ -86,6 +86,54 @@ class ObjectStoreOperations {
                  const std::shared_ptr<ray::RayObject> &object);
 
   /**
+   * Create a writable buffer for a new object with an owned reference.
+   * The ObjectID is derived by the core worker.
+   * @param metadata Object metadata buffer
+   * @param data_size Size of the object payload to write
+   * @param owner_address Owner address; not forwarded (see the implementation)
+   * @param object_id Output ObjectID
+   * @param data Output writable buffer
+   * @throws std::exception on failure
+   */
+  void CreateOwned(const std::shared_ptr<ray::Buffer> &metadata,
+                   size_t data_size,
+                   std::unique_ptr<ray::rpc::Address> owner_address,
+                   ray::ObjectID *object_id,
+                   std::shared_ptr<ray::Buffer> *data);
+
+  /**
+   * Create a writable buffer for a caller-supplied ObjectID.
+   * Not supported in local mode (throws std::logic_error).
+   * @param metadata Object metadata buffer
+   * @param data_size Size of the object payload to write
+   * @param object_id The caller-supplied ObjectID
+   * @param data Output writable buffer
+   * @throws std::exception on failure
+   */
+  void CreateExisting(const std::shared_ptr<ray::Buffer> &metadata,
+                      size_t data_size,
+                      const ray::ObjectID &object_id,
+                      std::shared_ptr<ray::Buffer> *data);
+
+  /**
+   * Seal an object created by CreateOwned.
+   * @param object_id The ObjectID
+   * @param owner_address Owner address; not forwarded (see the implementation)
+   * @throws std::exception on failure
+   */
+  void SealOwned(const ray::ObjectID &object_id,
+                 std::unique_ptr<ray::rpc::Address> owner_address);
+
+  /**
+   * Seal an object created by CreateExisting.
+   * @param object_id The ObjectID
+   * @param owner_address Owner address (may be null)
+   * @throws std::exception on failure
+   */
+  void SealExisting(const ray::ObjectID &object_id,
+                    std::unique_ptr<ray::rpc::Address> owner_address);
+
+  /**
    * Get objects from the object store.
    * @param ids Vector of ObjectIDs to retrieve
    * @param timeout_ms Timeout in milliseconds (-1 for infinite)

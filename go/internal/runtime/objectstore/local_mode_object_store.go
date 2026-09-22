@@ -15,7 +15,6 @@
 package objectstore
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -54,15 +53,13 @@ func WithCheckIntervalMs(interval int64) LocalModeOption {
 // Deprecated: Use LocalModeOption instead.
 type LocalModeObjectStoreOption = LocalModeOption
 
-// WithDeepCopy controls whether PutRawWithID and GetRaw perform deep copying.
-// Default is true for safety. Set to false only if caller guarantees no mutation.
-//
-// WARNING: Disabling deep copy can cause data races if the caller modifies
-// the original slice after Put or before Get returns.
+// WithDeepCopy is retained for API compatibility but has no effect: local mode
+// always uses reference semantics (shared underlying arrays) aligned with
+// Java's LocalModeObjectStore. Callers must not mutate the Data/Metadata/
+// ContainedObjectIds slices after Put.
 func WithDeepCopy(enabled bool) LocalModeOption {
 	return func(s *LocalModeObjectStore) {
-		// This option is kept for API compatibility but deep copy is always
-		// performed in local mode for safety. Use GetRawReadOnly for read-only access.
+		// No-op: reference semantics are always used in local mode.
 	}
 }
 
@@ -120,13 +117,15 @@ func (l *LocalModeObjectStore) PutRawWithOwner(obj *object.NativeRayObject, owne
 
 // PutRawWithID stores the object with the specified ObjectID.
 //
-// This method performs deep copying to prevent:
-// 1. External modifications to stored data
-// 2. Buffer reuse issues when caller invokes Close()
-// 3. Data races in concurrent scenarios
+// Uses reference semantics aligned with Java's LocalModeObjectStore: the stored
+// object shares the caller's underlying arrays (O(1) slice-header copy) and
+// Get returns the same reference with zero copy. Ownership of pool-allocated
+// buffers is transferred to the store via ReleasePoolOwnership on both the
+// stored object and the caller's object, so neither Close() returns the shared
+// buffer to the pool (the caller's defer Close() would otherwise undo the
+// transfer if local mode ever enables the buffer pool).
 //
-// For performance-critical scenarios with large objects, consider using
-// NativeObjectStore which uses zero-copy strategies with runtime.Pinner.
+// Callers must not mutate the Data/Metadata/ContainedObjectIds slices after Put.
 func (l *LocalModeObjectStore) PutRawWithID(obj *object.NativeRayObject, objectID *ids.ObjectID) error {
 	if obj == nil {
 		return fmt.Errorf("object cannot be nil")
@@ -139,16 +138,22 @@ func (l *LocalModeObjectStore) PutRawWithID(obj *object.NativeRayObject, objectI
 	// Store the object (only if not already present, like Java's putIfAbsent)
 	var needCallback bool
 	if _, exists := l.store[*objectID]; !exists {
-		// Create a deep copy to prevent external modifications and
-		// buffer reuse issues when the caller invokes Close().
-		// Deep copy ensures each caller has independent data.
-		containedIDs := make([][]byte, len(obj.ContainedObjectIds))
-		copy(containedIDs, obj.ContainedObjectIds)
-		l.store[*objectID] = &object.NativeRayObject{
-			Data:               bytes.Clone(obj.Data),
-			Metadata:           bytes.Clone(obj.Metadata),
-			ContainedObjectIds: containedIDs,
+		// Reference semantics aligned with Java's LocalModeObjectStore: store a
+		// distinct struct sharing the caller's underlying arrays (O(1) slice-header
+		// copy). The caller shares those arrays via stored, so both the stored
+		// object and the caller's object must give up pool ownership; otherwise the
+		// caller's Close() would return the shared buffer to the pool and pool reuse
+		// could invalidate the stored reference (relevant if local mode ever
+		// enables the buffer pool). ReleasePoolOwnership is a no-op for
+		// non-pool-allocated buffers, so ordinary objects are unaffected.
+		stored := &object.NativeRayObject{
+			Data:               obj.Data,
+			Metadata:           obj.Metadata,
+			ContainedObjectIds: obj.ContainedObjectIds,
 		}
+		stored.ReleasePoolOwnership()
+		obj.ReleasePoolOwnership()
+		l.store[*objectID] = stored
 		needCallback = true
 		// Notify waiting goroutines that object is ready
 		l.cond.Broadcast()
@@ -166,6 +171,31 @@ func (l *LocalModeObjectStore) PutRawWithID(obj *object.NativeRayObject, objectI
 		}
 	}
 	return nil
+}
+
+// CreateOwned allocates a writable buffer in the object store for a new object.
+// Not supported in local mode (no plasma store).
+func (l *LocalModeObjectStore) CreateOwned(metadata *object.NativeRayObject, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
+	return nil, 0, 0, fmt.Errorf("CreateOwned is not implemented in local mode")
+}
+
+// SealOwned finalizes an object created by CreateOwned.
+// Not supported in local mode (no plasma store).
+func (l *LocalModeObjectStore) SealOwned(objectID *ids.ObjectID, handle uint64) error {
+	return fmt.Errorf("SealOwned is not implemented in local mode")
+}
+
+// CreateExisting allocates a writable buffer for a caller-supplied ObjectID.
+// Returns handle==0 in local mode so callers fall back to the existing
+// in-memory copy path.
+func (l *LocalModeObjectStore) CreateExisting(metadata *object.NativeRayObject, dataSize int, objectID *ids.ObjectID) (uintptr, uint64, error) {
+	return 0, 0, nil
+}
+
+// SealExisting finalizes an object created by CreateExisting.
+// Not supported in local mode (no plasma store).
+func (l *LocalModeObjectStore) SealExisting(objectID *ids.ObjectID, handle uint64) error {
+	return fmt.Errorf("SealExisting is not implemented in local mode")
 }
 
 // getRawInternal is the internal implementation for retrieving objects.
@@ -206,7 +236,10 @@ func (l *LocalModeObjectStore) getRawInternal(
 		}
 	}
 
-	// Retrieve objects with deep copy
+	// Retrieve objects with reference semantics (aligned with Java's getRaw):
+	// return a distinct struct sharing the stored object's underlying arrays so
+	// callers get zero-copy access while Close() on the returned object does not
+	// nil out the stored object's Data.
 	result := make([]*object.NativeRayObject, 0, len(objectIDs))
 	for _, oid := range objectIDs {
 		l.mu.RLock()
@@ -214,19 +247,24 @@ func (l *LocalModeObjectStore) getRawInternal(
 		l.mu.RUnlock()
 
 		if exists {
-			containedIDs := make([][]byte, len(obj.ContainedObjectIds))
-			copy(containedIDs, obj.ContainedObjectIds)
 			result = append(result, &object.NativeRayObject{
-				Data:               bytes.Clone(obj.Data),
-				Metadata:           bytes.Clone(obj.Metadata),
-				ContainedObjectIds: containedIDs,
+				Data:               obj.Data,
+				Metadata:           obj.Metadata,
+				ContainedObjectIds: obj.ContainedObjectIds,
 			})
 		}
 	}
 	return result, nil
 }
 
-// GetRaw retrieves objects by their IDs.
+// GetRaw retrieves objects by their IDs with reference semantics: the returned
+// objects share the same underlying arrays as the stored objects.
+//
+// WARNING: Callers MUST NOT mutate the returned Data, Metadata, or
+// ContainedObjectIds slices. Violating this can cause data corruption and race
+// conditions. The returned struct is a shallow copy distinct from the stored
+// object, so calling Close() on it is safe and does not affect the stored
+// object.
 func (l *LocalModeObjectStore) GetRaw(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*object.NativeRayObject, error) {
 	return l.getRawInternal(objectIDs, timeoutMs, objectType, nil)
 }
@@ -255,7 +293,8 @@ func (l *LocalModeObjectStore) GetRawWithContext(ctx context.Context, objectIDs 
 // 2. Performance is critical and GC pressure from deep copying is a concern
 // 3. You can guarantee no mutation of returned slices
 //
-// For general use, prefer GetRaw which provides safe deep copying.
+// GetRaw and GetRawReadOnly share the same reference semantics; GetRawReadOnly
+// exists for callers that want to be explicit about read-only access.
 func (l *LocalModeObjectStore) GetRawReadOnly(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*object.NativeRayObject, error) {
 	// Wait for objects to be ready
 	l.waitForObjects(objectIDs, len(objectIDs), timeoutMs)

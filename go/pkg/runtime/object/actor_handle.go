@@ -47,6 +47,17 @@ type ActorOwnerAddress struct {
 	WorkerID  string `msgpack:"worker_id"`
 }
 
+// NewNativeActorHandle creates a NativeActorHandle for an actor of the given
+// language. The handle ID is derived from the actor ID, so a handle created
+// here serializes identically to one received from another language runtime.
+func NewNativeActorHandle(actorID ids.ActorID, language Language) *NativeActorHandle {
+	return &NativeActorHandle{
+		ActorID:       actorID,
+		Language:      language,
+		ActorHandleID: ids.ObjectIDForActorHandle(actorID),
+	}
+}
+
 // ID returns the actor ID.
 // This method implements the submitter.ActorHandle interface.
 func (h *NativeActorHandle) ID() ids.ActorID {

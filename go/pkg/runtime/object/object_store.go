@@ -47,6 +47,24 @@ type ObjectStore interface {
 	// PutRawWithID stores the object with the specified ObjectID.
 	PutRawWithID(obj *NativeRayObject, objectID *ids.ObjectID) error
 
+	// CreateOwned allocates a writable buffer in the object store for a new
+	// object (the ObjectID is derived by the core worker). It returns the derived
+	// ObjectID, a direct write pointer, and a handle owning the buffer. The caller
+	// must WriteData then SealOwned; on any failure before Seal it must release
+	// the handle.
+	CreateOwned(metadata *NativeRayObject, dataSize int) (*ids.ObjectID, uintptr, uint64, error)
+
+	// SealOwned finalizes an object created by CreateOwned.
+	SealOwned(objectID *ids.ObjectID, handle uint64) error
+
+	// CreateExisting allocates a writable buffer for a caller-supplied ObjectID.
+	// Returns (writePtr, handle, err). handle==0 means the object either already
+	// exists or local mode requires a fallback; callers fall back to the copy path.
+	CreateExisting(metadata *NativeRayObject, dataSize int, objectID *ids.ObjectID) (uintptr, uint64, error)
+
+	// SealExisting finalizes an object created by CreateExisting.
+	SealExisting(objectID *ids.ObjectID, handle uint64) error
+
 	// GetRaw retrieves objects by their IDs with type information.
 	// The objectType is used for type-safe deserialization, similar to Java's ObjectStore.get(objectType).
 	GetRaw(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*NativeRayObject, error)

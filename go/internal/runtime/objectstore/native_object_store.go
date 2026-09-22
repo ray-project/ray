@@ -39,6 +39,17 @@ typedef struct {
 	int count;
 } CWaitResult;
 
+// CObjectCreateResult - zero-copy Create result. Mirrors native_object_store.h.
+// It hands the caller a direct write pointer into the object-store buffer plus a
+// handle owning a std::shared_ptr<ray::Buffer>. The caller must write the
+// payload into data and then Seal the object; on any failure before Seal it must
+// call CObjectStore_ReleaseBuffer(handle).
+typedef struct {
+	uint8_t* data;
+	int size;
+	uint64_t buffer_handle;
+} CObjectCreateResult;
+
 // C++ side function declarations.
 CObjectReference CObjectStore_Put(const char* data, int data_size,
                                    const char* metadata, int metadata_size,
@@ -66,6 +77,22 @@ void CObjectStore_FreeObjectReference(CObjectReference ref);
 void CObjectStore_FreeObjectArray(CObjectArray* array);
 void CObjectStore_FreeWaitResult(CWaitResult result);
 void CObjectStore_FreeString(char* str);
+void CObjectStore_ReleaseBuffer(uint64_t buffer_handle);
+
+// Zero-copy Create/Write/Seal APIs
+int CObjectStore_CreateOwned(const char* metadata, int metadata_size, int data_size,
+                             const char* owner_address, int owner_address_size,
+                             char** out_object_id, int* out_object_id_size,
+                             CObjectCreateResult* out_result);
+int CObjectStore_CreateExisting(const char* metadata, int metadata_size, int data_size,
+                                const char* object_id_data, int object_id_size,
+                                CObjectCreateResult* out_result);
+int CObjectStore_WriteData(uint64_t buffer_handle, uint8_t* data_ptr,
+                           const char* src, int src_size);
+int CObjectStore_SealOwned(const char* object_id_data, int object_id_size,
+                           const char* owner_address, int owner_address_size);
+int CObjectStore_SealExisting(const char* object_id_data, int object_id_size,
+                              const char* owner_address, int owner_address_size);
 */
 import "C"
 import (
@@ -153,6 +180,144 @@ func cgoObjectIDArray(objectIDs []*ids.ObjectID) ([]*C.char, []C.int, func()) {
 	}
 }
 
+// releasePlasmaBuffer releases a buffer handle returned by a zero-copy Create
+// call, allowing the backing memory to be reclaimed. Releasing a zero handle is
+// a no-op.
+func releasePlasmaBuffer(handle uint64) {
+	C.CObjectStore_ReleaseBuffer(C.uint64_t(handle))
+}
+
+// nativeCreateOwned calls C++ CreateOwnedAndIncrementLocalRef and returns the
+// derived ObjectID, the direct write pointer, and a buffer handle owning the
+// shared_ptr<Buffer>. The caller must WriteData then SealOwned, or ReleaseBuffer
+// on any failure.
+func (n *NativeObjectStore) nativeCreateOwned(metadata, ownerAddress []byte, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
+	metadataPtr, metadataSize, metadataPinner := cgoByteSlice(metadata)
+	defer metadataPinner.Unpin()
+
+	ownerPtr, ownerSize, ownerPinner := cgoByteSlice(ownerAddress)
+	defer ownerPinner.Unpin()
+
+	var cObjectID *C.char
+	var cObjectIDSize C.int
+	var cResult C.CObjectCreateResult
+
+	rc := C.CObjectStore_CreateOwned(
+		metadataPtr, metadataSize, C.int(dataSize),
+		ownerPtr, ownerSize,
+		&cObjectID, &cObjectIDSize,
+		&cResult,
+	)
+	if rc != 0 {
+		if cObjectID != nil {
+			C.free(unsafe.Pointer(cObjectID))
+		}
+		return nil, 0, 0, fmt.Errorf("CObjectStore_CreateOwned failed with error code: %d", rc)
+	}
+
+	// Transfer ownership of the buffer handle to the caller; the C++ layer
+	// keeps the shared_ptr alive until CObjectStore_ReleaseBuffer is called.
+	objectIDBinary := C.GoBytes(unsafe.Pointer(cObjectID), cObjectIDSize)
+	C.free(unsafe.Pointer(cObjectID))
+	objectID, err := ids.ObjectIDFromBinary(objectIDBinary)
+	if err != nil {
+		releasePlasmaBuffer(uint64(cResult.buffer_handle))
+		return nil, 0, 0, fmt.Errorf("failed to create ObjectID from binary: %w", err)
+	}
+	return &objectID, uintptr(unsafe.Pointer(cResult.data)), uint64(cResult.buffer_handle), nil
+}
+
+// nativeCreateExisting calls C++ CreateExisting for a caller-supplied ObjectID.
+// Returns (writePtr, handle, error).
+//
+// The C++ contract collapses BOTH local-mode NotImplemented and an object that
+// already exists in plasma to an all-zero result (buffer_handle==0, data==NULL,
+// size==0): local mode throws std::logic_error (returning a zeroed result) and
+// plasma-store Create folds ObjectExists to Status::OK() with *data==nullptr.
+// The shim therefore maps any handle==0 result to exists=false, and the caller
+// falls back to the idempotent copy path (ObjectExists is folded to OK in
+// plasma_store_provider.cc), so functional correctness is unaffected.
+func (n *NativeObjectStore) nativeCreateExisting(metadata []byte, dataSize int, objectID *ids.ObjectID) (uintptr, uint64, error) {
+	metadataPtr, metadataSize, metadataPinner := cgoByteSlice(metadata)
+	defer metadataPinner.Unpin()
+
+	cObjectID, cObjectIDSize, cleanupObjectID := cgoBytes(objectID.Binary())
+	defer cleanupObjectID()
+
+	var cResult C.CObjectCreateResult
+	rc := C.CObjectStore_CreateExisting(
+		metadataPtr, metadataSize, C.int(dataSize),
+		cObjectID, cObjectIDSize,
+		&cResult,
+	)
+	if rc != 0 {
+		return 0, 0, fmt.Errorf("CObjectStore_CreateExisting failed with error code: %d", rc)
+	}
+	if cResult.buffer_handle == 0 && cResult.data == nil && cResult.size == 0 {
+		// Local-mode NotImplemented or object already exists in plasma (both
+		// collapse to an all-zero result). Caller falls back to the existing
+		// LocalMemoryBuffer(copy_data=true) / idempotent copy path.
+		return 0, 0, nil
+	}
+	return uintptr(unsafe.Pointer(cResult.data)), uint64(cResult.buffer_handle), nil
+}
+
+// nativeWriteData copies src into the object-store buffer at writePtr.
+func (n *NativeObjectStore) nativeWriteData(handle uint64, writePtr uintptr, src []byte) error {
+	if handle == 0 {
+		return fmt.Errorf("nativeWriteData: null handle")
+	}
+	if writePtr == 0 {
+		return fmt.Errorf("nativeWriteData: null write pointer")
+	}
+	srcPtr, srcSize, srcPinner := cgoByteSlice(src)
+	defer srcPinner.Unpin()
+
+	rc := C.CObjectStore_WriteData(
+		C.uint64_t(handle),
+		(*C.uint8_t)(unsafe.Pointer(writePtr)),
+		srcPtr, srcSize,
+	)
+	if rc != 0 {
+		return fmt.Errorf("CObjectStore_WriteData failed with error code: %d", rc)
+	}
+	return nil
+}
+
+// nativeSeal finalizes an object created by CreateOwned or CreateExisting.
+// Both Seal variants share the same cgoBytes/cgoByteSlice pinning and error
+// wrapping; the owned flag selects the C++ entry point.
+func (n *NativeObjectStore) nativeSeal(objectID *ids.ObjectID, ownerAddress []byte, owned bool) error {
+	cObjectID, cObjectIDSize, cleanupObjectID := cgoBytes(objectID.Binary())
+	defer cleanupObjectID()
+
+	ownerPtr, ownerSize, ownerPinner := cgoByteSlice(ownerAddress)
+	defer ownerPinner.Unpin()
+
+	op := "SealExisting"
+	var rc C.int
+	if owned {
+		op = "SealOwned"
+		rc = C.CObjectStore_SealOwned(cObjectID, cObjectIDSize, ownerPtr, ownerSize)
+	} else {
+		rc = C.CObjectStore_SealExisting(cObjectID, cObjectIDSize, ownerPtr, ownerSize)
+	}
+	if rc != 0 {
+		return fmt.Errorf("CObjectStore_%s failed with error code: %d", op, rc)
+	}
+	return nil
+}
+
+// nativeSealOwned finalizes an object created by nativeCreateOwned.
+func (n *NativeObjectStore) nativeSealOwned(objectID *ids.ObjectID, ownerAddress []byte) error {
+	return n.nativeSeal(objectID, ownerAddress, true)
+}
+
+// nativeSealExisting finalizes an object created by nativeCreateExisting.
+func (n *NativeObjectStore) nativeSealExisting(objectID *ids.ObjectID, ownerAddress []byte) error {
+	return n.nativeSeal(objectID, ownerAddress, false)
+}
+
 type NativeObjectStore struct {
 	shutdownLock        *sync.RWMutex
 	resolveActorAddress func(context.Context, ids.ActorID) (*proto.Address, error)
@@ -197,6 +362,37 @@ func (n *NativeObjectStore) PutRawWithOwner(obj *object.NativeRayObject, ownerAc
 
 func (n *NativeObjectStore) PutRawWithID(obj *object.NativeRayObject, objectID *ids.ObjectID) error {
 	return n.nativePutWithID(objectID, obj)
+}
+
+func (n *NativeObjectStore) CreateOwned(metadata *object.NativeRayObject, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
+	return n.nativeCreateOwned(metadata.Metadata, nil, dataSize)
+}
+
+func (n *NativeObjectStore) SealOwned(objectID *ids.ObjectID, handle uint64) error {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
+	// C++ SealOwned does NOT release the shared_ptr buffer handle allocated by
+	// CreateOwned; the Go side must release it here to avoid leaking the write
+	// buffer. Releasing a zero handle is a no-op.
+	defer releasePlasmaBuffer(handle)
+	return n.nativeSealOwned(objectID, nil)
+}
+
+func (n *NativeObjectStore) CreateExisting(metadata *object.NativeRayObject, dataSize int, objectID *ids.ObjectID) (uintptr, uint64, error) {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
+	return n.nativeCreateExisting(metadata.Metadata, dataSize, objectID)
+}
+
+func (n *NativeObjectStore) SealExisting(objectID *ids.ObjectID, handle uint64) error {
+	n.cgoMu.Lock()
+	defer n.cgoMu.Unlock()
+	// C++ SealExisting does NOT release the shared_ptr buffer handle allocated
+	// by CreateExisting; release it here. Releasing a zero handle is a no-op.
+	defer releasePlasmaBuffer(handle)
+	return n.nativeSealExisting(objectID, nil)
 }
 
 func (n *NativeObjectStore) GetRaw(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*object.NativeRayObject, error) {
@@ -296,34 +492,67 @@ func (n *NativeObjectStore) nativePut(obj *object.NativeRayObject, ownerAddress 
 	n.cgoMu.Lock()
 	defer n.cgoMu.Unlock()
 
-	ownerAddrPtr, ownerAddrSize, ownerPinner := cgoByteSlice(ownerAddress)
-	defer ownerPinner.Unpin()
-
-	dataPtr, dataSize, dataPinner := cgoByteSlice(obj.Data)
-	defer dataPinner.Unpin()
-
-	metadataPtr, metadataSize, metadataPinner := cgoByteSlice(obj.Metadata)
-	defer metadataPinner.Unpin()
-
-	cResult := C.CObjectStore_Put(dataPtr, dataSize, metadataPtr, metadataSize, ownerAddrPtr, ownerAddrSize)
-	defer C.free(unsafe.Pointer(cResult.data))
-
-	if cResult.data == nil {
-		return nil, fmt.Errorf("CObjectStore_Put failed")
-	}
-
-	objectIDBinary := C.GoBytes(unsafe.Pointer(cResult.data), cResult.size)
-	objectID, err := ids.ObjectIDFromBinary(objectIDBinary)
+	objectID, writePtr, handle, err := n.nativeCreateOwned(obj.Metadata, ownerAddress, len(obj.Data))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create ObjectID from binary: %w", err)
+		return nil, err
 	}
-	return &objectID, nil
+
+	// data == nullptr: object already exists in plasma; Seal to finalize the
+	// OBJECT_IN_PLASMA entry without writing.
+	if handle == 0 {
+		if err := n.nativeSealOwned(objectID, ownerAddress); err != nil {
+			return nil, err
+		}
+		return objectID, nil
+	}
+
+	// Write the payload with a single memcpy into the object-store buffer.
+	if err := n.nativeWriteData(handle, writePtr, obj.Data); err != nil {
+		releasePlasmaBuffer(handle)
+		return nil, err
+	}
+
+	// SealOwned finalizes the object but does NOT release the shared_ptr buffer
+	// handle allocated by CreateOwned; release it here regardless to avoid a
+	// per-Put leak of the write buffer.
+	defer releasePlasmaBuffer(handle)
+	if err := n.nativeSealOwned(objectID, ownerAddress); err != nil {
+		return nil, err
+	}
+	return objectID, nil
 }
 
 func (n *NativeObjectStore) nativePutWithID(objectID *ids.ObjectID, obj *object.NativeRayObject) error {
 	n.cgoMu.Lock()
 	defer n.cgoMu.Unlock()
 
+	writePtr, handle, err := n.nativeCreateExisting(obj.Metadata, len(obj.Data), objectID)
+	if err != nil {
+		return err
+	}
+
+	// The current C++ contract returns an all-zero CreateExisting result for BOTH
+	// local-mode NotImplemented and an object that already exists in plasma; the
+	// Go shim maps both to handle==0. Both cases fall back to the existing
+	// idempotent copy path (ObjectExists is folded to OK in
+	// plasma_store_provider.cc), so functional correctness is unaffected.
+	if handle == 0 {
+		return n.nativePutWithIDFallback(objectID, obj)
+	}
+
+	if err := n.nativeWriteData(handle, writePtr, obj.Data); err != nil {
+		releasePlasmaBuffer(handle)
+		return err
+	}
+
+	// SealExisting does NOT release the Create-allocated handle; release it here.
+	defer releasePlasmaBuffer(handle)
+	return n.nativeSealExisting(objectID, nil)
+}
+
+// nativePutWithIDFallback preserves the pre-existing explicit-ID copy path for
+// local mode, where CreateExisting is not supported.
+func (n *NativeObjectStore) nativePutWithIDFallback(objectID *ids.ObjectID, obj *object.NativeRayObject) error {
 	cObjectIDData, cObjectIDSize, cleanupObjectID := cgoBytes(objectID.Binary())
 	defer cleanupObjectID()
 

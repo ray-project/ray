@@ -1,0 +1,51 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# actor_integration_driver exercises the stateful actor execution framework end
+# to end as a standalone driver binary, so it can be submitted via
+# `ray job submit`. It mirrors actor_integration_test.go but is a runnable main.
+#
+# Usage:
+#   bazel build //go/examples/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/examples/actor_integration_driver
+#   mkdir -p job_dir
+#   cp bazel-bin/go/examples/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/examples/actor_integration_driver_/actor_integration_driver job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./actor_integration_driver
+go_binary(
+    name = "actor_integration_driver",
+    embed = [":actor_integration_driver_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/examples/actor_integration_driver",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "actor_integration_driver_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/examples/actor_integration_driver",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/examples/userfuncs",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+    ],
+)

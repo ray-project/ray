@@ -152,6 +152,19 @@ class TaskSubmitterOperations {
       const TaskSubmitOptions &options);
 
   /**
+   * @brief Kill an actor from the driver side
+   *
+   * @param actor_id Target actor ID
+   * @param force_kill Whether to force kill (true = treat as a crash, fail
+   * pending tasks)
+   * @param no_restart Whether the actor should not be restarted
+   * @return Status of the kill operation
+   */
+  ray::Status KillActor(const ray::ActorID &actor_id,
+                        bool force_kill,
+                        bool no_restart);
+
+  /**
    * @brief Parse resources string to map
    *
    * @param resources_str Format: "CPU:2.0,GPU:1.0,memory:1073741824"

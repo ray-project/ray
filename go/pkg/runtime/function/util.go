@@ -16,6 +16,7 @@ package function
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -168,4 +169,26 @@ func SplitModuleAndPackage(s string) (moduleName, pkgPath string) {
 
 	// No domain-like component, use all as module
 	return s, ""
+}
+
+// DescriptorPartsFromType derives the type name, module name and package path
+// used to build function descriptors from a reflect.Type.
+//
+// Pointer layers are dereferenced to reach the concrete type. A missing type
+// name falls back to the type's String() representation, and a missing package
+// path falls back to "unknown".
+func DescriptorPartsFromType(t reflect.Type) (typeName, moduleName, packagePath string) {
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	typeName = t.Name()
+	if typeName == "" {
+		typeName = t.String()
+	}
+	packagePath = t.PkgPath()
+	if packagePath == "" {
+		packagePath = "unknown"
+	}
+	moduleName, packagePath = SplitModuleAndPackage(packagePath)
+	return typeName, moduleName, packagePath
 }

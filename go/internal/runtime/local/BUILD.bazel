@@ -14,16 +14,15 @@
 
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
+# Thin adapter for the pure-Go local mode runtime: the blank import of
+# local_mode is what registers the WorkerTypeLocal initializer with the api
+# layer, so this package needs no other dependency.
 go_library(
     name = "local",
     srcs = ["init.go"],
     importpath = "github.com/ray-project/ray/go/internal/runtime/local",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/internal/runtime/base",
         "//go/internal/runtime/local_mode",
-        "//go/pkg/options",
-        "//go/pkg/runtime/api",
-        "//go/pkg/runtime/contract",
     ],
 )

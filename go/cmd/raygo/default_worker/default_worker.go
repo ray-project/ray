@@ -88,7 +88,11 @@ Examples:
   raygo defaultworker --node-ip-address=192.168.1.100 --node-manager-port=6379 \
                 --store-socket=/tmp/ray/plasma --raylet-socket=/tmp/ray/raylet \
                 --gcs-address=192.168.1.100:6379`,
-	RunE: runWorker,
+	// The raylet appends shared flags (e.g. --ray-debugger-external) to every
+	// worker command regardless of language. Like the Java/C++ workers, ignore
+	// unknown flags instead of failing, so the worker survives new raylet flags.
+	FParseErrWhitelist: cobra.FParseErrWhitelist{UnknownFlags: true},
+	RunE:               runWorker,
 }
 
 func init() {

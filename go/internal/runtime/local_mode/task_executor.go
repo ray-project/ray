@@ -113,6 +113,40 @@ func (e *LocalModeTaskExecutor) ExecuteActorTask(
 	return results, execErr
 }
 
+// resolveByRefArgs materializes pass-by-reference arguments from the in-memory
+// object store into pass-by-value arguments. This mirrors the C++ local
+// dependency resolution (LocalDependencyResolver in
+// src/ray/core_worker/task_submission/dependency_resolver.cc) that inlines
+// by-ref arguments before task execution: cluster mode never hands a by-ref
+// FunctionArg to the Go worker, so function.DeserializeArgs must not see one in
+// local mode either. Without this, large arguments (>100KB, which
+// convertArgToFunctionArg passes by reference) fail deserialization and the
+// task's return object is never produced.
+//
+// The returned slices alias the object store's stored arrays (GetRaw uses
+// reference semantics) and stay owned by the store, so they must not be mutated
+// or released here.
+func (e *LocalModeTaskExecutor) resolveByRefArgs(args []function.FunctionArg) ([]function.FunctionArg, error) {
+	resolved := make([]function.FunctionArg, len(args))
+	for i, arg := range args {
+		if arg.ObjectRef == nil {
+			resolved[i] = arg
+			continue
+		}
+		nativeObjects, err := e.objectStore.GetRaw(
+			[]*ids.ObjectID{&arg.ObjectRef.ObjectID}, -1, "")
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve pass-by-reference argument %d: %w", i, err)
+		}
+		if len(nativeObjects) == 0 {
+			return nil, fmt.Errorf("pass-by-reference argument %d object %s not found",
+				i, arg.ObjectRef.ObjectID.Hex())
+		}
+		resolved[i] = function.NewFunctionArgByValue(nativeObjects[0].Data, nativeObjects[0].Metadata)
+	}
+	return resolved, nil
+}
+
 // executeFunction executes a function with the given arguments.
 func (e *LocalModeTaskExecutor) executeFunction(
 	functionDescriptor function.FunctionDescriptor,
@@ -130,8 +164,15 @@ func (e *LocalModeTaskExecutor) executeFunction(
 		return nil, fmt.Errorf("failed to get function: %w", err)
 	}
 
+	// Materialize pass-by-reference arguments before execution (mirrors the
+	// C++ LocalDependencyResolver) so DeserializeArgs only ever sees values.
+	resolvedArgs, err := e.resolveByRefArgs(args)
+	if err != nil {
+		return nil, err
+	}
+
 	// Execute the function - it will handle its own serialization/deserialization
-	results, err := rayFunc(args)
+	results, err := rayFunc(resolvedArgs)
 	if err != nil {
 		return nil, fmt.Errorf("function execution failed: %w", err)
 	}
@@ -173,6 +214,12 @@ func (e *LocalModeTaskExecutor) GetActorContextByID(actorID ids.ActorID) (*Local
 		return ctx.(*LocalActorContext), true
 	}
 	return nil, false
+}
+
+// RemoveActorContext removes the actor context for the given actor ID.
+// Called when an actor is killed or exits intentionally in local mode.
+func (e *LocalModeTaskExecutor) RemoveActorContext(actorID ids.ActorID) {
+	e.actorContexts.Delete(actorID)
 }
 
 // Compile-time check to ensure LocalModeTaskExecutor implements the expected interface

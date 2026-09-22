@@ -402,10 +402,9 @@ func wrapGoFunction(fn interface{}) function.Function {
 				return nil, fmt.Errorf("failed to serialize return value %d: %w", i, err)
 			}
 
-			results[i] = function.SerializedObject{
-				Data:     nativeObj.Data,
-				Metadata: nativeObj.Metadata, // Use metadata from serializer (automatically determined)
-			}
+			// SerializedObjectFromNative deep-copies the payload and returns the
+			// pooled buffer, so the task spec never aliases a recycled pool buffer.
+			results[i] = function.SerializedObjectFromNative(nativeObj)
 		}
 
 		return results, nil

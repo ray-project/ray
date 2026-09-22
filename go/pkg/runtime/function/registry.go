@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ray-project/ray/go/pkg/log"
 )
@@ -43,6 +44,10 @@ type FunctionRegistry struct {
 	mu        sync.RWMutex
 	functions map[string]FunctionEntry
 	readonly  bool // Prevent further registration after worker startup
+	// version advances on every registration; read lock-free via atomic so
+	// local-mode SubmitTask can check it on each submission without taking the
+	// registry lock.
+	version atomic.Uint64
 }
 
 // FunctionEntry represents a registered function.
@@ -101,8 +106,64 @@ func (r *FunctionRegistry) Register(fn interface{}) error {
 		descriptor: desc,
 		fn:         fn,
 	}
+	r.version.Add(1)
 
 	return nil
+}
+
+// RegisterActorClass registers an actor class constructor under the actor's
+// "<init>" descriptor, which is the key the worker looks up when it receives an
+// ACTOR_CREATION_TASK.
+//
+// Parameters:
+//   - actorType: The actor type name (e.g. "Counter").
+//   - moduleName: The module name (e.g. "github.com/example/app").
+//   - packagePath: The package path within the module.
+//   - constructorFn: The constructor factory. It must be a Go function whose
+//     first (or only) return value is the actor instance, e.g.
+//     `func() *MyActor` or `func(x int) *MyActor`. Any trailing error return
+//     value is treated as a construction failure.
+//
+// Returns:
+//   - error: An error if the descriptor or constructor is invalid.
+func (r *FunctionRegistry) RegisterActorClass(
+	actorType, moduleName, packagePath string,
+	constructorFn interface{},
+) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.readonly {
+		return fmt.Errorf("function registry is read-only, cannot register new functions")
+	}
+
+	funcValue := reflect.ValueOf(constructorFn)
+	if !funcValue.IsValid() || funcValue.Kind() != reflect.Func {
+		return fmt.Errorf("expected a constructor function, got %v", funcValue.Kind())
+	}
+
+	desc, err := NewGoActorMethodDescriptor(moduleName, packagePath, actorType, ConstructorName)
+	if err != nil {
+		return fmt.Errorf("failed to build actor constructor descriptor: %w", err)
+	}
+
+	key := desc.String()
+	log.Log.V(2).Info("RegisterActorClass: actor constructor registered",
+		"key", key, "desc", desc)
+	r.functions[key] = FunctionEntry{
+		descriptor: desc,
+		fn:         constructorFn,
+	}
+	r.version.Add(1)
+
+	return nil
+}
+
+// Version returns a monotonically increasing version that advances whenever a
+// function is (re)registered. Callers can use it as a dirty marker to avoid
+// re-listing the whole registry when nothing changed.
+func (r *FunctionRegistry) Version() uint64 {
+	return r.version.Load()
 }
 
 // Get retrieves a function by its descriptor.

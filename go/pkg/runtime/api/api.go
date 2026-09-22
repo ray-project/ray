@@ -18,6 +18,7 @@ package api
 
 import (
 	"fmt"
+	"reflect"
 	"sync/atomic"
 
 	"github.com/ray-project/ray/go/pkg/errors"
@@ -490,6 +491,55 @@ func RegisterFunction(fn interface{}) error {
 	return function.Registry.Register(fn)
 }
 
+// RegisterActorClass registers an actor class's constructor for remote actor
+// creation. This must be called before starting the worker so that a Go worker
+// knows how to construct actor instances when it receives an ACTOR_CREATION_TASK.
+//
+// Design notes:
+//  1. This is the Go counterpart of Java's implicit actor-class registration.
+//     Go has no runtime type lookup by name, so the constructor must be
+//     registered explicitly.
+//  2. The actor type (module/package/type name) must match the descriptor used
+//     by api.Actor when creating the actor, so that the worker can find the
+//     constructor from the task's function descriptor.
+//  3. The constructor is registered under the special method name "<init>".
+//
+// Parameters:
+//   - actorClass: the actor type. Either a pointer to the actor type (e.g.
+//     (*MyActor)(nil)) or a zero-value instance (e.g. &MyActor{}). Used to
+//     derive the actor's module/package/type name.
+//   - constructorFn: the constructor factory, e.g. `func() *MyActor` or
+//     `func(x int) *MyActor`. Its first return value is the actor instance.
+//
+// Returns:
+//   - error: if the actor class or constructor is invalid.
+//
+// Example usage:
+//
+//	func newCounter(start int) *Counter { return &Counter{value: start} }
+//	if err := api.RegisterActorClass((*Counter)(nil), newCounter); err != nil {
+//	    log.Fatal(err)
+//	}
+//	api.RunWorker()
+func RegisterActorClass(actorClass interface{}, constructorFn interface{}) error {
+	if actorClass == nil {
+		return fmt.Errorf("actor class cannot be nil")
+	}
+	if constructorFn == nil {
+		return fmt.Errorf("constructor function cannot be nil")
+	}
+
+	actorType := reflect.TypeOf(actorClass)
+	if actorType == nil {
+		return fmt.Errorf("cannot derive actor type from %v", actorClass)
+	}
+
+	typeName, modulePath, packagePath := function.DescriptorPartsFromType(actorType)
+
+	// Delegate to function.Registry.RegisterActorClass
+	return function.Registry.RegisterActorClass(typeName, modulePath, packagePath, constructorFn)
+}
+
 // GetRegisteredFunctions returns all registered functions.
 // This is called by go/internal/worker during worker startup to populate
 // the FunctionManager.
@@ -500,6 +550,14 @@ func RegisterFunction(fn interface{}) error {
 func GetRegisteredFunctions() ([]FunctionEntry, bool) {
 	entries, hasFuncs := function.Registry.ListEntries()
 	return entries, hasFuncs
+}
+
+// GetRegisteredFunctionsVersion returns the registry version, which advances
+// whenever a function is (re)registered. Local-mode runtimes use it as a dirty
+// marker: SubmitTask only re-synchronizes the FunctionManager when the version
+// changed since the last sync, instead of on every submission.
+func GetRegisteredFunctionsVersion() uint64 {
+	return function.Registry.Version()
 }
 
 // MarkRegistryReadonly marks the registry as readonly after worker startup.

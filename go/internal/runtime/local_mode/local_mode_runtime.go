@@ -79,7 +79,9 @@ func (lr *LocalModeRuntime) Start() error {
 		lr.objectStore,
 	)
 
-	// Create task submitter with executor
+	// Create task submitter with executor. The submitter shares the runtime's
+	// FunctionManager, so functions registered after Start are picked up when a
+	// task is submitted (see syncFunctionsFromRegistry).
 	lr.taskSubmitter = NewLocalModeTaskSubmitter(
 		lr.objectStore,
 		lr.workerContext,
@@ -93,6 +95,27 @@ func (lr *LocalModeRuntime) Start() error {
 			lr.taskSubmitter.onObjectPut(oid)
 		}
 	})
+
+	// Enable local mode serialization thresholds (100KB by-value threshold,
+	// aligned with Java's RayDevRuntime). Set once the runtime is assembled so
+	// the serializer picks the local-mode configuration on first use.
+	object.SetLocalMode(true)
+
+	// Register user functions already in the global registry so the first task
+	// submission does not re-sync an empty registry. Functions registered after
+	// Start (via api.Remote at call time) are picked up by task submission,
+	// which re-syncs only when the registry version advances.
+	//
+	// The version is captured before the sync and stored after it succeeds,
+	// mirroring syncFunctionsFromRegistry: if a function is registered
+	// concurrently while we sync, the stored version stays stale and the next
+	// submission re-syncs (idempotent) instead of permanently skipping the new
+	// function.
+	version := function.Registry.Version()
+	if err := registerUserFunctions(lr.functionMgr); err != nil {
+		return err
+	}
+	lr.taskSubmitter.lastSyncedVersion.Store(version)
 
 	return nil
 }

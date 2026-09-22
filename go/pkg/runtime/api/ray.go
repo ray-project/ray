@@ -360,3 +360,19 @@ func (r *Ray) InitializeWithJobConfigAndNetwork(
 		Network:    network,
 	})
 }
+
+// Internal returns the underlying runtime handle held by the api service
+// locator. It is the public escape hatch to the runtime singleton, mirroring
+// Java's Ray.internal() (which returns the RayRuntime directly).
+//
+// It returns the contract.RuntimeHandle (the dependency inversion boundary
+// abstraction) rather than the contract.Runtime itself; callers use
+// handle.Runtime() to obtain the runtime. Unlike tryGetHandle(), which reports
+// an uninitialized runtime through its ok result, Internal() panics.
+//
+// Panics:
+//   - if the runtime is not initialized - this is a public escape hatch and
+//     callers must ensure Init() has been called
+func Internal() contract.RuntimeHandle {
+	return getHandle()
+}

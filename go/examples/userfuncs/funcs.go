@@ -41,14 +41,65 @@ func (c *Counter) Inc() int {
 	return c.value
 }
 
+// goAdd is a simple addition helper registered as a remote task.
+func goAdd(x, y int) int {
+	return x + y
+}
+
+// goMultiply multiplies two integers.
+func goMultiply(x, y int) int {
+	return x * y
+}
+
+// goConcat concatenates two strings.
+func goConcat(a, b string) string {
+	return a + b
+}
+
+// goCompute performs a compound computation.
+func goCompute(x, y, z int) int {
+	return x*y + z
+}
+
+// GetGoAdd returns the goAdd function for direct use, without going through the
+// remote task mechanism.
+func GetGoAdd() func(int, int) int {
+	return goAdd
+}
+
+// GetGoMultiply returns the goMultiply function for direct use.
+func GetGoMultiply() func(int, int) int {
+	return goMultiply
+}
+
+// GetGoConcat returns the goConcat function for direct use.
+func GetGoConcat() func(string, string) string {
+	return goConcat
+}
+
+// GetGoCompute returns the goCompute function for direct use.
+func GetGoCompute() func(int, int, int) int {
+	return goCompute
+}
+
 // RegisterFunctions registers all user-defined functions with the runtime.
 func RegisterFunctions() error {
-	for _, fn := range []interface{}{Add, (*Counter).Inc} {
+	for _, fn := range []interface{}{
+		Add,
+		(*Counter).Inc,
+		goAdd,
+		goMultiply,
+		goConcat,
+		goCompute,
+		echoBytes,
+	} {
 		if err := api.RegisterFunction(fn); err != nil {
 			return err
 		}
 	}
-	return nil
+	// Register the actor constructor under the reserved "<init>" descriptor so
+	// a Go worker can build Counter instances (see actors.go).
+	return registerActors()
 }
 
 // init registers the functions when the package is imported (driver side) or

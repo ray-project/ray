@@ -1,0 +1,39 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# driver_call_python is a Ray Go driver that verifies Go -> Python
+# cross-language calls. Build it, then submit via
+# `ray job submit --working-dir . -- ./driver_call_python` together with
+# test_go_call_python.py in the working directory.
+go_binary(
+    name = "driver_call_python",
+    embed = [":driver_call_python_lib"],
+    importpath = "github.com/ray-project/ray/go/examples/driver_call_python",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "driver_call_python_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/examples/driver_call_python",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+    ],
+)

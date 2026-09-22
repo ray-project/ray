@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
 )
 
@@ -71,54 +70,4 @@ func (g *ObjectIDGenerator) GenerateObjectID() (*ids.ObjectID, error) {
 func (g *ObjectIDGenerator) GenerateObjectIDForTask(taskID ids.TaskID, index int) *ids.ObjectID {
 	objectID := ids.ObjectIDFromIndex(taskID, ids.ObjectIDIndexType(index))
 	return &objectID
-}
-
-// globalObjectIDGenerator is the global ObjectID generator.
-var globalObjectIDGenerator *ObjectIDGenerator
-
-// initObjectIDGenerator initializes the global ObjectID generator.
-func initObjectIDGenerator() error {
-	handle, ok := tryGetHandle()
-	if !ok || handle == nil {
-		return errors.ErrRuntimeNotInitialized
-	}
-
-	runtime := handle.Runtime()
-	if runtime == nil {
-		return fmt.Errorf("runtime instance not available")
-	}
-
-	workerCtx := runtime.WorkerContext()
-	if workerCtx == nil {
-		return fmt.Errorf("worker context not available")
-	}
-
-	globalObjectIDGenerator = NewObjectIDGenerator(workerCtx.GetCurrentJobID())
-	return nil
-}
-
-// generateObjectID uses the global generator to create an ObjectID.
-func generateObjectID() (*ids.ObjectID, error) {
-	if globalObjectIDGenerator == nil {
-		if err := initObjectIDGenerator(); err != nil {
-			return nil, err
-		}
-	}
-	return globalObjectIDGenerator.GenerateObjectID()
-}
-
-// GenerateObjectIDForTask generates an ObjectID for a specific task.
-// This is a convenience function that uses the global generator.
-func GenerateObjectIDForTask(taskID ids.TaskID, index int) *ids.ObjectID {
-	if globalObjectIDGenerator == nil {
-		// If not initialized, just create a random ObjectID
-		taskIDBytes := make([]byte, ids.TaskIDSize)
-		if _, err := rand.Read(taskIDBytes); err != nil {
-			// Fallback to zero task ID
-			taskID = ids.NilTaskID()
-		} else {
-			taskID, _ = ids.TaskIDFromBinary(taskIDBytes)
-		}
-	}
-	return globalObjectIDGenerator.GenerateObjectIDForTask(taskID, index)
 }

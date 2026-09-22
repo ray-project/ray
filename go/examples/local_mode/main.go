@@ -20,8 +20,8 @@ package main
 import (
 	"fmt"
 
-	_ "github.com/ray-project/ray/go/internal/runtime/local" // register LocalModeRuntime
 	"github.com/ray-project/ray/go/pkg/runtime/api"
+	_ "github.com/ray-project/ray/go/pkg/runtime/local" // register LocalModeRuntime
 )
 
 // add is a plain function that will be executed as a Ray task.

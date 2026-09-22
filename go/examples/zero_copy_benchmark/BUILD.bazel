@@ -1,0 +1,51 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+# zero_copy_benchmark measures the cross-process zero-copy Get path against a
+# real cluster. Build the plugin, copy both artifacts into a job dir, and submit
+# via `ray job submit` (see main.go usage comment).
+#
+#   bazel build //go/examples/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/examples/zero_copy_benchmark:zero_copy_benchmark
+#   mkdir -p job_dir
+#   cp bazel-bin/go/examples/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/examples/zero_copy_benchmark_/zero_copy_benchmark job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./zero_copy_benchmark
+go_binary(
+    name = "zero_copy_benchmark",
+    embed = [":zero_copy_benchmark_lib"],
+    importpath = "github.com/ray-project/ray/go/examples/zero_copy_benchmark",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "zero_copy_benchmark_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/examples/zero_copy_benchmark",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/examples/userfuncs",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
+    ],
+)
+
+go_test(
+    name = "zero_copy_benchmark_test",
+    srcs = ["main_test.go"],
+    embed = [":zero_copy_benchmark_lib"],
+)

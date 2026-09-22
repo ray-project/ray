@@ -316,3 +316,53 @@ extern "C" int CNativeTaskSubmitter_GetActor(const char *name,
     return 1;
   });
 }
+
+extern "C" int CNativeTaskSubmitter_KillActor(const char *actor_id_data,
+                                              int actor_id_size,
+                                              bool no_restart,
+                                              char **error_out) {
+  return CgoErrorHandler::Execute(
+      "CNativeTaskSubmitter_KillActor",
+      [&]() -> int {
+        // Always initialize the output so a caller that observes a failure
+        // without error_out never reads an uninitialized pointer.
+        if (error_out) {
+          *error_out = nullptr;
+        }
+        if (actor_id_data == nullptr || actor_id_size <= 0) {
+          RAY_LOG(ERROR) << "KillActor called with invalid actor ID";
+          if (error_out) {
+            *error_out = CgoTypeConverter::ToCString("invalid actor ID");
+          }
+          return 0;
+        }
+
+        // Parse actor ID
+        ray::ActorID actor_id =
+            ray::ActorID::FromBinary(std::string(actor_id_data, actor_id_size));
+        if (actor_id.IsNil()) {
+          RAY_LOG(ERROR) << "KillActor called with nil actor ID";
+          if (error_out) {
+            *error_out = CgoTypeConverter::ToCString("nil actor ID");
+          }
+          return 0;
+        }
+
+        RAY_LOG(DEBUG) << "KillActor called: actor_id=" << actor_id.Hex()
+                       << ", no_restart=" << no_restart;
+
+        // Kill via the CoreWorker. force_kill is always true to match the Java
+        // runtime semantics (kill == crash, pending tasks fail).
+        auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+        ray::Status status = ops.KillActor(actor_id, /*force_kill=*/true, no_restart);
+        if (!status.ok()) {
+          RAY_LOG(ERROR) << "KillActor failed: actor_id=" << actor_id.Hex()
+                         << ", status=" << status.ToString();
+          if (error_out) {
+            *error_out = CgoTypeConverter::ToCString(status.ToString());
+          }
+          return 0;
+        }
+        return 1;
+      });
+}

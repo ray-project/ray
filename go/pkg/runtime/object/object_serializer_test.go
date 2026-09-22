@@ -17,6 +17,7 @@ package object
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -259,6 +260,22 @@ func (m *mockObjectStore) PutRawWithOwner(obj *NativeRayObject, ownerActorID *id
 func (m *mockObjectStore) PutRawWithID(obj *NativeRayObject, objectID *ids.ObjectID) error {
 	m.objects[objectID.String()] = obj
 	return nil
+}
+
+func (m *mockObjectStore) CreateOwned(metadata *NativeRayObject, dataSize int) (*ids.ObjectID, uintptr, uint64, error) {
+	return nil, 0, 0, fmt.Errorf("CreateOwned is not implemented in mock")
+}
+
+func (m *mockObjectStore) SealOwned(objectID *ids.ObjectID, handle uint64) error {
+	return fmt.Errorf("SealOwned is not implemented in mock")
+}
+
+func (m *mockObjectStore) CreateExisting(metadata *NativeRayObject, dataSize int, objectID *ids.ObjectID) (uintptr, uint64, error) {
+	return 0, 0, nil
+}
+
+func (m *mockObjectStore) SealExisting(objectID *ids.ObjectID, handle uint64) error {
+	return fmt.Errorf("SealExisting is not implemented in mock")
 }
 
 func (m *mockObjectStore) GetRaw(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*NativeRayObject, error) {

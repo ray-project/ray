@@ -14,8 +14,10 @@
 
 # Minimal generated Go protos for the Go runtime local-mode closed loop.
 #
-# The genrule below unzips the go_grpc_compile outputs into declared .pb.go
+# The genrule below unzips the go_proto_compile outputs into declared .pb.go
 # files (hermetic), and go_library compiles them with package name "proto".
+# go_proto_compile emits messages only (no *_grpc.pb.go), so this library never
+# pulls the gRPC stack into go_runtime.so.
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
@@ -70,9 +72,6 @@ go_library(
     importpath = "github.com/ray-project/ray/go/proto",
     visibility = ["//visibility:public"],
     deps = [
-        "@org_golang_google_grpc//:go_default_library",
-        "@org_golang_google_grpc//codes",
-        "@org_golang_google_grpc//status",
         "@org_golang_google_protobuf//proto",
         "@org_golang_google_protobuf//reflect/protoreflect",
         "@org_golang_google_protobuf//runtime/protoimpl",

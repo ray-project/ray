@@ -73,8 +73,34 @@ func (s *RayExceptionSerializer) ToBytes(exception RayException) ([]byte, error)
 		TaskID:             taskID,
 	}
 
-	// Serialize the exception object itself
-	serialized, err := msgpack.Marshal(exception)
+	// Serialize the exception object itself. The exception structs use
+	// unexported fields (code, message, taskID, ...), which msgpack.Marshal
+	// drops entirely, so the round-trip would lose the concrete type (FromBytes
+	// falls back to a generic rayException). Build an exported map with the
+	// keys FromBytes' LanguageGo branch expects (see exceptionRegistry in
+	// exception.go) instead.
+	serializedFields := map[string]interface{}{
+		"error_code": exception.ErrorCode(),
+		"message":    formattedException,
+	}
+	if taskID != "" {
+		serializedFields["task_id"] = taskID
+	}
+	switch e := exception.(type) {
+	case *RayTaskExecutionException:
+		serializedFields["stack_trace"] = e.StackTrace()
+	case *RayIDException:
+		// Key names must match what idExceptionFactory reads on the FromBytes
+		// side (actor_id then object_id); a generic "id" key would be dropped
+		// on round-trip.
+		switch e.ErrorCode() {
+		case ErrorCodeActorDied, ErrorCodeActorUnavailable:
+			serializedFields["actor_id"] = e.id
+		default:
+			serializedFields["object_id"] = e.id
+		}
+	}
+	serialized, err := msgpack.Marshal(serializedFields)
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize exception: %w", err)
 	}
@@ -113,8 +139,12 @@ func (s *RayExceptionSerializer) FromBytes(data []byte) (RayException, error) {
 			}, nil
 		}
 
-		// Extract error code and use registry to create exception
-		errorCodeFloat, ok := rawData["error_code"].(float64)
+		// Extract error code and use registry to create exception. msgpack
+		// decodes small integers as the narrowest int type (e.g. int8 for 8),
+		// so accept every numeric variant rather than only float64; a failed
+		// assertion here silently downgraded exceptions to a generic
+		// rayException even though the code was present.
+		code, ok := toInt(rawData["error_code"])
 		if !ok {
 			// Fallback: create exception from formatted string
 			return &rayException{
@@ -123,7 +153,6 @@ func (s *RayExceptionSerializer) FromBytes(data []byte) (RayException, error) {
 			}, nil
 		}
 
-		code := int(errorCodeFloat)
 		if factory, exists := exceptionRegistry[code]; exists {
 			return factory(rawData), nil
 		}
@@ -146,6 +175,41 @@ func (s *RayExceptionSerializer) FromBytes(data []byte) (RayException, error) {
 		ActorID:        exceptionData.ActorID,
 		ObjectID:       exceptionData.ObjectID,
 	}, nil
+}
+
+// toInt converts a msgpack-decoded numeric value to an int. msgpack v5 decodes
+// integers as the narrowest fitting type (int8, int16, int32, int64, uint64,
+// float64), so a plain float64 type assertion misses most of them. Returns
+// (0, false) for non-numeric values.
+func toInt(v interface{}) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int8:
+		return int(n), true
+	case int16:
+		return int(n), true
+	case int32:
+		return int(n), true
+	case int64:
+		return int(n), true
+	case uint:
+		return int(n), true
+	case uint8:
+		return int(n), true
+	case uint16:
+		return int(n), true
+	case uint32:
+		return int(n), true
+	case uint64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	case float32:
+		return int(n), true
+	default:
+		return 0, false
+	}
 }
 
 // CrossLanguageException represents an exception from another language runtime.

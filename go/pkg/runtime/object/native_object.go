@@ -34,6 +34,14 @@ type NativeRayObject struct {
 	Data               []byte   // serialized object data
 	Metadata           []byte   // object metadata
 	ContainedObjectIds [][]byte // nested object IDs in binary format
+
+	// dataFromPool records whether Data was obtained from the buffer pool
+	// (GetBuffer). Close() only returns pool-allocated buffers via PutBuffer;
+	// non-pool buffers (msgpack output, bytes.Clone, C.GoBytes, caller-owned,
+	// or shared internal arrays) must be left to the GC instead of being pushed
+	// into the pool, where they would violate the pool's alignment and
+	// size-class accounting or be shared with other holders.
+	dataFromPool bool
 }
 
 // NewNativeRayObject creates a new NativeRayObject.
@@ -84,14 +92,46 @@ func (n *NativeRayObject) IsEmpty() bool {
 	return n == nil || (len(n.Data) == 0 && len(n.Metadata) == 0)
 }
 
+// MarkDataFromPool marks Data as pool-allocated (obtained from GetBuffer) so
+// that Close() returns it to the pool via PutBuffer. Call this only when Data
+// is a buffer obtained from GetBuffer; unmarked buffers are left to the GC.
+func (n *NativeRayObject) MarkDataFromPool() {
+	n.dataFromPool = true
+}
+
+// DataFromPool reports whether Data was marked as pool-allocated and will be
+// returned to the pool by Close().
+func (n *NativeRayObject) DataFromPool() bool {
+	return n != nil && n.dataFromPool
+}
+
+// ReleasePoolOwnership transfers ownership of the Data buffer away from the
+// buffer pool. After this call, Close() will not return Data to the pool via
+// PutBuffer; the buffer is left to the GC instead. This is used by local mode
+// to share the underlying array with the object store without risking pool
+// reuse invalidating the shared reference. Non-pool buffers are unaffected.
+func (n *NativeRayObject) ReleasePoolOwnership() {
+	if n == nil {
+		return
+	}
+	n.dataFromPool = false
+}
+
 // Close releases the buffer associated with this NativeRayObject back to the pool.
 // Callers should explicitly call Close() when done.
-// Implements io.Closer interface.
+// Implements io.Closer interface. Safe on a nil receiver (no-op).
 func (n *NativeRayObject) Close() error {
-	if n.Data != nil {
-		PutBuffer(n.Data)
-		n.Data = nil
+	if n == nil {
+		return nil
 	}
+	// Only return pool-allocated buffers to the pool. Returning non-pool
+	// buffers (msgpack output, bytes.Clone, C.GoBytes, caller-owned or shared
+	// arrays) would violate the pool's alignment/size-class guarantees and can
+	// push shared memory into the pool.
+	if n.Data != nil && n.dataFromPool {
+		PutBuffer(n.Data)
+	}
+	n.Data = nil
 	return nil
 }
 

@@ -293,23 +293,41 @@ func deserializeObjectRefFromPython(data []byte) (*SerializedObjectRef, error) {
 	}, nil
 }
 
-// convertToInt converts various numeric types to int.
-// Returns (0, false) if the value is not a numeric type.
-func convertToInt(v interface{}) (int, bool) {
-	switch val := v.(type) {
-	case int:
-		return val, true
-	case int64:
-		return int(val), true
-	case uint64:
-		return int(val), true
-	case float64:
-		return int(val), true
-	case int32:
-		return int(val), true
-	default:
-		return 0, false
+// parseOwnerAddress extracts an ActorOwnerAddress from a msgpack-decoded
+// "owner" value, which may be decoded as either map[string]interface{} or
+// map[interface{}]interface{}. Returns nil when the value is not a map.
+func parseOwnerAddress(ownerRaw interface{}) *ActorOwnerAddress {
+	var ownerData map[string]interface{}
+	switch v := ownerRaw.(type) {
+	case map[string]interface{}:
+		ownerData = v
+	case map[interface{}]interface{}:
+		ownerData = make(map[string]interface{})
+		for k, val := range v {
+			if keyStr, ok := k.(string); ok {
+				ownerData[keyStr] = val
+			}
+		}
 	}
+	if ownerData == nil {
+		return nil
+	}
+
+	owner := &ActorOwnerAddress{}
+	if ip, ok := ownerData["ip"].(string); ok {
+		owner.IPAddress = ip
+	}
+	// Handle port as different numeric types (msgpack may encode it as
+	// int, uint64, float64, int64, or any narrow int type).
+	if portVal, ok := ownerData["port"]; ok {
+		if port, ok := toInt(portVal); ok {
+			owner.Port = port
+		}
+	}
+	if workerID, ok := ownerData["worker_id"].(string); ok {
+		owner.WorkerID = workerID
+	}
+	return owner
 }
 
 // deserializeObjectRefFromGo deserializes a Go-serialized ObjectRef.
@@ -347,35 +365,7 @@ func deserializeObjectRefFromGo(data []byte) (*SerializedObjectRef, error) {
 	// Extract Owner address (optional).
 	var owner *ActorOwnerAddress
 	if ownerRaw, ok := rawData["owner"]; ok {
-		// Convert to map[string]interface{} if needed (msgpack may use map[interface{}]interface{})
-		var ownerData map[string]interface{}
-		switch v := ownerRaw.(type) {
-		case map[string]interface{}:
-			ownerData = v
-		case map[interface{}]interface{}:
-			ownerData = make(map[string]interface{})
-			for k, val := range v {
-				if keyStr, ok := k.(string); ok {
-					ownerData[keyStr] = val
-				}
-			}
-		}
-
-		if ownerData != nil {
-			owner = &ActorOwnerAddress{}
-			if ip, ok := ownerData["ip"].(string); ok {
-				owner.IPAddress = ip
-			}
-			// Handle port as different numeric types (msgpack may encode as int, uint64, float64, or int64)
-			if portVal, ok := ownerData["port"]; ok {
-				if port, ok := convertToInt(portVal); ok {
-					owner.Port = port
-				}
-			}
-			if workerID, ok := ownerData["worker_id"].(string); ok {
-				owner.WorkerID = workerID
-			}
-		}
+		owner = parseOwnerAddress(ownerRaw)
 	}
 
 	return &SerializedObjectRef{
@@ -455,44 +445,7 @@ func (o *SerializedObjectRef) UnmarshalMsgpack(data []byte) error {
 
 	// Extract Owner.
 	if ownerRaw, ok := raw["owner"]; ok {
-		// Convert to map[string]interface{} if needed (msgpack may use map[interface{}]interface{})
-		var ownerData map[string]interface{}
-		switch v := ownerRaw.(type) {
-		case map[string]interface{}:
-			ownerData = v
-		case map[interface{}]interface{}:
-			ownerData = make(map[string]interface{})
-			for k, val := range v {
-				if keyStr, ok := k.(string); ok {
-					ownerData[keyStr] = val
-				}
-			}
-		}
-
-		if ownerData != nil {
-			o.Owner = &ActorOwnerAddress{}
-			if ip, ok := ownerData["ip"].(string); ok {
-				o.Owner.IPAddress = ip
-			}
-			// Handle port as different numeric types (msgpack may encode as int, uint64, float64, or int64)
-			if portVal, ok := ownerData["port"]; ok {
-				switch p := portVal.(type) {
-				case int:
-					o.Owner.Port = p
-				case int64:
-					o.Owner.Port = int(p)
-				case uint64:
-					o.Owner.Port = int(p)
-				case float64:
-					o.Owner.Port = int(p)
-				case int32:
-					o.Owner.Port = int(p)
-				}
-			}
-			if workerID, ok := ownerData["worker_id"].(string); ok {
-				o.Owner.WorkerID = workerID
-			}
-		}
+		o.Owner = parseOwnerAddress(ownerRaw)
 	}
 
 	// Extract Language.

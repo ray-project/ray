@@ -252,6 +252,45 @@ func (s *NativeTaskSubmitter) GetActor(name string, namespace string) (submitter
 	}, nil
 }
 
+// KillActor kills an actor from the driver side.
+// This implementation calls CGO to invoke the C++ CoreWorker::KillActor with
+// force_kill fixed to true (matching the Java runtime semantics: kill equals a
+// crash, pending tasks fail).
+func (s *NativeTaskSubmitter) KillActor(actorID ids.ActorID, noRestart bool) error {
+	if actorID.IsNil() {
+		return fmt.Errorf("kill actor: actor ID is nil")
+	}
+
+	actorIDBinary := actorID.Binary()
+	var cError *C.char
+
+	success := C.CNativeTaskSubmitter_KillActor(
+		byteSlicePtr(actorIDBinary),
+		C.int(len(actorIDBinary)),
+		C.bool(noRestart),
+		&cError,
+	)
+
+	if cError != nil {
+		errMsg := C.GoString(cError)
+		C.free(unsafe.Pointer(cError))
+		return fmt.Errorf("kill actor failed: %s", errMsg)
+	}
+
+	if success == 0 {
+		return fmt.Errorf("kill actor CGO call failed")
+	}
+
+	return nil
+}
+
+// Compile-time check that NativeTaskSubmitter satisfies the structural
+// actorKiller capability probed by api.KillActor. Without it, a signature drift
+// would silently turn the public API back into a kill_actor_not_supported error.
+var _ interface {
+	KillActor(ids.ActorID, bool) error
+} = (*NativeTaskSubmitter)(nil)
+
 // convertTaskOptionsToC converts Go TaskOptions to C.CTaskOptions.
 func convertTaskOptionsToC(opts *submitter.TaskOptions) *C.CTaskOptions {
 	if opts == nil {

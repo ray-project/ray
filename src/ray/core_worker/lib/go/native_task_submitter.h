@@ -131,6 +131,22 @@ int CNativeTaskSubmitter_GetActor(const char *name,
                                   CByteArray **actor_id_out,
                                   char **error_out);
 
+// CNativeTaskSubmitter_KillActor kills an actor from the driver side.
+//
+// Parameters:
+//   actor_id_data - Binary data of actor ID
+//   actor_id_size - Size of actor ID binary data
+//   no_restart - Whether the actor should not be restarted (force_kill is always true)
+//   error_out - Output parameter: pointer to error message string (NULL on success)
+//
+// Returns:
+//   1 on success, 0 on failure.
+//   On failure, *error_out points to error message (caller must free).
+int CNativeTaskSubmitter_KillActor(const char *actor_id_data,
+                                   int actor_id_size,
+                                   bool no_restart,
+                                   char **error_out);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

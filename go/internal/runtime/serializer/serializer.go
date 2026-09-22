@@ -60,13 +60,20 @@ func (s *Serializer) Decode(data []byte, target interface{}) error {
 
 // Serialize serializes an object to NativeRayObject.
 // This method is the main entry point for serialization in the object package.
+//
+// Two-tier encoding strategy: when the estimated payload fits the tiered
+// buffer pool (<= MaxBufferSize), the payload is encoded into a pooled buffer.
+// Larger payloads are freshly allocated, matching Python msgpack.dumps / C++
+// msgpack::sbuffer semantics.
+//
+// Note: EstimateBufferSize is heuristic (structs default to 4KB and nested
+// []byte/string leaves are not counted recursively), so a struct/map wrapping
+// large byte fields may be under-estimated and routed to the pooled path,
+// where EncodeToBuffer grows the buffer via append. In that case the payload
+// no longer lives in the pooled buffer and is treated as a fresh allocation
+// instead (see below); the result is still correct, only slightly less optimal
+// than a single fresh allocation.
 func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
-	// Serialize to bytes using msgpack
-	data, err := s.msgpack.Encode(obj)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize object: %w", err)
-	}
-
 	// Determine metadata type based on object type
 	metadata := s.determineMetadata(obj)
 
@@ -79,12 +86,53 @@ func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
 		containedObjectIds[i] = id.Binary()
 	}
 
-	// Convert to NativeRayObject
-	return &NativeRayObject{
-		Data:               data,
+	// Two-tier encoding: pool-backed for small objects, fresh allocation for
+	// large ones (aligned with Python/C++/Java which always allocate fresh).
+	nativeObj := &NativeRayObject{
 		Metadata:           metadata,
 		ContainedObjectIds: containedObjectIds,
-	}, nil
+	}
+	est := EstimateBufferSize(obj)
+	if est <= MaxBufferSize {
+		buf := GetBuffer(est)
+		// Keep a reference to the pooled buffer. EncodeToBuffer appends into
+		// *buf; if the payload outgrows the pooled capacity, append reallocates
+		// and *buf points at a fresh (non-pool-aligned) array while the pooled
+		// buffer is dropped. Holding orig lets us still return the pooled
+		// buffer to the pool (slot + accounting) in that case.
+		orig := buf
+		if err := s.msgpack.EncodeToBuffer(obj, &buf); err != nil {
+			PutBuffer(orig)
+			return nil, fmt.Errorf("failed to serialize object: %w", err)
+		}
+		nativeObj.Data = buf
+		if cap(buf) != cap(orig) {
+			// Under-estimated: the payload no longer lives in the pooled
+			// buffer. Return the original pooled buffer via orig so the pool
+			// slot and its accounting are preserved, and treat the grown
+			// payload as a fresh allocation: it is not marked pool-allocated,
+			// so Close() leaves it to the GC.
+			PutBuffer(orig)
+		} else {
+			// The payload lives in the pooled buffer (or a slice of it), so
+			// mark it pool-allocated for Close() to return it to the pool.
+			nativeObj.MarkDataFromPool()
+		}
+	} else {
+		// Large objects: allocate a single fresh buffer and encode into it,
+		// avoiding the bytes.Buffer growth + make/copy double buffer inside
+		// Encode, so large-object Put is one encoding copy + one memcpy into the
+		// object store (matching Python msgpack.dumps / C++ msgpack::sbuffer).
+		// Kept out of the pool (fresh allocation per call, like the other
+		// runtimes); the estimate already carries 10-20% msgpack overhead.
+		buf := make([]byte, MessagePackOffset, est)
+		if err := s.msgpack.EncodeToBuffer(obj, &buf); err != nil {
+			return nil, fmt.Errorf("failed to serialize object: %w", err)
+		}
+		nativeObj.Data = buf
+	}
+
+	return nativeObj, nil
 }
 
 // determineMetadata determines the metadata type for the given object.

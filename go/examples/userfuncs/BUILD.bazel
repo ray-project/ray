@@ -12,15 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "userfuncs",
-    srcs = ["funcs.go"],
+    srcs = [
+        "actors.go",
+        "echo_bytes.go",
+        "funcs.go",
+    ],
     importpath = "github.com/ray-project/ray/go/examples/userfuncs",
     visibility = ["//visibility:public"],
     deps = [
         "//go/pkg/log",
         "//go/pkg/runtime/api",
     ],
+)
+
+go_test(
+    name = "userfuncs_test",
+    srcs = ["funcs_test.go"],
+    embed = [":userfuncs"],
 )

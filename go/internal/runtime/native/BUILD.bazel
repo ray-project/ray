@@ -47,28 +47,26 @@ go_library(
 
 # Tests for native package - tests NativeRuntime implementation
 # Note: CGO is automatically inherited from the embedded native library
-# Deferred: *_test.go not migrated (Task 1 excluded test files).
-# go_test(
-#    name = "native_test",
-#    srcs = [
-#        "native_runtime_test.go",
-#        "native_submitter_test.go",
-#        "runtime_context_impl_test.go",
-#        "runtime_context_test.go",
-#    ],
-#    embed = [":native"],
-#    importpath = "github.com/ray-project/ray/go/internal/runtime/native",
-#    deps = [
-#        "//go/internal/errors",
-#        "//go/internal/runtime/base",
-#        "//go/pkg/ids",
-#        "//go/pkg/options",
-#        "//go/pkg/runtime/api",
-#        "//go/pkg/runtime/contract",
-#        "//go/pkg/runtime/function",
-#        "//go/pkg/runtime/object",
-#        "//go/pkg/runtime/submitter",
-#        "//go/proto",
-#        "@com_github_stretchr_testify//assert",
-#    ],
-# )
+go_test(
+    name = "native_test",
+    srcs = [
+        "native_runtime_test.go",
+        "runtime_context_impl_test.go",
+        "runtime_context_test.go",
+    ],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/runtime/native",
+    deps = [
+        "//go/internal/errors",
+        "//go/internal/runtime/base",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+    ],
+)

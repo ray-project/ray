@@ -21,6 +21,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,6 +56,17 @@ typedef struct {
   bool *ready;  // Array of boolean values indicating which objects are ready
   int count;    // Number of elements in ready array
 } CWaitResult;
+
+// CObjectCreateResult is the result of a zero-copy Create call. It hands the
+// caller a direct write pointer into the object-store buffer plus a handle
+// owning a std::shared_ptr<ray::Buffer>. The caller must write the payload into
+// data and then Seal the object; on any failure before Seal it must call
+// CObjectStore_ReleaseBuffer(handle).
+typedef struct {
+  uint8_t *data;           // Direct write pointer into the buffer (NOT a copy)
+  int size;                // Capacity of data in bytes (== requested data_size)
+  uint64_t buffer_handle;  // Opaque handle owning a std::shared_ptr<ray::Buffer>, or 0
+} CObjectCreateResult;
 
 // ============================================================================
 // ObjectStore Functions - Basic Operations
@@ -107,6 +119,72 @@ int CObjectStore_PutWithID(const char *object_id_data,
                            int data_size,
                            const char *metadata,
                            int metadata_size);
+
+// ============================================================================
+// ObjectStore Functions - Zero-copy Create/Write/Seal
+// ============================================================================
+
+// CObjectStore_ReleaseBuffer releases a buffer handle previously returned by a
+// zero-copy Create call. Dropping the last reference allows the backing memory
+// (e.g. plasma) to be reclaimed.
+void CObjectStore_ReleaseBuffer(uint64_t buffer_handle);
+
+// CObjectStore_CreateOwned creates a writable buffer in the object store,
+// registering an owned object (the core worker derives the ObjectID). The
+// result carries a direct write pointer and a buffer handle. The caller must
+// write the payload into out_result->data and then call CObjectStore_SealOwned;
+// on any failure before Seal it must call CObjectStore_ReleaseBuffer.
+//
+// Returns 0 on success, -1 on failure (out_result zeroed on failure).
+// When data_size is 0, out_result->data may be NULL with size 0 (object
+// already exists in plasma); the caller must still call SealOwned.
+//
+// Signature uses int return + out-param (matching CObjectStore_PutWithID) so
+// the caller can distinguish hard errors (-1) from a zero-value result (object
+// already exists) without ambiguity. This avoids returning a struct directly,
+// because CgoErrorHandler::Execute returns ResultType{} (zero value) on error,
+// which is indistinguishable from a valid "object already exists" result.
+int CObjectStore_CreateOwned(const char *metadata,
+                             int metadata_size,
+                             int data_size,
+                             const char *owner_address,
+                             int owner_address_size,
+                             char **out_object_id,
+                             int *out_object_id_size,
+                             CObjectCreateResult *out_result);
+
+// CObjectStore_CreateExisting creates a writable buffer for a caller-supplied
+// ObjectID. Returns 0 with a zero-value result in local mode (NotImplemented);
+// the caller must fall back to the copy path. Returns 0 with buffer_handle==0
+// and data==NULL when the object already exists in plasma.
+int CObjectStore_CreateExisting(const char *metadata,
+                                int metadata_size,
+                                int data_size,
+                                const char *object_id_data,
+                                int object_id_size,
+                                CObjectCreateResult *out_result);
+
+// CObjectStore_WriteData copies src into the buffer identified by handle at
+// data_ptr. data_ptr must be the data pointer from the matching Create call.
+// Returns 0 on success, -1 on failure.
+int CObjectStore_WriteData(uint64_t buffer_handle,
+                           uint8_t *data_ptr,
+                           const char *src,
+                           int src_size);
+
+// CObjectStore_SealOwned finalizes an object created by CObjectStore_CreateOwned.
+// Returns 0 on success, -1 on failure.
+int CObjectStore_SealOwned(const char *object_id_data,
+                           int object_id_size,
+                           const char *owner_address,
+                           int owner_address_size);
+
+// CObjectStore_SealExisting finalizes an object created by
+// CObjectStore_CreateExisting. Returns 0 on success, -1 on failure.
+int CObjectStore_SealExisting(const char *object_id_data,
+                              int object_id_size,
+                              const char *owner_address,
+                              int owner_address_size);
 
 // CObjectStore_Get gets objects from the object store.
 //

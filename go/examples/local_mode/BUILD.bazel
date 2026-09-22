@@ -20,7 +20,7 @@ go_binary(
     importpath = "github.com/ray-project/ray/go/examples/local_mode",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/internal/runtime/local",
         "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
     ],
 )

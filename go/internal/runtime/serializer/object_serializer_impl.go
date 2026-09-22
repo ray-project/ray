@@ -58,12 +58,20 @@ func (s *ObjectSerializerImpl) Serialize(obj interface{}) (*object.NativeRayObje
 		return nil, err
 	}
 
-	// Convert to object.NativeRayObject
-	return &object.NativeRayObject{
+	// Convert to object.NativeRayObject, carrying over the dataFromPool flag so
+	// that a pooled (<= MaxBufferSize) encoding is returned to the pool when the
+	// caller Close()s the result. Dropping the flag leaks every pooled
+	// small-object buffer to the GC, defeating the two-tier pool strategy on
+	// every production path (api.Put, task args, return values).
+	n := &object.NativeRayObject{
 		Data:               nativeObj.Data,
 		Metadata:           nativeObj.Metadata,
 		ContainedObjectIds: nativeObj.ContainedObjectIds,
-	}, nil
+	}
+	if nativeObj.DataFromPool() {
+		n.MarkDataFromPool()
+	}
+	return n, nil
 }
 
 // Deserialize implements object.Serializer.Deserialize.

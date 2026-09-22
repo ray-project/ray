@@ -15,9 +15,11 @@
 package function
 
 import (
+	"bytes"
 	"errors"
 
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
 
 // Common errors used by function execution
@@ -47,6 +49,30 @@ type SerializedObject struct {
 	Data []byte
 	// Metadata is optional metadata (e.g., type information).
 	Metadata []byte
+}
+
+// SerializedObjectFromNative converts a NativeRayObject holding a serialized
+// payload into a SerializedObject, and closes the native object so its pooled
+// buffer is returned to the pool immediately.
+//
+// A pooled buffer (small objects) is deep-copied because SerializedObject
+// holds a shallow reference to Data; returning the pool buffer without the
+// copy would let a later Get reuse it while the task spec is still being sent.
+// A non-pooled buffer (large objects) is transferred by reference, keeping the
+// return path zero-copy: Close() only nils n.Data for it and never frees the
+// backing array. Metadata is a fresh per-call allocation and never pooled, so
+// it is always referenced directly.
+func SerializedObjectFromNative(nativeObj *object.NativeRayObject) SerializedObject {
+	data := nativeObj.Data
+	metadata := nativeObj.Metadata
+	if nativeObj.DataFromPool() {
+		data = bytes.Clone(nativeObj.Data)
+	}
+	_ = nativeObj.Close()
+	return SerializedObject{
+		Data:     data,
+		Metadata: metadata,
+	}
 }
 
 // FunctionArg represents a function argument in a task spec.

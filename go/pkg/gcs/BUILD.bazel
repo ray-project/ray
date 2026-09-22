@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "gcs",
@@ -30,4 +30,11 @@ go_library(
         "//go/pkg/ids",
         "//go/proto",
     ],
+)
+
+# Tests for the GCS singleton accessors.
+go_test(
+    name = "gcs_test",
+    srcs = ["client_test.go"],
+    embed = [":gcs"],
 )

@@ -348,3 +348,111 @@ func TestMsgpackSerializer_DecodeExtension_InvalidExtension(t *testing.T) {
 
 	_, err = s.DecodeExtension(data)
 }
+
+// TestSerializeTwoTierStrategy verifies the two-tier encoding strategy:
+// small objects use the pool (dataFromPool=true), large objects are
+// freshly allocated (dataFromPool=false).
+func TestSerializeTwoTierStrategy(t *testing.T) {
+	s := NewSerializer()
+
+	// Small object: estimate <= MaxBufferSize -> pooled buffer.
+	small := []byte("hello world")
+	smallNative, err := s.Serialize(small)
+	if err != nil {
+		t.Fatalf("Serialize(small) failed: %v", err)
+	}
+	if !smallNative.DataFromPool() {
+		t.Errorf("small object Data should be pool-backed (dataFromPool=true)")
+	}
+	if len(smallNative.Data) <= MessagePackOffset {
+		t.Errorf("small object Data too short: %d", len(smallNative.Data))
+	}
+
+	// Large object: estimate > MaxBufferSize -> fresh allocation.
+	// []byte of 2MB estimates to ~2.2MB, well over the 1MB pool ceiling.
+	large := make([]byte, 2*1024*1024)
+	for i := range large {
+		large[i] = byte(i % 251)
+	}
+	largeNative, err := s.Serialize(large)
+	if err != nil {
+		t.Fatalf("Serialize(large) failed: %v", err)
+	}
+	if largeNative.DataFromPool() {
+		t.Errorf("large object Data should NOT be pool-backed (fresh allocation)")
+	}
+	if len(largeNative.Data) <= MessagePackOffset+len(large) {
+		t.Errorf("large object Data length mismatch: got %d", len(largeNative.Data))
+	}
+
+	// Round-trip: both must decode back to identical bytes.
+	var smallBack, largeBack []byte
+	if err := s.DeserializeTo(smallNative, &smallBack); err != nil {
+		t.Fatalf("DeserializeTo(small) failed: %v", err)
+	}
+	if string(smallBack) != string(small) {
+		t.Errorf("small round-trip mismatch: got %q want %q", smallBack, small)
+	}
+	if err := s.DeserializeTo(largeNative, &largeBack); err != nil {
+		t.Fatalf("DeserializeTo(large) failed: %v", err)
+	}
+	if len(largeBack) != len(large) || largeBack[0] != large[0] || largeBack[len(large)-1] != large[len(large)-1] {
+		t.Errorf("large round-trip mismatch: got %d bytes", len(largeBack))
+	}
+
+	// Return the pooled buffer to the pool so the test does not leak it.
+	_ = smallNative.Close()
+}
+
+// TestSerializeUnderEstimateGrowsBuffer verifies the under-estimate path: a
+// struct wrapping a large []byte is under-estimated by EstimateBufferSize
+// (structs default to 4KB), so EncodeToBuffer grows the borrowed pooled buffer
+// via append. The grown payload must NOT be marked dataFromPool (it is no
+// longer pool-backed), must round-trip correctly, and the pool slot borrowed by
+// GetBuffer must be returned so pool accounting does not leak.
+func TestSerializeUnderEstimateGrowsBuffer(t *testing.T) {
+	s := NewSerializer()
+
+	type payload struct {
+		Data []byte
+	}
+	// 256KB of payload in a struct: EstimateBufferSize sees a struct (4KB
+	// default) and routes it to the pooled path, but encoding needs ~256KB,
+	// forcing EncodeToBuffer to grow the borrowed buffer well past 4KB.
+	blob := make([]byte, 256*1024)
+	for i := range blob {
+		blob[i] = byte(i % 251)
+	}
+	p := payload{Data: blob}
+
+	beforeCount, beforeBytes, _, _ := defaultPool.GetMemoryUsage()
+
+	nativeObj, err := s.Serialize(p)
+	if err != nil {
+		t.Fatalf("Serialize(under-estimated struct) failed: %v", err)
+	}
+	if nativeObj.DataFromPool() {
+		t.Errorf("grown buffer should NOT be marked pool-backed")
+	}
+
+	var back payload
+	if err := s.DeserializeTo(nativeObj, &back); err != nil {
+		t.Fatalf("DeserializeTo failed: %v", err)
+	}
+	if len(back.Data) != len(blob) || back.Data[0] != blob[0] || back.Data[len(blob)-1] != blob[len(blob)-1] {
+		t.Errorf("round-trip mismatch: got %d bytes", len(back.Data))
+	}
+
+	// The grown payload is non-pooled: Close() must not touch the pool.
+	_ = nativeObj.Close()
+
+	// The pooled slot borrowed by GetBuffer must have been returned (orig
+	// path), so accounting must be back to baseline.
+	afterCount, afterBytes, _, _ := defaultPool.GetMemoryUsage()
+	if afterCount != beforeCount {
+		t.Errorf("pool buffer count leaked: before=%d after=%d", beforeCount, afterCount)
+	}
+	if afterBytes != beforeBytes {
+		t.Errorf("pool memory leaked: before=%d after=%d", beforeBytes, afterBytes)
+	}
+}

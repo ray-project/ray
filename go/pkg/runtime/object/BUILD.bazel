@@ -52,6 +52,7 @@ go_test(
         "exception_serializer_test.go",
         "exception_test.go",
         "gpu_mapping_test.go",
+        "native_object_close_test.go",
         "object_ref_test.go",
         "object_serializer_test.go",
         "threshold_test.go",

@@ -55,16 +55,45 @@ go_library(
 go_test(
     name = "api_test",
     srcs = [
+        "actor_registration_test.go",
         "api_test.go",
         "example_test.go",
         "handle_release_test.go",
+        "method_extractor_test.go",
+        "object_id_generator_test.go",
         "object_ref_test.go",
+        "python_call_test.go",
     ],
     embed = [":api"],
     deps = [
         "//go/pkg/errors",
         "//go/pkg/ids",
         "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
         "//go/pkg/runtime/object",
+        "@com_github_stretchr_testify//assert",
+    ],
+)
+
+# Runtime-accessor tests gated behind the "apiinternal" build tag because they
+# assume the package-global handle state is unset.
+go_test(
+    name = "api_internal_test",
+    srcs = ["internal_test.go"],
+    embed = [":api"],
+    gotags = ["apiinternal"],
+)
+
+# Local-mode init tests gated behind the "apilocalinit" build tag because
+# RegisterInitializer and setHandle mutate package-global state that the
+# default api tests assume is unset.
+go_test(
+    name = "api_local_init_test",
+    srcs = ["local_init_test.go"],
+    embed = [":api"],
+    gotags = ["apilocalinit"],
+    deps = [
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
     ],
 )

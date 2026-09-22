@@ -448,8 +448,8 @@ func TestObjectIDConstants(t *testing.T) {
 	if ObjectIDSize != 28 {
 		t.Errorf("ObjectIDSize should be 28, got %d", ObjectIDSize)
 	}
-	if ObjectIDIndexSize != 4 {
-		t.Errorf("ObjectIDIndexSize should be 4, got %d", ObjectIDIndexSize)
+	if ObjectIDIndexSize != 32 {
+		t.Errorf("ObjectIDIndexSize should be 32 (bit width matching the C++ kObjectIdIndexSize), got %d", ObjectIDIndexSize)
 	}
 }
 

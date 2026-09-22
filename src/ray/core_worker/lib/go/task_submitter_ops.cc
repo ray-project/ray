@@ -168,6 +168,12 @@ std::vector<ray::rpc::ObjectReference> TaskSubmitterOperations::SubmitActorTask(
   return return_refs;
 }
 
+ray::Status TaskSubmitterOperations::KillActor(const ray::ActorID &actor_id,
+                                               bool force_kill,
+                                               bool no_restart) {
+  return GetCoreWorker().KillActor(actor_id, force_kill, no_restart);
+}
+
 std::unordered_map<std::string, double> TaskSubmitterOperations::ParseResources(
     const std::string &resources_str) {
   std::unordered_map<std::string, double> resources;

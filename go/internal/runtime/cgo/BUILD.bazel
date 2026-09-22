@@ -50,18 +50,27 @@ go_library(
     ],
 )
 
-# Deferred: *_test.go not migrated (Task 1 excluded test files).
-# go_test(
-#    name = "cgo_test",
-#    srcs = [
-#        "converters_test.go",
-#        "native_allocator_test.go",
-#        "native_context_test.go",
-#        "native_executor_test.go",
-#    ],
-#    embed = [":cgo"],
-#    deps = [
-#        "//go/pkg/ids",
-#        "//go/pkg/runtime/function",
-#    ],
-# )
+# Unit tests for the CGO bindings. Most tests exercise the Go-side logic
+# (conversions, allocator registry, options translation) and do not require a
+# running Ray cluster.
+go_test(
+    name = "cgo_test",
+    srcs = [
+        "converters_test.go",
+        "coreworker_test.go",
+        "native_allocator_test.go",
+        "native_context_test.go",
+        "native_executor_test.go",
+        "native_submitter_test.go",
+        "task_executor_test.go",
+    ],
+    embed = [":cgo"],
+    deps = [
+        "//go/internal/runtime/base",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "@com_github_stretchr_testify//assert",
+    ],
+)

@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	"github.com/ray-project/ray/go/pkg/errors"
+	"github.com/ray-project/ray/go/pkg/ids"
 )
 
 // ============================================================================
@@ -128,6 +129,61 @@ func ExitActor() error {
 	return errors.NewRayIntentionalSystemExitException(
 		fmt.Sprintf("Actor %s is exiting.", actorID.Hex()),
 	)
+}
+
+// actorKiller is implemented by task submitters that support killing an actor.
+// It is an optional capability: submitter.TaskSubmitter stays minimal, and a
+// submitter that can kill an actor satisfies this interface structurally.
+type actorKiller interface {
+	KillActor(actorID ids.ActorID, noRestart bool) error
+}
+
+// KillActor kills an actor from the driver side.
+//
+// It is the Go counterpart of Java's ActorHandle.kill()/kill(noRestart): the
+// actor is treated as crashed (pending tasks fail), and when noRestart is true
+// the actor is not restarted.
+//
+// Parameters:
+//   - handle: The handle to the actor to kill.
+//   - noRestart: Whether the actor should not be restarted.
+//
+// Returns:
+//   - error: Any error encountered during the kill.
+func KillActor(handle ActorHandle, noRestart bool) error {
+	if handle == nil {
+		return errors.NewRayInvalidArgumentException("actor handle cannot be nil")
+	}
+
+	taskSubmitter, ok := tryGetTaskSubmitter()
+	if !ok {
+		return errors.ErrRuntimeNotInitialized
+	}
+	if taskSubmitter == nil {
+		// Submitter itself is nil even though runtime is available.
+		// This indicates an internal inconsistency.
+		return errors.NewRuntimeError("kill_actor", "submitter_not_available")
+	}
+
+	actorID := handle.ID()
+	if actorID.IsNil() {
+		return errors.NewRayInvalidArgumentException("actor handle has no actor ID")
+	}
+
+	// Killing an actor is an optional driver capability: submitter.TaskSubmitter
+	// stays minimal, and a submitter that can kill actors satisfies actorKiller
+	// structurally (both the cluster-mode and local-mode submitters do). Probe
+	// for the capability so a submitter that cannot kill actors reports a clear
+	// error instead of failing on a missing method.
+	killer, ok := taskSubmitter.(actorKiller)
+	if !ok {
+		return errors.NewRuntimeError("kill_actor", "kill_actor_not_supported")
+	}
+
+	if err := killer.KillActor(actorID, noRestart); err != nil {
+		return fmt.Errorf("failed to kill actor %s: %w", actorID.Hex(), err)
+	}
+	return nil
 }
 
 // GetRuntimeContext returns the current runtime context.

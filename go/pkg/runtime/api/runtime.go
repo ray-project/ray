@@ -55,6 +55,25 @@ func Init() error {
 	return InitWithOptions(nil)
 }
 
+// InitLocal initializes the Ray runtime in local mode (pure in-process, no
+// cluster). It routes through the local-mode short-circuit in InitWithOptions,
+// which dispatches to the registered local-mode initializer instead of loading
+// the go_runtime.so plugin. This keeps the executable free of the C++ core
+// worker / gRPC that the plugin path statically links in.
+//
+// The local-mode initializer is registered by importing
+// go/pkg/runtime/local (a public adapter package); without it, InitLocal
+// returns an error instead of falling back to the plugin path.
+//
+// Example:
+//
+//	if err := api.InitLocal(); err != nil {
+//	    log.Fatalf("Failed to initialize Ray in local mode: %v", err)
+//	}
+func InitLocal() error {
+	return InitWithOptions(&options.InitializeOptions{WorkerType: options.WorkerTypeLocal})
+}
+
 // InitWithOptions initializes the Ray runtime with custom options.
 // This function must be called before using any other Ray API functions.
 //

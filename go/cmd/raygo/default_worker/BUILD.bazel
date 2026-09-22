@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 # The default_worker library provides the worker subcommand for the Ray Go CLI,
 # used to start Ray worker processes.
@@ -26,6 +26,15 @@ go_library(
         "//go/internal/worker",
         "//go/pkg/log",
         "//go/pkg/options",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)
+
+go_test(
+    name = "default_worker_test",
+    srcs = ["default_worker_test.go"],
+    embed = [":default_worker"],
+    deps = [
         "@com_github_spf13_cobra//:cobra",
     ],
 )

@@ -62,24 +62,20 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize value: %w", err)
 	}
+	// Return the serialized buffer to the pool on every path. PutRaw copies the
+	// payload (one memcpy) into the object-store buffer via Create/Write/Seal,
+	// so the Go-side buffer is no longer needed once PutRaw returns.
+	defer func() { _ = nativeObj.Close() }()
 
-	// Generate ObjectID
-	objectID, err := generateObjectID()
+	// Put the serialized object into object store. PutRaw derives the ObjectID
+	// in the core worker (CreateOwnedAndIncrementLocalRef) and registers
+	// ownership, so no Go-side ObjectID generation is required. The single local
+	// reference is registered by the C++ side and removed by the ObjectRef
+	// finalizer below.
+	putObjectID, err := objectStore.PutRaw(nativeObj)
 	if err != nil {
-		nativeObj.Close() // Return buffer to pool on error
-		return nil, fmt.Errorf("failed to generate object ID: %w", err)
-	}
-
-	// Put the serialized object into object store with the generated ID
-	err = objectStore.PutRawWithID(nativeObj, objectID)
-	if err != nil {
-		nativeObj.Close() // Return buffer to pool on error
 		return nil, fmt.Errorf("failed to put object: %w", err)
 	}
-
-	// Close the native object to return buffer to pool
-	// Note: ObjectStore should have copied the data internally
-	nativeObj.Close()
 
 	// Create ObjectRef
 	objectType := ""
@@ -87,23 +83,23 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 		objectType = t.String()
 	}
 	ref := &ObjectRef[T]{
-		objectID:           *objectID,
+		objectID:           *putObjectID,
 		objectType:         objectType,
 		skipAddingLocalRef: false,
 		released:           atomic.Bool{},
 	}
 
-	// The single local reference for this ObjectRef is registered by PutRawWithID
-	// (the C++ PutWithID bridge registers ownership with add_local_ref=true) and
-	// removed by the finalizer below when the ObjectRef is GCed. Adding another
-	// reference here would pin the object in plasma forever, because the finalizer
-	// only removes one.
+	// The single local reference for this ObjectRef is registered by PutRaw
+	// (the C++ CreateOwnedAndIncrementLocalRef bridge registers ownership with
+	// add_local_ref=true) and removed by the finalizer below when the ObjectRef
+	// is GCed. Adding another reference here would pin the object in plasma
+	// forever, because the finalizer only removes one.
 
 	// Capture objectID in the finalizer closure to avoid accessing the ObjectRef
 	// after it has been garbage collected. This is critical because the finalizer
 	// runs when the ObjectRef is being GCed, and accessing r.objectID at that point
 	// may read corrupted memory.
-	objectIDForFinalizer := *objectID
+	objectIDForFinalizer := *putObjectID
 
 	// Use shared helper to set finalizer
 	setupObjectRefFinalizer(ref, objectIDForFinalizer)
@@ -482,7 +478,11 @@ func createObjectRefWithFinalizer[T any](returnID ids.ObjectID, objectType strin
 		released:           atomic.Bool{},
 	}
 
-	// Register local reference and set finalizer
+	// Register local reference and set finalizer.
+	// The C++ TaskManager::AddPendingTask already registered the local
+	// reference for the task return ID (add_local_ref=true, see
+	// src/ray/core_worker/task_manager.cc), so we must not AddLocalReference
+	// again or the object leaks (skipAddingLocalRef contract on the field).
 	handle, ok := tryGetHandle()
 	if !ok || handle == nil {
 		// Runtime not available - return ObjectRef without finalizer
@@ -494,9 +494,6 @@ func createObjectRefWithFinalizer[T any](returnID ids.ObjectID, objectType strin
 	if rt == nil || rt.GetObjectStore() == nil {
 		return ref, nil
 	}
-
-	objectStore := rt.GetObjectStore()
-	_ = objectStore.AddLocalReference(&returnID)
 
 	// Capture objectID in the finalizer closure to avoid accessing the ObjectRef
 	// after it has been garbage collected.

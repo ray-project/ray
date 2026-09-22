@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -332,6 +333,35 @@ ray::ObjectID ParseObjectIDFromCByteArray(const char *data, int size) {
   return ray::ObjectID::FromBinary(std::string(data, size));
 }
 
+// Helper to wrap a C byte array in a LocalMemoryBuffer that copies the data.
+// Returns a null buffer when the input is empty, so callers can pass the result
+// straight to the object-store APIs without an extra null check.
+std::shared_ptr<ray::Buffer> MakeLocalMemoryBufferCopy(const char *data, int size) {
+  if (data == nullptr || size <= 0) {
+    return nullptr;
+  }
+  return std::make_shared<ray::LocalMemoryBuffer>(
+      const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data)),
+      static_cast<size_t>(size),
+      /*copy_data=*/true);
+}
+
+// Helper to parse an owner rpc::Address from a C byte array. Returns a null
+// unique_ptr when the input is empty. Throws std::invalid_argument, with the
+// operation name embedded for a helpful message, on malformed input.
+std::unique_ptr<ray::rpc::Address> ParseOwnerAddress(const char *data,
+                                                     int size,
+                                                     const char *op_name) {
+  if (data == nullptr || size <= 0) {
+    return nullptr;
+  }
+  auto addr = std::make_unique<ray::rpc::Address>();
+  if (!addr->ParseFromArray(data, size)) {
+    throw std::invalid_argument(std::string("Invalid owner_address in ") + op_name);
+  }
+  return addr;
+}
+
 // Helper function to convert reference counts map to JSON string using nlohmann::json
 std::string ReferenceCountsToJSON(
     const std::unordered_map<ray::ObjectID, std::pair<size_t, size_t>> &ref_counts) {
@@ -357,21 +387,10 @@ extern "C" CObjectReference CObjectStore_Put(const char *data,
                                              int owner_address_size) {
   return CgoErrorHandler::Execute("CObjectStore_Put", [&]() -> CObjectReference {
     // Create RayObject from data and metadata
-    std::shared_ptr<ray::Buffer> data_buffer;
-    if (data != nullptr && data_size > 0) {
-      data_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data)),
-          static_cast<size_t>(data_size),
-          /*copy_data=*/true);
-    }
+    std::shared_ptr<ray::Buffer> data_buffer = MakeLocalMemoryBufferCopy(data, data_size);
 
-    std::shared_ptr<ray::Buffer> metadata_buffer;
-    if (metadata != nullptr && metadata_size > 0) {
-      metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(metadata)),
-          static_cast<size_t>(metadata_size),
-          /*copy_data=*/true);
-    }
+    std::shared_ptr<ray::Buffer> metadata_buffer =
+        MakeLocalMemoryBufferCopy(metadata, metadata_size);
 
     auto ray_object =
         std::make_shared<ray::RayObject>(data_buffer,
@@ -399,21 +418,10 @@ extern "C" int CObjectStore_PutWithID(const char *object_id_data,
     ray::ObjectID object_id = ParseObjectIDFromCByteArray(object_id_data, object_id_size);
 
     // Create RayObject
-    std::shared_ptr<ray::Buffer> data_buffer;
-    if (data != nullptr && data_size > 0) {
-      data_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data)),
-          static_cast<size_t>(data_size),
-          /*copy_data=*/true);
-    }
+    std::shared_ptr<ray::Buffer> data_buffer = MakeLocalMemoryBufferCopy(data, data_size);
 
-    std::shared_ptr<ray::Buffer> metadata_buffer;
-    if (metadata != nullptr && metadata_size > 0) {
-      metadata_buffer = std::make_shared<ray::LocalMemoryBuffer>(
-          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(metadata)),
-          static_cast<size_t>(metadata_size),
-          /*copy_data=*/true);
-    }
+    std::shared_ptr<ray::Buffer> metadata_buffer =
+        MakeLocalMemoryBufferCopy(metadata, metadata_size);
 
     auto ray_object =
         std::make_shared<ray::RayObject>(data_buffer,
@@ -425,6 +433,175 @@ extern "C" int CObjectStore_PutWithID(const char *object_id_data,
     auto &ops = ray::go::ObjectStoreOperations::GetInstance();
     ops.PutWithID(object_id, ray_object);
     return 0;  // Success
+  });
+}
+
+// ============================================================================
+// Zero-copy Put entry points
+//
+// These implement the Create/Write/Seal protocol that lets Go encode into a
+// Go-heap buffer and then copy once directly into the object-store buffer,
+// eliminating the LocalMemoryBuffer(copy_data=true) intermediate copy. The
+// buffer handle returned by Create owns a std::shared_ptr<ray::Buffer>; the
+// Go side must call CObjectStore_ReleaseBuffer(handle) after Seal (or on any
+// failure path before Seal) to free the handle.
+// ============================================================================
+
+extern "C" void CObjectStore_ReleaseBuffer(uint64_t buffer_handle) {
+  if (buffer_handle == 0) {
+    return;
+  }
+  delete reinterpret_cast<std::shared_ptr<ray::Buffer> *>(buffer_handle);
+}
+
+extern "C" int CObjectStore_CreateOwned(const char *metadata,
+                                        int metadata_size,
+                                        int data_size,
+                                        const char *owner_address,
+                                        int owner_address_size,
+                                        char **out_object_id,
+                                        int *out_object_id_size,
+                                        CObjectCreateResult *out_result) {
+  return CgoErrorHandler::ExecuteInt("CObjectStore_CreateOwned", [&]() -> int {
+    CObjectCreateResult result{};
+    *out_object_id = nullptr;
+    *out_object_id_size = 0;
+    *out_result = result;  // zeroed on failure (overwritten below on success)
+
+    // Metadata: wrap in a LocalMemoryBuffer (small; this is the only copy on
+    // the metadata side and is negligible for typical sizes).
+    std::shared_ptr<ray::Buffer> metadata_buffer =
+        MakeLocalMemoryBufferCopy(metadata, metadata_size);
+
+    // Owner address: parse if provided (rpc::Address protobuf).
+    std::unique_ptr<ray::rpc::Address> owner_address_parsed =
+        ParseOwnerAddress(owner_address, owner_address_size, "CObjectStore_CreateOwned");
+
+    ray::ObjectID object_id;
+    std::shared_ptr<ray::Buffer> data;
+    ray::go::ObjectStoreOperations::GetInstance().CreateOwned(
+        metadata_buffer,
+        static_cast<size_t>(data_size),
+        std::move(owner_address_parsed),
+        &object_id,
+        &data);
+
+    // Copy the ObjectID out (allocated; caller frees via C.free). Done before
+    // allocating the buffer handle below: object_id.Binary() or the handle
+    // allocation may throw bad_alloc, and any throw after the handle is created
+    // would lose its address permanently (ExecuteInt returns -1 and the Go side
+    // only frees out_object_id, never the handle).
+    const auto &binary = object_id.Binary();
+    *out_object_id_size = static_cast<int>(binary.size());
+    *out_object_id = static_cast<char *>(malloc(binary.size()));
+    if (*out_object_id == nullptr) {
+      throw std::bad_alloc();
+    }
+    memcpy(*out_object_id, binary.data(), binary.size());
+
+    // If data is null the object already exists in plasma; the Go side must
+    // Seal to finalize the OBJECT_IN_PLASMA entry and skip WriteData.
+    if (data != nullptr) {
+      result.data = data->Data();
+      result.size = static_cast<int>(data->Size());
+      result.buffer_handle =
+          reinterpret_cast<uint64_t>(new std::shared_ptr<ray::Buffer>(data));
+    }
+    *out_result = result;
+    return 0;
+  });
+}
+
+extern "C" int CObjectStore_CreateExisting(const char *metadata,
+                                           int metadata_size,
+                                           int data_size,
+                                           const char *object_id_data,
+                                           int object_id_size,
+                                           CObjectCreateResult *out_result) {
+  return CgoErrorHandler::ExecuteInt("CObjectStore_CreateExisting", [&]() -> int {
+    CObjectCreateResult result{};
+    *out_result = result;  // zeroed on failure (overwritten below on success)
+    ray::ObjectID object_id = ParseObjectIDFromCByteArray(object_id_data, object_id_size);
+
+    std::shared_ptr<ray::Buffer> metadata_buffer =
+        MakeLocalMemoryBufferCopy(metadata, metadata_size);
+
+    auto &store_ops = ray::go::ObjectStoreOperations::GetInstance();
+    std::shared_ptr<ray::Buffer> data;
+    try {
+      store_ops.CreateExisting(
+          metadata_buffer, static_cast<size_t>(data_size), object_id, &data);
+    } catch (const std::logic_error &) {
+      // Local mode does not support pre-existing ObjectIDs. Signal Go to fall
+      // back to the copy path via a zero-value result (buffer_handle 0, data
+      // NULL, size 0).
+      *out_result = result;
+      return 0;
+    }
+
+    if (data != nullptr) {
+      result.data = data->Data();
+      result.size = static_cast<int>(data->Size());
+      result.buffer_handle =
+          reinterpret_cast<uint64_t>(new std::shared_ptr<ray::Buffer>(data));
+    }
+    *out_result = result;
+    return 0;
+  });
+}
+
+extern "C" int CObjectStore_WriteData(uint64_t buffer_handle,
+                                      uint8_t *data_ptr,
+                                      const char *src,
+                                      int src_size) {
+  return CgoErrorHandler::ExecuteInt("CObjectStore_WriteData", [&]() -> int {
+    if (src == nullptr || src_size <= 0) {
+      throw std::invalid_argument("Invalid src in CObjectStore_WriteData");
+    }
+    if (data_ptr == nullptr) {
+      throw std::invalid_argument("Null data_ptr in CObjectStore_WriteData");
+    }
+    if (buffer_handle != 0) {
+      auto *buf = reinterpret_cast<std::shared_ptr<ray::Buffer> *>(buffer_handle);
+      if (src_size > static_cast<int>((*buf)->Size())) {
+        throw std::invalid_argument(
+            "src_size exceeds buffer capacity in CObjectStore_WriteData");
+      }
+    }
+    memcpy(data_ptr, src, static_cast<size_t>(src_size));
+    return 0;
+  });
+}
+
+extern "C" int CObjectStore_SealOwned(const char *object_id_data,
+                                      int object_id_size,
+                                      const char *owner_address,
+                                      int owner_address_size) {
+  return CgoErrorHandler::ExecuteInt("CObjectStore_SealOwned", [&]() -> int {
+    ray::ObjectID object_id = ParseObjectIDFromCByteArray(object_id_data, object_id_size);
+
+    std::unique_ptr<ray::rpc::Address> owner_address_parsed =
+        ParseOwnerAddress(owner_address, owner_address_size, "CObjectStore_SealOwned");
+
+    ray::go::ObjectStoreOperations::GetInstance().SealOwned(
+        object_id, std::move(owner_address_parsed));
+    return 0;
+  });
+}
+
+extern "C" int CObjectStore_SealExisting(const char *object_id_data,
+                                         int object_id_size,
+                                         const char *owner_address,
+                                         int owner_address_size) {
+  return CgoErrorHandler::ExecuteInt("CObjectStore_SealExisting", [&]() -> int {
+    ray::ObjectID object_id = ParseObjectIDFromCByteArray(object_id_data, object_id_size);
+
+    std::unique_ptr<ray::rpc::Address> owner_address_parsed =
+        ParseOwnerAddress(owner_address, owner_address_size, "CObjectStore_SealExisting");
+
+    ray::go::ObjectStoreOperations::GetInstance().SealExisting(
+        object_id, std::move(owner_address_parsed));
+    return 0;
   });
 }
 

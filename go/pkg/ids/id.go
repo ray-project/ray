@@ -26,21 +26,24 @@ import (
 )
 
 const (
-	UniqueIDSize                    = 28
-	JobIDSize                       = 4
-	ActorIDSize                     = 16
-	ActorIDUniqueBytesSize          = 12
-	TaskIDSize                      = 24
-	TaskIDUniqueBytesSize           = 8
-	ObjectIDSize                    = 28
-	ObjectIDIndexSize               = 4
+	UniqueIDSize           = 28
+	JobIDSize              = 4
+	ActorIDSize            = 16
+	ActorIDUniqueBytesSize = 12
+	TaskIDSize             = 24
+	TaskIDUniqueBytesSize  = 8
+	ObjectIDSize           = 28
+	// ObjectIDIndexSize is the bit width of the ObjectID index field. It matches
+	// the C++ kObjectIdIndexSize (src/ray/common/constants.h): the index is
+	// encoded as 4 bytes (LittleEndian.PutUint32) after the TaskID.
+	ObjectIDIndexSize               = 32
 	PlacementGroupIDSize            = 18
 	PlacementGroupIDUniqueBytesSize = 14
 	LeaseIDSize                     = 32
 	LeaseIDUniqueBytesSize          = 4
 )
 
-const MaxObjectIndex int64 = (1 << (ObjectIDIndexSize * 8)) - 1
+const MaxObjectIndex int64 = (1 << ObjectIDIndexSize) - 1
 
 func idToHex(data []byte) string {
 	return hex.EncodeToString(data)

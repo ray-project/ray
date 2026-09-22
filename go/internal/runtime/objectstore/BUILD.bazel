@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 # Object store implementations.
 # This package contains concrete implementations of the ObjectStore interface:
@@ -36,5 +36,24 @@ go_library(
         "//go/pkg/runtime/object",
         "//go/proto",
         "@org_golang_google_protobuf//proto",
+    ],
+)
+
+# Unit tests for the object store implementations: the pure-Go local-mode store
+# and the CGO-based native store (the latter covers constructor wiring and the
+# empty-input paths of the native calls, so no running cluster is required).
+go_test(
+    name = "objectstore_test",
+    srcs = [
+        "local_mode_object_store_test.go",
+        "native_object_store_test.go",
+    ],
+    embed = [":objectstore"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/object",
+        "//go/proto",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
     ],
 )

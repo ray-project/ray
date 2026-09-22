@@ -15,13 +15,17 @@
 package local_mode
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ray-project/ray/go/internal/runtime/base"
 	"github.com/ray-project/ray/go/internal/runtime/objectstore"
+	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
@@ -41,6 +45,13 @@ type LocalModeTaskSubmitter struct {
 	taskExecutor             *LocalModeTaskExecutor
 	functionMgr              *function.FunctionManager
 	actorConcurrencyGroupMgr *ActorConcurrencyGroupManager
+
+	// lastSyncedVersion is the function registry version at the last
+	// FunctionManager sync. Submission re-synchronizes only when the registry
+	// version advances (a new function was registered), avoiding a full
+	// re-registration on every submission. Atomic because submissions may come
+	// from multiple goroutines.
+	lastSyncedVersion atomic.Uint64
 
 	// waitingTasks maps object IDs to tasks waiting for them
 	waitingTasks      sync.Map // map[ids.ObjectID][]*taskSpec
@@ -210,6 +221,38 @@ func (s *LocalModeTaskSubmitter) GetActor(name string, namespace string) (submit
 	return nil, fmt.Errorf("actor not found: name=%s, namespace=%s", name, namespace)
 }
 
+// KillActor kills an actor from the driver side.
+//
+// Local mode has no C++ CoreWorker or GCS, so there is no automatic restart:
+// the kill is always final (equivalent to Java's noRestart=true semantics).
+// The actor's concurrency groups and task context are torn down, and any
+// named-actor registration is removed, so later submissions and GetActor
+// lookups report the actor as unavailable. The noRestart parameter is accepted
+// for API compatibility but has no effect (Java's local mode, RayDevRuntime,
+// does not support kill at all).
+func (s *LocalModeTaskSubmitter) KillActor(actorID ids.ActorID, noRestart bool) error {
+	s.removeActorState(actorID)
+	log.Log.Info("local-mode actor killed",
+		"actorID", actorID.Hex(), "noRestart", noRestart)
+	return nil
+}
+
+// removeActorState tears down all local-mode state for an actor so later
+// submissions and GetActor lookups report it as unavailable: the actor's
+// concurrency groups, task context, and any named-actor registration.
+func (s *LocalModeTaskSubmitter) removeActorState(actorID ids.ActorID) {
+	s.actorConcurrencyGroupMgr.RemoveGroup(actorID)
+	s.taskExecutor.RemoveActorContext(actorID)
+	// Remove any named-actor registration for this actor so GetActor no longer
+	// resolves it (matching Java: a killed/exited named actor is not resolvable).
+	s.namedActors.Range(func(key, value interface{}) bool {
+		if info, ok := value.(*namedActorInfo); ok && info.actorID == actorID {
+			s.namedActors.Delete(key)
+		}
+		return true
+	})
+}
+
 // submitTaskSpec submits a task specification for execution.
 func (s *LocalModeTaskSubmitter) submitTaskSpec(spec *taskSpec) {
 	s.syncFunctionsFromRegistry()
@@ -292,19 +335,20 @@ func (s *LocalModeTaskSubmitter) executeTaskSpec(spec *taskSpec) {
 	returnIds := s.getReturnIds(spec.taskID, spec.numReturns)
 
 	if err != nil {
-		// Serialize the error as a task-execution exception object and put it
-		// into the return slot, so a caller Get()ing this ObjectRef receives the
-		// failure instead of blocking forever on a never-ready object.
-		excBytes, serErr := (&object.RayExceptionSerializer{}).ToBytes(
-			object.NewRayTaskExecutionException(spec.taskID.String(), err, ""))
-		if serErr == nil {
-			excObj := &object.NativeRayObject{
-				Data:     excBytes,
-				Metadata: []byte(object.MetadataTypeTaskExecutionException),
-			}
-			if len(returnIds) > 0 {
-				s.objectStore.PutRawWithID(excObj, &returnIds[0])
-			}
+		// Surface the failure as error objects for every return ID instead of
+		// silently dropping it. Silently returning here meant a task that failed
+		// to execute (e.g. an unsupported pass-by-reference argument) never put
+		// its return objects, so a driver blocking on ObjectRef.Get() waited
+		// forever in waitForObjects. Putting error objects lets the driver's Get
+		// surface the failure (ErrorObjectFromNative) instead of deadlocking.
+		//
+		// An intentional actor exit (api.ExitActor) is not a task failure and is
+		// excluded, matching the cluster-mode worker's IsActorExitError check.
+		var actorExit *rayerrors.ActorExitError
+		if !errors.As(err, &actorExit) {
+			log.Log.Error(err, "local-mode task failed", "taskID", spec.taskID.Hex(),
+				"taskType", int32(spec.taskType))
+			s.putErrorObjects(spec, err)
 		}
 		s.checkWaitingTasks()
 		return
@@ -404,6 +448,31 @@ func (s *LocalModeTaskSubmitter) getReturnIds(taskID ids.TaskID, numReturns int)
 	return returnIds
 }
 
+// putErrorObjects puts a task execution exception error object for every return
+// ID of the failed task. This mirrors the cluster-mode worker, which returns an
+// error object for each expected return value when task execution fails, so a
+// driver Get()ing the result surfaces the failure (via ErrorObjectFromNative)
+// instead of blocking forever on a return object that never appears.
+func (s *LocalModeTaskSubmitter) putErrorObjects(spec *taskSpec, err error) {
+	exc := object.NewRayTaskExecutionException(spec.taskID.Hex(), err, "")
+	data, serErr := (&object.RayExceptionSerializer{}).ToBytes(exc)
+	if serErr != nil {
+		log.Log.Error(serErr, "failed to serialize task execution error", "taskID", spec.taskID.Hex())
+		// Fall back to a raw error object so the driver still receives a failure.
+		data = []byte(fmt.Sprintf("task %s failed: %v", spec.taskID.Hex(), err))
+	}
+	returnIds := s.getReturnIds(spec.taskID, spec.numReturns)
+	for i := range returnIds {
+		if err := s.objectStore.PutRawWithID(&object.NativeRayObject{
+			Data:     data,
+			Metadata: []byte(object.MetadataTypeTaskExecutionException),
+		}, &returnIds[i]); err != nil {
+			log.Log.Error(err, "failed to put error object for failed task",
+				"taskID", spec.taskID.Hex())
+		}
+	}
+}
+
 // onObjectPut is called when an object is put into the object store.
 // This is used to trigger waiting tasks.
 func (s *LocalModeTaskSubmitter) onObjectPut(oid ids.ObjectID) {
@@ -417,3 +486,10 @@ func (s *LocalModeTaskSubmitter) Shutdown() {
 
 // Compile-time check to ensure LocalModeTaskSubmitter implements TaskSubmitter
 var _ submitter.TaskSubmitter = (*LocalModeTaskSubmitter)(nil)
+
+// Compile-time check that LocalModeTaskSubmitter satisfies the structural
+// actorKiller capability probed by api.KillActor. Without it, a signature drift
+// would silently turn the public API back into a kill_actor_not_supported error.
+var _ interface {
+	KillActor(ids.ActorID, bool) error
+} = (*LocalModeTaskSubmitter)(nil)

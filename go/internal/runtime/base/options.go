@@ -158,11 +158,14 @@ func validateInitializeOptions(opts InitializeOptions) error {
 	}
 
 	// Validate NodeIPAddress
-	if opts.Network.NodeIPAddress == "" {
-		return rayerrors.NewInvalidArgumentError("NodeIPAddress", "cannot be empty")
-	}
-	if !common.ValidateIPAddress(opts.Network.NodeIPAddress) {
-		return rayerrors.NewInvalidArgumentError("NodeIPAddress", fmt.Sprintf("invalid format: %s", opts.Network.NodeIPAddress))
+	// Local mode runs in-process without a cluster, so NodeIPAddress is optional.
+	if opts.WorkerType != options.WorkerTypeLocal {
+		if opts.Network.NodeIPAddress == "" {
+			return rayerrors.NewInvalidArgumentError("NodeIPAddress", "cannot be empty")
+		}
+		if !common.ValidateIPAddress(opts.Network.NodeIPAddress) {
+			return rayerrors.NewInvalidArgumentError("NodeIPAddress", fmt.Sprintf("invalid format: %s", opts.Network.NodeIPAddress))
+		}
 	}
 
 	// Validate NodeManagerPort (0 means random port)

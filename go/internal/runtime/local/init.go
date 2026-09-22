@@ -12,45 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package local registers a pure-Go LocalModeRuntime as the Ray runtime
-// initializer so that api.Instance().Init() works without a Ray cluster and
-// without the native/CGO CoreWorker bridge.
+// Package local is the open-source entry point for the pure-Go local mode
+// runtime: importing it makes "github.com/ray-project/ray/go/pkg/runtime/api"
+// initialize an in-memory LocalModeRuntime, so api.Instance().Init() works
+// without a Ray cluster and without the native/CGO CoreWorker bridge.
 //
-// This is the open-source minimal-runtime entry point: importing this package
-// makes "github.com/ray-project/ray/go/pkg/runtime/api" initialize a local
-// in-memory runtime instead of failing with "no runtime initializer".
+// This package is a thin adapter only. The implementation lives in
+// go/internal/runtime/local_mode, whose init() registers the WorkerTypeLocal
+// initializer with pkg/runtime/api; the blank import below makes that
+// registration reachable through a stable import path while keeping the public
+// api layer free of internal imports (dependency inversion). Registering a
+// second initializer for the same worker type here would be redundant.
+//
+// The registration is pure Go, so linking it into a driver pulls in neither the
+// C++ core worker nor gRPC and cannot hit the "linked both statically and
+// dynamically" plugin conflict.
 package local
 
 import (
-	"github.com/ray-project/ray/go/internal/runtime/base"
-	"github.com/ray-project/ray/go/internal/runtime/local_mode"
-	"github.com/ray-project/ray/go/pkg/options"
-	"github.com/ray-project/ray/go/pkg/runtime/api"
-	"github.com/ray-project/ray/go/pkg/runtime/contract"
+	// Registration side effect: local_mode.init() registers the WorkerTypeLocal
+	// initializer with pkg/runtime/api.
+	_ "github.com/ray-project/ray/go/internal/runtime/local_mode"
 )
-
-func init() {
-	api.RegisterInitializer(options.WorkerTypeLocal, func(opts *options.InitializeOptions) (contract.RuntimeHandle, error) {
-		if opts == nil {
-			opts = &options.InitializeOptions{}
-		}
-		opts.WorkerType = options.WorkerTypeLocal
-		// Local mode has no real network: default the node IP so option
-		// validation inside InitializeOptionsFromAPI passes.
-		if opts.Network.NodeIPAddress == "" {
-			opts.Network.NodeIPAddress = "127.0.0.1"
-		}
-		baseOpts, err := base.InitializeOptionsFromAPI(*opts)
-		if err != nil {
-			return nil, err
-		}
-		runtime, err := local_mode.NewLocalModeRuntime(baseOpts)
-		if err != nil {
-			return nil, err
-		}
-		if err := runtime.Start(); err != nil {
-			return nil, err
-		}
-		return base.NewRuntimeHandle[contract.Runtime](runtime), nil
-	})
-}

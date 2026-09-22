@@ -174,3 +174,45 @@ func TestDependentTaskNoDeadlock(t *testing.T) {
 		t.Fatal("task did not progress after dependency became ready: possible deadlock")
 	}
 }
+
+// TestLocalModeKillActor verifies the driver-side KillActor tears down the
+// actor's concurrency group, task context, and named-actor registration so
+// later submissions and GetActor lookups report the actor as unavailable.
+func TestLocalModeKillActor(t *testing.T) {
+	objectStore := objectstore.NewLocalModeObjectStore()
+	workerContext := NewLocalModeWorkerContext()
+	functionMgr := function.NewFunctionManager(nil)
+	actorMgr := NewActorConcurrencyGroupManager()
+	taskExecutor := NewLocalModeTaskExecutor(functionMgr, actorMgr, objectStore)
+	taskSubmitter := NewLocalModeTaskSubmitter(objectStore, workerContext, taskExecutor, functionMgr)
+	defer taskSubmitter.Shutdown()
+
+	// Create the actor. The constructor must be registered so the actor
+	// creation task completes and the actor becomes available.
+	initDesc := function.NewGoActorMethodDescriptorOrUnknown("test", "", "TestActor", function.ConstructorName)
+	require.NoError(t, functionMgr.RegisterFunction(initDesc, func(args []function.FunctionArg) ([]function.SerializedObject, error) {
+		return nil, nil
+	}))
+	actorID, err := taskSubmitter.CreateActor(initDesc, nil, &submitter.ActorCreationOptions{
+		Name: "ActorToKill",
+	})
+	require.NoError(t, err)
+	taskExecutor.RegisterActorContext(actorID, NewLocalActorContext(ids.NewUniqueID()))
+
+	// The named actor must be resolvable before the kill.
+	_, err = taskSubmitter.GetActor("ActorToKill", "")
+	require.NoError(t, err)
+
+	// Kill the actor from the driver side (noRestart=true).
+	require.NoError(t, taskSubmitter.KillActor(actorID, true))
+
+	// Concurrency group and context must be removed; later calls must fail.
+	if group := taskSubmitter.actorConcurrencyGroupMgr.GetGroup(actorID); group != nil {
+		t.Error("expected actor concurrency group to be removed after kill")
+	}
+	if _, ok := taskExecutor.GetActorContextByID(actorID); ok {
+		t.Error("expected actor context to be removed after kill")
+	}
+	_, err = taskSubmitter.GetActor("ActorToKill", "")
+	assert.Error(t, err, "expected a killed named actor to be unresolvable")
+}

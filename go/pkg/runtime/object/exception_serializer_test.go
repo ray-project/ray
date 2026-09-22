@@ -160,6 +160,52 @@ func TestRayExceptionSerializer_RayIDException(t *testing.T) {
 	if exception.ErrorCode() != ErrorCodeActorDied {
 		t.Errorf("Expected error code %d, got %d", ErrorCodeActorDied, exception.ErrorCode())
 	}
+
+	// The concrete type and ID must survive the round-trip. A type-switch
+	// against the embedded *rayIDException (instead of *RayIDException) or a
+	// mismatched serialization key ("id" vs "actor_id") silently drops the ID.
+	idEx, ok := exception.(*RayIDException)
+	if !ok {
+		t.Fatalf("Expected *RayIDException, got %T", exception)
+	}
+	if idEx.ID() != "actor-abc123" {
+		t.Errorf("Expected ID %q, got %q", "actor-abc123", idEx.ID())
+	}
+}
+
+// TestRayExceptionSerializer_RayIDException_ObjectID verifies that ID-based
+// exceptions whose ID is an object ID (serialized under "object_id") survive a
+// round-trip.
+func TestRayExceptionSerializer_RayIDException_ObjectID(t *testing.T) {
+	serializer := &RayExceptionSerializer{}
+
+	objectLostEx := NewRayIDExceptionLost("object-xyz789")
+
+	data, err := serializer.ToBytes(objectLostEx)
+	if err != nil {
+		t.Fatalf("ToBytes failed: %v", err)
+	}
+
+	exception, err := serializer.FromBytes(data)
+	if err != nil {
+		t.Fatalf("FromBytes failed: %v", err)
+	}
+
+	if exception == nil {
+		t.Fatal("FromBytes returned nil exception")
+	}
+
+	if exception.ErrorCode() != ErrorCodeObjectLost {
+		t.Errorf("Expected error code %d, got %d", ErrorCodeObjectLost, exception.ErrorCode())
+	}
+
+	idEx, ok := exception.(*RayIDException)
+	if !ok {
+		t.Fatalf("Expected *RayIDException, got %T", exception)
+	}
+	if idEx.ID() != "object-xyz789" {
+		t.Errorf("Expected ID %q, got %q", "object-xyz789", idEx.ID())
+	}
 }
 
 // TestExceptionData_Structure tests ExceptionData structure serialization.

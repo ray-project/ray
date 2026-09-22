@@ -17,11 +17,13 @@
 package api
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 
 	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
@@ -404,6 +406,519 @@ func (c *ActorCreator[T]) Create(args ...interface{}) (*ActorHandleImpl[T], erro
 }
 
 // ============================================================================
+// Python Task Caller Builder (cross-language)
+// ============================================================================
+
+// pythonDummyType is the marker inserted before each argument of a Python call,
+// matching Java's ArgumentsBuilder.wrap() and CPP's Arguments::WrapArgsImpl.
+// Python's recover_args expects the [DUMMY_TYPE, value, ...] layout.
+var pythonDummyType = []byte("__RAY_DUMMY__")
+
+// pythonDummyRawMetadata is the metadata attached to each DUMMY_TYPE marker,
+// matching CPP's METADATA_STR_RAW.
+var pythonDummyRawMetadata = []byte(object.MetadataTypeRaw)
+
+// pythonInitFunctionName is the Python actor constructor name. Python actors are
+// created via a task whose function name is "__init__" (see FunctionActorManager).
+const pythonInitFunctionName = "__init__"
+
+// wrapPythonArgs converts raw call arguments into the FunctionArg sequence used
+// by Python workers, inserting a DUMMY_TYPE marker before every value so that
+// recover_args can restore the original argument list.
+func wrapPythonArgs(args []interface{}) []function.FunctionArg {
+	functionArgs := make([]function.FunctionArg, 0, len(args)*2)
+	for _, arg := range args {
+		functionArgs = append(functionArgs, function.NewFunctionArgByValue(pythonDummyType, pythonDummyRawMetadata))
+		functionArgs = append(functionArgs, convertArgToFunctionArg(arg))
+	}
+	return functionArgs
+}
+
+// PythonTaskCaller provides a builder for configuring and submitting Python tasks.
+// This is the cross-language counterpart to TaskCaller, allowing Go code to invoke
+// Python functions (module-level or class methods) on a Python worker.
+//
+// Type parameter T is the return type of the task.
+type PythonTaskCaller[T any] struct {
+	// functionDescriptor describes the Python function to call.
+	functionDescriptor *function.PythonFunctionDescriptor
+	// options are the task options.
+	options *submitter.TaskOptions
+	// numReturns is the number of return values.
+	numReturns int
+	// err is a deferred error from descriptor validation.
+	err error
+}
+
+// RemotePython sets a Python function to be called remotely.
+// This is the cross-language entry point for calling Python functions.
+//
+// Parameters:
+//   - moduleName: The Python module path (e.g., "my_module").
+//   - functionName: The Python function name (e.g., "add").
+//   - className: The Python class name for class methods. Empty for module-level functions.
+//
+// The argument order is (module, function, class): the optional className comes
+// last because module-level functions (the common case) pass an empty class.
+// This differs from the internal NewPythonFunctionDescriptor(module, class,
+// function, hash) order, so callers should rely on the documented parameter
+// names rather than positional correspondence.
+//
+// Returns:
+//   - *PythonTaskCaller[T]: A task caller builder.
+func RemotePython[T any](moduleName, functionName, className string) *PythonTaskCaller[T] {
+	desc, err := function.NewPythonFunctionDescriptor(moduleName, className, functionName, "")
+	return &PythonTaskCaller[T]{
+		functionDescriptor: desc,
+		options:            &submitter.TaskOptions{},
+		numReturns:         1,
+		err:                err,
+	}
+}
+
+// RemotePythonVoid sets a Python function with no return value to be called.
+//
+// Parameters:
+//   - moduleName: The Python module path (e.g., "my_module").
+//   - functionName: The Python function name (e.g., "log_event").
+//   - className: The Python class name for class methods. Empty for module-level functions.
+//
+// Argument order is (module, function, class); see RemotePython for details.
+//
+// Returns:
+//   - *PythonTaskCaller[struct{}]: A task caller builder for void functions.
+func RemotePythonVoid(moduleName, functionName, className string) *PythonTaskCaller[struct{}] {
+	desc, err := function.NewPythonFunctionDescriptor(moduleName, className, functionName, "")
+	return &PythonTaskCaller[struct{}]{
+		functionDescriptor: desc,
+		options:            &submitter.TaskOptions{},
+		numReturns:         0,
+		err:                err,
+	}
+}
+
+// WithResources sets the resource requirements for the Python task.
+//
+// Parameters:
+//   - resources: A map of resource name to quantity (e.g., {"CPU": 1.0, "GPU": 0.5}).
+//
+// Returns:
+//   - *PythonTaskCaller[T]: The same task caller for chaining.
+func (c *PythonTaskCaller[T]) WithResources(resources map[string]float64) *PythonTaskCaller[T] {
+	c.options.Resources = resources
+	return c
+}
+
+// WithNumReturns sets the number of return values for the Python task.
+//
+// Parameters:
+//   - numReturns: The number of return values.
+//
+// Returns:
+//   - *PythonTaskCaller[T]: The same task caller for chaining.
+func (c *PythonTaskCaller[T]) WithNumReturns(numReturns int) *PythonTaskCaller[T] {
+	c.numReturns = numReturns
+	return c
+}
+
+// WithMaxRetries sets the maximum number of retries for the Python task.
+//
+// Parameters:
+//   - maxRetries: The maximum number of retries.
+//
+// Returns:
+//   - *PythonTaskCaller[T]: The same task caller for chaining.
+func (c *PythonTaskCaller[T]) WithMaxRetries(maxRetries int) *PythonTaskCaller[T] {
+	c.options.RetryPolicy = &submitter.RetryPolicy{
+		MaxRetries: maxRetries,
+	}
+	return c
+}
+
+// WithRuntimeEnv sets the runtime environment for the Python task.
+//
+// Parameters:
+//   - runtimeEnv: The runtime environment JSON string.
+//
+// Returns:
+//   - *PythonTaskCaller[T]: The same task caller for chaining.
+func (c *PythonTaskCaller[T]) WithRuntimeEnv(runtimeEnv string) *PythonTaskCaller[T] {
+	c.options.RuntimeEnv = runtimeEnv
+	return c
+}
+
+// WithName sets the name for the Python task.
+//
+// Parameters:
+//   - name: The task name (used for monitoring and debugging).
+//
+// Returns:
+//   - *PythonTaskCaller[T]: The same task caller for chaining.
+func (c *PythonTaskCaller[T]) WithName(name string) *PythonTaskCaller[T] {
+	c.options.Name = name
+	return c
+}
+
+// Call submits the Python task with the provided arguments.
+//
+// Parameters:
+//   - args: The function arguments (can be values or ObjectRefs).
+//
+// Returns:
+//   - *ObjectRef[T]: A reference to the task result.
+//   - error: Any error encountered during submission.
+func (c *PythonTaskCaller[T]) Call(args ...interface{}) (*ObjectRef[T], error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
+	functionArgs := wrapPythonArgs(args)
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (see releaseInternalByRefArgRefs).
+	defer releaseInternalByRefArgRefs(functionArgs)
+
+	taskSubmitter := getTaskSubmitter()
+	if taskSubmitter == nil {
+		// Task submitter is nil even though runtime may be initialized.
+		// This indicates an internal inconsistency rather than "runtime not initialized".
+		return nil, errors.NewRuntimeError("submit_task", "submitter_not_available")
+	}
+
+	returnIDs, err := taskSubmitter.SubmitTask(
+		c.functionDescriptor,
+		functionArgs,
+		c.numReturns,
+		c.options,
+	)
+	if err != nil {
+		// Convert internal error to public error
+		return nil, errors.ConvertToPublic(err)
+	}
+
+	if len(returnIDs) > 0 {
+		return createObjectRefWithFinalizer[T](returnIDs[0], "")
+	}
+
+	return nil, nil
+}
+
+// ============================================================================
+// Python Actor Creator / Handle (cross-language)
+// ============================================================================
+
+// PythonActorCreator provides a builder for creating Python actors.
+// This is the cross-language counterpart to ActorCreator, allowing Go code to
+// instantiate a Python class as a Ray actor on a Python worker.
+type PythonActorCreator struct {
+	// functionDescriptor describes the actor constructor ("__init__").
+	functionDescriptor *function.PythonFunctionDescriptor
+	// options are the actor creation options.
+	options *submitter.ActorCreationOptions
+	// err is a deferred error from descriptor validation.
+	err error
+}
+
+// RemotePythonActor sets a Python actor class to be created remotely.
+// This is the cross-language entry point for creating Python actors.
+//
+// Parameters:
+//   - moduleName: The Python module path (e.g., "my_module").
+//   - className: The Python actor class name (e.g., "Calculator").
+//
+// Returns:
+//   - *PythonActorCreator: An actor creator builder.
+func RemotePythonActor(moduleName, className string) *PythonActorCreator {
+	// Python actors are created via a task whose function name is pythonInitFunctionName
+	// and whose class name is the actor class (see FunctionActorManager).
+	desc, err := function.NewPythonFunctionDescriptor(moduleName, className, pythonInitFunctionName, "")
+	return &PythonActorCreator{
+		functionDescriptor: desc,
+		options:            &submitter.ActorCreationOptions{},
+		err:                err,
+	}
+}
+
+// WithName sets the name for the Python actor.
+//
+// Parameters:
+//   - name: The actor name.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithName(name string) *PythonActorCreator {
+	c.options.Name = name
+	return c
+}
+
+// WithNamespace sets the namespace for the Python actor.
+//
+// Parameters:
+//   - namespace: The actor namespace.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithNamespace(namespace string) *PythonActorCreator {
+	c.options.Namespace = namespace
+	return c
+}
+
+// WithResources sets the resource requirements for the Python actor.
+//
+// Parameters:
+//   - resources: A map of resource name to quantity (e.g., {"CPU": 1.0, "GPU": 0.5}).
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithResources(resources map[string]float64) *PythonActorCreator {
+	c.options.Resources = resources
+	return c
+}
+
+// WithMaxRestarts sets the maximum number of restarts for the Python actor.
+//
+// Parameters:
+//   - maxRestarts: The maximum number of restarts.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithMaxRestarts(maxRestarts int) *PythonActorCreator {
+	c.options.MaxRestarts = maxRestarts
+	return c
+}
+
+// WithMaxTaskRetries sets the maximum number of task retries for the Python actor.
+//
+// Parameters:
+//   - maxTaskRetries: The maximum number of task retries.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithMaxTaskRetries(maxTaskRetries int) *PythonActorCreator {
+	c.options.MaxTaskRetries = maxTaskRetries
+	return c
+}
+
+// WithRuntimeEnv sets the runtime environment for the Python actor.
+//
+// Parameters:
+//   - runtimeEnv: The runtime environment JSON string.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithRuntimeEnv(runtimeEnv string) *PythonActorCreator {
+	c.options.RuntimeEnv = runtimeEnv
+	return c
+}
+
+// WithMaxConcurrency sets the maximum number of concurrent calls for the Python actor.
+//
+// Parameters:
+//   - maxConcurrency: The maximum number of concurrent calls.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining.
+func (c *PythonActorCreator) WithMaxConcurrency(maxConcurrency int) *PythonActorCreator {
+	c.options.MaxConcurrency = maxConcurrency
+	return c
+}
+
+// Create creates the Python actor with the provided constructor arguments.
+//
+// Parameters:
+//   - args: The constructor arguments (can be values or ObjectRefs).
+//
+// Returns:
+//   - *PythonActorHandle: A handle to the created actor.
+//   - error: Any error encountered during actor creation.
+func (c *PythonActorCreator) Create(args ...interface{}) (*PythonActorHandle, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
+	functionArgs := wrapPythonArgs(args)
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (see releaseInternalByRefArgRefs).
+	defer releaseInternalByRefArgRefs(functionArgs)
+
+	taskSubmitter := getTaskSubmitter()
+	if taskSubmitter == nil {
+		// Task submitter is nil even though runtime may be initialized.
+		// This indicates an internal inconsistency rather than "runtime not initialized".
+		return nil, errors.NewRuntimeError("create_actor", "submitter_not_available")
+	}
+
+	actorID, err := taskSubmitter.CreateActor(
+		c.functionDescriptor,
+		functionArgs,
+		c.options,
+	)
+	if err != nil {
+		// Convert internal error to public error
+		return nil, errors.ConvertToPublic(err)
+	}
+
+	return &PythonActorHandle{
+		nativeHandle: object.NewNativeActorHandle(actorID, object.LanguagePython),
+		moduleName:   c.functionDescriptor.ModuleName,
+		className:    c.functionDescriptor.ClassName,
+	}, nil
+}
+
+// PythonActorHandle represents a handle to a Python actor.
+// Method calls are dispatched by method name (Go cannot reflect over Python
+// methods, so the method name is passed as a string).
+type PythonActorHandle struct {
+	// nativeHandle is the underlying cross-language actor handle.
+	nativeHandle *object.NativeActorHandle
+	// moduleName is the Python module path of the actor class.
+	moduleName string
+	// className is the Python actor class name.
+	className string
+}
+
+// ID returns the actor ID.
+func (h *PythonActorHandle) ID() ids.ActorID {
+	return h.nativeHandle.ActorID
+}
+
+// ActorTask creates a task caller for a Python actor method with an explicit
+// return type. Go does not support method-level type parameters, so the caller
+// passes the handle explicitly instead of invoking a method on it.
+//
+// Parameters:
+//   - handle: The Python actor handle.
+//   - methodName: The name of the Python actor method (e.g., "add").
+//   - args: Optional method arguments.
+//
+// Returns:
+//   - *PythonActorTaskCaller: A task caller builder for the actor method.
+//
+// Example:
+//
+//	ref, err := api.ActorTask[int](handle, "add", 5).Remote()
+func ActorTask[T any](handle *PythonActorHandle, methodName string, args ...interface{}) *PythonActorTaskCaller[T] {
+	desc, err := function.NewPythonFunctionDescriptor(handle.moduleName, handle.className, methodName, "")
+	return &PythonActorTaskCaller[T]{
+		actorID:          handle.nativeHandle.ActorID,
+		methodDescriptor: desc,
+		args:             wrapPythonArgs(args),
+		options:          &submitter.TaskOptions{},
+		numReturns:       1,
+		err:              err,
+	}
+}
+
+// PythonActorTaskCaller is a task caller specifically for Python actor method calls.
+// Type parameter T is the return type of the actor method.
+type PythonActorTaskCaller[T any] struct {
+	actorID          ids.ActorID
+	methodDescriptor *function.PythonFunctionDescriptor
+	args             []function.FunctionArg
+	options          *submitter.TaskOptions
+	numReturns       int
+	err              error // Deferred error reporting
+}
+
+// Remote submits the Python actor method call and returns an ObjectRef.
+//
+// Returns:
+//   - *ObjectRef[T]: A reference to the task result
+//   - error: Any error encountered during submission
+func (c *PythonActorTaskCaller[T]) Remote() (*ObjectRef[T], error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
+	// Release the PutWithID local reference of internal pass-by-reference
+	// arguments on every exit path (see releaseInternalByRefArgRefs).
+	defer releaseInternalByRefArgRefs(c.args)
+
+	taskSubmitter := getTaskSubmitter()
+	if taskSubmitter == nil {
+		// Task submitter is nil even though runtime may be initialized.
+		// This indicates an internal inconsistency rather than "runtime not initialized".
+		return nil, errors.NewRuntimeError("submit_actor_task", "submitter_not_available")
+	}
+
+	returnIDs, err := taskSubmitter.SubmitActorTask(
+		c.actorID,
+		c.methodDescriptor,
+		c.args,
+		c.numReturns,
+		c.options,
+	)
+	if err != nil {
+		// Convert internal error to public error
+		return nil, errors.ConvertToPublic(err)
+	}
+
+	if len(returnIDs) > 0 {
+		return createObjectRefWithFinalizer[T](returnIDs[0], "")
+	}
+
+	return nil, nil
+}
+
+// WithResources sets the resource requirements for the Python actor method call.
+//
+// Parameters:
+//   - resources: A map of resource name to quantity (e.g., {"CPU": 1.0, "GPU": 0.5})
+//
+// Returns:
+//   - *PythonActorTaskCaller[T]: The same caller for chaining
+func (c *PythonActorTaskCaller[T]) WithResources(resources map[string]float64) *PythonActorTaskCaller[T] {
+	c.options.Resources = resources
+	return c
+}
+
+// WithRuntimeEnv sets the runtime environment for the Python actor method call.
+//
+// Parameters:
+//   - runtimeEnv: The runtime environment JSON string
+//
+// Returns:
+//   - *PythonActorTaskCaller[T]: The same caller for chaining
+func (c *PythonActorTaskCaller[T]) WithRuntimeEnv(runtimeEnv string) *PythonActorTaskCaller[T] {
+	c.options.RuntimeEnv = runtimeEnv
+	return c
+}
+
+// WithName sets the name for the Python actor method call.
+//
+// Parameters:
+//   - name: The task name
+//
+// Returns:
+//   - *PythonActorTaskCaller[T]: The same caller for chaining
+func (c *PythonActorTaskCaller[T]) WithName(name string) *PythonActorTaskCaller[T] {
+	c.options.Name = name
+	return c
+}
+
+// WithConcurrencyGroup sets the concurrency group for the Python actor method call.
+//
+// Parameters:
+//   - groupName: The concurrency group name
+//
+// Returns:
+//   - *PythonActorTaskCaller[T]: The same caller for chaining
+func (c *PythonActorTaskCaller[T]) WithConcurrencyGroup(groupName string) *PythonActorTaskCaller[T] {
+	return c
+}
+
+// WithNumReturns sets the number of return values for the Python actor method call.
+//
+// Parameters:
+//   - numReturns: The number of return values
+//
+// Returns:
+//   - *PythonActorTaskCaller[T]: The same caller for chaining
+func (c *PythonActorTaskCaller[T]) WithNumReturns(numReturns int) *PythonActorTaskCaller[T] {
+	c.numReturns = numReturns
+	return c
+}
+
+// ============================================================================
 // Helper Functions (moved to object.go for better organization)
 // ============================================================================
 
@@ -467,9 +982,7 @@ func convertArgToFunctionArg(arg interface{}) function.FunctionArg {
 	// This aligns with Java's implementation in SystemConfig.java
 	if object.ShouldPassByValue(len(nativeObj.Data), object.GetIsLocalMode()) {
 		// Small object: pass by value (serialize directly)
-		data := make([]byte, len(nativeObj.Data))
-		copy(data, nativeObj.Data)
-		return function.NewFunctionArgByValue(data, nil)
+		return functionArgByValue(nativeObj)
 	} else {
 		// Large object: pass by reference (store in object store)
 		// Generate a new ObjectID for this argument
@@ -487,8 +1000,12 @@ func convertArgToFunctionArg(arg interface{}) function.FunctionArg {
 					if err == nil {
 						// Return pass-by-reference argument, marked for release once
 						// the task is submitted so the PutWithID local reference does
-						// not pin the object in the object store forever.
-						arg := function.NewFunctionArgByRef(objectID, nil)
+						// not pin the object in the object store forever. The owner
+						// address (rpc address with worker_id) is required for the
+						// raylet to locate the owner when it pulls the object to
+						// schedule the task; an empty owner crashes the raylet in
+						// CoreWorkerClientPool::GetOrConnect.
+						arg := function.NewFunctionArgByRef(objectID, getCurrentWorkerRpcAddress(runtime))
 						arg.ObjectRef.ReleaseAfterSubmit = true
 						return arg
 					}
@@ -497,10 +1014,35 @@ func convertArgToFunctionArg(arg interface{}) function.FunctionArg {
 		}
 
 		// Fallback: pass by value if object store is not available
-		data := make([]byte, len(nativeObj.Data))
-		copy(data, nativeObj.Data)
-		return function.NewFunctionArgByValue(data, nil)
+		return functionArgByValue(nativeObj)
 	}
+}
+
+// functionArgByValue deep-copies the serialized payload out of a NativeRayObject
+// and returns a pass-by-value FunctionArg. The copy is required because the
+// NativeRayObject may be returned to the buffer pool (Close) after the caller
+// returns, invalidating its backing slices. Metadata is carried so the receiving
+// runtime can deserialize cross-language arguments (e.g. Python requires a
+// non-empty metadata for non-null objects).
+func functionArgByValue(nativeObj *object.NativeRayObject) function.FunctionArg {
+	data := bytes.Clone(nativeObj.Data)
+	metadata := bytes.Clone(nativeObj.Metadata)
+	return function.NewFunctionArgByValue(data, metadata)
+}
+
+// getCurrentWorkerRpcAddress returns the worker's own RPC address as bytes. It
+// is used as the owner address for pass-by-reference arguments so the raylet can
+// locate the owning worker when it pulls the object to schedule the task; an
+// empty owner address crashes the raylet in CoreWorkerClientPool::GetOrConnect.
+func getCurrentWorkerRpcAddress(runtime contract.Runtime) []byte {
+	if runtime == nil {
+		return nil
+	}
+	wc := runtime.WorkerContext()
+	if wc == nil {
+		return nil
+	}
+	return wc.GetRpcAddress()
 }
 
 // getTaskSubmitter returns the current task submitter.

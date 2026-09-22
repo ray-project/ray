@@ -377,6 +377,23 @@ TEST_F(NativeObjectStoreCGOTest, WaitWithNullPointers) {
 }
 
 // ============================================================================
+// Zero-copy Create/Write/Seal bridge tests
+// ============================================================================
+// CObjectStore_CreateOwned/CreateExisting/SealOwned/SealExisting depend on a
+// live CoreWorker (raylet), so they are covered by the E2E tests rather than
+// here. CObjectStore_WriteData is a pure memcpy and is unit-tested directly.
+
+// Verify CObjectStore_WriteData copies bytes into the provided pointer.
+TEST(NativeObjectStoreCreateSealTest, WriteDataCopiesBytes) {
+  uint8_t buf[16] = {0};
+  const char *src = "hello";
+  int rc = CObjectStore_WriteData(0, buf, src, 5);
+  ASSERT_EQ(rc, 0);
+  EXPECT_EQ(0, memcmp(buf, "hello", 5));
+  EXPECT_EQ(0, buf[5]);  // untouched tail
+}
+
+// ============================================================================
 // End of Tests
 // ============================================================================
 // Note: Additional tests for CObjectStore_Put, CObjectStore_Get, etc. would

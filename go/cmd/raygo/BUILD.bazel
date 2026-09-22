@@ -31,5 +31,11 @@ go_library(
 go_binary(
     name = "raygo",
     embed = [":raygo_lib"],
+    # Strip the symbol table (-s) and the DWARF debug info (-w) to keep the
+    # shipped raygo binary small.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
     visibility = ["//visibility:public"],
 )

@@ -6,7 +6,7 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 # Generates only JobConfig/WorkerType (common.proto), GcsNodeInfo
 # (gcs.proto), RuntimeEnvInfo (public/runtime_environment.proto), and the
 # RuntimeEnv/RuntimeEnvConfig types they need. Used by //go/proto.
-load("@rules_proto_grpc//go:defs.bzl", "go_grpc_compile")
+load("@rules_proto_grpc//go:defs.bzl", "go_proto_compile")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 
 package(default_visibility = ["//visibility:public"])
@@ -540,7 +540,9 @@ python_grpc_compile(
     ],
 )
 
-go_grpc_compile(
+# Generated as messages only, without gRPC stubs, so that go_runtime.so does not
+# need to link the gRPC stack.
+go_proto_compile(
     name = "go_runtime_min_go_proto",
     deps = [
         ":autoscaler_proto",
