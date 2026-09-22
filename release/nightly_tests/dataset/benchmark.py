@@ -13,9 +13,6 @@ import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.core.generated import common_pb2
 from ray.data import DataContext
-from ray.data._internal.execution.streaming_executor_state import (
-    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
-)
 from ray.util.state import list_runtime_envs
 
 try:
@@ -448,9 +445,7 @@ class Benchmark:
         debug_progress_manager: bool = True,
         max_object_store_utilization: Optional[float] = 1.0,
         max_head_node_memory_bytes: Optional[int] = None,
-        max_sched_loop_duration_s: Optional[float] = (
-            2 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
-        ),
+        max_sched_loop_duration_s: Optional[float] = None,
     ):
         if (
             max_object_store_utilization is not None
