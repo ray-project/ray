@@ -329,7 +329,7 @@ Learn more about Ray Serve
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> RLlib: Industry-Grade Reinforcement Learning
 :animate: fade-in-slide-down
 
-[RLlib](../rllib/index.rst) is a reinforcement learning (RL) library that offers high performance implementations of popular RL algorithms and supports various training environments. RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
+{doc}`RLlib <../rllib/index>` is a reinforcement learning (RL) library that offers high performance implementations of popular RL algorithms and supports various training environments. RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 ````{note}
 To run this example, install `rllib` and either `tensorflow` or `pytorch`:

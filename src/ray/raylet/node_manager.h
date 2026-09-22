@@ -413,13 +413,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool ResourceCreateUpdated(const NodeID &node_id,
                              const ResourceRequest &createUpdatedResources);
 
-  /// Handler for the deletion of a resource in the GCS
-  /// \param node_id ID of the node that deleted resources.
-  /// \param resource_names Names of deleted resources.
-  /// \return Whether the deletion is applied.
-  bool ResourceDeleted(const NodeID &node_id,
-                       const std::vector<std::string> &resource_names);
-
   /// Evaluates the local infeasible queue to check if any tasks can be scheduled.
   /// This is called whenever there's an update to the resources on the local node.
   void TryLocalInfeasibleTaskScheduling();

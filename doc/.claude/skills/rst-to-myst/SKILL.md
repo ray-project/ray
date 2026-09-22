@@ -55,7 +55,7 @@ A stale `literalinclude` path, autodoc symbol, or `{ref}` target turns into a bu
 - **External callers of those labels** — `grep -rn '<label-name>' doc/source python rllib`. Confirms they're load-bearing (and that you must not rename them).
 - **`literalinclude` targets** — the file exists; `:lines:`/`:start-after:`/`:end-before:` markers still resolve.
 - **autodoc targets** — every `.. autofunction::`/`.. autoclass::` symbol imports.
-- **Who references THIS file** — grep the **bare filename** across all of `doc/`, e.g. `grep -rn 'getting-involved' doc/source`. Do **not** grep only the `dir/stem.rst` path: siblings link relatively (`[text](./getting-involved.rst)`, `(getting-involved.rst)`), and those break silently when you rename the file. Classify each hit (see "Reference updates"); most are no-ops, but `doc/BUILD.bazel`, `{include}`, and any relative `.rst` link from another page are not.
+- **Who references THIS file** — grep the **bare filename** across all of `doc/`, e.g. `grep -rn 'getting-involved' doc/source`. Do **not** grep only the `dir/stem.rst` path: siblings link relatively (`[text](./getting-involved.rst)`, `(getting-involved.rst)`), and those break silently when you rename the file. Classify each hit (see "Reference updates"); most are no-ops, but `doc/BUILD.bazel`, `{include}`, and any relative `.rst` link from another page are not. **Widen the grep past `doc/` for a landing or index page** — a page can be consumed by a file outside the Sphinx build that a `doc/`-scoped grep never sees. `rllib/index.rst` was `.. include::`d by `rllib/README.rst` (a package README, not a doc page and unable to hold Markdown); converting the index left three stale include paths in an `.rst` file, found only by grepping the package dir and repo root (`grep -rn '<stem>' rllib python .` plus a scan for `.. include::`).
 
 ### 3. Convert using the mapping
 
@@ -115,7 +115,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 | `.. contents::` `:local:` | ` ```{contents} ` with `:local:` |
 | `.. toctree::` | ` ```{toctree} ` — entries stay **extensionless** |
 | `.. include:: f.rst` (you're converting `f`) | ` ```{include} f.md ` (convert the included file in the same PR) |
-| `.. include:: _shared.rst` (shared partial, stays `.rst`) | ` ```{include} _shared.rst ` with `:parser: rst` (don't convert a shared `_includes/` partial) |
+| `.. include:: _shared.rst` (shared partial, stays `.rst`) | **problematic — see Hard rule 8.** MyST surfaces an included `.rst` partial's directives and comments as literal text, not parsed RST. If the partial renders nothing (all-comment), drop the include. |
 | `.. image:: URL` | ` ```{image} URL ` — **not** `![](URL)`; see Hard rule 5 |
 | `.. figure:: P` (+ caption) | ` ```{figure} P ` with options as `:key: val` lines, blank line, then the caption |
 | `.. title:: T` | **no MyST equivalent** — see Hard rule 5 |
@@ -128,9 +128,10 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 1. **Preserve every label name exactly.** `.. _name:` → `(name)=` (own line, blank line, then the heading it labeled). External `{ref}`/`:ref:` callers resolve by **name** and are format-agnostic, so an unchanged label keeps working from `.rst` and `.md` callers alike. A renamed or dropped label breaks every caller. Labels sitting directly above an autodoc directive stay **inside** the `{eval-rst}` block as RST (`.. _name:` next to `.. autofunction::`); targets created inside `eval-rst` still register globally. A label directly above a non-heading directive (e.g. a `.. warning::`) becomes `(name)=` immediately before the converted `:::{warning}` — it still anchors.
 
-2. **Links — translate, don't transcribe.** Three RST link forms need real translation; left as-is they emit a `myst.xref_*` warning (→ build failure):
+2. **Links — translate, don't transcribe.** Four RST link forms need real translation; left as-is they emit a `myst.xref_*` warning (→ build failure):
    - **Whole-doc links** should use the `` {doc}`text <doc>` `` role — it resolves to the document and is never ambiguous. A bare `[text](sibling.rst)` (or `[text](sibling.md)` pointing at an `.rst` source) emits `myst.xref_missing`. An **extensionless** `[text](sibling)` works *only if* the target doc has no same-named label; if it does (e.g. a page carrying both the doc name `getting-involved` and a `(getting-involved)=` label), the bare link is ambiguous and emits `myst.xref_ambiguous`. So just use `{doc}`. This bites in *both* directions: a converted file linking to a still-`.rst` sibling, **and** an already-`.md` sibling whose link to the file you renamed now points at a dead `.rst`. (Re-check the bare-stem grep from pre-flight.)
    - **Same-page section links** written as a raw `page.html#section` URL must become a `#section` fragment (`[text](#section)`), resolved via `myst_heading_anchors`. The `.html#` URL renders in RST but MyST treats it as a cross-reference target and can't find it.
+   - **Scheme-less bare-domain targets** — an RST link whose target has no URL scheme (`` `PyTorch <pytorch.org>`__ ``, `` `gymnasium <gymnasium.farama.org>`__ ``). Transcribed faithfully to `[PyTorch](pytorch.org)`, MyST reads the scheme-less target as a **cross-reference**, not a URL, and emits `myst.xref_missing`. RST rendered it as a (relative, usually broken) link, so the page *looked* fine on the old site — the MyST build fails. Add the scheme: `[PyTorch](https://pytorch.org)`. This one transcribes cleanly and slips through review: it was latent in an already-merged conversion (`multi-agent-envs.md`, ray-project/ray#66062) and silently red-built the stack until the RtD preview caught it.
    - **`{ref}`** links are exempt (resolve by label, not path). **Extensionless** links and toctree entries are exempt (Sphinx resolves to whichever source exists).
    - These `myst.xref_*` classes and their fixes are also encoded as machine-readable rules in [`sphinx-fix/rules.yaml`](../sphinx-fix/rules.yaml) — the canonical category→fix table the `sphinx-fix` skill uses to diagnose a failing build. It's one shared source; keep the two in sync.
 
@@ -150,6 +151,11 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 7. **An apostrophe in a heading silently changes its anchor.** docutils slugifies `What's Ray Core?` to `what-s-ray-core`; MyST drops the apostrophe and produces `whats-ray-core`. The build stays green, nothing warns, and any external link to the old anchor dies. Roughly 17 headings across 15 of the still-unconverted files are affected. The rule: **if the heading already carries an explicit label, that label is the anchor callers should be using, and you add nothing.** Only when the heading is bare do you add a compat target carrying the old docutils slug — `(what-s-next)=` above `## What's next?`. Never put two targets on one heading. Either way the section id and the headerlink href still change, so treat this as a known, explainable render diff rather than a regression to chase.
 
+8. **Shared includes, substitutions, and raw-HTML images — three traps that build green and render wrong.**
+   - **A shared `.rst` partial does not include cleanly into MyST.** MyST's `{include}` of a `.rst` file surfaces the raw content: RST directives and comments render as **literal visible text**, not parsed RST. A bare `{include}` and `:parser: rst` both do it (the latter as a code block), through a green build — so a commented-out partial, which renders nothing on the RST pages, dumps its raw text onto every including page. If the partial renders nothing, **drop the include** (the page loses nothing); if it carries active content, convert it to `.md` and include the `.md`, or inline it. Verified against `_includes/rllib/new_api_stack.rst` (myst-parser 5.1.0).
+   - **RST substitutions (`|name|`) have no MyST equivalent here — the `substitution` extension is off.** A `.. |name| image::` definition plus a `|name|` use does **not** resolve, and wrapping both in one `{eval-rst}` block does not save it: docutils raises `Undefined substitution referenced` (a build error), because eval-rst's nested parse never runs the substitution transform, even with the definition in the same block. Drop the substitution and inline each use as an `<img>` tag (the `html_image` extension is on).
+   - **A raw `<img>` is only processed inside MyST-parsed content.** In prose or a `{list-table}` cell, Sphinx processes the tag, copies the image to `_images/`, and rewrites the `src`. In a **raw HTML block** — a hand-written `<table>` you reached for to get `colspan` — the `<img src>` passes through verbatim and 404s, again through a green build. So a substitution-driven icon/sigil table becomes a `{list-table}` with `<img>` cells (accepting that list-table can't `colspan`), never a raw HTML `<table>`.
+
 ---
 
 ## Construct notes
@@ -168,6 +174,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 - **`list-table`**: keep the directive (` ```{list-table} `), move options to `:key: val` lines, and de-indent the `* -` / `  -` body to column 0. Don't convert it into a native Markdown table.
 
 - **RST named hyperlink targets (`` `text`_ `` plus a `.. _`text`: url` definition) have no MyST equivalent.** Inline each one as `[text](url)` at the point of use and delete the definition block. The exception is a target referenced from inside an `{eval-rst}` block — an RST simple or grid table whose cells carry `` `text`_ `` references. Keep those definitions as RST, in the same `{eval-rst}` block as the table that uses them, so they resolve without duplicating a target name elsewhere in the document (`ray-overview/installation.md` does this for the nightly-wheel table).
+- **RST comments become HTML comments.** An RST comment — a `.. ` line that isn't a valid directive (`.. TODO: …`, `.. todo (sven): …`, a commented-out block) — renders nothing. Convert it to an HTML comment (`<!-- … -->`) to keep the author's note in the source; the merged pages do this (`advanced-api.md`, `fault-tolerance.md`). Expect the step-4 render diff to flag it as a benign addition: RST emits no node at all, so the `<!-- … -->` shows up as a diff even though it's invisible to readers. Preserve a multi-line commented block as one `<!-- … -->` (a CommonMark comment block runs until `-->`); don't reflow its contents.
 - **Nested fences**: an outer fence must use **more backticks** than any fence it contains (or use a `:::` colon fence as the outer). Inside an ordered-list item, indent a nested ` ``` ` fence to the item's content column (3 spaces under `1. `).
 - **`{eval-rst}` for autodoc** is the safe default; native `{autofunction}` is a fallback only if the build is verified clean. Keep the option indentation the RST used.
 - **Include-only content partials** (a file that exists only to be `.. include::`d, like `involvement.rst`): give the `.md` **no frontmatter and no title** — it's spliced into its includer, and frontmatter would render mid-page there. These files don't orphan-warn even though they're not in any toctree (Sphinx doesn't treat included files as standalone docs). Inline any named-reference link targets in the partial, so they don't collide with the same target defined in the includer (RST tolerated the duplicate; inlining sidesteps it).
@@ -195,7 +202,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 ## Verification
 
-1. **Static checks** on each new `.md` — frontmatter parses (skip this for include-only partials, which have none), backtick **and** `:::` colon fences balance, no residual RST leaked outside fences, every label present, executed-directive counts match. Sketch:
+1. **Static checks** on each new `.md` — frontmatter parses (skip this for include-only partials, which have none), backtick **and** `:::` colon fences balance, no residual RST leaked outside fences, **no tool-call scaffolding leaked from the conversion agent itself**, every label present, executed-directive counts match. Sketch:
 
    ```python
    import re, yaml
@@ -206,6 +213,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
        L = t.splitlines()
        assert sum(ln.lstrip().startswith('```') for ln in L) % 2 == 0, f"unbalanced ``` {f}"
        assert sum(bool(re.match(r'^:{3,}\{', ln)) for ln in L) == sum(bool(re.match(r'^:{3,}\s*$', ln)) for ln in L), f"unbalanced colon fences {f}"
+       assert not re.search(r'</?(?:invoke|function_calls|parameter|content)\b|antml:', t), f"leaked agent tool-call scaffolding {f}"
        infence = False                       # residual RST outside ``` fences
        for i, ln in enumerate(L, 1):
            if ln.lstrip().startswith('```'): infence = not infence; continue
@@ -214,7 +222,9 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
                if re.search(pat, ln): print(f"RESIDUAL {f}:{i}: {ln!r}")
    ```
 
-   Also `grep -c '^```{testcode}'` (etc.) and confirm the count equals the original's real blocks; grep for every label you noted in pre-flight; and `grep -n '\.html#\|](.*\.rst)'` to catch any link form Hard rule 2 forbids.
+   Also `grep -c '^```{testcode}'` (etc.) and confirm the count equals the original's real blocks; grep for every label you noted in pre-flight; and `grep -n '\.html#\|](.*\.rst)'` to catch any link form Hard rule 2 forbids. Add a scheme-less bare-domain detector for the Hard rule 2 case that transcribes clean — `grep -noE '\]\([a-z0-9.-]+\.[a-z]{2,}(/[^)]*)?\)' <files> | grep -vE 'https?://|\.(md|rst|html|svg|png)[)#]|\]\(#|\]\(\.{1,2}/'` — and expect zero hits (a link target like `(pytorch.org)` with no scheme is a build-failing xref, not a URL). The `-o` is load-bearing: it emits one matched link per line so the exclusion filter runs **per link**. Without it the filter excludes on the whole line, and since the soft-wrap pass collapses each paragraph to a single line, a bad scheme-less target sharing a paragraph with a real `https://` link (or a valid `.md`/`.html` link) would be dropped along with the line it shares.
+
+   **Grep for your own scaffolding, not just the source's.** When *you* — an agent — do the conversion, your tool-call framing can leak into the output: closing tags like `</content>` and `</invoke>` trail at the end of a page (or `<function_calls>`, `<parameter …>`, an `antml:`-prefixed tag mid-file). These build green and render as literal visible text, and because they sit at EOF the render diff can miss them if the page's tail is below the fold. Run `grep -rnE '</?(invoke|function_calls|parameter|content)>|antml:' <the new .md files>` and expect zero hits. Seen for real: seven of the RLlib guide pages shipped with trailing `</content>`/`</invoke>` tags from the conversion agent (ray-project/ray#66213).
 
 2. **Build (decisive parse check)** — `pre-commit run --files <changed>` is effectively a no-op for most `doc/source/**/*.md` (vale is scoped to `doc/source/data/`, prettier to js/ts/html/css), so the real check is Sphinx. A full local build is heavy; the practical signal is the **Read the Docs PR preview** (`docs/readthedocs.com:anyscale-ray`). With `fail_on_warning`, a green RtD build proves every label, `{ref}`, link, toctree entry, `{literalinclude}`, `{eval-rst}`, `{list-table}`, and sphinx-design directive resolved. **Read the raw RtD log on failure**: the build page lazy-loads, so fetch `https://app.readthedocs.com/api/v2/build/<BUILD_ID>.txt` and grep for `WARNING:`/`ERROR:`. `-W --keep-going` lists all warnings of a build that *completes* — but a hard-broken build (a `conf.py`/extension error, a traceback, or `SEVERE:`) aborts before producing that list, and a parse error or broken `toctree` masks the xref/orphan warnings beneath it. So if a failed build's log is empty or short, or fixing one error reveals new ones, fix the highest-severity error first and **re-run** — don't trust a single pass to be complete.
 
@@ -238,7 +248,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 
 ## Verified Ray-specific facts (as of mid-2026)
 
-- `doc/source/conf.py`: `default_role = "code"`; `myst_enable_extensions` includes `colon_fence` but **not** `linkify`; `myst_heading_anchors = 3` (so `[text](#slug)` resolves to any h1–h3 heading).
+- `doc/source/conf.py`: `default_role = "code"`; `myst_enable_extensions` includes `colon_fence` and `html_image` but **not** `linkify` or `substitution`; `myst_heading_anchors = 4` (so `[text](#slug)` resolves to any h1–h4 heading).
 - `doc/BUILD.bazel` main `doctest(` rule globs `source/**/*.md` + `source/**/*.rst`, with a per-file `exclude` list (e.g. `ray-contribute/getting-involved.md`, `ray-contribute/testing-tips.md`) and whole-subtree excludes for `ray-core/`, `data/`, `rllib/`, `serve/`, `train/`, `tune/` (which have their own `doctest` rules).
 - `pre-commit` has no hook that lints `doc/source/**/*.md` outside `doc/source/data/` (vale) — so pre-commit passing is not evidence the page is correct; the Sphinx build is.
 - `sphinx_design==0.7.0` (`doc/requirements-doc.txt`) supports MyST first-class: its own docs are MyST and it ships a `snippets/myst/` tree, and its directives register through `app.add_directive`, so MyST's `{name}` fence dispatch reaches them like any other directive.

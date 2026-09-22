@@ -62,7 +62,7 @@ def list_files_for_each_block(
     _: TaskContext,
     *,
     indexer: "FileIndexer",
-    filesystem: "FileSystem",
+    filesystem: Optional["FileSystem"],
     file_extensions: Optional[List[str]] = None,
     partition_filter: Optional["PathPartitionFilter"] = None,
     partition_pruner: Optional[FilePruner] = None,
@@ -112,7 +112,7 @@ def list_files_for_each_block(
 def sample_files(
     indexer: "FileIndexer",
     paths: List[str],
-    filesystem: "FileSystem",
+    filesystem: Optional["FileSystem"],
     pruners: Optional[List[FilePruner]] = None,
     max_files: int = 16,
 ) -> FileManifest:

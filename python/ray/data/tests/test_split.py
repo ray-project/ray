@@ -949,6 +949,23 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
+def test_streaming_split_materialize_reports_to_executor(
+    ray_start_regular_shared_2_cpus,
+):
+    """`materialize()` on a split shard tells the executor what it is holding.
+
+    Those blocks stay alive for the rest of the job, so without the report the
+    block ref counter counts them as unconsumed output and backpressures the
+    producer down to a single task.
+    """
+    (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
+    materialized = shard.materialize()
+    assert shard._iter_stats.iter_prefetched_bytes == materialized.size_bytes()
+
+    materialized_again = shard.materialize()
+    assert shard._iter_stats.iter_prefetched_bytes == materialized_again.size_bytes()
+
+
 @pytest.mark.parametrize("prefetch_batches", [0, 2])
 def test_streaming_split_reports_and_clears_prefetched_bytes(
     ray_start_regular_shared_2_cpus, prefetch_batches

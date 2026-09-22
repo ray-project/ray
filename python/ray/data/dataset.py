@@ -56,7 +56,10 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import (
+    WebDatasetDatasink,
+    WebDatasetEncoderConfig,
+)
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.executor import OutputIterator
@@ -104,6 +107,7 @@ from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
+    _validate_min_bytes_per_file_args,
     _validate_rows_per_file_args,
     explain_plan,
     get_compute_strategy,
@@ -3607,6 +3611,8 @@ class Dataset:
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys.
 
+        Joins require the ``polars`` package.
+
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
@@ -4852,6 +4858,7 @@ class Dataset:
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
+        min_bytes_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -4861,7 +4868,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         If pyarrow can't represent your data, this method errors.
@@ -4911,7 +4918,7 @@ class Dataset:
                 look like. The filename is expected to be templatized with `{i}`
                 to ensure unique filenames when writing multiple files. If it's not
                 templatized, Ray Data will add `{i}` to the filename to ensure
-                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_dataset.html>`_.
+                compatibility with the pyarrow `write_to_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_to_dataset.html>`_.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -4941,6 +4948,18 @@ class Dataset:
                 might write more or fewer rows to each file. If both ``min_rows_per_file``
                 and ``max_rows_per_file`` are specified, ``max_rows_per_file`` takes
                 precedence when they cannot both be satisfied.
+            min_bytes_per_file: [Experimental] The minimum in-memory size, in bytes,
+                of input blocks to combine for each write. This must be a positive
+                integer. Ray Data combines small input blocks until their total
+                in-memory size reaches this value. Note that
+                since this is compared against the uncompressed in-memory size, the
+                resulting on-disk files will typically be much smaller than this value
+                due to Parquet compression and encoding. Ray Data doesn't split blocks
+                or write inputs that exceed this value, so output files can be larger.
+                Partitioning can also cause actual file sizes to differ. Operator
+                fusion is disabled when this parameter is set. You can't use this
+                parameter with ``min_rows_per_file``, ``max_rows_per_file``, or
+                ``num_rows_per_file``.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5004,6 +5023,12 @@ class Dataset:
                     )
                 filesystem = resolved.filesystem
 
+        _validate_min_bytes_per_file_args(
+            min_bytes_per_file=min_bytes_per_file,
+            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=min_rows_per_file,
+            max_rows_per_file=max_rows_per_file,
+        )
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
             min_rows_per_file=min_rows_per_file,
@@ -5017,6 +5042,7 @@ class Dataset:
             arrow_parquet_args=arrow_parquet_args,
             min_rows_per_file=effective_min_rows,
             max_rows_per_file=effective_max_rows,
+            min_bytes_per_file=min_bytes_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -5904,29 +5930,21 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_
+        tar archives.
 
-        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
-        records, with one Example record for each row in the dataset.
-
-        .. warning::
-            tf.train.Feature only natively stores ints, floats, and bytes,
-            so this function only supports datasets with these data types,
-            and will error if the dataset contains unsupported types.
+        Each row is written as a WebDataset sample.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
-        for the dataset.
+        Unless a custom filename provider is given, generated output filenames end
+        in ``.tar``.
 
         Examples:
 
@@ -5935,14 +5953,19 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.range(100)
+                ds = ray.data.from_items(
+                    [
+                        {"__key__": f"{i:06d}", "txt": str(i)}
+                        for i in range(100)
+                    ]
+                )
                 ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where tfrecords
-                files are written to.
+            path: The path to the destination root directory, where WebDataset tar
+                archives are written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
@@ -5960,11 +5983,12 @@ class Dataset:
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             encoder: Controls how dataset rows are encoded into WebDataset samples.
-                If ``True`` (default), uses the default encoder that automatically
-                handles common data types. If ``False``, disables encoding and requires
-                all values to already be bytes or strings. A string specifies a format
-                hint for the default encoder, a callable provides a custom encoding
-                function, and a list applies multiple encoders in sequence.
+                A boolean or string selects the built-in encoder, which automatically
+                handles common data types based on column-name extensions. A callable
+                receives and returns a sample dictionary, and a list applies multiple
+                encoder specifications in sequence. Set this to ``None`` to skip
+                encoding; in that case, each non-special value that isn't ``None``
+                must already be bytes or a string.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -7827,7 +7851,10 @@ class Dataset:
             block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
-    @ConsumptionAPI(pattern="Args:")
+    @Deprecated(
+        message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+        warning=True,
+    )
     def to_random_access_dataset(
         self,
         key: str,

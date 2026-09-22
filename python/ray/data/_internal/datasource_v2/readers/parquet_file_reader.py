@@ -341,8 +341,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is with a row offset of 0 (the default
-          ``WholeFileChunker`` for non-chunking callers).
+          fragment is yielded as-is with a row offset of 0.
         - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
           naming the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
