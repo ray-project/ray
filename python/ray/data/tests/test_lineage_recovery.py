@@ -5,10 +5,6 @@ These cover the *wiring* between the streaming executor and
 itself is unit-tested in ``test_lineage_tracker_{linear,fan_in,fan_out}.py``; what is
 tested here is that real execution actually calls it, and calls it with arguments that
 build a usable graph.
-
-That distinction matters: the tracker's units passed for the entire period during which
-the executor called a set of methods that no longer existed, because nothing exercised
-the two together.
 """
 
 from typing import Any, Dict
@@ -49,11 +45,6 @@ def trackers(monkeypatch):
     return created
 
 
-# Ray Data reconstruction has no switch of its own. The gate,
-# ``DataContext.enable_ray_data_reconstruction``, resolves from the job config and is
-# on exactly when the job turns Ray Core's lineage reconstruction off. So "recovery
-# enabled" is a property of the Ray instance, not of the context, and a test that needs
-# it starts the shared instance that way.
 recovery_enabled = pytest.mark.parametrize(
     "ray_start_regular_shared",
     [{"job_config": JobConfig(_disable_job_level_lineage_reconstruction=True)}],
@@ -637,8 +628,8 @@ def _fan_in_op_under_reconstruction(ctx, num_parents=2):
     )
 
     tracker = LineageTracker()
-    producer._lineage_tracker = tracker
-    consumer._lineage_tracker = tracker
+    producer.set_lineage_tracker(tracker)
+    consumer.set_lineage_tracker(tracker)
 
     parent_ids = [f"{producer.id}:{index}" for index in range(num_parents)]
     for parent_id, bundle in zip(parent_ids, bundles):

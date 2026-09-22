@@ -664,6 +664,14 @@ class PhysicalOperator(Operator):
         """Return a unique identifier for this operator."""
         return self._id
 
+    def set_lineage_tracker(self, tracker: Optional["LineageTracker"]) -> None:
+        """Attach the executor's lineage tracker, or detach it with ``None``.
+
+        Called once per execution by ``build_streaming_topology`` after ``start``.
+        Operators record task lineage through it if set.
+        """
+        self._lineage_tracker = tracker
+
     def owns_data_task(self, data_task_id: str) -> bool:
         """Whether this operator minted ``data_task_id`` for one of its tasks.
 

@@ -634,9 +634,7 @@ def build_streaming_topology(
         op_state = OpState(op, inqueues)
         topology[op] = op_state
         op.start(options, block_ref_counter)
-        # Attach the (optional) lineage tracker without widening every operator's
-        # start() signature. Defaults to None in PhysicalOperator.__init__.
-        op._lineage_tracker = lineage_tracker
+        op.set_lineage_tracker(lineage_tracker)
         return op_state
 
     setup_state(dag)
