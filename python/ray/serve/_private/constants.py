@@ -564,7 +564,8 @@ RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = get_env_float(
     "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5
 )
 
-# Process-wide limit for concurrent blocking replica actor-handle lookups.
+# Limit for blocking replica actor-handle lookups, shared by all deployment
+# routers in a process (not a per-router limit).
 RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS = get_env_int_positive(
     "RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS", 16
 )

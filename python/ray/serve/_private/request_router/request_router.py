@@ -50,6 +50,8 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+_REPLICA_UPDATE_INTERVAL_S = 0.01
+
 
 class LocalityScope(str, enum.Enum):
     NODE = "NODE"
@@ -1391,8 +1393,10 @@ class RequestRouter(ABC):
             and self._replica_lookup_tasks
             and self._replica_update_handle is None
         ):
-            self._replica_update_handle = self._event_loop.call_soon(
-                self._apply_resolved_replicas
+            # Use a fixed window, not a sliding debounce: ready replicas must not
+            # wait indefinitely for a continuous stream of lookup completions.
+            self._replica_update_handle = self._event_loop.call_later(
+                _REPLICA_UPDATE_INTERVAL_S, self._apply_resolved_replicas
             )
 
     def _apply_resolved_replicas(self) -> None:

@@ -2358,18 +2358,64 @@ async def test_completed_lookup_invalidated_before_commit(pow_2_router, remove):
     await router._shutdown_replica_resolution()
 
 
-async def test_completed_replica_lookups_are_batched(pow_2_router, monkeypatch):
+async def test_completed_replica_lookups_are_batched(
+    pow_2_router, actor_lookup, monkeypatch
+):
     router = pow_2_router
-    router._resolve_replica = AsyncMock(
-        side_effect=lambda info: FakeRunningReplica(info.replica_id.unique_id)
-    )
     update = Mock(wraps=router.update_replicas)
     monkeypatch.setattr(router, "update_replicas", update)
-    router._update_running_replicas([replica_info(str(i)) for i in range(100)])
-    await async_wait_for_condition(lambda: len(router.curr_replicas) == 100)
-    # One immediate snapshot update, one batched addition, not 100 index rebuilds.
+    call_later = router._event_loop.call_later
+    scheduled = []
+
+    def hold_replica_update(delay, callback, *args, **kwargs):
+        if callback == router._apply_resolved_replicas:
+            assert delay == 0.01
+            scheduled.append(callback)
+            return Mock(spec=asyncio.TimerHandle)
+        return call_later(delay, callback, *args, **kwargs)
+
+    # Control timer expiry while real executor completions span separate loop turns.
+    monkeypatch.setattr(router._event_loop, "call_later", hold_replica_update)
+    infos = [replica_info(str(i)) for i in range(8)]
+    router._update_running_replicas(infos)
+    for info in infos[:-1]:
+        actor_lookup.release[info.actor_name].set()
+        await async_wait_for_condition(
+            router._replica_lookup_tasks[info.replica_id].done
+        )
+        await asyncio.sleep(0)
+        assert update.call_count == 1
+        assert len(scheduled) == 1
+
+    # The window expires even though the last lookup is still blocked.
+    scheduled.pop()()
     assert update.call_count == 2
-    await router._shutdown_replica_resolution()
+    assert set(router.curr_replicas) == {info.replica_id for info in infos[:-1]}
+    actor_lookup.release[infos[-1].actor_name].set()
+    await async_wait_for_condition(lambda: len(scheduled) == 1)
+    scheduled.pop()()
+    assert update.call_count == 3
+    assert len(router.curr_replicas) == len(infos)
+
+
+@pytest.mark.parametrize(
+    "pow_2_router", [{"handle_source": DeploymentHandleSource.PROXY}], indirect=True
+)
+async def test_resolved_replicas_receive_proxy_handle(pow_2_router, actor_lookup):
+    router = pow_2_router
+    proxy = Mock()
+    router._self_actor_handle = proxy
+    info = replica_info("new")
+    push = actor_lookup.handles["new"].push_proxy_handle.remote
+
+    router._update_running_replicas([info])
+    await async_wait_for_condition(actor_lookup.started["new"].is_set)
+    push.assert_not_called()
+    actor_lookup.release["new"].set()
+    await async_wait_for_condition(lambda: info.replica_id in router.curr_replicas)
+    push.assert_called_once_with(proxy)
+    router._update_running_replicas([info])
+    push.assert_called_once_with(proxy)
 
 
 @pytest.mark.asyncio
