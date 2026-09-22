@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import logging
 import os
 import random
 import sys
@@ -29,6 +30,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -2275,8 +2277,11 @@ async def test_removed_then_readded_replica_uses_new_lookup(pow_2_router):
     "error", [ValueError("missing actor"), RuntimeError("GCS error")]
 )
 async def test_replica_lookup_failure_isolated_and_retried_on_update(
-    pow_2_router, actor_lookup, error, caplog
+    pow_2_router, actor_lookup, error, caplog, monkeypatch
 ):
+    monkeypatch.setattr(
+        logging.getLogger(SERVE_LOGGER_NAME), "handlers", [caplog.handler]
+    )
     router = pow_2_router
     good, bad = replica_info("good"), replica_info("bad")
     actor_lookup.errors["bad"] = error
