@@ -1052,7 +1052,7 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         if forward_body:
             assert "wait-for-body" in cfg, cfg
-            assert "tune.bufsize 16777216" in cfg, cfg
+            assert "tune.bufsize 8388608" in cfg, cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
@@ -1271,7 +1271,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             # router and selected replica intact.
             large_body = json.dumps({"prompt": " token" * 1_000_000})
             large_body_size = len(large_body.encode())
-            assert 262144 < large_body_size < 16 * 1024 * 1024
+            assert 262144 < large_body_size < 8 * 1024 * 1024
             resp = requests.post(
                 f"http://127.0.0.1:{haproxy_port}/predict",
                 data=large_body,
