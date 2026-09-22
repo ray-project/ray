@@ -290,6 +290,22 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
       ray::move_mapped(std::move(keys), [&command](std::string &&key) {
         return RedisConcurrencyKey{command.redis_key.table_name, std::move(key)};
       });
+  // Readiness is tracked per key: PushToSendingQueue only counts a key once,
+  // so a duplicated key would leave the request waiting for a readiness
+  // signal that never comes, parking it - and every later request on that
+  // key's queue - forever. Dedup, since the readiness contract is per key.
+  {
+    absl::flat_hash_set<RedisConcurrencyKey> seen;
+    seen.reserve(concurrency_keys.size());
+    std::vector<RedisConcurrencyKey> distinct_keys;
+    distinct_keys.reserve(concurrency_keys.size());
+    for (auto &key : concurrency_keys) {
+      if (seen.insert(key).second) {
+        distinct_keys.push_back(std::move(key));
+      }
+    }
+    concurrency_keys = std::move(distinct_keys);
+  }
 
   // The number of keys that's ready for this request.
   // For a query reading or writing multiple keys, we need a counter
@@ -339,8 +355,8 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
     *num_ready_keys += keys_ready;
     // If all queues are empty for each key this request depends on
     // we are safe to fire the request immediately.
-    if (*num_ready_keys == keys.size()) {
-      *num_ready_keys = keys.size() - 1;
+    if (*num_ready_keys == concurrency_keys.size()) {
+      *num_ready_keys = concurrency_keys.size() - 1;
     } else {
       send_redis = nullptr;
     }
