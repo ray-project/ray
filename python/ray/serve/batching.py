@@ -5,7 +5,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from functools import wraps
-from inspect import isasyncgenfunction, iscoroutinefunction
+from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     AsyncGenerator,
@@ -961,6 +961,16 @@ def batch(
                     )
 
                 _, keyword_args = recover_args(flattened_args)
+                if keyword_args and any(
+                    parameter.kind == Parameter.VAR_KEYWORD
+                    for parameter in input_parameters
+                ):
+                    raise TypeError(
+                        "When using `batch_size_fn`, variadic keyword parameters "
+                        "are not supported. Use an explicit single input parameter "
+                        "or pass multiple inputs positionally instead."
+                    )
+
                 if len(input_parameters) > 1 and keyword_args:
                     raise TypeError(
                         "When using `batch_size_fn`, keyword arguments are only "

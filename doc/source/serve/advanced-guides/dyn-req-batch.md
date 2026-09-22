@@ -71,7 +71,8 @@ handler's parameter is named `items`. Keyword-only input parameters are also
 supported. The sizing function receives a list of the input values, regardless
 of the call style. For handlers with multiple input parameters, pass all inputs
 positionally; keyword arguments are rejected because their ordering is not
-well-defined across a batch.
+well-defined across a batch. Variadic keyword parameters (`**kwargs`) are not
+supported with custom batch sizing.
 
 ### Graph Neural Network example
 

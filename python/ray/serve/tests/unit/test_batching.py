@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import AsyncIterator, List
+from typing import AsyncIterator, Dict, List
 
 import pytest
 
@@ -994,6 +994,50 @@ async def test_batch_size_fn_rejects_keywords_for_multi_input_handler() -> None:
     assert await asyncio.wait_for(func("still-ok", "positional"), timeout=1) == (
         "still-ok:positional"
     )
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"value": "one"},
+        {"tag": "t", "items": "x" * 20},
+    ],
+)
+async def test_batch_size_fn_rejects_variadic_keyword_handler(
+    use_class: bool, kwargs: Dict[str, str]
+) -> None:
+    batch_size_fn_calls = []
+    batch_decorator = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=lambda items: batch_size_fn_calls.append(items) or len(items),
+    )
+
+    async def unary_func(**values: List[str]) -> List[str]:
+        return next(iter(values.values()))
+
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def method(self, **values: List[str]) -> List[str]:
+                return await unary_func(**values)
+
+        func = Handler().method
+    else:
+        func = batch_decorator(unary_func)
+
+    assert await func._is_batching_task_alive()
+    with pytest.raises(
+        TypeError,
+        match="variadic keyword parameters are not supported",
+    ):
+        await asyncio.wait_for(func(**kwargs), timeout=1)
+
+    assert batch_size_fn_calls == []
     assert await func._is_batching_task_alive()
 
 
