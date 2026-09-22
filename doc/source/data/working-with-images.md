@@ -23,8 +23,7 @@ This guide shows you how to:
 
 Ray Data can read images from a variety of formats.
 
-To view the full list of supported file formats, see the
-{ref}`Loading Data API <loading-data-api>`.
+To view the full list of supported file formats, see the {ref}`Loading Data API <loading-data-api>`.
 
 :::::{tab-set}
 
@@ -33,10 +32,7 @@ To view the full list of supported file formats, see the
 To load raw images like JPEG files, call {func}`~ray.data.read_images`.  In the schema, the column name defaults to "image".
 
 :::{note}
-{func}`~ray.data.read_images` uses
-[PIL](https://pillow.readthedocs.io/en/stable/index.html). For a list of
-supported file formats, see
-[Image file formats](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html).
+{func}`~ray.data.read_images` uses [PIL](https://pillow.readthedocs.io/en/stable/index.html). For a list of supported file formats, see [Image file formats](https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html).
 :::
 
 ```{testcode}
@@ -131,8 +127,7 @@ features {
 }
 ```
 
-To load examples stored in this format, call {func}`~ray.data.read_tfrecords`.
-Then, call {meth}`~ray.data.Dataset.map` to decode the raw image bytes.
+To load examples stored in this format, call {func}`~ray.data.read_tfrecords`. Then, call {meth}`~ray.data.Dataset.map` to decode the raw image bytes.
 
 ```{testcode}
 import io
@@ -204,8 +199,7 @@ For more information on creating datasets, see {ref}`Loading Data <loading_data>
 
 ## Transforming images
 
-To transform images, call {meth}`~ray.data.Dataset.map` or
-{meth}`~ray.data.Dataset.map_batches`.
+To transform images, call {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.map_batches`.
 
 ```{testcode}
 from typing import Any, Dict
@@ -222,8 +216,7 @@ ds = (
 )
 ```
 
-For more information on transforming data, see
-{ref}`Transforming data <transforming_data>`.
+For more information on transforming data, see {ref}`Transforming data <transforming_data>`.
 
 (performing_inference_on_images)=
 
@@ -288,16 +281,13 @@ predictions.show(3)
 {'class': 296}
 ```
 
-For more information on performing inference, see
-{ref}`End-to-end: Offline Batch Inference <batch_inference_home>`
-and {ref}`Stateful Transforms <stateful_transforms>`.
+For more information on performing inference, see {ref}`End-to-end: Offline Batch Inference <batch_inference_home>` and {ref}`Stateful Transforms <stateful_transforms>`.
 
 (saving_images)=
 
 ## Saving images
 
-Save images with formats like PNG, Parquet, and NumPy. To view all supported formats,
-see the {ref}`Saving Data API <saving-data-api>`.
+Save images with formats like PNG, Parquet, and NumPy. To view all supported formats, see the {ref}`Saving Data API <saving-data-api>`.
 
 ::::{tab-set}
 

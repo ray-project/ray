@@ -8,13 +8,11 @@ myst:
 
 # Working with Tensors / NumPy
 
-N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide
-describes the limitations and best practices of working with such data.
+N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide describes the limitations and best practices of working with such data.
 
 ## Tensor data representation
 
-Ray Data represents tensors as
-[NumPy ndarrays](https://numpy.org/doc/stable/reference/arrays.ndarray.html).
+Ray Data represents tensors as [NumPy ndarrays](https://numpy.org/doc/stable/reference/arrays.ndarray.html).
 
 ```{testcode}
 import ray
@@ -97,17 +95,14 @@ ds.map_batches(batch_increase_brightness, batch_size="auto")
 
 You can use `batch_size="auto"` to let Ray Data automatically pick an appropriate batch size based on the size of your data.
 
-In addition to NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays and
-objects implementing `__array__` (for example, `torch.Tensor`) as tensor data.
+In addition to NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays and objects implementing `__array__` (for example, `torch.Tensor`) as tensor data.
 
-For more information on transforming data, read
-{ref}`Transforming data <transforming_data>`.
+For more information on transforming data, read {ref}`Transforming data <transforming_data>`.
 
 
 ## Saving tensor data
 
-Save tensor data with formats like Parquet, NumPy, and JSON. To view all supported
-formats, see the {ref}`Saving Data API <saving-data-api>`.
+Save tensor data with formats like Parquet, NumPy, and JSON. To view all supported formats, see the {ref}`Saving Data API <saving-data-api>`.
 
 ::::{tab-set}
 
@@ -126,8 +121,7 @@ ds.write_parquet("/tmp/simple")
 
 :::{tab-item} NumPy
 
-Call {meth}`~ray.data.Dataset.write_numpy` to save an ndarray column in NumPy
-files.
+Call {meth}`~ray.data.Dataset.write_numpy` to save an ndarray column in NumPy files.
 
 ```{testcode}
 import ray

@@ -19,16 +19,13 @@ This guide introduces you to the core capabilities of Ray Data:
 
 ## Datasets
 
-Ray Data's main abstraction is a {class}`Dataset <ray.data.Dataset>`, which
-represents a distributed collection of data. Datasets are specifically designed for machine learning workloads
-and can efficiently handle data collections that exceed a single machine's memory.
+Ray Data's main abstraction is a {class}`Dataset <ray.data.Dataset>`, which represents a distributed collection of data. Datasets are specifically designed for machine learning workloads and can efficiently handle data collections that exceed a single machine's memory.
 
 (loading_key_concept)=
 
 ## Loading data
 
-Create datasets from various sources including local files, Python objects, and cloud storage services like S3 or GCS.
-Ray Data seamlessly integrates with any [filesystem supported by Arrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html).
+Create datasets from various sources including local files, Python objects, and cloud storage services like S3 or GCS. Ray Data seamlessly integrates with any [filesystem supported by Arrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html).
 
 ```{testcode}
 import ray
@@ -50,8 +47,7 @@ To learn more about creating datasets from different sources, read {ref}`Loading
 
 ## Transforming data
 
-Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations
-across your cluster for better performance.
+Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations across your cluster for better performance.
 
 ```{testcode}
 from typing import Dict
@@ -101,9 +97,7 @@ To explore more transformation capabilities, read {ref}`Transforming data <trans
 
 ## Consuming data
 
-Access dataset contents through convenient methods like {meth}`~ray.data.Dataset.take_batch` and
-{meth}`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray Tasks or Actors
-for distributed processing.
+Access dataset contents through convenient methods like {meth}`~ray.data.Dataset.take_batch` and {meth}`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray Tasks or Actors for distributed processing.
 
 ```{testcode}
 # Extract the first 3 rows as a batch for processing
@@ -121,15 +115,13 @@ print(transformed_ds.take_batch(batch_size=3))
     'petal area (cm^2)': array([0.28, 0.28, 0.26])}
 ```
 
-For more details on working with dataset contents, see
-{ref}`Iterating over Data <iterating-over-data>` and {ref}`Saving Data <saving-data>`.
+For more details on working with dataset contents, see {ref}`Iterating over Data <iterating-over-data>` and {ref}`Saving Data <saving-data>`.
 
 (saving_key_concept)=
 
 ## Saving data
 
-Export processed datasets to a variety of formats and storage locations using methods
-like {meth}`~ray.data.Dataset.write_parquet`, {meth}`~ray.data.Dataset.write_csv`, and more.
+Export processed datasets to a variety of formats and storage locations using methods like {meth}`~ray.data.Dataset.write_parquet`, {meth}`~ray.data.Dataset.write_csv`, and more.
 
 ```{testcode}
 :hide:

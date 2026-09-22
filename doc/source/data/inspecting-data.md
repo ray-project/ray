@@ -21,8 +21,7 @@ This guide shows you how to:
 
 ## Describing datasets
 
-{class}`Datasets <ray.data.Dataset>` are tabular. To view a dataset's column names and
-types, call {meth}`Dataset.schema() <ray.data.Dataset.schema>`.
+{class}`Datasets <ray.data.Dataset>` are tabular. To view a dataset's column names and types, call {meth}`Dataset.schema() <ray.data.Dataset.schema>`.
 
 ```{testcode}
 import ray
@@ -60,9 +59,7 @@ Dataset(num_rows=..., schema=...)
 
 ## Inspecting rows
 
-To get a list of rows, call {meth}`Dataset.take() <ray.data.Dataset.take>` or
-{meth}`Dataset.take_all() <ray.data.Dataset.take_all>`. Ray Data represents each row as
-a dictionary.
+To get a list of rows, call {meth}`Dataset.take() <ray.data.Dataset.take>` or {meth}`Dataset.take_all() <ray.data.Dataset.take_all>`. Ray Data represents each row as a dictionary.
 
 ```{testcode}
 import ray
@@ -78,21 +75,15 @@ print(rows)
 ```
 
 
-For more information on working with rows, see
-{ref}`Transforming rows <transforming_rows>` and
-{ref}`Iterating over rows <iterating-over-rows>`.
+For more information on working with rows, see {ref}`Transforming rows <transforming_rows>` and {ref}`Iterating over rows <iterating-over-rows>`.
 
 (inspecting-batches)=
 
 ## Inspecting batches
 
-A batch contains data from multiple rows. To inspect batches, call
-`Dataset.take_batch() <ray.data.Dataset.take_batch>`.
+A batch contains data from multiple rows. To inspect batches, call `Dataset.take_batch() <ray.data.Dataset.take_batch>`.
 
-By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type
-of the returned batch, set `batch_format`. The batch format is independent from how
-Ray Data stores the underlying blocks, so you can use any batch format regardless of
-the internal block representation.
+By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type of the returned batch, set `batch_format`. The batch format is independent from how Ray Data stores the underlying blocks, so you can use any batch format regardless of the internal block representation.
 
 ::::{tab-set}
 
@@ -168,17 +159,14 @@ target: [[0,0]]
 
 ::::
 
-For more information on working with batches, see
-{ref}`Transforming batches <transforming_batches>` and
-{ref}`Iterating over batches <iterating-over-batches>`.
+For more information on working with batches, see {ref}`Transforming batches <transforming_batches>` and {ref}`Iterating over batches <iterating-over-batches>`.
 
 
 ## Inspecting execution statistics
 
 Ray Data calculates statistics during execution for each operator, such as wall clock time and memory usage.
 
-To view stats about your {class}`Datasets <ray.data.Dataset>`, call {meth}`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data/ray-data.log`.
-For more on how to read this output, see {ref}`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
+To view stats about your {class}`Datasets <ray.data.Dataset>`, call {meth}`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data/ray-data.log`. For more on how to read this output, see {ref}`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
 
 <!-- This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54101. -->
 

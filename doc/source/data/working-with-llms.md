@@ -153,9 +153,7 @@ For gated models requiring authentication, pass your HuggingFace token through `
 
 ## Multimodality
 
-Ray Data LLM also supports running batch inference with vision language
-and omni-modal models on multimodal data. To enable multimodal batch inference,
-apply the following 2 adjustments on top of the previous example:
+Ray Data LLM also supports running batch inference with vision language and omni-modal models on multimodal data. To enable multimodal batch inference, apply the following 2 adjustments on top of the previous example:
 
 - Set `prepare_multimodal_stage=True` in the `vLLMEngineProcessorConfig`
 - Prepare multimodal data inside the preprocessor.
@@ -179,10 +177,7 @@ Next, configure the VLM processor with the essential settings:
 :end-before: __vlm_config_example_end__
 ```
 
-Define preprocessing and postprocessing functions to convert dataset rows into
-the format expected by the VLM and extract model responses. Within the preprocessor,
-structure image data as part of an OpenAI-compatible message. Both image URL and
-`PIL.Image.Image` object are supported.
+Define preprocessing and postprocessing functions to convert dataset rows into the format expected by the VLM and extract model responses. Within the preprocessor, structure image data as part of an OpenAI-compatible message. Both image URL and `PIL.Image.Image` object are supported.
 
 ```{literalinclude} doc_code/working-with-llms/vlm_image_example.py
 :language: python
@@ -224,40 +219,23 @@ Next, configure the VLM processor with the essential settings:
 :end-before: __vlm_video_config_example_end__
 ```
 
-Ray Data LLM forwards `mm_processor_kwargs` to vLLM, which invokes
-the model's HuggingFace processor with it. The accepted keys are
-defined by the HF processor and differ by model family, for example
-`max_pixels` on Qwen2-VL, `size` on Qwen3-VL. Refer to the HF
-processor source for your model, for example [Qwen3VLVideoProcessor](https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L86).
+Ray Data LLM forwards `mm_processor_kwargs` to vLLM, which invokes the model's HuggingFace processor with it. The accepted keys are defined by the HF processor and differ by model family, for example `max_pixels` on Qwen2-VL, `size` on Qwen3-VL. Refer to the HF processor source for your model, for example [Qwen3VLVideoProcessor](https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L86).
 
 :::{note}
 Understanding multimodal arguments:
 
 - `engine_kwargs.limit_mm_per_prompt={"video": 1}`: caps the number of videos per request.
-- `engine_kwargs.mm_processor_kwargs.size`: per-frame resize budget;
-  inputs are resized to fall within the range
-  `shortest_edge` to `longest_edge` in total pixels.
-- `engine_kwargs.mm_processor_kwargs.do_sample_frames=False`: skip the
-  HF processor's own frame sampling because `media_io_kwargs` already
-  produced the final frames. Set this whenever frame sampling has
-  already happened upstream.
-- `prepare_multimodal_stage.model_config_kwargs.allowed_local_media_path`:
-  required for `file://` or local-path media inputs.
-- `prepare_multimodal_stage.model_config_kwargs.media_io_kwargs`:
-  frame sampling at decode time.
+- `engine_kwargs.mm_processor_kwargs.size`: per-frame resize budget; inputs are resized to fall within the range `shortest_edge` to `longest_edge` in total pixels.
+- `engine_kwargs.mm_processor_kwargs.do_sample_frames=False`: skip the HF processor's own frame sampling because `media_io_kwargs` already produced the final frames. Set this whenever frame sampling has already happened upstream.
+- `prepare_multimodal_stage.model_config_kwargs.allowed_local_media_path`: required for `file://` or local-path media inputs.
+- `prepare_multimodal_stage.model_config_kwargs.media_io_kwargs`: frame sampling at decode time.
 :::
 
 :::{warning}
-If a multimodal input exceeds `mm_processor_kwargs.size`, the HF
-processor's [smart_resize](https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L35)
-downscales it automatically. Size `size.longest_edge`
-to the largest input you expect to process: `height * width` for an
-image, `num_frames * height * width` for a video.
+If a multimodal input exceeds `mm_processor_kwargs.size`, the HF processor's [smart_resize](https://github.com/huggingface/transformers/blob/10555512868d663ee1ff627e4f5c5c260114235b/src/transformers/models/qwen3_vl/video_processing_qwen3_vl.py#L35) downscales it automatically. Size `size.longest_edge` to the largest input you expect to process: `height * width` for an image, `num_frames * height * width` for a video.
 :::
 
-Define preprocessing and postprocessing functions to convert dataset rows into
-the format expected by the VLM and extract model responses. Within the preprocessor,
-structure video data as part of an OpenAI-compatible message.
+Define preprocessing and postprocessing functions to convert dataset rows into the format expected by the VLM and extract model responses. Within the preprocessor, structure video data as part of an OpenAI-compatible message.
 
 ```{literalinclude} doc_code/working-with-llms/vlm_video_example.py
 :language: python
@@ -293,10 +271,7 @@ Next, configure the omni-modal processor with the essential settings:
 :end-before: __omni_audio_config_example_end__
 ```
 
-Define preprocessing and postprocessing functions to convert dataset rows into
-the format expected by the omni-modal model and extract model responses. Within the preprocessor,
-structure audio data as part of an OpenAI-compatible message. Both audio URL and audio
-binary data are supported.
+Define preprocessing and postprocessing functions to convert dataset rows into the format expected by the omni-modal model and extract model responses. Within the preprocessor, structure audio data as part of an OpenAI-compatible message. Both audio URL and audio binary data are supported.
 
 ```{literalinclude} doc_code/working-with-llms/omni_audio_example.py
 :language: python
@@ -396,16 +371,14 @@ Alternatively, you can disable these stages so the vLLM engine handles tokenizat
 ```
 
 :::{tip}
-Disaggregated tokenization is most beneficial when the tokenizer is a bottleneck, for example, with large vocabularies or long sequences.
-If the GPU engine is already saturated, the overhead of extra stages may not help.
+Disaggregated tokenization is most beneficial when the tokenizer is a bottleneck, for example, with large vocabularies or long sequences. If the GPU engine is already saturated, the overhead of extra stages may not help.
 :::
 
 (custom_tokenizers)=
 
 ## Custom tokenizers
 
-Use this pattern when a model is supported by vLLM but not by HuggingFace `transformers` — for example, Mistral Tekken (`mistral`), DeepSeek-V3 (`deepseek_v32`), or Grok-2 (`grok2`).
-The built-in ChatTemplate, Tokenize, and Detokenize stages rely on HuggingFace and will fail for these models. In the following example, we disable the built-in CPU stages and replace them with `map_batches` callables.
+Use this pattern when a model is supported by vLLM but not by HuggingFace `transformers` — for example, Mistral Tekken (`mistral`), DeepSeek-V3 (`deepseek_v32`), or Grok-2 (`grok2`). The built-in ChatTemplate, Tokenize, and Detokenize stages rely on HuggingFace and will fail for these models. In the following example, we disable the built-in CPU stages and replace them with `map_batches` callables.
 
 **Chat template**: Converts OpenAI-format messages into the prompt string the model expects. Required because each model family defines its own chat format:
 
@@ -450,9 +423,7 @@ This example uses a standard model because models that truly require vLLM's cust
 
 ### Row-level fault tolerance
 
-In Ray Data LLM, row-level fault tolerance is achieved by setting the `should_continue_on_error` parameter to `True` in the processor config.
-This means that if a single row fails due to a request level error from the engine, the job continues processing the remaining rows.
-This is useful for long-running jobs where you want to minimize the impact of request failures.
+In Ray Data LLM, row-level fault tolerance is achieved by setting the `should_continue_on_error` parameter to `True` in the processor config. This means that if a single row fails due to a request level error from the engine, the job continues processing the remaining rows. This is useful for long-running jobs where you want to minimize the impact of request failures.
 
 ```{literalinclude} doc_code/working-with-llms/basic_llm_example.py
 :language: python
@@ -462,14 +433,11 @@ This is useful for long-running jobs where you want to minimize the impact of re
 
 ### Actor-level fault tolerance
 
-When an actor dies in the middle of a pipeline execution, it's restarted and rejoins the actor pool to process remaining rows.
-This feature is enabled by default, and there are no additional configuration needed.
+When an actor dies in the middle of a pipeline execution, it's restarted and rejoins the actor pool to process remaining rows. This feature is enabled by default, and there are no additional configuration needed.
 
 ### Checkpoint recovery
 
-Ray Data supports checkpoint recovery, which lets you resume pipeline execution from a checkpoint stored in local or cloud storage.
-Checkpointing works only for pipelines that start with a read operation and end with a write operation.
-For checkpointing to take effect, successful blocks must reach the write sink before a failure occurs. After a failure, you can resume processing from the checkpoint in a subsequent run.
+Ray Data supports checkpoint recovery, which lets you resume pipeline execution from a checkpoint stored in local or cloud storage. Checkpointing works only for pipelines that start with a read operation and end with a write operation. For checkpointing to take effect, successful blocks must reach the write sink before a failure occurs. After a failure, you can resume processing from the checkpoint in a subsequent run.
 
 First, set up the checkpoint configuration and specify the ID column for checkpointing.
 
@@ -700,8 +668,7 @@ Users who install Ray and vLLM directly may encounter NIXL EP incompatibility er
 ImportError: libcudart.so.12: cannot open shared object file: No such file or directory
 ```
 
-Remove the incompatible package or ensure the installed `nixl_ep` package is compatible with the CUDA runtime
-and vLLM build in your environment.
+Remove the incompatible package or ensure the installed `nixl_ep` package is compatible with the CUDA runtime and vLLM build in your environment.
 :::
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see {ref}`Ray usage stats <ref-usage-stats>`.
