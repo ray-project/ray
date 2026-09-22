@@ -3141,18 +3141,14 @@ labmaze==1.0.6 ; python_full_version < '3.12' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   dm-control
-lance-namespace==0.6.1 \
-    --hash=sha256:9699c9e3f12236e5e08ea979cc4e036a8e3c67ed2f37ae6f25c5353ab908e1be \
-    --hash=sha256:f0deea442bd3f1056a8e2fed056ae2778e3356517ec2e680db049058b824d131
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/data-requirements.txt
-lance-namespace-urllib3-client==0.6.1 \
-    --hash=sha256:31fbd058ce1ea0bf49045cdeaa756360ece0bc61e9e10276f41af6d217debe87 \
-    --hash=sha256:b9c103e1377ad46d2bd70eec894bfec0b1e2133dae0964d7e4de543c6e16293b
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   lance-namespace
+lance-namespace==0.7.7 \
+    --hash=sha256:477a7ca6b5e1f673a2c9ba52f42d6e8e3ff7c27a601392a21eb90fba98d0309b \
+    --hash=sha256:d00b525f2e26993a6c61668e798bca6c808605ab8a79f29f86a1a1af92d91ae2
+    # via pylance
+lance-namespace-urllib3-client==0.7.7 \
+    --hash=sha256:4d8c066628c17c6a10cf643b51a7f7ae1bfb8a614d9cc54a5af38a4ba2b4b102 \
+    --hash=sha256:9221c3e00fd89f0c811953d94b32d2ea527765280460a174f5872dc8a74c0ed6
+    # via lance-namespace
 lazy-object-proxy==1.12.0 \
     --hash=sha256:029d2b355076710505c9545aef5ab3f750d89779310e26ddf2b7b23f6ea03cd8 \
     --hash=sha256:08c465fb5cd23527512f9bd7b4c7ba6cec33e28aad36fbbe46bf7b858f9f3f7f \
