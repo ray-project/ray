@@ -962,6 +962,9 @@ def test_streaming_split_materialize_reports_to_executor(
     materialized = shard.materialize()
     assert shard._iter_stats.iter_prefetched_bytes == materialized.size_bytes()
 
+    materialized_again = shard.materialize()
+    assert shard._iter_stats.iter_prefetched_bytes == materialized_again.size_bytes()
+
 
 @pytest.mark.parametrize("prefetch_batches", [0, 2])
 def test_streaming_split_reports_and_clears_prefetched_bytes(
