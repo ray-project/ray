@@ -700,5 +700,22 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
     tracker.register_task_complete(leaf_task_id, plan_id=plan_id)
 
 
+def test_resolve_dependencies_skips_unattributed_blocks_and_consumes_entries():
+    """Every input block is looked up, not just the first, and each entry is popped.
+
+    A task's inputs can begin with a block no tracked task produced (the bundler
+    parks zero-row bundles and prepends them on the next merge), so stopping at the
+    first block would miss the real dependency. Entries are consumed because a block
+    is dispatched to one task, which keeps the map bounded by blocks in flight.
+    """
+    tracker = LineageTracker()
+    tracker.register_task_submission("seed:0", [])
+    tracker.register_block_output("seed:0", "real_block", 0)
+
+    expected = [ParentBlockOutput(parent_data_task_id="seed:0", output_index=0)]
+    assert tracker.resolve_dependencies(["empty_block", "real_block"]) == expected
+    assert tracker.resolve_dependencies(["real_block"]) == []
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
