@@ -5,6 +5,8 @@ from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 
 from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
+    RoutePattern,
     extract_route_patterns,
 )
 
@@ -368,6 +370,105 @@ def test_extract_route_patterns_websocket_routes():
 
     # WebSocket route should have no method restrictions
     assert get_methods_for_path(patterns, "/ws") is None
+
+
+class TestASGIRoutePatternMatcher:
+    """Matching a (method, path) against a fixed set of route patterns.
+
+    Two callers depend on this agreeing with itself: the proxy tags metrics with
+    the matched pattern, and the LLM ingress request router decides from it
+    whether a request belongs to the application ingress rather than to a model
+    deployment. A disagreement between them would route a control request to a
+    model, so the matching lives in one place and is tested here.
+    """
+
+    @staticmethod
+    def _scope(method, path):
+        return {"type": "http", "method": method, "path": path}
+
+    @pytest.mark.parametrize(
+        "method,path,expected",
+        [
+            ("GET", "/v1/models", "/v1/models"),
+            ("POST", "/v1/models", "/v1/models"),
+            # `GET /foo` and `POST /foo` can belong to different destinations,
+            # so a path match with the wrong method is not a match.
+            ("DELETE", "/v1/models", None),
+            ("GET", "/v1/chat/completions", None),
+        ],
+    )
+    def test_match_by_method_and_path(self, method, path, expected):
+        matcher = ASGIRoutePatternMatcher(
+            [
+                RoutePattern(methods=["GET"], path="/v1/models"),
+                RoutePattern(methods=["POST"], path="/v1/models"),
+            ]
+        )
+        assert matcher.match_scope(self._scope(method, path)) == expected
+        assert matcher.matches_http_route(method, path) is (expected is not None)
+
+    def test_path_converter_spans_segments(self):
+        """`{model:path}` is what makes `/v1/models/{model}` work for model ids
+        that contain slashes, e.g. `meta-llama/Llama-3`."""
+        matcher = ASGIRoutePatternMatcher(
+            [RoutePattern(methods=["GET"], path="/v1/models/{model:path}")]
+        )
+        assert (
+            matcher.match_scope(self._scope("GET", "/v1/models/meta-llama/Llama-3"))
+            == "/v1/models/{model:path}"
+        )
+
+    def test_none_methods_allows_any_method(self):
+        """`methods=None` is what extract_route_patterns reports for WebSocket
+        routes and mounted ASGI apps."""
+        matcher = ASGIRoutePatternMatcher([RoutePattern(methods=None, path="/mounted")])
+        assert matcher.matches_http_route("GET", "/mounted")
+        assert matcher.matches_http_route("POST", "/mounted")
+
+    def test_invalid_pattern_raises_at_construction(self):
+        """Construction is where an unusable pattern surfaces, not the first
+        request: the proxy catches this to fall back to the route prefix, and
+        the LLM router lets it fail initialization."""
+        # Starlette tolerates a stray "{", so use an input it genuinely rejects.
+        with pytest.raises(AssertionError):
+            ASGIRoutePatternMatcher(
+                [RoutePattern(methods=["GET"], path="no-leading-slash")]
+            )
+
+    def test_match_scope_preserves_root_path(self):
+        """The proxy passes a real request scope, so fields get_asgi_route_name
+        reads must survive -- `root_path` is prepended to the matched name."""
+        matcher = ASGIRoutePatternMatcher(
+            [RoutePattern(methods=["GET"], path="/v1/models")]
+        )
+        matched = matcher.match_scope(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/v1/models",
+                "root_path": "/prefix",
+            }
+        )
+        assert matched == "/prefix/v1/models"
+
+    def test_matches_routes_extracted_from_a_real_app(self):
+        """End to end with the producer side: whatever extract_route_patterns
+        reports for an app is matchable for that app's own requests."""
+        app = FastAPI()
+
+        @app.get("/v1/models")
+        def list_models():
+            return []
+
+        @app.post("/v1/chat/completions")
+        def completions():
+            return {}
+
+        matcher = ASGIRoutePatternMatcher(extract_route_patterns(app))
+        assert matcher.matches_http_route("GET", "/v1/models")
+        assert matcher.matches_http_route("POST", "/v1/chat/completions")
+        assert not matcher.matches_http_route("POST", "/v1/models")
+        assert not matcher.matches_http_route("GET", "/v1/embeddings")
 
 
 if __name__ == "__main__":

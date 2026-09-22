@@ -106,12 +106,24 @@ class TestBuildTokenizeRequest:
         assert "temperature" not in (request.model_extra or {})
 
 
+def _route_test_router() -> LLMRouter:
+    """Build an ``LLMRouter`` without ``__init__`` for exercising ``route``.
+
+    ``route`` resolves the body's ``model`` against ``_servers`` and reports
+    the selected deployment's name, so register one handle under ``"m"``.
+    """
+    router = LLMRouter.__new__(LLMRouter)
+    handle = MagicMock()
+    handle.deployment_id.name = "LLMServer:m"
+    router._servers = {"m": handle}
+    return router
+
+
 class TestRoute:
     @pytest.mark.asyncio
     async def test_no_tokenizer_forwards_no_token_ids(self):
         # A non-KV router has no tokenizer, so route forwards request_token_ids=None.
-        router = LLMRouter.__new__(LLMRouter)
-        router._handle = MagicMock()
+        router = _route_test_router()
         router._tokenizer = None
         router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
@@ -124,8 +136,7 @@ class TestRoute:
     @pytest.mark.asyncio
     async def test_forwards_token_ids(self):
         # A successful tokenization forwards its token ids to _pick_replica.
-        router = LLMRouter.__new__(LLMRouter)
-        router._handle = MagicMock()
+        router = _route_test_router()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
         router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
@@ -139,8 +150,7 @@ class TestRoute:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("pushed_token_key", ["trusted-key", None])
     async def test_route_token_header(self, pushed_token_key):
-        router = LLMRouter.__new__(LLMRouter)
-        router._handle = MagicMock()
+        router = _route_test_router()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
         router._pick_replica = AsyncMock(
@@ -165,8 +175,7 @@ class TestRoute:
     async def test_unparseable_body_skips_tokenization(self):
         # A truncated/unparseable body derives no routing payload, so the
         # tokenizer is never called and request_token_ids stays None.
-        router = LLMRouter.__new__(LLMRouter)
-        router._handle = MagicMock()
+        router = _route_test_router()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
         router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
@@ -184,8 +193,7 @@ class TestRoute:
     async def test_tokenize_error_becomes_http_error(self):
         # A /tokenize rejection becomes an HTTPException with the same status
         # code, and routing is not attempted.
-        router = LLMRouter.__new__(LLMRouter)
-        router._handle = MagicMock()
+        router = _route_test_router()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(
             side_effect=TokenizeError(

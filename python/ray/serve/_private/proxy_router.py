@@ -1,16 +1,13 @@
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.routing import Route
 from starlette.types import Scope
 
 from ray.serve._private.common import ApplicationName, DeploymentID, EndpointInfo
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
     RoutePattern,
-    get_asgi_route_name,
 )
 from ray.serve.handle import DeploymentHandle
 
@@ -51,8 +48,8 @@ class ProxyRouter:
         # Used to match incoming requests to ASGI route patterns for metrics
         # Route patterns are tuples of (methods, path) where methods can be None
         self.route_patterns: Dict[str, List[RoutePattern]] = dict()
-        # Cache of mock Starlette apps for route pattern matching
-        # Key: route prefix, Value: pre-built Starlette app with routes
+        # Cache of route-pattern matchers (each owning a mock Starlette app)
+        # Key: route prefix, Value: ASGIRoutePatternMatcher
         self._route_pattern_apps: Dict[str, Any] = dict()
 
     def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
@@ -193,8 +190,11 @@ class ProxyRouter:
         This attempts to match the request path to a route pattern (e.g., /api/{user_id})
         rather than just the route prefix. This provides more granular metrics.
 
-        The mock Starlette app is cached per route_prefix for performance, avoiding
-        the overhead of recreating the app and routes on every request.
+        The matcher (which owns a mock Starlette app) is cached per route_prefix
+        for performance, avoiding the overhead of recreating the app and routes
+        on every request. The matching itself is shared with the LLM ingress
+        request router, so a request this tags `/v1/models` is the same one the
+        router keeps on the application ingress.
 
         Args:
             route_prefix: The matched route prefix from match_route()
@@ -211,34 +211,26 @@ class ProxyRouter:
         if not patterns:
             return route_prefix
 
-        # Get or create the cached mock app for this route_prefix
-        mock_app = self._route_pattern_apps.get(route_prefix)
-        if mock_app is None:
+        # Get or create the cached matcher for this route_prefix
+        matcher = self._route_pattern_apps.get(route_prefix)
+        if matcher is None:
             try:
-                # Create routes from patterns
-                # We use a dummy endpoint since we only need pattern matching
-                async def dummy_endpoint(request: Request):
-                    pass
+                matcher = ASGIRoutePatternMatcher(patterns)
 
-                routes = [
-                    Route(pattern.path, dummy_endpoint, methods=pattern.methods)
-                    for pattern in patterns
-                ]
-                mock_app = Starlette(routes=routes)
-
-                # Cache the mock app for future requests
-                self._route_pattern_apps[route_prefix] = mock_app
+                # Cache the matcher for future requests
+                self._route_pattern_apps[route_prefix] = matcher
             except Exception:
-                # If app creation fails, fall back to route prefix
+                # If matcher creation fails, fall back to route prefix
                 logger.debug(
                     f"Failed to create mock app for route pattern matching: {route_prefix}",
                     exc_info=True,
                 )
                 return route_prefix
 
-        # Use the cached mock app to match the route pattern
+        # Use the cached matcher to match the route pattern. The full scope is
+        # forwarded so `root_path` handling is unchanged.
         try:
-            matched = get_asgi_route_name(mock_app, asgi_scope)
+            matched = matcher.match_scope(asgi_scope)
             if matched:
                 return matched
         except Exception:

@@ -405,7 +405,9 @@ class TestBuildOpenaiApp:
         assert issubclass(app._bound_deployment.func_or_class, ASGIAppReplicaWrapper)
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
-        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+        assert ingress_request_router._bound_deployment.init_kwargs["servers"] == {
+            llm_config.model_id: app
+        }
 
         # `RequestRouterConfig._serialize_request_router_cls` normalizes the
         # class to its import path at config-build time.
@@ -526,7 +528,9 @@ class TestDirectStreamingDP:
         assert issubclass(app._bound_deployment.func_or_class, DPServer)
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
-        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+        assert ingress_request_router._bound_deployment.init_kwargs["servers"] == {
+            llm_config.model_id: app
+        }
 
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
@@ -643,7 +647,9 @@ class TestDirectStreamingPD:
 
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
-        assert ingress_request_router._bound_deployment.init_kwargs["server"] is app
+        assert ingress_request_router._bound_deployment.init_kwargs["servers"] == {
+            decode.model_id: app
+        }
 
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config

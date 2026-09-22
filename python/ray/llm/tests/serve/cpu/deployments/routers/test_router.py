@@ -22,7 +22,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.router import (
     LLMRouter,
-    _parse_routing_payload,
+    _build_replica_routing_payload,
+    _parse_body,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
@@ -30,6 +31,10 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockVLLMEngine
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.thirdparty.get_asgi_route_name import (
+    ASGIRoutePatternMatcher,
+    RoutePattern,
+)
 from ray.serve.exceptions import DeploymentUnavailableError
 
 
@@ -66,14 +71,21 @@ class _DirectRouterReplica:
         self.routing_stats = routing_stats or {}
 
 
-def _new_direct_router(handle=None):
+def _fake_handle(deployment_name: str) -> MagicMock:
+    """A handle stand-in whose deployment name is real: ``route`` reports it in
+    the response body, so a bare MagicMock attribute would leak into it."""
+    handle = MagicMock()
+    handle.deployment_id.name = deployment_name
+    return handle
+
+
+def _new_direct_router(handle=None, servers=None):
+    """Router with ``servers`` (model id -> handle), or a single-model router
+    around ``handle`` (default: one fake handle for model ``x``)."""
     router = LLMRouter.__new__(LLMRouter)
-    if handle is None:
-        handle = MagicMock()
-        # `route` reports the tracked deployment's name alongside the replica,
-        # so a bare MagicMock attribute would leak into the response body.
-        handle.deployment_id.name = "LLMServer:x"
-    router._handle = handle
+    if servers is None:
+        servers = {"x": handle if handle is not None else _fake_handle("LLMServer:x")}
+    router._servers = dict(servers)
     # Routing tests don't exercise tokenization; that lives in test_tokenizer.py.
     router._tokenizer = None
     return router
@@ -162,7 +174,7 @@ class TestDirectStreamingLLMRouter:
             "replica_id": "DeploymentName#replica",
         }
         _, kwargs = router._pick_replica.call_args
-        assert kwargs["handle"] is router._handle
+        assert kwargs["handle"] is router._servers["x"]
         payload = kwargs["routing_payload"]
         assert isinstance(payload, SimpleNamespace)
         assert payload.messages == [{"role": "user", "content": "hi"}]
@@ -320,12 +332,339 @@ class TestDirectStreamingLLMRouter:
             await router._pick_replica(handle=handle)
 
 
+_PICK = ("127.0.0.1", 9001, "SERVE_REPLICA::app#dep#r", None)
+
+
+async def _init_router(
+    servers, llm_config=None, ingress=None, ingress_route_patterns=None
+):
+    """Run the real ``__init__`` on a bare instance.
+
+    ``__new__`` skips the Serve actor setup the other helpers avoid, but these
+    tests are about what ``__init__`` itself does, so it is invoked explicitly.
+    """
+    router = LLMRouter.__new__(LLMRouter)
+    await LLMRouter.__init__(
+        router,
+        servers=servers,
+        llm_config=llm_config,
+        ingress=ingress,
+        ingress_route_patterns=ingress_route_patterns,
+    )
+    return router
+
+
+def _two_model_router():
+    return _new_direct_router(
+        servers={
+            "model-a": _fake_handle("LLMServer:model-a"),
+            "model-b": _fake_handle("LLMServer:model-b"),
+        }
+    )
+
+
+class TestDirectStreamingModelSelection:
+    """``route`` picks the deployment by the body's ``model`` and reports it.
+
+    The selection logic is exercised only through unit tests until the
+    multi-model builder lands; every builder still binds a single server.
+    """
+
+    @pytest.mark.asyncio
+    async def test_selects_named_model_and_reports_its_deployment(self):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(
+            _FakeRequest(
+                b'{"model":"model-b","messages":[{"role":"user","content":"hi"}]}'
+            )
+        )
+
+        assert result["deployment"] == "LLMServer:model-b"
+        assert (
+            router._pick_replica.call_args.kwargs["handle"]
+            is router._servers["model-b"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_sole_model_is_default_when_model_omitted(self):
+        router = _new_direct_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(_FakeRequest(b'{"prompt":"hi"}'))
+
+        assert result["deployment"] == "LLMServer:x"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "body,status,detail",
+        [
+            # Several models configured and no readable `model`: the router
+            # never guesses a deployment. HAProxy may also truncate the body.
+            (b'{"prompt":"hi"}', 400, "Model parameter is required"),
+            (
+                b'{"model":"model-a","prompt":"' + (b"x" * 64),
+                400,
+                "Model parameter is required",
+            ),
+            (b"not json", 400, "Model parameter is required"),
+            (b"", 400, "Model parameter is required"),
+            # Wrong type.
+            (b'{"model":123,"prompt":"hi"}', 400, "must be a string"),
+            (b'{"model":["model-a"],"prompt":"hi"}', 400, "must be a string"),
+            # Unknown id.
+            (b'{"model":"model-c","prompt":"hi"}', 404, "model-c"),
+        ],
+    )
+    async def test_unresolvable_model_is_rejected_before_replica_selection(
+        self, body, status, detail
+    ):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await router.route(_FakeRequest(body))
+
+        assert exc_info.value.status_code == status
+        assert detail in exc_info.value.detail
+        router._pick_replica.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_exact_model_id_wins_over_base_model_id(self):
+        """A configured id that itself contains ':' must resolve exactly, not be
+        stripped to a base id that maps to a different deployment."""
+        router = _new_direct_router(
+            servers={
+                "org/model": _fake_handle("LLMServer:org--model"),
+                "org/model:v2": _fake_handle("LLMServer:org--model_v2"),
+            }
+        )
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(
+            _FakeRequest(b'{"model":"org/model:v2","prompt":"hi"}')
+        )
+
+        assert result["deployment"] == "LLMServer:org--model_v2"
+
+    @pytest.mark.asyncio
+    async def test_lora_style_id_resolves_to_base_model(self):
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(
+            _FakeRequest(b'{"model":"model-a:my-adapter","prompt":"hi"}')
+        )
+
+        assert result["deployment"] == "LLMServer:model-a"
+
+    @pytest.mark.asyncio
+    async def test_model_is_read_from_body_without_routing_key(self):
+        """An embeddings-shaped body has no ``messages``/``prompt``, so it yields
+        no routing payload -- but it still names a model and must select it."""
+        router = _two_model_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        with patch.object(router_module.logger, "warning"):
+            result = await router.route(
+                _FakeRequest(b'{"model":"model-b","input":"hello"}')
+            )
+
+        assert result["deployment"] == "LLMServer:model-b"
+        assert router._pick_replica.call_args.kwargs["routing_payload"] is None
+
+
+_INGRESS_ROUTES = [RoutePattern(methods=["GET"], path="/v1/models")]
+
+
+def _ingress_router(routes=None):
+    """Two-model router that also has an application ingress with its own routes."""
+    router = _two_model_router()
+    router._ingress = _fake_handle("DirectStreamingIngress")
+    router._ingress_routes = ASGIRoutePatternMatcher(
+        _INGRESS_ROUTES if routes is None else routes
+    )
+    return router
+
+
+def _req(body=b'{"model":"model-b","prompt":"hi"}', *, method=None, path=None):
+    """A forwarded request, optionally carrying HAProxy's method/path headers."""
+    headers = {}
+    if method is not None:
+        headers["x-serve-request-method"] = method
+    if path is not None:
+        headers["x-serve-request-path"] = path
+    return _FakeRequest(body, headers=headers)
+
+
+class TestDirectStreamingIngressPriorityRouting:
+    """A request on a route the application ingress declares goes to the ingress.
+
+    HAProxy consults the router for every request now, not just model traffic,
+    so the router is what keeps `GET /v1/models` on the control ingress instead
+    of answering it from a model deployment. The ingress branch deliberately
+    does none of the model-request work -- no body read, no session affinity, no
+    tokenization -- because a control request has nothing to route on and its
+    body may well have been truncated.
+    """
+
+    @pytest.mark.asyncio
+    async def test_ingress_route_selects_the_ingress(self):
+        router = _ingress_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(_req(method="GET", path="/v1/models"))
+
+        # HAProxy resolves the pick as [deployment][replica_id], so both levels
+        # have to name the ingress consistently.
+        assert result == {
+            "host": _PICK[0],
+            "port": _PICK[1],
+            "deployment": "DirectStreamingIngress",
+            "replica_id": _PICK[2],
+        }
+        assert router._pick_replica.call_args.kwargs["handle"] is router._ingress
+
+    @pytest.mark.asyncio
+    async def test_unmatched_path_proceeds_to_model_selection(self):
+        router = _ingress_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(_req(method="POST", path="/v1/chat/completions"))
+
+        assert result["deployment"] == "LLMServer:model-b"
+        assert (
+            router._pick_replica.call_args.kwargs["handle"]
+            is router._servers["model-b"]
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method,path",
+        [
+            (None, "/v1/models"),  # older HAProxy: no method header
+            ("GET", None),  # ...or no path header
+            (None, None),
+        ],
+    )
+    async def test_missing_headers_skip_priority_matching(self, method, path):
+        """Both values are required to match. Without them the router keeps its
+        previous model-only behavior rather than guessing."""
+        router = _ingress_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(_req(method=method, path=path))
+
+        assert result["deployment"] == "LLMServer:model-b"
+
+    @pytest.mark.asyncio
+    async def test_ingress_branch_skips_model_request_processing(self):
+        """A control request has nothing to route on and HAProxy may have
+        truncated its body, so the ingress branch neither reads the body nor
+        tokenizes; the pick carries no routing payload or token ids."""
+        router = _ingress_router()
+        router._pick_replica = AsyncMock(return_value=_PICK)
+        router._tokenizer = MagicMock(tokenize=AsyncMock())
+        request = _req(method="GET", path="/v1/models")
+        request.body = AsyncMock(side_effect=AssertionError("body must not be read"))
+
+        result = await router.route(request)
+
+        assert result["deployment"] == "DirectStreamingIngress"
+        router._tokenizer.tokenize.assert_not_awaited()
+        kwargs = router._pick_replica.call_args.kwargs
+        assert kwargs["handle"] is router._ingress
+        assert kwargs["routing_payload"] is None
+        assert kwargs["request_token_ids"] is None
+
+    @pytest.mark.asyncio
+    async def test_no_ingress_configured_never_matches(self):
+        """The builders whose ingress *is* the model server pass no ingress
+        handle; every request is model traffic for them."""
+        router = await _init_router(
+            servers={
+                "model-a": _fake_handle("LLMServer:model-a"),
+                "model-b": _fake_handle("LLMServer:model-b"),
+            }
+        )
+        router._pick_replica = AsyncMock(return_value=_PICK)
+
+        result = await router.route(_req(method="GET", path="/v1/models"))
+
+        assert result["deployment"] == "LLMServer:model-b"
+
+
+class TestDirectStreamingRouterInit:
+    """Construction-time contracts of ``LLMRouter``."""
+
+    @pytest.mark.asyncio
+    async def test_empty_servers_is_rejected(self):
+        with pytest.raises(ValueError, match="at least one model id"):
+            await _init_router(servers={})
+
+    @pytest.mark.asyncio
+    async def test_every_model_handle_is_initialized(self):
+        servers = {
+            "model-a": _fake_handle("LLMServer:model-a"),
+            "model-b": _fake_handle("LLMServer:model-b"),
+        }
+        await _init_router(servers=servers)
+        for handle in servers.values():
+            handle._init.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_ingress_is_initialized_with_build_time_routes(self):
+        ingress = _fake_handle("DirectStreamingIngress")
+
+        router = await _init_router(
+            servers={"model-a": _fake_handle("LLMServer:model-a")},
+            ingress=ingress,
+            ingress_route_patterns=_INGRESS_ROUTES,
+        )
+
+        ingress._init.assert_called_once()
+        assert router._ingress_routes.matches_http_route("GET", "/v1/models")
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "ingress,patterns,match",
+        [
+            (_fake_handle("DirectStreamingIngress"), None, "must be provided together"),
+            (None, _INGRESS_ROUTES, "must be provided together"),
+            (_fake_handle("DirectStreamingIngress"), [], "at least one HTTP route"),
+        ],
+    )
+    async def test_inconsistent_ingress_arguments_are_rejected(
+        self, ingress, patterns, match
+    ):
+        with pytest.raises(ValueError, match=match):
+            await _init_router(
+                servers={"model-a": _fake_handle("LLMServer:model-a")},
+                ingress=ingress,
+                ingress_route_patterns=patterns,
+            )
+
+    @pytest.mark.asyncio
+    async def test_multi_model_with_llm_config_is_rejected(self):
+        """KV-aware routing keys a process-global tracker off one model; the
+        builder must not reach here with several."""
+        with pytest.raises(ValueError, match="exactly one"):
+            await _init_router(
+                servers={
+                    "model-a": _fake_handle("LLMServer:model-a"),
+                    "model-b": _fake_handle("LLMServer:model-b"),
+                },
+                llm_config=MagicMock(),
+            )
+
+
 class TestRoutingPayload:
-    """Unit coverage for wrapping a body as a routing namespace."""
+    """Unit coverage for parsing and building a replica-routing namespace."""
 
     def test_parses_chat_messages(self):
         body = b'{"model":"x","messages":[{"role":"user","content":"hi"}]}'
-        payload = _parse_routing_payload(body)
+        payload = _build_replica_routing_payload(_parse_body(body))
         assert isinstance(payload, SimpleNamespace)
         assert payload.messages == [{"role": "user", "content": "hi"}]
         # A chat body exposes no `prompt`, so `_extract_text_from_request`
@@ -334,7 +673,9 @@ class TestRoutingPayload:
         assert payload.model == "x"
 
     def test_parses_completion_prompt(self):
-        payload = _parse_routing_payload(b'{"model":"x","prompt":"hello"}')
+        payload = _build_replica_routing_payload(
+            _parse_body(b'{"model":"x","prompt":"hello"}')
+        )
         assert isinstance(payload, SimpleNamespace)
         assert payload.prompt == "hello"
         assert not hasattr(payload, "messages")
@@ -353,7 +694,7 @@ class TestRoutingPayload:
         ],
     )
     def test_returns_none_when_no_key_derivable(self, body):
-        assert _parse_routing_payload(body) is None
+        assert _build_replica_routing_payload(_parse_body(body)) is None
 
     @pytest.mark.asyncio
     async def test_payload_satisfies_prefix_router_contract(self):
@@ -373,13 +714,15 @@ class TestRoutingPayload:
         # only uses self for the pure `_normalize_prompt_to_string` helper.
         router = PrefixCacheAffinityRouter.__new__(PrefixCacheAffinityRouter)
 
-        chat = _parse_routing_payload(
-            b'{"messages":[{"role":"user","content":"hello world"}]}'
+        chat = _build_replica_routing_payload(
+            _parse_body(b'{"messages":[{"role":"user","content":"hello world"}]}')
         )
         pr = PendingRequest(args=[chat], kwargs={}, metadata=MagicMock())
         assert router._extract_text_from_request(pr) == "hello world"
 
-        completion = _parse_routing_payload(b'{"prompt":"hello world"}')
+        completion = _build_replica_routing_payload(
+            _parse_body(b'{"prompt":"hello world"}')
+        )
         pr = PendingRequest(args=[completion], kwargs={}, metadata=MagicMock())
         assert router._extract_text_from_request(pr) == "hello world"
 
