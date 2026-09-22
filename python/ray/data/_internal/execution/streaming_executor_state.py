@@ -609,7 +609,7 @@ def build_streaming_topology(
         options: The execution options to use to start operators.
         block_ref_counter: The executor-wide shared counter for tracking
             object-store memory.
-        lineage_tracker: Optional tracker for experimental object-loss recovery.
+        lineage_tracker: Optional tracker for experimental lineage reconstruction.
             Attached to every operator so they can record task lineage as they
             execute. ``None`` disables tracking.
 
@@ -650,7 +650,7 @@ def _clear_downstream_completion_state(
     of dispatch (see ``update_operator_states`` / ``get_eligible_operators``), and
     ``_is_execution_marked_finished`` / ``inputs_done_called`` are one-way latches.
     Walk the operator subgraph downstream of ``start_op`` and clear them; normal
-    completion re-fires once the recovered partition finishes draining.
+    completion re-fires once the reconstructed partition finishes draining.
     """
     stack = [start_op]
     seen = set()
@@ -667,12 +667,12 @@ def _clear_downstream_completion_state(
         stack.extend(op.output_dependencies)
 
     logger.info(
-        "[lineage-recovery] Cleared completion state for operators: "
+        "[lineage-reconstruction] Cleared completion state for operators: "
         + ", ".join(f'"{op.name}"' for op in seen)
     )
 
 
-def _recover_lost_object(
+def _reconstruct_lost_object(
     topology: Topology,
     lineage_tracker: "LineageTracker",
     state: "OpState",
@@ -687,14 +687,14 @@ def _recover_lost_object(
     path to the lost object are re-executed -- outputs the plan does not need are
     dropped as ``OBJECT_PRUNED`` rather than re-emitted.
 
-    Returns True if recovery was initiated, False to fall back to the error path.
-    Every "cannot recover" path must return False rather than raise: this runs on
+    Returns True if reconstruction was initiated, False to fall back to the error path.
+    Every "cannot reconstruct" path must return False rather than raise: this runs on
     the executor thread, where an exception tears down the whole dataset.
     """
     if not isinstance(task, DataOpTask) or task.data_task_id is None:
         logger.warning(
-            "[lineage-recovery] Lost object for task %s on operator %r is not "
-            "tracked by the lineage graph; cannot recover.",
+            "[lineage-reconstruction] Lost object for task %s on operator %r is not "
+            "tracked by the lineage graph; cannot reconstruct.",
             task.task_index(),
             state.op.name,
         )
@@ -709,8 +709,8 @@ def _recover_lost_object(
         )
     except ValueError:
         logger.info(
-            "[lineage-recovery] Lost object for task %s on operator %r is not "
-            "registered with the lineage graph; cannot recover.",
+            "[lineage-reconstruction] Lost object for task %s on operator %r is not "
+            "registered with the lineage graph; cannot reconstruct.",
             task.data_task_id,
             state.op.name,
         )
@@ -720,7 +720,7 @@ def _recover_lost_object(
 
     if not seed_task_ids:
         logger.info(
-            "[lineage-recovery] Reconstruction of %s is already under way "
+            "[lineage-reconstruction] Reconstruction of %s is already under way "
             "(plan %s); nothing further to resubmit.",
             task.data_task_id,
             plan_id,
@@ -739,8 +739,8 @@ def _recover_lost_object(
                 break
         if seed_input is None:
             logger.info(
-                "[lineage-recovery] No retained input for seed task %s; cannot "
-                "recover.",
+                "[lineage-reconstruction] No retained input for seed task %s; cannot "
+                "reconstruct.",
                 seed_id,
             )
             return False
@@ -764,7 +764,7 @@ def _recover_lost_object(
         source_op = seed_op.input_dependencies[0]
         topology[source_op].add_output(seed_input)
         logger.info(
-            "[lineage-recovery] Re-injected seed task %s on operator %r "
+            "[lineage-reconstruction] Re-injected seed task %s on operator %r "
             "(~%s bytes) for plan %s.",
             seed_id,
             seed_op.name,
@@ -773,7 +773,7 @@ def _recover_lost_object(
         )
 
     logger.warning(
-        "Recovering lost object for task %s: reconstructing via plan %s from "
+        "Reconstructing lost object for task %s via plan %s from "
         "seed task(s) %s.",
         task.data_task_id,
         plan_id,
@@ -805,9 +805,9 @@ def process_completed_tasks(
             emitted RefBundles. The threaded fetcher defers metadata fetches to
             a background thread (emitting in per-op order as they become ready);
             the inline fetcher emits synchronously.
-        lineage_tracker: Optional tracker for experimental object-loss recovery.
+        lineage_tracker: Optional tracker for experimental lineage reconstruction.
             When set, a lost task output is reconstructed from its lineage instead
-            of counting as an errored block. ``None`` disables recovery.
+            of counting as an errored block. ``None`` disables reconstruction.
 
     Returns:
         The number of errored blocks.
@@ -953,24 +953,24 @@ def process_completed_tasks(
                                     remaining_output_budget[state] - bytes_read, 0
                                 )
                         except ObjectLostError as e:
-                            # Experimental object-loss recovery: if we can trace
+                            # Experimental lineage reconstruction: if we can trace
                             # the lost output back to a tracked seed input,
                             # resubmit that seed input's chain instead of
                             # counting an error.
                             logger.info(
-                                "[lineage-recovery] Detected lost object while "
+                                "[lineage-reconstruction] Detected lost object while "
                                 f"reading output of task {task.task_index()} on "
                                 f'operator "{state.op.name}"; attempting lineage '
-                                "recovery (lineage_tracker="
+                                "reconstruction (lineage_tracker="
                                 f"{'on' if lineage_tracker else 'off'})."
                             )
-                            if lineage_tracker is not None and _recover_lost_object(
+                            if lineage_tracker is not None and _reconstruct_lost_object(
                                 topology, lineage_tracker, state, task, e
                             ):
                                 continue
                             logger.info(
-                                "[lineage-recovery] Recovery did not fire for "
-                                f"task {task.task_index()} on operator "
+                                "[lineage-reconstruction] Reconstruction did not fire "
+                                f"for task {task.task_index()} on operator "
                                 f'"{state.op.name}"; falling back to the error path.'
                             )
                             # Untracked / unrecoverable: fall through to error path.

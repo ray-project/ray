@@ -359,7 +359,7 @@ class DataOpTask(OpTask):
                         assert False, "Above ray.get should raise an exception."
                     except ObjectLostError as ex:
                         # Propagate the original loss so the executor
-                        # can attempt lineage recovery, which needs the
+                        # can attempt lineage reconstruction, which needs the
                         # task still live to abort it deliberately.
                         #  `_data_task_id` is None whenever there is no lineage tracker.
                         if self._data_task_id is not None:
@@ -675,7 +675,7 @@ class PhysicalOperator(Operator):
     def retained_seed_input(self, seed_task_id: str) -> Optional[RefBundle]:
         """The input retained for seed task ``seed_task_id``, or None.
 
-        Object-loss recovery re-injects this. Only the operator that ran the seed
+        Lineage reconstruction re-injects this. Only the operator that ran the seed
         holds it, so the operator that answers is the seed's owner.
         """
         return None

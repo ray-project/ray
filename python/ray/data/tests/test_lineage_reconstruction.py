@@ -23,7 +23,7 @@ from ray.exceptions import ObjectLostError
 from ray.job_config import JobConfig
 from ray.tests.conftest import *  # noqa: F401, F403
 
-recovery_enabled = pytest.mark.parametrize(
+reconstruction_enabled = pytest.mark.parametrize(
     "ray_start_regular_shared",
     [{"job_config": JobConfig(_disable_job_level_lineage_reconstruction=True)}],
     indirect=True,
@@ -108,8 +108,8 @@ def test_flag_off_builds_no_tracker(
 
 
 @pytest.mark.parametrize("reads_before_loss", [0, 1])
-@recovery_enabled
-def test_iter_batches_recovery_matches_baseline(
+@reconstruction_enabled
+def test_iter_batches_reconstruction_matches_baseline(
     ray_start_regular_shared, lose_output, reads_before_loss  # noqa: F405
 ):
     """A seed task loses its output and is re-run; the caller sees every row once.
@@ -132,7 +132,7 @@ def test_iter_batches_recovery_matches_baseline(
     _assert_every_row_once(seen, [i * 2 for i in range(100)])
 
 
-@recovery_enabled
+@reconstruction_enabled
 def test_two_losses_under_one_seed_match_baseline(
     ray_start_regular_shared, restore_data_context, lose_output  # noqa: F405
 ):
@@ -164,8 +164,8 @@ def test_two_losses_under_one_seed_match_baseline(
         pytest.param(20, 1, 1, True, id="fan_out_1_to_20"),
     ],
 )
-@recovery_enabled
-def test_lost_child_recovers_across_graph_shapes(
+@reconstruction_enabled
+def test_lost_child_reconstructs_across_graph_shapes(
     ray_start_regular_shared,  # noqa: F405
     restore_data_context,  # noqa: F405
     trackers,

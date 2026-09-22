@@ -287,12 +287,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
-        # Seed tasks' input bundles, kept so recovery can re-inject them: the
+        # Seed tasks' input bundles, kept so reconstruction can re-inject them: the
         # tracker stores ids, not bundles. No extra memory -- the source operator
         # holds these same bundles for the whole run anyway.
         self._seed_task_inputs: Dict[DataTaskId, RefBundle] = {}
         # block hex -> the task id a re-injected seed must be submitted under.
-        # `_recover_lost_object` writes it, submission reads and removes it.
+        # `_reconstruct_lost_object` writes it, submission reads and removes it.
         # A queue: re-injection reuses the *same* bundle, so two losses tracing
         # back to one seed submit both as pending.
         self._pending_seed_ids: Dict[BlockId, Deque[ReconstructionStamp]] = {}
@@ -662,7 +662,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         pass
 
     def _is_seed_operator(self) -> bool:
-        """Whether this op is a seed operator for object-loss recovery.
+        """Whether this op is a seed operator for lineage reconstruction.
 
         It is one when it consumes directly from an ``InputDataBuffer`` -- a
         source with no upstream lineage, whose output bundle is therefore the
@@ -672,7 +672,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             re-running the task reproduces the data.
           - ``from_blocks`` / ``from_items`` / ``from_pandas`` / ``from_arrow``
             and cached blocks: the input *is* the data, captured durably as-is.
-        In every case recovery re-injects the captured input into this op.
+        In every case reconstruction re-injects the captured input into this op.
         """
         from ray.data._internal.execution.operators.input_data_buffer import (
             InputDataBuffer,
@@ -720,7 +720,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         Returns ``(data_task_id, plan_id, dependencies)``, where ``plan_id`` is the
         plan this attempt serves -- ``None`` for a fresh attempt -- or
-        ``(None, None, [])`` when object-loss recovery is off for this DAG.
+        ``(None, None, [])`` when lineage reconstruction is off for this DAG.
 
         A fresh attempt is named ``f"{self.id}:{task_index}"``. A *reconstruction*
         must re-use the original logical id instead, or the plan never resolves and
@@ -731,7 +731,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         # A re-injected seed is the one identity that cannot be looked up: its input
         # came from the source rather than from a task, so no producer ever recorded
-        # it. `_recover_lost_object` carries the id across instead. Check first --
+        # it. `_reconstruct_lost_object` carries the id across instead. Check first --
         # the lookup below would find nothing for these blocks.
         #
         # Every block of the seed input is stamped (so a bundler merge cannot hide the
@@ -812,8 +812,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # completes last holds the whole set. Submitting now would run the child
                 # against part of its input and silently emit a subset of its rows.
                 logger.debug(
-                    "[lineage-recovery] Child %s of plan %s is not ready: %d of its "
-                    "input blocks are still pending (missing %s, held %s).",
+                    "[lineage-reconstruction] Child %s of plan %s is not ready: %d of "
+                    "its input blocks are still pending (missing %s, held %s).",
                     child_task_id,
                     plan_id,
                     len(missing),
@@ -859,7 +859,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 return
 
         logger.warning(
-            "[lineage-recovery] No adjacent consumer for reconstruction child %s "
+            "[lineage-reconstruction] No adjacent consumer for reconstruction child %s "
             "(plan %s); its re-execution will be registered as a fresh task.",
             child_task_id,
             plan_id,
@@ -881,7 +881,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._next_data_task_idx += 1
 
         # Resolve this attempt's lineage identity up front so the callbacks below
-        # can close over it. (None, None, []) when recovery is disabled.
+        # can close over it. (None, None, []) when reconstruction is disabled.
         data_task_id, plan_id, dependencies = self._lineage_for_submission(
             task_index, inputs
         )

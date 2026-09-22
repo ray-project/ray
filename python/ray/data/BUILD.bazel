@@ -1628,9 +1628,9 @@ py_test(
 )
 
 py_test(
-    name = "test_lineage_recovery",
+    name = "test_lineage_reconstruction",
     size = "medium",
-    srcs = ["tests/test_lineage_recovery.py"],
+    srcs = ["tests/test_lineage_reconstruction.py"],
     tags = [
         "exclusive",
         "team:data",
