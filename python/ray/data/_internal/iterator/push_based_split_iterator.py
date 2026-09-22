@@ -711,12 +711,13 @@ class PushBasedDataIterator(DataIterator):
             receiver.begin_epoch(epoch)
 
             # Prefetch window: keep enough one-block requests outstanding to
-            # cover the same `prefetch_batches * batch_size` row window the
-            # pull model holds prefetched, plus one pipelined request (the
-            # pull model's 1-deep get()). Blocks the coordinator has pushed
-            # but we have not consumed sit in the local receiver queue — that
-            # queue IS the prefetch buffer, and it keeps several transfers in
-            # flight instead of one.
+            # cover the same buffering the pull consumer holds — its
+            # `prefetch_batches * batch_size` row window, plus one block in
+            # the resolve stage and one just handed over (the pull path
+            # counts ~window + 2 blocks per worker as prefetched). Blocks the
+            # coordinator has pushed but we have not consumed sit in the
+            # local receiver queue — that queue IS the prefetch buffer, and
+            # it keeps several transfers in flight instead of one.
             prefetch_batches = self._prefetch_batches
             window_rows = (
                 prefetch_batches * self._prefetch_batch_size
@@ -732,12 +733,12 @@ class PushBasedDataIterator(DataIterator):
                     return 1
                 if window_rows is None:
                     # No batch size: window in blocks, like the pull model.
-                    return prefetch_batches + 1
+                    return prefetch_batches + 2
                 if blocks_seen == 0:
                     # Rows-per-block unknown until the first delivery.
-                    return 2
+                    return 3
                 avg_rows = max(1.0, rows_seen / blocks_seen)
-                return math.ceil(window_rows / avg_rows) + 1
+                return math.ceil(window_rows / avg_rows) + 2
 
             def report_and_top_up(consumed_bytes: int) -> None:
                 # One RPC per consumed block: reports consumption (producer
@@ -749,6 +750,10 @@ class PushBasedDataIterator(DataIterator):
                 )
                 outstanding += num_blocks
 
+            # Consumption is reported one block late: the block currently
+            # being batched still counts as consumer-held, matching what the
+            # pull model reports for producer pacing.
+            pending_consumed = 0
             report_and_top_up(0)
             # reset() gave this epoch a fresh queue, so a lingering
             # generator from an early-exited epoch can't steal deliveries;
@@ -771,7 +776,8 @@ class PushBasedDataIterator(DataIterator):
                 outstanding -= 1
                 blocks_seen += 1
                 rows_seen += item.num_rows
-                report_and_top_up(item.size_bytes)
+                report_and_top_up(pending_consumed)
+                pending_consumed = item.size_bytes
                 yield ResolvedBlock(block=item.block)
 
         return gen_blocks(), self._iter_stats, None
