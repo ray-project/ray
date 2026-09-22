@@ -983,7 +983,7 @@ class PhysicalOperator(Operator):
             block_ref_counter: The executor-wide shared counter for tracking
                 object-store memory.
             lineage_tracker: The executor-wide lineage metadata tracker, which
-            helps trigger lineage reconstruction on object loss.
+                helps trigger lineage reconstruction on object loss.
         """
         self._block_ref_counter = block_ref_counter
         self._lineage_tracker = lineage_tracker
