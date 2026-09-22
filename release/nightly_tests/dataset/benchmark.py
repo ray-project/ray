@@ -355,6 +355,9 @@ class Benchmark:
         assert fn_output is None or isinstance(fn_output, dict), fn_output
 
         spilled_bytes_total = _get_spilled_bytes_total(state) - start_spilled_bytes
+        # This includes executions that finished before `run_fn` was called.
+        # The code assumes this isn't an issue to simplify the implementation.
+        stats_summaries = ray.data.list_stats_summaries()
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
@@ -367,6 +370,9 @@ class Benchmark:
                 memory_sampler.peak_utilization,
                 4,
             ),
+            BenchmarkMetric.SCHED_LOOP_DURATIONS_P90_S.value: [
+                summary.streaming_exec_schedule_p90_s for summary in stats_summaries
+            ],
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
@@ -388,15 +394,6 @@ class Benchmark:
             curr_case_metrics[
                 BenchmarkMetric.HEAD_NODE_MEMORY_USED_PEAK_GB.value
             ] = _bytes_to_gb(peak_head_node_memory_bytes)
-
-        # This includes executions that finished before `run_fn` was called.
-        # The code assumes this isn't an issue to simplify the implementation.
-        stats_summaries = ray.data.list_stats_summaries()
-        # A case can execute several datasets, so report one p90 per dataset rather
-        # than collapsing them into a single number.
-        curr_case_metrics[BenchmarkMetric.SCHED_LOOP_DURATIONS_P90_S.value] = [
-            summary.streaming_exec_schedule_p90_s for summary in stats_summaries
-        ]
 
         print(f"Result of case {name}: {curr_case_metrics}")
 
