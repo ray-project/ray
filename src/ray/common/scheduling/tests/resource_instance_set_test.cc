@@ -195,6 +195,37 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateOneResourceWithoutPlacementGr
   }
 }
 
+TEST_F(NodeResourceInstanceSetTest, TestTryAllocateFractionalDemandAboveOneIsInvalid) {
+  // Fractional demand >= 1 is invalid only for unit-instance resources (GPU, TPU, etc.),
+  // not for non-unit resources like CPU. The check fires regardless of instance count.
+  {
+    // Multi-instance: node has 4 GPUs, demand 1.5 must be refused.
+    NodeResourceInstanceSet r = NodeResourceInstanceSet(NodeResourceSet({{"GPU", 4}}));
+    ResourceSet invalid_request = ResourceSet({{"GPU", FixedPoint(1.5)}});
+    auto allocations = r.TryAllocate(invalid_request);
+    ASSERT_FALSE(allocations.has_value());
+    // Node resources must be unchanged.
+    ASSERT_EQ(r.Get(ResourceID("GPU")),
+              std::vector<FixedPoint>(
+                  {FixedPoint(1), FixedPoint(1), FixedPoint(1), FixedPoint(1)}));
+  }
+  {
+    // Single-instance: node has 1 GPU, demand 1.5 must be refused.
+    NodeResourceInstanceSet r = NodeResourceInstanceSet(NodeResourceSet({{"GPU", 1}}));
+    ResourceSet invalid_request = ResourceSet({{"GPU", FixedPoint(1.5)}});
+    auto allocations = r.TryAllocate(invalid_request);
+    ASSERT_FALSE(allocations.has_value());
+    ASSERT_EQ(r.Get(ResourceID("GPU")), std::vector<FixedPoint>({FixedPoint(1)}));
+  }
+  {
+    // CPU demand of 1.5 is valid (CPU is not a unit-instance resource).
+    NodeResourceInstanceSet r = NodeResourceInstanceSet(NodeResourceSet({{"CPU", 4}}));
+    ResourceSet valid_request = ResourceSet({{"CPU", FixedPoint(1.5)}});
+    auto allocations = r.TryAllocate(valid_request);
+    ASSERT_TRUE(allocations.has_value());
+  }
+}
+
 TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultipleResourcesWithoutPg) {
   // Case 1: Partial failure will not allocate anything
   NodeResourceInstanceSet r1 =

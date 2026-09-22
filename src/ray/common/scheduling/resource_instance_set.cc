@@ -294,6 +294,14 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
     ResourceID resource_id, FixedPoint demand) {
+  // Fractional demand >= 1 is invalid for unit-instance resources (GPU, TPU, etc.)
+  if (demand >= 1. && resource_id.IsUnitInstanceResource() &&
+      demand != std::floor(demand.Double())) {
+    RAY_LOG(ERROR) << "Fractional demand >= 1 is invalid for unit-instance resource "
+                   << resource_id.Binary() << ": " << demand << ". Allocation refused.";
+    return std::nullopt;
+  }
+
   std::vector<FixedPoint> available = Get(resource_id);
   if (available.empty()) {
     return std::nullopt;
