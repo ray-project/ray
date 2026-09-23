@@ -293,7 +293,7 @@ class RedisContext {
   /// Called when hiredis reports the async connection came up.
   void OnAsyncConnected();
 
-  /// hiredis reply callback for the AUTH that ReconnectAsyncContext sends.
+  /// hiredis reply callback for the AUTH that ConnectToResolvedAddress sends.
   /// Unlike startup, a reconnect has no synchronous probe that already proved
   /// the credentials, so this is where the attempt succeeds or fails.
   static void ReconnectAuthCallback(redisAsyncContext *async_context,
@@ -301,22 +301,45 @@ class RedisContext {
                                     void *privdata);
 
   /// Try once to re-establish the async connection, rescheduling itself with
-  /// exponential backoff on failure. Runs on the io_service thread.
+  /// exponential backoff on failure. Runs on the io_service thread and never
+  /// blocks it on DNS: a name is resolved asynchronously first.
   void AttemptReconnect();
+
+  /// Second half of an attempt, once the target address is known: connect,
+  /// or schedule the next attempt if `address_status` or the connect failed.
+  void ContinueReconnect(Status address_status);
 
   /// Queue the next reconnect attempt on the backoff schedule.
   void ScheduleReconnectRetry();
 
-  /// Open, authenticate and adopt a fresh async connection, keeping the
-  /// existing RedisAsyncContext object so in-flight requests stay valid.
-  Status ReconnectAsyncContext();
+  /// Open, authenticate and adopt a fresh async connection to resolved_ip_,
+  /// keeping the existing RedisAsyncContext object so in-flight requests stay
+  /// valid. Never blocks: the connect itself is non-blocking.
+  Status ConnectToResolvedAddress();
 
-  /// Point resolved_ip_/port_ at whichever node Sentinel currently calls the
-  /// primary. No-op when this context was not reached through a Sentinel.
-  Status RefreshPrimaryFromSentinel();
+  /// Point address_/port_ at whichever node Sentinel currently calls the
+  /// primary; the address may be a host name. Synchronous, bounded by
+  /// redis_reconnect_sentinel_timeout_ms.
+  ///
+  /// \param sentinel_ip The Sentinel's address, already resolved so that no
+  /// DNS lookup happens inside this synchronous call.
+  /// \return OK with address_/port_ updated, or why the query failed.
+  Status RefreshPrimaryFromSentinel(const std::string &sentinel_ip);
 
-  /// Re-resolve address_, in case the name now points somewhere else.
-  Status RefreshResolvedAddress();
+  /// Resolve address_ into resolved_ip_ without blocking, then connect.
+  void ResolvePrimaryThenConnect();
+
+  /// Resolve `host` without blocking the io_service and hand the first
+  /// address to `done`; a literal IP is handed over immediately. `done` does
+  /// not run if the lookup is cancelled, this context is destroyed, or the
+  /// reconnect episode ends first.
+  ///
+  /// \param host The name or literal IP to resolve.
+  /// \param port The port, used for the lookup and the error message.
+  /// \param done Receives the resolved IP, or the lookup failure.
+  void ResolveAsync(const std::string &host,
+                    int port,
+                    std::function<void(StatusOr<std::string>)> done);
 
   /// Run an arbitrary Redis command synchronously.
   ///
@@ -380,9 +403,10 @@ class RedisContext {
   bool disconnect_requested_ = false;
   /// Guards against overlapping reconnect attempts.
   bool reconnecting_ = false;
-  /// An async connect has been issued and its callback has not fired yet.
+  /// A reconnect attempt is in flight: its DNS resolve or its async connect
+  /// has not reported back yet.
   bool reconnect_pending_ = false;
-  /// An AUTH sent by ReconnectAsyncContext has not been answered yet. While
+  /// An AUTH sent by ConnectToResolvedAddress has not been answered yet. While
   /// set, a TCP-level connect callback must not declare the reconnect done.
   bool auth_pending_ = false;
   int64_t reconnect_attempts_left_ = 0;
@@ -393,6 +417,10 @@ class RedisContext {
   /// Sentinel letting a posted/delayed reconnect callback detect that this
   /// RedisContext was destroyed before the callback ran.
   std::shared_ptr<bool> alive_ = std::make_shared<bool>(true);
+  /// Resolves the address asynchronously on reconnect. Declared after alive_;
+  /// its destruction cancels a pending resolve, whose handler then sees the
+  /// already-expired alive_ and returns.
+  boost::asio::ip::tcp::resolver resolver_;
 };
 
 }  // namespace ray::gcs

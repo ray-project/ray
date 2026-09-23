@@ -378,13 +378,14 @@ deliberate: a head node that cannot reach its metadata store is not serving.
 
 ### Tuning the reconnect
 
-Set these as environment variables on every node before `ray start`. Only the
-first is specific to reconnecting; the rest predate it and also govern the
+Set these as environment variables on every node before `ray start`. The first
+two are specific to reconnecting; the rest predate them and also govern the
 retry behavior of individual Redis commands.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
+| `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. |
 | `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
 | `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |
 | `RAY_redis_retry_multiplier` | `2` | Backoff growth. |

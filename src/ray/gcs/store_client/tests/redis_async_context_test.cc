@@ -209,6 +209,65 @@ TEST_F(RedisAsyncContextTest, TestDisconnectHandlerUnsetIsNoop) {
   ctx.NotifyDisconnected();
 }
 
+namespace {
+
+// Drop the async connection of `ctx` from the server side, the way a proxy or a
+// Redis restart would, and check that a command issued right after rides out
+// the in-place reconnect. CLIENT KILL spares the admin connection issuing it
+// (SKIPME defaults to yes), so the server itself stays up throughout.
+void ExpectReconnectAfterServerDropsConnection(const std::string &host) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  // The contract in redis_context.h: destroy the context only once its
+  // io_context has stopped running.
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(ctx->Connect(host, port, /*username=*/"", /*password=*/"").ok());
+
+  redisContext *admin = redisConnect("127.0.0.1", port);
+  ASSERT_TRUE(admin != nullptr && admin->err == 0);
+  auto *killed =
+      static_cast<redisReply *>(redisCommand(admin, "CLIENT KILL TYPE normal"));
+  ASSERT_TRUE(killed != nullptr);
+  EXPECT_EQ(killed->type, REDIS_REPLY_INTEGER);
+  EXPECT_GE(killed->integer, 1);
+  freeReplyObject(killed);
+  redisFree(admin);
+
+  std::promise<bool> done;
+  ctx->RunArgvAsync(
+      {"SET", "reconnect_probe", host},
+      [&done](const std::shared_ptr<CallbackReply> &reply) {
+        done.set_value(reply->ReadAsStatus().ok());
+      },
+      kNoTable);
+  auto future = done.get_future();
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+  EXPECT_TRUE(future.get());
+}
+
+}  // namespace
+
+// A literal IP is reconnected to directly, without a lookup.
+TEST_F(RedisAsyncContextTest, TestReconnectsToLiteralAddress) {
+  ExpectReconnectAfterServerDropsConnection("127.0.0.1");
+}
+
+// A host name is re-resolved on every attempt, asynchronously so the GCS
+// io_context is never blocked on DNS. This is the only test that takes the
+// async_resolve path: everything else connects to a literal IP.
+TEST_F(RedisAsyncContextTest, TestReconnectsThroughHostName) {
+  ExpectReconnectAfterServerDropsConnection("localhost");
+}
+
 // The outage deadline is stamped once, by whoever gets there first, and every
 // later caller in the same outage sees that same deadline regardless of the
 // grace it passes. Clearing it lets the next outage start fresh.

@@ -420,7 +420,8 @@ RedisContext::RedisContext(instrumented_io_context &io_service,
           RayConfig::instance().redis_db_probe_timeout_milliseconds()),
       reconnect_backoff_(RayConfig::instance().redis_retry_base_ms(),
                          RayConfig::instance().redis_retry_multiplier(),
-                         RayConfig::instance().redis_retry_max_ms()) {
+                         RayConfig::instance().redis_retry_max_ms()),
+      resolver_(io_service) {
   redisSSLContextError ssl_error;
   redisInitOpenSSL();
 
@@ -478,6 +479,7 @@ void RedisContext::Disconnect() {
   reconnecting_ = false;
   reconnect_pending_ = false;
   auth_pending_ = false;
+  resolver_.cancel();
   context_.reset();
   redis_async_context_.reset();
   // Drop the retained connection parameters too. If a caller connects this
@@ -1103,15 +1105,15 @@ void RedisContext::OnAsyncDisconnected() {
       "RedisContext.Reconnect");
 }
 
-Status RedisContext::RefreshPrimaryFromSentinel() {
-  if (!via_sentinel_) {
-    return Status::OK();
-  }
+Status RedisContext::RefreshPrimaryFromSentinel(const std::string &sentinel_ip) {
   // A short-lived synchronous connection: the Sentinel is the one address that
   // survives a failover, and the stored sync context points at the old primary.
-  // This runs on the io_service thread, so every step must be bounded: the
-  // connect by a timeout, the query below by the probe timeout.
-  const int64_t timeout_ms = redis_db_probe_timeout_milliseconds_;
+  // This runs on the io_service thread that also serves GCS storage, so every
+  // step is bounded by a dedicated, short timeout rather than the 30s
+  // redis_db_probe_timeout_milliseconds used at startup: a Sentinel that
+  // accepts and then stalls must not park the io_context for long, once per
+  // attempt, during the very failover the GCS is trying to ride out.
+  const int64_t timeout_ms = RayConfig::instance().redis_reconnect_sentinel_timeout_ms();
   auto connect_with_timeout = [timeout_ms](const std::string &host, int port) {
     struct timeval timeout;
     timeout.tv_sec = timeout_ms / 1000;
@@ -1119,7 +1121,7 @@ Status RedisContext::RefreshPrimaryFromSentinel() {
     return redisConnectWithTimeout(host.c_str(), port, timeout);
   };
   auto resp = ConnectWithoutRetries<redisContext>(
-      origin_address_, origin_port_, connect_with_timeout);
+      sentinel_ip, origin_port_, connect_with_timeout);
   RAY_RETURN_NOT_OK(resp.first);
   auto sentinel_context = std::move(resp.second);
   if (enable_ssl_) {
@@ -1131,51 +1133,25 @@ Status RedisContext::RefreshPrimaryFromSentinel() {
           absl::StrCat("Failed to setup encrypted redis: ", sentinel_context->errstr));
     }
   }
-  RAY_RETURN_NOT_OK(AuthenticateRedis(sentinel_context.get(),
-                                      username_,
-                                      password_,
-                                      redis_db_probe_timeout_milliseconds_));
+  RAY_RETURN_NOT_OK(
+      AuthenticateRedis(sentinel_context.get(), username_, password_, timeout_ms));
 
   // AuthenticateRedis restores the socket to no-timeout (and skips the setup
   // entirely without a password), so bound the query ourselves. The context is
   // discarded right after, so there is nothing to restore.
-  RAY_RETURN_NOT_OK(
-      SetRedisProbeTimeout(sentinel_context.get(), redis_db_probe_timeout_milliseconds_));
+  RAY_RETURN_NOT_OK(SetRedisProbeTimeout(sentinel_context.get(), timeout_ms));
   std::string primary_ip;
   int primary_port = 0;
   RAY_RETURN_NOT_OK(
       QuerySentinelForPrimary(sentinel_context.get(), &primary_ip, &primary_port));
-  if (primary_ip != resolved_ip_ || primary_port != port_) {
+  // Record what Sentinel reports, which may be a host name when Sentinel runs
+  // with announce-hostnames. The caller resolves it into resolved_ip_.
+  if (primary_ip != address_ || primary_port != port_) {
     RAY_LOG(INFO) << "Redis Sentinel now reports the primary at "
                   << BuildAddress(primary_ip, primary_port) << ", was "
-                  << BuildAddress(resolved_ip_, port_) << ".";
-    resolved_ip_ = primary_ip;
-    port_ = primary_port;
+                  << BuildAddress(address_, port_) << ".";
     address_ = primary_ip;
-  }
-  return Status::OK();
-}
-
-Status RedisContext::RefreshResolvedAddress() {
-  // Connect() resolved the name once. Behind a Kubernetes Service or any other
-  // name that can move, the address recorded then may now belong to nothing,
-  // so resolve again rather than retrying a stale IP forever. A literal IP
-  // resolves to itself, which makes this a no-op for that case.
-  std::vector<std::string> ip_addresses;
-  try {
-    ip_addresses = ResolveDNS(io_service_, address_, port_);
-  } catch (const std::exception &e) {
-    return Status::RedisError(absl::StrCat(
-        "Failed to resolve DNS for ", BuildAddress(address_, port_), ": ", e.what()));
-  }
-  if (ip_addresses.empty()) {
-    return Status::RedisError(
-        absl::StrCat("Failed to resolve DNS for ", BuildAddress(address_, port_)));
-  }
-  if (ip_addresses[0] != resolved_ip_) {
-    RAY_LOG(INFO) << "Redis address " << address_ << " now resolves to "
-                  << ip_addresses[0] << ", was " << resolved_ip_ << ".";
-    resolved_ip_ = ip_addresses[0];
+    port_ = primary_port;
   }
   return Status::OK();
 }
@@ -1189,14 +1165,7 @@ struct ReconnectAuthProbe {
 };
 }  // namespace
 
-Status RedisContext::ReconnectAsyncContext() {
-  if (via_sentinel_) {
-    // Sentinel is authoritative for where the primary lives; a DNS pass over
-    // the IP it just handed out would resolve it to itself.
-    RAY_RETURN_NOT_OK(RefreshPrimaryFromSentinel());
-  } else {
-    RAY_RETURN_NOT_OK(RefreshResolvedAddress());
-  }
+Status RedisContext::ConnectToResolvedAddress() {
   auto resp =
       ConnectWithoutRetries<redisAsyncContext>(resolved_ip_, port_, redisAsyncConnect);
   RAY_RETURN_NOT_OK(resp.first);
@@ -1249,8 +1218,6 @@ Status RedisContext::ReconnectAsyncContext() {
   redisAsyncSetDisconnectCallback(async_context.get(),
                                   RedisAsyncContextDisconnectCallback);
 
-  // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
-  // pointer to this RedisAsyncContext.
   // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
   // pointer to this RedisAsyncContext.
   redis_async_context_->Reset(std::move(async_context));
@@ -1342,9 +1309,9 @@ void RedisContext::AttemptReconnect() {
     return;
   }
   if (reconnect_pending_) {
-    // A connect issued earlier has not reported back yet; its callback drives
-    // the next step. Only a stale timer from before that connect was issued
-    // can get here, and it has nothing to add.
+    // An attempt issued earlier (its resolve or its connect) has not reported
+    // back yet; that report drives the next step. Only a stale timer from
+    // before the attempt started can get here, and it has nothing to add.
     return;
   }
 
@@ -1358,20 +1325,101 @@ void RedisContext::AttemptReconnect() {
   // would make zero attempts.
   --reconnect_attempts_left_;
 
+  // From here until the resolve or the connect reports back, a stale retry
+  // timer must not start a second attempt.
+  reconnect_pending_ = true;
+
+  if (via_sentinel_) {
+    // Ask Sentinel where the primary lives now. The Sentinel's own address is
+    // commonly a name too (a Kubernetes Service), so it is looked up
+    // asynchronously first: the synchronous query would otherwise run
+    // getaddrinfo inside hiredis, which the connect timeout does not cover.
+    ResolveAsync(
+        origin_address_, origin_port_, [this](StatusOr<std::string> sentinel_ip) {
+          Status status = sentinel_ip.ok() ? RefreshPrimaryFromSentinel(*sentinel_ip)
+                                           : sentinel_ip.status();
+          if (!status.ok()) {
+            ContinueReconnect(status);
+            return;
+          }
+          ResolvePrimaryThenConnect();
+        });
+    return;
+  }
+  ResolvePrimaryThenConnect();
+}
+
+void RedisContext::ResolvePrimaryThenConnect() {
+  // Connect() resolved the name once. Behind a Kubernetes Service or any other
+  // name that can move, the address recorded then may now belong to nothing,
+  // so resolve again rather than retrying a stale IP forever. The same holds
+  // for a primary that Sentinel announces by host name, and the async connect
+  // below must be handed an IP: given a name, hiredis would run getaddrinfo
+  // synchronously on this io_context.
+  ResolveAsync(address_, port_, [this](StatusOr<std::string> ip) {
+    if (!ip.ok()) {
+      ContinueReconnect(ip.status());
+      return;
+    }
+    if (*ip != resolved_ip_ && *ip != address_) {
+      RAY_LOG(INFO) << "Redis address " << address_ << " now resolves to " << *ip
+                    << ", was " << resolved_ip_ << ".";
+    }
+    resolved_ip_ = *ip;
+    ContinueReconnect(Status::OK());
+  });
+}
+
+void RedisContext::ResolveAsync(const std::string &host,
+                                int port,
+                                std::function<void(StatusOr<std::string>)> done) {
+  boost::system::error_code parse_error;
+  boost::asio::ip::make_address(host, parse_error);
+  if (!parse_error) {
+    // A literal IP needs no lookup.
+    done(host);
+    return;
+  }
+  // Resolve asynchronously: this runs on the GCS io_context, and a resolver
+  // that blackholes during the outage must not stall it.
+  resolver_.async_resolve(
+      host,
+      std::to_string(port),
+      [this, alive = std::weak_ptr<bool>(alive_), host, port, done = std::move(done)](
+          const boost::system::error_code &ec,
+          const boost::asio::ip::tcp::resolver::results_type &results) {
+        if (alive.expired() || ec == boost::asio::error::operation_aborted) {
+          return;
+        }
+        if (!reconnecting_) {
+          // Disconnect() ended the episode while the lookup was in flight.
+          return;
+        }
+        if (ec || results.empty()) {
+          done(Status::RedisError(absl::StrCat("Failed to resolve DNS for ",
+                                               BuildAddress(host, port),
+                                               ": ",
+                                               ec ? ec.message() : "no addresses")));
+          return;
+        }
+        done(results.begin()->endpoint().address().to_string());
+      });
+}
+
+void RedisContext::ContinueReconnect(Status address_status) {
   // Success here only means the connect was issued. `redisAsyncConnect` is
   // non-blocking and reports a healthy context even when nothing is
-  // listening, so the connect callback is what decides.
-  Status status = ReconnectAsyncContext();
+  // listening, so the connect callback is what decides: success ends the
+  // episode, failure comes back through OnAsyncDisconnected, which schedules
+  // the next attempt. Nothing needs to poll in the meantime.
+  Status status = address_status.ok() ? ConnectToResolvedAddress() : address_status;
   if (status.ok()) {
-    // The connect callback settles this attempt: success ends the episode,
-    // failure comes back through OnAsyncDisconnected, which schedules the
-    // next attempt. Nothing needs to poll in the meantime.
-    reconnect_pending_ = true;
-  } else {
-    RAY_LOG(WARNING) << "Redis reconnect attempt failed: " << status << ". "
-                     << reconnect_attempts_left_ << " attempts left.";
-    ScheduleReconnectRetry();
+    return;
   }
+  reconnect_pending_ = false;
+  RAY_LOG(WARNING) << "Redis reconnect attempt failed: " << status << ". "
+                   << reconnect_attempts_left_ << " attempts left.";
+  ScheduleReconnectRetry();
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(

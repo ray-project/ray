@@ -422,6 +422,12 @@ RAY_CONFIG(size_t, num_redis_request_retries, 5)
 /// would otherwise kill gcs_server moments before the reconnect lands.
 RAY_CONFIG(int64_t, redis_reconnect_grace_period_ms, 60000)
 
+/// Bound on each step of the synchronous Sentinel query a reconnect makes to
+/// find the current primary (connect, AUTH, SENTINEL MASTERS). It runs on the
+/// io_context that serves GCS storage, so it is kept far below
+/// redis_db_probe_timeout_milliseconds, which only applies at startup.
+RAY_CONFIG(int64_t, redis_reconnect_sentinel_timeout_ms, 2000)
+
 /// Exponential backoff setup. By default:
 /// 100ms, 200ms, 400ms, 800ms, 1s, 1s,...
 RAY_CONFIG(int64_t, redis_retry_base_ms, 100)
