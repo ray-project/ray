@@ -21,6 +21,7 @@ from ray.serve._private.deployment_state import ReplicaStartupStatus
 from ray.serve._private.test_utils import (
     check_deployment_status,
     expected_proxy_actors,
+    get_application_url,
     skip_if_haproxy,
 )
 from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
@@ -589,9 +590,12 @@ def test_proxy_prefers_replicas_on_same_node(
 
     # Since they're sent sequentially, all requests should be routed to
     # the replica on the head node
-    responses = [
-        httpx.post("http://localhost:8000").text for _ in range(NUM_ROUTING_SAMPLES)
-    ]
+    # One client for the whole burst: httpx.post builds and tears down a connection
+    # pool per call, and the reused connection also tightens the gap between requests,
+    # which is the window a routing regression would show up in.
+    url = get_application_url()
+    with httpx.Client() as client:
+        responses = [client.post(url).text for _ in range(NUM_ROUTING_SAMPLES)]
     if set_flag:
         assert all(resp == head_node_id for resp in responses)
     else:
