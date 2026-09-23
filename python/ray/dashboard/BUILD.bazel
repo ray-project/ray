@@ -184,6 +184,9 @@ py_test(
         "modules/serve/tests/deploy_imperative_serve_apps.py",
         "modules/serve/tests/test_serve_dashboard.py",
     ],
+    # Shorten ingress draining because these tests expect Serve controllers to
+    # shut down promptly.
+    env = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01"},
     tags = ["team:serve"],
     deps = [":conftest"],
 )
@@ -192,6 +195,9 @@ py_test(
     name = "test_serve_dashboard_2",
     size = "enormous",
     srcs = ["modules/serve/tests/test_serve_dashboard_2.py"],
+    # Shorten ingress draining because these tests expect Serve controllers to
+    # shut down promptly.
+    env = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01"},
     tags = ["team:serve"],
     deps = [":conftest"],
 )
