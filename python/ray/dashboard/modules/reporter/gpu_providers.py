@@ -529,7 +529,9 @@ class GpuMetricProvider:
     def __init__(self, enable_metric_report: bool = True):
         self._provider: Optional[GpuProvider] = None
         self._enable_metric_report = enable_metric_report
-        self._providers = [NvidiaGpuProvider(), AmdGpuProvider()]
+        self._providers = (
+            [NvidiaGpuProvider(), AmdGpuProvider()] if enable_metric_report else []
+        )
         self._initialized = False
 
     def initialize(self) -> bool:
