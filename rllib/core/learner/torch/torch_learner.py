@@ -482,6 +482,12 @@ class TorchLearner(Learner):
         called in this `Learner.build()`.
         """
         self._device = get_device(self.config, self.config.num_gpus_per_learner)
+        # Make this Learner's device the current device context, so that torch APIs
+        # that don't take an explicit device (for example `torch.distributed`
+        # collectives, which allocate their own temporary tensors) don't fall back
+        # to device 0.
+        if self._device.type == "cuda":
+            torch.cuda.set_device(self._device)
 
         super().build()
 

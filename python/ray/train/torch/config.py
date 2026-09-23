@@ -99,6 +99,7 @@ def _setup_torch_process_group(
     world_size: int,
     init_method: str,
     timeout_s: int = 1800,
+    bind_device: bool = False,
 ):
     """Connects the distributed PyTorch backend.
 
@@ -108,6 +109,12 @@ def _setup_torch_process_group(
         world_size: Number of workers participating in the job.
         init_method: URL specifying how to initialize the process group.
         timeout_s: Seconds for process group operations to timeout.
+        bind_device: Whether to bind this worker's accelerator device to the
+            process group (NCCL only). Binding lets device-agnostic collectives
+            such as `torch.distributed.barrier()` infer the device instead of
+            falling back to the current device context, but it also makes NCCL
+            initialization eager, which requires every rank to own a distinct
+            GPU. Only pass True if that is guaranteed.
     """
     if world_rank == 0:
         logger.info(
@@ -142,13 +149,25 @@ def _setup_torch_process_group(
     elif backend in ("hccl", "tpu_dist"):
         register_custom_torch_dist_backend(backend)
 
-    dist.init_process_group(
+    init_kwargs = dict(
         backend=backend,
         init_method=init_method,
         rank=world_rank,
         world_size=world_size,
         timeout=timedelta(seconds=timeout_s),
     )
+    if bind_device and _is_backend_nccl(backend) and torch.cuda.is_available():
+        # Note: use the internal utility rather than `ray.train.torch.get_device`,
+        # since this code path also runs in workers that are not Ray Train workers
+        # (e.g. RLlib `Learner` actors), where the public API raises because there
+        # is no Ray Train context.
+        from ray.air._internal.torch_utils import get_devices
+
+        device = get_devices()[0]
+        if device.type == "cuda":
+            init_kwargs["device_id"] = device
+
+    dist.init_process_group(**init_kwargs)
 
 
 def _shutdown_torch(destroy_process_group=False):
@@ -207,12 +226,12 @@ class _TorchBackend(Backend):
 
     def on_start(self, worker_group: BaseWorkerGroup, backend_config: TorchConfig):
         if dist.is_available():
+            resources = worker_group.get_resources_per_worker()
+            num_gpus_per_worker = resources.get("GPU", 0)
+            num_tpus_per_worker = resources.get("TPU", 0)
+
             # Set the appropriate training backend.
             if backend_config.backend is None:
-                resources = worker_group.get_resources_per_worker()
-                num_gpus_per_worker = resources.get("GPU", 0)
-                num_tpus_per_worker = resources.get("TPU", 0)
-
                 if num_gpus_per_worker > 0:
                     backend = "nccl"
                 elif num_tpus_per_worker > 0:
@@ -250,6 +269,13 @@ class _TorchBackend(Backend):
             if not isinstance(worker_group, V1WorkerGroup):
                 worker_group.execute(_set_torch_distributed_env_vars)
 
+            # Binding a device to the process group eagerly initializes the NCCL
+            # communicator, which requires every rank to be on a distinct GPU.
+            # A fractional GPU request can place multiple workers on the same
+            # physical GPU, so only bind if each worker owns at least one full
+            # GPU, or if there is a single worker that cannot collide with anyone.
+            bind_device = num_gpus_per_worker >= 1 or len(worker_group) == 1
+
             setup_futures = []
             for i in range(len(worker_group)):
                 setup_futures.append(
@@ -261,6 +287,7 @@ class _TorchBackend(Backend):
                         world_size=len(worker_group),
                         init_method=url,
                         timeout_s=backend_config.timeout_s,
+                        bind_device=bind_device,
                     )
                 )
             ray.get(setup_futures)
@@ -270,7 +297,11 @@ class _TorchBackend(Backend):
     def on_shutdown(self, worker_group: BaseWorkerGroup, backend_config):
         futures = worker_group.execute_async(
             _shutdown_torch,
-            destroy_process_group=len(worker_group) > 1,
+            # Also destroy single-worker process groups: `on_start` initializes one
+            # regardless of the world size, and torch warns about leaked resources
+            # if it is still alive when the worker process exits.
+            # `_shutdown_torch` no-ops if no process group was initialized.
+            destroy_process_group=True,
         )
         timeout_s = ray_constants.env_integer(
             TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S,
