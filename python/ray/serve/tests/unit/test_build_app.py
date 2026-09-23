@@ -568,7 +568,8 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
 
     ingress_app = Ingress.bind()
     app = ingress_app._with_ingress_request_router(
-        IngressRequestRouter.bind(llm_deployment=ingress_app)
+        IngressRequestRouter.bind(llm_deployment=ingress_app),
+        forward_body=True,
     )
 
     built_app: BuiltApplication = build_app(
@@ -581,6 +582,7 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
     assert set(built_app.deployment_handles) == {"Ingress"}
     assert built_app.ingress_request_router_deployment is not None
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
+    assert built_app.ingress_request_router_forward_body is True
 
 
 def test_build_app_requires_ingress_request_router_to_be_single_deployment(

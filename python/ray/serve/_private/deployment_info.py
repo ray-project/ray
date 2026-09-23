@@ -22,6 +22,7 @@ class DeploymentInfo:
         route_prefix: Optional[str] = None,
         ingress: bool = False,
         ingress_request_router: bool = False,
+        ingress_request_router_forward_body: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
@@ -41,6 +42,7 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
+        self.ingress_request_router_forward_body = ingress_request_router_forward_body
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -53,6 +55,8 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
+        if not hasattr(self, "ingress_request_router_forward_body"):
+            self.ingress_request_router_forward_body = False
 
     def update(
         self,
@@ -72,6 +76,9 @@ class DeploymentInfo:
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
             ingress_request_router=self.ingress_request_router,
+            ingress_request_router_forward_body=(
+                self.ingress_request_router_forward_body
+            ),
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )
@@ -147,6 +154,9 @@ class DeploymentInfo:
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
             "ingress_request_router": proto.ingress_request_router,
+            "ingress_request_router_forward_body": (
+                proto.ingress_request_router_forward_body
+            ),
         }
 
         return cls(**data)
@@ -171,6 +181,9 @@ class DeploymentInfo:
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
         data["ingress_request_router"] = self.ingress_request_router
+        data[
+            "ingress_request_router_forward_body"
+        ] = self.ingress_request_router_forward_body
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

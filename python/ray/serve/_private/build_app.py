@@ -78,6 +78,7 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
+    ingress_request_router_forward_body: bool = False
 
     def validate_single_fastapi_ingress(self) -> None:
         """Validate that the application has at most one FastAPI ingress."""
@@ -211,6 +212,11 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
+        ingress_request_router_forward_body=(
+            app._ingress_request_router_forward_body
+            if ingress_request_router_deployment is not None
+            else False
+        ),
     )
 
 

@@ -1,7 +1,7 @@
 import logging
 import os
 import sys
-from typing import List
+from typing import List, Optional
 
 from ray._common.network_utils import get_all_interfaces_ip
 from ray.serve._private.constants_utils import (
@@ -1006,19 +1006,22 @@ RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
     "RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS", 100
 )
 
-# Escape hatch: when true, HAProxy forwards the (possibly truncated) request
-# body to /internal/route and the router reads it. Off by default because for
-# large payloads the body buffering / re-emit cost adds noticeable time-to-
-# first-response. Skipping the forward is fine for any policy whose decision
-# does not depend on the request body: round-robin and power-of-two ignore
-# the body entirely, and session-aware policies key on the ``x-session-id``
-# header (forwarded with the request line) rather than the body.
-#
-# Flip this to true if the configured request router needs the body for its
-# decision, e.g. prefix-aware / prefix-cache routing.
-RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
-    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
-)
+# Whether HAProxy forwards the request body to /internal/route. The default,
+# ``auto``, enables forwarding only for routers that declare they need it.
+# ``0`` and ``1`` force the behavior off or on for every ingress router.
+_INGRESS_REQUEST_ROUTER_FORWARD_BODY_MODE = os.environ.get(
+    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", "auto"
+).lower()
+if _INGRESS_REQUEST_ROUTER_FORWARD_BODY_MODE not in {"0", "1", "auto"}:
+    raise ValueError(
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY must be one of "
+        "'auto', '0', or '1'."
+    )
+RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: Optional[bool] = {
+    "0": False,
+    "1": True,
+    "auto": None,
+}[_INGRESS_REQUEST_ROUTER_FORWARD_BODY_MODE]
 
 # Optional flat header map returned by /internal/route. HAProxy applies these
 # as trusted request headers before forwarding to the selected replica. Headers

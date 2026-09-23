@@ -21,6 +21,12 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+)
+from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
+    PrefixCacheAffinityRouter,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_openai_app,
 )
@@ -439,6 +445,35 @@ class TestBuildOpenaiApp:
         assert request_router_config.request_router_class == (
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
+
+    @pytest.mark.parametrize(
+        ("router_class", "expected"),
+        [
+            (RoundRobinRouter, False),
+            (ConsistentHashRouter, False),
+            (PrefixCacheAffinityRouter, True),
+            (KVAwareRouter, True),
+        ],
+    )
+    def test_direct_streaming_auto_body_forwarding(
+        self,
+        llm_config,
+        disable_placement_bundles,
+        monkeypatch,
+        router_class,
+        expected,
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=router_class
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        assert app._ingress_request_router_forward_body is expected
 
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch

@@ -47,6 +47,16 @@ def _get_direct_streaming_serve_options(
     return override_serve_options
 
 
+def _request_router_requires_body(llm_config: LLMConfig) -> bool:
+    request_router_config = llm_config.deployment_config.get(
+        "request_router_config",
+        RequestRouterConfig(request_router_class=RoundRobinRouter),
+    )
+    if isinstance(request_router_config, dict):
+        request_router_config = RequestRouterConfig(**request_router_config)
+    return request_router_config.requires_request_body()
+
+
 def _build_direct_streaming_llm_deployment(
     llm_config: LLMConfig,
     *,
@@ -262,7 +272,8 @@ def build_openai_app(builder_config: dict) -> Application:
         return direct_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
                 server=direct_deployment, llm_config=llm_configs[0]
-            )
+            ),
+            forward_body=_request_router_requires_body(llm_configs[0]),
         )
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}

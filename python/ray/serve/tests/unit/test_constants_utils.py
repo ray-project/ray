@@ -41,6 +41,14 @@ def test_haproxy_platform_default(monkeypatch, platform, override, expected):
     assert _get_haproxy_enabled() is expected
 
 
+def test_ingress_request_router_forward_body_auto_by_default():
+    from ray.serve._private.constants import (
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+    )
+
+    assert RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY is None
+
+
 class TestStrToList:
     def test_str_to_list_basic(self):
         assert str_to_list("a,b,c") == ["a", "b", "c"]

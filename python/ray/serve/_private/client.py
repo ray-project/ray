@@ -362,6 +362,11 @@ class ServeControllerClient:
                     deployment.name,
                     ingress=is_ingress,
                     ingress_request_router=is_ingress_request_router,
+                    ingress_request_router_forward_body=(
+                        app.ingress_request_router_forward_body
+                        if is_ingress_request_router
+                        else False
+                    ),
                     replica_config=deployment._replica_config,
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
@@ -390,6 +395,9 @@ class ServeControllerClient:
                 deployment_args_proto.ingress_request_router = deployment_args[
                     "ingress_request_router"
                 ]
+                deployment_args_proto.ingress_request_router_forward_body = (
+                    deployment_args["ingress_request_router_forward_body"]
+                )
                 deployment_args_proto.uses_multiplexing = deployment_args[
                     "uses_multiplexing"
                 ]

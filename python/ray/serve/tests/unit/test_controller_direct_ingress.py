@@ -1,5 +1,6 @@
 import asyncio
 from copy import deepcopy
+from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 from unittest import mock
 
@@ -153,8 +154,13 @@ class FakeDeploymentStateManager:
     def __init__(
         self,
         running_replica_infos: Dict[DeploymentID, List[RunningReplicaInfo]],
+        deployment_infos=None,
     ):
         self.running_replica_infos = running_replica_infos
+        self.deployment_infos = deployment_infos or {}
+
+    def get_deployment(self, deployment_id):
+        return self.deployment_infos.get(deployment_id)
 
     def get_running_replica_infos(self):
         return self.running_replica_infos
@@ -783,7 +789,13 @@ def test_get_target_groups_only_includes_ingress_deployments(
 
 def test_get_target_groups_populates_ingress_request_router_targets(
     direct_ingress_controller: FakeDirectIngressController,
+    monkeypatch,
 ):
+    monkeypatch.setattr(
+        "ray.serve._private.controller."
+        "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        None,
+    )
     app_name = "app1"
     route_prefix = "/app1"
     ingress_deployment_id = DeploymentID(name="app1_ingress", app_name=app_name)
@@ -822,6 +834,11 @@ def test_get_target_groups_populates_ingress_request_router_targets(
             ingress_deployment_id: [ingress_replica_info],
             router_deployment_id: [router_replica_info],
         },
+        deployment_infos={
+            router_deployment_id: SimpleNamespace(
+                ingress_request_router_forward_body=True
+            )
+        },
     )
 
     ingress_http_port = direct_ingress_controller.allocate_replica_port(
@@ -852,6 +869,8 @@ def test_get_target_groups_populates_ingress_request_router_targets(
                     name="router_replica",
                 )
             ],
+            ingress_request_router_forward_body=True,
+            ingress_deployment_name=ingress_deployment_id.name,
         )
     ]
 
