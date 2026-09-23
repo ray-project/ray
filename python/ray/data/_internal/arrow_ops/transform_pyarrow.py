@@ -125,6 +125,35 @@ def _has_unhashable_polars_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+def _dictionary_decoded_type(dtype: "pyarrow.DataType") -> "pyarrow.DataType":
+    """Return ``dtype`` with every dictionary type replaced by its value type.
+
+    Recurses into structs, lists, and maps: a dictionary nested inside a
+    composite key must be decoded too, or it hashes as Categorical while a
+    plain-encoded block of the same values hashes as String.
+    """
+    if pyarrow.types.is_dictionary(dtype):
+        return _dictionary_decoded_type(dtype.value_type)
+    if pyarrow.types.is_struct(dtype):
+        return pyarrow.struct(
+            [field.with_type(_dictionary_decoded_type(field.type)) for field in dtype]
+        )
+    if pyarrow.types.is_map(dtype):
+        return pyarrow.map_(
+            _dictionary_decoded_type(dtype.key_type),
+            _dictionary_decoded_type(dtype.item_type),
+        )
+    if pyarrow.types.is_list(dtype):
+        return pyarrow.list_(_dictionary_decoded_type(dtype.value_type))
+    if pyarrow.types.is_large_list(dtype):
+        return pyarrow.large_list(_dictionary_decoded_type(dtype.value_type))
+    if pyarrow.types.is_fixed_size_list(dtype):
+        return pyarrow.list_(
+            _dictionary_decoded_type(dtype.value_type), dtype.list_size
+        )
+    return dtype
+
+
 def _hash_partition_vectorized(
     projected_table: "pyarrow.Table",
     num_partitions: int,
@@ -153,18 +182,12 @@ def _hash_partition_vectorized(
     # Polars hashes dictionary (Categorical) values differently from the same
     # values plainly encoded, so a dict-encoded block would partition a key
     # differently from a plain-encoded block of the same dataset. Decode to
-    # the value type before hashing.
-    if any(pyarrow.types.is_dictionary(f.type) for f in projected_table.schema):
-        projected_table = projected_table.cast(
-            pyarrow.schema(
-                [
-                    f.with_type(f.type.value_type)
-                    if pyarrow.types.is_dictionary(f.type)
-                    else f
-                    for f in projected_table.schema
-                ]
-            )
-        )
+    # the value type (at any nesting depth) before hashing.
+    decoded_schema = pyarrow.schema(
+        [f.with_type(_dictionary_decoded_type(f.type)) for f in projected_table.schema]
+    )
+    if decoded_schema != projected_table.schema:
+        projected_table = projected_table.cast(decoded_schema)
 
     try:
         df: "pl.DataFrame" = pl.from_arrow(projected_table, rechunk=False)

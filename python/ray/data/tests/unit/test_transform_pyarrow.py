@@ -253,6 +253,48 @@ def test_has_unhashable_polars_types(pa_type, expected):
     assert _has_unhashable_polars_types(schema) is expected
 
 
+def test_hash_partition_dictionary_encoding_consistent():
+    # Equal keys must partition identically whether they're dictionary-encoded
+    # or plain, at any nesting depth: Polars hashes Categorical differently
+    # from String, so dictionaries must be decoded before hashing.
+    pytest.importorskip("polars")
+    num_partitions = 8
+
+    values = pa.array(["apple", "banana", "apple"])
+    encoded = values.dictionary_encode()
+
+    # Top-level dictionary key.
+    assert np.array_equal(
+        _hash_partition_vectorized(pa.table({"k": encoded}), num_partitions),
+        _hash_partition_vectorized(pa.table({"k": values}), num_partitions),
+    )
+
+    # Dictionary nested in a struct key.
+    assert np.array_equal(
+        _hash_partition_vectorized(
+            pa.table({"k": pa.StructArray.from_arrays([encoded], names=["s"])}),
+            num_partitions,
+        ),
+        _hash_partition_vectorized(
+            pa.table({"k": pa.StructArray.from_arrays([values], names=["s"])}),
+            num_partitions,
+        ),
+    )
+
+    # Dictionary nested in a list key.
+    offsets = pa.array([0, 2, 3])
+    assert np.array_equal(
+        _hash_partition_vectorized(
+            pa.table({"k": pa.ListArray.from_arrays(offsets, encoded)}),
+            num_partitions,
+        ),
+        _hash_partition_vectorized(
+            pa.table({"k": pa.ListArray.from_arrays(offsets, values)}),
+            num_partitions,
+        ),
+    )
+
+
 def test_hash_partitioning_union_key():
     union = pa.UnionArray.from_sparse(
         pa.array([0, 1, 0], type=pa.int8()),
