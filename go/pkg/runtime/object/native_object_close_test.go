@@ -14,7 +14,10 @@
 
 package object
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
 
 // TestCloseOnlyReturnsPooledData verifies that Close() returns pool-marked Data
 // via PutBuffer and leaves non-pooled Data (msgpack output, bytes.Clone,
@@ -46,6 +49,56 @@ func TestCloseOnlyReturnsPooledData(t *testing.T) {
 	}
 	if pooled.Data != nil {
 		t.Fatalf("Close() should nil out Data, got %d bytes", len(pooled.Data))
+	}
+}
+
+// TestDataViewPreferredByDataBytesAndReleasedByClose pins the zero-copy
+// contract on NativeRayObject: DataBytes() serves the view's bytes whenever a
+// view is attached (Data may be nil for plasma-backed objects), Close() drops
+// the backing buffer handle exactly once, and Close() is idempotent so a
+// second call cannot double-free the handle.
+func TestDataViewPreferredByDataBytesAndReleasedByClose(t *testing.T) {
+	// Without a view, DataBytes() must return Data unchanged (the copied path).
+	plain := NewNativeRayObject([]byte("copied"), []byte("RAW"))
+	if got := string(plain.DataBytes()); got != "copied" {
+		t.Fatalf("DataBytes() = %q, want %q", got, "copied")
+	}
+
+	backing := []byte("plasma-backed")
+	var releases []uint64
+	view := &PlasmaBufferView{
+		ptr:    unsafe.Pointer(&backing[0]),
+		size:   len(backing),
+		handle: 7,
+		releaseFunc: func(h uint64) {
+			releases = append(releases, h)
+		},
+	}
+
+	obj := &NativeRayObject{DataView: view}
+	if got := string(obj.DataBytes()); got != string(backing) {
+		t.Fatalf("DataBytes() = %q, want %q", got, backing)
+	}
+
+	if err := obj.Close(); err != nil {
+		t.Fatalf("Close() failed: %v", err)
+	}
+	if obj.DataView != nil {
+		t.Fatalf("Close() should clear the view")
+	}
+	if len(releases) != 1 || releases[0] != 7 {
+		t.Fatalf("Close() should release the handle exactly once, got %v", releases)
+	}
+	if got := obj.DataBytes(); got != nil {
+		t.Fatalf("DataBytes() after Close() = %q, want nil", got)
+	}
+
+	// A second Close must not release the handle again.
+	if err := obj.Close(); err != nil {
+		t.Fatalf("second Close() failed: %v", err)
+	}
+	if len(releases) != 1 {
+		t.Fatalf("double Close() released the handle %d times, want 1", len(releases))
 	}
 }
 

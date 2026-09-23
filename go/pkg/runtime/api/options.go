@@ -170,9 +170,10 @@ func (b *CallOptionsBuilder) Build() *CallOptions {
 // ConvertToTaskOptions converts CallOptions to submitter.TaskOptions.
 func (c *CallOptions) ConvertToTaskOptions() *submitter.TaskOptions {
 	return &submitter.TaskOptions{
-		Name:       c.Name,
-		Resources:  c.Resources,
-		RuntimeEnv: c.RuntimeEnv,
+		Name:                 c.Name,
+		Resources:            c.Resources,
+		RuntimeEnv:           c.RuntimeEnv,
+		ConcurrencyGroupName: c.ConcurrencyGroupName,
 	}
 }
 

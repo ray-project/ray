@@ -82,6 +82,7 @@ type NativeRuntime struct {
 	executor        *cgointerfaces.NativeTaskExecutor
 	functionManager *function.FunctionManager
 	resourceManager resource.ResourceManager
+	actorManager    *ActorManager
 }
 
 // NewNativeRuntime creates a new NativeRuntime instance.
@@ -91,6 +92,7 @@ func NewNativeRuntime(opts base.InitializeOptions) (*NativeRuntime, error) {
 		handle:          nil,
 		workerContext:   globalWorkerContext, // Use package-level singleton
 		resourceManager: resource.NewResourceManager(),
+		actorManager:    NewActorManager(),
 	}, nil
 }
 
@@ -161,12 +163,15 @@ func (nr *NativeRuntime) Start() error {
 // executeTask is the task execution callback registered with C++.
 // It is called by C++ when a task is received during task execution loop.
 //
-// This method delegates to the NativeTaskExecutor based on task type:
-// - Normal tasks (actorID.IsNil()): Execute via executor.Execute()
-// - Actor tasks: Execute via executor.ExecuteActorTask()
+// This method delegates based on the task type:
+//   - Normal tasks (TaskTypeNormal): Execute via executor.Execute()
+//   - Actor creation tasks (TaskTypeActorCreation): construct the actor instance
+//     via the registered "<init>" constructor and store it in the ActorManager.
+//   - Actor method tasks (TaskTypeActorTask): look up the stored instance and
+//     invoke the method via reflection with the instance as the receiver.
 //
-// Thread safety: NativeTaskExecutor is stateless and thread-safe.
-// This method can be called concurrently by multiple task execution threads.
+// Thread safety: The ActorManager is concurrency-safe; this method can be called
+// concurrently by multiple task execution threads.
 //
 // Parameters:
 //   - taskType: Type of task (matches ray::rpc::TaskType enum values)
@@ -189,11 +194,37 @@ func (nr *NativeRuntime) executeTask(
 	// go/internal/runtime/cgo/task_executor.go), which recovers it and serializes a task
 	// execution exception error object; no recovery is needed at this layer.
 
-	// Delegate to NativeTaskExecutor based on task type
-	if actorID.IsNil() {
+	// The Go descriptor is only needed for actor-related tasks; the executor
+	// performs this conversion itself for normal tasks (which dominate the
+	// workload), so converting here unconditionally would duplicate the work on
+	// every normal task.
+	switch contract.TaskType(taskType) {
+	case contract.TaskTypeActorCreation:
+		// Actor creation: run the registered constructor and keep the instance.
+		goDesc, err := function.FromBaseFunctionDescriptor(functionDescriptor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid function descriptor: %w", err)
+		}
+		instance, err := nr.actorManager.ConstructActor(goDesc, args)
+		if err != nil {
+			return nil, err
+		}
+		nr.actorManager.SetInstance(actorID, instance)
+		return nil, nil
+	case contract.TaskTypeActorTask:
+		// Method calls on the same actor are serialized by the C++ core worker's
+		// ConcurrencyGroupManager according to the actor's max_concurrency; the Go
+		// side performs no additional per-actor locking (Java parity).
+		goDesc, err := function.FromBaseFunctionDescriptor(functionDescriptor)
+		if err != nil {
+			return nil, fmt.Errorf("invalid function descriptor: %w", err)
+		}
+		return nr.actorManager.ExecuteActorMethod(actorID, goDesc, args)
+	default:
+		// Normal task: delegate to the executor (which also handles the case
+		// where the actor ID is nil for ordinary function calls).
 		return nr.executor.Execute(functionDescriptor, args, numReturns)
 	}
-	return nr.executor.ExecuteActorTask(actorID, functionDescriptor, args, numReturns)
 }
 
 // Shutdown shuts down the native runtime.
@@ -332,6 +363,25 @@ func (nr *NativeRuntime) GetFunctionManager() function.Manager {
 	defer nr.mu.RUnlock()
 	return nr.functionManager
 }
+
+// RegisterActorConstructor implements contract.ActorConstructorRegistrar.
+// It registers an actor "<init>" constructor so that ACTOR_CREATION_TASK can be
+// executed locally. The constructor is keyed by the actor descriptor's String()
+// value (matching the descriptor used by api.Actor and the task spec).
+func (nr *NativeRuntime) RegisterActorConstructor(descKey string, ctor contract.ActorConstructor) {
+	nr.mu.RLock()
+	am := nr.actorManager
+	nr.mu.RUnlock()
+	if am == nil {
+		logger.Error(nil, "actor manager not initialized, cannot register actor constructor")
+		return
+	}
+	am.RegisterConstructor(descKey, ctor)
+}
+
+// Compile-time check that NativeRuntime implements the actor constructor
+// registrar contract.
+var _ contract.ActorConstructorRegistrar = (*NativeRuntime)(nil)
 
 // GetGcsClient returns the GCS client, initializing it lazily if needed.
 //

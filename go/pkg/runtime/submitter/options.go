@@ -46,6 +46,11 @@ type TaskOptions struct {
 	// Name is the optional name for the task.
 	// If specified, the task can be identified by name in monitoring and debugging.
 	Name string
+
+	// ConcurrencyGroupName is the optional concurrency group name for the task.
+	// It only applies to tasks submitted to an actor with concurrency groups.
+	// Corresponds to Java's CallOptions.setConcurrencyGroupName.
+	ConcurrencyGroupName string
 }
 
 // ActorCreationOptions contains options for actor creation.

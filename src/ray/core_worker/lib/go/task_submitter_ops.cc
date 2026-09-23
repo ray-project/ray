@@ -76,13 +76,14 @@ ICoreWorkerProvider &TaskSubmitterOperations::GetCoreWorkerProvider() {
 }
 
 std::vector<ray::rpc::ObjectReference> TaskSubmitterOperations::SubmitTask(
+    ray::Language language,
     const std::vector<std::string> &function_descriptor,
     const std::vector<std::unique_ptr<TaskArgument>> &args,
     const TaskSubmitOptions &options) {
   auto &core_worker = GetCoreWorker();
 
   // Build RayFunction using shared helper method
-  ray::core::RayFunction ray_function = BuildRayFunction(function_descriptor);
+  ray::core::RayFunction ray_function = BuildRayFunction(language, function_descriptor);
 
   // Convert task arguments using shared helper method
   auto task_args = ConvertTaskArgs(args);
@@ -111,13 +112,14 @@ std::vector<ray::rpc::ObjectReference> TaskSubmitterOperations::SubmitTask(
 }
 
 ray::ActorID TaskSubmitterOperations::CreateActor(
+    ray::Language language,
     const std::vector<std::string> &function_descriptor,
     const std::vector<std::unique_ptr<TaskArgument>> &args,
     const ActorCreateOptions &options) {
   auto &core_worker = GetCoreWorker();
 
   // Build RayFunction using shared helper method
-  ray::core::RayFunction ray_function = BuildRayFunction(function_descriptor);
+  ray::core::RayFunction ray_function = BuildRayFunction(language, function_descriptor);
 
   // Convert task arguments using shared helper method
   auto task_args = ConvertTaskArgs(args);
@@ -139,13 +141,14 @@ ray::ActorID TaskSubmitterOperations::CreateActor(
 
 std::vector<ray::rpc::ObjectReference> TaskSubmitterOperations::SubmitActorTask(
     const ray::ActorID &actor_id,
+    ray::Language language,
     const std::vector<std::string> &function_descriptor,
     const std::vector<std::unique_ptr<TaskArgument>> &args,
     const TaskSubmitOptions &options) {
   auto &core_worker = GetCoreWorker();
 
   // Build RayFunction using shared helper method
-  ray::core::RayFunction ray_function = BuildRayFunction(function_descriptor);
+  ray::core::RayFunction ray_function = BuildRayFunction(language, function_descriptor);
 
   // Convert task arguments using shared helper method
   auto task_args = ConvertTaskArgs(args);
@@ -197,6 +200,13 @@ std::unordered_map<std::string, double> TaskSubmitterOperations::ParseResources(
   return resources;
 }
 
+void TaskSubmitterOperations::EnsureDefaultCPU(
+    std::unordered_map<std::string, double> &resources) {
+  if (resources.empty()) {
+    resources["CPU"] = 1.0;
+  }
+}
+
 std::string TaskSubmitterOperations::HexToBinary(const std::string &hex_str) {
   // Delegate to the local helper function
   // See HexStringToBinary above for why this is a local implementation
@@ -204,10 +214,10 @@ std::string TaskSubmitterOperations::HexToBinary(const std::string &hex_str) {
 }
 
 ray::core::RayFunction TaskSubmitterOperations::BuildRayFunction(
-    const std::vector<std::string> &descriptor) const {
+    ray::Language language, const std::vector<std::string> &descriptor) const {
   ray::FunctionDescriptor func_descriptor =
-      ray::FunctionDescriptorBuilder::FromVector(ray::Language::GO, descriptor);
-  return ray::core::RayFunction(ray::Language::GO, func_descriptor);
+      ray::FunctionDescriptorBuilder::FromVector(language, descriptor);
+  return ray::core::RayFunction(language, func_descriptor);
 }
 
 std::vector<std::unique_ptr<ray::TaskArg>> TaskSubmitterOperations::ConvertTaskArgs(
@@ -223,7 +233,10 @@ std::vector<std::unique_ptr<ray::TaskArg>> TaskSubmitterOperations::ConvertTaskA
 ray::core::TaskOptions TaskSubmitterOperations::BuildTaskOptions(
     const TaskSubmitOptions &options) const {
   ray::core::TaskOptions task_options;
+  // Add default CPU=1 if no resources are specified, matching Python's behavior
+  // for autoscaler compatibility (it triggers pending lease reporting).
   task_options.resources = options.resources;
+  EnsureDefaultCPU(task_options.resources);
   task_options.num_returns = options.num_returns;
   // Note: Explicitly set generator_backpressure_num_objects to -1 to indicate
   // that backpressure is not enabled. This matches Java's behavior in
@@ -238,6 +251,9 @@ ray::core::TaskOptions TaskSubmitterOperations::BuildTaskOptions(
     task_options.serialized_runtime_env_info = options.serialized_runtime_env_info;
   }
 
+  task_options.name = options.name;
+  task_options.concurrency_group_name = options.concurrency_group_name;
+
   return task_options;
 }
 
@@ -251,26 +267,39 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
   // has no placement-group fields, so the default scheduling strategy is used.
   ray::rpc::SchedulingStrategy scheduling_strategy;
   scheduling_strategy.mutable_default_scheduling_strategy();
+
+  // Add default CPU=1 if no resources are specified, matching Python's behavior
+  // for autoscaler compatibility (it triggers pending lease reporting). The
+  // same map is used as placement resources, as needed by the constructor.
+  std::unordered_map<std::string, double> resources = options.resources;
+  EnsureDefaultCPU(resources);
+
+  // max_concurrency: 1 means serialized (the Ray default), -1 means unlimited
+  // and values >= 1 allow that many concurrent method calls. A zero value (from
+  // a zero-value options struct) resolves to the serialized default instead of
+  // unlimited, so an actor never silently becomes reentrant.
+  const int max_concurrency = options.max_concurrency == 0 ? 1 : options.max_concurrency;
+
   return ray::core::ActorCreationOptions(options.max_restarts,
                                          options.max_task_retries,
-                                         1,  // initial_restarts
-                                         options.resources,
-                                         options.resources,
-                                         {},  // required_resources
+                                         max_concurrency,
+                                         resources,
+                                         resources,
+                                         {},  // dynamic_worker_options
                                          std::nullopt,
                                          options.name,
                                          namespace_copy,
-                                         false,  // is_detached
+                                         false,  // is_asyncio
                                          scheduling_strategy,
                                          options.serialized_runtime_env_info,
-                                         {},     // worker_capture_output
-                                         false,  // is_global_publisher
-                                         -1,     // max_concurrency
-                                         false,  // is_asyncio_actor
+                                         {},     // concurrency_groups
+                                         false,  // allow_out_of_order_execution
+                                         -1,     // max_pending_calls
+                                         false,  // enable_tensor_transport
                                          false,  // enable_task_events
-                                         {},     // serialized_dag
-                                         {},     // serialized_actor_data
-                                         {});    // extension_data
+                                         {},     // labels
+                                         {},     // label_selector
+                                         {});    // fallback_strategy
 }
 
 ray::rpc::SchedulingStrategy TaskSubmitterOperations::BuildSchedulingStrategy(

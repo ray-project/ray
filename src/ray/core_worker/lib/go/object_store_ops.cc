@@ -96,14 +96,19 @@ void ObjectStoreOperations::CreateOwned(const std::shared_ptr<ray::Buffer> &meta
   // (ray-project/ray#63520), so CreateOwnedAndIncrementLocalRef no longer takes
   // an owner address and the created object is always owned by this worker.
   (void)owner_address;  // not forwarded, see the note above
-  RAY_CHECK_OK(core_worker.CreateOwnedAndIncrementLocalRef(
+  // Surface recoverable failures (e.g. Status::ObjectStoreFull) to the caller
+  // instead of aborting the process, matching PutWithID's error propagation.
+  auto status = core_worker.CreateOwnedAndIncrementLocalRef(
       /*is_experimental_mutable_object=*/false,
       metadata,
       data_size,
       /*contained_object_ids=*/{},
       object_id,
       data,
-      /*inline_small_object=*/true));
+      /*inline_small_object=*/true);
+  if (!status.ok()) {
+    throw std::runtime_error("CreateOwned failed: " + status.ToString());
+  }
 }
 
 void ObjectStoreOperations::CreateExisting(const std::shared_ptr<ray::Buffer> &metadata,
@@ -140,7 +145,18 @@ void ObjectStoreOperations::CreateExisting(const std::shared_ptr<ray::Buffer> &m
         "CreateExisting is not supported in local mode; callers must fall back "
         "to the copy path");
   }
-  RAY_CHECK_OK(status);
+  if (!status.ok()) {
+    // Surface recoverable failures to the caller instead of aborting the
+    // process, matching PutWithID's error propagation.
+    throw std::runtime_error("CreateExisting failed: " + status.ToString());
+  }
+  if (*data == nullptr) {
+    // The object already exists: CreateExisting folded ObjectExists to OK and
+    // left *data null. Roll back the ownership registration made above, because
+    // the Go side falls back to PutWithID, which registers ownership itself; a
+    // second live registration for the same id would leak a local reference.
+    core_worker.RemoveLocalReference(object_id);
+  }
 }
 
 void ObjectStoreOperations::SealOwned(const ray::ObjectID &object_id,
@@ -150,14 +166,18 @@ void ObjectStoreOperations::SealOwned(const ray::ObjectID &object_id,
   // See CreateOwned: the owner address has no destination in the upstream
   // CoreWorker::SealOwned signature and is kept for the Go bridge ABI only.
   (void)owner_address;  // not forwarded, see the note above
-  RAY_CHECK_OK(core_worker.SealOwned(object_id, /*pin_object=*/false));
+  // Pin the sealed object, matching the PutWithID path and the Java bridge:
+  // without the pin, a freshly written object has no raylet pin and can be
+  // evicted under memory pressure with no lineage to reconstruct it from.
+  RAY_CHECK_OK(core_worker.SealOwned(object_id, /*pin_object=*/true));
 }
 
 void ObjectStoreOperations::SealExisting(
     const ray::ObjectID &object_id, std::unique_ptr<ray::rpc::Address> owner_address) {
   auto &core_worker = GetCoreWorker();
+  // Pin, matching SealOwned / PutWithID / the Java bridge (see SealOwned).
   RAY_CHECK_OK(core_worker.SealExisting(object_id,
-                                        /*pin_object=*/false,
+                                        /*pin_object=*/true,
                                         ray::ObjectID::Nil(),
                                         std::move(owner_address)));
 }

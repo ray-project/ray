@@ -23,7 +23,10 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 # InitializeOptions) used throughout the Ray Go Runtime.
 go_library(
     name = "options",
-    srcs = ["runtime_options.go"],
+    srcs = [
+        "job_config_env.go",
+        "runtime_options.go",
+    ],
     importpath = "github.com/ray-project/ray/go/pkg/options",
     visibility = ["//visibility:public"],
     deps = [
@@ -34,7 +37,10 @@ go_library(
 
 go_test(
     name = "options_test",
-    srcs = ["runtime_options_test.go"],
+    srcs = [
+        "job_config_env_test.go",
+        "runtime_options_test.go",
+    ],
     embed = [":options"],
     deps = [
         "//go/proto",

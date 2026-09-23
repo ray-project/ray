@@ -3,6 +3,7 @@ module github.com/ray-project/ray/go
 go 1.25.0
 
 require (
+	al.essio.dev/pkg/shellescape v1.6.0
 	github.com/go-logr/logr v1.4.3
 	github.com/go-logr/zapr v1.3.0
 	github.com/gofrs/flock v0.12.1

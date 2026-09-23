@@ -184,7 +184,7 @@ func DeserializeObjectRef(nativeObj *NativeRayObject) (*SerializedObjectRef, err
 	// Try to extract language field for routing with format fallback
 	// First, try to unmarshal as Go format to check for language field
 	var rawData map[string]interface{}
-	if err := msgpack.Unmarshal(nativeObj.Data, &rawData); err == nil {
+	if err := msgpack.Unmarshal(nativeObj.DataBytes(), &rawData); err == nil {
 		// Check if language field exists
 		if langStr, ok := rawData["language"].(string); ok {
 			language := Language(langStr)
@@ -192,34 +192,34 @@ func DeserializeObjectRef(nativeObj *NativeRayObject) (*SerializedObjectRef, err
 			switch language {
 			case LanguageGo:
 				// Go format confirmed, use Go deserializer
-				return deserializeObjectRefFromGo(nativeObj.Data)
+				return deserializeObjectRefFromGo(nativeObj.DataBytes())
 			case LanguagePython:
 				// Python language detected, but Serialize() always uses map format!
 				// Strategy: First try Go format (map), only fall back to Python format (tuple) if it fails
-				if objRef, err := deserializeObjectRefFromGo(nativeObj.Data); err == nil && objRef != nil {
+				if objRef, err := deserializeObjectRefFromGo(nativeObj.DataBytes()); err == nil && objRef != nil {
 					return objRef, nil
 				}
 				// Go format failed, try Python format (tuple) for backward compatibility
-				return deserializeObjectRefFromPython(nativeObj.Data)
+				return deserializeObjectRefFromPython(nativeObj.DataBytes())
 			default:
 				// Unknown language (e.g., Java, C++), try Go format first
-				if objRef, err := deserializeObjectRefFromGo(nativeObj.Data); err == nil && objRef != nil {
+				if objRef, err := deserializeObjectRefFromGo(nativeObj.DataBytes()); err == nil && objRef != nil {
 					return objRef, nil
 				}
 				// Fall back to Python format for backward compatibility
-				return deserializeObjectRefFromPython(nativeObj.Data)
+				return deserializeObjectRefFromPython(nativeObj.DataBytes())
 			}
 		}
 	}
 
 	// No language field found, use format-based detection
 	// Try Go format first (map) - this is the preferred format for Go objects
-	if objRef, err := deserializeObjectRefFromGo(nativeObj.Data); err == nil && objRef != nil {
+	if objRef, err := deserializeObjectRefFromGo(nativeObj.DataBytes()); err == nil && objRef != nil {
 		return objRef, nil
 	}
 
 	// If Go format fails, try Python format (tuple) for backward compatibility
-	if objRef, err := deserializeObjectRefFromPython(nativeObj.Data); err == nil && objRef != nil {
+	if objRef, err := deserializeObjectRefFromPython(nativeObj.DataBytes()); err == nil && objRef != nil {
 		return objRef, nil
 	}
 
@@ -396,12 +396,12 @@ func DeserializeObjectRefFromNative(nativeObj *NativeRayObject) (*SerializedObje
 	}
 
 	// Try Python format first (5-tuple)
-	if objRef, err := deserializeObjectRefFromPython(nativeObj.Data); err == nil {
+	if objRef, err := deserializeObjectRefFromPython(nativeObj.DataBytes()); err == nil {
 		return objRef, nil
 	}
 
 	// Fallback to Go format (map)
-	return deserializeObjectRefFromGo(nativeObj.Data)
+	return deserializeObjectRefFromGo(nativeObj.DataBytes())
 }
 
 // MarshalMsgpack implements msgpack.Marshaler interface for direct SerializedObjectRef serialization.

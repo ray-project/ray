@@ -233,6 +233,11 @@ func (b *JobConfigBuilder) WithMetadata(key, value string) *JobConfigBuilder {
 	return b
 }
 
+// RuntimeEnvJSON returns the current runtime_env as a JSON string.
+func (b *JobConfigBuilder) RuntimeEnvJSON() string {
+	return b.runtimeEnvJSON
+}
+
 // Build serializes the JobConfig to protobuf binary format, then base64-encodes it.
 // The returned string can be used in options.JobOptions.JobConfig.
 //

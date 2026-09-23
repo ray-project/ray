@@ -200,8 +200,13 @@ CreateTaskExecutionCallback() {
     // Note: const_cast is necessary because Go exports functions with non-const
     // parameters, but C++ code maintains const correctness. The Go function does not
     // modify the data.
+    // Pass the task language (ray::rpc::Language value) explicitly so the Go worker can
+    // build the function descriptor without guessing the language from the descriptor
+    // contents. This matches how Java's nativeRunTaskExecutor and C++'s
+    // runtime_callbacks carry the language across the language boundary.
     CSerializedObjectArray *c_results =
-        GoExecuteTask(static_cast<int>(task_type),
+        GoExecuteTask(static_cast<int>(ray_function.GetLanguage()),
+                      static_cast<int>(task_type),
                       const_cast<char **>(func_desc_cstrs.data()),
                       static_cast<int>(func_desc_cstrs.size()),
                       c_args.data(),

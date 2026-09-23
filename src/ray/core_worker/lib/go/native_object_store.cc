@@ -280,6 +280,19 @@ CObjectArray *CreateCObjectArray(
   return result;
 }
 
+// Helper function to allocate an empty CObjectViewArray. The header contract
+// requires a heap-allocated (never nullptr) result for an empty request, and
+// CObjectStore_FreeObjectViewArray releases the struct with free(), so the
+// allocation must come from malloc rather than new.
+CObjectViewArray *CreateEmptyCObjectViewArray() {
+  auto *array = static_cast<CObjectViewArray *>(malloc(sizeof(CObjectViewArray)));
+  if (array != nullptr) {
+    array->views = nullptr;
+    array->count = 0;
+  }
+  return array;
+}
+
 // Helper function to create CWaitResult from std::vector<bool>. Returned by
 // value: the caller owns result.ready and frees it with CObjectStore_FreeWaitResult.
 CWaitResult CreateCWaitResult(const std::vector<bool> &ready) {
@@ -640,6 +653,141 @@ extern "C" CObjectArray *CObjectStore_Get(const char **object_ids,
     // Convert to C type - return pointer directly, not dereferenced
     return CreateCObjectArray(objects);
   });
+}
+
+// ============================================================================
+// Zero-copy view entry points
+//
+// These implement the core mechanism for a zero-copy Get: handing the data
+// buffer pointer to Go together with a handle that owns a
+// std::shared_ptr<ray::Buffer>, so the backing memory (plasma shared memory in
+// production, a LocalMemoryBuffer otherwise) stays alive until Go releases the
+// handle. No memcpy of the payload happens on this path.
+//
+// The Go side transfers each handle it keeps out of the array by zeroing it,
+// so the single CObjectStore_FreeObjectViewArray call at the end of the Go
+// function releases only the handles Go did not take ownership of.
+// ============================================================================
+
+extern "C" CObjectViewArray *CObjectStore_GetView(const char **object_ids,
+                                                  int *object_id_sizes,
+                                                  int count,
+                                                  long long timeout_ms) {
+  return CgoErrorHandler::Execute("CObjectStore_GetView", [&]() -> CObjectViewArray * {
+    // An empty or invalid request returns a heap-allocated empty view array
+    // (never nullptr), matching the CObjectStore_Get contract.
+    if (object_ids == nullptr || object_id_sizes == nullptr || count <= 0) {
+      return CreateEmptyCObjectViewArray();
+    }
+
+    // Parse object IDs
+    std::vector<ray::ObjectID> ids = ParseObjectIds(object_ids, object_id_sizes, count);
+
+    if (ids.empty()) {
+      return CreateEmptyCObjectViewArray();
+    }
+
+    // Call business logic
+    auto &ops = ray::go::ObjectStoreOperations::GetInstance();
+    auto objects = ops.Get(ids, static_cast<int>(timeout_ms));
+
+    // Allocate the view array. Each view carries a direct data pointer into the
+    // backing buffer plus a handle owning a shared_ptr<Buffer>; no memcpy of
+    // payloads happens on this path.
+    auto *array = static_cast<CObjectViewArray *>(calloc(1, sizeof(CObjectViewArray)));
+    if (array == nullptr) {
+      throw std::bad_alloc();
+    }
+    array->count = static_cast<int>(objects.size());
+    array->views =
+        static_cast<CObjectView *>(calloc(objects.size(), sizeof(CObjectView)));
+    if (array->views == nullptr && !objects.empty()) {
+      free(array);
+      throw std::bad_alloc();
+    }
+
+    // Populate the views. On any exception, free what has been allocated so far
+    // and rethrow; CgoErrorHandler::Execute then surfaces the error to Go
+    // without leaking the buffer handles or the contained-ID buffers.
+    try {
+      for (size_t i = 0; i < objects.size(); ++i) {
+        if (!objects[i]) {
+          continue;  // view stays zero-initialized (data == NULL)
+        }
+
+        if (objects[i]->HasData()) {
+          auto data = objects[i]->GetData();
+          if (data != nullptr && data->Size() > 0) {
+            array->views[i].data = data->Data();
+            array->views[i].size = static_cast<int>(data->Size());
+            array->views[i].is_plasma = data->IsPlasmaBuffer();
+            array->views[i].buffer_handle =
+                reinterpret_cast<uint64_t>(new std::shared_ptr<ray::Buffer>(data));
+          }
+        }
+
+        if (objects[i]->HasMetadata()) {
+          const auto &metadata = objects[i]->GetMetadata();
+          if (metadata != nullptr && metadata->Size() > 0) {
+            array->views[i].metadata = metadata->Data();
+            array->views[i].metadata_size = static_cast<int>(metadata->Size());
+            array->views[i].metadata_handle =
+                reinterpret_cast<uint64_t>(new std::shared_ptr<ray::Buffer>(metadata));
+          }
+        }
+
+        // Copy contained object IDs (nested references) into separately owned
+        // buffers; FreeObjectViewArray releases them.
+        const auto &contained_refs = objects[i]->GetNestedRefs();
+        if (!contained_refs.empty()) {
+          array->views[i].contained_ids =
+              static_cast<char **>(calloc(contained_refs.size(), sizeof(char *)));
+          if (array->views[i].contained_ids == nullptr) {
+            throw std::bad_alloc();
+          }
+          array->views[i].contained_ids_count = static_cast<int>(contained_refs.size());
+          for (size_t j = 0; j < contained_refs.size(); ++j) {
+            const auto &contained_binary = contained_refs[j].object_id();
+            auto *id_data = static_cast<char *>(malloc(contained_binary.size()));
+            if (id_data == nullptr) {
+              throw std::bad_alloc();
+            }
+            memcpy(id_data, contained_binary.data(), contained_binary.size());
+            array->views[i].contained_ids[j] = id_data;
+          }
+        }
+      }
+    } catch (...) {
+      CObjectStore_FreeObjectViewArray(array);
+      throw;
+    }
+    return array;
+  });
+}
+
+extern "C" void CObjectStore_FreeObjectViewArray(CObjectViewArray *array) {
+  if (array == nullptr) {
+    return;
+  }
+  if (array->views != nullptr) {
+    for (int i = 0; i < array->count; ++i) {
+      // Drop the shared_ptr handles for each view. The data/metadata pointers
+      // are NOT freed here: they point into memory owned by the handles.
+      // Zero handles are no-ops, so a handle already transferred to the caller
+      // is not released a second time.
+      CObjectStore_ReleaseBuffer(array->views[i].buffer_handle);
+      CObjectStore_ReleaseBuffer(array->views[i].metadata_handle);
+      // Release the copied contained-ID buffers (owned by this array).
+      if (array->views[i].contained_ids != nullptr) {
+        for (int j = 0; j < array->views[i].contained_ids_count; ++j) {
+          free(array->views[i].contained_ids[j]);
+        }
+        free(array->views[i].contained_ids);
+      }
+    }
+    free(array->views);
+  }
+  free(array);
 }
 
 extern "C" CWaitResult CObjectStore_Wait(const char **object_ids,

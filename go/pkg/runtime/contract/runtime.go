@@ -130,3 +130,21 @@ type RuntimeHandle interface {
 	// Use this to access worker context, object store, and other runtime features.
 	Runtime() Runtime
 }
+
+// ActorConstructor is a factory that builds a fresh actor instance from
+// deserialized construction arguments. It is the Go counterpart of Java's actor
+// constructor invocation (RayFunction.getConstructor().newInstance(args)).
+type ActorConstructor func(args []function.FunctionArg) (interface{}, error)
+
+// ActorConstructorRegistrar is implemented by runtimes that support actor
+// construction. The worker uses it to register actor "<init>" constructors at
+// startup so that ACTOR_CREATION_TASK can be executed locally.
+//
+// It is declared as a separate interface (rather than adding a method to
+// Runtime) so that runtimes which do not support actors (e.g. local mode
+// variants) are not forced to implement it.
+type ActorConstructorRegistrar interface {
+	// RegisterActorConstructor registers the constructor for an actor type,
+	// keyed by its "<init>" descriptor key (descriptor.String()).
+	RegisterActorConstructor(descKey string, ctor ActorConstructor)
+}

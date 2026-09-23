@@ -42,6 +42,7 @@
 package errors
 
 import (
+	std "errors"
 	"fmt"
 	"strings"
 	"time"
@@ -499,6 +500,14 @@ func NewActorExitError(message string) *ActorExitError {
 		errorMessage: message,
 		details:      make(map[string]interface{}),
 	}
+}
+
+// IsActorExitError reports whether err signals an intentional actor exit (the
+// Go counterpart of Java's RayIntentionalSystemExitException). The exit error
+// may be returned directly from a task executor or wrapped by another error.
+func IsActorExitError(err error) bool {
+	var exitErr *ActorExitError
+	return std.As(err, &exitErr)
 }
 
 // ============================================================================

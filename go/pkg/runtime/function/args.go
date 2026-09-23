@@ -25,8 +25,8 @@ import (
 //
 // fnType must be a function or bound-method type (for a bound method obtained
 // via reflect, the receiver is already stripped, so In(i) is the i-th argument).
-// This is the shared helper used by WrapGoFunction to build the parameter type
-// list for DeserializeArgs.
+// This is the shared helper used by WrapGoFunction, CallActorMethod and
+// WrapActorConstructor to build the parameter type list for DeserializeArgs.
 func ParamTypesOf(fnType reflect.Type, count int) []reflect.Type {
 	types := make([]reflect.Type, count)
 	for i := range types {
@@ -45,8 +45,9 @@ func ParamTypesOf(fnType reflect.Type, count int) []reflect.Type {
 // resolves them in C++ before the task ever reaches the Go worker. Absent or
 // nil arguments are zero-filled.
 //
-// This is the single shared implementation used by WrapGoFunction, so argument
-// handling stays in one place.
+// This is the single shared implementation used by WrapGoFunction,
+// CallActorMethod and WrapActorConstructor, so argument handling stays in one
+// place.
 func DeserializeArgs(args []FunctionArg, paramTypes []reflect.Type) ([]reflect.Value, error) {
 	if len(args) != len(paramTypes) {
 		return nil, fmt.Errorf("argument count mismatch: expected %d, got %d",
@@ -76,4 +77,62 @@ func DeserializeArgs(args []FunctionArg, paramTypes []reflect.Type) ([]reflect.V
 		}
 	}
 	return in, nil
+}
+
+// errorType is the reflect.Type of the builtin error interface.
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+
+// IsNilValue reports whether rv is nil for the nilable kinds (chan, func,
+// interface, map, ptr, slice); other kinds (struct, int, ...) are never nil.
+// It is shared by IsNilInstance and ExtractErrorReturn so the nilable-kind
+// set has a single source of truth.
+func IsNilValue(rv reflect.Value) bool {
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
+		reflect.Ptr, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
+// IsNilInstance reports whether v is a nil interface or a typed nil value
+// (nil pointer, map, slice, channel, func or interface). Value kinds
+// (struct, int, ...) are never nil.
+func IsNilInstance(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	return IsNilValue(reflect.ValueOf(v))
+}
+
+// ExtractErrorReturn extracts the trailing error return value of a reflected
+// call result, following the convention established by WrapActorConstructor:
+// a signature whose last return value implements error uses that value to
+// convey execution outcome rather than data.
+//
+// A nil error return (the zero value of the error interface, or a nil value of
+// a concrete reference-typed error such as *MyError) is dropped and treated as
+// success. A typed-nil value stored inside an error interface (e.g.
+// `return (*MyError)(nil)`) is, per Go semantics, a non-nil error and is
+// returned as-is.
+//
+// Returns (err, rest) where rest holds the non-error return values. When the
+// last return value is not an error type, err is nil and rest is out itself.
+func ExtractErrorReturn(out []reflect.Value) (err error, rest []reflect.Value) {
+	if len(out) == 0 {
+		return nil, out
+	}
+	last := out[len(out)-1]
+	if !last.IsValid() || !last.Type().Implements(errorType) {
+		return nil, out
+	}
+	if IsNilValue(last) {
+		// nil error return: drop it and serialize the remaining values.
+		return nil, out[:len(out)-1]
+	}
+	if e, ok := last.Interface().(error); ok {
+		return e, out[:len(out)-1]
+	}
+	return nil, out[:len(out)-1]
 }

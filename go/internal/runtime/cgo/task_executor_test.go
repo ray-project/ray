@@ -284,7 +284,8 @@ func TestGoExecuteTask_Success(t *testing.T) {
 
 	// Call GoExecuteTask
 	result := GoExecuteTask(
-		1, // taskType
+		C.int(function.LanguageGo), // language
+		1,                          // taskType
 		&cFuncDesc[0],
 		C.int(len(funcDescList)),
 		&cArgs[0],
@@ -323,7 +324,8 @@ func TestGoExecuteTask_ExecutorNotRegistered(t *testing.T) {
 	}
 
 	result := GoExecuteTask(
-		1, // taskType
+		C.int(function.LanguageGo), // language
+		1,                          // taskType
 		&cFuncDesc[0],
 		C.int(len(funcDescList)),
 		nil, // args

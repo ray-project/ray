@@ -39,16 +39,15 @@ func RegisterInitializer(workerType options.WorkerType, fn InitFunc) {
 }
 
 // getInitFunc returns the initializer for the given worker type (Local → local
-// mode; Driver/Worker → native). Falls back to any single registration for
-// backward compatibility.
+// mode; Driver/Worker → native).
+//
+// There is deliberately NO fallback to "whatever single initializer happens to
+// be registered": importing pkg/runtime/local registers the local-mode
+// initializer as a package side effect, and a fallback would silently run a
+// cluster (Driver/Worker) request in-process instead of loading go_runtime.so.
 func getInitFunc(workerType options.WorkerType) InitFunc {
 	initFuncsMu.Lock()
 	defer initFuncsMu.Unlock()
-	if len(initFuncs) == 1 {
-		for _, fn := range initFuncs {
-			return fn
-		}
-	}
 	return initFuncs[workerType]
 }
 

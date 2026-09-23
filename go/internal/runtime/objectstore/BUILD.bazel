@@ -33,6 +33,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//go/pkg/ids",
+        "//go/pkg/log",
         "//go/pkg/runtime/object",
         "//go/proto",
         "@org_golang_google_protobuf//proto",

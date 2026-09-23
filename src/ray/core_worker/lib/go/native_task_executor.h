@@ -32,6 +32,7 @@ extern "C" {
 // This callback is registered by Go runtime and called by C++ when a task is received.
 //
 // Parameters:
+//   language - Language of the task to execute (ray::rpc::Language enum value)
 //   task_type - Type of task (matches ray::rpc::TaskType enum values)
 //   function_descriptor - Array of function descriptor strings
 //   function_descriptor_count - Number of elements in function_descriptor array
@@ -44,7 +45,8 @@ extern "C" {
 // Returns:
 //   CSerializedObjectArray* containing task execution results, or NULL on failure.
 //   Caller is responsible for freeing the returned CSerializedObjectArray.
-typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int task_type,
+typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int language,
+                                                          int task_type,
                                                           char **function_descriptor,
                                                           int function_descriptor_count,
                                                           CFunctionArg *args,
@@ -61,6 +63,7 @@ typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int task_type,
 // This function is called by C++ to execute a task in the Go runtime.
 //
 // Parameters:
+//   language - Language of the task to execute (ray::rpc::Language enum value)
 //   task_type - Type of task (matches ray::rpc::TaskType enum values)
 //   function_descriptor - Array of function descriptor strings
 //   function_descriptor_count - Number of elements in function_descriptor array
@@ -73,7 +76,8 @@ typedef CSerializedObjectArray *(*GoTaskExecutorCallback)(int task_type,
 // Returns:
 //   CSerializedObjectArray* containing task execution results, or NULL on failure.
 //   Caller is responsible for freeing the returned CSerializedObjectArray.
-CSerializedObjectArray *GoExecuteTask(int task_type,
+CSerializedObjectArray *GoExecuteTask(int language,
+                                      int task_type,
                                       char **function_descriptor,
                                       int function_descriptor_count,
                                       CFunctionArg *args,

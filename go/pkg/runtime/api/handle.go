@@ -236,6 +236,12 @@ func setHandle(h contract.RuntimeHandle) {
 	initialized.Store(true)
 	// Start the background release worker before any ObjectRef finalizer can run.
 	initReleaseWorker()
+	// A re-init after Shutdown must reset shutdownComplete: the previous
+	// clearHandle set it true, and without a reset every new ObjectRef finalizer
+	// would observe it true and skip RemoveLocalReference, leaking local
+	// references in the C++ object store (plasma). Mirrors the internal
+	// storeHandleLocked behaviour.
+	shutdownComplete.Store(false)
 }
 
 // clearHandle clears the handle after shutdown.

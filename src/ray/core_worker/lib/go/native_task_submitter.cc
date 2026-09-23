@@ -116,6 +116,7 @@ CObjectIdArray *CreateCObjectIdArray(const std::vector<ray::ObjectID> &ids) {
 // ============================================================================
 
 extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitTask(
+    int language,
     const char **function_descriptor,
     int function_descriptor_count,
     const CFunctionArg *args,
@@ -136,7 +137,8 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitTask(
         std::vector<std::unique_ptr<ray::go::TaskArgument>> task_args =
             ray::go::BuildTaskArgs(args, args_count);
 
-        // Build task options
+        // Build task options. The default CPU=1 resource (when none are
+        // specified) is applied centrally in BuildTaskOptions.
         ray::go::TaskSubmitOptions submit_options;
         if (options != nullptr) {
           // Parse resources
@@ -146,6 +148,9 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitTask(
               options->runtime_env ? options->runtime_env : "";
           submit_options.num_returns = num_returns;
           submit_options.max_retries = options->max_retries;
+          submit_options.name = options->name ? options->name : "";
+          submit_options.concurrency_group_name =
+              options->concurrency_group_name ? options->concurrency_group_name : "";
           if (options->placement_group_id != nullptr &&
               options->placement_group_id_size > 0) {
             submit_options.placement_group_id_hex = std::string(
@@ -159,7 +164,10 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitTask(
         // Submit task using business logic layer
         auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
         std::vector<ray::rpc::ObjectReference> return_refs =
-            ops.SubmitTask(func_desc_vec, task_args, submit_options);
+            ops.SubmitTask(static_cast<ray::Language>(language),
+                           func_desc_vec,
+                           task_args,
+                           submit_options);
 
         // Convert ObjectReferences to ObjectIDs
         std::vector<ray::ObjectID> return_ids;
@@ -172,6 +180,7 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitTask(
 }
 
 extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
+    int language,
     const char **function_descriptor,
     int function_descriptor_count,
     const CFunctionArg *args,
@@ -191,11 +200,13 @@ extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
         std::vector<std::unique_ptr<ray::go::TaskArgument>> task_args =
             ray::go::BuildTaskArgs(args, args_count);
 
-        // Build actor creation options
+        // Build actor creation options. The default CPU=1 resource (when none
+        // are specified) is applied centrally in BuildActorOptions.
         ray::go::ActorCreateOptions actor_options;
         if (options != nullptr) {
           actor_options.max_restarts = options->max_restarts;
           actor_options.max_task_retries = options->max_task_retries;
+          actor_options.max_concurrency = options->max_concurrency;
           actor_options.resources = ray::go::TaskSubmitterOperations::ParseResources(
               options->resources ? options->resources : "");
           actor_options.name = options->name ? options->name : "";
@@ -206,7 +217,10 @@ extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
 
         // Create actor using business logic layer
         auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
-        ray::ActorID actor_id = ops.CreateActor(func_desc_vec, task_args, actor_options);
+        ray::ActorID actor_id = ops.CreateActor(static_cast<ray::Language>(language),
+                                                func_desc_vec,
+                                                task_args,
+                                                actor_options);
 
         // Convert to CByteArray
         const std::string &binary = actor_id.Binary();
@@ -217,6 +231,7 @@ extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
 extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitActorTask(
     const char *actor_id_data,
     int actor_id_size,
+    int language,
     const char **function_descriptor,
     int function_descriptor_count,
     const CFunctionArg *args,
@@ -245,7 +260,8 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitActorTask(
         std::vector<std::unique_ptr<ray::go::TaskArgument>> task_args =
             ray::go::BuildTaskArgs(args, args_count);
 
-        // Build task options
+        // Build task options. The default CPU=1 resource (when none are
+        // specified) is applied centrally in BuildTaskOptions.
         ray::go::TaskSubmitOptions submit_options;
         if (options != nullptr) {
           // Parse resources
@@ -253,6 +269,9 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitActorTask(
               options->resources ? options->resources : "");
           submit_options.num_returns = num_returns;
           submit_options.max_retries = options->max_retries;
+          submit_options.name = options->name ? options->name : "";
+          submit_options.concurrency_group_name =
+              options->concurrency_group_name ? options->concurrency_group_name : "";
         } else {
           submit_options.num_returns = num_returns;
         }
@@ -260,7 +279,11 @@ extern "C" CObjectIdArray *CNativeTaskSubmitter_SubmitActorTask(
         // Submit actor task using business logic layer
         auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
         std::vector<ray::rpc::ObjectReference> return_refs =
-            ops.SubmitActorTask(actor_id, func_desc_vec, task_args, submit_options);
+            ops.SubmitActorTask(actor_id,
+                                static_cast<ray::Language>(language),
+                                func_desc_vec,
+                                task_args,
+                                submit_options);
 
         // Convert ObjectReferences to ObjectIDs
         std::vector<ray::ObjectID> return_ids;
@@ -321,48 +344,46 @@ extern "C" int CNativeTaskSubmitter_KillActor(const char *actor_id_data,
                                               int actor_id_size,
                                               bool no_restart,
                                               char **error_out) {
-  return CgoErrorHandler::Execute(
-      "CNativeTaskSubmitter_KillActor",
-      [&]() -> int {
-        // Always initialize the output so a caller that observes a failure
-        // without error_out never reads an uninitialized pointer.
-        if (error_out) {
-          *error_out = nullptr;
-        }
-        if (actor_id_data == nullptr || actor_id_size <= 0) {
-          RAY_LOG(ERROR) << "KillActor called with invalid actor ID";
-          if (error_out) {
-            *error_out = CgoTypeConverter::ToCString("invalid actor ID");
-          }
-          return 0;
-        }
+  return CgoErrorHandler::Execute("CNativeTaskSubmitter_KillActor", [&]() -> int {
+    // Always initialize the output so a caller that observes a failure
+    // without error_out never reads an uninitialized pointer.
+    if (error_out) {
+      *error_out = nullptr;
+    }
+    if (actor_id_data == nullptr || actor_id_size <= 0) {
+      RAY_LOG(ERROR) << "KillActor called with invalid actor ID";
+      if (error_out) {
+        *error_out = CgoTypeConverter::ToCString("invalid actor ID");
+      }
+      return 0;
+    }
 
-        // Parse actor ID
-        ray::ActorID actor_id =
-            ray::ActorID::FromBinary(std::string(actor_id_data, actor_id_size));
-        if (actor_id.IsNil()) {
-          RAY_LOG(ERROR) << "KillActor called with nil actor ID";
-          if (error_out) {
-            *error_out = CgoTypeConverter::ToCString("nil actor ID");
-          }
-          return 0;
-        }
+    // Parse actor ID
+    ray::ActorID actor_id =
+        ray::ActorID::FromBinary(std::string(actor_id_data, actor_id_size));
+    if (actor_id.IsNil()) {
+      RAY_LOG(ERROR) << "KillActor called with nil actor ID";
+      if (error_out) {
+        *error_out = CgoTypeConverter::ToCString("nil actor ID");
+      }
+      return 0;
+    }
 
-        RAY_LOG(DEBUG) << "KillActor called: actor_id=" << actor_id.Hex()
-                       << ", no_restart=" << no_restart;
+    RAY_LOG(DEBUG) << "KillActor called: actor_id=" << actor_id.Hex()
+                   << ", no_restart=" << no_restart;
 
-        // Kill via the CoreWorker. force_kill is always true to match the Java
-        // runtime semantics (kill == crash, pending tasks fail).
-        auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
-        ray::Status status = ops.KillActor(actor_id, /*force_kill=*/true, no_restart);
-        if (!status.ok()) {
-          RAY_LOG(ERROR) << "KillActor failed: actor_id=" << actor_id.Hex()
-                         << ", status=" << status.ToString();
-          if (error_out) {
-            *error_out = CgoTypeConverter::ToCString(status.ToString());
-          }
-          return 0;
-        }
-        return 1;
-      });
+    // Kill via the CoreWorker. force_kill is always true to match the Java
+    // runtime semantics (kill == crash, pending tasks fail).
+    auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+    ray::Status status = ops.KillActor(actor_id, /*force_kill=*/true, no_restart);
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "KillActor failed: actor_id=" << actor_id.Hex()
+                     << ", status=" << status.ToString();
+      if (error_out) {
+        *error_out = CgoTypeConverter::ToCString(status.ToString());
+      }
+      return 0;
+    }
+    return 1;
+  });
 }

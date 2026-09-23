@@ -35,6 +35,11 @@ type NativeRayObject struct {
 	Metadata           []byte   // object metadata
 	ContainedObjectIds [][]byte // nested object IDs in binary format
 
+	// DataView is an optional zero-copy view over Data. When set, Data may be
+	// lazily materialized from DataView.Bytes(); it is nil for regular copied
+	// objects. The view keeps the backing (plasma) memory alive until Close.
+	DataView *PlasmaBufferView
+
 	// dataFromPool records whether Data was obtained from the buffer pool
 	// (GetBuffer). Close() only returns pool-allocated buffers via PutBuffer;
 	// non-pool buffers (msgpack output, bytes.Clone, C.GoBytes, caller-owned,
@@ -78,18 +83,31 @@ func (n *NativeRayObject) GetContainedObjectIds() []ids.ObjectID {
 	return result
 }
 
+// DataBytes returns the object payload bytes, preferring the zero-copy view
+// (plasma-backed data) over the copied Data slice. Callers must keep the
+// NativeRayObject (and thus the view) alive while using the returned slice.
+func (n *NativeRayObject) DataBytes() []byte {
+	if n == nil {
+		return nil
+	}
+	if n.DataView != nil {
+		return n.DataView.Bytes()
+	}
+	return n.Data
+}
+
 // String returns the string representation for debugging.
 func (n *NativeRayObject) String() string {
 	if n == nil {
 		return "NativeRayObject(nil)"
 	}
 	return fmt.Sprintf("NativeRayObject{Data: %d bytes, Metadata: %d bytes, ContainedObjectIds: %d}",
-		len(n.Data), len(n.Metadata), len(n.ContainedObjectIds))
+		len(n.DataBytes()), len(n.Metadata), len(n.ContainedObjectIds))
 }
 
 // IsEmpty checks if the object is empty.
 func (n *NativeRayObject) IsEmpty() bool {
-	return n == nil || (len(n.Data) == 0 && len(n.Metadata) == 0)
+	return n == nil || (len(n.DataBytes()) == 0 && len(n.Metadata) == 0)
 }
 
 // MarkDataFromPool marks Data as pool-allocated (obtained from GetBuffer) so
@@ -123,6 +141,12 @@ func (n *NativeRayObject) ReleasePoolOwnership() {
 func (n *NativeRayObject) Close() error {
 	if n == nil {
 		return nil
+	}
+	// A zero-copy view (if present) owns the backing memory; drop its handle.
+	// Release is idempotent and nil-safe, so a double Close cannot double-free.
+	if n.DataView != nil {
+		n.DataView.Release()
+		n.DataView = nil
 	}
 	// Only return pool-allocated buffers to the pool. Returning non-pool
 	// buffers (msgpack output, bytes.Clone, C.GoBytes, caller-owned or shared

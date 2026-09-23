@@ -15,9 +15,11 @@
 package serializer
 
 import (
-	"encoding/binary"
+	"bytes"
 	"fmt"
 	"testing"
+
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 func TestEncodeDecodeWithHeader(t *testing.T) {
@@ -126,20 +128,21 @@ func TestEncodeDecodeWithHeader(t *testing.T) {
 }
 
 func TestCrossLanguageCompatibility(t *testing.T) {
-	// Simulate Java-serialized data (with 9-byte length header)
-	// First, create actual MessagePack data for "hello"
+	// Simulate Java/Python-serialized data (with 9-byte length header).
+	// The cross-language format stores the payload length as a msgpack-encoded
+	// integer at offset 0, padded to MessagePackOffset bytes, followed by the
+	// msgpack payload. Here the payload is the msgpack fixstr "hello" (6 bytes),
+	// so the length header is the msgpack encoding of 6 (a single byte 0x06).
 	msgpackData := []byte{0xa5, 'h', 'e', 'l', 'l', 'o'} // MessagePack fixstr "hello"
 
-	// Build Java-style format: [0xcd][8-byte length big-endian][MessagePack data]
-	javaEncoded := make([]byte, MessagePackOffset+len(msgpackData))
-	javaEncoded[0] = 0xcd // msgpack long format marker
-	binary.BigEndian.PutUint64(javaEncoded[1:MessagePackOffset], uint64(len(msgpackData)))
-	copy(javaEncoded[MessagePackOffset:], msgpackData)
+	crossLangEncoded := make([]byte, MessagePackOffset+len(msgpackData))
+	crossLangEncoded[0] = 0x06 // msgpack positive fixint encoding of length 6
+	copy(crossLangEncoded[MessagePackOffset:], msgpackData)
 
 	var result string
-	err := NewMsgpackSerializer().Decode(javaEncoded, &result)
+	err := NewMsgpackSerializer().Decode(crossLangEncoded, &result)
 	if err != nil {
-		t.Fatalf("Decode Java data failed: %v", err)
+		t.Fatalf("Decode cross-language data failed: %v", err)
 	}
 	if result != "hello" {
 		t.Errorf("Expected 'hello', got '%s'", result)
@@ -163,9 +166,15 @@ func TestEncodeToBufferWithHeader(t *testing.T) {
 		t.Fatalf("Buffer too short: %d", len(buf))
 	}
 
-	// Verify header marker
-	if buf[0] != 0xcd {
-		t.Errorf("Expected header marker 0xcd, got 0x%02x", buf[0])
+	// Verify the length header encodes the payload length as a msgpack integer
+	// (the cross-language format), rather than a raw big-endian uint64.
+	headerDec := msgpack.NewDecoder(bytes.NewReader(buf[:MessagePackOffset]))
+	declaredLen, err := headerDec.DecodeInt()
+	if err != nil {
+		t.Fatalf("Decode length header failed: %v", err)
+	}
+	if declaredLen != len(buf)-MessagePackOffset {
+		t.Errorf("Header length %d != payload length %d", declaredLen, len(buf)-MessagePackOffset)
 	}
 
 	// Verify round-trip
@@ -194,8 +203,8 @@ func TestInvalidLengthHeader(t *testing.T) {
 
 	// Create data with invalid length header (claims more data than available)
 	invalidData := []byte{
-		0xcd, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, // Claims 255 bytes
-		0xa5, 'h', 'e', 'l', 'l', 'o', // Only 5 bytes of actual data
+		0xcc, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // msgpack uint8 0xcc 0xff claims 255 bytes
+		0xa5, 'h', 'e', 'l', 'l', 'o', // Only 6 bytes of actual data
 	}
 
 	var result string

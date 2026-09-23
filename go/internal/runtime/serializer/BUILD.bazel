@@ -27,7 +27,6 @@ go_library(
         "serializer.go",
         "tiered_buffer_pool.go",
         "type_utils.go",
-        "zero_copy.go",
     ],
     importpath = "github.com/ray-project/ray/go/internal/runtime/serializer",
     visibility = [
@@ -55,7 +54,6 @@ go_test(
         "tiered_buffer_pool_bench_test.go",
         "tiered_buffer_pool_test.go",
         "type_utils_test.go",
-        "zero_copy_test.go",
     ],
     embed = [":serializer"],
     deps = ["//go/pkg/ids"],

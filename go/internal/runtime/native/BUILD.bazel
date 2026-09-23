@@ -19,6 +19,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "native",
     srcs = [
+        "actor_executor.go",  # Actor instance/constructor management for the worker
         "native_runtime.go",  # NativeRuntime implementation
         "runtime_context_impl.go",  # GCS query implementations and conversion helpers
     ],
@@ -32,6 +33,7 @@ go_library(
         "//go/internal/runtime/objectstore",  # Added for objectstore.NativeObjectStore
         "//go/internal/runtime/resource",
         "//go/internal/runtime/serializer",
+        "//go/pkg/errors",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",
@@ -50,6 +52,7 @@ go_library(
 go_test(
     name = "native_test",
     srcs = [
+        "actor_executor_test.go",
         "native_runtime_test.go",
         "runtime_context_impl_test.go",
         "runtime_context_test.go",
@@ -59,6 +62,8 @@ go_test(
     deps = [
         "//go/internal/errors",
         "//go/internal/runtime/base",
+        "//go/internal/runtime/serializer",
+        "//go/pkg/errors",
         "//go/pkg/ids",
         "//go/pkg/options",
         "//go/pkg/runtime/api",

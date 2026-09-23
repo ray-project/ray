@@ -903,6 +903,7 @@ func (c *PythonActorTaskCaller[T]) WithName(name string) *PythonActorTaskCaller[
 // Returns:
 //   - *PythonActorTaskCaller[T]: The same caller for chaining
 func (c *PythonActorTaskCaller[T]) WithConcurrencyGroup(groupName string) *PythonActorTaskCaller[T] {
+	c.options.ConcurrencyGroupName = groupName
 	return c
 }
 
@@ -1224,6 +1225,7 @@ func (c *ActorTaskCaller[T]) WithRuntimeEnv(runtimeEnv string) *ActorTaskCaller[
 // Returns:
 //   - *ActorTaskCaller[T]: The same caller for chaining
 func (c *ActorTaskCaller[T]) WithName(name string) *ActorTaskCaller[T] {
+	c.options.Name = name
 	return c
 }
 
@@ -1235,6 +1237,7 @@ func (c *ActorTaskCaller[T]) WithName(name string) *ActorTaskCaller[T] {
 // Returns:
 //   - *ActorTaskCaller[T]: The same caller for chaining
 func (c *ActorTaskCaller[T]) WithConcurrencyGroup(groupName string) *ActorTaskCaller[T] {
+	c.options.ConcurrencyGroupName = groupName
 	return c
 }
 

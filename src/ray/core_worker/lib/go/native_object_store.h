@@ -57,6 +57,24 @@ typedef struct {
   int count;    // Number of elements in ready array
 } CWaitResult;
 
+// CObjectView represents a zero-copy view of an object's data buffer.
+// Unlike CObjectReference (which copies data), CObjectView hands out a direct
+// pointer to the underlying buffer (e.g. plasma shared memory) together with
+// handles owning C++ std::shared_ptr<ray::Buffer>. The caller must call
+// CObjectStore_ReleaseBuffer(handle) when done with the view to drop the
+// reference; until then the backing memory is kept alive.
+typedef struct {
+  uint8_t *data;             // Direct pointer to the buffer data (NOT a copy)
+  int size;                  // Size of data in bytes
+  uint8_t *metadata;         // Direct pointer to the metadata buffer (NOT a copy)
+  int metadata_size;         // Size of metadata in bytes
+  uint64_t buffer_handle;    // Opaque handle owning a std::shared_ptr<ray::Buffer>, or 0
+  uint64_t metadata_handle;  // Opaque handle owning the metadata shared_ptr, or 0
+  bool is_plasma;            // True if the backing buffer is plasma shared memory
+  char **contained_ids;      // Array of contained object ID binary data (can be NULL)
+  int contained_ids_count;   // Number of contained object IDs
+} CObjectView;
+
 // CObjectCreateResult is the result of a zero-copy Create call. It hands the
 // caller a direct write pointer into the object-store buffer plus a handle
 // owning a std::shared_ptr<ray::Buffer>. The caller must write the payload into
@@ -67,6 +85,13 @@ typedef struct {
   int size;                // Capacity of data in bytes (== requested data_size)
   uint64_t buffer_handle;  // Opaque handle owning a std::shared_ptr<ray::Buffer>, or 0
 } CObjectCreateResult;
+
+// CObjectViewArray represents an array of zero-copy object views.
+// Caller is responsible for freeing the array via CObjectStore_FreeObjectViewArray.
+typedef struct {
+  CObjectView *views;  // Array of zero-copy views
+  int count;           // Number of views
+} CObjectViewArray;
 
 // ============================================================================
 // ObjectStore Functions - Basic Operations
@@ -202,6 +227,28 @@ CObjectArray *CObjectStore_Get(const char **object_ids,
                                int *object_id_sizes,
                                int count,
                                long long timeout_ms);
+
+// CObjectStore_GetView retrieves multiple objects as zero-copy views. Each
+// view's data pointer points directly at the backing buffer (plasma shared
+// memory when applicable) WITHOUT copying, and its buffer handle owns a
+// shared_ptr<ray::Buffer> that keeps that memory alive. The caller must free
+// the array with CObjectStore_FreeObjectViewArray.
+//
+// Objects that could not be retrieved have data == NULL and buffer_handle == 0.
+CObjectViewArray *CObjectStore_GetView(const char **object_ids,
+                                       int *object_id_sizes,
+                                       int count,
+                                       long long timeout_ms);
+
+// CObjectStore_FreeObjectViewArray frees a CObjectViewArray previously returned
+// by CObjectStore_GetView. It drops all buffer handles (releasing the owning
+// shared_ptr references) and frees the array storage. It does NOT free the
+// data/metadata pointers themselves: those point into memory owned by the
+// handles.
+//
+// NOTE: a handle whose ownership has been transferred to the caller (e.g. by
+// zeroing it out of the struct) is not released here.
+void CObjectStore_FreeObjectViewArray(CObjectViewArray *array);
 
 // CObjectStore_Wait waits for objects to be available in the object store.
 //

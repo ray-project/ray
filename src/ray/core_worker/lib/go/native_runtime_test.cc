@@ -116,6 +116,7 @@ __attribute__((weak)) size_t GoGetObjectSize(void *handle) { return 0; }
 // Mock GoExecuteTask - returns null to indicate no task execution
 // This stub allows the test to link without requiring the actual Go runtime
 __attribute__((weak)) CSerializedObjectArray *GoExecuteTask(
+    int language,
     int task_type,
     const char **function_descriptor,
     int function_descriptor_count,

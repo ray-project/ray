@@ -67,9 +67,11 @@ func main() {
 	defer api.Instance().Shutdown()
 
 	fmt.Println("STEP: create actor")
-	// The Counter class is derived implicitly on both the driver and the
-	// worker from the registered (*Counter).Inc method value.
-	actorHand, err := api.Instance().Actor(&userfuncs.Counter{}).Create()
+	// The driver and the worker both derive the Counter class from the actor
+	// type. The worker builds the instance with the "<init>" constructor that
+	// userfuncs.RegisterFunctions registered (newCounter), so the initial value
+	// is passed here as a construction argument.
+	actorHand, err := api.Instance().Actor(&userfuncs.Counter{}).Create(0)
 	if err != nil {
 		log.Log.Error(err, "create actor")
 		os.Exit(1)

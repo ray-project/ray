@@ -407,6 +407,22 @@ ray_cc_test(
     ],
 )
 
+# native_task_submitter unit tests
+# Note: Covers the default CPU=1 behavior applied by the CGO submission bridge
+# (EnsureDefaultCPU plus resource parsing); no live cluster required.
+ray_cc_test(
+    name = "native_task_submitter_test",
+    size = "small",
+    srcs = ["native_task_submitter_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_provider",
+        ":task_argument",
+        ":task_submitter_ops",
+        "//src/ray/core_worker:core_worker_lib",
+    ],
+)
+
 # task_submitter_ops unit tests
 # Note: Uses MockCoreWorkerProvider to test business logic without full Ray setup
 ray_cc_test(

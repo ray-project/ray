@@ -476,7 +476,7 @@ var errorTypeFactories = map[int]func(*NativeRayObject) RayException{
 		return NewRayWorkerException()
 	},
 	RpcErrorTypeActorDied: func(nativeObj *NativeRayObject) RayException {
-		if message := extractErrorInfoMessage(nativeObj.Data); message != "" {
+		if message := extractErrorInfoMessage(nativeObj.DataBytes()); message != "" {
 			// Both branches report the same ErrorCode(): keep the Go ErrorCodeActorDied constant
 			// (2), not the raw rpc::ErrorType number (1), so callers switching on ErrorCode() see
 			// a single value for ACTOR_DIED.
@@ -487,7 +487,7 @@ var errorTypeFactories = map[int]func(*NativeRayObject) RayException{
 		return NewRayIDExceptionActorDied("")
 	},
 	RpcErrorTypeTaskExecutionException: func(nativeObj *NativeRayObject) RayException {
-		message := extractErrorInfoMessage(nativeObj.Data)
+		message := extractErrorInfoMessage(nativeObj.DataBytes())
 		if message == "" {
 			message = "task execution failed"
 		}
@@ -516,11 +516,11 @@ func ErrorObjectFromNative(nativeObj *NativeRayObject) (RayException, bool) {
 	// The Go worker encodes task execution errors with a {"type":"error"} metadata and a JSON
 	// error payload (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go).
 	if bytes.Equal(nativeObj.Metadata, goWorkerErrorMetadataBytes) {
-		return taskExceptionFromGoWorkerError(nativeObj.Data), true
+		return taskExceptionFromGoWorkerError(nativeObj.DataBytes()), true
 	}
 	// Go local mode encodes task execution exceptions with a string metadata and msgpack data.
 	if bytes.Equal(nativeObj.Metadata, metadataTypeTaskExecutionExceptionBytes) {
-		exc, err := (&RayExceptionSerializer{}).FromBytes(nativeObj.Data)
+		exc, err := (&RayExceptionSerializer{}).FromBytes(nativeObj.DataBytes())
 		if err == nil && exc != nil {
 			return exc, true
 		}
@@ -532,7 +532,7 @@ func ErrorObjectFromNative(nativeObj *NativeRayObject) (RayException, bool) {
 	if factory, exists := errorTypeFactories[errorType]; exists {
 		return factory(nativeObj), true
 	}
-	return newRayErrorTypeException(errorType, errorTypeName(errorType), extractErrorInfoMessage(nativeObj.Data)), true
+	return newRayErrorTypeException(errorType, errorTypeName(errorType), extractErrorInfoMessage(nativeObj.DataBytes())), true
 }
 
 // newRayErrorTypeException builds a readable exception for an error type that has no dedicated Go

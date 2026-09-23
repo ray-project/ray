@@ -81,12 +81,12 @@ func TestGetRawWithContext_AlreadyCancelled(t *testing.T) {
 	assert.Equal(t, context.Canceled, err)
 }
 
-// nativeGet/nativeWait/nativeDelete return early on empty input without touching
-// the C++ runtime, so they can be tested safely.
-func TestNativeGet_EmptyInput(t *testing.T) {
+// nativeGetView/nativeWait/nativeDelete return early on empty input without
+// touching the C++ runtime, so they can be tested safely.
+func TestNativeGetView_EmptyInput(t *testing.T) {
 	store := NewNativeObjectStore(&sync.RWMutex{}, nil)
 
-	result, err := store.nativeGet(nil, 1000)
+	result, err := store.nativeGetView(nil, 1000)
 	require.NoError(t, err)
 	assert.Empty(t, result)
 }

@@ -322,6 +322,9 @@ var cgoMemoryStats struct {
 // It is called by C++ when a task is received during task execution loop.
 //
 // Parameters:
+//   - language: Language of the task (ray::rpc::Language enum value). The C++
+//     side passes the task spec's language so the descriptor is built without
+//     guessing it from the descriptor contents.
 //   - task_type: Type of task (matches ray::rpc::TaskType enum values)
 //   - function_descriptor: Array of function descriptor strings
 //   - function_descriptor_count: Number of elements in function_descriptor array
@@ -337,6 +340,7 @@ var cgoMemoryStats struct {
 //
 //export GoExecuteTask
 func GoExecuteTask(
+	language C.int,
 	taskType C.int,
 	functionDescriptor **C.char,
 	functionDescriptorCount C.int,
@@ -385,10 +389,15 @@ func GoExecuteTask(
 		funcDescList[i] = C.GoString(cStr)
 	}
 
-	// Create FunctionDescriptor from list
-	funcDesc, err := function.FunctionDescriptorFromList(funcDescList)
+	// Create FunctionDescriptor from list using the explicit task language. The
+	// language comes from ray_function.GetLanguage() on the C++ side and is
+	// passed verbatim here, so the descriptor is never built from a guess about
+	// the language based on the descriptor contents.
+	funcDesc, err := function.FunctionDescriptorFromListWithLanguage(
+		function.Language(language), funcDescList)
 	if err != nil {
 		taskExecutorLogger.Error(err, "Failed to create function descriptor",
+			"language", language,
 			"functionDescriptor", funcDescList)
 		return nil
 	}

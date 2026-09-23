@@ -283,9 +283,11 @@ func testActorMultiReturn() error {
 	return nil
 }
 
-// testActorTaskWithName verifies that WithName propagates the task name through
-// the native submitter into the C++ TaskOptions. A named actor method call must
-// still execute on the worker and return the correct result.
+// testActorTaskWithName exercises the WithName option end to end: the name is
+// attached to the submitter's TaskOptions and the named actor method call must
+// still execute on the worker and return the correct result. (Verifying the
+// name inside the C++ task spec would need cluster introspection; here we
+// verify the call succeeds with the option attached.)
 func testActorTaskWithName() error {
 	handle, err := api.Actor[*userfuncs.Counter]((*userfuncs.Counter)(nil)).Create(0)
 	if err != nil {
@@ -304,17 +306,18 @@ func testActorTaskWithName() error {
 	if v != 7 {
 		return fmt.Errorf("named Add(7) = %d, want 7", v)
 	}
-	fmt.Println("  Counter.Add(7) with name -> 7 ✓ (task name propagated)")
+	fmt.Println("  Counter.Add(7) with name -> 7 ✓ (named option attached)")
 	if err := releaseActor(handle.ID()); err != nil {
 		return err
 	}
 	return nil
 }
 
-// testActorSystemConcurrencyGroup verifies that WithConcurrencyGroup routes the
-// actor method call to the named concurrency group end to end. The Go option
-// flows through the CGO submitter into C++ TaskOptions.concurrency_group_name,
-// and the worker's ConcurrencyGroupManager looks the executor up by name.
+// testActorSystemConcurrencyGroup exercises the WithConcurrencyGroup option:
+// the group name flows through the CGO submitter into
+// C++ TaskOptions.concurrency_group_name. "_ray_system" is the system
+// concurrency group that C++ auto-creates, so a method call naming it succeeds
+// even though the actor declared no groups.
 // "_ray_system" is the system concurrency group that C++ auto-creates, so the
 // lookup always succeeds without the actor having to declare groups in advance.
 func testActorSystemConcurrencyGroup() error {

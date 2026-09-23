@@ -69,6 +69,7 @@ __attribute__((weak)) size_t GoGetObjectSize(void *handle) { return 0; }
 // Mock GoExecuteTask - returns null to indicate no task execution
 // This stub allows the test to link without requiring the actual Go runtime
 __attribute__((weak)) CSerializedObjectArray *GoExecuteTask(
+    int language,
     int task_type,
     const char **function_descriptor,
     int function_descriptor_count,
@@ -366,6 +367,24 @@ TEST_F(NativeObjectStoreCGOTest, GetWithEmptyCount) {
 
   // Clean up
   CObjectStore_FreeObjectArray(result);
+}
+
+TEST_F(NativeObjectStoreCGOTest, GetViewWithNullPointers) {
+  // Test: GetView with null pointers should return an empty view array (never
+  // nullptr), matching the CObjectStore_Get contract.
+  CObjectViewArray *result = CObjectStore_GetView(nullptr, nullptr, 0, 1000);
+
+  EXPECT_NE(result, nullptr);
+  EXPECT_EQ(result->count, 0);
+  EXPECT_EQ(result->views, nullptr);
+
+  // Clean up
+  CObjectStore_FreeObjectViewArray(result);
+}
+
+TEST_F(NativeObjectStoreCGOTest, FreeObjectViewArrayWithNullArray) {
+  // Test: FreeObjectViewArray with a null array must be a no-op.
+  EXPECT_NO_THROW(CObjectStore_FreeObjectViewArray(nullptr));
 }
 
 TEST_F(NativeObjectStoreCGOTest, WaitWithNullPointers) {

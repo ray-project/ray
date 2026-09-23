@@ -80,11 +80,15 @@ func (s *ObjectSerializerImpl) Deserialize(nativeObj *object.NativeRayObject, ob
 		return nil, fmt.Errorf("native object is nil")
 	}
 
-	// Convert from object.NativeRayObject to internal NativeRayObject
+	// Convert to object.NativeRayObject, carrying over the DataView so a
+	// zero-copy (plasma-backed) object keeps its view through the adapter
+	// instead of silently losing it. Dropping the view would leave Data nil for
+	// such objects and deserialization would fail with "msgpack: empty data".
 	internalObj := &NativeRayObject{
 		Data:               nativeObj.Data,
 		Metadata:           nativeObj.Metadata,
 		ContainedObjectIds: nativeObj.ContainedObjectIds,
+		DataView:           nativeObj.DataView,
 	}
 
 	// Delegate to the internal implementation with objectType
@@ -97,11 +101,14 @@ func (s *ObjectSerializerImpl) DeserializeTo(nativeObj *object.NativeRayObject, 
 		return fmt.Errorf("native object is nil")
 	}
 
-	// Convert from object.NativeRayObject to internal NativeRayObject
+	// Convert to object.NativeRayObject, carrying over the DataView so a
+	// zero-copy (plasma-backed) object keeps its view through the adapter
+	// instead of silently losing it (see Deserialize).
 	internalObj := &NativeRayObject{
 		Data:               nativeObj.Data,
 		Metadata:           nativeObj.Metadata,
 		ContainedObjectIds: nativeObj.ContainedObjectIds,
+		DataView:           nativeObj.DataView,
 	}
 
 	// Delegate to the internal implementation

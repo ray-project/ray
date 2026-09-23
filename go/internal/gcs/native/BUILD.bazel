@@ -51,6 +51,47 @@ go_test(
     ],
 )
 
+# Unit tests for the Go layer and the CGO boundary: the option validation and the
+# async helpers, none of which need a live GCS cluster.
+go_test(
+    name = "native_unit_test",
+    srcs = [
+        "cgo_smoke_test.go",
+        "client_cgo_test.go",
+        "native_unit_test.go",
+    ],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/proto",
+    ],
+)
+
+# Cluster integration tests: TestMain starts and stops a real Ray cluster, so
+# the target is opt-in. It carries the manual tag to stay out of wildcard runs
+# and every test skips unless RAY_GCS_INTEGRATION_TESTS=1.
+go_test(
+    name = "cgo_integration_test",
+    srcs = ["cgo_integration_test.go"],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    tags = [
+        "integration",
+        "local",
+        "manual",
+        "requires-gcs",
+    ],
+    deps = [
+        "//go/internal/gcs/testenv",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log/zap",
+        "@org_uber_go_zap//zapcore",
+    ],
+)
+
 # Benchmark tests - run with go test -bench=. -run=^$
 # Note: benchmark files belong to package native, not package main, so they must be go_test not go_binary
 go_test(

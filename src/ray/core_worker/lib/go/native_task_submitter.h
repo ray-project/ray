@@ -34,6 +34,8 @@ typedef struct {
   const char *placement_group_id;  // PlacementGroup ID binary data (hex string)
   int placement_group_id_size;     // Size of placement group ID in bytes
   int bundle_index;                // Bundle index within placement group (-1 if not used)
+  const char *name;                // Task name (optional, can be NULL)
+  const char *concurrency_group_name;  // Concurrency group name (optional, can be NULL)
 } CTaskOptions;
 
 // CActorCreationOptions contains actor creation options.
@@ -42,6 +44,7 @@ typedef struct {
 typedef struct {
   int max_restarts;         // Maximum number of actor restarts
   int max_task_retries;     // Maximum number of task retries
+  int max_concurrency;      // Maximum concurrent calls (-1 = unlimited, 1 = serialized)
   const char *resources;    // Resource requirements (e.g., "CPU:2.0,GPU:1.0")
   const char *name;         // Actor name (optional)
   const char *namespace_;   // Namespace for actor (optional)
@@ -55,6 +58,7 @@ typedef struct {
 // CNativeTaskSubmitter_SubmitTask submits a remote task.
 //
 // Parameters:
+//   language - Language of the function (0=PYTHON, 1=JAVA, 2=CPP, 3=GO)
 //   function_descriptor - Array of function descriptor strings
 //   function_descriptor_count - Number of elements in function_descriptor array
 //   args - Array of function arguments
@@ -65,7 +69,8 @@ typedef struct {
 // Returns:
 //   CObjectIdArray* containing return object IDs, or NULL on failure.
 //   Caller is responsible for freeing the returned CObjectIdArray.
-CObjectIdArray *CNativeTaskSubmitter_SubmitTask(const char **function_descriptor,
+CObjectIdArray *CNativeTaskSubmitter_SubmitTask(int language,
+                                                const char **function_descriptor,
                                                 int function_descriptor_count,
                                                 const CFunctionArg *args,
                                                 int args_count,
@@ -75,6 +80,7 @@ CObjectIdArray *CNativeTaskSubmitter_SubmitTask(const char **function_descriptor
 // CNativeTaskSubmitter_CreateActor creates a new actor.
 //
 // Parameters:
+//   language - Language of the actor class (0=PYTHON, 1=JAVA, 2=CPP, 3=GO)
 //   function_descriptor - Array of function descriptor strings
 //   function_descriptor_count - Number of elements in function_descriptor array
 //   args - Array of constructor arguments
@@ -84,7 +90,8 @@ CObjectIdArray *CNativeTaskSubmitter_SubmitTask(const char **function_descriptor
 // Returns:
 //   CByteArray* containing actor ID binary data, or NULL on failure.
 //   Caller is responsible for freeing the returned CByteArray.
-CByteArray *CNativeTaskSubmitter_CreateActor(const char **function_descriptor,
+CByteArray *CNativeTaskSubmitter_CreateActor(int language,
+                                             const char **function_descriptor,
                                              int function_descriptor_count,
                                              const CFunctionArg *args,
                                              int args_count,
@@ -95,6 +102,7 @@ CByteArray *CNativeTaskSubmitter_CreateActor(const char **function_descriptor,
 // Parameters:
 //   actor_id_data - Binary data of actor ID
 //   actor_id_size - Size of actor ID binary data
+//   language - Language of the actor method (0=PYTHON, 1=JAVA, 2=CPP, 3=GO)
 //   function_descriptor - Array of function descriptor strings
 //   function_descriptor_count - Number of elements in function_descriptor array
 //   args - Array of function arguments
@@ -107,6 +115,7 @@ CByteArray *CNativeTaskSubmitter_CreateActor(const char **function_descriptor,
 //   Caller is responsible for freeing the returned CObjectIdArray.
 CObjectIdArray *CNativeTaskSubmitter_SubmitActorTask(const char *actor_id_data,
                                                      int actor_id_size,
+                                                     int language,
                                                      const char **function_descriptor,
                                                      int function_descriptor_count,
                                                      const CFunctionArg *args,

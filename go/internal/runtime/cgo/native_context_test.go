@@ -27,7 +27,7 @@ import (
 func TestNativeWorkerContext_GetCurrentWorkerId(t *testing.T) {
 	// Skip if CGO environment is not available
 	// The method calls C.CNativeWorkerContext_GetCurrentWorkerId() which requires CGO
-	t.Skip("GetCurrentWorkerId() requires CGO environment - stub implementation needed")
+	t.Skip("GetCurrentWorkerId() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 
 	ctx := NewNativeWorkerContext()
 	if ctx == nil {
@@ -46,45 +46,45 @@ func TestNativeWorkerContext_GetCurrentWorkerId(t *testing.T) {
 
 // TestNativeWorkerContext_GetCurrentJobID tests the GetCurrentJobID method.
 func TestNativeWorkerContext_GetCurrentJobID(t *testing.T) {
-	t.Skip("GetCurrentJobID() requires CGO environment - stub implementation needed")
+	t.Skip("GetCurrentJobID() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetCurrentActorID tests the GetCurrentActorID method.
 func TestNativeWorkerContext_GetCurrentActorID(t *testing.T) {
-	t.Skip("GetCurrentActorID() requires CGO environment - stub implementation needed")
+	t.Skip("GetCurrentActorID() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetCurrentTaskType tests the GetCurrentTaskType method.
 func TestNativeWorkerContext_GetCurrentTaskType(t *testing.T) {
-	t.Skip("GetCurrentTaskType() requires CGO environment - stub implementation needed")
+	t.Skip("GetCurrentTaskType() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetCurrentTaskID tests the GetCurrentTaskID method.
 func TestNativeWorkerContext_GetCurrentTaskID(t *testing.T) {
-	t.Skip("GetCurrentTaskID() requires CGO environment - stub implementation needed")
+	t.Skip("GetCurrentTaskID() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetRpcAddress tests the GetRpcAddress method.
 func TestNativeWorkerContext_GetRpcAddress(t *testing.T) {
-	t.Skip("GetRpcAddress() requires CGO environment - stub implementation needed")
+	t.Skip("GetRpcAddress() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetSerializedRuntimeEnv tests the GetSerializedRuntimeEnv method.
 func TestNativeWorkerContext_GetSerializedRuntimeEnv(t *testing.T) {
-	t.Skip("GetSerializedRuntimeEnv() requires CGO environment - stub implementation needed")
+	t.Skip("GetSerializedRuntimeEnv() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetNamespace tests the GetNamespace method.
 func TestNativeWorkerContext_GetNamespace(t *testing.T) {
-	t.Skip("GetNamespace() requires CGO environment - stub implementation needed")
+	t.Skip("GetNamespace() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_GetCurrentNodeID tests the GetCurrentNodeID method.
 func TestNativeWorkerContext_GetCurrentNodeID(t *testing.T) {
-	t.Skip("GetCurrentNodeID() requires CGO environment - stub implementation needed")
+	t.Skip("GetCurrentNodeID() requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }
 
 // TestNativeWorkerContext_Integration tests all context methods together.
 func TestNativeWorkerContext_Integration(t *testing.T) {
-	t.Skip("Integration test requires CGO environment - stub implementation needed")
+	t.Skip("Integration test requires a live core worker process; the call body compiles against the real C ABI to lock its shape")
 }

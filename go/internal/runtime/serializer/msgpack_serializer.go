@@ -16,7 +16,6 @@ package serializer
 
 import (
 	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -39,11 +38,18 @@ const MessagePackOffset = 9
 // This function eliminates code duplication across Decode, DecodeExtension, and DecodeFromBuffer.
 func parseLengthHeader(data []byte) ([]byte, error) {
 	if len(data) >= MessagePackOffset {
-		// Read length from header (bytes [1:9] in big-endian format)
-		msgpackLen := int(binary.BigEndian.Uint64(data[1:MessagePackOffset]))
+		// The cross-language header stores the payload length as a msgpack-encoded
+		// integer at offset 0, padded to MessagePackOffset bytes. This matches the
+		// format produced by Java's MessagePackSerializer and Python's split_buffer:
+		// the length must be decoded via msgpack, not read as a raw big-endian uint64.
+		dec := msgpack.NewDecoder(bytes.NewReader(data[:MessagePackOffset]))
+		msgpackLen, err := dec.DecodeInt()
+		if err != nil {
+			return nil, fmt.Errorf("msgpack: invalid length header: %w", err)
+		}
 
 		// Validate length
-		if MessagePackOffset+msgpackLen > len(data) {
+		if msgpackLen < 0 || MessagePackOffset+msgpackLen > len(data) {
 			return nil, errors.New("msgpack: invalid length header")
 		}
 
@@ -51,6 +57,25 @@ func parseLengthHeader(data []byte) ([]byte, error) {
 		return data[MessagePackOffset : MessagePackOffset+msgpackLen], nil
 	}
 	return data, nil
+}
+
+// encodeLengthHeader encodes the msgpack payload length into a MessagePackOffset-byte
+// header. The length is msgpack-encoded at the start and the remaining bytes are
+// zero-padded, matching the cross-language header format used by Java and Python.
+func encodeLengthHeader(msgpackLen int) ([]byte, error) {
+	var headerBuf bytes.Buffer
+	enc := msgpack.NewEncoder(&headerBuf)
+	enc.UseCompactInts(true)
+	if err := enc.EncodeInt(int64(msgpackLen)); err != nil {
+		return nil, fmt.Errorf("msgpack: failed to encode length header: %w", err)
+	}
+	if headerBuf.Len() > MessagePackOffset {
+		return nil, errors.New("msgpack: length header exceeds offset")
+	}
+
+	header := make([]byte, MessagePackOffset)
+	copy(header, headerBuf.Bytes())
+	return header, nil
 }
 
 // NewMsgpackSerializer creates a new MsgpackSerializer.
@@ -107,9 +132,14 @@ func (s *MsgpackSerializer) Encode(obj interface{}) ([]byte, error) {
 	totalLen := MessagePackOffset + len(msgpackBytes)
 	result := make([]byte, totalLen)
 
-	// Write length header
-	result[0] = 0xcd
-	binary.BigEndian.PutUint64(result[1:MessagePackOffset], uint64(len(msgpackBytes)))
+	// Write the payload length as a msgpack-encoded integer at offset 0, padded
+	// to MessagePackOffset bytes. This matches the cross-language format produced
+	// by Java's MessagePackSerializer and Python's split_buffer.
+	header, err := encodeLengthHeader(len(msgpackBytes))
+	if err != nil {
+		return nil, err
+	}
+	copy(result, header)
 
 	// Copy MessagePack data
 	copy(result[MessagePackOffset:], msgpackBytes)
@@ -162,11 +192,14 @@ func (s *MsgpackSerializer) EncodeToBuffer(obj interface{}, buf *[]byte) error {
 	// Calculate actual MessagePack data length
 	msgpackLen := len(*buf) - startPos
 
-	// Write length header at the beginning
-	var headerBuf [MessagePackOffset]byte // Stack-allocated array to avoid heap allocation
-	headerBuf[0] = 0xcd                   // msgpack long format marker
-	binary.BigEndian.PutUint64(headerBuf[1:MessagePackOffset], uint64(msgpackLen))
-	copy((*buf)[:MessagePackOffset], headerBuf[:])
+	// Write the payload length as a msgpack-encoded integer at offset 0, padded
+	// to MessagePackOffset bytes. This matches the cross-language format produced
+	// by Java's MessagePackSerializer and Python's split_buffer.
+	header, err := encodeLengthHeader(msgpackLen)
+	if err != nil {
+		return err
+	}
+	copy((*buf)[:MessagePackOffset], header)
 
 	return nil
 }

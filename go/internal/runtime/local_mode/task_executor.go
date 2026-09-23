@@ -142,7 +142,7 @@ func (e *LocalModeTaskExecutor) resolveByRefArgs(args []function.FunctionArg) ([
 			return nil, fmt.Errorf("pass-by-reference argument %d object %s not found",
 				i, arg.ObjectRef.ObjectID.Hex())
 		}
-		resolved[i] = function.NewFunctionArgByValue(nativeObjects[0].Data, nativeObjects[0].Metadata)
+		resolved[i] = function.NewFunctionArgByValue(nativeObjects[0].DataBytes(), nativeObjects[0].Metadata)
 	}
 	return resolved, nil
 }

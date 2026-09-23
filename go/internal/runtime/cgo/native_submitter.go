@@ -73,8 +73,10 @@ func (s *NativeTaskSubmitter) SubmitTask(
 		defer freeTaskOptions(cOptions)
 	}
 
-	// Call CGO function
+	// Call CGO function. The function's language is passed explicitly so the
+	// submitted descriptor is not labelled with the wrong language.
 	cResult := C.CNativeTaskSubmitter_SubmitTask(
+		C.int(functionDescriptor.GetLanguage()),
 		(**C.char)(unsafe.Pointer(argPtr(cFuncDescArray))),
 		C.int(len(cFuncDescArray)),
 		(*C.CFunctionArg)(unsafe.Pointer(argPtr(cArgs))),
@@ -115,6 +117,7 @@ func (s *NativeTaskSubmitter) CreateActor(
 
 	// Call CGO function
 	cResult := C.CNativeTaskSubmitter_CreateActor(
+		C.int(functionDescriptor.GetLanguage()),
 		(**C.char)(unsafe.Pointer(argPtr(cFuncDescArray))),
 		C.int(len(cFuncDescArray)),
 		(*C.CFunctionArg)(unsafe.Pointer(argPtr(cArgs))),
@@ -171,6 +174,7 @@ func (s *NativeTaskSubmitter) SubmitActorTask(
 	cResult := C.CNativeTaskSubmitter_SubmitActorTask(
 		byteSlicePtr(actorIDBinary),
 		C.int(len(actorIDBinary)),
+		C.int(functionDescriptor.GetLanguage()),
 		(**C.char)(unsafe.Pointer(argPtr(cFuncDescArray))),
 		C.int(len(cFuncDescArray)),
 		(*C.CFunctionArg)(unsafe.Pointer(argPtr(cArgs))),
@@ -323,6 +327,14 @@ func convertTaskOptionsToC(opts *submitter.TaskOptions) *C.CTaskOptions {
 		cOpts.max_retries = C.int(opts.RetryPolicy.MaxRetries)
 	}
 
+	if opts.Name != "" {
+		cOpts.name = C.CString(opts.Name)
+	}
+
+	if opts.ConcurrencyGroupName != "" {
+		cOpts.concurrency_group_name = C.CString(opts.ConcurrencyGroupName)
+	}
+
 	return cOpts
 }
 
@@ -358,6 +370,19 @@ func convertActorCreationOptionsToC(opts *submitter.ActorCreationOptions) *C.CAc
 		cOpts.max_task_retries = C.int(opts.MaxTaskRetries)
 	}
 
+	// max_concurrency: 0 means "use the default" (1 = serialized), -1 means
+	// unlimited and values >= 1 pass through directly. The builder default is
+	// already 1; 0 only occurs from a zero-value struct and must also resolve to
+	// the serialized default (not unlimited) to avoid silent data races.
+	switch {
+	case opts.MaxConcurrency > 0:
+		cOpts.max_concurrency = C.int(opts.MaxConcurrency)
+	case opts.MaxConcurrency < 0:
+		cOpts.max_concurrency = -1
+	default:
+		cOpts.max_concurrency = 1
+	}
+
 	return cOpts
 }
 
@@ -377,6 +402,12 @@ func freeTaskOptions(opts *C.CTaskOptions) {
 	}
 	if opts.runtime_env != nil {
 		C.free(unsafe.Pointer(opts.runtime_env))
+	}
+	if opts.name != nil {
+		C.free(unsafe.Pointer(opts.name))
+	}
+	if opts.concurrency_group_name != nil {
+		C.free(unsafe.Pointer(opts.concurrency_group_name))
 	}
 	// Do NOT free(opts) - the struct itself is stack-allocated in Go
 }

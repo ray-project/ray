@@ -60,6 +60,8 @@ struct TaskSubmitOptions {
   int max_retries = 0;
   std::string placement_group_id_hex;
   int bundle_index = -1;
+  std::string name;
+  std::string concurrency_group_name;
 };
 
 /**
@@ -68,6 +70,9 @@ struct TaskSubmitOptions {
 struct ActorCreateOptions {
   int max_restarts = 0;
   int max_task_retries = 0;
+  // Maximum number of concurrent method calls. 1 means serialized (the Ray
+  // default), -1 means unlimited and values >= 1 are used as-is.
+  int max_concurrency = 1;
   std::unordered_map<std::string, double> resources;
   std::string name;
   std::string namespace_;
@@ -111,6 +116,7 @@ class TaskSubmitterOperations {
   /**
    * @brief Submit a remote task
    *
+   * @param language Language of the function
    * @param function_descriptor Function descriptor components
    * @param args Task arguments
    * @param options Task options
@@ -118,6 +124,7 @@ class TaskSubmitterOperations {
    * @throws std::exception on error
    */
   std::vector<ray::rpc::ObjectReference> SubmitTask(
+      ray::Language language,
       const std::vector<std::string> &function_descriptor,
       const std::vector<std::unique_ptr<TaskArgument>> &args,
       const TaskSubmitOptions &options);
@@ -125,13 +132,15 @@ class TaskSubmitterOperations {
   /**
    * @brief Create an actor
    *
+   * @param language Language of the actor class
    * @param function_descriptor Function descriptor components
    * @param args Constructor arguments
    * @param options Actor creation options
    * @return Created ActorID
    * @throws std::exception on error
    */
-  ray::ActorID CreateActor(const std::vector<std::string> &function_descriptor,
+  ray::ActorID CreateActor(ray::Language language,
+                           const std::vector<std::string> &function_descriptor,
                            const std::vector<std::unique_ptr<TaskArgument>> &args,
                            const ActorCreateOptions &options);
 
@@ -139,6 +148,7 @@ class TaskSubmitterOperations {
    * @brief Submit a task to an actor
    *
    * @param actor_id Target actor ID
+   * @param language Language of the actor method
    * @param function_descriptor Function descriptor components
    * @param args Task arguments
    * @param options Task options
@@ -147,6 +157,7 @@ class TaskSubmitterOperations {
    */
   std::vector<ray::rpc::ObjectReference> SubmitActorTask(
       const ray::ActorID &actor_id,
+      ray::Language language,
       const std::vector<std::string> &function_descriptor,
       const std::vector<std::unique_ptr<TaskArgument>> &args,
       const TaskSubmitOptions &options);
@@ -160,9 +171,7 @@ class TaskSubmitterOperations {
    * @param no_restart Whether the actor should not be restarted
    * @return Status of the kill operation
    */
-  ray::Status KillActor(const ray::ActorID &actor_id,
-                        bool force_kill,
-                        bool no_restart);
+  ray::Status KillActor(const ray::ActorID &actor_id, bool force_kill, bool no_restart);
 
   /**
    * @brief Parse resources string to map
@@ -172,6 +181,17 @@ class TaskSubmitterOperations {
    */
   static std::unordered_map<std::string, double> ParseResources(
       const std::string &resources_str);
+
+  /**
+   * @brief Add a default CPU=1 resource if the resource map is empty.
+   *
+   * This matches Python's behavior of requesting one CPU when no resources are
+   * specified, which keeps autoscaler compatibility (it triggers pending lease
+   * reporting). An explicit CPU:0 keeps the map non-empty and is honored.
+   *
+   * @param resources The resource map to normalize in place.
+   */
+  static void EnsureDefaultCPU(std::unordered_map<std::string, double> &resources);
 
   /**
    * @brief Convert hex string to binary
@@ -194,7 +214,7 @@ class TaskSubmitterOperations {
    * @brief Build RayFunction from descriptor
    */
   ray::core::RayFunction BuildRayFunction(
-      const std::vector<std::string> &descriptor) const;
+      ray::Language language, const std::vector<std::string> &descriptor) const;
 
   /**
    * @brief Convert TaskArgument vector to Ray TaskArg vector

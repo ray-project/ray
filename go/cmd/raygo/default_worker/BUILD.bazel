@@ -35,6 +35,7 @@ go_test(
     srcs = ["default_worker_test.go"],
     embed = [":default_worker"],
     deps = [
+        "//go/internal/worker",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

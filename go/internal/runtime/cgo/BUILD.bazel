@@ -61,6 +61,7 @@ go_test(
         "native_allocator_test.go",
         "native_context_test.go",
         "native_executor_test.go",
+        "native_submitter_options_test.go",
         "native_submitter_test.go",
         "task_executor_test.go",
     ],

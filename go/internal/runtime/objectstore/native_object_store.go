@@ -39,6 +39,22 @@ typedef struct {
 	int count;
 } CWaitResult;
 
+// CObjectView - zero-copy object view. Mirrors native_object_store.h: the data
+// and metadata pointers address the backing buffer directly (no copy) and the
+// handles own the C++ std::shared_ptr<ray::Buffer> instances keeping them
+// alive. A handle of 0 means there is nothing to release.
+typedef struct {
+	uint8_t* data;
+	int size;
+	uint8_t* metadata;
+	int metadata_size;
+	uint64_t buffer_handle;
+	uint64_t metadata_handle;
+	bool is_plasma;
+	char** contained_ids;
+	int contained_ids_count;
+} CObjectView;
+
 // CObjectCreateResult - zero-copy Create result. Mirrors native_object_store.h.
 // It hands the caller a direct write pointer into the object-store buffer plus a
 // handle owning a std::shared_ptr<ray::Buffer>. The caller must write the
@@ -49,6 +65,12 @@ typedef struct {
 	int size;
 	uint64_t buffer_handle;
 } CObjectCreateResult;
+
+// CObjectViewArray - array of zero-copy object views. Mirrors native_object_store.h.
+typedef struct {
+	CObjectView* views;
+	int count;
+} CObjectViewArray;
 
 // C++ side function declarations.
 CObjectReference CObjectStore_Put(const char* data, int data_size,
@@ -77,6 +99,11 @@ void CObjectStore_FreeObjectReference(CObjectReference ref);
 void CObjectStore_FreeObjectArray(CObjectArray* array);
 void CObjectStore_FreeWaitResult(CWaitResult result);
 void CObjectStore_FreeString(char* str);
+
+// Zero-copy view APIs
+CObjectViewArray* CObjectStore_GetView(const char** object_ids, int* object_id_sizes,
+                                       int count, long long timeout_ms);
+void CObjectStore_FreeObjectViewArray(CObjectViewArray* array);
 void CObjectStore_ReleaseBuffer(uint64_t buffer_handle);
 
 // Zero-copy Create/Write/Seal APIs
@@ -104,14 +131,12 @@ import (
 	"unsafe"
 
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/proto"
 	protolib "google.golang.org/protobuf/proto"
 
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
-
-// RayObjectIDSize is the fixed size of Ray ObjectID in bytes.
-const RayObjectIDSize = 28
 
 // cgoByteSlice converts a Go byte slice to C memory using runtime.Pinner.
 // It returns the pointer, size, and the Pinner which must be kept alive during the CGO call.
@@ -180,9 +205,26 @@ func cgoObjectIDArray(objectIDs []*ids.ObjectID) ([]*C.char, []C.int, func()) {
 	}
 }
 
-// releasePlasmaBuffer releases a buffer handle returned by a zero-copy Create
-// call, allowing the backing memory to be reclaimed. Releasing a zero handle is
-// a no-op.
+// cgoContainedObjectIds copies the contained (nested) object ID binary data
+// from a C array into Go byte slices. Each contained ID is ids.ObjectIDSize
+// bytes long. Returns nil when there are no contained IDs.
+func cgoContainedObjectIds(containedIds **C.char, count C.int) [][]byte {
+	if containedIds == nil || count <= 0 {
+		return nil
+	}
+	idPtrs := unsafe.Slice(containedIds, int(count))
+	containedObjectIds := make([][]byte, len(idPtrs))
+	for j, idPtr := range idPtrs {
+		if idPtr != nil {
+			containedObjectIds[j] = C.GoBytes(unsafe.Pointer(idPtr), C.int(ids.ObjectIDSize))
+		}
+	}
+	return containedObjectIds
+}
+
+// releasePlasmaBuffer drops a C++ shared_ptr<Buffer> handle via CGO, allowing
+// the backing memory to be reclaimed. Releasing a zero handle is a no-op. It is
+// the release callback injected into object.PlasmaBufferView.
 func releasePlasmaBuffer(handle uint64) {
 	C.CObjectStore_ReleaseBuffer(C.uint64_t(handle))
 }
@@ -396,7 +438,7 @@ func (n *NativeObjectStore) SealExisting(objectID *ids.ObjectID, handle uint64) 
 }
 
 func (n *NativeObjectStore) GetRaw(objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*object.NativeRayObject, error) {
-	return n.nativeGet(objectIDs, timeoutMs)
+	return n.nativeGetView(objectIDs, timeoutMs)
 }
 
 func (n *NativeObjectStore) GetRawWithContext(ctx context.Context, objectIDs []*ids.ObjectID, timeoutMs int64, objectType string) ([]*object.NativeRayObject, error) {
@@ -413,7 +455,7 @@ func (n *NativeObjectStore) GetRawWithContext(ctx context.Context, objectIDs []*
 	var err error
 
 	go func() {
-		result, err = n.nativeGet(objectIDs, timeoutMs)
+		result, err = n.nativeGetView(objectIDs, timeoutMs)
 		close(done)
 	}()
 
@@ -573,7 +615,12 @@ func (n *NativeObjectStore) nativePutWithIDFallback(objectID *ids.ObjectID, obj 
 	return nil
 }
 
-func (n *NativeObjectStore) nativeGet(objectIDs []*ids.ObjectID, timeoutMs int64) ([]*object.NativeRayObject, error) {
+// nativeGetView retrieves objects in a single Get call and classifies each
+// object individually: plasma-backed objects are wrapped in a NativeRayObject
+// whose DataView provides zero-copy access, while non-plasma (small/inlined)
+// objects are copied into the Go heap in the same pass. This avoids a second
+// full Get for the common small-object case.
+func (n *NativeObjectStore) nativeGetView(objectIDs []*ids.ObjectID, timeoutMs int64) ([]*object.NativeRayObject, error) {
 	if len(objectIDs) == 0 {
 		return []*object.NativeRayObject{}, nil
 	}
@@ -581,52 +628,80 @@ func (n *NativeObjectStore) nativeGet(objectIDs []*ids.ObjectID, timeoutMs int64
 	cObjectIDs, cObjectIDSizes, cleanupObjectIDs := cgoObjectIDArray(objectIDs)
 	defer cleanupObjectIDs()
 
-	cResult := C.CObjectStore_Get(
+	cResult := C.CObjectStore_GetView(
 		(**C.char)(unsafe.Pointer(&cObjectIDs[0])),
 		(*C.int)(unsafe.Pointer(&cObjectIDSizes[0])),
 		C.int(len(objectIDs)),
 		C.longlong(timeoutMs),
 	)
-	defer C.CObjectStore_FreeObjectArray(cResult)
+	if cResult == nil {
+		// CgoErrorHandler returns nullptr when the C++ layer threw; surface it
+		// as an error instead of an empty result so callers can distinguish an
+		// object-store failure from "object not found".
+		return []*object.NativeRayObject{}, fmt.Errorf("CObjectStore_GetView failed")
+	}
+	// The array itself is always released here; individual handles are released
+	// only if ownership was not transferred to Go (see below).
+	defer C.CObjectStore_FreeObjectViewArray(cResult)
 
-	if cResult == nil || cResult.count == 0 {
+	if cResult.count == 0 {
 		return []*object.NativeRayObject{}, nil
 	}
 
 	result := make([]*object.NativeRayObject, int(cResult.count))
 	for i := 0; i < int(cResult.count); i++ {
-		obj := *(*C.CObjectReference)(unsafe.Pointer(uintptr(unsafe.Pointer(cResult.objects)) + uintptr(i)*unsafe.Sizeof(*cResult.objects)))
+		// viewPtr points into the C array so handles can be zeroed once their
+		// ownership moves to Go (prevents CObjectStore_FreeObjectViewArray from
+		// double-releasing a handle we already took over).
+		viewPtr := (*C.CObjectView)(unsafe.Pointer(uintptr(unsafe.Pointer(cResult.views)) +
+			uintptr(i)*unsafe.Sizeof(*cResult.views)))
+		cv := *viewPtr
 
-		// Copy data buffer
-		var data []byte
-		if obj.data != nil && obj.size > 0 {
-			data = C.GoBytes(unsafe.Pointer(obj.data), obj.size)
-		}
+		nativeObj := &object.NativeRayObject{}
 
-		// Copy metadata buffer
-		var metadata []byte
-		if obj.metadata != nil && obj.metadata_size > 0 {
-			metadata = C.GoBytes(unsafe.Pointer(obj.metadata), obj.metadata_size)
-		}
-
-		// Copy contained object IDs
-		var containedObjectIds [][]byte
-		if obj.contained_ids != nil && obj.contained_ids_count > 0 {
-			containedObjectIds = make([][]byte, obj.contained_ids_count)
-			for j := 0; j < int(obj.contained_ids_count); j++ {
-				idPtr := (*C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(obj.contained_ids)) + uintptr(j)*unsafe.Sizeof(uintptr(0))))
-				if idPtr != nil {
-					containedObjectIds[j] = C.GoBytes(unsafe.Pointer(idPtr), C.int(RayObjectIDSize))
-				}
+		if cv.data != nil && cv.size > 0 {
+			if cv.is_plasma {
+				// Plasma-backed: hand the buffer to Go as a zero-copy view and
+				// transfer ownership of the handle.
+				nativeObj.DataView = object.NewPlasmaBufferView(
+					unsafe.Pointer(cv.data),
+					int(cv.size),
+					uint64(cv.buffer_handle),
+					releasePlasmaBuffer,
+				)
+				// Ownership moved to the view; clear the handle in the C array so
+				// CObjectStore_FreeObjectViewArray does not release it a second time.
+				viewPtr.buffer_handle = 0
+			} else {
+				// Small/inlined object: copy the payload into an aligned,
+				// pool-owned buffer so NativeRayObject.Close() can safely return
+				// it via PutBuffer(). A raw C.GoBytes allocation has arbitrary
+				// capacity and is not 64-byte aligned, so returning it to the
+				// tiered pool would violate the pool's alignment and size-class
+				// accounting. The buffer handle stays in the C array and is
+				// released by the single CObjectStore_FreeObjectViewArray call.
+				buf := object.GetBuffer(int(cv.size))
+				buf = append(buf, C.GoBytes(unsafe.Pointer(cv.data), C.int(cv.size))...)
+				nativeObj.Data = buf
+				// The buffer is pool-owned; Close() must return it via PutBuffer.
+				nativeObj.MarkDataFromPool()
 			}
 		}
 
-		result[i] = &object.NativeRayObject{
-			Data:               data,
-			Metadata:           metadata,
-			ContainedObjectIds: containedObjectIds,
+		// Metadata is small; copy it into Go before the C array is freed. The
+		// handle stays in the C array and is released by
+		// CObjectStore_FreeObjectViewArray.
+		if cv.metadata != nil && cv.metadata_size > 0 {
+			nativeObj.Metadata = C.GoBytes(unsafe.Pointer(cv.metadata), C.int(cv.metadata_size))
 		}
+
+		// Copy contained object IDs (nested references), matching the copy path.
+		nativeObj.ContainedObjectIds = cgoContainedObjectIds(cv.contained_ids, C.int(cv.contained_ids_count))
+
+		result[i] = nativeObj
 	}
+
+	log.Log.V(1).Info("GetRaw", "count", len(result), "timeoutMs", timeoutMs)
 	return result, nil
 }
 

@@ -116,7 +116,7 @@ func DeserializeActorHandle(nativeObj *NativeRayObject) (*NativeActorHandle, err
 
 	// Deserialize data.
 	var handleData map[string]interface{}
-	if err := msgpack.Unmarshal(nativeObj.Data, &handleData); err != nil {
+	if err := msgpack.Unmarshal(nativeObj.DataBytes(), &handleData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal ActorHandle: %w", err)
 	}
 

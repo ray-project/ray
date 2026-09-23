@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "setup_worker",
@@ -29,4 +29,10 @@ go_library(
         "@com_github_spf13_pflag//:pflag",
         "@org_uber_go_zap//zapcore",
     ],
+)
+
+go_test(
+    name = "setup_worker_test",
+    srcs = ["setup_worker_test.go"],
+    embed = [":setup_worker"],
 )

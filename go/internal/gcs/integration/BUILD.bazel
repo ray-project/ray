@@ -1,0 +1,37 @@
+# Copyright 2026 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+# End-to-end tests against a real Ray cluster. TestMain starts and stops that
+# cluster, so the target is opt-in: it carries the manual tag to stay out of
+# wildcard runs and every test skips unless RAY_GCS_INTEGRATION_TESTS=1.
+go_test(
+    name = "integration_test",
+    srcs = ["e2e_test.go"],
+    tags = [
+        "integration",
+        "local",
+        "manual",
+        "requires-gcs",
+    ],
+    deps = [
+        "//go/internal/gcs/native",
+        "//go/internal/gcs/testenv",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

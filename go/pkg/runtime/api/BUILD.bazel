@@ -57,12 +57,14 @@ go_test(
     srcs = [
         "actor_registration_test.go",
         "api_test.go",
+        "call_convert_arg_test.go",
         "example_test.go",
         "handle_release_test.go",
         "method_extractor_test.go",
         "object_id_generator_test.go",
         "object_ref_test.go",
         "python_call_test.go",
+        "task_return_ref_test.go",
     ],
     embed = [":api"],
     deps = [
@@ -71,6 +73,7 @@ go_test(
         "//go/pkg/runtime/contract",
         "//go/pkg/runtime/function",
         "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
         "@com_github_stretchr_testify//assert",
     ],
 )

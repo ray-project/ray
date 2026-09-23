@@ -518,3 +518,53 @@ func FunctionDescriptorFromList(list []string) (FunctionDescriptor, error) {
 
 	return desc, err
 }
+
+// FunctionDescriptorFromListWithLanguage creates a FunctionDescriptor from a
+// string list using an explicitly provided language.
+//
+// The language must come from the task's Language field (ray::rpc::Language),
+// not be guessed from the list contents. This mirrors Java's JNI path, where
+// the function descriptor carries its type, and C++'s runtime_callbacks, where
+// the descriptor is built via FunctionDescriptorBuilder::FromVector with an
+// explicit language.
+//
+// Supported languages and their list formats:
+//   - Go (LanguageGo): [moduleName, packagePath, functionName, methodName]
+//   - Python (LanguagePython): [moduleName, className, functionName, functionHash]
+//
+// Parameters:
+//   - language: The language of the function (from the task spec).
+//   - list: A list of strings representing the function descriptor.
+//
+// Returns:
+//   - FunctionDescriptor: The created function descriptor.
+//   - error: An error if the list is malformed or the language is unsupported.
+func FunctionDescriptorFromListWithLanguage(language Language, list []string) (FunctionDescriptor, error) {
+	if len(list) != 4 {
+		return nil, fmt.Errorf("function descriptor must have exactly 4 elements, got %d: %v", len(list), list)
+	}
+
+	switch language {
+	case LanguageGo:
+		return FunctionDescriptorFromList(list)
+	case LanguagePython:
+		return pythonFunctionDescriptorFromList(list)
+	default:
+		return nil, fmt.Errorf("unsupported function descriptor language %d, got: %v", language, list)
+	}
+}
+
+// pythonFunctionDescriptorFromList builds a Python function descriptor from
+// [moduleName, className, functionName, functionHash].
+func pythonFunctionDescriptorFromList(list []string) (FunctionDescriptor, error) {
+	moduleName := list[0]
+	className := list[1]
+	functionName := list[2]
+	functionHash := list[3]
+
+	desc, err := NewPythonFunctionDescriptor(moduleName, className, functionName, functionHash)
+	if err != nil {
+		return nil, err
+	}
+	return desc, nil
+}

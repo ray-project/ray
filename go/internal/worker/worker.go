@@ -30,7 +30,6 @@ import (
 	"fmt"
 	"os"
 	"plugin"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -38,8 +37,7 @@ import (
 	rayerrors "github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/gcs/native"
 	"github.com/ray-project/ray/go/internal/runtime/base"
-	"github.com/ray-project/ray/go/internal/runtime/cgo"
-	_ "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory (init function)
+	nativeRuntime "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory + actor constructor registration
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
@@ -47,7 +45,6 @@ import (
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
-	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/ray-project/ray/go/proto"
 )
 
@@ -279,10 +276,32 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 
 	log.Log.Info("registering user functions with FunctionManager", "function_count", len(registeredFuncs))
 
+	// Actor constructors are registered with the runtime's ActorConstructorRegistrar
+	// (if available) instead of the FunctionManager, because an actor constructor
+	// returns a live instance rather than a serialized value.
+	var actorRegistrar contract.ActorConstructorRegistrar
+	if r, ok := rt.(contract.ActorConstructorRegistrar); ok {
+		actorRegistrar = r
+	}
+
 	// Register each function
 	for _, regFn := range registeredFuncs {
+		// Actor "<init>" constructors are registered with the runtime so that
+		// ACTOR_CREATION_TASK can build a live instance on the worker.
+		if regFn.Descriptor().MethodName() == function.ConstructorName {
+			if actorRegistrar != nil {
+				ctor := nativeRuntime.WrapActorConstructor(regFn.Function())
+				actorRegistrar.RegisterActorConstructor(regFn.Descriptor().String(), ctor)
+				log.Log.Info("registered actor constructor", "descriptor", regFn.Descriptor().String())
+			} else {
+				log.Log.Error(nil, "runtime does not support actor construction, skipping actor constructor",
+					"descriptor", regFn.Descriptor().String())
+			}
+			continue
+		}
+
 		// Wrap Go function to function.Function type
-		wrappedFn := wrapGoFunction(regFn.Function())
+		wrappedFn := function.WrapGoFunction(regFn.Function())
 
 		// Register with FunctionManager
 		if err := funcMgr.RegisterFunction(regFn.Descriptor(), wrappedFn); err != nil {
@@ -290,11 +309,6 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 				"descriptor", regFn.Descriptor().String())
 			return fmt.Errorf("failed to register function %s: %w", regFn.Descriptor().String(), err)
 		}
-
-		// An actor method (a method value with a pointer-to-struct receiver)
-		// also implies an actor class so the worker can execute the actor
-		// creation task (<init>) without an explicit RegisterActorClass call.
-		registerImplicitActorClass(regFn.Function())
 	}
 
 	log.Log.Info("all user functions registered successfully", "count", len(registeredFuncs))
@@ -303,112 +317,6 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 	api.MarkRegistryReadonly()
 
 	return nil
-}
-
-// registerImplicitActorClass registers a zero-argument constructor for the
-// receiver type of an actor method entry. When fn is a method value whose
-// first parameter is a pointer-to-struct (e.g. (*Counter).Inc), the actor
-// creation task can construct instances via reflect.New. Entries that are not
-// such method values are ignored.
-func registerImplicitActorClass(fn interface{}) {
-	fnType := reflect.TypeOf(fn)
-	if fnType == nil || fnType.Kind() != reflect.Func || fnType.NumIn() == 0 {
-		return
-	}
-	recv := fnType.In(0)
-	if recv.Kind() != reflect.Ptr || recv.Elem().Kind() != reflect.Struct {
-		return
-	}
-	className := recv.Elem().Name()
-	if className == "" {
-		return
-	}
-	cgo.RegisterActorClass(className, func(args []function.FunctionArg) (interface{}, error) {
-		if len(args) > 0 {
-			return nil, fmt.Errorf("actor class %s default constructor takes no arguments, got %d", className, len(args))
-		}
-		return reflect.New(recv.Elem()).Interface(), nil
-	})
-	log.Log.Info("registered implicit actor class", "className", className)
-}
-
-// wrapGoFunction wraps a Go function (interface{}) to function.Function type.
-// The wrapper handles argument deserialization and result serialization.
-//
-// Parameters:
-//   - fn: the Go function to wrap (must be a regular function)
-//
-// Returns:
-//   - function.Function: wrapped function that can be called with FunctionArg slice
-func wrapGoFunction(fn interface{}) function.Function {
-	// Get the reflect.Value of the function
-	funcValue := reflect.ValueOf(fn)
-	funcType := funcValue.Type()
-
-	return func(args []function.FunctionArg) ([]function.SerializedObject, error) {
-		// Prepare arguments for calling the Go function
-		in := make([]reflect.Value, len(args))
-
-		// Use object.Serializer interface for deserialization
-		// This decouples from specific msgpack implementation and follows
-		// the Dependency Inversion Principle
-		ser := object.GetSerializer()
-
-		for i, arg := range args {
-			if arg.IsPassByValue() && arg.Data != nil {
-				// Deserialize pass-by-value argument
-				// The expected type is determined by the function signature
-				expectedType := funcType.In(i)
-
-				// Create NativeRayObject from serialized data
-				nativeObj := &object.NativeRayObject{
-					Data:     arg.Data.Data,
-					Metadata: arg.Data.Metadata,
-				}
-
-				// Deserialize directly to target type using Serializer interface
-				// This avoids the issue of msgpack decoding small integers as int8/uint8
-				deserialized := reflect.New(expectedType).Interface()
-				if err := ser.DeserializeTo(nativeObj, deserialized); err != nil {
-					return nil, fmt.Errorf("failed to deserialize argument %d: %w", i, err)
-				}
-
-				// Get the deserialized value
-				in[i] = reflect.ValueOf(deserialized).Elem()
-
-			} else if arg.IsPassByRef() {
-				// For pass-by-reference, we need to fetch from object store
-				// This requires access to the object store via the runtime
-				// For now, return an error - this needs to be handled by the runtime
-				return nil, fmt.Errorf("pass-by-reference arguments not yet supported")
-			} else {
-				// Handle nil or unsupported argument types
-				in[i] = reflect.Zero(funcType.In(i))
-			}
-		}
-
-		// Call the Go function
-		out := funcValue.Call(in)
-
-		// Serialize return values using object.Serializer interface
-		// This automatically handles metadata type determination and provides
-		// a consistent serialization approach across the codebase
-		results := make([]function.SerializedObject, len(out))
-		for i, val := range out {
-			// Use Serializer.Serialize() to get NativeRayObject, then extract Data
-			// The underlying implementation handles the 9-byte length header
-			nativeObj, err := ser.Serialize(val.Interface())
-			if err != nil {
-				return nil, fmt.Errorf("failed to serialize return value %d: %w", i, err)
-			}
-
-			// SerializedObjectFromNative deep-copies the payload and returns the
-			// pooled buffer, so the task spec never aliases a recycled pool buffer.
-			results[i] = function.SerializedObjectFromNative(nativeObj)
-		}
-
-		return results, nil
-	}
 }
 
 // Run starts the Worker execution loop.

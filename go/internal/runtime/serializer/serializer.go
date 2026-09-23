@@ -157,7 +157,7 @@ func (s *Serializer) Deserialize(nativeObj *NativeRayObject, objectID *ids.Objec
 	// Deserialize from bytes using msgpack
 	// Decode to interface{} and let the caller handle type conversion
 	var result interface{}
-	if err := s.msgpack.Decode(nativeObj.Data, &result); err != nil {
+	if err := s.msgpack.Decode(nativeObj.DataBytes(), &result); err != nil {
 		return nil, fmt.Errorf("failed to deserialize object: %w", err)
 	}
 
@@ -178,7 +178,7 @@ func (s *Serializer) DeserializeTo(nativeObj *NativeRayObject, target interface{
 		return fmt.Errorf("native object is nil")
 	}
 
-	if err := s.msgpack.Decode(nativeObj.Data, target); err != nil {
+	if err := s.msgpack.Decode(nativeObj.DataBytes(), target); err != nil {
 		return fmt.Errorf("failed to deserialize object: %w", err)
 	}
 
