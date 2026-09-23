@@ -28,9 +28,7 @@ It's available on Linux and is tested with Ray running inside a container that i
 
 ## What to expect?
 
-The default memory monitoring system protects the Ray node from node death due to memory contention and OOM.
-Compared to the Linux OOM killer, it also aims to preserve as much application progress as possible by killing workers
-based on the time since the task started executing. However, the default memory monitoring system makes no guarantees.
+The default memory monitoring system protects the Ray node from node death due to memory contention and OOM. Compared to the Linux OOM killer, it also aims to preserve as much application progress as possible by killing workers based on the time since the task started executing. However, the default memory monitoring system makes no guarantees.
 
 Starting in Ray 2.56, with resource isolation enabled, the memory monitoring system provides the following:
 
@@ -42,8 +40,7 @@ To enable resource isolation, see {ref}`How to Enable Cgroup v2 for Resource Iso
 
 ## How do I disable the memory monitor?
 
-The memory monitor is enabled by default and can only be disabled when resource isolation is disabled.
-To disable the memory monitor when resource isolation is turned off, set the environment variable `RAY_memory_monitor_refresh_ms` to zero when Ray starts (e.g., `RAY_memory_monitor_refresh_ms=0 ray start ...`).
+The memory monitor is enabled by default and can only be disabled when resource isolation is disabled. To disable the memory monitor when resource isolation is turned off, set the environment variable `RAY_memory_monitor_refresh_ms` to zero when Ray starts (e.g., `RAY_memory_monitor_refresh_ms=0 ray start ...`).
 
 ## How do I configure the memory monitor?
 
@@ -53,16 +50,13 @@ The memory monitor is controlled by the following environment variables:
 
 - `RAY_memory_monitor_refresh_ms (int, defaults to 250)` is the interval to check memory usage and kill tasks or actors if needed. Task killing is disabled when this value is 0. The memory monitor selects and kills one task at a time and waits for it to be killed before choosing another one, regardless of how frequent the memory monitor runs.
 
-- `RAY_memory_usage_threshold (float, defaults to 0.95)` is the threshold when the node is beyond the memory
-  capacity. If the memory usage is above this fraction it will start killing processes to free up memory. Ranges from [0, 1].
+- `RAY_memory_usage_threshold (float, defaults to 0.95)` is the threshold when the node is beyond the memory capacity. If the memory usage is above this fraction it will start killing processes to free up memory. Ranges from [0, 1].
 
 **Resource isolation memory monitor configuration:**
 
 When resource isolation is enabled, the memory monitor is controlled by the following flag passed to `ray start` or `ray.init`:
 
-- `--system-reserved-memory` sets the amount of memory reserved for critical Ray system processes and other system processes outside of Ray's userspace.
-  By default, this value is 10% of the system's total memory, bounded by a minimum of 500MB and a maximum of 10GB. The memory monitor enforces that the
-  workload processes' memory footprint doesn't exceed `total_memory - system_reserved_memory` bytes.
+- `--system-reserved-memory` sets the amount of memory reserved for critical Ray system processes and other system processes outside of Ray's userspace. By default, this value is 10% of the system's total memory, bounded by a minimum of 500MB and a maximum of 10GB. The memory monitor enforces that the workload processes' memory footprint doesn't exceed `total_memory - system_reserved_memory` bytes.
 
 ## Using the Memory Monitor
 
@@ -70,10 +64,7 @@ When resource isolation is enabled, the memory monitor is controlled by the foll
 
 ### Retry policy
 
-When a task or actor is killed by the memory monitor it will be retried with exponential backoff. There is a cap on the retry delay, which is 60 seconds.
-If tasks are killed by the memory monitor, it retries infinitely (not respecting {ref}`max_retries <task-fault-tolerance>`) unless {ref}`max_retries <task-fault-tolerance>` is set to 0.
-When {ref}`max_retries <task-fault-tolerance>` is set to 0, the task will not be retried.
-If actors are killed by the memory monitor, it doesn't recreate the actor infinitely (It respects {ref}`max_restarts <actor-fault-tolerance>`, which is 0 by default).
+When a task or actor is killed by the memory monitor it will be retried with exponential backoff. There is a cap on the retry delay, which is 60 seconds. If tasks are killed by the memory monitor, it retries infinitely (not respecting {ref}`max_retries <task-fault-tolerance>`) unless {ref}`max_retries <task-fault-tolerance>` is set to 0. When {ref}`max_retries <task-fault-tolerance>` is set to 0, the task will not be retried. If actors are killed by the memory monitor, it doesn't recreate the actor infinitely (It respects {ref}`max_restarts <actor-fault-tolerance>`, which is 0 by default).
 
 (ray-oom-worker-killing-policy)=
 
@@ -89,11 +80,7 @@ As shown in the diagram above, the worker killing policy prioritizes idle worker
 
 **Idle worker policy:**
 
-1. The memory monitor always consider all workers that have previously executed tasks or actors for killing regardless of the idle-worker killing memory threshold.
-   Workers that have never executed any tasks or actors (cold-start idle workers) are only considered for killing if their memory footprint exceeds the idle-worker killing memory threshold.
-   Cold-start idle workers should have a small memory footprint. In the unlikely case that the OOM logs show active workers being selected over idle workers while a large idle-worker memory footprint remains,
-   the dependencies inherited when starting a new process in Ray's userspace are likely too expensive. In that case, consider reducing the memory footprint of new processes in Ray's userspace, or
-   lowering the idle-worker killing memory threshold via the environment variable `RAY_idle_worker_killing_memory_threshold_bytes` (default is 1GiB).
+1. The memory monitor always consider all workers that have previously executed tasks or actors for killing regardless of the idle-worker killing memory threshold. Workers that have never executed any tasks or actors (cold-start idle workers) are only considered for killing if their memory footprint exceeds the idle-worker killing memory threshold. Cold-start idle workers should have a small memory footprint. In the unlikely case that the OOM logs show active workers being selected over idle workers while a large idle-worker memory footprint remains, the dependencies inherited when starting a new process in Ray's userspace are likely too expensive. In that case, consider reducing the memory footprint of new processes in Ray's userspace, or lowering the idle-worker killing memory threshold via the environment variable `RAY_idle_worker_killing_memory_threshold_bytes` (default is 1GiB).
 2. Among the workers eligible for killing, the policy selects the worker with the largest memory footprint first.
 
 **Active worker policy:**
@@ -101,13 +88,7 @@ As shown in the diagram above, the worker killing policy prioritizes idle worker
 1. For workers running tasks or actors (active workers), the policy prioritizes retriable tasks first to maximize retry opportunities.
 2. Among the active workers with the same retriability, the policy selects the most recent workers next (newest granted lease time).
 
-The policy continues to select workers until `current_memory_usage - total_selected_workers_memory_footprint + kill_buffer <= available_memory_for_workload_processes`.
-Where `current_memory_usage` is the current memory usage on the node,
-`total_selected_workers_memory_footprint` is the sum of the memory footprint of all selected workers to kill,
-`kill_buffer` is the amount of memory to leave as breathing room between the memory usage and the memory allocated to the workload processes.
-`available_memory_for_workload_processes` is the amount of memory available for the workload processes to use.
-This is computed as `total_system_memory - system_reserved_memory` as mentioned above.
-The `kill_buffer` defaults to 5% of the total system memory and caps at 3GiB (configurable via `RAY_max_kill_memory_buffer_bytes`).
+The policy continues to select workers until `current_memory_usage - total_selected_workers_memory_footprint + kill_buffer <= available_memory_for_workload_processes`. Where `current_memory_usage` is the current memory usage on the node, `total_selected_workers_memory_footprint` is the sum of the memory footprint of all selected workers to kill, `kill_buffer` is the amount of memory to leave as breathing room between the memory usage and the memory allocated to the workload processes. `available_memory_for_workload_processes` is the amount of memory available for the workload processes to use. This is computed as `total_system_memory - system_reserved_memory` as mentioned above. The `kill_buffer` defaults to 5% of the total system memory and caps at 3GiB (configurable via `RAY_max_kill_memory_buffer_bytes`).
 
 To revert to the legacy worker killing policy, set the environment variable `RAY_worker_killing_policy_by_group` to `true` before starting Ray.
 
