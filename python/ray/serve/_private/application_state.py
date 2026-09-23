@@ -240,8 +240,8 @@ class ApplicationTargetState:
     external_scaler_enabled: whether external autoscaling is enabled for
         this application.
     serialized_application_autoscaling_policy_def: Optional[bytes]
-    build: original build results, or None for imperative apps, pending builds,
-        and older checkpoints. Config updates rebuild the app if needed.
+    build: original build results before config overrides. None for imperative
+        apps and pending builds; set whenever `code_version` is set.
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
@@ -384,8 +384,7 @@ class ApplicationState:
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
             external_scaler_enabled=checkpoint_data.external_scaler_enabled,
-            # Older checkpoints do not contain build results.
-            build=getattr(checkpoint_data, "build", None),
+            build=checkpoint_data.build,
         )
 
         # Restore route prefix and docs path from checkpointed deployments when
@@ -691,10 +690,13 @@ class ApplicationState:
         self._deployment_timestamp = deployment_time
 
         config_version = get_app_code_version(config)
-        # Reuse the original build so removed overrides restore the values in code.
-        # Rebuild if an older checkpoint has no build results.
-        build = self._target_state.build
-        if config_version == self._target_state.code_version and build is not None:
+        if config_version == self._target_state.code_version:
+            # `build` is non-None whenever `code_version` is non-None (they are
+            # always set together in the target state). Applying overrides onto
+            # the build rather than the previous target restores the values in
+            # code for options the new config no longer sets.
+            build = self._target_state.build
+            assert build is not None
             try:
                 overrided_infos = override_deployment_info(
                     build.deployment_infos,

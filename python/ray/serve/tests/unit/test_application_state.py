@@ -5123,23 +5123,3 @@ class TestConfigOverridesFromBuild:
         recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
         assert "runtime_env" not in self._actor_options(recovered)
         assert self._num_replicas(recovered) == 1
-
-    def test_checkpoint_without_a_build_rebuilds_on_the_next_config(
-        self, check_obj_ref_ready_nowait, mocked_application_state_manager
-    ):
-        app_state_manager, _, kv_store = mocked_application_state_manager
-        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
-        app_state.apply_app_config(
-            self._with_overrides(num_replicas=5), None, None, deployment_time=1.0
-        )
-        app_state._target_state.build = None
-        app_state_manager.save_checkpoint()
-
-        recovered = self._recover(kv_store)
-        assert recovered._target_state.build is None
-        recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
-        # Wait for the rebuild before setting target deployments.
-        assert recovered._target_state.deployment_infos is None
-        recovered.update()
-        assert recovered._target_state.build is not None
-        assert self._num_replicas(recovered) == 1
