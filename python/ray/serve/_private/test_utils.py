@@ -488,7 +488,7 @@ class MockDeploymentActorWrapper:
         """Match DeploymentActorWrapper; increments counter for unit tests."""
         self.reset_health_state_after_running_count += 1
 
-    def check_health(self) -> bool:
+    def check_health(self, ingest_lagging: bool = False) -> bool:
         """Match DeploymentActorWrapper; controlled via ``set_health_ok``."""
         return self._health_ok
 
@@ -798,8 +798,9 @@ class MockReplicaActorWrapper:
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
-    def check_health(self):
+    def check_health(self, ingest_lagging: bool = False):
         self.health_check_called = True
+        self.last_ingest_lagging = ingest_lagging
         return self.healthy
 
     def record_pushed_health(
