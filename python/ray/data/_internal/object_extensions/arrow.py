@@ -6,66 +6,18 @@ import pyarrow as pa
 
 import ray.data._internal.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
-from ray._common.utils import env_bool
+from ray.data._internal.untrusted_unpickling import (  # noqa: F401  (re-exported)
+    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    UntrustedUnpicklingError,
+    is_unpickling_forbidden,
+)
 from ray.data._internal.utils.arrow_utils import _check_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 # First, assert Arrow version is w/in expected bounds
 _check_pyarrow_version()
 
-# Some datasource implementations call `raise_on_pickle_object_columns` to protect users
-# from arbitrary code execution. If you set this env var, then
-# `raise_on_pickle_object_columns` no-ops, and you can read pickled data.
-AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR = "RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR"
-
 ARROW_PYTHON_OBJECT_EXTENSION_NAME = "ray.data.arrow_pickled_object"
-
-
-def raise_on_pickle_object_columns(table: "pa.Table") -> None:
-    """Raise if ``table`` has data stored as the pickled-object extension type.
-
-    Deserializing ``ray.data.arrow_pickled_object`` columns requires unpickling, which
-    can execute arbitrary code. To avoid exposing users to this vulnerability,
-    datasource implementations can call this function after reading tables.
-
-    If you set ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1``, this function no-ops
-    """
-    if env_bool(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, False):
-        return
-
-    pickle_cols = [
-        field.name for field in table.schema if _contains_pickle_object_type(field.type)
-    ]
-    if pickle_cols:
-        raise ValueError(
-            f"This file contains columns stored as "
-            f"'ray.data.arrow_pickled_object': {pickle_cols}. Reading these "
-            f"columns requires unpickling, which can execute arbitrary code "
-            f"and is unsafe with untrusted files.\n\n"
-            f"If you trust the source of this data, set the environment "
-            f"variable {AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 to allow "
-            f"reading these columns. In a Ray cluster, this variable must "
-            f"be set on all worker nodes (e.g. via 'runtime_env')."
-        )
-
-
-def _contains_pickle_object_type(dtype: "pa.DataType") -> bool:
-    """Return whether ``dtype`` is, or nests, the pickled-object extension type."""
-    if isinstance(dtype, pa.ExtensionType):
-        if dtype.extension_name == ARROW_PYTHON_OBJECT_EXTENSION_NAME:
-            return True
-
-        # An extension type wraps a storage type that may itself nest the object type.
-        return _contains_pickle_object_type(dtype.storage_type)
-
-    # Dictionary-encoded columns report ``num_fields == 0``, so recurse explicitly.
-    if pa.types.is_dictionary(dtype):
-        return _contains_pickle_object_type(dtype.value_type)
-
-    return any(
-        _contains_pickle_object_type(dtype.field(i).type)
-        for i in range(dtype.num_fields)
-    )
 
 
 # Please see https://arrow.apache.org/docs/python/extending_types.html for more info
@@ -88,6 +40,19 @@ class ArrowPythonObjectType(pa.ExtensionType):
     def __arrow_ext_deserialize__(
         cls, storage_type: pa.DataType, serialized: bytes
     ) -> "ArrowPythonObjectType":
+        # pyarrow calls this while parsing the schema of a file or stream. During
+        # a read that means untrusted bytes declare a column that unpickles on
+        # access, so refuse it. Ray's own transport rebuilds the type outside
+        # reads or under ``ray.cloudpickle.loads``, where the flag is off.
+        if is_unpickling_forbidden():
+            raise UntrustedUnpicklingError(
+                f"This data contains a column stored as "
+                f"'{ARROW_PYTHON_OBJECT_EXTENSION_NAME}'. Reading it requires "
+                f"unpickling, which can execute arbitrary code and is unsafe with "
+                f"untrusted files. If you trust the source of this data, set "
+                f"{AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 on all worker nodes "
+                f"(e.g. via 'runtime_env')."
+            )
         return ArrowPythonObjectType()
 
     def __arrow_ext_scalar_class__(self) -> type:

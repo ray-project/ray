@@ -18,6 +18,10 @@ Ray Data already supports images with the {func}`~ray.data.read_images` and {met
 If you're not contributing to Ray Data, you don't need to create a {class}`~ray.data.Datasource`. Instead, call {func}`~ray.data.read_binary_files` and decode files with {meth}`~ray.data.Dataset.map`.
 :::
 
+:::{note}
+Datasource code runs with `pickle.loads` blocked, both when Ray constructs the datasource on the driver and inside read tasks, because the bytes it reads aren't under Ray's control. A library that calls `pickle.loads` on file bytes raises `UntrustedUnpicklingError` instead of running arbitrary code, and Ray refuses columns stored as `ray.data.arrow_pickled_object`. If your format genuinely needs pickle and you trust the source, wrap only that call in {func}`ray.util.pickle_guard.allow_unsafe_unpickling` behind an explicit option. To turn the guard off for a whole job, set `RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1` on the driver and, through `runtime_env={"env_vars": ...}`, on the workers.
+:::
+
 The core abstraction for reading files is {class}`~ray.data.datasource.FileBasedDatasource`. It provides file-specific behavior on top of the {class}`~ray.data.Datasource` interface.
 
 To subclass {class}`~ray.data.datasource.FileBasedDatasource`, implement the constructor and `_read_stream`.

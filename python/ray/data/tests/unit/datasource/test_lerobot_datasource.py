@@ -8,13 +8,13 @@ import pytest
 
 from ray.data._internal.datasource.lerobot_datasource import (
     _LeRobotRoot,
-    _raise_on_pickle_object_meta_parquet,
     _read_lerobot_segment,
 )
 from ray.data._internal.object_extensions.arrow import (
     AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
     ArrowPythonObjectArray,
 )
+from ray.data._internal.untrusted_unpickling import guard_iterator
 
 N_ROWS = 3
 
@@ -60,9 +60,14 @@ def _make_root(tmp_path) -> _LeRobotRoot:
 
 
 def _read_segment(root, shard):
-    # ``ep_slice`` is only consulted for video or delta reads.
+    # ``ep_slice`` is only consulted for video or delta reads. Run the read the
+    # way the read operator does: under the untrusted-unpickling guard.
     return list(
-        _read_lerobot_segment(root, 0, N_ROWS, 0, [str(shard)], pa.table({}), 1 << 20)
+        guard_iterator(
+            lambda: _read_lerobot_segment(
+                root, 0, N_ROWS, 0, [str(shard)], pa.table({}), 1 << 20
+            )
+        )
     )
 
 
@@ -106,55 +111,6 @@ def test_read_lerobot_segment_allows_pickle_object_columns_with_env_var(
     tables = _read_segment(_make_root(tmp_path), shard)
 
     assert tables[0].column("obj").to_pylist() == [{"key": "value"}] * N_ROWS
-
-
-def _write_clean_meta(meta_dir):
-    pq.write_table(
-        pa.table({"task_index": [0], "task": ["test_task"]}),
-        meta_dir / "tasks.parquet",
-    )
-    ep_dir = meta_dir / "episodes" / "chunk-000"
-    ep_dir.mkdir(parents=True)
-    pq.write_table(
-        pa.table({"episode_index": [0], "length": [N_ROWS]}),
-        ep_dir / "episodes-000.parquet",
-    )
-
-
-@pytest.mark.parametrize(
-    "victim", ["tasks.parquet", "episodes/chunk-000/episodes-000.parquet"]
-)
-def test_raise_on_pickle_object_meta_parquet_rejects(tmp_path, victim):
-    """lerobot parses these files itself with pandas / HF datasets, so they are
-    checked before they are handed over."""
-    marker = tmp_path / "exploit_marker"
-    meta_dir = tmp_path / "meta"
-    meta_dir.mkdir()
-    _write_clean_meta(meta_dir)
-    path = meta_dir / victim
-    original = pq.read_table(path)
-    pq.write_table(
-        original.append_column("evil", _exploit_column(marker, original.num_rows)),
-        path,
-    )
-
-    with pytest.raises(ValueError, match="arrow_pickled_object") as exc_info:
-        _raise_on_pickle_object_meta_parquet(str(meta_dir), "s3://bucket/ds")
-
-    assert f"meta/{victim}" in str(exc_info.value)
-    assert not marker.exists(), "pickle.load executed attacker code"
-
-
-def test_raise_on_pickle_object_meta_parquet_allows_clean(tmp_path):
-    meta_dir = tmp_path / "meta"
-    meta_dir.mkdir()
-    _write_clean_meta(meta_dir)
-
-    _raise_on_pickle_object_meta_parquet(str(meta_dir), "s3://bucket/ds")
-
-    empty = tmp_path / "empty_meta"
-    empty.mkdir()
-    _raise_on_pickle_object_meta_parquet(str(empty), "s3://bucket/ds")
 
 
 if __name__ == "__main__":

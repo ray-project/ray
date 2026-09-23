@@ -54,7 +54,6 @@ from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
@@ -422,21 +421,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     @override
     def _iter_fragment_tables(
-        self,
-        fragment: pds.Fragment,
-        scanner_kwargs: dict,
-    ) -> "Iterator[pa.Table]":
-        for table in self._iter_fragment_tables_without_pickle_check(
-            fragment, scanner_kwargs
-        ):
-            # When you unpickle untrusted data, attackers can execute arbitrary
-            # code. To avoid exposing our users, raise unless the user has
-            # explicitly opted in.
-            raise_on_pickle_object_columns(table)
-
-            yield table
-
-    def _iter_fragment_tables_without_pickle_check(
         self,
         fragment: pds.Fragment,
         scanner_kwargs: dict,

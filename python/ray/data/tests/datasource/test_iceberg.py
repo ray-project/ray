@@ -6,6 +6,7 @@ from typing import Any, Dict, Generator, List, Tuple, Type
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pkg_resources import parse_version
 from pyiceberg import (
@@ -35,6 +36,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
@@ -318,13 +320,18 @@ def test_get_read_task_rejects_pickle_object_columns(monkeypatch, tmp_path):
     poisoned = pa.table(
         {"value": [1, 2], "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
     )
+    # pyiceberg reads data files with pyarrow. Mimic that by reading a real
+    # parquet file inside the scan so the pickled-object type is rebuilt during
+    # the read, where it is refused.
+    path = tmp_path / "data.parquet"
+    pq.write_table(poisoned, path)
 
     class FakeArrowScan:
         def __init__(self, **kwargs):
             pass
 
         def to_table(self, tasks):
-            return poisoned
+            return pq.read_table(path)
 
     monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
 
@@ -334,19 +341,21 @@ def test_get_read_task_rejects_pickle_object_columns(monkeypatch, tmp_path):
         )
     )
 
-    with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(
-            _get_read_task(
-                tasks=("file-1",),
-                table_io=object(),
-                table_metadata=object(),
-                row_filter=object(),
-                case_sensitive=True,
-                limit=None,
-                schema=schema,
-                read_file_tasks_sequentially=False,
-            )
+    def read():
+        return _get_read_task(
+            tasks=("file-1",),
+            table_io=object(),
+            table_metadata=object(),
+            row_filter=object(),
+            case_sensitive=True,
+            limit=None,
+            schema=schema,
+            read_file_tasks_sequentially=False,
         )
+
+    # Run the read function the way the read operator does: under the guard.
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(guard_iterator(read))
 
     assert not marker.exists(), "pickle.load executed attacker code"
 
