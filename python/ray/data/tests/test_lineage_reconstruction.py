@@ -272,27 +272,31 @@ def test_reconstruction_input_bypasses_the_bundler(
     )
     scheduled = []
     op._try_schedule_task = lambda refs, strict: scheduled.append((refs, strict))
+    bundler = op._block_ref_bundler
+    assert bundler is not None
 
     # Ordinary input waits in the bundler for the row target.
     op._add_input_inner(inputs, 0)
     assert scheduled == []
-    assert op._block_ref_bundler.num_blocks() == 1
+    assert bundler.num_blocks() == 1
 
     # A stamped reconstruction input goes straight to submission.
     stamped = make_ref_bundles([[2]])[0]
-    op._pending_child_ids[stamped.block_refs[0].hex()] = ("child:0", "plan_a")
+    # pyrefly: ignore[missing-attribute]
+    stamped_id = stamped.block_refs[0].hex()
+    op._pending_child_ids[stamped_id] = ("child:0", "plan_a")
     op._add_input_inner(stamped, 0)
     assert scheduled == [(stamped, True)]
-    assert op._block_ref_bundler.num_blocks() == 1
+    assert bundler.num_blocks() == 1
     # Read, not consumed: `_lineage_for_submission` still needs it to name the task.
-    assert op._pending_child_ids == {stamped.block_refs[0].hex(): ("child:0", "plan_a")}
+    assert op._pending_child_ids == {stamped_id: ("child:0", "plan_a")}
 
     # A re-injected seed's input goes straight to submission too.
     seed_input = make_ref_bundles([[3]])[0]
     op.stamp_seed_reinjection("seed:0", "plan_a", seed_input)
     op._add_input_inner(seed_input, 0)
     assert scheduled[-1] == (seed_input, True)
-    assert op._block_ref_bundler.num_blocks() == 1
+    assert bundler.num_blocks() == 1
 
 
 def _abortable_task(task_done_callback):
