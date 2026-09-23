@@ -1,6 +1,6 @@
 """Drive the real detectors with the real injectors. Runs anywhere, no GPU.
 
-    python -m ray.train.v2._internal.execution.health.examples.injected_faults_demo
+    python release/train_tests/health/injected_faults_demo.py
 
 Each scenario runs a simulated 6-rank training loop where one rank has a fault
 injected from ``health.testing.symptoms``. The loop calls ``health.report()``

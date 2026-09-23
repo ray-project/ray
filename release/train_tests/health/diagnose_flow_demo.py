@@ -1,6 +1,6 @@
 """Walk the DIAGNOSE loop end to end, printing each stage. No cluster needed.
 
-    python -m ray.train.v2._internal.execution.health.examples.diagnose_flow_demo
+    python release/train_tests/health/diagnose_flow_demo.py
 
 Simulates a 4-rank / 2-node run where one communicator wedges, and shows the
 four steps: the RAS probe collects, the evaluator confirms and asks, the

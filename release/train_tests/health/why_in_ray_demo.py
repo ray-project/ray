@@ -1,6 +1,6 @@
 """What a node agent cannot decide, side by side with what Ray Train can.
 
-    python -m ray.train.v2._internal.execution.health.examples.why_in_ray_demo
+    python release/train_tests/health/why_in_ray_demo.py
 
 Two faults on a 6-rank / 3-node run. Each is put to two policy sets:
 
