@@ -41,7 +41,7 @@ variety       string
 ```
 
 :::{tip}
-When you read Parquet files, use column pruning to filter columns efficiently at the file scan level. For more on this projection pushdown feature, see {ref}`Parquet column pruning <parquet_column_pruning>`.
+When you read Parquet files, you can use column pruning to filter columns efficiently at the file scan level. For more on this projection pushdown feature, see {ref}`Parquet column pruning <parquet_column_pruning>`.
 :::
 
 ::::
