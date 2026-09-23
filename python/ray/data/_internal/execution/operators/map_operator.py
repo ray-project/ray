@@ -839,31 +839,21 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _stamp_reconstruction_child(
         self, child_task_id: str, plan_id: str, inputs: RefBundle
     ) -> None:
-        """Mark an assembled input set with the child task id it belongs to.
+        """Store a mapping of the input bundle to the (child task, plan ID) it belongs to.
 
-        Addressed to the consumer that owns the child rather than broadcast to every
-        output dependency. No adjacent consumer owning it means some non-map operator
-        sits between them: there is nobody to carry the identity to, and the bundle is
-        submitted as ordinary work. Warned about rather than raised: the rows still
-        flow.
+        The bundle travels downstream through the normal output queue, and the child op
+        needs to the original child task ID and plan ID for scheduling it as a reconstruction task.
+        When that operator submits a task for these blocks, it reuses the child's
+        original id, so the lineage tracker sees the plan's re-execution rather than
+        a new task.
         """
-        for downstream_op in self.output_dependencies:
-            if downstream_op.owns_data_task(child_task_id):
-                # Only a MapOperator mints data task ids, so the owner has the dict.
-                assert isinstance(downstream_op, MapOperator), type(downstream_op)
-                for block_ref in inputs.block_refs:
-                    downstream_op._pending_child_ids[block_ref.hex()] = (
-                        child_task_id,
-                        plan_id,
-                    )
-                return
-
-        logger.warning(
-            "[lineage-reconstruction] No adjacent consumer for reconstruction child %s "
-            "(plan %s); its re-execution will be registered as a fresh task.",
-            child_task_id,
-            plan_id,
-        )
+        # The executor only builds a lineage tracker for linear map-only plans, so
+        # the child's owner is this operator's single downstream map.
+        (child_op,) = self.output_dependencies
+        assert isinstance(child_op, MapOperator), type(child_op)
+        assert child_op.owns_data_task(child_task_id), child_task_id
+        for block_ref in inputs.block_refs:
+            child_op._pending_child_ids[block_ref.hex()] = (child_task_id, plan_id)
 
     def _submit_data_task(
         self,
