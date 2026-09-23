@@ -953,8 +953,8 @@ RAY_CONFIG(std::string, predefined_unit_instance_resources, "GPU")
 /// The scheduler will treat these custom resource types as unit_instance.
 /// This allows the scheduler to provide chip IDs for custom resources like
 /// "neuron_cores", "TPUs" and "FPGAs".
-/// The default includes supported accelerator resources such as TPU, NPU, and MLU.
-/// Additional resource names can be appended to treat them as unit instances too.
+/// Default custom_unit_instance_resources is "neuron_cores,TPU".
+/// When set it to "neuron_cores,TPU,FPGA", we will also treat FPGA as unit_instance.
 RAY_CONFIG(std::string,
            custom_unit_instance_resources,
            "neuron_cores,TPU,NPU,HPU,RBLN,FURIOSA,TTNPU,MBLT,MLU")
