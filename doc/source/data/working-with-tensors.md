@@ -39,6 +39,7 @@ If your tensors have a fixed shape, Ray Data represents batches as regular ndarr
 (32, 28, 28)
 >>> batch["image"].dtype
 dtype('uint8')
+
 ```
 
 ### Batches of variable-shape tensors
@@ -53,6 +54,7 @@ If your tensors vary in shape, Ray Data represents batches as arrays of object d
 (32,)
 >>> batch["image"].dtype
 dtype('O')
+
 ```
 
 The individual elements of these object arrays are regular ndarrays.
@@ -64,6 +66,7 @@ dtype('uint8')
 (375, 500, 3)
 >>> batch["image"][3].shape  # doctest: +SKIP
 (333, 465, 3)
+
 ```
 
 (transforming_tensors)=
