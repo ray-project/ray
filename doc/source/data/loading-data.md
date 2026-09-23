@@ -1009,7 +1009,7 @@ import ray
 def create_connection():
     return snowflake.connector.connect(
         user=...,
-        password=...
+        password=...,
         account="ZZKXUVH-IPB52023",
         database="example",
     )
