@@ -1,12 +1,12 @@
 ---
 myst:
   html_meta:
-    description: "Scalable data processing for AI workloads — a streaming engine for batch inference, preprocessing, and ML training ingest across CPUs and GPUs."
+    description: "Ray Data is a scalable data processing library for AI workloads, with a streaming engine for batch inference, preprocessing, and ML training ingest across CPUs and GPUs."
 ---
 
 (data)=
 
-# Ray Data: Scalable Data Processing for AI Workloads
+# Ray Data: Scalable data processing for AI workloads
 
 ```{toctree}
 :hidden:
@@ -21,17 +21,17 @@ benchmark
 internals
 ```
 
-Ray Data is a scalable data processing library for AI workloads built on Ray. Ray Data provides flexible and performant APIs for common operations such as {ref}`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data features a {ref}`streaming execution engine <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
+Ray Data is a scalable data processing library for AI workloads, built on Ray. It provides APIs for common operations such as {ref}`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data uses a {ref}`streaming execution engine <streaming-execution>` to process large datasets efficiently and keep utilization high across both CPU and GPU workloads.
 
 ## Quick start
 
-First, install Ray Data. To learn more about installing Ray and its libraries, see {ref}`Installing Ray <installation>`:
+To learn more about installing Ray and its libraries, see {ref}`Installing Ray <installation>`. To install Ray Data, run the following command:
 
 ```console
 $ pip install -U 'ray[data]'
 ```
 
-Here is an example of how to do perform a simple batch text classification task with Ray Data:
+The following example runs a batch text classification task with Ray Data:
 
 ```{testcode}
 import ray
@@ -66,17 +66,14 @@ ds.show(limit=1)
 
 ## Why choose Ray Data?
 
-Modern AI workloads revolve around the usage of deep learning models, which are computationally intensive and often require specialized hardware such as GPUs. Unlike CPUs, GPUs often come with less memory, have different semantics for scheduling, and are much more expensive to run. Systems built to support traditional data processing pipelines often don't utilize such resources well.
+AI workloads revolve around deep learning models, which are computationally intensive and often require specialized hardware such as GPUs. Unlike CPUs, GPUs often have less memory, different scheduling semantics, and a much higher cost to run. Systems built for traditional data processing pipelines often don't use these resources well.
 
-Ray Data supports AI workloads as a first-class citizen and offers several key advantages:
+Ray Data treats AI workloads as a first-class use case and offers four advantages:
 
-- **Faster and cheaper for deep learning**: Ray Data streams data between CPU preprocessing and GPU inference/training tasks, maximizing resource utilization and reducing costs by keeping GPUs active.
-
-- **Framework friendly**: Ray Data provides performant, first-class integration with common AI frameworks (vLLM, PyTorch, HuggingFace, TensorFlow) and common cloud providers (AWS, GCP, Azure)
-
-- **Support for multi-modal data**: Ray Data leverages Apache Arrow and Pandas and provides support for many data formats used in ML workloads such as Parquet, Lance, images, JSON, CSV, audio, video, and more.
-
-- **Scalable by default**: Built on Ray for automatic scaling across heterogeneous clusters with different CPU and GPU machines. Code runs unchanged from one machine to hundreds of nodes processing hundreds of TB of data.
+- **Faster and cheaper for deep learning**: Ray Data streams data between CPU preprocessing tasks and GPU inference or training tasks. Keeping GPUs active maximizes resource utilization and reduces costs.
+- **Framework friendly**: Ray Data integrates with common AI frameworks such as vLLM, PyTorch, Hugging Face, and TensorFlow, and with common cloud providers such as AWS, GCP, and Azure.
+- **Support for multi-modal data**: Ray Data uses Apache Arrow and pandas and supports many data formats used in ML workloads, such as Parquet, Lance, images, JSON, CSV, audio, and video.
+- **Scalable by default**: Ray Data builds on Ray to scale automatically across heterogeneous clusters of CPU and GPU machines. The same code runs unchanged on one machine or on hundreds of nodes processing hundreds of TB of data.
 
 % https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
@@ -90,7 +87,7 @@ Ray Data supports AI workloads as a first-class citizen and offers several key a
 **Quickstart**
 ^^^
 
-Get started with Ray Data with a simple example.
+Run a basic example to get started with Ray Data.
 
 +++
 ```{button-ref} data_quickstart
@@ -103,10 +100,10 @@ Quickstart
 :::
 
 :::{grid-item-card}
-**Key Concepts**
+**Key concepts**
 ^^^
 
-Learn the key concepts behind Ray Data. Learn what Datasets are and how they're used.
+Learn the key concepts behind Ray Data, including what Datasets are and how to use them.
 
 +++
 ```{button-ref} data_key_concepts
@@ -114,12 +111,12 @@ Learn the key concepts behind Ray Data. Learn what Datasets are and how they're 
 :outline:
 :expand:
 
-Key Concepts
+Key concepts
 ```
 :::
 
 :::{grid-item-card}
-**User Guides**
+**User guides**
 ^^^
 
 Learn how to use Ray Data, from basic usage to end-to-end guides.
@@ -138,7 +135,7 @@ Learn how to use Ray Data
 **Examples**
 ^^^
 
-Find both simple and scaling-out examples of using Ray Data.
+Find basic and scaled-out examples of Ray Data workloads.
 
 +++
 ```{button-ref} examples
@@ -146,7 +143,7 @@ Find both simple and scaling-out examples of using Ray Data.
 :outline:
 :expand:
 
-Ray Data Examples
+Ray Data examples
 ```
 :::
 
@@ -154,7 +151,7 @@ Ray Data Examples
 **API**
 ^^^
 
-Get more in-depth information about the Ray Data API.
+Get in-depth information about the Ray Data API.
 
 +++
 ```{button-ref} data-api
@@ -162,21 +159,21 @@ Get more in-depth information about the Ray Data API.
 :outline:
 :expand:
 
-Read the API Reference
+Read the API reference
 ```
 :::
 ::::
 
 ## Case studies for Ray Data
 
-**Training ingest using Ray Data**
+The following case studies use Ray Data for training ingest:
 
-- [Pinterest uses Ray Data to do last mile data processing for model training](https://medium.com/pinterest-engineering/last-mile-data-processing-with-ray-629affbf34ff)
-- [DoorDash elevates model training with Ray Data](https://www.youtube.com/watch?v=pzemMnpctVY)
-- [Instacart builds distributed machine learning model training on Ray Data](https://tech.instacart.com/distributed-machine-learning-at-instacart-4b11d7569423)
+- [Pinterest uses Ray Data to do last mile data processing for model training](https://medium.com/pinterest-engineering/last-mile-data-processing-with-ray-629affbf34ff).
+- [DoorDash elevates model training with Ray Data](https://www.youtube.com/watch?v=pzemMnpctVY).
+- [Instacart builds distributed machine learning model training on Ray Data](https://tech.instacart.com/distributed-machine-learning-at-instacart-4b11d7569423).
 
-**Batch inference using Ray Data**
+The following case studies use Ray Data for batch inference:
 
-- [ByteDance scales offline inference with multi-modal LLMs to 200 TB on Ray Data](https://www.anyscale.com/blog/how-bytedance-scales-offline-inference-with-multi-modal-llms-to-200TB-data)
-- [Spotify's new ML platform built on Ray Data for batch inference](https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/)
-- [Sewer AI speeds up object detection on videos 3x using Ray Data](https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video)
+- [ByteDance scales offline inference with multi-modal LLMs to 200 TB on Ray Data](https://www.anyscale.com/blog/how-bytedance-scales-offline-inference-with-multi-modal-llms-to-200TB-data).
+- [Spotify's ML platform built on Ray Data for batch inference](https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/).
+- [Sewer AI speeds up object detection on videos 3x using Ray Data](https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video).
