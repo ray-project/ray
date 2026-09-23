@@ -2520,16 +2520,18 @@ def test_get_serve_instance_details_json_serializable(
 
     serve.run(autoscaling_app.bind())
 
+    details = None
+
     def snapshot_has_all_target_groups() -> bool:
-        snapshot = ray.get(controller.get_serve_instance_details.remote())
-        assert len(snapshot["target_groups"]) == 2
+        nonlocal details
+        details = ray.get(controller.get_serve_instance_details.remote())
+        assert len(details["target_groups"]) == 2
         return True
 
     wait_for_condition(
         snapshot_has_all_target_groups, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S
     )
 
-    details = ray.get(controller.get_serve_instance_details.remote())
     details_json = json.dumps(details)
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
