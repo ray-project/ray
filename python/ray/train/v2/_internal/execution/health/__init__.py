@@ -13,6 +13,11 @@ from ray.train.v2._internal.execution.health.diagnostics import (
     DiagnosticRunner,
 )
 from ray.train.v2._internal.execution.health.manager import HealthManager
+from ray.train.v2._internal.execution.health.preflight import (
+    PreflightResult,
+    PreflightRunner,
+    preflight_policy,
+)
 from ray.train.v2._internal.execution.health.policy import (
     Evaluator,
     HealthConfig,
@@ -63,6 +68,8 @@ __all__ = [
     "Noop",
     "OnDemandProbe",
     "OnDemandProbeContext",
+    "PreflightResult",
+    "PreflightRunner",
     "Probe",
     "ProbeDegraded",
     "ProbeResult",
@@ -70,4 +77,5 @@ __all__ = [
     "WorkerHealth",
     "WorkerProbe",
     "merge_decisions",
+    "preflight_policy",
 ]
