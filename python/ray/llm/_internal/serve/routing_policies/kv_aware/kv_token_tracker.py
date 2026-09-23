@@ -25,6 +25,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
     KV_INDEXER_THREADS_KEY,
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+    LLM_ROUTER_DEPLOYMENT_NAME,
     PD_ROUTING_STAGE,
     REQUEST_TRACKING_TTL_S,
     RoutingStage,
@@ -871,12 +872,6 @@ def set_kv_token_tracker(
 
 def get_kv_token_tracker(deployment_id: DeploymentID) -> Optional["KVTokenTracker"]:
     return _KV_TOKEN_TRACKERS.get(deployment_id)
-
-
-# The LLMRouter ingress deployment name (``serve.deployment(LLMRouter)`` with no
-# name override -> the class name). Engine replicas RPC its ``on_lifecycle_events``
-# handle method to book request load.
-LLM_ROUTER_DEPLOYMENT_NAME = "LLMRouter"
 
 
 def get_llm_router_handle():

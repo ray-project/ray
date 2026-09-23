@@ -8,6 +8,9 @@ from ray.serve._private.constants_utils import (
     get_env_int_positive,
 )
 
+# Stable deployment name used by engine lifecycle broadcasts in both modes.
+LLM_ROUTER_DEPLOYMENT_NAME = "LLMRouter"
+
 # choose_replica kwarg carrying the prompt token IDs to KV-aware routers.
 REQUEST_TOKEN_IDS_KWARG = "request_token_ids"
 ROUTING_REQUEST_ID_KWARG = "routing_request_id"

@@ -298,11 +298,10 @@ async def test_routes_tokens_to_replica():
 
     sender = TokenSender()
     router = LLMRouter.__new__(LLMRouter)
-    router._pd_coordinator = None
     router._handle = MagicMock()
     router._tokenizer = MagicMock()
     router._tokenizer.tokenize = AsyncMock(return_value=token_ids)
-    router._pick_replica = AsyncMock(
+    router.pick_replica = AsyncMock(
         return_value=("selected-host", 8000, "selected-replica", selected_endpoint)
     )
     router._token_sender = sender
@@ -321,7 +320,7 @@ async def test_routes_tokens_to_replica():
         assert response["host"] == "selected-host"
         assert response["port"] == 8000
         assert response["replica_id"] == "selected-replica"
-        assert router._pick_replica.call_args.kwargs["request_token_ids"] == token_ids
+        assert router.pick_replica.call_args.kwargs["request_token_ids"] == token_ids
 
         routed_headers = response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD]
         token_key = routed_headers[KV_TOKEN_KEY_HEADER]

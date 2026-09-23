@@ -10,6 +10,7 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.serving_patterns.prefill_decode.builder import (
@@ -58,6 +59,8 @@ def test_pd_kv_nixl_streaming():
         try:
             if ray.cluster_resources().get("GPU", 0) < 4:
                 pytest.skip("Requires four GPUs")
+            port = find_free_port()
+            serve.start(http_options={"port": port})
             serve.run(
                 build_pd_openai_app(
                     {
@@ -66,7 +69,7 @@ def test_pd_kv_nixl_streaming():
                     }
                 )
             )
-            url = "http://127.0.0.1:8000"
+            url = f"http://127.0.0.1:{port}"
             payload = {
                 "model": "qwen",
                 "prompt": "The capital of France is",

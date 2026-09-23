@@ -18,7 +18,7 @@ from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
     requires_direct_streaming,
     run_app_through_haproxy,
 )
-from ray.llm.tests.serve.mocks.mock_pd_kv_engine import LLMRouter as MockPDKVRouter
+from ray.llm.tests.serve.mocks.mock_pd_kv_engine import MockLLMPDRouter
 
 
 @requires_direct_streaming
@@ -65,8 +65,8 @@ class TestPDKVAwareDirectStreaming:
                 with patch.object(
                     VLLMEngineConfig, "placement_bundles", property(lambda self: [])
                 ), patch(
-                    "ray.llm._internal.serve.core.ingress.router.LLMRouter",
-                    MockPDKVRouter,
+                    "ray.llm._internal.serve.core.ingress.pd_router.LLMPDRouter",
+                    MockLLMPDRouter,
                 ):
                     application = build_pd_openai_app(
                         {

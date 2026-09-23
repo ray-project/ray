@@ -22,6 +22,9 @@ from ray.llm._internal.serve.core.server.builder import (
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    LLM_ROUTER_DEPLOYMENT_NAME,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
@@ -115,17 +118,23 @@ def _build_openai_ingress_request_router(
         if runtime_env is not None:
             ray_actor_options["runtime_env"] = runtime_env
 
+    router_cls = LLMRouter
+    bind_kwargs = {
+        "server": server,
+        "llm_config": llm_config if is_kv_aware(llm_config) else None,
+    }
+    if prefill_server is not None:
+        from ray.llm._internal.serve.core.ingress.pd_router import LLMPDRouter
+
+        router_cls = LLMPDRouter
+        bind_kwargs.update(prefill_server=prefill_server, prefill_config=prefill_config)
     deployment = serve.deployment(
-        LLMRouter,
+        router_cls,
+        name=LLM_ROUTER_DEPLOYMENT_NAME,
         max_ongoing_requests=1000,
         ray_actor_options=ray_actor_options,
     )
-    return deployment.bind(
-        server=server,
-        llm_config=llm_config if is_kv_aware(llm_config) else None,
-        prefill_server=prefill_server,
-        prefill_config=prefill_config,
-    )
+    return deployment.bind(**bind_kwargs)
 
 
 class IngressClsConfig(BaseModelExtended):

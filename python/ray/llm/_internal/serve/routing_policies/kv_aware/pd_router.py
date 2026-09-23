@@ -22,10 +22,6 @@ from ray.llm._internal.serve.core.protocol import (
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TRANSFER_PARAMS_HEADER,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
-    build_kv_token_tracker,
-)
-from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
 )
@@ -33,7 +29,9 @@ from ray.serve.context import _get_serve_request_context
 from ray.serve.handle import DeploymentHandle
 
 if TYPE_CHECKING:
-    from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+    from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+        KVTokenTracker,
+    )
 
 DecodeRouter = Callable[
     [SimpleNamespace, List[int], str], Awaitable[IngressRoutingResponse]
@@ -52,24 +50,14 @@ class PDRequestCoordinator:
     def __init__(
         self,
         prefill: DeploymentHandle,
-        prefill_config: "LLMConfig",
-        decode_deployment_id: DeploymentID,
-        decode_config: "LLMConfig",
+        prefill_kv_token_tracker: "KVTokenTracker",
+        decode_kv_token_tracker: "KVTokenTracker",
         tokenizer: PromptTokenizer,
         route_decode: DecodeRouter,
     ) -> None:
         self.prefill = prefill
-        self.prefill_kv_token_tracker = build_kv_token_tracker(
-            prefill_config, prefill.deployment_id
-        )
-        self.decode_kv_token_tracker = build_kv_token_tracker(
-            decode_config, decode_deployment_id
-        )
-        self.trackers = {
-            prefill.deployment_id: self.prefill_kv_token_tracker,
-            decode_deployment_id: self.decode_kv_token_tracker,
-        }
-        prefill._init(_run_router_in_separate_loop=False)
+        self.prefill_kv_token_tracker = prefill_kv_token_tracker
+        self.decode_kv_token_tracker = decode_kv_token_tracker
         self.tokenizer = tokenizer
         self.route_decode = route_decode
 

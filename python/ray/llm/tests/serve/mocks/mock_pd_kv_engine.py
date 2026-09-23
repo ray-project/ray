@@ -14,7 +14,7 @@ from ray import serve
 from ray._common.network_utils import find_free_port
 from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS
 from ray.llm._internal.serve.core.configs.openai_api_models import CompletionResponse
-from ray.llm._internal.serve.core.ingress.router import LLMRouter as BaseLLMRouter
+from ray.llm._internal.serve.core.ingress.pd_router import LLMPDRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_METADATA_KEY,
     ROUTING_REQUEST_ID_CONTEXT,
@@ -191,7 +191,7 @@ class _Tokenizer:
         return [ord(c) for c in payload.get("prompt", "chat")]
 
 
-class LLMRouter(BaseLLMRouter):
+class MockLLMPDRouter(LLMPDRouter):
     async def __init__(self, *args, **kwargs):
         with patch(
             "ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer.Tokenizer",
@@ -199,12 +199,10 @@ class LLMRouter(BaseLLMRouter):
         ):
             await super().__init__(*args, **kwargs)
 
-    def _push_prompt_tokens(self, *, request_token_ids, **kwargs):
+    def push_prompt_tokens(self, *, request_token_ids, **kwargs):
         if request_token_ids[:11] == [ord(c) for c in "drop-tokens"]:
             return None
-        return super()._push_prompt_tokens(
-            request_token_ids=request_token_ids, **kwargs
-        )
+        return super().push_prompt_tokens(request_token_ids=request_token_ids, **kwargs)
 
     async def exit(self):
         os._exit(0)
