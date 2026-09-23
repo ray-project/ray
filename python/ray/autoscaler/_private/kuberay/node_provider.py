@@ -53,6 +53,21 @@ KUBERNETES_SERVICE_HOST = os.getenv(
 )
 KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
 KUBERNETES_HOST = build_address(KUBERNETES_SERVICE_HOST, KUBERNETES_SERVICE_PORT)
+
+# Paths of the credentials projected into a Pod by Kubernetes.
+IN_CLUSTER_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+IN_CLUSTER_CA_CERT_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+
+# Optional client TLS credentials, for Kubernetes distributions where API
+# authentication is not the in-cluster ServiceAccount mechanism. For example, the
+# API server may sit behind an authenticating proxy that identifies callers by a
+# client certificate instead of a bearer token. Both must be set to take effect.
+# When unset, the in-cluster ServiceAccount token is used, as before.
+KUBERAY_CLIENT_CERT_PATH = os.getenv("RAY_KUBERAY_CLIENT_CERT_PATH")
+KUBERAY_CLIENT_KEY_PATH = os.getenv("RAY_KUBERAY_CLIENT_KEY_PATH")
+# Optional CA certificate used to verify the Kubernetes API server. When unset,
+# the in-cluster ServiceAccount CA certificate is used, as before.
+KUBERAY_CA_CERT_PATH = os.getenv("RAY_KUBERAY_CA_CERT_PATH")
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
 
@@ -165,23 +180,42 @@ def replace_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "replace", "path": path, "value": value}
 
 
-def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
+def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
     """
     Loads secrets needed to access K8s resources.
 
+    By default the in-cluster ServiceAccount credentials are used. Setting
+    $RAY_KUBERAY_CLIENT_CERT_PATH and $RAY_KUBERAY_CLIENT_KEY_PATH instead
+    authenticates with a client TLS certificate, and $RAY_KUBERAY_CA_CERT_PATH
+    overrides the CA certificate used to verify the API server.
+
     Returns:
-        headers: Headers with K8s access token
-        verify: Path to certificate
+        headers: Headers with K8s access token, empty if no token is available
+        verify: Path to the CA certificate used to verify the API server
+        cert: Paths to the client certificate and key, None if not configured
     """
-    with open("/var/run/secrets/kubernetes.io/serviceaccount/token") as secret:
-        token = secret.read()
+    if bool(KUBERAY_CLIENT_CERT_PATH) != bool(KUBERAY_CLIENT_KEY_PATH):
+        raise ValueError(
+            "$RAY_KUBERAY_CLIENT_CERT_PATH and $RAY_KUBERAY_CLIENT_KEY_PATH must be "
+            "set together to authenticate with a client TLS certificate."
+        )
 
-    headers = {
-        "Authorization": "Bearer " + token,
-    }
-    verify = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+    cert = None
+    if KUBERAY_CLIENT_CERT_PATH and KUBERAY_CLIENT_KEY_PATH:
+        cert = (KUBERAY_CLIENT_CERT_PATH, KUBERAY_CLIENT_KEY_PATH)
 
-    return headers, verify
+    headers = {}
+    # When authenticating with a client certificate, a ServiceAccount token is not
+    # necessarily projected into the Pod, so treat it as optional. Without a client
+    # certificate the token is required, as before.
+    if cert is None or os.path.exists(IN_CLUSTER_TOKEN_PATH):
+        with open(IN_CLUSTER_TOKEN_PATH) as secret:
+            token = secret.read()
+        headers["Authorization"] = "Bearer " + token
+
+    verify = KUBERAY_CA_CERT_PATH or IN_CLUSTER_CA_CERT_PATH
+
+    return headers, verify, cert
 
 
 def url_from_resource(
@@ -282,18 +316,16 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
         self._kuberay_crd_version = kuberay_crd_version
         self._namespace = namespace
         self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
-        self._headers, self._verify = None, None
+        self._headers, self._verify, self._cert = None, None, None
 
-    def _get_refreshed_headers_and_verify(self):
+    def _get_refreshed_credentials(self):
         if (datetime.datetime.now() >= self._token_expires_at) or (
             self._headers is None or self._verify is None
         ):
             logger.info("Refreshing K8s API client token and certs.")
-            self._headers, self._verify = load_k8s_secrets()
+            self._headers, self._verify, self._cert = load_k8s_secrets()
             self._token_expires_at = datetime.datetime.now() + TOKEN_REFRESH_PERIOD
-            return self._headers, self._verify
-        else:
-            return self._headers, self._verify
+        return self._headers, self._verify, self._cert
 
     def get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers.
@@ -313,12 +345,13 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             kuberay_crd_version=self._kuberay_crd_version,
         )
 
-        headers, verify = self._get_refreshed_headers_and_verify()
+        headers, verify, cert = self._get_refreshed_credentials()
         result = requests.get(
             url,
             headers=headers,
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
+            cert=cert,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -349,13 +382,14 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
-        headers, verify = self._get_refreshed_headers_and_verify()
+        headers, verify, cert = self._get_refreshed_credentials()
         result = requests.patch(
             url,
             json.dumps(payload),
             headers={**headers, "Content-type": content_type},
             timeout=KUBERAY_REQUEST_TIMEOUT_S,
             verify=verify,
+            cert=cert,
         )
         if not result.status_code == 200:
             result.raise_for_status()
