@@ -152,7 +152,6 @@ For gated models that require authentication, pass your Hugging Face token throu
 ```
 
 (multimodal)=
-(multimodality)=
 
 ## Run batch inference on multimodal data
 
@@ -304,7 +303,6 @@ Finally, run the omni-modal inference:
 ```
 
 (embedding_models)=
-(embeddings)=
 
 ## Generate embeddings
 
@@ -322,7 +320,6 @@ Embedding models differ from text generation in the following ways:
 - Access results through `row["embeddings"]`.
 
 (classification_models)=
-(classification)=
 
 ## Run classification models
 
