@@ -17,16 +17,16 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    ParquetDatasource,
-    check_for_legacy_tensor_type,
-)
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
-    DataSourceV2,
+    FileDataSourceV2,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.parquet_utils import (
+    PARQUET_FILE_EXTENSIONS,
+    check_for_legacy_tensor_type,
+)
 from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
 )
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class ParquetDatasourceV2(DataSourceV2[FileManifest]):
+class ParquetDatasourceV2(FileDataSourceV2):
     """V2 Parquet datasource.
 
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the
@@ -94,7 +94,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
-        self._file_extensions = file_extensions or ParquetDatasource._FILE_EXTENSIONS
+        self._file_extensions = file_extensions or PARQUET_FILE_EXTENSIONS
         self._ignore_missing_paths = ignore_missing_paths
         # Resolve "skip_paths" through the same path normalization as the
         # input paths so exact-match comparison against the resolved paths the
@@ -138,7 +138,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._paths
 
     @property
-    def filesystem(self) -> Optional["FileSystem"]:
+    def filesystem(self) -> "FileSystem":
         return self._filesystem
 
     @property
@@ -211,7 +211,9 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return ParquetInMemorySizeEstimator()
 
     @override
-    def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:
+    def resolve_partitioning(
+        self, sample: Optional[FileManifest]
+    ) -> Optional[Partitioning]:
         """Return ``self._partitioning`` with path-discovered field names.
 
         Hive partitioning ships with ``field_names=None`` by default and
@@ -221,6 +223,11 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         mutating ``self`` so schema inference stays side-effect-free.
         """
         import copy
+
+        # The base signature allows ``None`` for sources whose schema comes
+        # from a catalog; Parquet answers ``schema_needs_file_sample`` True,
+        # so ``_read_datasource_v2`` always samples before calling this.
+        assert sample is not None, "Parquet always receives a sample"
 
         if self._partitioning is None or len(sample) == 0:
             return copy.deepcopy(self._partitioning)
@@ -240,7 +247,12 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             filesystem=self._partitioning.filesystem,
         )
 
-    def infer_schema(self, sample: FileManifest) -> pa.Schema:
+    @property
+    @override
+    def schema_needs_file_sample(self) -> bool:
+        return True
+
+    def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
         """Read Parquet footers from the sample manifest; unify and augment.
 
         When the sample has multiple files, their schemas are unified via
@@ -258,6 +270,10 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         import pyarrow.parquet as pq
 
         from ray.data._internal.util import unify_schemas_with_validation
+
+        # See ``resolve_partitioning``: ``None`` is reachable only for a
+        # source that answers ``schema_needs_file_sample`` False.
+        assert sample is not None, "Parquet always receives a sample"
 
         # Empty sample — typically means the user pointed ``read_parquet``
         # at an empty directory. Return an empty schema so the rest of

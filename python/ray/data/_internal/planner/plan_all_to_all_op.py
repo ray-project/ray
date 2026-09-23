@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Tuple, Type
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -56,6 +56,20 @@ logger = logging.getLogger(__name__)
 _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
+def _select_shuffle_v2_op_classes(
+    data_context: DataContext,
+) -> Tuple[Type[PhysicalOperator], Type[PhysicalOperator], str]:
+    """Pick the SHUFFLE_V2 map/reduce op family: external (file-transport) or
+    object-store, per ``data_context.use_external_hash_shuffle``.
+
+    Returns ``(map_cls, reduce_cls, name_prefix)`` where ``name_prefix`` is
+    ``"External"`` or ``""``, to be prepended to the op display names.
+    """
+    if data_context.use_external_hash_shuffle:
+        return ExternalHashShuffleMapOp, ExternalHashShuffleReduceOp, "External"
+    return ShuffleMapOp, ShuffleReduceOp, ""
+
+
 def _plan_gpu_shuffle_repartition(
     data_context: DataContext,
     logical_op: Repartition,
@@ -107,18 +121,7 @@ def _plan_hash_shuffle_repartition_v2(
         else SHUFFLE_PEAK_MEMORY_MULTIPLIER
     )
 
-    if data_context.use_external_hash_shuffle:
-        map_cls, reduce_cls, prefix = (
-            ExternalHashShuffleMapOp,
-            ExternalHashShuffleReduceOp,
-            "ExternalHashShuffle",
-        )
-    else:
-        map_cls, reduce_cls, prefix = (
-            ShuffleMapOp,
-            ShuffleReduceOp,
-            "HashShuffle",
-        )
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
 
     map_op = map_cls(
         input_physical_op,
@@ -127,21 +130,22 @@ def _plan_hash_shuffle_repartition_v2(
         partition_fn=partition_fn,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
-            f"{prefix}Map(keys={tuple(key_list)}, "
+            f"{prefix}HashShuffleMap(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
-    reduce_kwargs = dict(
+    reduce_op = reduce_cls(
+        map_op,
+        data_context,
         num_partitions=target_num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=True,
         peak_memory_multiplier=peak_memory_multiplier,
         name=(
-            f"{prefix}Reduce(keys={tuple(key_list)}, "
+            f"{prefix}HashShuffleReduce(keys={tuple(key_list)}, "
             f"partitions={target_num_partitions})"
         ),
     )
-    reduce_op = reduce_cls(map_op, data_context, **reduce_kwargs)
     return reduce_op
 
 
@@ -190,7 +194,9 @@ def _plan_hash_shuffle_aggregate_v2(
     block_transformer = _make_aggregating_transformer(key_columns, aggs)
     reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
 
-    map_op = ShuffleMapOp(
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+
+    map_op = map_cls(
         input_physical_op,
         data_context,
         num_partitions=num_partitions,
@@ -198,11 +204,11 @@ def _plan_hash_shuffle_aggregate_v2(
         block_transformer=block_transformer,
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
-            f"HashAggregateMap(key_columns={key_columns}, "
+            f"{prefix}HashAggregateMap(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"
         ),
     )
-    reduce_op = ShuffleReduceOp(
+    reduce_op = reduce_cls(
         map_op,
         data_context,
         num_partitions=num_partitions,
@@ -212,7 +218,7 @@ def _plan_hash_shuffle_aggregate_v2(
         # conflict with finalized non-empty partitions.
         should_emit_empty_partitions=False,
         name=(
-            f"HashAggregateReduce(key_columns={key_columns}, "
+            f"{prefix}HashAggregateReduce(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"
         ),
     )
