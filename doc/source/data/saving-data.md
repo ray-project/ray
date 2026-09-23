@@ -151,6 +151,7 @@ Ray Data has deprecated using `min_rows_per_file` with non-empty `partition_cols
 :::
 
 ```{testcode}
+import os
 import ray
 import pandas as pd
 
