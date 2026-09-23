@@ -208,6 +208,37 @@ TEST_F(RedisAsyncContextTest, TestDisconnectHandlerUnsetIsNoop) {
   ctx.NotifyDisconnected();
 }
 
+namespace {
+std::atomic<int> connect_callback_status{-1};
+void RecordConnectStatus(const redisAsyncContext * /*c*/, int status) {
+  connect_callback_status = status;
+}
+}  // namespace
+
+// The reconnect path registers the connect callback on the raw context before
+// Reset() publishes it, so no hiredis field changes after other threads can
+// see the context. hiredis arms its first write while that callback is being
+// registered, which goes nowhere because our event hooks do not exist yet;
+// Reset() has to arm it again or the connect is never noticed.
+TEST_F(RedisAsyncContextTest, TestResetArmsWriteForPreRegisteredConnectCallback) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+  SimulateHiredisDisconnect(ctx);
+
+  auto fresh = ConnectRaw(port);
+  fresh->data = &ctx;
+  connect_callback_status = -1;
+  ASSERT_EQ(redisAsyncSetConnectCallback(fresh.get(), RecordConnectStatus), REDIS_OK);
+  ctx.Reset(std::move(fresh));
+
+  for (int i = 0; i < 50 && connect_callback_status.load() == -1; ++i) {
+    local_io_service.run_for(std::chrono::milliseconds(100));
+    local_io_service.restart();
+  }
+  EXPECT_EQ(connect_callback_status.load(), REDIS_OK);
+}
+
 TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
   auto local_io_service = std::make_unique<instrumented_io_context>(
       /*emit_metrics=*/false, /*running_on_single_thread=*/true);

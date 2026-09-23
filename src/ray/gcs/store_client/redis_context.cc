@@ -448,6 +448,10 @@ RedisContext::RedisContext(instrumented_io_context &io_service,
 }
 
 RedisContext::~RedisContext() {
+  // Expire the sentinel before tearing anything down, as ~RedisAsyncContext
+  // does: Disconnect() below re-enters hiredis teardown, and posted reconnect
+  // work or a flushed reconnect AUTH callback must see this object as gone.
+  alive_.reset();
   Disconnect();
   if (ssl_context_) {
     redisFreeSSLContext(ssl_context_);
@@ -1215,10 +1219,21 @@ Status RedisContext::ReconnectAsyncContext() {
     auth_pending_ = true;
   }
 
+  // Finish every mutation of the raw context before Reset() publishes it:
+  // from then on other threads may submit commands under the wrapper's lock,
+  // and hiredis is not thread-safe. Nothing below can fail, so the callbacks
+  // never outlive a context we abandon. Registering the connect callback asks
+  // hiredis to arm a write before our event hooks exist; Reset() re-arms it.
+  async_context->data = redis_async_context_.get();
+  redisAsyncSetConnectCallback(async_context.get(), RedisAsyncContextConnectCallback);
+  redisAsyncSetDisconnectCallback(async_context.get(),
+                                  RedisAsyncContextDisconnectCallback);
+
+  // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
+  // pointer to this RedisAsyncContext.
   // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
   // pointer to this RedisAsyncContext.
   redis_async_context_->Reset(std::move(async_context));
-  SetConnectionCallbacks(redis_async_context_.get());
   return Status::OK();
 }
 

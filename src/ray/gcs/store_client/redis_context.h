@@ -328,6 +328,9 @@ class RedisContext {
   // context's lifetime.
   std::optional<RedisMetrics> metrics_;
 
+  /// The synchronous context is only used while Connect() runs (validation,
+  /// Sentinel discovery). A reconnect deliberately does not re-establish it,
+  /// so after a failover it may still hold a socket to the old primary.
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
@@ -350,8 +353,15 @@ class RedisContext {
   /// Whether the primary behind this context was discovered through Sentinel.
   bool via_sentinel_ = false;
 
-  /// The reconnect state below runs on the io_service thread; Connect() and
-  /// Disconnect() touch it only while no reconnect work is scheduled.
+  /// Threading contract for the reconnect state below: it is read and written
+  /// on the io_service thread. The exceptions are Connect() and Disconnect()
+  /// (including from ~RedisContext), which callers must run either on that
+  /// thread or once the io_service is no longer running (GcsServer is
+  /// destroyed after its io_context's run() returns; tests destroy the store
+  /// client while ~io_context discards unrun handlers). Either way nothing
+  /// runs concurrently, so these need no lock; the alive_ sentinel, expired
+  /// first thing in ~RedisContext, turns away work queued before that.
+  ///
   /// Set by Disconnect() and cleared by Connect(). While set, a disconnect
   /// callback must not schedule a reconnect: the teardown may be running from
   /// ~RedisContext, where the io_service is already gone.

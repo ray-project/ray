@@ -122,7 +122,11 @@ void RedisAsyncContext::Reset(
   std::lock_guard<std::mutex> lock(mutex_);
   // The previous raw context was already freed by hiredis, which released
   // `redis_async_context_` via ResetRawRedisAsyncContext. Only the duplicated
-  // descriptor held by `socket_` is still ours to close.
+  // descriptor held by `socket_` is still ours to close. Were it still live,
+  // the assignment in AttachLocked would free it here with `mutex_` held and
+  // re-enter NotifyDisconnected() from inside the lock.
+  RAY_CHECK(redis_async_context_ == nullptr)
+      << "Reset() expects hiredis to have already freed the previous raw context";
   if (socket_.is_open()) {
     boost::system::error_code ec;
     socket_.close(ec);
@@ -135,6 +139,12 @@ void RedisAsyncContext::Reset(
   read_in_progress_ = false;
   write_in_progress_ = false;
   AttachLocked(std::move(redis_async_context));
+  // The caller registered the connect callback before our hooks existed, so
+  // the write wait hiredis armed for it went nowhere. Arm it now: the socket
+  // turns writable when the connect completes, which is how hiredis detects
+  // it, and any command queued meanwhile (the reconnect AUTH) goes out then.
+  // AddWrite only dispatches onto the io_service, so holding `mutex_` is fine.
+  AddWrite();
 }
 
 bool RedisAsyncContext::IsConnected() {
@@ -225,8 +235,8 @@ void RedisAsyncContext::Operate() {
   // Closing a socket does not withdraw the handlers already queued against it;
   // they still run, with a raw pointer to this object and flags that by then
   // describe a different connection. Both guards below cover that.
-  auto guard = [this, generation = socket_generation_](const std::weak_ptr<bool> &alive,
-                                                       bool write) {
+  auto guard = [this, generation = socket_generation_.load()](
+                   const std::weak_ptr<bool> &alive, bool write) {
     return [this, alive, generation, write](const boost::system::error_code &error_code,
                                             std::size_t /*bytes*/) {
       if (alive.expired()) {

@@ -16,9 +16,11 @@
 
 #include <stdarg.h>
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
 #include <boost/bind/bind.hpp>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -86,6 +88,12 @@ class RedisAsyncContext {
   /// `RedisRequestContext`s hold a raw pointer to it. Recreating the
   /// `RedisAsyncContext` instead (as `RedisContext::Connect` does) would leave
   /// those pointers dangling, which is what blocked an in-place reconnect.
+  ///
+  /// The caller must have finished every mutation of the raw context (its
+  /// `data` pointer, connect/disconnect callbacks, queued commands) before
+  /// calling this: once published here, other threads may submit commands on
+  /// it. Because hiredis arms its first write while those callbacks are being
+  /// registered, before our event hooks exist, Reset() arms it again itself.
   ///
   /// \param redis_async_context An already-connected raw context to adopt.
   void Reset(std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
@@ -184,7 +192,8 @@ class RedisAsyncContext {
   /// Bumped every time a new raw context, and with it a new socket, is
   /// adopted. A socket operation queued against an earlier socket must not
   /// touch the flags above once they describe a different connection.
-  uint64_t socket_generation_{0};
+  /// Atomic because the socket handler reads it before taking `mutex_`.
+  std::atomic<uint64_t> socket_generation_{0};
   /// Sentinel letting a queued socket operation notice that this object was
   /// destroyed before its handler ran. Registering a hiredis connect callback
   /// arms a write wait immediately, and RedisContext::Connect tears the
