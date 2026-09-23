@@ -6,23 +6,16 @@ myst:
 
 # Out-of-band Communication
 
-Typically, Ray actor communication is done through actor method calls and data is shared through the distributed object store.
-However, in some use cases out-of-band communication can be useful.
+Typically, Ray actor communication is done through actor method calls and data is shared through the distributed object store. However, in some use cases out-of-band communication can be useful.
 
 ## Wrapping Library Processes
-Many libraries already have mature, high-performance internal communication stacks and
-they leverage Ray as a language-integrated actor scheduler.
-The actual communication between actors is mostly done out-of-band using existing communication stacks.
-For example, Horovod-on-Ray uses NCCL or MPI-based collective communications, and RayDP uses Spark's internal RPC and object manager.
-See [Ray Distributed Library Patterns](https://www.anyscale.com/blog/ray-distributed-library-patterns) for more details.
+Many libraries already have mature, high-performance internal communication stacks and they leverage Ray as a language-integrated actor scheduler. The actual communication between actors is mostly done out-of-band using existing communication stacks. For example, Horovod-on-Ray uses NCCL or MPI-based collective communications, and RayDP uses Spark's internal RPC and object manager. See [Ray Distributed Library Patterns](https://www.anyscale.com/blog/ray-distributed-library-patterns) for more details.
 
 ## Ray Collective
-Ray's collective communication library (\ `ray.util.collective`\ ) allows efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs.
-See {ref}`Ray Collective <ray-collective>` for more details.
+Ray's collective communication library (\ `ray.util.collective`\ ) allows efficient out-of-band collective and point-to-point communication between distributed CPUs or GPUs. See {ref}`Ray Collective <ray-collective>` for more details.
 
 ## HTTP Server
-You can start an HTTP server inside the actor and expose HTTP endpoints to clients
-so users outside of the Ray cluster can communicate with the actor.
+You can start an HTTP server inside the actor and expose HTTP endpoints to clients so users outside of the Ray cluster can communicate with the actor.
 
 ::::{tab-set}
 :::{tab-item} Python

@@ -24,10 +24,7 @@ This means if you are just parallelizing Python code, you won't get true paralle
 
 ## AsyncIO for Actors
 
-Since Python 3.5, it is possible to write concurrent code using the
-`async/await` [syntax](https://docs.python.org/3/library/asyncio.html).
-Ray natively integrates with asyncio. You can use Ray alongside popular
-async frameworks like aiohttp, aioredis, etc.
+Since Python 3.5, it is possible to write concurrent code using the `async/await` [syntax](https://docs.python.org/3/library/asyncio.html). Ray natively integrates with asyncio. You can use Ray alongside popular async frameworks like aiohttp, aioredis, etc.
 
 ```{testcode}
 import ray
@@ -92,9 +89,7 @@ time.sleep(1)
 ```
 
 ### ObjectRefs as asyncio.Futures
-ObjectRefs can be translated to asyncio.Futures. This feature
-make it possible to `await` on ray futures in existing concurrent
-applications.
+ObjectRefs can be translated to asyncio.Futures. This feature make it possible to `await` on ray futures in existing concurrent applications.
 
 Instead of:
 
@@ -143,14 +138,12 @@ asyncio.run(convert_to_asyncio_future())
 ```
 
 
-See the [asyncio doc](https://docs.python.org/3/library/asyncio-task.html)
-for more `asyncio` patterns including timeouts and `asyncio.gather`.
+See the [asyncio doc](https://docs.python.org/3/library/asyncio-task.html) for more `asyncio` patterns including timeouts and `asyncio.gather`.
 
 (async-ref-to-futures)=
 
 ### ObjectRefs as concurrent.futures.Futures
-ObjectRefs can also be wrapped into `concurrent.futures.Future` objects. This
-is useful for interfacing with existing `concurrent.futures` APIs:
+ObjectRefs can also be wrapped into `concurrent.futures.Future` objects. This is useful for interfacing with existing `concurrent.futures` APIs:
 
 ```{testcode}
 import concurrent
@@ -216,17 +209,13 @@ ray.get([actor.run_task.remote() for _ in range(5)])
 (AsyncActor pid=3456) Finished task
 ```
 
-Under the hood, Ray runs all of the methods inside a single python event loop.
-Please note that running blocking `ray.get` or `ray.wait` inside async
-actor method is not allowed, because `ray.get` will block the execution
-of the event loop.
+Under the hood, Ray runs all of the methods inside a single python event loop. Please note that running blocking `ray.get` or `ray.wait` inside async actor method is not allowed, because `ray.get` will block the execution of the event loop.
 
 In async actors, only one task can be running at any point in time (though tasks can be multiplexed). There will be only one thread in AsyncActor! See {ref}`threaded-actors` if you want a threadpool.
 
 ### Setting concurrency in Async Actors
 
-You can set the number of "concurrent" task running at once using the
-`max_concurrency` flag. By default, 1000 tasks can be running concurrently.
+You can set the number of "concurrent" task running at once using the `max_concurrency` flag. By default, 1000 tasks can be running concurrently.
 
 ```{testcode}
 import asyncio
@@ -283,16 +272,14 @@ ray.get([actor.run_task.remote() for _ in range(8)])
 
 ## Threaded Actors
 
-Sometimes, asyncio is not an ideal solution for your actor. For example, you may
-have one method that performs some computation heavy task while blocking the event loop, not giving up control via `await`. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on `await` to context switch.
+Sometimes, asyncio is not an ideal solution for your actor. For example, you may have one method that performs some computation heavy task while blocking the event loop, not giving up control via `await`. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on `await` to context switch.
 
 
 Instead, you can use the `max_concurrency` Actor options without any async methods, allowing you to achieve threaded concurrency (like a thread pool).
 
 
 :::{warning}
-When there is at least one `async def` method in actor definition, Ray
-will recognize the actor as AsyncActor instead of ThreadedActor.
+When there is at least one `async def` method in actor definition, Ray will recognize the actor as AsyncActor instead of ThreadedActor.
 :::
 
 

@@ -7,14 +7,11 @@ myst:
 # Object Spilling
 (object-spilling)=
 
-Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray
-spills objects to the temporary directory (for example, `/tmp/ray/session_2025-03-28_00-05-20_204810_2814690`).
+Ray spills objects to a directory in the local filesystem once the object store is full. By default, Ray spills objects to the temporary directory (for example, `/tmp/ray/session_2025-03-28_00-05-20_204810_2814690`).
 
 ## Spilling to a custom directory
 
-You can specify a custom directory for spilling objects by setting the
-`object_spilling_directory` parameter in the `ray.init` function or the
-`--object-spilling-directory` command line option in the `ray start` command.
+You can specify a custom directory for spilling objects by setting the `object_spilling_directory` parameter in the `ray.init` function or the `--object-spilling-directory` command line option in the `ray start` command.
 
 ::::{tab-set}
 :::{tab-item} Python

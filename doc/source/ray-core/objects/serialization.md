@@ -28,8 +28,7 @@ Each node has its own object store. When data is put into the object store, it d
 
 ### Numpy Arrays
 
-Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data.
-The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
+Ray optimizes for numpy arrays by using Pickle protocol 5 with out-of-band data. The numpy array is stored as a read-only object, and all Ray workers on the same node can read the numpy array in the object store without copying (zero-copy reads). Each numpy array object in the worker process holds a pointer to the relevant array held in shared memory. Any writes to the read-only object will require the user to first copy it into the local process memory.
 
 :::{tip}
 You can often avoid serialization issues by using only native types (e.g., numpy arrays or lists/dicts of numpy arrays and other primitive types), or by using Actors to hold objects that cannot be serialized.
@@ -64,14 +63,9 @@ To avoid this issue, you can manually copy the array at the destination if you n
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. You may have to come up with a workaround if your object contains a lock.
 
 ## Zero-Copy Serialization for Read-Only Tensors
-Ray provides optional zero-copy serialization for read-only PyTorch tensors.
-Ray serializes these tensors by converting them to NumPy arrays and leveraging pickle5's zero-copy buffer sharing.
-This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors.
-However, PyTorch does not natively support read-only tensors, so this feature must be used with caution.
+Ray provides optional zero-copy serialization for read-only PyTorch tensors. Ray serializes these tensors by converting them to NumPy arrays and leveraging pickle5's zero-copy buffer sharing. This avoids copying the underlying tensor data, which can improve performance when passing large tensors across tasks or actors. However, PyTorch does not natively support read-only tensors, so this feature must be used with caution.
 
-When the feature is enabled, Ray won't copy and allow a write to shared memory.
-One process changing a tensor after `ray.get()` could be reflected in another process if both processes are colocated on the same node.
-This feature works best under the following conditions:
+When the feature is enabled, Ray won't copy and allow a write to shared memory. One process changing a tensor after `ray.get()` could be reflected in another process if both processes are colocated on the same node. This feature works best under the following conditions:
 
 - The tensor has `requires_grad = False` (i.e., is detached from the autograd graph).
 
@@ -81,9 +75,7 @@ This feature works best under the following conditions:
 
 - You are not using Ray Direct Transport.
 
-This feature is disabled by default.
-You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS`.
-Set this variable externally before running your script to enable zero-copy serialization in the driver process:
+This feature is disabled by default. You can enable it by setting the environment variable `RAY_ENABLE_ZERO_COPY_TORCH_TENSORS`. Set this variable externally before running your script to enable zero-copy serialization in the driver process:
 
 ```bash
 export RAY_ENABLE_ZERO_COPY_TORCH_TENSORS=1
@@ -128,16 +120,11 @@ Elapsed time: 7.933729998010676s
 
 ## Customized Serialization
 
-Sometimes you may want to customize your serialization process because
-the default serializer used by Ray (pickle5 + cloudpickle) does
-not work for you (fail to serialize some objects, too slow for certain objects, etc.).
+Sometimes you may want to customize your serialization process because the default serializer used by Ray (pickle5 + cloudpickle) does not work for you (fail to serialize some objects, too slow for certain objects, etc.).
 
 There are at least 3 ways to define your custom serialization process:
 
-1. If you want to customize the serialization of a type of objects,
-   and you have access to the code, you can define `__reduce__`
-   function inside the corresponding class. This is commonly done
-   by most Python libraries. Example code:
+1. If you want to customize the serialization of a type of objects, and you have access to the code, you can define `__reduce__` function inside the corresponding class. This is commonly done by most Python libraries. Example code:
 
    ```{testcode}
    import ray
@@ -167,9 +154,7 @@ There are at least 3 ways to define your custom serialization process:
    ```
 
 
-2. If you want to customize the serialization of a type of objects,
-   but you cannot access or modify the corresponding class, you can
-   register the class with the serializer you use:
+2. If you want to customize the serialization of a type of objects, but you cannot access or modify the corresponding class, you can register the class with the serializer you use:
 
    ```{testcode}
    import ray
@@ -207,16 +192,11 @@ There are at least 3 ways to define your custom serialization process:
    ray.util.deregister_serializer(A)
    ```
 
-   NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker,
-   if you want to use the serializer, you need to register the serializer. Deregister
-   a serializer also only applies locally.
+   NOTE: Serializers are managed locally for each Ray worker. So for every Ray worker, if you want to use the serializer, you need to register the serializer. Deregister a serializer also only applies locally.
 
-   If you register a new serializer for a class, the new serializer would replace
-   the old serializer immediately in the worker. This API is also idempotent, there are
-   no side effects caused by re-registering the same serializer.
+   If you register a new serializer for a class, the new serializer would replace the old serializer immediately in the worker. This API is also idempotent, there are no side effects caused by re-registering the same serializer.
 
-3. We also provide you an example, if you want to customize the serialization
-   of a specific object:
+3. We also provide you an example, if you want to customize the serialization of a specific object:
 
    ```{testcode}
    import threading
@@ -349,9 +329,7 @@ The resulting output is:
   =============================================================
 ```
 
-For even more detailed information, set environmental variable `RAY_PICKLE_VERBOSE_DEBUG='2'` before importing Ray. This enables
-serialization with python-based backend instead of C-Pickle, so you can debug into python code at the middle of serialization.
-However, this would make serialization much slower.
+For even more detailed information, set environmental variable `RAY_PICKLE_VERBOSE_DEBUG='2'` before importing Ray. This enables serialization with python-based backend instead of C-Pickle, so you can debug into python code at the middle of serialization. However, this would make serialization much slower.
 
 ## Known Issues
 

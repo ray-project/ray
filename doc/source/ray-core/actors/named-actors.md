@@ -6,13 +6,7 @@ myst:
 
 # Named Actors
 
-An actor can be given a unique name within their {ref}`namespace <namespaces-guide>`.
-This allows you to retrieve the actor from any job in the Ray cluster.
-This can be useful if you cannot directly
-pass the actor handle to the task that needs it, or if you are trying to
-access an actor launched by another driver.
-Note that the actor will still be garbage-collected if no handles to it
-exist. See {ref}`actor-lifetimes` for more details.
+An actor can be given a unique name within their {ref}`namespace <namespaces-guide>`. This allows you to retrieve the actor from any job in the Ray cluster. This can be useful if you cannot directly pass the actor handle to the task that needs it, or if you are trying to access an actor launched by another driver. Note that the actor will still be garbage-collected if no handles to it exist. See {ref}`actor-lifetimes` for more details.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -70,8 +64,7 @@ boost::optional<ray::ActorHandle<Counter>> counter = ray::GetActor("some_name");
 ::::
 
 :::{note}
-Named actors are scoped by namespace. If no namespace is assigned, they will
-be placed in an anonymous namespace by default.
+Named actors are scoped by namespace. If no namespace is assigned, they will be placed in an anonymous namespace by default.
 :::
 
 ::::{tab-set}
@@ -139,13 +132,9 @@ Assert.assertTrue(actor.isPresent());  // actor.isPresent() is true.
 
 ## Get-Or-Create a Named Actor
 
-A common use case is to create an actor only if it doesn't exist.
-Ray provides a `get_if_exists` option for actor creation that does this out of the box.
-This method is available after you set a name for the actor via `.options()`.
+A common use case is to create an actor only if it doesn't exist. Ray provides a `get_if_exists` option for actor creation that does this out of the box. This method is available after you set a name for the actor via `.options()`.
 
-If the actor already exists, a handle to the actor will be returned
-and the arguments will be ignored. Otherwise, a new actor will be
-created with the specified arguments.
+If the actor already exists, a handle to the actor will be returned and the arguments will be ignored. Otherwise, a new actor will be created with the specified arguments.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -179,17 +168,13 @@ Separately, actor lifetimes can be decoupled from the job, allowing an actor to 
 counter = Counter.options(name="CounterActor", lifetime="detached").remote()
 ```
 
-The `CounterActor` will be kept alive even after the driver running above script
-exits. Therefore it is possible to run the following script in a different
-driver:
+The `CounterActor` will be kept alive even after the driver running above script exits. Therefore it is possible to run the following script in a different driver:
 
 ```{testcode}
 counter = ray.get_actor("CounterActor")
 ```
 
-Note that an actor can be named but not detached. If we only specified the
-name without specifying `lifetime="detached"`, then the CounterActor can
-only be retrieved as long as the original driver is still running.
+Note that an actor can be named but not detached. If we only specified the name without specifying `lifetime="detached"`, then the CounterActor can only be retrieved as long as the original driver is still running.
 :::
 
 :::{tab-item} Java
@@ -199,9 +184,7 @@ Ray.init();
 ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name").setLifetime(ActorLifetime.DETACHED).remote();
 ```
 
-The CounterActor will be kept alive even after the driver running above process
-exits. Therefore it is possible to run the following code in a different
-driver:
+The CounterActor will be kept alive even after the driver running above process exits. Therefore it is possible to run the following code in a different driver:
 
 ```java
 System.setProperty("ray.job.namespace", "lifetime");
@@ -217,7 +200,4 @@ Customizing lifetime of an actor hasn't been implemented in C++ yet.
 ::::
 
 
-Unlike normal actors, detached actors are not automatically garbage-collected by Ray.
-Detached actors must be manually destroyed once you are sure that they are no
-longer needed. To do this, use `ray.kill` to {ref}`manually terminate <ray-kill-actors>` the actor.
-After this call, the actor's name may be reused.
+Unlike normal actors, detached actors are not automatically garbage-collected by Ray. Detached actors must be manually destroyed once you are sure that they are no longer needed. To do this, use `ray.kill` to {ref}`manually terminate <ray-kill-actors>` the actor. After this call, the actor's name may be reused.

@@ -16,12 +16,7 @@ Concurrency groups work with both asyncio and threaded actors. The syntax is the
 
 ## Defining Concurrency Groups
 
-This defines two concurrency groups, "io" with max concurrency = 2 and
-"compute" with max concurrency = 4.  The methods `f1` and `f2` are
-placed in the "io" group, and the methods `f3` and `f4` are placed
-into the "compute" group. Note that there is always a default
-concurrency group for actors, which has a default concurrency of 1000 for
-AsyncIO actors and 1 otherwise.
+This defines two concurrency groups, "io" with max concurrency = 2 and "compute" with max concurrency = 4.  The methods `f1` and `f2` are placed in the "io" group, and the methods `f3` and `f4` are placed into the "compute" group. Note that there is always a default concurrency group for actors, which has a default concurrency of 1000 for AsyncIO actors and 1 otherwise.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -122,13 +117,11 @@ myActor.task(ConcurrentActor::f5).remote();  // executed in the "default" group.
 
 ## Default Concurrency Group
 
-By default, methods are placed in a default concurrency group which has a concurrency limit of 1000 for AsyncIO actors and 1 otherwise.
-The concurrency of the default group can be changed by setting the `max_concurrency` actor option.
+By default, methods are placed in a default concurrency group which has a concurrency limit of 1000 for AsyncIO actors and 1 otherwise. The concurrency of the default group can be changed by setting the `max_concurrency` actor option.
 
 ::::{tab-set}
 :::{tab-item} Python
-The following actor has 2 concurrency groups: "io" and "default".
-The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
+The following actor has 2 concurrency groups: "io" and "default". The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
 
 ```{testcode}
 @ray.remote(concurrency_groups={"io": 2})
@@ -141,8 +134,7 @@ actor = AsyncIOActor.options(max_concurrency=10).remote()
 :::
 
 :::{tab-item} Java
-The following concurrent actor has 2 concurrency groups: "io" and "default".
-The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
+The following concurrent actor has 2 concurrency groups: "io" and "default". The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
 
 ```java
 class ConcurrentActor {
@@ -173,8 +165,7 @@ ActorHandle<ConcurrentActor> myActor = Ray.actor(ConcurrentActor::new)
 
 You can also dispatch actor methods into a specific concurrency group at runtime.
 
-The following snippet demonstrates setting the concurrency group of the
-`f2` method dynamically at runtime.
+The following snippet demonstrates setting the concurrency group of the `f2` method dynamically at runtime.
 
 ::::{tab-set}
 :::{tab-item} Python
