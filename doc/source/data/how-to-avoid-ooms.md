@@ -183,7 +183,7 @@ If Ray detects that system processes use more memory than the reserved amount, i
 System slice memory usage 10869600256 bytes has exceeded the reserved system memory of 10737418240 bytes. This can prevent Ray from being able to provide the proper protection to critical system processes and can lead to node deaths and significant loss of progress. Please consider passing a system reserved memory value that is higher than the current system slice memory usage via the --system-reserved-memory flag when starting the raylet.
 ```
 
-In this case, reserve more system memory by passing a value in bytes to the `ray start` flag `--system-reserved-memory`. Leave a buffer of at least 1 GiB between the reported or expected system slice memory usage and the reserved system memory. The right buffer size depends on the host size.
+In this case, reserve more system memory by passing a value in bytes to the `ray start` flag `--system-reserved-memory`. Try to leave a buffer of at least 1 GiB, depending on the host size, between the reported or expected system slice memory usage and the reserved system memory.
 
 The default is usually fine unless you use small nodes, such as an m5.xlarge.
 

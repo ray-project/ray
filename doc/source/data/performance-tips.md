@@ -265,7 +265,7 @@ This is an active area of development. If your Dataset causes spilling and you d
 
 When different operators of your Dataset produce different-sized outputs, you might end up with tiny blocks, which can hurt performance and even cause crashes from excessive metadata. Use {meth}`ds.stats() <ray.data.Dataset.stats>` to check that each operator's output blocks are at least 1 MB each, and ideally larger than 100 MB.
 
-If your blocks are smaller than this, repartition them into larger blocks. You can do this in two ways:
+If your blocks are smaller than this, consider repartitioning them into larger blocks. You can do this in two ways:
 
 1. If you need control over the exact number of output blocks, use {meth}`ds.repartition(num_partitions) <ray.data.Dataset.repartition>`. This is an {ref}`all-to-all operation <optimizing_shuffles>`, and it materializes all blocks into memory before performing the repartition.
 1. If you don't need control over the exact number of output blocks and want only to produce larger blocks, use {meth}`ds.map_batches(lambda batch: batch, batch_size=batch_size) <ray.data.Dataset.map_batches>` and set `batch_size` to the desired number of rows per block. This approach runs in a streaming fashion and avoids materialization.
@@ -332,11 +332,11 @@ The following section describes how to configure execution resources and localit
 
 By default, Ray Data sets the CPU and GPU limits to the cluster size. It conservatively sets the object store memory limit to 1/4 of the total object store size to avoid the possibility of disk spilling.
 
-Customize these limits in the following scenarios:
+You might want to customize these limits in the following scenarios:
 
 - When you run multiple concurrent jobs on the cluster, lower limits can avoid resource contention between the jobs.
 - When you want to fine-tune the memory limit to maximize performance.
-- When you load data into training jobs, set the object store memory to a low value, such as 2 GB, to limit resource usage.
+- When you load data into training jobs, you might want to set the object store memory to a low value, such as 2 GB, to limit resource usage.
 
 Configure execution options with the global DataContext. The options apply to future jobs launched in the process:
 
