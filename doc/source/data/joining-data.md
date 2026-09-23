@@ -41,7 +41,7 @@ Ray Data supports the following join types:
 
 See {meth}`Dataset.join <ray.data.Dataset.join>` for the current list.
 
-Internally, joins use a hash-shuffle backend that joins each hash partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tuning shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
+Internally, joins use a hash-shuffle backend that joins each hash partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tune shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
 
 (configuring-joins)=
 

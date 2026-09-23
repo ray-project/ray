@@ -256,7 +256,7 @@ When enabled, Ray Data records progress during execution. If a batch inference j
 
 This is especially useful for large batch inference workloads where restarting from the beginning would be expensive.
 
-To enable job-level checkpointing, configure a {class}`~ray.data.checkpoint.CheckpointConfig` on the current {class}`~ray.data.DataContext`. See the {ref}`Execution Configurations <execution_configurations>` guide for details.
+To enable job-level checkpointing, configure a {class}`~ray.data.checkpoint.CheckpointConfig` on the current {class}`~ray.data.DataContext`. See the {ref}`Execution configurations <execution_configurations>` guide for details.
 
 ### Using GPUs for inference
 
