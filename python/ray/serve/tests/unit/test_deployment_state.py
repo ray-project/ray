@@ -11708,6 +11708,7 @@ class TestPushedHealth:
         w._last_consumed_push_ts = 0.0
         w._last_applied_push_received_at = 0.0
         w._last_probe_applied_time = 0.0
+        w._suppressed_health_timeouts = 0
         w._version = SimpleNamespace(
             deployment_config=SimpleNamespace(
                 health_check_period_s=10.0, health_check_timeout_s=30.0
@@ -12065,9 +12066,11 @@ class TestIngestLagGate:
         ds._replicas = SimpleNamespace(count=lambda states: running)
         return ds
 
-    def test_expected_rate_is_the_heartbeat_cadence(self):
+    def test_expected_rate_is_one_heartbeat_per_period(self):
+        """Not the two the self-check attempts: the pusher sleeps its interval after
+        the eval, so a slow user check halves the real cadence legitimately."""
         ds = self._ds_for_rate(period_s=20.0, metrics_interval_s=None)
-        assert ds.expected_push_rate() == 10.0  # 100 replicas * 2 / 20s
+        assert ds.expected_push_rate() == 5.0  # 100 replicas / 20s
 
     def test_expected_rate_ignores_the_metric_cadence(self):
         """Only the heartbeat feeds the registry here; metric reports do not carry
@@ -12075,7 +12078,15 @@ class TestIngestLagGate:
         owes and latch ingest_lagging() on forever."""
         for interval in (2.0, 10.0, 60.0):
             ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=interval)
-            assert ds.expected_push_rate() == 20.0  # 100 * 2 / 10s, whatever interval
+            assert ds.expected_push_rate() == 10.0  # 100 / 10s, whatever the interval
+
+    def test_a_slow_user_check_is_not_judged_lagging(self):
+        """Regression: expecting two heartbeats per period made any user check slower
+        than half the period read as controller lag, which suppressed timeouts fleet
+        wide for a fleet that was merely slow."""
+        ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=None)
+        # A 4s eval leaves a 9s cycle (eval + period/2), so 100 replicas deliver ~11/s.
+        assert 100 / 9.0 > ds.expected_push_rate() * 0.5
 
     def test_a_healthy_fleet_is_never_judged_lagging(self, monkeypatch):
         """Regression: the expected rate must match what the senders actually do, or a
@@ -12088,6 +12099,18 @@ class TestIngestLagGate:
         r.ingest_lagging()  # opens the window
         # 100 replicas heartbeating twice per 10s period over a 30s window.
         for i in range(int(100 * 2 / 10.0 * r._RATE_WINDOW_S)):
+            r.record(f"r{i}", clock[0], True)
+        clock[0] += r._RATE_WINDOW_S
+        assert not r.ingest_lagging()
+
+    def test_a_shortfall_short_of_the_ratio_is_not_lagging(self, monkeypatch):
+        """Pins _LAGGING_RATIO from above: at 1.0 any shortfall at all would engage
+        the gate, which is a materially different policy."""
+        clock = [1000.0]
+        r = self._registry(monkeypatch, clock)
+        r.set_expected_rate(1.0)  # 30 reports due over the window
+        r.ingest_lagging()
+        for i in range(20):  # two thirds of them arrive
             r.record(f"r{i}", clock[0], True)
         clock[0] += r._RATE_WINDOW_S
         assert not r.ingest_lagging()
@@ -12141,6 +12164,76 @@ class TestIngestLagGate:
 
         monkeypatch.setattr(ds_mod.ray, "get", _crashed)
         assert w.check_health(ingest_lagging=True) is False
+
+    def test_the_sweep_forwards_its_verdict_to_each_replica(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """The two halves of the gate are wired here and nowhere else; without this
+        the argument could be dropped at both call sites and every test stay green."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        registry = ReplicaHealthPushRegistry()
+        monkeypatch.setattr(registry, "ingest_lagging", lambda: True)
+        dsm._health_push_registry = registry
+        dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        ds._health_push_registry = registry
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+        dsm.update()
+        assert ds._replicas.get()[0]._actor.last_ingest_lagging is True
+
+    def test_update_publishes_what_the_fleet_owes(
+        self, mock_deployment_state_manager, monkeypatch
+    ):
+        """Drop this and the expected rate stays 0, leaving the gate inert forever."""
+        monkeypatch.setattr(ds_mod, "RAY_SERVE_ENABLE_PUSH_HEALTH", True)
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        registry = ReplicaHealthPushRegistry()
+        dsm._health_push_registry = registry
+        dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        ds._health_push_registry = registry
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        dsm.update()
+        assert registry._expected_rate_per_s == ds.expected_push_rate() > 0
+
+    def test_suppression_is_bounded_so_a_quiet_fleet_still_resolves(self, monkeypatch):
+        """A fleet that has itself gone quiet produces the same shortfall reading as a
+        behind controller, so an unbounded gate would shield the hang that caused it."""
+        w = self._timed_out_probe(monkeypatch)
+        for _ in range(ds_mod.RAY_SERVE_MAX_SUPPRESSED_HEALTH_TIMEOUTS):
+            w._health_check_ref = "probe_ref"
+            w._last_health_check_time = time.time() - 60.0
+            assert w.check_health(ingest_lagging=True) is True
+        assert w._consecutive_health_check_failures == 0
+        # Past the bound the strike lands even though ingest is still behind.
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time() - 60.0
+        w.check_health(ingest_lagging=True)
+        assert w._consecutive_health_check_failures == 1
+
+    def test_a_real_verdict_refills_the_suppression_budget(self, monkeypatch):
+        w = self._timed_out_probe(monkeypatch)
+        assert w.check_health(ingest_lagging=True) is True
+        assert w._suppressed_health_timeouts == 1
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        monkeypatch.setattr(ds_mod.ray, "get", lambda ref: None)
+        assert w.check_health(ingest_lagging=True) is True
+        assert w._suppressed_health_timeouts == 0
+
+    def test_a_suppressed_timeout_records_no_latency(self, monkeypatch):
+        """Otherwise the one episode where failures are ignored reads as merely slow."""
+        w = self._timed_out_probe(monkeypatch)
+        w.check_health(ingest_lagging=True)
+        assert w.last_health_check_latency_ms is None
 
 
 if __name__ == "__main__":

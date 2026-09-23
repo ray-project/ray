@@ -78,6 +78,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_MAX_SUPPRESSED_HEALTH_TIMEOUTS,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
@@ -887,6 +888,7 @@ class ActorReplicaWrapper:
         self._last_health_check_latency_ms: Optional[float] = None
         self._last_health_check_failed: Optional[bool] = None
         self._last_health_check_timed_out: bool = False
+        self._suppressed_health_timeouts: int = 0
         # Latest self-health pushed by the replica, plus the watermarks that stop a
         # push and an in-flight probe from overwriting each other's verdict.
         self._pushed_health: Optional[Tuple[float, float, bool, Optional[int]]] = None
@@ -1951,6 +1953,14 @@ class ActorReplicaWrapper:
             2) Determining the replica health based on the health check results.
             3) Consuming a pushed self-health observation when no probe resolved.
             4) Kicking off a new health check if needed.
+
+        Args:
+            ingest_lagging: the controller is draining pushes more slowly than the
+                fleet publishes them, so a bounded number of probe timeouts score as
+                no information rather than as a failure.
+
+        Returns:
+            True if the replica is healthy, else False.
         """
         response: ReplicaHealthCheckResponse = self._check_active_health_check()
         if (
@@ -1972,16 +1982,25 @@ class ActorReplicaWrapper:
             response is ReplicaHealthCheckResponse.APP_FAILURE
             and self._last_health_check_timed_out
             and ingest_lagging
+            and self._suppressed_health_timeouts
+            < RAY_SERVE_MAX_SUPPRESSED_HEALTH_TIMEOUTS
         ):
             # The probe never came back and the controller is draining pushes slower
             # than the fleet publishes them, so the silence is at least as likely to be
-            # this loop as the replica. A crashed actor still reports ACTOR_CRASHED.
-            logger.info(
-                f"Ignoring health check timeout for {self._replica_id} while "
-                "controller ingest is behind."
-            )
+            # this loop as the replica. Bounded, because a fleet that has itself gone
+            # quiet produces the same reading and would otherwise hold the gate open
+            # forever. A crashed actor still reports ACTOR_CRASHED.
+            if self._suppressed_health_timeouts == 0:
+                logger.info(
+                    f"Ignoring health check timeout for {self._replica_id} while "
+                    "controller ingest is behind."
+                )
+            self._suppressed_health_timeouts += 1
             response = ReplicaHealthCheckResponse.NONE
+            # Drop the latency sample too: a suppressed timeout is not a measurement,
+            # and recording it makes the episode read as merely slow.
             self._last_health_check_failed = None
+            self._last_health_check_latency_ms = None
         if response is not ReplicaHealthCheckResponse.NONE:
             # Watermark by when this probe started: a push that arrived before that
             # is strictly older information and must not overwrite the result.
@@ -2009,6 +2028,9 @@ class ActorReplicaWrapper:
             # Only the probe paths set this, so the flag would go silent for the
             # path the controller now acts on most.
             self._last_health_check_failed = not pushed_healthy
+        if response is not ReplicaHealthCheckResponse.NONE:
+            # Any real verdict, pushed or probed, refills the suppression budget.
+            self._suppressed_health_timeouts = 0
         if response is ReplicaHealthCheckResponse.NONE:
             # No info; don't update replica health.
             pass
@@ -5512,9 +5534,9 @@ class DeploymentState:
     def expected_push_rate(self) -> float:
         """Heartbeats per second this deployment's replicas should send.
 
-        The self-check runs twice per health-check period and each run heartbeats, so
-        that cadence is the only thing feeding the registry. Erring low is safe: it can
-        only make the controller decide it is keeping up.
+        One per period, not the two the self-check actually attempts: the pusher sleeps
+        its interval *after* the eval, so a slow user check legitimately halves the real
+        cadence and must not read as the controller falling behind.
         """
         info = self._target_state.info
         if info is None:
@@ -5523,7 +5545,7 @@ class DeploymentState:
         if not running:
             return 0.0
         # health_check_period_s is a PositiveFloat, so it cannot be zero here.
-        return running * 2.0 / info.deployment_config.health_check_period_s
+        return running / info.deployment_config.health_check_period_s
 
     def _apply_pushed_health(self, replica: "DeploymentReplica") -> None:
         """Hand the replica its latest pushed self-health before the health check."""
@@ -5547,8 +5569,8 @@ class DeploymentState:
         # RUNNING/PENDING_MIGRATION in place, avoiding the O(num_replicas) pop/re-add
         # churn at scale. Gang deployments use the pop/re-add path (their force-stop
         # reshuffles the lists).
-        # One reading per tick, so every replica is judged against the same verdict
-        # about the controller's own ingest.
+        # One reading per sweep, so every replica in it is judged against the same
+        # verdict about the controller's own ingest.
         lagging = self._health_push_registry is not None and (
             self._health_push_registry.ingest_lagging()
         )
