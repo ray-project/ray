@@ -92,7 +92,9 @@ class FileIndexer(ABC):
             execution_idx: Execution index used with ``shuffle_config`` to
                 derive a per-execution seed.
             excluded_read_unit_ids: Ids of read units (see ``ReadUnit.id``) a
-                checkpoint already finished; they must not be listed. A file
+                checkpoint already finished; they must not be listed. This is
+                all or nothing: only pass completely checkpointed units. A
+                partially finished unit is skipped whole if passed. A file
                 path names the whole file and every indexer honors it. An
                 indexer that lists a file in parts also honors the ids its
                 reader reports for those parts (the footer-based Parquet
