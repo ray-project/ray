@@ -383,6 +383,11 @@ class GenericProxy(ABC):
         matched_route = None
         if self.protocol == RequestProtocol.HTTP:
             matched_route = self.proxy_router.match_route(proxy_request.route_path)
+            unprefixed_route_path = proxy_request.unprefixed_route_path
+            if matched_route is None and unprefixed_route_path is not None:
+                matched_route = self.proxy_router.match_route(unprefixed_route_path)
+                if matched_route is not None:
+                    cast(ASGIProxyRequest, proxy_request).treat_as_unprefixed()
         elif self.protocol == RequestProtocol.GRPC:
             matched_route = self.proxy_router.get_handle_for_endpoint(
                 proxy_request.route_path

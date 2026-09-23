@@ -296,14 +296,58 @@ def test_http_root_path(ray_shutdown):
     serve.run(hello.bind(), route_prefix="/hello")
 
     # check routing works as expected
-    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/hello")
-    assert resp.status_code == 200
-    assert resp.text == "hello"
+    for prefix in [root_path, ""]:
+        resp = httpx.get(f"http://127.0.0.1:{port}{prefix}/hello")
+        assert resp.status_code == 200
+        assert resp.text == "hello"
 
     # check advertized routes are prefixed correctly
-    resp = httpx.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
-    assert resp.status_code == 200
-    assert resp.json() == {"/hello": "default"}
+    for prefix in [root_path, ""]:
+        resp = httpx.get(f"http://127.0.0.1:{port}{prefix}/-/routes")
+        assert resp.status_code == 200
+        assert resp.json() == {"/hello": "default"}
+
+        resp = httpx.get(f"http://127.0.0.1:{port}{prefix}/-/healthz")
+        assert resp.status_code == 200
+        assert resp.text == "success"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_HA_PROXY,
+    reason="HAProxy direct ingress strips root_path before forwarding requests.",
+)
+def test_http_root_path_fastapi(ray_shutdown):
+    from fastapi import FastAPI, Request
+
+    app = FastAPI()
+
+    @app.get("/")
+    def root(request: Request):
+        return str(request.url_for("item", item_id=1))
+
+    @app.get("/items/{item_id}", name="item")
+    def item(item_id: int):
+        return item_id
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Ingress:
+        pass
+
+    port = find_free_port()
+    serve.start(http_options=dict(root_path="/api", port=port))
+    serve.run(Ingress.bind(), route_prefix="/api/v1")
+
+    base_url = f"http://127.0.0.1:{port}"
+    for prefix in ["/api/api/v1", "/api/v1"]:
+        resp = httpx.get(f"{base_url}{prefix}/")
+        assert resp.status_code == 200
+        assert resp.json() == f"{base_url}/api/api/v1/items/1"
+
+        resp = httpx.get(f"{base_url}{prefix}/items/2")
+        assert resp.status_code == 200
+        assert resp.json() == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")

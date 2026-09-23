@@ -14,6 +14,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
+    _apply_root_path,
     configure_http_middlewares,
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
@@ -429,6 +430,44 @@ class TestBackpressureHTTPResponse:
         exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
         assert exc.status_code == 503
         assert exc.retry_after_s is None
+
+
+async def _apply_root_path_to_scope(scope: dict, root_path: str) -> dict:
+    received = []
+
+    async def app(scope, receive, send):
+        received.append(scope)
+
+    wrapped = _apply_root_path(app, root_path)
+    await wrapped(scope, None, None)
+    assert len(received) == 1
+    return received[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scope_type,root_path,path,expected_path",
+    [
+        ("http", "", "/hello", "/hello"),
+        ("http", "/serve", "/serve/hello", "/serve/hello"),
+        ("http", "/serve", "/hello", "/serve/hello"),
+        ("http", "/serve/", "/serve/hello", "/serve/hello"),
+        ("websocket", "/serve", "/hello", "/serve/hello"),
+    ],
+)
+async def test_apply_root_path(
+    scope_type: str,
+    root_path: str,
+    path: str,
+    expected_path: str,
+):
+    scope = await _apply_root_path_to_scope(
+        {"type": scope_type, "path": path, "raw_path": path.encode(), "root_path": ""},
+        root_path,
+    )
+    assert scope["path"] == expected_path
+    assert scope["raw_path"] == expected_path.encode()
+    assert scope["root_path"] == root_path.rstrip("/")
 
 
 if __name__ == "__main__":

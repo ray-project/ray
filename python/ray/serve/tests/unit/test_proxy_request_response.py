@@ -9,6 +9,7 @@ from ray.serve._private.logging_utils import access_log_msg, format_client_addre
 from ray.serve._private.proxy_request_response import (
     ASGIProxyRequest,
     ProxyRequest,
+    ROOT_PATH_PREFIXED_SCOPE_KEY,
     gRPCProxyRequest,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
@@ -146,6 +147,23 @@ class TestASGIProxyRequest:
         scope = {"path": "/foo"}
         proxy_request = self.create_asgi_proxy_request(scope=scope)
         assert proxy_request.is_health_request is False
+
+    def test_unprefixed_route_path(self):
+        scope = {
+            "path": "/api/v1",
+            "raw_path": b"/api/v1",
+            "root_path": "/api",
+            ROOT_PATH_PREFIXED_SCOPE_KEY: True,
+        }
+        proxy_request = self.create_asgi_proxy_request(scope=scope)
+
+        assert proxy_request.route_path == "/v1"
+        assert proxy_request.unprefixed_route_path == "/api/v1"
+
+        proxy_request.treat_as_unprefixed()
+        assert proxy_request.path == "/api/api/v1"
+        assert scope["raw_path"] == b"/api/api/v1"
+        assert proxy_request.unprefixed_route_path is None
 
 
 class TestgRPCProxyRequest:
