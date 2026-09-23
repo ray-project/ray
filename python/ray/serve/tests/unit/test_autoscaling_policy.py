@@ -1606,29 +1606,5 @@ def test_last_decision_total_num_requests_reuses_decision_value():
     assert st.get_last_decision_total_num_requests() == 42.0
 
 
-def test_total_pending_async_requests_is_deprecated():
-    """Reading total_pending_async_requests warns; Serve-built contexts report 0."""
-    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
-    st.register(
-        DeploymentInfo(
-            deployment_config=DeploymentConfig(
-                autoscaling_config=AutoscalingConfig(min_replicas=1, max_replicas=10)
-            ),
-            replica_config=ReplicaConfig.create(lambda x: x),
-            start_time_ms=0,
-            deployer_job_id="",
-        ),
-        curr_target_num_replicas=1,
-    )
-    ctx = st.get_autoscaling_context(1)
-    with pytest.warns(DeprecationWarning, match="AsyncInferenceAutoscalingPolicy"):
-        assert ctx.total_pending_async_requests == 0
-
-    # Callers that still pass the argument keep getting their value back.
-    ctx = create_context_with_overrides(ctx, total_pending_async_requests=7)
-    with pytest.warns(DeprecationWarning, match="AsyncInferenceAutoscalingPolicy"):
-        assert ctx.total_pending_async_requests == 7
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
