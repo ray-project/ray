@@ -667,7 +667,7 @@ class ReporterAgent(
 
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider(
-            enable_metric_report=dashboard_agent.gpu_metrics_enabled
+            enable_metric_report=dashboard_agent.enable_gpu_metrics
         )
         self._npu_metric_provider = NpuMetricProvider()
 
