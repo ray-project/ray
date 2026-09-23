@@ -547,6 +547,8 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
 def test_random_shuffle_fuses_at_most_one_upstream_map(
     ray_start_regular_shared_2_cpus, filter_kwargs, map_batches_kwargs
 ):
+    from ray.data._internal.util import explain_plan
+
     # Two MapOperators left unfused by map fusion must not both be fused into the
     # shuffle: only one `ctx.upstream_map_transformer` survives, so the outer map
     # (here, Filter) would be silently dropped.
@@ -556,9 +558,9 @@ def test_random_shuffle_fuses_at_most_one_upstream_map(
     ds = ds.random_shuffle()
 
     assert sorted(extract_values("item", ds.take_all())) == list(range(0, 100, 2))
-    stats = ds.stats()
-    assert "Filter(<lambda>)->MapBatches(<lambda>)->RandomShuffle" not in stats
-    assert "MapBatches(<lambda>)->RandomShuffle" in stats
+    explain_str = explain_plan(ds._logical_plan)
+    assert "Filter(<lambda>)->MapBatches(<lambda>)->RandomShuffle" not in explain_str
+    assert "MapBatches(<lambda>)->RandomShuffle" in explain_str
 
 
 @pytest.mark.parametrize("shuffle", (True, False))
