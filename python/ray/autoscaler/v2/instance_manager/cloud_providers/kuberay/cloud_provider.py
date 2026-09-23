@@ -787,8 +787,20 @@ class KubeRayProvider(ICloudInstanceProvider):
         # using a read-modify-write to preserve existing finalizers.
         finalizers = self._ray_cluster.get("metadata", {}).get("finalizers", [])
         if IDLE_TERMINATION_CLEANUP_FINALIZER not in finalizers:
+            resource_version = self._ray_cluster.get("metadata", {}).get(
+                "resourceVersion"
+            )
+            if resource_version is None:
+                logger.error(
+                    f"RayCluster {self._cluster_name} has no metadata.resourceVersion; "
+                    "skipping idle termination delete."
+                )
+                return
+
             # metadata.finalizers is an array so we use a JSON Patch add-operation to append IDLE_TERMINATION_CLEANUP_FINALIZER
-            payload = finalizer_patch(IDLE_TERMINATION_CLEANUP_FINALIZER, finalizers)
+            payload = finalizer_patch(
+                IDLE_TERMINATION_CLEANUP_FINALIZER, finalizers, resource_version
+            )
             try:
                 patched_raycluster = self._k8s_api_client.patch(
                     path, payload, content_type="application/json-patch+json"
@@ -806,6 +818,17 @@ class KubeRayProvider(ICloudInstanceProvider):
                     )
                     return
 
+            except requests.HTTPError as e:
+                if e.response.status_code == 422:
+                    logger.warning(
+                        f"Patch adding {IDLE_TERMINATION_CLEANUP_FINALIZER} to RayCluster {self._cluster_name} was rejected; "
+                        f"will retry adding {IDLE_TERMINATION_CLEANUP_FINALIZER} in the next reconcile cycle."
+                    )
+                else:
+                    logger.exception(
+                        f"Failed to add {IDLE_TERMINATION_CLEANUP_FINALIZER} finalizer to {self._cluster_name}"
+                    )
+                return
             except Exception:
                 logger.exception(
                     f"Failed to add {IDLE_TERMINATION_CLEANUP_FINALIZER} finalizer to {self._cluster_name}"

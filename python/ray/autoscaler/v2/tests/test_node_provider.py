@@ -12,6 +12,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest  # noqa
+import requests
 
 import ray
 from ray._common.test_utils import wait_for_condition
@@ -865,10 +866,15 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
         assert patch == [
             {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
                 "op": "add",
                 "path": "/metadata/finalizers",
                 "value": [IDLE_TERMINATION_CLEANUP_FINALIZER],
-            }
+            },
         ]
         assert self.mock_client._deletes == [path]
 
@@ -897,10 +903,15 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
 
         assert self.mock_client.get_patches(path) == [
             {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
                 "op": "add",
                 "path": "/metadata/finalizers/-",
                 "value": IDLE_TERMINATION_CLEANUP_FINALIZER,
-            }
+            },
         ]
         # The pre-existing finalizer must survive the append, not get clobbered.
         assert self.provider._ray_cluster["metadata"]["finalizers"] == [
@@ -940,11 +951,28 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert delete_calls == [path]
         assert self.mock_client.get_patches(path) == [
             {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
                 "op": "add",
                 "path": "/metadata/finalizers",
                 "value": [IDLE_TERMINATION_CLEANUP_FINALIZER],
-            }
+            },
         ]
+
+    def test_apply_idle_termination_policy_delete_skips_delete_on_patch_conflict(self):
+        def conflicting_patch(*args, **kwargs):
+            resp = requests.Response()
+            resp.status_code = 422
+            raise requests.HTTPError(response=resp)
+
+        self.mock_client.patch = conflicting_patch
+        self.provider._idle_termination_policy = "Delete"
+        self.provider._apply_idle_termination_policy()
+
+        assert self.mock_client._deletes == []
 
     def test_apply_idle_termination_policy_suspend_patches_idle_suspend(self):
         self.provider._idle_termination_policy = "Suspend"
@@ -1058,10 +1086,15 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         evaluate_at(100.0)
         assert self.mock_client._patches.get(path) == [
             {
+                "op": "test",
+                "path": "/metadata/resourceVersion",
+                "value": "123456",
+            },
+            {
                 "op": "add",
                 "path": "/metadata/finalizers",
                 "value": [IDLE_TERMINATION_CLEANUP_FINALIZER],
-            }
+            },
         ]
         assert self.mock_client._deletes == [path]
 
