@@ -566,10 +566,11 @@ def test_delete_application(serve_instance):
     assert httpx.get(url).text == "got g"
 
 
-# A crash rebuilds the replica, and its predecessor dies mid-__del__.
+# A replica killed mid-initialization by a controller restart is replaced without
+# reaching its destructor, which serve does not guarantee there (ray#66322).
 @pytest.mark.skipif(
     RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING > 0,
-    reason="Crash injection rebuilds the replica, so __del__ does not run exactly once.",
+    reason="A replica killed mid-initialization is replaced without running __del__.",
 )
 @pytest.mark.asyncio
 async def test_delete_while_initializing(serve_instance):
