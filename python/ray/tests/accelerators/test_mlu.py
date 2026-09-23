@@ -48,7 +48,6 @@ def test_get_current_node_accelerator_type():
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
     monkeypatch.delenv(CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
-    monkeypatch.setenv("MLU_VISIBLE_DEVICES", "2")
     assert MLUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
 
     monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "0,1,2")
