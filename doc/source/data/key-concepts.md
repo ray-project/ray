@@ -65,7 +65,7 @@ Project
    +- Dataset(schema={...})
 ```
 
-When execution begins, Ray Data optimizes the logical plan and then translates it into a physical plan, which is a series of operators that implement the data transformations. Two things happen during this translation:
+When execution begins, Ray Data optimizes the logical plan and then translates it into a physical plan, which is a series of operators that implement the data transformations. The following happens during this translation:
 
 * A single logical operator can become multiple physical operators. For example, `ReadOp` becomes both `InputDataBuffer` and `TaskPoolMapOperator`.
 * Both logical and physical plans go through optimization passes. For example, `OperatorFusionRule` combines map operators to reduce serialization overhead.
