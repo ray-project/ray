@@ -40,12 +40,9 @@ from ray.serve.context import (
     _get_serve_request_context,
 )
 
-MOCK_ANTHROPIC_TEXT = "Hello from mock Anthropic."
+MOCK_ANTHROPIC_STREAM_CHUNKS = ("chunk-0", "chunk-1")
+MOCK_ANTHROPIC_STREAM_CHUNK_DELAY_S = 0.5
 MOCK_ANTHROPIC_INPUT_TOKENS = 8
-
-
-def _anthropic_sse_event(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
 class MockVLLMEngine(LLMEngine):
@@ -247,64 +244,12 @@ class MockVLLMEngine(LLMEngine):
         async def messages(request: Request):
             body = await request.json()
             check_model(body.get("model"))
-            payload = {
-                "id": "msg_mock",
-                "type": "message",
-                "role": "assistant",
-                "model": self.llm_config.model_id,
-                "content": [{"type": "text", "text": MOCK_ANTHROPIC_TEXT}],
-                "stop_reason": "end_turn",
-                "usage": {
-                    "input_tokens": MOCK_ANTHROPIC_INPUT_TOKENS,
-                    "output_tokens": 6,
-                },
-            }
-            if not body.get("stream"):
-                return JSONResponse(content=payload)
 
             async def stream():
-                yield _anthropic_sse_event(
-                    "message_start",
-                    {
-                        "type": "message_start",
-                        "message": {**payload, "content": []},
-                    },
-                )
-                yield _anthropic_sse_event(
-                    "content_block_start",
-                    {
-                        "type": "content_block_start",
-                        "index": 0,
-                        "content_block": {"type": "text", "text": ""},
-                    },
-                )
-                yield _anthropic_sse_event(
-                    "content_block_delta",
-                    {
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {
-                            "type": "text_delta",
-                            "text": MOCK_ANTHROPIC_TEXT,
-                        },
-                    },
-                )
-                yield _anthropic_sse_event(
-                    "content_block_stop",
-                    {"type": "content_block_stop", "index": 0},
-                )
-                yield _anthropic_sse_event(
-                    "message_delta",
-                    {
-                        "type": "message_delta",
-                        "delta": {"stop_reason": "end_turn"},
-                        "usage": {"output_tokens": 6},
-                    },
-                )
-                yield _anthropic_sse_event(
-                    "message_stop",
-                    {"type": "message_stop"},
-                )
+                for i, chunk in enumerate(MOCK_ANTHROPIC_STREAM_CHUNKS):
+                    if i:
+                        await asyncio.sleep(MOCK_ANTHROPIC_STREAM_CHUNK_DELAY_S)
+                    yield f"data: {chunk}\n\n"
 
             return StreamingResponse(stream(), media_type="text/event-stream")
 

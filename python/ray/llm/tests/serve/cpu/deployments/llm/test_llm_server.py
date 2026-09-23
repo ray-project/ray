@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 
 import numpy as np
 import pytest
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from vllm.entrypoints.launchers.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
@@ -863,14 +862,9 @@ class TestBuildAsgiApp:
         ):
             app = await engine.build_asgi_app()
 
-        routes = {
-            (route.path, method)
-            for route in app.routes
-            if isinstance(route, APIRoute)
-            for method in route.methods
-        }
-        assert ("/v1/messages", "POST") in routes
-        assert ("/v1/messages/count_tokens", "POST") in routes
+        paths = app.openapi()["paths"]
+        assert "post" in paths["/v1/messages"]
+        assert "post" in paths["/v1/messages/count_tokens"]
 
 
 if __name__ == "__main__":
