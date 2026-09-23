@@ -1,9 +1,11 @@
 """Unit tests for the manifest chunk-metadata types in DataSourceV2."""
 import pytest
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ChunkMetadata,
+from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
     ParquetRowGroupChunkMetadata,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    ChunkMetadata,
     create_chunk_metadata,
 )
 

@@ -16,16 +16,14 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.listing_utils import (
-    sample_files,
-)
-from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
-from ray.data._internal.datasource_v2.scanners.parquet_scanner import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
 from ray.data._internal.logical.operators import Filter, ListFiles, ReadFiles

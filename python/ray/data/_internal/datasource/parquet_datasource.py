@@ -25,10 +25,11 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
-from ray.data._internal.datasource_v2.logical_optimizers import (
+from ray.data._internal.datasource_v2.common.file_reader import _compute_row_hashes
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
 )
-from ray.data._internal.datasource_v2.parquet_utils import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     PARQUET_FILE_EXTENSIONS,
     _get_safe_batch_size_for_nested_types,
     _needs_nested_type_fallback,

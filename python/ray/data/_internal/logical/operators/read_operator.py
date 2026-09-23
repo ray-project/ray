@@ -24,12 +24,12 @@ if TYPE_CHECKING:
     import pyarrow as pa
     from pyarrow.fs import FileSystem
 
-    from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
-    from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
-    from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    from ray.data._internal.datasource_v2.interfaces.file_indexer import FileIndexer
+    from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         FilePartitioner,
     )
-    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+    from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+    from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
 
@@ -325,7 +325,7 @@ class ReadFiles(
         return BlockMetadata(None, None, None, None)
 
     def supports_projection_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsColumnPruning,
         )
 
@@ -349,7 +349,7 @@ class ReadFiles(
     ) -> "ReadFiles":
         if projection_map is None:
             return self
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsColumnPruning,
         )
 
@@ -364,7 +364,7 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
         )
@@ -380,11 +380,13 @@ class ReadFiles(
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        from ray.data._internal.datasource_v2.logical_optimizers import (
-            SupportsFilterPushdown,
-            SupportsPartitionPruning,
+        from ray.data._internal.datasource_v2.common.pushdown_utils import (
             _split_predicate_by_columns,
             combine_predicates,
+        )
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
+            SupportsFilterPushdown,
+            SupportsPartitionPruning,
         )
         from ray.data._internal.logical.operators.map_operator import Filter
 
@@ -510,7 +512,7 @@ class ListFiles(LogicalOperator, SourceOperator):
         # ``FileManifest`` columns are fixed: __path, __file_size.
         import pyarrow as pa
 
-        from ray.data._internal.datasource_v2.listing.file_manifest import (
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
             FILE_SIZE_COLUMN_NAME,
             PATH_COLUMN_NAME,
         )

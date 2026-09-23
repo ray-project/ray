@@ -11,7 +11,7 @@ import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
+from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
 from ray.data.expressions import col
 
 

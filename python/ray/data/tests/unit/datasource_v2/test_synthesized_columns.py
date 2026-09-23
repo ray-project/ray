@@ -11,21 +11,23 @@ import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ParquetRowGroupChunkMetadata,
-    create_chunk_metadata,
-)
-from ray.data._internal.datasource_v2.listing.file_manifest import (
-    FileManifest,
-)
-from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
-    ParquetFileReader,
-)
-from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+from ray.data._internal.datasource_v2.common.synthesized_columns import (
     PathColumn,
     RowHashColumn,
 )
-from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    ParquetFileReader,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
+    ParquetRowGroupChunkMetadata,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileManifest,
+    create_chunk_metadata,
+)
 
 ROW_GROUP_SIZE = 25
 NUM_ROW_GROUPS = 4
