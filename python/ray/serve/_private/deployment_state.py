@@ -1935,10 +1935,12 @@ class ActorReplicaWrapper:
                 response = ReplicaHealthCheckResponse.SUCCEEDED
             else:
                 if pushed_failures is not None:
-                    # Mirroring paces the threshold: the replica advances its count
-                    # once per period, so subtract the increment the chain below
-                    # adds. A push without a count falls back to counting per push.
-                    self._consecutive_health_check_failures = pushed_failures - 1
+                    # Mirroring paces the threshold: subtract the increment the chain
+                    # below adds. max() keeps a push stream that starts mid-failure-run
+                    # from lowering failures the controller already probed.
+                    self._consecutive_health_check_failures = max(
+                        self._consecutive_health_check_failures, pushed_failures - 1
+                    )
                 response = ReplicaHealthCheckResponse.APP_FAILURE
             # Only the probe paths set this, so the flag would go silent for the
             # path the controller now acts on most.

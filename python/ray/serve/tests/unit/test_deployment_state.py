@@ -11825,9 +11825,11 @@ class TestPushedHealthRegressions:
         w = TestPushedHealth._wrapper(TestPushedHealth())
         # A probe is in flight when an unhealthy push lands...
         w._health_check_ref = "probe_ref"
-        w._last_health_check_time = time.time()
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
         now = time.time()
+        # Pin both instants: the drop is gated on a strict <, and two adjacent
+        # time.time() reads tie on a coarse clock (Windows is ~15.6ms).
+        w._last_health_check_time = now - 1.0
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
         w.record_pushed_health(now, now, False, 2)
         assert w.check_health() is True  # applied, still under the threshold
         assert w._consecutive_health_check_failures == 2
@@ -11868,9 +11870,10 @@ class TestPushedHealthRegressions:
     def test_dropped_probe_is_not_counted_as_a_failure(self, monkeypatch):
         w = TestPushedHealth._wrapper(TestPushedHealth())
         w._health_check_ref = "probe_ref"
-        w._last_health_check_time = time.time()
-        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
         now = time.time()
+        # Pin both instants: see test_in_flight_probe_does_not_overwrite_a_newer_push.
+        w._last_health_check_time = now - 1.0
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
         w.record_pushed_health(now, now, True)
         assert w.check_health() is True
         # The in-flight probe resolves failed, but its result is dropped as stale --
@@ -11883,6 +11886,16 @@ class TestPushedHealthRegressions:
         monkeypatch.setattr(ds_mod.ray, "get", _failed)
         assert w.check_health() is True
         assert not w.last_health_check_failed
+
+    def test_push_does_not_lower_probed_failure_count(self):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        # Two probe failures are already counted when the pusher comes online and
+        # reports its own first failure; mirroring must not walk the count back.
+        w._consecutive_health_check_failures = 2
+        now = time.time()
+        w.record_pushed_health(now, now, False, 1)
+        assert w.check_health() is False
+        assert w._consecutive_health_check_failures == 3
 
     def test_probe_applied_beats_a_push_stashed_before_it(self, monkeypatch):
         w = TestPushedHealth._wrapper(TestPushedHealth())
