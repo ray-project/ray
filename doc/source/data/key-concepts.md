@@ -8,7 +8,9 @@ myst:
 
 # Key concepts
 
-## Datasets and blocks
+(datasets-and-blocks)=
+
+## What are datasets and blocks?
 
 Ray Data has two main concepts, datasets and blocks.
 
@@ -29,7 +31,9 @@ The following figure shows a dataset with three blocks, each holding 1000 rows. 
 https://docs.google.com/drawings/d/1kOYQqHdMrBp2XorDIn0u0G_MvFj-uSA4qm6xf9tsFLM/edit
 -->
 
-## Operators and plans
+(operators-and-plans)=
+
+## What are operators and plans?
 
 Ray Data uses a two-phase planning process to execute operations efficiently. When you write a program with the Dataset API, Ray Data first builds a *logical plan*, which is a high-level description of what operations to perform. When execution begins, Ray Data converts the logical plan into a *physical plan* that specifies exactly how to execute those operations.
 
@@ -83,8 +87,9 @@ A dataset's execution plan only runs when you materialize or consume the dataset
 :::
 
 (streaming-execution)=
+(streaming-execution-model)=
 
-## Streaming execution model
+## How does streaming execution work?
 
 Ray Data can stream data through a pipeline of operators to process large datasets efficiently.
 
