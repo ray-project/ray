@@ -42,7 +42,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import validate_ssl_config
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -96,7 +96,7 @@ class AutoscalingContext:
         last_scale_down_time: Optional[float],
         current_time: Optional[float],
         config: Optional[Any],
-        total_pending_async_requests: int,
+        total_pending_async_requests: int = 0,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -147,7 +147,7 @@ class AutoscalingContext:
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
 
-        # Async inference task queue length (from QueueMonitor)
+        # Deprecated: Serve no longer sets this, so it stays 0 unless a caller passes it.
         self._total_pending_async_requests = total_pending_async_requests
 
     @cached_property
@@ -181,8 +181,23 @@ class AutoscalingContext:
         return max(0.0, self.total_num_requests - self.total_queued_requests)
 
     @property
+    @Deprecated(
+        message=(
+            "`AutoscalingContext.total_pending_async_requests` is always 0 in the "
+            "contexts Serve passes to autoscaling policies: Serve no longer tracks "
+            "async inference queue length on the controller. To scale on broker "
+            "queue length, use `AsyncInferenceAutoscalingPolicy` from "
+            "`ray.serve.async_inference_autoscaling_policy`, which polls the broker "
+            "directly."
+        ),
+        warning=True,
+    )
     def total_pending_async_requests(self) -> int:
-        """Broker task queue length for async inference autoscaling."""
+        """Deprecated. Always 0 in the contexts Serve passes to policies.
+
+        To scale on async inference queue length, use
+        ``AsyncInferenceAutoscalingPolicy``, which polls the broker directly.
+        """
         return self._total_pending_async_requests
 
 
