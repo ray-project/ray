@@ -260,7 +260,7 @@ The optimized implementation makes four changes:
 
 - **Preprocessing in Ray Data**: The tokenization logic moves from `train_func` to `CollateFnRayData`, which runs in `map_batches`.
 - **NumPy output**: The collate function returns `Dict[str, np.ndarray]` instead of PyTorch tensors. Ray Data natively supports this format.
-- **Batch alignment**: `repartition(target_num_rows_per_block=BATCH_SIZE)` after `map_batches` ensures the collate function receives exact batch sizes and output blocks align with the batch size.
+- **Batch alignment**: `repartition(target_num_rows_per_block=BATCH_SIZE)` after `map_batches` ensures that output blocks align with the batch size.
 - **No `collate_fn` in iterator**: `iter_torch_batches` uses `collate_fn=None` because the preprocessing already ran in Ray Data.
 
 ### Benchmark results

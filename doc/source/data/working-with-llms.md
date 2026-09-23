@@ -582,7 +582,7 @@ Two parameters, `max_concurrent_batches` and `max_tasks_in_flight_per_actor`, co
 #### What do the parameters control?
 
 `max_concurrent_batches`, default: 8
-: The number of batches that can execute concurrently in a single vLLM engine actor. This overlaps batch processing to hide tail latency. The optimal batch size depends on the workload.
+: The number of batches that can execute concurrently in a single vLLM engine actor. This overlaps batch processing to hide tail latency. The optimal value depends on the workload.
 
 `max_tasks_in_flight_per_actor`, default: 16
 : The number of tasks Ray Data can queue per actor before waiting for results. Ray Data uses this queue to prefetch tasks so they're ready when the actor finishes processing.

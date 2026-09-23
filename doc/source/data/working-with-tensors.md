@@ -9,7 +9,7 @@ myst:
 
 # Working with tensors and NumPy
 
-Tensors, or n-dimensional arrays, are ubiquitous in machine learning workloads. This guide describes the limitations of and best practices for working with tensor data in Ray Data.
+Tensors, or n-dimensional arrays, are ubiquitous in machine learning workloads. This guide describes how Ray Data represents tensor data and best practices for working with it.
 
 (tensor-data-representation)=
 
