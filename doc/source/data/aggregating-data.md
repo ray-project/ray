@@ -8,13 +8,15 @@ myst:
 
 # Aggregating data
 
-Ray Data provides a flexible and performant API for performing aggregations on {class}`~ray.data.dataset.Dataset`.
+This page describes how to aggregate a {class}`~ray.data.dataset.Dataset` with the built-in aggregation functions in Ray Data and with custom aggregators that you implement.
 
-## Basic aggregations
+(basic-aggregations)=
 
-Ray Data provides several built-in aggregation functions like {class}`~ray.data.Dataset.max`, {class}`~ray.data.Dataset.min`, {class}`~ray.data.Dataset.sum`.
+## Use built-in aggregations
 
-These can be used directly on a Dataset or a GroupedData object, as shown below:
+Ray Data provides built-in aggregation functions such as {class}`~ray.data.Dataset.max`, {class}`~ray.data.Dataset.min`, and {class}`~ray.data.Dataset.sum`.
+
+You can call these functions directly on a Dataset or on a GroupedData object, as the following example shows:
 
 ```{testcode}
 import ray
@@ -33,11 +35,11 @@ result = ds.groupby("group_key").min("id")
 # result: [{'group_key': 0, 'min(id)': 0}, {'group_key': 1, 'min(id)': 1}, {'group_key': 2, 'min(id)': 2}]
 ```
 
-The full list of built-in aggregation functions is available in the {ref}`Dataset API reference <dataset-api>`.
+For the full list of built-in aggregation functions, see the {ref}`Dataset API reference <dataset-api>`.
 
-Each of the preceding methods also has a corresponding {ref}`AggregateFnV2 <aggregations_api_ref>` object. These objects can be used in {meth}`~ray.data.Dataset.aggregate()` or {meth}`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>`.
+Each of the preceding methods also has a corresponding {ref}`AggregateFnV2 <aggregations_api_ref>` object. Pass these objects to {meth}`~ray.data.Dataset.aggregate()` or {meth}`Dataset.groupby().aggregate() <ray.data.grouped_data.GroupedData.aggregate>`.
 
-Aggregation objects can be used directly with a Dataset like shown below:
+The following example uses aggregation objects directly with a Dataset:
 
 ```{testcode}
 import ray
@@ -62,7 +64,7 @@ result = ds.aggregate(Quantile(on="id", q=0.75))
 # result: {'quantile(id)': 75.0}
 ```
 
-Multiple aggregations can also be computed at once:
+You can also compute multiple aggregations at once:
 
 ```{testcode}
 import ray
@@ -84,25 +86,26 @@ result = ds.groupby("group_key").aggregate(
 #          {'group_key': 2, 'count(id)': 33, 'mean(id)': ..., 'min(id)': ..., 'max(id)': ..., 'std(id)': ...}]
 ```
 
+(custom-aggregations)=
 
-## Custom aggregations
+## Create custom aggregations
 
-You can create custom aggregations by implementing the {class}`~ray.data.aggregate.AggregateFnV2` interface. The AggregateFnV2 interface has three key methods to implement:
+To create a custom aggregation, implement the {class}`~ray.data.aggregate.AggregateFnV2` interface. The interface has three key methods that you implement:
 
-1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result
-2. `combine`: Merges two partial aggregation results into a single result
-3. `finalize`: Transforms the final accumulated result into the desired output format
+1. `aggregate_block`: Processes a single block of data and returns a partial aggregation result.
+1. `combine`: Merges two partial aggregation results into a single result.
+1. `finalize`: Transforms the final accumulated result into the desired output format.
 
-The aggregation process follows these steps:
+Ray Data runs an aggregation in the following steps:
 
-1. **Initialization**: For each group (if grouping) or for the entire dataset, an initial accumulator is created using `zero_factory`
-2. **Block Aggregation**: The `aggregate_block` method is applied to each block independently
-3. **Combination**: The `combine` method merges partial results into a single accumulator
-4. **Finalization**: The `finalize` method transforms the final accumulator into the desired output
+1. **Initialization**: Ray Data creates an initial accumulator with `zero_factory` for each group, or for the entire dataset when you don't group.
+1. **Block aggregation**: Ray Data applies the `aggregate_block` method to each block independently.
+1. **Combination**: The `combine` method merges partial results into a single accumulator.
+1. **Finalization**: The `finalize` method transforms the final accumulator into the desired output.
 
 ### Example: Create a custom mean aggregator
 
-Here's an example of creating a custom aggregator that calculates the Mean of values in a column:
+The following example creates a custom aggregator that calculates the mean of the values in a column:
 
 ```{testcode}
 import numpy as np
@@ -158,7 +161,6 @@ class Mean(AggregateFnV2):
         return accumulator[0] / accumulator[1]
 ```
 
-
 :::{note}
-Hash-based shuffling can provide better performance for aggregations in certain cases. For more information see [comparison between hash based shuffling and Range Based shuffling approach](https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/) .
+Hash-based shuffling can improve aggregation performance in some cases. For more information, see this [comparison of hash-based and range-based shuffling](https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/).
 :::

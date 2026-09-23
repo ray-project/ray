@@ -1,27 +1,26 @@
 ---
 myst:
   html_meta:
-    description: "Write Ray Data Datasets to local or cloud storage, control the output file count, write partitioned datasets, and convert back to pandas."
+    description: "Write Ray Data datasets to local or cloud storage, control the output file count, write partitioned datasets, and convert back to pandas."
 ---
 
 (saving-data)=
 
-# Saving Data
+# Saving data
 
-Ray Data lets you save data in files or other Python objects.
+Ray Data saves datasets to files and converts them to objects from other Python libraries. This guide shows you how to [write data to files](#writing-data-to-files) and [convert datasets to other Python libraries](#converting-datasets-to-other-python-libraries).
 
-This guide shows you how to:
+(writing-data-to-files)=
 
-* [Write data to files](#writing-data-to-files)
-* [Convert Datasets to other Python libraries](#converting-datasets-to-other-python-libraries)
-
-## Writing data to files
+## Write data to files
 
 Ray Data writes to shared local storage and cloud storage.
 
-### Writing data to shared local storage
+(writing-data-to-shared-local-storage)=
 
-To save your {class}`~ray.data.dataset.Dataset` to a shared local filesystem, use storage such as NFS, and mount that storage at the same path on every Ray node. Then, call a method like {meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the mounted directory.
+### Write data to shared local storage
+
+To save your {class}`~ray.data.dataset.Dataset` to a shared local filesystem, use storage such as NFS, and mount that storage at the same path on every Ray node. Then, call a method such as {meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the mounted directory.
 
 :::{warning}
 Don't use the deprecated `local://` scheme. Use cloud storage or a shared filesystem path that's available on every Ray node instead.
@@ -39,9 +38,11 @@ ds.write_parquet("/mnt/cluster_storage/iris")
 
 To write data to formats other than Parquet, see the {ref}`Saving Data API <saving-data-api>`.
 
-### Writing data to cloud storage
+(writing-data-to-cloud-storage)=
 
-To save your {class}`~ray.data.dataset.Dataset` to cloud storage, authenticate all nodes with your cloud service provider. Then, call a method like {meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with the appropriate scheme. URI can point to buckets or folders.
+### Write data to cloud storage
+
+To save your {class}`~ray.data.dataset.Dataset` to cloud storage, authenticate all nodes with your cloud service provider. Then, call a method such as {meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with the appropriate scheme. The URI can point to a bucket or a folder.
 
 To write data to formats other than Parquet, see the {ref}`Saving Data API <saving-data-api>`.
 
@@ -61,12 +62,12 @@ ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 ds.write_parquet("s3://my-bucket/my-folder")
 ```
 
-Ray Data relies on PyArrow to authenticate with Amazon S3. For more on how to configure your credentials to be compatible with PyArrow, see their [S3 Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#s3).
+Ray Data relies on PyArrow to authenticate with Amazon S3. To configure your credentials for PyArrow, see the PyArrow [S3 filesystem documentation](https://arrow.apache.org/docs/python/filesystems.html#s3).
 :::
 
 :::{tab-item} GCS
 
-To save data to Google Cloud Storage, install the [Filesystem interface to Google Cloud Storage](https://gcsfs.readthedocs.io/en/latest/)
+To save data to Google Cloud Storage, install [`gcsfs`](https://gcsfs.readthedocs.io/en/latest/), the filesystem interface to Google Cloud Storage:
 
 ```console
 pip install gcsfs
@@ -85,18 +86,18 @@ filesystem = gcsfs.GCSFileSystem(project="my-google-project")
 ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
 ```
 
-Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [GCS Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
+Ray Data relies on PyArrow to authenticate with Google Cloud Storage. To configure your credentials for PyArrow, see the PyArrow [GCS filesystem documentation](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
 :::
 
 :::{tab-item} Azure Blob Storage
 
-To save data to Azure Blob Storage, install the [Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
+To save data to Azure Blob Storage, install [`adlfs`](https://pypi.org/project/adlfs/), the filesystem interface to Azure Data Lake Storage Gen1 and Gen2:
 
 ```console
 pip install adlfs
 ```
 
-Then, create a `AzureBlobFileSystem` and specify a URI with the `az://` scheme.
+Then, create an `AzureBlobFileSystem` and specify a URI with the `az://` scheme.
 
 ```{testcode}
 :skipif: True
@@ -109,19 +110,20 @@ filesystem = adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
 ds.write_parquet("az://my-bucket/my-folder", filesystem=filesystem)
 ```
 
-Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [fsspec-compatible filesystems docs](https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow).
+Ray Data relies on PyArrow to authenticate with Azure Blob Storage. To configure your credentials for PyArrow, see the PyArrow documentation on [fsspec-compatible filesystems](https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow).
 :::
 
 ::::
 
 (changing-number-output-files)=
+(changing-the-number-of-output-files)=
 
-### Changing the number of output files
+### Change the number of output files
 
-When you call a write method, Ray Data writes your data to several files. To control the number of output files, configure `min_rows_per_file`.
+When you call a write method, Ray Data writes your data to several files. To control the number of output files, set `min_rows_per_file`.
 
 :::{note}
-`min_rows_per_file` is a hint, not a strict limit. Ray Data might write more or fewer rows to each file. Under the hood, if the number of rows per block is larger than the specified value, Ray Data writes the number of rows per block to each file.
+`min_rows_per_file` is a hint, not a strict limit. Ray Data might write more or fewer rows to each file. If the number of rows per block is larger than `min_rows_per_file`, Ray Data writes the number of rows per block to each file.
 :::
 
 ```{testcode}
@@ -142,7 +144,7 @@ print(os.listdir("/tmp/few_files/"))
 
 ### Write into a partitioned dataset
 
-When you write a partitioned dataset using Hive-style, folder-based partitioning, repartition the dataset by the partition columns first. Repartitioning gives you control over the number of files and their sizes. After you repartition by the partition columns, every block holds all the rows for a particular partition, so the repartitioning determines how many files Ray creates, with optional limits from the write method such as `max_rows_per_file`. Ray writes every block out independently, so if you write the dataset without repartitioning first, you can get N files per partition, where N is the number of blocks in your dataset. In that case, you have very limited control over the number of files and their sizes, because every block can carry rows for any partition.
+To write a partitioned dataset with Hive-style, folder-based partitioning, repartition the dataset by the partition columns first. Repartitioning gives you control over the number of files and their sizes. After you repartition by the partition columns, every block holds all the rows for a particular partition. The repartitioning then determines how many files Ray creates, and write-method parameters such as `max_rows_per_file` can optionally limit them further. Ray writes every block independently. Without the repartition, every block can carry rows for any partition, so you can get N files per partition, where N is the number of blocks in your dataset. You then have little control over the number of files and their sizes.
 
 :::{warning}
 Ray Data has deprecated using `min_rows_per_file` with non-empty `partition_cols`. Support for this combination ends after February 2027. Instead, call `repartition()` with the partition columns and an explicit `num_blocks`, and use `max_rows_per_file`. If you already repartition the dataset by the partition columns, removing `min_rows_per_file` leaves the output layout unchanged.
@@ -207,9 +209,15 @@ sales_partitioned/
             1_a2b8b82cd2904a368ec39f42ae3cf830_000001_000000-0.parquet
 ```
 
-## Converting Datasets to other Python libraries
+(converting-datasets-to-other-python-libraries)=
 
-### Converting Datasets to pandas
+## Convert datasets to other Python libraries
+
+Convert a dataset to a pandas DataFrame, or to a DataFrame from a distributed data processing framework.
+
+(converting-datasets-to-pandas)=
+
+### Convert datasets to pandas
 
 To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call {meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. Your data must fit in memory on the head node.
 
@@ -241,15 +249,17 @@ print(df)
 [150 rows x 5 columns]
 ```
 
-### Converting Datasets to distributed DataFrames
+(converting-datasets-to-distributed-dataframes)=
 
-Ray Data interoperates with distributed data processing frameworks like [Daft](https://www.daft.ai), {ref}`Dask <dask-on-ray>`, {ref}`Spark <spark-on-ray>`, {ref}`Modin <modin-on-ray>`, and {ref}`Mars <mars-on-ray>`.
+### Convert datasets to distributed DataFrames
+
+Ray Data interoperates with distributed data processing frameworks such as [Daft](https://www.daft.ai), {ref}`Dask <dask-on-ray>`, {ref}`Spark <spark-on-ray>`, {ref}`Modin <modin-on-ray>`, and {ref}`Mars <mars-on-ray>`.
 
 ::::{tab-set}
 
 :::{tab-item} Daft
 
-To convert a {class}`~ray.data.dataset.Dataset` to a [Daft Dataframe](https://docs.daft.ai/en/stable/api/dataframe/), call {meth}`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
+To convert a {class}`~ray.data.dataset.Dataset` to a [Daft DataFrame](https://docs.daft.ai/en/stable/api/dataframe/), call {meth}`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
 
 ```{testcode}
 import ray
@@ -354,7 +364,7 @@ mdf = ds.to_modin()
 
 :::{tab-item} Mars
 
-To convert a {class}`~ray.data.dataset.Dataset` from a Mars DataFrame, call {meth}`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
+To convert a {class}`~ray.data.dataset.Dataset` to a Mars DataFrame, call {meth}`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
 
 ```{testcode}
 :skipif: True
