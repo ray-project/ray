@@ -2314,7 +2314,7 @@ class Dataset:
         :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
-        more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
+        more, see :ref:`Advanced: Performance tips and tuning <data_performance_tips>`.
 
         If you're writing data to files, you can also use this method to change the
         number of output files. To learn more, see
