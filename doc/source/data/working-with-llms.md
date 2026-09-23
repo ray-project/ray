@@ -431,7 +431,7 @@ This example uses a standard model because the models that require vLLM's custom
 
 ## How does Ray Data LLM handle failures?
 
-Ray Data LLM handles failures for individual rows, for actors, and for the whole pipeline.
+The following sections describe how Ray Data LLM handles row failures and actor failures, and how to resume a pipeline from a checkpoint.
 
 (row-level-fault-tolerance)=
 
@@ -725,5 +725,5 @@ If this guide doesn't cover your issue, use the following resources:
 - [Ray GitHub Issues](https://github.com/ray-project/ray/issues): Report bugs or request features.
 - [Ray Slack](https://ray-distributed.slack.com): Get help from the community.
 - [Ray Discourse Forum](https://discuss.ray.io): Ask questions and share knowledge.
-- [Ray LLM Office Hours](https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month): Learn about Ray LLM features, ask questions, and get guidance from the team.
+- [Ray LLM Office Hours](https://zoom-lfx.platform.linuxfoundation.org/meetings/ray?view=month): Learn about new Ray LLM features, ask questions, and get guidance from the team.
   - [Past Office Hours Recordings](https://youtube.com/playlist?list=PLzTswPQNepXl2IYF8DcV35FdCoVbeL4_6&si=ik81bljIlasYAHKN): View recordings from previous sessions.
