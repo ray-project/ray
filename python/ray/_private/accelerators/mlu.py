@@ -58,22 +58,7 @@ class MLUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
-        """Get the model name of the first MLU on the current node.
-
-        Type detection is optional for Ray Core scheduling.  Use the MLU
-        runtime when it is installed, but do not require PyTorch or a Python
-        CNDev binding just to schedule MLU resources.
-        """
-        try:
-            import torch
-
-            if not hasattr(torch, "mlu") or not torch.mlu.is_available():
-                return None
-
-            name = torch.mlu.get_device_name(0)
-            return name.decode() if isinstance(name, bytes) else name
-        except Exception as e:
-            logger.debug("Could not detect MLU type from the MLU runtime: %s", e)
+        """MLU type detection requires a device API that Ray does not depend on."""
         return None
 
     @staticmethod
