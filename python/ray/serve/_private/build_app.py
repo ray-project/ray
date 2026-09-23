@@ -9,6 +9,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.default_impl import create_dynamic_handle_options
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -104,9 +105,17 @@ def _has_custom_request_router(deployment: Deployment) -> bool:
 def _make_deployment_handle_default(
     deployment: Deployment, app_name: str
 ) -> DeploymentHandle:
+    runtime_env = (deployment.ray_actor_options or {}).get("runtime_env", {})
+    use_grpc = runtime_env.get("env_vars", {}).get("RAY_SERVE_USE_GRPC_BY_DEFAULT")
+    handle_options = (
+        create_dynamic_handle_options(_by_reference=use_grpc != "1")
+        if use_grpc is not None
+        else None
+    )
     return DeploymentHandle(
         deployment.name,
         app_name=app_name,
+        handle_options=handle_options,
     )
 
 

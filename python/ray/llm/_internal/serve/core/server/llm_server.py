@@ -25,6 +25,7 @@ from ray.llm._internal.serve.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
     RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
+    get_llm_serve_runtime_env,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
@@ -795,6 +796,9 @@ class LLMServer(LLMServerProtocol):
             **ray_actor_options.get("runtime_env", {}),
             **(llm_config.runtime_env if llm_config.runtime_env else {}),
         }
+        ray_actor_options["runtime_env"] = get_llm_serve_runtime_env(
+            ray_actor_options["runtime_env"]
+        )
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options

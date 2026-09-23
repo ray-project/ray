@@ -585,6 +585,27 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
     assert built_app.ingress_request_router_forward_body is True
 
 
+def test_build_app_applies_per_deployment_grpc_handle_default():
+    @serve.deployment(
+        ray_actor_options={
+            "runtime_env": {"env_vars": {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"}}
+        }
+    )
+    class Downstream:
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, downstream):
+            self._downstream = downstream
+
+    built_app = build_app(Ingress.bind(Downstream.bind()), name="default")
+
+    assert (
+        built_app.deployment_handles["Downstream"].handle_options._by_reference is False
+    )
+
+
 def test_build_app_requires_ingress_request_router_to_be_single_deployment(
     monkeypatch,
 ):

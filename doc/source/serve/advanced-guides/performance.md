@@ -154,7 +154,7 @@ class Caller:
 ### Enable throughput-optimized serving
 
 :::{note}
-In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+Ray Serve LLM defaults `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` to `0`. Other Serve applications keep the isolated-loop defaults unless you opt into these throughput settings.
 :::
 
 This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
@@ -312,7 +312,7 @@ The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication
 
-By default, when one deployment calls another via a `DeploymentHandle`, requests are sent through Ray's actor RPC system. You can switch this internal transport to gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. This makes all `DeploymentHandle` calls use gRPC transport, which serializes requests and sends them directly to the target replica's gRPC server. gRPC transport is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
+Ray Serve LLM uses gRPC by default when one deployment calls another via a `DeploymentHandle`. Other Serve applications use Ray's actor RPC system by default and can opt into gRPC by setting `RAY_SERVE_USE_GRPC_BY_DEFAULT=1` on all nodes before starting Ray. gRPC serializes requests and sends them directly to the target replica's gRPC server. It is most beneficial for high-throughput workloads with small payloads (under ~1 MB), where bypassing Ray's object store reduces per-request overhead.
 
 #### When not to use gRPC
 

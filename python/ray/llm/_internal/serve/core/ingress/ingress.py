@@ -29,6 +29,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    get_llm_serve_runtime_env,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -87,6 +88,7 @@ logger = get_logger(__name__)
 
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+    "ray_actor_options": {"runtime_env": get_llm_serve_runtime_env()},
     "autoscaling_config": {
         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
