@@ -21,15 +21,10 @@ Ray Data writes to shared local storage and cloud storage.
 
 ### Writing data to shared local storage
 
-To save your {class}`~ray.data.dataset.Dataset` to a shared local filesystem,
-use storage such as NFS, and mount that storage at the same path on every Ray
-node. Then, call a method like
-{meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the
-mounted directory.
+To save your {class}`~ray.data.dataset.Dataset` to a shared local filesystem, use storage such as NFS, and mount that storage at the same path on every Ray node. Then, call a method like {meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify the mounted directory.
 
 :::{warning}
-Don't use the deprecated `local://` scheme. Use cloud storage or a shared
-filesystem path that's available on every Ray node instead.
+Don't use the deprecated `local://` scheme. Use cloud storage or a shared filesystem path that's available on every Ray node instead.
 :::
 
 ```{testcode}
@@ -42,15 +37,11 @@ ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 ds.write_parquet("/mnt/cluster_storage/iris")
 ```
 
-To write data to formats other than Parquet, see the
-{ref}`Saving Data API <saving-data-api>`.
+To write data to formats other than Parquet, see the {ref}`Saving Data API <saving-data-api>`.
 
 ### Writing data to cloud storage
 
-To save your {class}`~ray.data.dataset.Dataset` to cloud storage, authenticate all nodes
-with your cloud service provider. Then, call a method like
-{meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with
-the appropriate scheme. URI can point to buckets or folders.
+To save your {class}`~ray.data.dataset.Dataset` to cloud storage, authenticate all nodes with your cloud service provider. Then, call a method like {meth}`Dataset.write_parquet <ray.data.Dataset.write_parquet>` and specify a URI with the appropriate scheme. URI can point to buckets or folders.
 
 To write data to formats other than Parquet, see the {ref}`Saving Data API <saving-data-api>`.
 
@@ -70,15 +61,12 @@ ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 ds.write_parquet("s3://my-bucket/my-folder")
 ```
 
-Ray Data relies on PyArrow to authenticate with Amazon S3. For more on how to configure
-your credentials to be compatible with PyArrow, see their
-[S3 Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#s3).
+Ray Data relies on PyArrow to authenticate with Amazon S3. For more on how to configure your credentials to be compatible with PyArrow, see their [S3 Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#s3).
 :::
 
 :::{tab-item} GCS
 
-To save data to Google Cloud Storage, install the
-[Filesystem interface to Google Cloud Storage](https://gcsfs.readthedocs.io/en/latest/)
+To save data to Google Cloud Storage, install the [Filesystem interface to Google Cloud Storage](https://gcsfs.readthedocs.io/en/latest/)
 
 ```console
 pip install gcsfs
@@ -97,15 +85,12 @@ filesystem = gcsfs.GCSFileSystem(project="my-google-project")
 ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
 ```
 
-Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
-to configure your credentials to be compatible with PyArrow, see their
-[GCS Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
+Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [GCS Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
 :::
 
 :::{tab-item} ABS
 
-To save data to Azure Blob Storage, install the
-[Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
+To save data to Azure Blob Storage, install the [Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
 
 ```console
 pip install adlfs
@@ -124,9 +109,7 @@ filesystem = adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
 ds.write_parquet("az://my-bucket/my-folder", filesystem=filesystem)
 ```
 
-Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
-to configure your credentials to be compatible with PyArrow, see their
-[fsspec-compatible filesystems docs](https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow).
+Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [fsspec-compatible filesystems docs](https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow).
 :::
 
 ::::
@@ -135,14 +118,10 @@ to configure your credentials to be compatible with PyArrow, see their
 
 ### Changing the number of output files
 
-When you call a write method, Ray Data writes your data to several files. To control the
-number of output files, configure `min_rows_per_file`.
+When you call a write method, Ray Data writes your data to several files. To control the number of output files, configure `min_rows_per_file`.
 
 :::{note}
-`min_rows_per_file` is a hint, not a strict limit. Ray Data might write more or
-fewer rows to each file. Under the hood, if the number of rows per block is
-larger than the specified value, Ray Data writes
-the number of rows per block to each file.
+`min_rows_per_file` is a hint, not a strict limit. Ray Data might write more or fewer rows to each file. Under the hood, if the number of rows per block is larger than the specified value, Ray Data writes the number of rows per block to each file.
 :::
 
 ```{testcode}
@@ -163,22 +142,10 @@ print(os.listdir("/tmp/few_files/"))
 
 ### Write into a partitioned dataset
 
-When you write a partitioned dataset using Hive-style, folder-based partitioning,
-repartition the dataset by the partition columns first. Repartitioning gives you control
-over the number of files and their sizes. After you repartition by the partition columns,
-every block holds all the rows for a particular partition, so the repartitioning
-determines how many files Ray creates, with optional limits from the write method such as
-`max_rows_per_file`. Ray writes every block out independently, so if you write the
-dataset without repartitioning first, you can get N files per partition, where N is the
-number of blocks in your dataset. In that case, you have very limited control over the
-number of files and their sizes, because every block can carry rows for any partition.
+When you write a partitioned dataset using Hive-style, folder-based partitioning, repartition the dataset by the partition columns first. Repartitioning gives you control over the number of files and their sizes. After you repartition by the partition columns, every block holds all the rows for a particular partition, so the repartitioning determines how many files Ray creates, with optional limits from the write method such as `max_rows_per_file`. Ray writes every block out independently, so if you write the dataset without repartitioning first, you can get N files per partition, where N is the number of blocks in your dataset. In that case, you have very limited control over the number of files and their sizes, because every block can carry rows for any partition.
 
 :::{warning}
-Ray Data has deprecated using `min_rows_per_file` with non-empty
-`partition_cols`. Support for this combination ends after February 2027. Instead,
-call `repartition()` with the partition columns and an explicit `num_blocks`, and
-use `max_rows_per_file`. If you already repartition the dataset by the partition
-columns, removing `min_rows_per_file` leaves the output layout unchanged.
+Ray Data has deprecated using `min_rows_per_file` with non-empty `partition_cols`. Support for this combination ends after February 2027. Instead, call `repartition()` with the partition columns and an explicit `num_blocks`, and use `max_rows_per_file`. If you already repartition the dataset by the partition columns, removing `min_rows_per_file` leaves the output layout unchanged.
 :::
 
 ```{testcode}
@@ -244,9 +211,7 @@ sales_partitioned/
 
 ### Converting Datasets to pandas
 
-To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call
-{meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. Your data must fit in memory
-on the head node.
+To convert a {class}`~ray.data.dataset.Dataset` to a pandas DataFrame, call {meth}`Dataset.to_pandas() <ray.data.Dataset.to_pandas>`. Your data must fit in memory on the head node.
 
 ```{testcode}
 import ray
@@ -278,16 +243,13 @@ print(df)
 
 ### Converting Datasets to distributed DataFrames
 
-Ray Data interoperates with distributed data processing frameworks like [Daft](https://www.daft.ai),
-{ref}`Dask <dask-on-ray>`, {ref}`Spark <spark-on-ray>`, {ref}`Modin <modin-on-ray>`, and
-{ref}`Mars <mars-on-ray>`.
+Ray Data interoperates with distributed data processing frameworks like [Daft](https://www.daft.ai), {ref}`Dask <dask-on-ray>`, {ref}`Spark <spark-on-ray>`, {ref}`Modin <modin-on-ray>`, and {ref}`Mars <mars-on-ray>`.
 
 ::::{tab-set}
 
 :::{tab-item} Daft
 
-To convert a {class}`~ray.data.dataset.Dataset` to a [Daft Dataframe](https://docs.daft.ai/en/stable/api/dataframe/), call
-{meth}`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
+To convert a {class}`~ray.data.dataset.Dataset` to a [Daft Dataframe](https://docs.daft.ai/en/stable/api/dataframe/), call {meth}`Dataset.to_daft() <ray.data.Dataset.to_daft>`.
 
 ```{testcode}
 import ray
@@ -330,9 +292,7 @@ print(df)
 
 :::{tab-item} Dask
 
-To convert a {class}`~ray.data.dataset.Dataset` to a
-[Dask DataFrame](https://docs.dask.org/en/stable/dataframe.html), call
-{meth}`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
+To convert a {class}`~ray.data.dataset.Dataset` to a [Dask DataFrame](https://docs.dask.org/en/stable/dataframe.html), call {meth}`Dataset.to_dask() <ray.data.Dataset.to_dask>`.
 
 <!--
 We skip the code snippet below because `to_dask` doesn't work with PyArrow
@@ -352,8 +312,7 @@ df = ds.to_dask()
 
 :::{tab-item} Spark
 
-To convert a {class}`~ray.data.dataset.Dataset` to a [Spark DataFrame](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html),
-call {meth}`Dataset.to_spark() <ray.data.Dataset.to_spark>`.
+To convert a {class}`~ray.data.dataset.Dataset` to a [Spark DataFrame](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html), call {meth}`Dataset.to_spark() <ray.data.Dataset.to_spark>`.
 
 ```{testcode}
 :skipif: True
@@ -382,8 +341,7 @@ raydp.stop_spark()
 
 :::{tab-item} Modin
 
-To convert a {class}`~ray.data.dataset.Dataset` to a Modin DataFrame, call
-{meth}`Dataset.to_modin() <ray.data.Dataset.to_modin>`.
+To convert a {class}`~ray.data.dataset.Dataset` to a Modin DataFrame, call {meth}`Dataset.to_modin() <ray.data.Dataset.to_modin>`.
 
 ```{testcode}
 import ray
@@ -396,8 +354,7 @@ mdf = ds.to_modin()
 
 :::{tab-item} Mars
 
-To convert a {class}`~ray.data.dataset.Dataset` from a Mars DataFrame, call
-{meth}`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
+To convert a {class}`~ray.data.dataset.Dataset` from a Mars DataFrame, call {meth}`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
 
 ```{testcode}
 :skipif: True

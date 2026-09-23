@@ -397,49 +397,25 @@ To see detailed stats on the execution of a dataset you can use the {meth}`~ray.
 
 ### Operator stats
 
-The stats output includes a summary on the individual operator's execution stats for each operator. Ray Data calculates this
-summary across many different blocks, so some stats show the min, max, mean, and sum of the stats aggregated over all the blocks.
-The following are descriptions of the various stats included at the operator level:
+The stats output includes a summary on the individual operator's execution stats for each operator. Ray Data calculates this summary across many different blocks, so some stats show the min, max, mean, and sum of the stats aggregated over all the blocks. The following are descriptions of the various stats included at the operator level:
 
-* **Remote wall time**: The wall time is the start to finish time for an operator. It includes the time where the operator
-  isn't processing data, sleeping, waiting for I/O, etc.
-* **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both
-  user and system CPU time.
-* **Block transform time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max, and
-  mean are therefore across blocks, and the total is the operator's. This isn't the same as the task's total time, which also
-  covers scheduling and writing blocks to the object store. Read, write, and map operators all report it, because a read and a
-  write run functions too. It covers the functions you pass into Ray Data methods, including
-  {meth}`~ray.data.Dataset.map`, {meth}`~ray.data.Dataset.map_batches`, {meth}`~ray.data.Dataset.filter`, etc., plus the work
-  around those calls that feeds them and collects what they return.
-  Set `DataContext.verbose_stats_logs` to break it into the following phases, which sum to this total:
+* **Remote wall time**: The wall time is the start to finish time for an operator. It includes the time where the operator isn't processing data, sleeping, waiting for I/O, etc.
+* **Remote CPU time**: The CPU time is the process time for an operator which excludes time slept. This time includes both user and system CPU time.
+* **Block transform time**: The time an operator spends transforming data, which Ray Data measures **per output block**. The min, max, and mean are therefore across blocks, and the total is the operator's. This isn't the same as the task's total time, which also covers scheduling and writing blocks to the object store. Read, write, and map operators all report it, because a read and a write run functions too. It covers the functions you pass into Ray Data methods, including {meth}`~ray.data.Dataset.map`, {meth}`~ray.data.Dataset.map_batches`, {meth}`~ray.data.Dataset.filter`, etc., plus the work around those calls that feeds them and collects what they return. Set `DataContext.verbose_stats_logs` to break it into the following phases, which sum to this total:
 
-  * **Input prep**: Time spent turning input blocks into the batches or rows your functions receive, including converting them
-    to the `batch_format` you asked for. This can dominate when rows hold Python objects or large tensors.
-  * **Function body**: Time spent inside the stage bodies themselves, excluding the prep and build around them. This covers
-    the functions you passed in and the ones Ray Data supplies, such as a read or a write that Ray Data fused into the same
-    operator, because a read or a write is a function like any other.
-  * **Output block build**: Time spent assembling what your functions return back into blocks, including materializing Python
-    objects into Arrow. This is separate from the object store write, which Ray Data reports as the
-    `data_block_serialization_time_s` metric.
+  * **Input prep**: Time spent turning input blocks into the batches or rows your functions receive, including converting them to the `batch_format` you asked for. This can dominate when rows hold Python objects or large tensors.
+  * **Function body**: Time spent inside the stage bodies themselves, excluding the prep and build around them. This covers the functions you passed in and the ones Ray Data supplies, such as a read or a write that Ray Data fused into the same operator, because a read or a write is a function like any other.
+  * **Output block build**: Time spent assembling what your functions return back into blocks, including materializing Python objects into Arrow. This is separate from the object store write, which Ray Data reports as the `data_block_serialization_time_s` metric.
 
-  Ray Data fuses adjacent operators where it can, and a fused operator reports one figure per phase covering all of its stages.
-  Row-based transforms such as {meth}`~ray.data.Dataset.map` only report the breakdown when you also set
-  `DataContext.accurate_map_phase_timing`, because timing each row individually costs more than the breakdown reports. The
-  figures are always present on the summary object that `Dataset.get_stats_summary()` returns, regardless of either setting.
+  Ray Data fuses adjacent operators where it can, and a fused operator reports one figure per phase covering all of its stages. Row-based transforms such as {meth}`~ray.data.Dataset.map` only report the breakdown when you also set `DataContext.accurate_map_phase_timing`, because timing each row individually costs more than the breakdown reports. The figures are always present on the summary object that `Dataset.get_stats_summary()` returns, regardless of either setting.
 * **Memory usage**: The output displays memory usage per block in MiB.
-* **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of
-  output rows per task is also included. All of this together gives you insight into how much data Ray Data is outputting at a per
-  block and per task level.
-* **Task Stats**: The output shows the scheduling of tasks to nodes, which allows you to see if you are utilizing all of your nodes
-  as expected.
-* **Throughput**: The summary calculates the throughput for the operator, and for a point of comparison, it also computes an estimate of
-  the throughput of the same task on a single node. This estimate assumes the total time of the work remains the same, but with no
-  concurrency. The overall summary also calculates the throughput at the dataset level, including a single node estimate.
+* **Output stats**: The output includes stats on the number of rows output and size of output in bytes per block. The number of output rows per task is also included. All of this together gives you insight into how much data Ray Data is outputting at a per block and per task level.
+* **Task Stats**: The output shows the scheduling of tasks to nodes, which allows you to see if you are utilizing all of your nodes as expected.
+* **Throughput**: The summary calculates the throughput for the operator, and for a point of comparison, it also computes an estimate of the throughput of the same task on a single node. This estimate assumes the total time of the work remains the same, but with no concurrency. The overall summary also calculates the throughput at the dataset level, including a single node estimate.
 
 ### Reading the block transform time breakdown
 
-Ray Data fuses adjacent operators into one task, so a single **block transform time** breakdown often spans several stages, some of them
-yours and some of them Ray Data's. Take this pipeline:
+Ray Data fuses adjacent operators into one task, so a single **block transform time** breakdown often spans several stages, some of them yours and some of them Ray Data's. Take this pipeline:
 
 ```python
 import time
@@ -481,32 +457,23 @@ Operator 1 ReadRange->Project->MapBatches(map1)->MapBatches(map2): 2 tasks execu
 
 Every figure covers all four stages:
 
-* **Function body** holds all four stage bodies: `ReadRange`, `Project`, `map1`, and `map2`. Two tasks each slept 0.1
-  then 0.2 seconds, so 0.6 of the 645 ms is `map1` and `map2`, and the remainder is the read and the column projection.
-* **Input prep** and **Output block build** likewise cover every stage, not only the two you wrote. Each stage forms its own
-  batches and builds its own output blocks, and all four report into the same two figures.
+* **Function body** holds all four stage bodies: `ReadRange`, `Project`, `map1`, and `map2`. Two tasks each slept 0.1 then 0.2 seconds, so 0.6 of the 645 ms is `map1` and `map2`, and the remainder is the read and the column projection.
+* **Input prep** and **Output block build** likewise cover every stage, not only the two you wrote. Each stage forms its own batches and builds its own output blocks, and all four report into the same two figures.
 
-So this breakdown tells you which *phase* the time went to, not which stage. Attributing the body time to `map2` rather
-than to the operator needs a per-stage breakdown, which Ray Data doesn't report yet.
+So this breakdown tells you which *phase* the time went to, not which stage. Attributing the body time to `map2` rather than to the operator needs a per-stage breakdown, which Ray Data doesn't report yet.
 
 ### Iterator stats
 
-If you iterate over the data, Ray Data also generates iteration stats. Even if you aren't directly iterating over the data, you
-might see iteration stats, for example, if you call {meth}`~ray.data.Dataset.take_all`. Some of the stats that Ray Data includes
-at the iterator level are:
+If you iterate over the data, Ray Data also generates iteration stats. Even if you aren't directly iterating over the data, you might see iteration stats, for example, if you call {meth}`~ray.data.Dataset.take_all`. Some of the stats that Ray Data includes at the iterator level are:
 
 * **Iterator initialization**: The time Ray Data spent initializing the iterator. This time is internal to Ray Data.
-* **Time user thread is blocked**: The time Ray Data spent producing data in the iterator. This time is often the primary execution of a
-  dataset if you haven't previously materialized it.
-* **Time in user thread**: The time spent in the user thread that's iterating over the dataset outside of the Ray Data code.
-  If this time is high, consider optimizing the body of the loop that's iterating over the dataset.
-* **Batch iteration stats**: Ray Data also includes stats about the prefetching of batches. These times are internal to Ray
-  Data code, but you can further optimize this time by tuning the prefetching process.
+* **Time user thread is blocked**: The time Ray Data spent producing data in the iterator. This time is often the primary execution of a dataset if you haven't previously materialized it.
+* **Time in user thread**: The time spent in the user thread that's iterating over the dataset outside of the Ray Data code. If this time is high, consider optimizing the body of the loop that's iterating over the dataset.
+* **Batch iteration stats**: Ray Data also includes stats about the prefetching of batches. These times are internal to Ray Data code, but you can further optimize this time by tuning the prefetching process.
 
 ### Verbose stats
 
-By default, Ray Data only logs the most important high-level stats. To enable verbose stats outputs, include
-the following snippet in your Ray Data code:
+By default, Ray Data only logs the most important high-level stats. To enable verbose stats outputs, include the following snippet in your Ray Data code:
 
 ```{testcode}
 from ray.data import DataContext
@@ -517,16 +484,9 @@ context.verbose_stats_logs = True
 
 By enabling verbosity Ray Data adds a few more outputs:
 
-* **Extra metrics**: Operators, executors, etc. can add to this dictionary of various metrics. There is
-  some duplication of stats between the default output and this dictionary, but for advanced users this stat provides more
-  insight into the dataset's execution.
-* **Runtime metrics**: These metrics are a high-level breakdown of the runtime of the dataset execution. These stats are a per
-  operator summary of the time each operator took to complete and the fraction of the total execution time that the operator took
-  to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead,
-  they show how long running each of the operators is in the context of the full dataset execution.
-* **Block transform time breakdown**: Ray Data splits each operator's **block transform time**, which it measures per output
-  block, into the input prep, function body, and output block build phases, so you can see which part of the transform the
-  time actually went to.
+* **Extra metrics**: Operators, executors, etc. can add to this dictionary of various metrics. There is some duplication of stats between the default output and this dictionary, but for advanced users this stat provides more insight into the dataset's execution.
+* **Runtime metrics**: These metrics are a high-level breakdown of the runtime of the dataset execution. These stats are a per operator summary of the time each operator took to complete and the fraction of the total execution time that the operator took to complete. As there are potentially multiple concurrent operators, these percentages don't necessarily sum to 100%. Instead, they show how long running each of the operators is in the context of the full dataset execution.
+* **Block transform time breakdown**: Ray Data splits each operator's **block transform time**, which it measures per output block, into the input prep, function body, and output block build phases, so you can see which part of the transform the time actually went to.
 
 ### Example stats
 

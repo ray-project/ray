@@ -311,8 +311,7 @@ For more details, see the {ref}`Batch inference user guide <batch_inference_home
 
 Datasets containing Torch tensors can be saved to files, like parquet or NumPy.
 
-For more information on saving data, read
-{ref}`Saving data <saving-data>`.
+For more information on saving data, read {ref}`Saving data <saving-data>`.
 
 :::{caution}
 Torch tensors that are on GPU devices can't be serialized and written to disk. Convert the tensors to CPU (`tensor.to("cpu")`) before saving the data.

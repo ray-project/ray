@@ -10,9 +10,7 @@ Out-of-memory errors (OOMs) are one of the most common issues Ray Data users enc
 
 This guide describes what OOMs look like and provides practical guidance for mitigating them.
 
-For a lower-level explanation of how Ray Data treats memory, read
-{ref}`Ray Data Memory Model <data_memory_management>` and
-{doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
+For a lower-level explanation of how Ray Data treats memory, read {ref}`Ray Data Memory Model <data_memory_management>` and {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
 
 
 ## What OOMs look like
