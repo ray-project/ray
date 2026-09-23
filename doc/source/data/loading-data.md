@@ -1288,4 +1288,4 @@ The community maintains the following connectors, which integrate Ray Data with 
 
 By default, Ray Data decides the number of output blocks from all read tasks dynamically, based on input data size and available resources. This default should work well in most cases. To override it, set the `override_num_blocks` argument. Ray Data decides internally how many read tasks to run concurrently to make the best use of the cluster, from 1 to `override_num_blocks` tasks. The higher the `override_num_blocks` value, the smaller the data blocks in the dataset, and the more opportunities for parallel execution.
 
-To tune the number of output blocks and find other ways to optimize read performance, see [Optimize reads](performance-tips.md#optimizing-reads).
+To tune the number of output blocks and find other ways to optimize read performance, see {ref}`Optimize reads <optimizing-reads>`.
