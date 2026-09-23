@@ -7,6 +7,7 @@ unit tests of the abort protocol between ``DataOpTask``, the metadata fetcher an
 the bundler.
 """
 
+import pickle
 from typing import Dict
 from unittest.mock import MagicMock
 
@@ -16,7 +17,11 @@ import ray
 from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
 from ray.data._internal.execution.lineage_tracker import LineageTracker
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.streaming_executor_state import (
+    _reconstruct_lost_object,
+)
 from ray.data.context import DataContext
+from ray.data.exceptions import LineageReconstructionError
 from ray.data.tests.conftest import *  # noqa: F401, F403
 from ray.data.tests.util import create_map_transformer_from_block_fn
 from ray.exceptions import ObjectLostError
@@ -296,6 +301,39 @@ def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
 
     assert calls == [error]
     assert task not in fetcher._drained_tasks
+
+
+def test_failed_reconstruction_carries_the_original_loss_and_the_reason():
+    """An ``ObjectLostError`` triggers a lineage reconstruction attempt that fails.
+
+    Test that the LineageReconstructionError carries both the original ObjectLostError
+    and the reason for the reconstruction failure.
+    """
+    object_lost_error = ObjectLostError(
+        ray.ObjectRef.nil().hex(), b"owner", "injected by test"
+    )
+    lost_output_task = _abortable_task(lambda exc, worker_stats, driver_stats: None)
+    op_state = MagicMock()
+    op_state.op.name = "test_op"
+
+    # A fresh tracker has never seen the task, so reconstruction cannot start.
+    with pytest.raises(LineageReconstructionError) as raised:
+        _reconstruct_lost_object(
+            {}, LineageTracker(), op_state, lost_output_task, object_lost_error
+        )
+    reconstruction_error = raised.value
+
+    assert isinstance(reconstruction_error, ObjectLostError)
+    assert reconstruction_error.lost_error is object_lost_error
+    assert reconstruction_error.__cause__ is object_lost_error
+    for field in ("object_ref_hex", "owner_address", "call_site"):
+        assert getattr(reconstruction_error, field) == getattr(object_lost_error, field)
+    assert str(object_lost_error) in str(reconstruction_error)
+    assert "not registered with the lineage graph" in str(reconstruction_error)
+
+    unpickled_error = pickle.loads(pickle.dumps(reconstruction_error))
+    assert type(unpickled_error.lost_error) is type(object_lost_error)
+    assert str(unpickled_error) == str(reconstruction_error)
 
 
 if __name__ == "__main__":

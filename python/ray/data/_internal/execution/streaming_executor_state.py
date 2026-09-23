@@ -43,6 +43,7 @@ from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
+from ray.data.exceptions import LineageReconstructionError
 from ray.exceptions import ObjectLostError, UserCodeException
 
 if TYPE_CHECKING:
@@ -678,27 +679,34 @@ def _reconstruct_lost_object(
     state: "OpState",
     task: OpTask,
     lost_error: ObjectLostError,
-) -> bool:
-    """Plan a reconstruction for a lost task output.
+) -> None:
+    """Plan and trigger a reconstruction for a lost task output.
 
-    Walks the failed task's ancestry to its seed tasks, re-injects their retained
-    inputs, and opens the plan so re-produced outputs get classified as they are
-    generated (see ``MapOperator._output_ready_callback``). Only the branches on the
+    Walks the failed task's dependencies to its seed tasks, gets their retained seed inputs,
+    and resubmits them to the source operator. Only the branches on the
     path to the lost object are re-executed -- outputs the plan does not need are
     dropped as ``OBJECT_PRUNED`` rather than re-emitted.
 
-    Returns True if reconstruction was initiated, False to fall back to the error path.
-    Every "cannot reconstruct" path must return False rather than raise: this runs on
-    the executor thread, where an exception tears down the whole dataset.
+    Args:
+        topology: The executor's operator topology, searched for the operator
+            that retained each seed task's input.
+        lineage_tracker: The tracker recording the dataset's task lineage.
+        state: The state of the operator whose task output was lost.
+        task: The task whose output was lost.
+        lost_error: The error raised when reading the lost output.
+
+    Raises:
+        LineageReconstructionError: If reconstruction cannot start. It is the
+            only exception raised for a "cannot reconstruct" path: this runs on the
+            executor thread, so the caller catches it and falls back to the error
+            path rather than tearing down the whole dataset.
     """
     if not isinstance(task, DataOpTask) or task.data_task_id is None:
-        logger.warning(
-            "[lineage-reconstruction] Lost object for task %s on operator %r is not "
-            "tracked by the lineage graph; cannot reconstruct.",
-            task.task_index(),
-            state.op.name,
-        )
-        return False
+        raise LineageReconstructionError(
+            lost_error,
+            f"task {task.task_index()} on operator {state.op.name!r} is not tracked "
+            "by the lineage graph.",
+        ) from lost_error
 
     # A retry of a failed reconstruction attempt reuses its original reconstruction plan; a fresh failure
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
@@ -707,25 +715,14 @@ def _reconstruct_lost_object(
         traced_seed_ids, plan_id = lineage_tracker.register_task_failed(
             task.data_task_id, task.plan_id
         )
-    except ValueError:
-        logger.info(
-            "[lineage-reconstruction] Lost object for task %s on operator %r is not "
-            "registered with the lineage graph; cannot reconstruct.",
-            task.data_task_id,
-            state.op.name,
-        )
-        return False
+    except ValueError as err:
+        raise LineageReconstructionError(
+            lost_error,
+            f"task {task.data_task_id} on operator {state.op.name!r} is not "
+            f"registered with the lineage graph ({err}).",
+        ) from lost_error
 
     seed_task_ids = sorted(traced_seed_ids)
-
-    if not seed_task_ids:
-        logger.info(
-            "[lineage-reconstruction] Reconstruction of %s is already under way "
-            "(plan %s); nothing further to resubmit.",
-            task.data_task_id,
-            plan_id,
-        )
-        return False
 
     # Resolve each seed id back to the operator that retained its input. The seed's
     # own operator is the one holding it, so no id parsing is needed.
@@ -738,12 +735,9 @@ def _reconstruct_lost_object(
                 seed_op = op
                 break
         if seed_input is None:
-            logger.info(
-                "[lineage-reconstruction] No retained input for seed task %s; cannot "
-                "reconstruct.",
-                seed_id,
-            )
-            return False
+            raise LineageReconstructionError(
+                lost_error, f"no retained input for seed task {seed_id}."
+            ) from lost_error
         resubmissions.append((seed_id, seed_op, seed_input))
 
     # Mark the task as aborted so the operator releases every resource it reserved.
@@ -753,13 +747,11 @@ def _reconstruct_lost_object(
         # Clear the completion state of the seed op and everything downstream so a
         # re-injected seed input can flow through again.
         _clear_downstream_completion_state(topology, seed_op)
-        # `OpState.output_queue` of the source *is* the seed op's `input_queues[0]`
-        # (same object, wired in `build_streaming_topology`), and `add_output`
-        # maintains the external queue counters that a bare append would leave
-        # unbalanced. Going through the normal queue also means the resubmission
-        # clears `get_eligible_operators`' backpressure gates like any other input.
+        # `OpState.output_queue` of the source is the seed op's `input_queues[0]`
+        # (same object, wired in `build_streaming_topology`).
+        # Backpressure gates the resubmission like any other input.
         # Carry the seed's identity across to its resubmission; without it the
-        # re-injected bundle is minted a fresh id and the plan never resolves.
+        # resubmitted bundle is minted a fresh id and the plan never resolves.
         seed_op.stamp_seed_reinjection(seed_id, plan_id, seed_input)
         source_op = seed_op.input_dependencies[0]
         topology[source_op].add_output(seed_input)
@@ -778,7 +770,6 @@ def _reconstruct_lost_object(
         plan_id,
         ", ".join(seed_task_ids),
     )
-    return True
 
 
 def process_completed_tasks(
@@ -963,20 +954,17 @@ def process_completed_tasks(
                                 "reconstruction (lineage_tracker="
                                 f"{'on' if lineage_tracker else 'off'})."
                             )
-                            if (
-                                lineage_tracker is not None
-                                and _reconstruct_lost_object(
+                            if lineage_tracker is None:
+                                _record_errored_block(e, state.op.name)
+                                continue
+                            try:
+                                _reconstruct_lost_object(
                                     topology, lineage_tracker, state, task, e
                                 )
-                            ):
-                                continue
-                            logger.info(
-                                "[lineage-reconstruction] Reconstruction did not fire "
-                                f"for task {task.task_index()} on operator "
-                                f'"{state.op.name}"; falling back to the error path.'
-                            )
-                            # Untracked / unrecoverable: fall through to error path.
-                            _record_errored_block(e, state.op.name)
+                            except LineageReconstructionError as recon_error:
+                                # Untracked / unrecoverable: fall through to the
+                                # error path, carrying why reconstruction failed.
+                                _record_errored_block(recon_error, state.op.name)
                         except Exception as e:
                             _record_errored_block(e, state.op.name)
                     else:

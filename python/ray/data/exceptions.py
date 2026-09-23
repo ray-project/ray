@@ -3,7 +3,7 @@ from typing import Callable
 
 from ray.data._internal.logging import get_log_directory
 from ray.data.context import DataContext
-from ray.exceptions import UserCodeException
+from ray.exceptions import ObjectLostError, UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
@@ -40,6 +40,29 @@ class ExecutionTimeoutError(Exception):
     progress for `DataContext.execution_no_progress_timeout_s`.
     This usually means a UDF is blocked, a task is stuck, or the cluster can
     no longer schedule work."""
+
+
+@DeveloperAPI
+class LineageReconstructionError(ObjectLostError):
+    """Represents an error that occurred during lineage reconstruction triggered
+    by an ``ObjectLostError``.
+    Subclasses ``ObjectLostError`` so callers catching the original loss still
+    catch it. The message carries both the cause for the object loss and the cause
+    of the lineage reconstruction failure."""
+
+    def __init__(self, lost_error: ObjectLostError, reason: str):
+        super().__init__(
+            lost_error.object_ref_hex, lost_error.owner_address, lost_error.call_site
+        )
+        self.lost_error = lost_error
+        self.reason = reason
+
+    def __str__(self):
+        return (
+            f"{self.lost_error}\n\n"
+            "Ray Data lineage reconstruction was triggered for this object but "
+            f"failed: {self.reason}"
+        )
 
 
 @DeveloperAPI
