@@ -116,7 +116,7 @@ You can set the `ASCEND_RT_VISIBLE_DEVICES` environment variable before starting
 ::::{tab-item} Cambricon MLU
 :sync: Cambricon MLU
 :::{tip}
-You can set the `MLU_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Cambricon MLUs that are visible to Ray. For example, `MLU_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MLU": 2}'` lets Ray only see devices 1 and 3.
+You can set the `CN_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Cambricon MLUs that are visible to Ray. For example, `CN_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MLU": 2}'` lets Ray only see devices 1 and 3.
 :::
 ::::
 
@@ -471,12 +471,12 @@ ray.init(resources={"MLU": 2})
 class MLUActor:
     def ping(self):
         print("MLU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MLU"]))
-        print("MLU_VISIBLE_DEVICES: {}".format(os.environ["MLU_VISIBLE_DEVICES"]))
+        print("CN_VISIBLE_DEVICES: {}".format(os.environ["CN_VISIBLE_DEVICES"]))
 
 @ray.remote(resources={"MLU": 1})
 def mlu_task():
     print("MLU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MLU"]))
-    print("MLU_VISIBLE_DEVICES: {}".format(os.environ["MLU_VISIBLE_DEVICES"]))
+    print("CN_VISIBLE_DEVICES: {}".format(os.environ["CN_VISIBLE_DEVICES"]))
 
 mlu_actor = MLUActor.remote()
 ray.get(mlu_actor.ping.remote())
@@ -488,9 +488,9 @@ ray.get(mlu_task.remote())
 :options: +MOCK
 
 (MLUActor pid=52420) MLU IDs: [0]
-(MLUActor pid=52420) MLU_VISIBLE_DEVICES: 0
+(MLUActor pid=52420) CN_VISIBLE_DEVICES: 0
 (mlu_task pid=51830) MLU IDs: [1]
-(mlu_task pid=51830) MLU_VISIBLE_DEVICES: 1
+(mlu_task pid=51830) CN_VISIBLE_DEVICES: 1
 ```
 :::
 

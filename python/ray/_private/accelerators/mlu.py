@@ -8,8 +8,8 @@ from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
-MLU_VISIBLE_DEVICES_ENV_VAR = "MLU_VISIBLE_DEVICES"
-NOSET_MLU_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_MLU_VISIBLE_DEVICES"
+CN_VISIBLE_DEVICES_ENV_VAR = "CN_VISIBLE_DEVICES"
+NOSET_CN_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CN_VISIBLE_DEVICES"
 
 
 class MLUAcceleratorManager(AcceleratorManager):
@@ -21,7 +21,7 @@ class MLUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_visible_accelerator_ids_env_var() -> str:
-        return MLU_VISIBLE_DEVICES_ENV_VAR
+        return CN_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
@@ -71,7 +71,7 @@ class MLUAcceleratorManager(AcceleratorManager):
     def set_current_process_visible_accelerator_ids(
         visible_mlu_devices: List[str],
     ) -> None:
-        if env_bool(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, False):
+        if env_bool(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
         os.environ[
