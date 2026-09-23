@@ -142,7 +142,7 @@ To reduce the risk of head-node out-of-memory failures, lower this threshold, fo
 #### How does hash-shuffling work?
 
 :::{note}
-Hash-shuffling is available in Ray 2.46.
+Hash-shuffling is available starting in Ray 2.46.
 :::
 
 Hash-shuffling is a classical hash-partitioning shuffle with three phases:
@@ -191,7 +191,7 @@ The Ray Data planner translates logical operators to one or more physical operat
 
 Ray Data applies optimizations to both logical and physical plans. For example, the `OperatorFusionRule` combines a chain of physical map operators into a single map operator, which prevents unnecessary serialization between map operators.
 
-To add custom optimization rules, implement a class that extends `Rule` and configure `DEFAULT_LOGICAL_RULES` or `DEFAULT_PHYSICAL_RULES`.
+To add custom optimization rules, implement a class that extends `Rule` and add it to the logical or physical rule set.
 
 ```{testcode}
 import ray

@@ -324,11 +324,11 @@ Operator 1 ReadRange->MapBatches(<lambda>): 1 tasks executed, 1 blocks produced 
 
 ## Configure execution
 
-The following section describes how to configure execution resources and locality.
+The following section describes how to configure execution resources.
 
 (configuring-resources-and-locality)=
 
-### Configure resources and locality
+### Configure resources
 
 By default, Ray Data sets the CPU and GPU limits to the cluster size. It conservatively sets the object store memory limit to 1/4 of the total object store size to avoid the possibility of disk spilling.
 
