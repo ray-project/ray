@@ -69,6 +69,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_PUSH_HEALTH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
@@ -753,11 +754,20 @@ class ReplicaHealthPushRegistry:
     _PRUNE_THRESHOLD = 65536
     _PRUNE_MAX_AGE_S = 600.0
     _PRUNE_MIN_INTERVAL_S = 30.0
+    # A shortfall against the rate the controller itself configured means either it is
+    # draining pushes too slowly or the replicas have gone quiet. Measured over a
+    # window long enough to cover pusher jitter, and acted on only below this fraction.
+    _RATE_WINDOW_S = 30.0
+    _LAGGING_RATIO = 0.5
 
     def __init__(self):
         # replica_unique_id -> (checked_at, received_at, healthy, consecutive_failures)
         self._state: Dict[str, Tuple[float, float, bool, Optional[int]]] = {}
         self._last_prune_time = 0.0
+        self._expected_rate_per_s: float = 0.0
+        self._arrivals: int = 0
+        self._rate_window_start: float = 0.0
+        self._observed_rate_per_s: Optional[float] = None
 
     def record(
         self,
@@ -766,6 +776,7 @@ class ReplicaHealthPushRegistry:
         healthy: bool,
         consecutive_failures: Optional[int] = None,
     ):
+        self._arrivals += 1
         prev = self._state.get(replica_unique_id)
         if prev is not None and checked_at <= prev[0]:
             return  # A delayed report must not clobber a newer observation.
@@ -801,6 +812,33 @@ class ReplicaHealthPushRegistry:
         on a fleet that never crosses the threshold.
         """
         self._state.pop(replica_unique_id, None)
+
+    def set_expected_rate(self, rate_per_s: float) -> None:
+        """Health-bearing reports per second the fleet should publish, summed by the
+        caller."""
+        self._expected_rate_per_s = rate_per_s
+
+    def ingest_lagging(self) -> bool:
+        """Whether arrivals are falling short of what the fleet should publish.
+
+        False until a full window has closed, so a fresh controller does not mistake
+        its own warm-up for lag. The shortfall does not say which side is at fault, but
+        all it gates is whether to charge a probe timeout against a replica, and
+        declining to do that is safe under either reading.
+        """
+        now = time.time()
+        if not self._rate_window_start:
+            self._rate_window_start = now
+        elapsed = now - self._rate_window_start
+        if elapsed >= self._RATE_WINDOW_S:
+            self._observed_rate_per_s = self._arrivals / elapsed
+            self._arrivals = 0
+            self._rate_window_start = now
+        if self._observed_rate_per_s is None or self._expected_rate_per_s <= 0:
+            return False
+        return (
+            self._observed_rate_per_s < self._expected_rate_per_s * self._LAGGING_RATIO
+        )
 
 
 class ActorReplicaWrapper:
@@ -848,6 +886,7 @@ class ActorReplicaWrapper:
         self._consecutive_health_check_failures = 0
         self._last_health_check_latency_ms: Optional[float] = None
         self._last_health_check_failed: Optional[bool] = None
+        self._last_health_check_timed_out: bool = False
         # Latest self-health pushed by the replica, plus the watermarks that stop a
         # push and an in-flight probe from overwriting each other's verdict.
         self._pushed_health: Optional[Tuple[float, float, bool, Optional[int]]] = None
@@ -1745,6 +1784,7 @@ class ActorReplicaWrapper:
         # check cycles.
         self._last_health_check_latency_ms = None
         self._last_health_check_failed = None
+        self._last_health_check_timed_out = False
 
         if self._health_check_ref is None:
             # There is no outstanding health check.
@@ -1777,6 +1817,7 @@ class ActorReplicaWrapper:
                 f"{self.health_check_timeout_s}s, marking it unhealthy."
             )
             response = ReplicaHealthCheckResponse.APP_FAILURE
+            self._last_health_check_timed_out = True
             # Calculate latency for timeout case.
             self._last_health_check_latency_ms = (
                 time.time() - self._last_health_check_time
@@ -1900,7 +1941,7 @@ class ActorReplicaWrapper:
         )
         return time_since_last > randomized_period
 
-    def check_health(self) -> bool:
+    def check_health(self, ingest_lagging: bool = False) -> bool:
         """Check if the actor is healthy.
 
         self._healthy should *only* be modified in this method.
@@ -1926,6 +1967,20 @@ class ActorReplicaWrapper:
             response = ReplicaHealthCheckResponse.NONE
             # Keep the latency sample -- the probe really did take that long -- but
             # not the failure: the counter tracks what the controller acted on.
+            self._last_health_check_failed = None
+        if (
+            response is ReplicaHealthCheckResponse.APP_FAILURE
+            and self._last_health_check_timed_out
+            and ingest_lagging
+        ):
+            # The probe never came back and the controller is draining pushes slower
+            # than the fleet publishes them, so the silence is at least as likely to be
+            # this loop as the replica. A crashed actor still reports ACTOR_CRASHED.
+            logger.info(
+                f"Ignoring health check timeout for {self._replica_id} while "
+                "controller ingest is behind."
+            )
+            response = ReplicaHealthCheckResponse.NONE
             self._last_health_check_failed = None
         if response is not ReplicaHealthCheckResponse.NONE:
             # Watermark by when this probe started: a push that arrived before that
@@ -2369,12 +2424,12 @@ class DeploymentReplica:
         """True if a health-check or routing-stats ref is in flight (dirty-set poll set)."""
         return self._actor.has_in_flight_health_or_routing_probe
 
-    def check_health(self) -> bool:
+    def check_health(self, ingest_lagging: bool = False) -> bool:
         """Check if the replica is healthy.
 
         Returns `True` if the replica is healthy, else `False`.
         """
-        return self._actor.check_health()
+        return self._actor.check_health(ingest_lagging)
 
     def record_pushed_health(
         self,
@@ -5454,6 +5509,26 @@ class DeploymentState:
                 DEFAULT_HEALTH_CHECK_PERIOD_S, DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S
             )
 
+    def expected_push_rate(self) -> float:
+        """Health-bearing reports per second this deployment's replicas should send.
+
+        Erring low is safe: it can only make the controller decide it is keeping up.
+        """
+        info = self._target_state.info
+        if info is None:
+            return 0.0
+        running = self._replicas.count(states=[ReplicaState.RUNNING])
+        if not running:
+            return 0.0
+        config = info.deployment_config
+        autoscaling = config.autoscaling_config
+        if (
+            autoscaling is not None
+            and autoscaling.metrics_interval_s <= config.health_check_period_s
+        ):
+            return running / autoscaling.metrics_interval_s
+        return running * 2.0 / config.health_check_period_s
+
     def _apply_pushed_health(self, replica: "DeploymentReplica") -> None:
         """Hand the replica its latest pushed self-health before the health check."""
         if self._health_push_registry is None:
@@ -5476,12 +5551,17 @@ class DeploymentState:
         # RUNNING/PENDING_MIGRATION in place, avoiding the O(num_replicas) pop/re-add
         # churn at scale. Gang deployments use the pop/re-add path (their force-stop
         # reshuffles the lists).
+        # One reading per tick, so every replica is judged against the same verdict
+        # about the controller's own ingest.
+        lagging = self._health_push_registry is not None and (
+            self._health_push_registry.ingest_lagging()
+        )
         if not self._is_gang_deployment:
             origin: List[ReplicaState] = []
             pairs = self._dirty_set_active_pairs()
             for replica, _ in pairs:
                 self._apply_pushed_health(replica)
-            healths = [replica.check_health() for replica, _ in pairs]
+            healths = [replica.check_health(lagging) for replica, _ in pairs]
             for (replica, st), is_healthy in zip(pairs, healths):
                 self._record_health_check_metrics(replica)
                 if is_healthy:
@@ -5511,7 +5591,7 @@ class DeploymentState:
                 states=[ReplicaState.RUNNING, ReplicaState.PENDING_MIGRATION]
             ):
                 self._apply_pushed_health(replica)
-                is_healthy = replica.check_health()
+                is_healthy = replica.check_health(lagging)
                 self._record_health_check_metrics(replica)
                 if is_healthy:
                     healthy_replicas.append(replica)
@@ -7004,6 +7084,16 @@ class DeploymentStateManager:
         """
         deleted_ids = []
         any_recovering = False
+        # Publish what the fleet owes before reading any replica health, so this pass
+        # judges probe timeouts against a current figure. With the feature off the
+        # expected rate stays 0, which keeps ingest_lagging() False and the gate inert.
+        if RAY_SERVE_ENABLE_PUSH_HEALTH and self._health_push_registry is not None:
+            self._health_push_registry.set_expected_rate(
+                sum(
+                    deployment_state.expected_push_rate()
+                    for deployment_state in self._deployment_states.values()
+                )
+            )
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
 

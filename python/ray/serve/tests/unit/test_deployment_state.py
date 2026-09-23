@@ -12004,5 +12004,131 @@ class TestPushedHealthRegressions:
         assert w._consecutive_health_check_failures == 1
 
 
+class TestIngestLagGate:
+    """The controller measures its own ingest against what the fleet should be
+    publishing, and stops scoring probe timeouts against replicas while behind."""
+
+    def _registry(self, monkeypatch, clock):
+        monkeypatch.setattr(time, "time", lambda: clock[0])
+        return ReplicaHealthPushRegistry()
+
+    def test_no_verdict_before_a_window_closes(self, monkeypatch):
+        clock = [1000.0]
+        r = self._registry(monkeypatch, clock)
+        r.set_expected_rate(10.0)
+        assert not r.ingest_lagging()  # warm-up, nothing observed yet
+        clock[0] += r._RATE_WINDOW_S / 2
+        assert not r.ingest_lagging()
+
+    def test_shortfall_reads_as_lagging(self, monkeypatch):
+        clock = [1000.0]
+        r = self._registry(monkeypatch, clock)
+        r.set_expected_rate(10.0)  # 300 reports due over the window
+        r.ingest_lagging()  # opens the window
+        for i in range(30):  # a tenth of that arrives
+            r.record(f"r{i}", clock[0], True)
+        clock[0] += r._RATE_WINDOW_S
+        assert r.ingest_lagging()
+
+    def test_keeping_up_is_not_lagging(self, monkeypatch):
+        clock = [1000.0]
+        r = self._registry(monkeypatch, clock)
+        r.set_expected_rate(1.0)  # 30 reports due over the window
+        r.ingest_lagging()
+        for i in range(30):
+            r.record(f"r{i}", clock[0], True)
+        clock[0] += r._RATE_WINDOW_S
+        assert not r.ingest_lagging()
+
+    def test_without_an_expectation_it_never_lags(self, monkeypatch):
+        clock = [1000.0]
+        r = self._registry(monkeypatch, clock)
+        r.ingest_lagging()
+        clock[0] += r._RATE_WINDOW_S
+        assert not r.ingest_lagging()
+
+    def _ds_for_rate(self, period_s, metrics_interval_s, running=100):
+        ds = ds_mod.DeploymentState.__new__(ds_mod.DeploymentState)
+        autoscaling = (
+            None
+            if metrics_interval_s is None
+            else SimpleNamespace(metrics_interval_s=metrics_interval_s)
+        )
+        ds._target_state = SimpleNamespace(
+            info=SimpleNamespace(
+                deployment_config=SimpleNamespace(
+                    health_check_period_s=period_s,
+                    autoscaling_config=autoscaling,
+                )
+            )
+        )
+        ds._replicas = SimpleNamespace(count=lambda states: running)
+        return ds
+
+    def test_expected_rate_follows_the_metric_cadence(self):
+        # The interval must not be half the period, or the metric and heartbeat
+        # branches coincide and the assertion pins neither.
+        ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=2.0)
+        assert ds.expected_push_rate() == 50.0  # 100 replicas / 2s, not 100*2/10s
+
+    def test_expected_rate_falls_back_to_the_heartbeat_cadence(self):
+        ds = self._ds_for_rate(period_s=20.0, metrics_interval_s=None)
+        assert ds.expected_push_rate() == 10.0  # 100 replicas * 2 / 20s
+        # A metric cadence slower than the period cannot carry health on its own,
+        # so the heartbeat sets the rate.
+        ds = self._ds_for_rate(period_s=20.0, metrics_interval_s=60.0)
+        assert ds.expected_push_rate() == 10.0
+
+    def test_expected_rate_is_zero_without_a_target_or_replicas(self):
+        ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=5.0, running=0)
+        assert ds.expected_push_rate() == 0.0
+        ds._target_state = SimpleNamespace(info=None)
+        assert ds.expected_push_rate() == 0.0
+
+    def _timed_out_probe(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time() - 60.0  # well past the timeout
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        return w
+
+    def test_timeout_is_not_counted_while_ingest_is_behind(self, monkeypatch):
+        w = self._timed_out_probe(monkeypatch)
+        assert w.check_health(ingest_lagging=True) is True
+        assert w._consecutive_health_check_failures == 0
+        assert not w.last_health_check_failed  # nor counted in the metric
+
+    def test_timeout_is_counted_when_ingest_is_keeping_up(self, monkeypatch):
+        w = self._timed_out_probe(monkeypatch)
+        assert w.check_health(ingest_lagging=False) is True
+        assert w._consecutive_health_check_failures == 1
+
+    def test_application_failure_is_counted_even_while_behind(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+
+        def _raise(ref):
+            raise ds_mod.RayError()
+
+        monkeypatch.setattr(ds_mod.ray, "get", _raise)
+        # The probe came back; the replica really did fail its check.
+        assert w.check_health(ingest_lagging=True) is True
+        assert w._consecutive_health_check_failures == 1
+
+    def test_actor_crash_is_reported_even_while_behind(self, monkeypatch):
+        w = TestPushedHealth._wrapper(TestPushedHealth())
+        w._health_check_ref = "probe_ref"
+        w._last_health_check_time = time.time()
+        monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda r: True)
+
+        def _crashed(ref):
+            raise ds_mod.RayActorError()
+
+        monkeypatch.setattr(ds_mod.ray, "get", _crashed)
+        assert w.check_health(ingest_lagging=True) is False
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

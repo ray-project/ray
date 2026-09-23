@@ -490,6 +490,16 @@ RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
 )
 
 # Replica autoscaling metrics push interval.
+# Replicas run their own health check and push the result; the controller
+# pull-probes only when a pushed result goes stale. Removed once the stack lands.
+RAY_SERVE_ENABLE_PUSH_HEALTH = (
+    os.environ.get("RAY_SERVE_ENABLE_PUSH_HEALTH", "0") == "1"
+)
+
+# A push outstanding longer than this is abandoned rather than waited on: an
+# unbounded guard lets one stuck receiver silence a replica permanently.
+RAY_SERVE_METRICS_PUSH_STUCK_S = get_env_float("RAY_SERVE_METRICS_PUSH_STUCK_S", 20.0)
+
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
 )
