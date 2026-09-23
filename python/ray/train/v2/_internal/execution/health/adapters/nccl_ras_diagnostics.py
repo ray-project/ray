@@ -34,7 +34,6 @@ from ray.train.v2._internal.execution.health.probe import (
 logger = logging.getLogger(__name__)
 
 _STACK_DUMP_TIMEOUT_S: float = 30.0
-_THERMAL_KEYS = ("SW Thermal Slowdown", "HW Thermal Slowdown")
 _NVIDIA_SMI_TIMEOUT_S: float = 30.0
 
 # The worker-side capture from #64928, reused as-is.
@@ -166,45 +165,119 @@ class NvidiaSmiProbe(OnDemandProbe):
         )
 
 
-def _parse_nvidia_smi(report: str) -> tuple:
-    """Pull the few counters a policy can act on out of ``nvidia-smi -q``.
-
-    Deliberately shallow. The full report stays in storage; what crosses into
-    the health loop is only what an evaluator thresholds on.
-    """
-    metrics: Dict[str, float] = {}
-    events: list = []
-
-    ecc = 0
-    for line in report.splitlines():
-        stripped = line.strip()
-        if stripped.startswith(("Pending", "Volatile")):
-            continue
-        key, _, value = stripped.partition(":")
-        key, value = key.strip(), value.strip()
-
-        if key == "Uncorrectable" and value.isdigit():
-            ecc += int(value)
-        elif key == "GPU Current Temp" and value.endswith("C"):
-            temp = _as_float(value[:-1])
-            if temp is not None:
-                metrics["max_temp_c"] = max(metrics.get("max_temp_c", 0.0), temp)
-        elif key in _THERMAL_KEYS and value == "Active":
-            events.append("thermal_throttle")
-
-    metrics["ecc_uncorrectable"] = float(ecc)
-    if ecc:
-        events.append("ecc_uncorrectable")
-    if metrics.get("max_temp_c", 0.0) >= 90:
-        events.append("gpu_hot")
-    return metrics, sorted(set(events))
-
-
-def _as_float(text: str) -> Optional[float]:
+def _as_float(text: str):
     try:
         return float(text.strip())
     except (TypeError, ValueError):
         return None
+
+
+#: Section headers under `ECC Errors`. "Volatile" counts since the last driver
+#: reload, i.e. this run; "Aggregate" is the card's lifetime. Only the first
+#: says anything about the run in progress -- summing both would make every
+#: long-lived GPU look faulty.
+_ECC_VOLATILE = "Volatile"
+_ECC_AGGREGATE = "Aggregate"
+
+#: Uncorrectable ECC counters, as `nvidia-smi -q` actually spells them. There
+#: is no field called plain "Uncorrectable"; assuming there was is why this
+#: check silently counted zero on every real GPU.
+_UNCORRECTABLE_KEYS = (
+    "SRAM Uncorrectable Parity",
+    "SRAM Uncorrectable SEC-DED",
+    "DRAM Uncorrectable",
+)
+
+#: Clock-throttle reasons that mean the card is being held back by its own
+#: limits. `Clocks Event Reasons` reports Active/Not Active; the `Counters`
+#: section repeats the same names with microsecond values, which is why the
+#: value has to be matched too and not just the key.
+_THROTTLE_KEYS = (
+    "SW Thermal Slowdown",
+    "HW Thermal Slowdown",
+    "HW Power Brake Slowdown",
+)
+
+#: Row-remapping is how modern GPUs retire bad memory. A failure, or a pending
+#: remap, is a card on its way out.
+_REMAP_FAILURE_KEYS = ("Remapping Failure Occurred", "Pending")
+
+
+def _parse_nvidia_smi(report: str) -> tuple:
+    """Pull the few counters a policy can act on out of `nvidia-smi -q`.
+
+    Deliberately shallow: the full report goes to storage, and only what an
+    evaluator thresholds on crosses into the health loop.
+
+    Written against real `nvidia-smi -q` output from an A10G rather than from
+    memory -- the field names are not what you would guess, and getting them
+    wrong fails silently in the worst direction, reporting a clean GPU.
+    """
+    metrics = {}
+    events = []
+    section = None  # the `ECC Errors` subsection we are inside
+    in_remapped = False
+    slowdown_temp = None
+    current_temp = None
+    ecc = {_ECC_VOLATILE: 0.0, _ECC_AGGREGATE: 0.0}
+
+    for line in report.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        # Indentation is the only thing separating Volatile from Aggregate, so
+        # track the section rather than matching keys globally.
+        if stripped in (_ECC_VOLATILE, _ECC_AGGREGATE):
+            section = stripped
+            continue
+        if stripped == "Remapped Rows":
+            section, in_remapped = None, True
+            continue
+        if stripped.endswith("Errors") or stripped in ("Temperature", "Retired Pages"):
+            section, in_remapped = None, stripped == "Remapped Rows"
+
+        key, sep, value = stripped.partition(":")
+        if not sep:
+            continue
+        key, value = key.strip(), value.strip()
+
+        if section in ecc and key in _UNCORRECTABLE_KEYS:
+            count = _as_float(value)
+            if count is not None:
+                ecc[section] += count
+        elif key in _THROTTLE_KEYS and value == "Active":
+            events.append("thermal_throttle" if "Thermal" in key else "power_brake")
+        elif key == "GPU Current Temp":
+            current_temp = _as_float(value.removesuffix("C"))
+        elif key == "GPU Slowdown Temp":
+            slowdown_temp = _as_float(value.removesuffix("C"))
+        elif in_remapped and key == "Uncorrectable Error":
+            count = _as_float(value)
+            if count:
+                metrics["remapped_rows_uncorrectable"] = count
+                events.append("remapped_rows")
+        elif in_remapped and key in _REMAP_FAILURE_KEYS and value == "Yes":
+            events.append("row_remap_failure")
+        elif key == "SRAM Threshold Exceeded" and value == "Yes":
+            events.append("sram_threshold_exceeded")
+
+    metrics["ecc_uncorrectable"] = ecc[_ECC_VOLATILE]
+    metrics["ecc_uncorrectable_lifetime"] = ecc[_ECC_AGGREGATE]
+    if ecc[_ECC_VOLATILE]:
+        events.append("ecc_uncorrectable")
+
+    if current_temp is not None:
+        metrics["max_temp_c"] = current_temp
+        # The threshold belongs to the card, not to us. An A10G slows at 95C, a
+        # different part slows somewhere else, and a hardcoded number is wrong
+        # for all but one of them.
+        limit = slowdown_temp if slowdown_temp else 90.0
+        metrics["slowdown_temp_c"] = limit
+        if current_temp >= limit:
+            events.append("gpu_hot")
+
+    return metrics, sorted(set(events))
 
 
 class RasTextReportProbe(OnDemandProbe):
