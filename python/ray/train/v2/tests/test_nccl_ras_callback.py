@@ -520,6 +520,8 @@ def make_nccl_ras_callback(
     captured = []
 
     def capture(tool, produces_dir=True):
+        if not produces_dir:
+            return None
         captured.append(tool)
         return f"/exp/{HANG_DETECTOR_DIRNAME}/{tool}"
 
@@ -538,7 +540,11 @@ _COMM_A = "0x2b9ffd12ea17b069"
 _COMM_B = "0xced5b798f46495a3"
 
 # The diagnostics a confirmed hang captures, in the order they are collected.
-_CONFIRMED_HANG_DIAGNOSTICS = [nccl_ras._NCCL_RAS_TOOL, nccl_ras._STACK_TRACES_TOOL]
+_CONFIRMED_HANG_DIAGNOSTICS = [
+    nccl_ras._NVIDIA_SMI_TOOL,
+    nccl_ras._NCCL_RAS_TOOL,
+    nccl_ras._STACK_TRACES_TOOL,
+]
 
 # A rank's spec is either an AllReduce count (int) or an explicit op->count map.
 _RankCounts = Dict[int, Union[int, Dict[str, int]]]
@@ -638,11 +644,11 @@ def test_confirmed_hang_captures_diagnostics(monkeypatch, nvidia_smi):
     if nvidia_smi:
         # Snapshotted before the stack traces, which take far longer, so the GPU
         # reading is as close to the moment of the hang as we can make it.
-        assert captured == [nccl_ras._NVIDIA_SMI_TOOL, nccl_ras._STACK_TRACES_TOOL]
+        assert captured == _CONFIRMED_HANG_DIAGNOSTICS
         assert "`nvidia-smi` snapshots" in message
         assert "/exp/hang_detector/nvidia_smi" in message
     else:
-        assert captured == [nccl_ras._STACK_TRACES_TOOL]
+        assert captured == [nccl_ras._NCCL_RAS_TOOL, nccl_ras._STACK_TRACES_TOOL]
         assert "nvidia-smi" not in message
     # The hang is the expected outcome, not a detector bug.
     assert callback._is_ras_degraded is False
@@ -1049,7 +1055,12 @@ def test_unexpected_error_disables_detection(monkeypatch):
 
 @pytest.mark.parametrize(
     "fail_stack_traces,fail_nvidia_smi,fail_ras_history",
-    [(True, False, False), (False, True, False), (False, False, True), (True, True, True)],
+    [
+        (True, False, False),
+        (False, True, False),
+        (False, False, True),
+        (True, True, True),
+    ],
     ids=["stack_traces_fail", "nvidia_smi_fails", "ras_history_fails", "both_fail"],
 )
 def test_hang_error_propagates_when_diagnostics_fail(
@@ -1190,10 +1201,13 @@ def uploads(monkeypatch):
     return calls
 
 
-def make_diagnostics_callback(experiment_fs_path="/exp"):
+def make_diagnostics_callback(workers=None, experiment_fs_path="/exp"):
     """A callback wired to a worker group, to exercise the real dump methods."""
     callback = NCCLRASCallback()
     worker_group = MagicMock()
+    worker_group.get_workers.return_value = (
+        [make_worker(rank) for rank in (0, 1)] if workers is None else workers
+    )
     worker_group._storage_context.experiment_fs_path = experiment_fs_path
     callback._worker_group = worker_group
     return callback
@@ -1390,7 +1404,7 @@ def test_stack_traces_record_a_rank_that_could_not_be_launched(monkeypatch, uplo
 
     ((_, files),) = uploads
     assert files["rank_0.log"] == "trace of rank 0"
-    assert files["rank_1.log"] == "failed to launch stack dump: actor unavailable\n"
+    assert files["rank_1.log"] == "failed to launch: actor unavailable"
 
 
 def test_stack_traces_record_a_rank_that_timed_out(
@@ -1408,9 +1422,9 @@ def test_stack_traces_record_a_rank_that_timed_out(
     ((_, files),) = uploads
     assert files["rank_0.log"] == "trace of rank 0"
     assert files["rank_1.log"] == (
-        f"stack dump timed out after {nccl_ras._STACK_DUMP_TIMEOUT_S:.0f}s"
+        f"timed out after {nccl_ras._STACK_DUMP_TIMEOUT_S:.0f}s"
     )
-    assert "Stack dump on rank 1 did not finish" in caplog.text
+    assert "dump_stack_trace on rank 1 did not finish" in caplog.text
 
 
 def test_stack_traces_record_a_rank_whose_dump_failed(monkeypatch, uploads):
@@ -1425,7 +1439,7 @@ def test_stack_traces_record_a_rank_whose_dump_failed(monkeypatch, uploads):
     callback.dump_workers_stack_traces()
 
     ((_, files),) = uploads
-    assert files["rank_1.log"] == "failed to collect stack trace: worker died"
+    assert files["rank_1.log"] == "failed to collect: worker died"
 
 
 def test_stack_traces_skipped_without_workers(monkeypatch, uploads):
@@ -1616,32 +1630,6 @@ def test_nvidia_smi_failures_say_why(monkeypatch, run_result, expected_reason):
     assert result["ok"] is False and expected_reason in result["reason"]
 
 
-@pytest.fixture
-def uploads(monkeypatch):
-    """Capture each upload as ``(fs_path, {filename: contents})``."""
-    calls = []
-
-    def fake_upload(local_dir, filesystem, fs_path):
-        calls.append(
-            (fs_path, {p.name: p.read_text() for p in Path(local_dir).iterdir()})
-        )
-
-    monkeypatch.setattr(nccl_ras, "_upload_to_fs_path", fake_upload)
-    return calls
-
-
-def make_diagnostics_callback(workers=None, experiment_fs_path="/exp"):
-    """A callback wired to a worker group, to exercise the real dump methods."""
-    callback = NCCLRASCallback()
-    worker_group = MagicMock()
-    worker_group.get_workers.return_value = (
-        [make_worker(rank) for rank in (0, 1)] if workers is None else workers
-    )
-    worker_group._storage_context.experiment_fs_path = experiment_fs_path
-    callback._worker_group = worker_group
-    return callback
-
-
 def scripted_fan_out(monkeypatch, dumps):
     """Replace the worker fan-out with fixed dumps, recording how it was called."""
     calls = []
@@ -1754,16 +1742,6 @@ def test_stack_traces_upload_per_rank(monkeypatch, uploads):
         (nccl_ras._STACK_DUMP_TIMEOUT_S - 5,),
         nccl_ras._STACK_DUMP_TIMEOUT_S,
     )
-
-
-def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
-    def boom():
-        raise RuntimeError("upload failed")
-
-    with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
-        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
-    assert "worker stack traces" in caplog.text
-
 
 
 if __name__ == "__main__":

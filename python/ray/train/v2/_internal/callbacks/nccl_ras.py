@@ -892,12 +892,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         nvidia_smi_dir = self.capture_diagnostic(
             "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
         )
-        stack_trace_dir = self.capture_diagnostic(
-            "worker stack traces", self.dump_workers_stack_traces
-        )
         ras_history_dir = self.capture_diagnostic(
             "`ncclras` query history",
             lambda: self.dump_ras_query_history(ras_human_output),
+        )
+        stack_trace_dir = self.capture_diagnostic(
+            "worker stack traces", self.dump_workers_stack_traces
         )
 
         message = (
@@ -1053,25 +1053,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if files:
             return self.upload_diagnostics(_NCCL_RAS_TOOL, files)
         return None
-
-    @staticmethod
-    def capture_diagnostic(
-        name: str, capture: Callable[[], Optional[str]]
-    ) -> Optional[str]:
-        """Run one diagnostic capture, logging rather than raising on failure.
-
-        Args:
-            name: What is being captured, for the log message.
-            capture: The capture, returning where it was uploaded.
-
-        Returns:
-            Where the diagnostic was uploaded, or ``None`` if it failed.
-        """
-        try:
-            return capture()
-        except Exception:  # noqa: BLE001
-            logger.exception("Trying to capture the %s failed.", name)
-            return None
 
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.
