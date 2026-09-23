@@ -10,7 +10,6 @@ from typing import (
     Optional,
     Sequence,
     Set,
-    Tuple,
 )
 
 import pyarrow as pa
@@ -35,7 +34,7 @@ from ray.data._internal.datasource_v2.parquet_utils import (
     _resolve_read_columns,
     _row_group_uncompressed_size,
 )
-from ray.data._internal.datasource_v2.read_units import ReadUnit
+from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragment
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -351,7 +350,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, ReadUnit, int]]:
+    ) -> List[ReadUnitFragment]:
         """Fan file fragments into read-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
@@ -386,11 +385,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         per_row_group_offsets = any(
             c.requires_read_unit_boundaries for c in self._synthesized_columns
         )
-        fragments: List[Tuple[pds.Fragment, ReadUnit, int]] = []
+        fragments: List[ReadUnitFragment] = []
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
-                fragments.append((fragment, ReadUnit(id=path, source=path, count=1), 0))
+                fragments.append(
+                    ReadUnitFragment(fragment, ReadUnit(id=path, source=path, count=1))
+                )
             else:
                 fragments.extend(
                     _fragments_from_row_group_ids(

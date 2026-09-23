@@ -12,6 +12,8 @@ so a synthesized column can position every row within its file.
 from dataclasses import dataclass
 from typing import Optional
 
+import pyarrow.dataset as pds
+
 from ray.util.annotations import DeveloperAPI
 
 
@@ -35,3 +37,21 @@ class ReadUnit:
     index: int = 0
     count: Optional[int] = None
     num_rows: Optional[int] = None
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
+class ReadUnitFragment:
+    """A read unit paired with the pyarrow fragment that scans it.
+
+    Attributes:
+        fragment: The pyarrow dataset fragment to scan.
+        unit: The read unit the fragment stands for.
+        file_row_offset: Pre-filter count of the rows in the file that
+            precede ``fragment``; ``0`` for a whole-file unit. Seeds
+            :attr:`~ray.data._internal.datasource_v2.readers.synthesized_columns.ReadUnitPosition.source_row_offset`.
+    """
+
+    fragment: pds.Fragment
+    unit: ReadUnit
+    file_row_offset: int = 0

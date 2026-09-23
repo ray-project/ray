@@ -4,12 +4,12 @@ Maps ``ParquetRowGroupChunkMetadata`` (the explicit surviving row groups a bin
 assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading, and
 names the read unit each subset stands for.
 """
-from typing import Callable, Iterable, List, Tuple, TypeVar
+from typing import Callable, Iterable, List, TypeVar
 
 import pyarrow.dataset as pds
 
 from ray._common.retry import call_with_retry
-from ray.data._internal.datasource_v2.read_units import ReadUnit
+from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragment
 
 R = TypeVar("R")
 
@@ -35,14 +35,14 @@ def _fragments_from_row_group_ids(
     row_group_ids: Iterable[int],
     *,
     per_row_group_offsets: bool,
-) -> List[Tuple[pds.ParquetFileFragment, ReadUnit, int]]:
+) -> List[ReadUnitFragment]:
     """Slice ``fragment`` to the explicit physical ``row_group_ids`` of one bin.
 
     Used by the footer-based chunking path, where ``ParquetRowGroupChunkMetadata``
     names the exact surviving row groups for a file (predicate pruning + bin
     packing already happened upstream), so no size-based reconciliation is needed.
 
-    Returns ``(sub_fragment, read_unit, source_row_offset)`` triples.
+    Returns one :class:`ReadUnitFragment` per sub-fragment.
 
     When ``per_row_group_offsets`` is False (the common case) the file's groups are
     scanned together as a single sub-fragment with a row offset of 0 -- this
@@ -66,7 +66,7 @@ def _fragments_from_row_group_ids(
 
     path = fragment.path
     if not per_row_group_offsets:
-        return [(_subset(ids), ReadUnit(id=path, source=path, count=1), 0)]
+        return [ReadUnitFragment(_subset(ids), ReadUnit(id=path, source=path, count=1))]
 
     metadata = _with_io_retry(
         lambda: fragment.metadata, f"read Parquet footer for {path}"
@@ -76,7 +76,7 @@ def _fragments_from_row_group_ids(
     for i in range(metadata.num_row_groups):
         prefix[i + 1] = prefix[i] + metadata.row_group(i).num_rows
     return [
-        (
+        ReadUnitFragment(
             _subset([rg_id]),
             ReadUnit(
                 # Stable name for one physical row group: the reader reports

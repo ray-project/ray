@@ -9,7 +9,7 @@ from pyarrow.fs import FileSystem, LocalFileSystem
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.read_units import ReadUnit
+from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragment
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.datasource_v2.readers.synthesized_columns import (  # noqa: F401
     INCLUDE_PATHS_COLUMN_NAME,
@@ -350,18 +350,17 @@ class FileReader(Reader[FileManifest]):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, ReadUnit, int]]:
-        """Return ``(fragment, read_unit, file_row_offset)`` triples to scan
-        for this manifest.
+    ) -> List[ReadUnitFragment]:
+        """Return the :class:`ReadUnitFragment` list to scan for this manifest.
 
-        ``read_unit`` is the :class:`ReadUnit` the fragment stands for.
+        ``unit`` is the :class:`ReadUnit` the fragment stands for.
         ``file_row_offset`` is the cumulative pre-filter row count of all
         rows in the underlying file that precede this fragment. It seeds
         :attr:`ReadUnitPosition.source_row_offset` so chunked sub-fragments of
         the same file position their rows correctly instead of all counting
         from zero.
 
-        Default impl returns one ``(fragment, unit, 0)`` per file in the
+        Default impl returns one whole-file fragment per file in the
         dataset, the unit named by its path (paths are deduped in
         :meth:`read` before the dataset is built). Subclasses that support
         per-row chunk metadata (e.g. :class:`ParquetFileReader`) override
@@ -370,7 +369,9 @@ class FileReader(Reader[FileManifest]):
         each paired with its read unit and its starting row offset in the file.
         """
         return [
-            (fragment, ReadUnit(id=fragment.path, source=fragment.path, count=1), 0)
+            ReadUnitFragment(
+                fragment, ReadUnit(id=fragment.path, source=fragment.path, count=1)
+            )
             for fragment in dataset.get_fragments()
         ]
 
@@ -443,14 +444,14 @@ class FileReader(Reader[FileManifest]):
 
     def _read_fragments_sequential(
         self,
-        fragments_with_offsets: Iterator[Tuple[pds.Fragment, ReadUnit, int]],
+        fragments_with_offsets: Iterator[ReadUnitFragment],
         scanner_kwargs: dict,
     ) -> Iterator[Tuple[pa.Table, ReadUnitPosition]]:
         """Read each fragment in ``fragments_with_offsets`` in order, yielding
         ``(table, origin)`` pairs.
 
-        Each input triple is ``(fragment, read_unit, file_row_offset)``. The
-        yielded origin carries ``file_row_offset`` as ``source_row_offset``
+        Each input is a :class:`ReadUnitFragment`. The yielded origin
+        carries its ``file_row_offset`` as ``source_row_offset``
         (the row position of the fragment's first row within its underlying
         file) and a ``unit_row_offset`` that starts at zero and accumulates
         per yielded batch, so a synthesized column keys off the right window
@@ -467,7 +468,9 @@ class FileReader(Reader[FileManifest]):
         and is also the entire read loop for the sequential path.
         """
         ctx = DataContext.get_current()
-        for fragment, unit, file_row_offset in fragments_with_offsets:
+        for fragment_to_read in fragments_with_offsets:
+            fragment = fragment_to_read.fragment
+            file_row_offset = fragment_to_read.file_row_offset
             offset = file_row_offset
             for table in iterate_with_retry(
                 partial(self._iter_fragment_tables, fragment, scanner_kwargs),
@@ -476,7 +479,7 @@ class FileReader(Reader[FileManifest]):
             ):
                 if table.num_rows > 0:
                     yield table, ReadUnitPosition(
-                        unit=unit,
+                        unit=fragment_to_read.unit,
                         unit_row_offset=offset - file_row_offset,
                         source_row_offset=file_row_offset,
                     )
