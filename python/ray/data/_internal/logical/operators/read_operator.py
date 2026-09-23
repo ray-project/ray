@@ -366,9 +366,15 @@ class ReadFiles(
     def supports_predicate_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.logical_optimizers import (
             SupportsFilterPushdown,
+            SupportsPartitionPruning,
         )
 
-        return isinstance(self.scanner, SupportsFilterPushdown)
+        # Either mixin is enough: a scanner that only prunes partitions still
+        # takes the partition-column conjuncts, and ``apply_predicate`` keeps
+        # the rest in a ``Filter``.
+        return isinstance(
+            self.scanner, (SupportsFilterPushdown, SupportsPartitionPruning)
+        )
 
     def get_current_predicate(self) -> Optional[Expr]:
         return getattr(self.scanner, "predicate", None)
@@ -382,8 +388,7 @@ class ReadFiles(
         )
         from ray.data._internal.logical.operators.map_operator import Filter
 
-        assert isinstance(self.scanner, SupportsFilterPushdown)
-
+        pushes_filters = isinstance(self.scanner, SupportsFilterPushdown)
         partition_cols: Set[str] = (
             self.scanner.partition_columns
             if isinstance(self.scanner, SupportsPartitionPruning)
@@ -391,6 +396,11 @@ class ReadFiles(
         )
 
         if not partition_cols:
+            if not pushes_filters:
+                # Prunes partitions but has no partition columns to prune on
+                # (no ``Partitioning`` spec): nothing to push. Returning
+                # ``self`` keeps the ``Filter`` above us.
+                return self
             new_scanner, residual_unpushed = self.scanner.push_filters(predicate_expr)
             new_op = replace(self, scanner=new_scanner)
             if residual_unpushed is None:
@@ -416,13 +426,24 @@ class ReadFiles(
         residual_unpushed = split.residual_predicate
         if split.partition_predicate is not None:
             new_scanner = new_scanner.prune_partitions(split.partition_predicate)
-        if split.data_predicate is not None:
+        if split.data_predicate is not None and pushes_filters:
             # ``push_filters`` may decline part of what it was offered; that
             # leftover is a conjunct of the same chain, so ``&`` rebuilds it.
             new_scanner, residual_declined = new_scanner.push_filters(
                 split.data_predicate
             )
             residual_unpushed = combine_predicates(residual_unpushed, residual_declined)
+        elif split.data_predicate is not None:
+            # No filter pushdown: the data-column conjuncts stay in a
+            # ``Filter`` above the read, and only the partition ones move.
+            residual_unpushed = combine_predicates(
+                residual_unpushed, split.data_predicate
+            )
+
+        if new_scanner is self.scanner:
+            # Nothing was pushed (e.g. a data-only predicate on a scanner that
+            # only prunes partitions); keep the original ``Filter``.
+            return self
 
         new_op = replace(self, scanner=new_scanner)
 
