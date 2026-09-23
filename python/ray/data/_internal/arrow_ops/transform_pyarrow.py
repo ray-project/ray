@@ -112,17 +112,14 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
 def _has_unhashable_polars_types(schema: "pyarrow.Schema") -> bool:
     """Return True if this schema must not be hashed with Polars.
 
-    Two kinds of columns are unsafe:
+    Union columns are the one type ``pl.from_arrow`` can't convert. Arrow
+    extension types (Ray's tensor / Python-object) don't need gating: Polars
+    loads them as their storage type and hashes that, deterministically.
 
-    - Union types: ``pl.from_arrow`` fails on them.
-    - Extension types (Ray's tensor / Python-object): Polars does NOT fail,
-      it silently hashes the raw storage. For pickled Python objects that's
-      wrong: equal objects can pickle to different bytes in different
-      processes, so the same key could land in different partitions.
+    Checked on the schema (not per block) so that every block of a dataset
+    picks the same hash algorithm; Polars and pandas hashes are incompatible.
     """
     for field in schema:
-        if isinstance(field.type, pyarrow.ExtensionType):
-            return True
         if pyarrow.types.is_union(field.type):
             return True
     return False

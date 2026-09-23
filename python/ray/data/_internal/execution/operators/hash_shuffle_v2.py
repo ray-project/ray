@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, Iterable, List
 
 import pyarrow as pa
@@ -15,24 +14,9 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
 # combine_chunks) accumulate across task types and inflate worker RSS.
 _SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_MAP_WORKER": "1"}}
 
-logger = logging.getLogger(__name__)
-
 
 def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> PartitionFn:
     """Return a partition function that hash-partitions by key_columns."""
-    # Warn here (on the driver, at construction time) rather than inside
-    # `hash_partition`, which runs on every shuffle worker.
-    try:
-        import numba  # noqa: F401
-    except ImportError:
-        from ray.util.debug import log_once
-
-        if log_once("data_hash_partition_numba_missing"):
-            logger.warning(
-                "numba is not installed: hash-shuffle partitioning will fall "
-                "back to a slower implementation. Install numba to speed up "
-                "shuffles."
-            )
 
     def _partition(block: pa.Table) -> Dict[int, pa.Table]:
         return hash_partition(

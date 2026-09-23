@@ -13,6 +13,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     _align_struct_fields,
     _group_indices,
     _has_unhashable_pandas_types,
+    _has_unhashable_polars_types,
     _hash_partition_vectorized,
     concat,
     hash_partition,
@@ -229,6 +230,44 @@ def _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts):
     assert np.array_equal(
         np.asarray(grouped_indices), np.argsort(partition_mask, kind="stable")
     ), grouped_indices
+
+
+@pytest.mark.parametrize(
+    "pa_type,expected",
+    [
+        # Union types fail pl.from_arrow
+        (pa.dense_union([pa.field("x", pa.int32())]), True),
+        (pa.sparse_union([pa.field("x", pa.int32())]), True),
+        (ArrowTensorTypeV2((2, 2), pa.int64()), False),
+        (ArrowPythonObjectType(), False),
+        (pa.struct([("a", pa.int32())]), False),
+        (pa.list_(pa.int32()), False),
+        (pa.map_(pa.string(), pa.int32()), False),
+        (pa.int64(), False),
+        (pa.string(), False),
+        (pa.dictionary(pa.int32(), pa.string()), False),
+    ],
+)
+def test_has_unhashable_polars_types(pa_type, expected):
+    schema = pa.schema([("c", pa_type)])
+    assert _has_unhashable_polars_types(schema) is expected
+
+
+def test_hash_partitioning_union_key():
+    union = pa.UnionArray.from_sparse(
+        pa.array([0, 1, 0], type=pa.int8()),
+        [pa.array([1, None, 3], type=pa.int32()), pa.array([None, "b", None])],
+    )
+    t = pa.table({"u": union, "v": [10, 20, 30]})
+
+    parts = hash_partition(t, hash_cols=["u"], num_partitions=4)
+
+    assert sum(p.num_rows for p in parts.values()) == t.num_rows
+    assert sorted(row for p in parts.values() for row in p["v"].to_pylist()) == [
+        10,
+        20,
+        30,
+    ]
 
 
 @pytest.mark.parametrize("num_partitions", [1, 2, 7, 64])

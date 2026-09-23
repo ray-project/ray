@@ -563,20 +563,6 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
             data_context=data_context,
         )
 
-        # Warn here (on the driver, at construction time) rather than inside
-        # `hash_partition`, which runs on every shuffle worker.
-        try:
-            import numba  # noqa: F401
-        except ImportError:
-            from ray.util.debug import log_once
-
-            if log_once("data_hash_partition_numba_missing"):
-                logger.warning(
-                    "numba is not installed: hash-shuffle partitioning will fall "
-                    "back to a slower implementation. Install numba to speed up "
-                    "shuffles."
-                )
-
         assert partition_size_hint is None or partition_size_hint > 0
         self._partition_size_hint = partition_size_hint
 
