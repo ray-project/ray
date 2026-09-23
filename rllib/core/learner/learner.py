@@ -1269,6 +1269,12 @@ class Learner(Checkpointable):
             # Sequence batches are sliced (and thus counted) in the sequence dimension
             # by `MiniBatchCyclicIterator`; decide that before counting minibatches.
             batch = self._set_slicing_by_batch_id(batch, value=True)
+            # `num_epochs` > 1 without `minibatch_size` cycles the batch as well: the
+            # iterator falls back to `batch.count` rows per module. Resolve that here,
+            # before the Learners agree on a number of minibatches, so that what they
+            # agree on is what the iterator will do.
+            if not minibatch_size and num_epochs > 1:
+                minibatch_size = batch.count
 
             if self.config.never_skip_update:
                 # Opt-out: no skip logic and no cross-Learner reconciliation (saves one
@@ -1286,17 +1292,13 @@ class Learner(Checkpointable):
                     )
             else:
                 wants_to_skip = self._should_skip_update(batch)
-                # With several Learners, shards may hold different amounts of data, and
-                # the number of minibatches `MiniBatchCyclicIterator` derives from a
-                # shard differs per Learner. Unless the caller fixes `num_total_minibatches`,
-                # each Learner proposes its own count and the group settles on one. (Without
-                # `minibatch_size` the count is `num_epochs` or 1 on every Learner.)
-                if (
-                    not wants_to_skip
-                    and not num_total_minibatches
-                    and self.config.num_learners > 1
-                    and minibatch_size
-                ):
+                # Shards hold different amounts of data, so the number of minibatches
+                # `MiniBatchCyclicIterator` derives from one differs per Learner.
+                # Unless the caller fixes `num_total_minibatches`, each Learner
+                # proposes the count its own data implies and the group settles on
+                # one. A single Learner proposes the very count it would have derived
+                # anyway -- it is only the group that needs to be told.
+                if not wants_to_skip and not num_total_minibatches and minibatch_size:
                     num_total_minibatches = MiniBatchCyclicIterator.num_minibatches(
                         batch, minibatch_size=minibatch_size, num_epochs=num_epochs
                     )
@@ -1357,14 +1359,9 @@ class Learner(Checkpointable):
 
             if minibatch_size:
                 batch_iter_cls = MiniBatchCyclicIterator
-            elif num_epochs > 1:
-                # `minibatch_size` was not set but `num_epochs` > 1.
-                minibatch_size = batch.count
-                # Note that there is no need to shuffle here, b/c we don't have
-                # minibatches.
-                batch_iter_cls = MiniBatchCyclicIterator
             else:
-                # `minibatch_size` and `num_epochs` are not set by the user.
+                # Neither `minibatch_size` nor `num_epochs` > 1: a single pass over
+                # the batch, nothing to cycle and nothing to agree on.
                 batch_iter_cls = MiniBatchDummyIterator
 
             batch_iter = batch_iter_cls(

@@ -425,6 +425,41 @@ class TestLearner(unittest.TestCase):
         self.assertIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
         self.assertNotIn("module_without_data", results)
 
+    def test_minibatch_count_is_fixed_without_minibatch_size(self):
+        """`num_epochs` > 1 without `minibatch_size` must pin the number of steps too.
+
+        The iterator then takes `batch.count` rows per module and works the number of
+        minibatches out from the data. On a shard, `count` is the row count of
+        whichever module was sliced last, so a single row more in the largest module
+        changes that number on one Learner only -- and Learners that take a different
+        number of steps deadlock each other. So the count has to be settled before
+        the Learners agree, not after.
+        """
+        config = BaseTestingAlgorithmConfig()
+        learner = config.build_learner(env=self.ENV)
+        learner.remove_module(module_id=DEFAULT_MODULE_ID)
+        for module_id in ("mod1", "mod2"):
+            learner.add_module(
+                module_id=module_id, module_spec=config.get_rl_module_spec(env=self.ENV)
+            )
+        rows = get_cartpole_dataset_reader(batch_size=512).next()
+        # What `ShardBatchIterator` hands a Learner: `mod2` was sliced last, so it --
+        # not the larger `mod1` -- decides `count`.
+        batch = MultiAgentBatch({"mod1": rows[:129], "mod2": rows[:32]}, env_steps=32)
+
+        proposed = []
+
+        def _record(plan):
+            proposed.append(plan)
+            return plan
+
+        learner._sync_update_plan = _record
+        results = learner.update(batch=learner._convert_batch_type(batch), num_epochs=2)
+
+        # ceil(2 * 129 / 32) = 9 minibatches, each taking 32 rows per module.
+        self.assertEqual([UpdatePlan(skip=False, num_minibatches=9)], proposed)
+        self.assertEqual(9 * 32 * 2, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
+
     def test_never_skip_update(self):
         """`never_skip_update=True` opts out of the skip logic entirely: no
         `_should_skip_update` call (and thus no cross-Learner agreement collective),
