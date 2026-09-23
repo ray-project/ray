@@ -19,10 +19,9 @@ By default, every request to a Ray Serve LLM application flows through a separat
 
 ## Enable direct streaming
 
-Direct streaming runs on top of the HAProxy ingress. Set both environment variables before starting Serve:
+Direct streaming runs on top of the HAProxy ingress, which is enabled by default. Set the following environment variable before starting Serve:
 
 ```bash
-export RAY_SERVE_ENABLE_HA_PROXY=1
 export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 ```
 
@@ -42,7 +41,7 @@ Then build and deploy a single-model application:
 :language: yaml
 ```
 
-Run `serve run` from a shell where both environment variables are still exported, so the controller enables HAProxy and direct streaming when it builds the application:
+Run `serve run` from a shell where the environment variable is still exported:
 
 ```bash
 serve run config.yaml

@@ -233,7 +233,11 @@ You may want to enable throughput-optimized serving while customizing the option
 (serve-haproxy)=
 ### Use HAProxy load balancing
 
-By default, Ray Serve uses a Python-based HTTP/gRPC proxy to route requests to replicas. You can replace this with [HAProxy](https://www.haproxy.org/), a high-performance C-based load balancer, for improved throughput and lower latency at high request rates.
+On Linux, Ray Serve uses [HAProxy](https://www.haproxy.org/) by default to route requests to replicas. Set `RAY_SERVE_ENABLE_HA_PROXY=0` on all nodes before starting Ray to use the legacy Python HTTP/gRPC proxy instead.
+
+:::{note}
+HAProxy mode is supported only on Linux. Ray Serve continues to use the Python HTTP/gRPC proxy by default on macOS and Windows.
+:::
 
 When HAProxy mode is enabled:
 - An `HAProxyManager` actor runs on each node (by default) and translates Serve's routing table into HAProxy configuration reloads.
@@ -244,9 +248,9 @@ When HAProxy mode is enabled:
 
 HAProxy must be available on every node that runs a Serve proxy. On Linux, `pip install "ray[serve]"` installs the [`ray-haproxy`](https://pypi.org/project/ray-haproxy/) package, which ships a prebuilt HAProxy binary that Serve uses automatically. To use a different binary, set `RAY_SERVE_HAPROXY_BINARY_PATH` to its absolute path.
 
-#### Enabling HAProxy
+#### Configuring HAProxy
 
-Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes before starting Ray:
+HAProxy is enabled by default. You can set the environment variable explicitly on all nodes before starting Ray:
 
 ```bash
 export RAY_SERVE_ENABLE_HA_PROXY=1
