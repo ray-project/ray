@@ -10,7 +10,7 @@ Threat model: the attacker controls bytes, not code. This is not a sandbox for
 hostile code already running in the process.
 
 Ray's own transport (``ray.get``, task arguments, function loading) goes through
-``ray.cloudpickle.loads``, which runs under :func:`allow_unsafe_unpickling`. The
+``ray.cloudpickle.loads``, which runs under ``allow_unsafe_unpickling()``. The
 flag is a context variable: it covers the thread that set it, not helper threads
 a library starts.
 """
@@ -42,7 +42,7 @@ class UntrustedUnpicklingError(ValueError):
 
 @DeveloperAPI(stability="alpha")
 def is_unpickling_forbidden() -> bool:
-    """Whether the current thread is inside :func:`forbid_untrusted_unpickling`."""
+    """Whether the current thread is inside ``forbid_untrusted_unpickling()``."""
     return bool(_forbid_flag.get())
 
 
@@ -94,7 +94,7 @@ def forbid_untrusted_unpickling(hint: str = ""):
 @DeveloperAPI(stability="alpha")
 @contextmanager
 def allow_unsafe_unpickling():
-    """Lift :func:`forbid_untrusted_unpickling` for a call the caller vouches for."""
+    """Lift ``forbid_untrusted_unpickling()`` for a call the caller vouches for."""
     token = _forbid_flag.set("")
     try:
         yield
