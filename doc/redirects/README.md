@@ -25,8 +25,9 @@ mirrors the live configuration exactly.
 3. Open a PR. After it merges, CI applies the change to the live project
    automatically. A postmerge Buildkite step runs
    `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`
-   on each run, and the change goes live on the next run after the merge,
-   which can be a few hours later. No manual apply step is needed.
+   on each postmerge run of master, and the change goes live on the next run
+   after the merge, which can be a few hours later. No manual apply step is
+   needed.
 
 ## Auditing drift
 
