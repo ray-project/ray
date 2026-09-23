@@ -3935,7 +3935,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <reading_sql>`.
+        :ref:`Read SQL databases <reading_sql>`.
 
         .. testcode::
 
@@ -5158,7 +5158,7 @@ def from_huggingface(
     It is recommended to use :func:`~ray.data.read_parquet` with the ``HfFileSystem``
     filesystem to read Hugging Face datasets rather than ``from_huggingface``.
 
-    See :ref:`Loading Hugging Face datasets <loading_huggingface_datasets>` for more details.
+    See :ref:`Load Hugging Face datasets <loading_huggingface_datasets>` for more details.
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_ or `Hugging Face Datasets IterableDataset`_.
