@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import json
 import logging
 import os
 import signal
@@ -22,6 +23,8 @@ from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
+    RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
 )
@@ -397,8 +400,8 @@ backend api_backend
     http-check expect status 200
     default-server fastinter 250ms downinter 250ms fall 2 rise 3 inter 5s check
     # Servers in this backend
-    server api_server1 127.0.0.1:8001 check
-    server api_server2 127.0.0.1:8002 check
+    server api_server1 127.0.0.1:8001 check observe layer4 error-limit 3 on-error mark-down
+    server api_server2 127.0.0.1:8002 check observe layer4 error-limit 3 on-error mark-down
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
@@ -417,7 +420,7 @@ backend web_backend
     http-check expect status 200
     default-server fastinter 250ms downinter 250ms fall 3 rise 2 inter 2s check
     # Servers in this backend
-    server web_server1 127.0.0.1:8003 check
+    server web_server1 127.0.0.1:8003 check observe layer4 error-limit 3 on-error mark-down
 listen stats
   bind *:8080
   stats enable
@@ -941,6 +944,66 @@ def test_global_retry_knobs_render(haproxy_api_cleanup):
     assert "\n    retries 2\n" in overridden
 
 
+# Overriding any of these is supported, and makes the shipped-default
+# assertions below meaningless rather than false, so the test opts out instead.
+_DEFAULT_TUNING_ENV_VARS = (
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED",
+    "RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT",
+    "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S",
+    "RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S",
+)
+
+
+@pytest.mark.skipif(
+    any(v in os.environ for v in _DEFAULT_TUNING_ENV_VARS),
+    reason=f"environment overrides one of {_DEFAULT_TUNING_ENV_VARS}",
+)
+def test_default_data_plane_tuning_renders(haproxy_api_cleanup):
+    """The shipped defaults bound connect time, mark dead replicas down from
+    live traffic, and leave `timeout server` unset.
+
+    Every other test in this file passes explicit overrides, so nothing else
+    would catch a silent change to these; each one changes how every Serve
+    cluster routes."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            backend_configs={
+                "api": BackendConfig(
+                    name="api",
+                    path_prefix="/api",
+                    app_name="api",
+                    servers=[
+                        ServerConfig(
+                            name="s1", host="127.0.0.1", port=8001, replica_id="rid_1"
+                        )
+                    ],
+                )
+            },
+            config_file_path=config_file_path,
+        )
+        api._generate_config_file_internal()
+        with open(config_file_path) as f:
+            cfg = f.read()
+
+    # Replicas are in-cluster: a connect that takes seconds means the node is
+    # gone, and failing fast lets redispatch reach another replica in time.
+    assert "\n    timeout connect 5s\n" in cfg
+
+    # No `timeout server`. It is a server-side inactivity limit applied to every
+    # connection on the live process, so any value caps request duration -- and
+    # Serve's own request_timeout_s defaults to no timeout. hard-stop-after
+    # bounds draining workers on a separate clock.
+    assert "\n    timeout server " not in cfg
+
+    # Live traffic marks a dead replica DOWN without waiting for a health check.
+    assert (
+        "server s1 127.0.0.1:8001 check observe layer4 "
+        "error-limit 3 on-error mark-down"
+    ) in cfg
+
+
 @pytest.mark.parametrize("forward_body", [True, False])
 def test_ingress_request_router_forward_body_gate_renders(
     haproxy_api_cleanup, monkeypatch, forward_body
@@ -991,10 +1054,15 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         if forward_body:
             assert "wait-for-body" in cfg, cfg
+            assert (
+                f"tune.bufsize {RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE}"
+                in cfg
+            ), cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+        assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
         assert (
             "http-request del-header x-serve-router- -m beg "
             "if has_ingress_request_router_app"
@@ -1018,7 +1086,7 @@ def _create_replica_server(port: int, replica_id_header: str):
                 res.headers[f"echo-{name}"] = value
         res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
-        return {"replica": replica_id_header, "echo": body.decode("utf-8")}
+        return {"replica": replica_id_header, "body_length": len(body)}
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
@@ -1202,6 +1270,23 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
             assert len(router_captured["request_ids"]) == 4
             assert all(router_captured["request_ids"])
+
+            # A leading-space word is typically one token with common BPE
+            # tokenizers. Verify that a request approximating a million-token
+            # prompt reaches both the  router and selected replica intact.
+            large_body = json.dumps({"prompt": " token" * 1_000_000})
+            large_body_size = len(large_body.encode())
+            assert 262144 < large_body_size < 8 * 1024 * 1024
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                data=large_body,
+                headers={"content-type": "application/json"},
+                timeout=30,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert resp.json()["body_length"] == large_body_size
+            assert router_captured["bodies"][-1] == large_body
 
             # GET is not POST, so Lua routing never runs; the router should
             # have seen exactly the four POSTs above and nothing more.

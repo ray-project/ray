@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
@@ -157,6 +158,68 @@ def test_num_outputs_total():
             _get_blocks(ref, output)
     # After op finishes, num_outputs_total is known.
     assert op1.num_outputs_total() == 100
+
+
+class _RecordingAddCallback:
+    """Test double for ``CoreWorker.add_object_out_of_scope_callback``."""
+
+    def __init__(self):
+        self.registered = []
+
+    def __call__(self, object_ref, callback):
+        self.registered.append(object_ref)
+        return True
+
+
+def _run_all_to_all(bulk_fn, inputs):
+    """Drive one AllToAllOperator to completion; return the refs it registered."""
+    add_cb = _RecordingAddCallback()
+    ctx = DataContext.get_current()
+    input_op = InputDataBuffer(ctx, inputs)
+    op = AllToAllOperator(bulk_fn, input_op, ctx, name="TestAll")
+    op.start(
+        ExecutionOptions(),
+        BlockRefCounter(add_object_out_of_scope_callback=add_cb),
+    )
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.all_inputs_done()
+    return add_cb.registered
+
+
+def test_all_to_all_skips_forwarded_input_blocks():
+    """Forwarded input blocks must not be registered.
+
+    `RandomizeBlocks` reorders its input bundles rather than producing new
+    blocks. Registering an out-of-scope callback on one raises in Ray Core when
+    another worker owns it -- a materialized dataset consumed inside a
+    `SplitCoordinator` actor -- which fails the whole execution.
+    """
+    inputs = make_ref_bundles([[i] for i in range(4)])
+    forwarded = [
+        RefBundle(b.blocks, owns_blocks=False, schema=b.schema) for b in inputs
+    ]
+
+    assert _run_all_to_all(lambda bundles, ctx: (forwarded, {}), inputs) == []
+
+
+def test_all_to_all_registers_new_blocks_even_when_not_owned():
+    """New blocks must be registered whatever `owns_blocks` says.
+
+    `owns_blocks` says whether the blocks may be destroyed, not who made them.
+    The shuffle, sort and split-repartition schedulers copy it from their input
+    onto blocks their own reduce tasks made. Skipping those blocks would
+    under-report memory whenever the source is `from_*` or `materialize`.
+    """
+    inputs = make_ref_bundles([[i] for i in range(4)])
+    produced = [
+        RefBundle(b.blocks, owns_blocks=False, schema=b.schema)
+        for b in make_ref_bundles([[100], [200]])
+    ]
+
+    registered = _run_all_to_all(lambda bundles, ctx: (produced, {}), inputs)
+
+    assert registered == [entry.ref for b in produced for entry in b.blocks]
 
 
 def test_all_to_all_estimated_num_output_bundles():

@@ -9,6 +9,12 @@ import ray
 from benchmark import Benchmark
 
 
+# Allow 20% headroom over the observed 10.8 GiB baseline.
+MAX_HEAD_NODE_MEMORY_BYTES_BY_CASE = {
+    "many-tiny-objects": 13 * 1024**3,
+}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backpressure benchmark")
     parser.add_argument(
@@ -179,7 +185,9 @@ class Trainer:
 
 
 def main(args: argparse.Namespace):
-    benchmark = Benchmark()
+    benchmark = Benchmark(
+        max_head_node_memory_bytes=MAX_HEAD_NODE_MEMORY_BYTES_BY_CASE.get(args.case)
+    )
 
     if args.case == "fast-producer-slow-consumer":
         benchmark.run_fn(args.case, run_fast_producer_slow_consumer)

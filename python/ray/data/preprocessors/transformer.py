@@ -93,7 +93,15 @@ class PowerTransformer(SerializablePreprocessorBase):
         def column_power_transformer(s: pd.Series):
             if self._method == "yeo-johnson":
                 result = np.zeros_like(s, dtype=np.float64)
-                pos = s >= 0  # binary mask
+                # Binary mask. `fillna(False)` is what keeps it binary: an
+                # Arrow-backed column represents a missing value with `pd.NA`,
+                # and `pd.NA >= 0` is `pd.NA` rather than True or False, so the
+                # mask becomes three-valued and cannot index `result` below.
+                # Treating a missing value as "not positive" sends the row down
+                # the negative branch, where the arithmetic leaves it missing --
+                # the same result as a NumPy-backed column, for which
+                # `np.nan >= 0` is already False.
+                pos = (s >= 0).fillna(False)
 
                 if self._power != 0:
                     result[pos] = (np.power(s[pos] + 1, self._power) - 1) / self._power
