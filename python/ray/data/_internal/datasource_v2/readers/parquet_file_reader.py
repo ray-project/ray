@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
+    _with_io_retry,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
@@ -357,7 +358,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
           fragment is yielded as-is, as a read unit named by its path with a
-          row offset of 0.
+          row offset of 0. When a synthesized column needs read unit
+          boundaries the unit also carries the file's row count, read from
+          the footer pyarrow opens to scan the file anyway.
         - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
           naming the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
@@ -389,8 +392,19 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
+                num_rows = None
+                if per_row_group_offsets:
+                    # The whole file is the unit; a column that positions rows
+                    # within their unit still needs its row count.
+                    num_rows = _with_io_retry(
+                        lambda: fragment.metadata.num_rows,
+                        f"read Parquet footer for {path}",
+                    )
                 fragments.append(
-                    ReadUnitFragment(fragment, ReadUnit(id=path, source=path, count=1))
+                    ReadUnitFragment(
+                        fragment,
+                        ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
+                    )
                 )
             else:
                 fragments.extend(

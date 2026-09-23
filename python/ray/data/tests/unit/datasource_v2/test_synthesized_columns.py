@@ -102,7 +102,8 @@ def test_read_unit_boundaries_control_row_group_fan_out(
 
 
 def test_whole_file_manifest_row_is_one_unit_even_with_boundaries(tmp_path):
-    """No footer fan-out for a whole-file row (today's behavior, kept)."""
+    """No footer fan-out for a whole-file row (today's behavior, kept); the
+    one unit still knows its row count so a column can position rows in it."""
     path = _write_file(tmp_path / "data.parquet")
     reader = ParquetFileReader(synthesized_columns=(RowHashColumn(),))
     dataset = pds.dataset([path], format="parquet")
@@ -110,6 +111,7 @@ def test_whole_file_manifest_row_is_one_unit_even_with_boundaries(tmp_path):
     fragments = reader._get_fragments_to_read(dataset, _manifest([(path, None)]))
 
     assert [(f.unit.id, f.file_row_offset) for f in fragments] == [(path, 0)]
+    assert fragments[0].unit.num_rows == NUM_ROWS
 
 
 def test_row_hash_is_the_same_whether_read_whole_or_by_row_group(tmp_path):
