@@ -1533,7 +1533,7 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
-            enable_gpu_metrics_collection=self._config.get(
+            enable_gpu_metrics=self._config.get(
                 "enable_gpu_metrics_collection",
                 ray_constants.env_bool("RAY_enable_gpu_metrics_collection", True),
             ),
