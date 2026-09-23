@@ -1,0 +1,15 @@
+extends: existence
+message: "Use 'such as' to introduce examples, not '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#use-such-as-not-like-for-examples'
+level: warning
+ignorecase: true
+# From the "Use 'such as,' not 'like,' for examples" section of writing-style.md.
+#
+# Deliberately narrow, and deliberately an existence rule rather than a
+# substitution. "like" is too general a word to swap: it's also a comparison
+# ("works like a queue") and a verb ("if you'd like"), and a substitution here
+# would be auto-applied by scripts/ray_style_autofix.py and corrupt that prose.
+# So this rule only flags, and only when "like" follows a plural noun that
+# typically introduces a list of examples. Other uses are left to the prose pass.
+tokens:
+  - '(?:formats|methods|functions|frameworks|libraries|services|operations|databases|tools|models) like'

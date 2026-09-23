@@ -1,0 +1,13 @@
+extends: existence
+message: "Lowercase the generic noun in '%s'. Ray components are capitalized, Ray concepts aren't."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#capitalize-ray-components-and-product-names'
+level: warning
+ignorecase: false
+# From the "Capitalize Ray components and product names" section of
+# writing-style.md: lowercase generic nouns even when they name a Ray concept.
+#
+# An existence rule, not a substitution: link text that quotes a page title can
+# legitimately keep the title's capitals, and scripts/ray_style_autofix.py would
+# rewrite those blindly.
+tokens:
+  - 'Ray (?:Tasks?|Actors?)\b'
