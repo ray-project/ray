@@ -1,7 +1,7 @@
 import os
 import sys
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -42,30 +42,8 @@ def test_mlu_accelerator_manager_api():
     assert get_accelerator_manager_for_resource("GPU") is not MLUAcceleratorManager
 
 
-@pytest.mark.parametrize("device_name", [b"MLU590-M9DK", "MLU590-M9DK"])
-def test_get_current_node_accelerator_type(device_name):
-    torch = MagicMock()
-    torch.mlu.is_available.return_value = True
-    torch.mlu.get_device_name.return_value = device_name
-    with patch.dict(sys.modules, {"torch": torch}):
-        assert (
-            MLUAcceleratorManager.get_current_node_accelerator_type() == "MLU590-M9DK"
-        )
-    torch.mlu.is_available.assert_called_once_with()
-    torch.mlu.get_device_name.assert_called_once_with(0)
-
-
-def test_get_current_node_accelerator_type_without_mlu_runtime():
-    torch = MagicMock()
-    torch.mlu.is_available.return_value = False
-    with patch.dict(sys.modules, {"torch": torch}):
-        assert MLUAcceleratorManager.get_current_node_accelerator_type() is None
-    torch.mlu.is_available.assert_called_once_with()
-
-
-def test_get_current_node_accelerator_type_without_torch():
-    with patch.dict(sys.modules, {"torch": None}):
-        assert MLUAcceleratorManager.get_current_node_accelerator_type() is None
+def test_get_current_node_accelerator_type():
+    assert MLUAcceleratorManager.get_current_node_accelerator_type() is None
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
@@ -100,10 +78,7 @@ def test_set_current_process_visible_accelerator_ids(monkeypatch):
     assert os.environ[MLU_VISIBLE_DEVICES_ENV_VAR] == "1"
 
 
-@pytest.mark.parametrize("accelerator_type", ["MLU590-M9DK", None])
-def test_ray_registers_mlu_resources_and_type(
-    accelerator_type, monkeypatch, shutdown_only
-):
+def test_ray_registers_mlu_resources_without_type(monkeypatch, shutdown_only):
     monkeypatch.delenv(MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
     with patch(
         "ray._private.accelerators.get_all_accelerator_resource_names",
@@ -112,10 +87,6 @@ def test_ray_registers_mlu_resources_and_type(
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=4,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=accelerator_type,
     ):
         import ray
 
@@ -124,12 +95,8 @@ def test_ray_registers_mlu_resources_and_type(
     resources = ray.cluster_resources()
     labels = ray.nodes()[0]["Labels"]
     assert resources["MLU"] == 4
-    if accelerator_type is None:
-        assert not any(name.startswith("accelerator_type:") for name in resources)
-        assert "ray.io/accelerator-type" not in labels
-    else:
-        assert resources[f"accelerator_type:{accelerator_type}"] == 1
-        assert labels["ray.io/accelerator-type"] == accelerator_type
+    assert not any(name.startswith("accelerator_type:") for name in resources)
+    assert "ray.io/accelerator-type" not in labels
 
 
 def test_ray_limits_and_isolates_visible_mlus(monkeypatch, shutdown_only):
@@ -143,10 +110,6 @@ def test_ray_limits_and_isolates_visible_mlus(monkeypatch, shutdown_only):
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=4,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
     ):
         ray.init(num_cpus=3, include_dashboard=False)
 
@@ -180,10 +143,6 @@ def test_ray_respects_noset_mlu_visible_devices(monkeypatch, shutdown_only):
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=2,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
     ):
         ray.init(num_cpus=1, include_dashboard=False)
 
@@ -208,10 +167,6 @@ def test_ray_mlu_task_ids_reuse_and_actor_environment(monkeypatch, shutdown_only
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=3,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
     ):
         ray.init(num_cpus=3, include_dashboard=False)
 
@@ -269,10 +224,6 @@ def test_ray_fractional_mlu_assignments(monkeypatch, shutdown_only):
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=3,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
     ):
         ray.init(num_cpus=6, include_dashboard=False)
 
@@ -311,10 +262,6 @@ def test_ray_mlu_placement_group_assignments(monkeypatch, shutdown_only):
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=4,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
     ):
         ray.init(num_cpus=4, include_dashboard=False)
 
@@ -371,10 +318,6 @@ def test_ray_mlu_zero_resource_environment(
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
         return_value=2,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
     ):
         ray.init(num_cpus=2, include_dashboard=False)
 
@@ -395,94 +338,6 @@ def test_ray_mlu_zero_resource_environment(
 
     assert ray.get(task_visible_devices.remote()) == ([], expected_visible)
     assert ray.get(Actor.remote().visible_devices.remote()) == ([], expected_visible)
-
-
-def test_ray_mlu_accelerator_type_task_and_actor(monkeypatch, shutdown_only):
-    import ray
-
-    accelerator_type = "MLU590-M9DK"
-    type_resource = f"accelerator_type:{accelerator_type}"
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5")
-    with patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=2,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=accelerator_type,
-    ):
-        ray.init(num_cpus=4, include_dashboard=False)
-
-    def assignment():
-        context = ray.get_runtime_context()
-        return (
-            context.get_accelerator_ids()["MLU"],
-            context.get_assigned_resources(),
-            os.environ[MLU_VISIBLE_DEVICES_ENV_VAR],
-        )
-
-    @ray.remote(accelerator_type=accelerator_type, resources={"MLU": 1})
-    def decorated_task():
-        return assignment()
-
-    @ray.remote
-    def options_task():
-        return assignment()
-
-    @ray.remote(accelerator_type=accelerator_type, resources={"MLU": 1})
-    class DecoratedActor:
-        def assignment(self):
-            return assignment()
-
-    @ray.remote
-    class OptionsActor:
-        def assignment(self):
-            return assignment()
-
-    results = [
-        ray.get(decorated_task.remote()),
-        ray.get(
-            options_task.options(
-                accelerator_type=accelerator_type,
-                resources={"MLU": 1},
-            ).remote()
-        ),
-    ]
-    decorated_actor = DecoratedActor.remote()
-    results.append(ray.get(decorated_actor.assignment.remote()))
-    ray.kill(decorated_actor)
-    options_actor = OptionsActor.options(
-        accelerator_type=accelerator_type,
-        resources={"MLU": 1},
-    ).remote()
-    results.append(ray.get(options_actor.assignment.remote()))
-
-    for ids, assigned_resources, visible in results:
-        assert ids == [visible]
-        assert assigned_resources["MLU"] == 1
-        assert assigned_resources[type_resource] > 0
-
-
-def test_ray_initializes_mlu_resources_without_mlu_runtime(
-    monkeypatch, shutdown_only
-):
-    import ray
-
-    monkeypatch.delenv(MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
-
-    with patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=2,
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_accelerator_type",
-        return_value=None,
-    ):
-        ray.init(num_cpus=1, include_dashboard=False)
-
-    assert ray.cluster_resources()["MLU"] == 2
 
 
 def test_ray_mlu_assignments_across_nodes(monkeypatch, ray_start_cluster):
