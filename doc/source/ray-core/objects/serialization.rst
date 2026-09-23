@@ -364,13 +364,12 @@ calls ``pickle.loads`` on file or network bytes fails instead of running attacke
 
 .. testcode::
 
+    import collections
     import pickle
     from ray.util.pickle_guard import forbid_untrusted_unpickling, UntrustedUnpicklingError
 
-    class Payload:
-        pass
-
-    data = pickle.dumps(Payload())
+    # Any pickle that names a class or function, here collections.OrderedDict.
+    data = pickle.dumps(collections.OrderedDict(a=1))
     try:
         with forbid_untrusted_unpickling(hint="Pass trusted=True to load this file."):
             pickle.loads(data)
