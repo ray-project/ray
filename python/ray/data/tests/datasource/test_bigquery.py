@@ -16,6 +16,7 @@ from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data.block import Block
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -141,15 +142,25 @@ class TestReadBigQuery:
         poisoned = pa.table(
             {"id": [1, 2], "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
         )
-        bqs_client_full_mock.read_rows.return_value.to_arrow.return_value = poisoned
+        # The Storage Read API hands back Arrow it decoded from the wire. Mimic
+        # that by parsing IPC bytes inside ``to_arrow`` so the pickled-object type
+        # is rebuilt during the read, where it is refused.
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, poisoned.schema) as writer:
+            writer.write_table(poisoned)
+        stream_bytes = sink.getvalue()
+        bqs_client_full_mock.read_rows.return_value.to_arrow.side_effect = (
+            lambda: pa.ipc.open_stream(stream_bytes).read_all()
+        )
 
         bq_ds = BigQueryDatasource(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
         )
         read_task = bq_ds.get_read_tasks(1)[0]
+        # Run the read function the way the read operator does: under the guard.
         with pytest.raises(ValueError, match="arrow_pickled_object"):
-            list(read_task())
+            list(guard_iterator(read_task))
 
         assert not marker.exists(), "pickle.load executed attacker code"
 

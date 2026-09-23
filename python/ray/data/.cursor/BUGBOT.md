@@ -1,6 +1,6 @@
 # Bugbot Rules
 
-## Rule: Pickled-object columns in Ray Data readers
-- If a changed datasource read path produces a `pa.Table` from data outside the process (parquet, Arrow IPC, a service or library returning Arrow) without calling `raise_on_pickle_object_columns(table)` before any yield or materialization, post:
+## Rule: Unpickling in Ray Data readers
+- If a changed datasource read path calls `ray.cloudpickle.loads` / `load` on bytes from a file, stream or service, wraps such bytes in `ArrowPythonObjectType` / `ArrowPythonObjectArray.from_objects`, or adds `allow_unsafe_unpickling()` without a user-facing opt-in that defaults off, post:
 
-> ⚠️ Externally read Arrow data may carry `ray.data.arrow_pickled_object` columns, which unpickle on access and execute arbitrary code. Call `raise_on_pickle_object_columns(table)` right after the read and add a reject test proving a planted pickle payload never runs. Blocks built in-process from Python values are exempt.
+> ⚠️ Datasource code runs with unpickling blocked. `ray.cloudpickle.loads` is exempt and reserved for bytes Ray produced, so calling it on external bytes bypasses the guard; use the stdlib `pickle`. Wrapping external bytes in the pickled-object Arrow type defers the unpickle to consumers outside the guard. A reader that must unpickle exposes an explicit opt-in (like `read_numpy(allow_pickle=True)`), wraps only that call in `allow_unsafe_unpickling()`, and adds a reject test that plants a payload in real file bytes and proves it never runs.

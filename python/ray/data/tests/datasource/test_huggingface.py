@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import datasets
 import pyarrow
+import pyarrow.parquet as pq
 import pytest
 import requests
 from packaging.version import Version
@@ -12,6 +13,7 @@ from ray.data._internal.datasource.huggingface_datasource import (
     HuggingFaceDatasource,
 )
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.tests.conftest import *  # noqa
 
@@ -480,12 +482,20 @@ def test_huggingface_datasource_rejects_pickle_object_columns(tmp_path):
     )
     # ``datasets`` refuses to build Features for unknown extension types, so drive
     # the datasource with a stand-in that yields the Arrow batch HF would produce.
+    # HF reads its cache files with pyarrow: mimic that by reading a real parquet
+    # file when the batch is requested, so the pickled-object type is rebuilt
+    # during the read, where it is refused.
+    path = tmp_path / "data.parquet"
+    pq.write_table(poisoned, path)
     hf_dataset = MagicMock()
-    hf_dataset.with_format.return_value.iter.return_value = iter([poisoned])
+    hf_dataset.with_format.return_value.iter.side_effect = lambda *a, **kw: iter(
+        [pq.read_table(path)]
+    )
 
     read_task = HuggingFaceDatasource(hf_dataset).get_read_tasks(1)[0]
+    # Run the read function the way the read operator does: under the guard.
     with pytest.raises(ValueError, match="arrow_pickled_object"):
-        list(read_task())
+        list(guard_iterator(read_task))
 
     assert not marker.exists(), "pickle.load executed attacker code"
 

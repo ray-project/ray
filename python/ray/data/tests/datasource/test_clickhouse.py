@@ -15,6 +15,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
+from ray.data._internal.untrusted_unpickling import forbid_untrusted_unpickling
 
 
 @pytest.fixture(autouse=True)
@@ -302,13 +303,26 @@ class TestClickHouseDatasource:
 
         evil = ArrowPythonObjectArray.from_objects([Exploit()] * 2)
         batch = pa.record_batch([pa.array([1, 2]), evil], names=["field1", "evil"])
+        # ClickHouse streams Arrow over the wire. Mimic that by parsing IPC bytes
+        # when the stream is iterated, so the pickled-object type is rebuilt
+        # during the read, where it is refused.
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, batch.schema) as writer:
+            writer.write_batch(batch)
+        stream_bytes = sink.getvalue()
         mock_stream = MagicMock()
         mock_client = mock.MagicMock()
         mock_client.query_arrow_stream.return_value.__enter__.return_value = mock_stream
-        mock_stream.__iter__.return_value = [batch]
+        mock_stream.__iter__.side_effect = lambda: iter(
+            pa.ipc.open_stream(stream_bytes).read_all().to_batches()
+        )
         datasource._init_client = MagicMock(return_value=mock_client)
 
-        with pytest.raises(ValueError, match="arrow_pickled_object"):
+        # Run the read the way the read operator does: under the guard. The
+        # datasource wraps read failures in a RuntimeError, so match the message.
+        with forbid_untrusted_unpickling(), pytest.raises(
+            Exception, match="arrow_pickled_object"
+        ):
             datasource._execute_block_query("SELECT * FROM default.table_name")
 
         assert not marker.exists(), "pickle.load executed attacker code"

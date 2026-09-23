@@ -7,7 +7,6 @@ from urllib.request import getproxies
 import numpy as np
 import pyarrow as pa
 
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -49,12 +48,9 @@ class DeltaSharingDatasource(Datasource):
     def _read_files(self, files, converters):
         """Read files with Delta Sharing."""
         for file in files:
-            # Read into Arrow first. Converting to pandas materializes
-            # 'ray.data.arrow_pickled_object' columns, which unpickles the data and
-            # can execute arbitrary code, so the columns have to be rejected before
-            # that conversion happens.
+            # Read into Arrow first, then convert. A pickled-object column in the
+            # file is refused at read time, before to_pandas() could unpickle it.
             table = _read_file_as_arrow(file)
-            raise_on_pickle_object_columns(table)
             pdf = table.to_pandas(
                 date_as_object=True,
                 use_threads=False,

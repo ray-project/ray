@@ -1,8 +1,10 @@
 import copy
+import types
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
 import numpy as np
 
+from ray.data._internal.untrusted_unpickling import guard_datasource_call
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
@@ -192,6 +194,16 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
     def __init__(self):
         """Initialize the datasource and its mixins."""
         _DatasourcePredicatePushdownMixin.__init__(self)
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        # Driver-side datasource code runs with the forbid flag set (read tasks
+        # are covered by the read operator). Only methods the subclass defines
+        # itself are wrapped; inherited ones were wrapped by their own class.
+        for name in ("__init__", "get_read_tasks", "estimate_inmemory_data_size"):
+            fn = cls.__dict__.get(name)
+            if isinstance(fn, types.FunctionType):
+                setattr(cls, name, guard_datasource_call(fn))
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":

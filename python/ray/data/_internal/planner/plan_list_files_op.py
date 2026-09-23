@@ -46,10 +46,17 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
 )
 from ray.data._internal.logical.operators import ListFiles
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
+
+
+def _guarded_list_files_for_each_block(blocks, ctx, **kwargs):
+    # Listing tasks parse file footers: set the forbid flag.
+    yield from guard_iterator(partial(list_files_for_each_block, blocks, ctx, **kwargs))
+
 
 # Cap on the number of parallel listing tasks. In practice most reads
 # pass a single directory (one task); this matters when users hand in
@@ -76,7 +83,7 @@ def plan_list_files_op(
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
             partial(
-                list_files_for_each_block,
+                _guarded_list_files_for_each_block,
                 indexer=indexer,
                 filesystem=filesystem,
                 file_extensions=file_extensions,
