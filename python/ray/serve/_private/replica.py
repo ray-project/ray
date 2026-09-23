@@ -747,7 +747,9 @@ class ReplicaMetricsManager:
                 # own probe out; a check that hangs here stops refreshing the cached
                 # result, which check_health() then treats as stale.
                 await eval_fn()
-            except Exception:
+            except (Exception, asyncio.CancelledError):
+                # CancelledError is not an Exception, and MetricsPusher only catches
+                # Exception, so letting it out would retire the heartbeat for good.
                 healthy = False
             counted_at = time.time()
             if healthy:
@@ -2431,19 +2433,14 @@ class Replica:
 
     async def _run_user_health_check(self):
         # Recovery can re-enter while the periodic task is part way through, and both
-        # write _healthy, so whoever arrives second takes the first one's result.
-        entered_at = time.time()
+        # write _healthy, so serialize them and let the later verdict stand. Waiters
+        # run their own check rather than adopting the one they waited on: a probe the
+        # controller already timed out must not answer the probe that replaced it.
         async with self._health_check_lock:
-            if self._self_health_evaluated_at > entered_at:
-                if not self._healthy:
-                    raise RuntimeError(
-                        self._last_self_health_error
-                        or "Replica self health check failed."
-                    )
-                return
             await self._run_user_health_check_locked()
 
     async def _run_user_health_check_locked(self):
+        evaluated = False
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
@@ -2454,20 +2451,19 @@ class Replica:
             if f is not None:
                 await f
             self._healthy = True
-        except asyncio.CancelledError:
-            # CancelledError is not an Exception, so without this a caller giving up
-            # would leave a healthy verdict behind that nothing ever confirmed.
-            self._healthy = False
-            self._last_self_health_error = "Replica health check timed out."
-            raise
+            evaluated = True
         except Exception as e:
             logger.warning("Replica health check failed.")
             self._healthy = False
             self._last_self_health_error = repr(e)
+            evaluated = True
             raise e from None
         finally:
-            self._self_health_evaluated = True
-            self._self_health_evaluated_at = time.time()
+            # A cancelled check confirmed nothing, so it must neither refresh the
+            # cached verdict nor pull the replica out of the data-plane rotation.
+            if evaluated:
+                self._self_health_evaluated = True
+                self._self_health_evaluated_at = time.time()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         try:

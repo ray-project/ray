@@ -1539,6 +1539,22 @@ class TestSelfHealthPush:
         # The payload is absolute, so a second unhealthy heartbeat adds nothing.
         m._controller_handle.record_replica_health.remote.assert_not_called()
 
+    @pytest.mark.asyncio
+    async def test_a_cancelled_eval_does_not_retire_the_pusher(self):
+        """CancelledError is not an Exception and MetricsPusher only catches Exception,
+        so letting it out would end the heartbeat task for the replica's lifetime."""
+        m = self._manager()
+
+        async def cancelled():
+            raise asyncio.CancelledError()
+
+        m._eval_self_health_fn = cancelled
+        await m._eval_and_push_self_health()
+        assert m._self_healthy is False
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+
     def test_self_check_runs_at_half_the_period(self, monkeypatch):
         from types import SimpleNamespace
         from unittest.mock import Mock
@@ -1566,6 +1582,97 @@ class TestSelfHealthPush:
         assert m._metrics_pusher.register_or_update_task.call_args.args[2] == 5.0
 
 
+class TestReplicaHealthVerdict:
+    """check_health() serves the self-check's cached verdict; waiters do not adopt it."""
+
+    def _replica(self, active=True):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+
+        import ray.serve._private.replica as replica_mod
+
+        r = replica_mod.Replica.__new__(replica_mod.Replica)
+        r._deployment_config = SimpleNamespace(
+            health_check_period_s=10.0, health_check_timeout_s=30.0
+        )
+        r._self_health_active = active
+        r._self_health_evaluated = False
+        r._self_health_evaluated_at = 0.0
+        r._last_self_health_error = None
+        r._healthy = False
+        r._health_check_lock = asyncio.Lock()
+        r._user_callable_wrapper = Mock()
+        r._user_callable_wrapper.call_user_health_check.return_value = None
+        return r
+
+    @pytest.mark.asyncio
+    async def test_a_fresh_healthy_verdict_skips_the_user_check(self):
+        r = self._replica()
+        r._self_health_evaluated, r._healthy = True, True
+        r._self_health_evaluated_at = time.time()
+        await r.check_health()
+        r._user_callable_wrapper.call_user_health_check.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_stale_healthy_verdict_falls_back_to_the_user_check(self):
+        r = self._replica()
+        r._self_health_evaluated, r._healthy = True, True
+        r._self_health_evaluated_at = time.time() - 11.0  # past the period
+        await r.check_health()
+        r._user_callable_wrapper.call_user_health_check.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_an_unhealthy_verdict_raises_without_expiring(self):
+        r = self._replica()
+        r._self_health_evaluated, r._healthy = True, False
+        r._self_health_evaluated_at = time.time() - 600.0
+        r._last_self_health_error = "boom"
+        with pytest.raises(RuntimeError, match="boom"):
+            await r.check_health()
+
+    @pytest.mark.asyncio
+    async def test_a_waiter_runs_its_own_check(self):
+        """Regression: adopting the in-flight check's result let a probe the controller
+        had already timed out answer the probe that replaced it, so a slow check
+        alternated timeout and success and never reached the failure threshold."""
+        r = self._replica(active=False)
+        started = asyncio.Event()
+        release = asyncio.Event()
+        calls = []
+
+        async def slow():
+            calls.append(1)
+            started.set()
+            await release.wait()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: slow()
+        first = asyncio.create_task(r.check_health())
+        await started.wait()
+        second = asyncio.create_task(r.check_health())
+        await asyncio.sleep(0)
+        release.set()
+        await asyncio.gather(first, second)
+        assert len(calls) == 2  # the waiter did not inherit the first verdict
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_check_confirms_nothing(self):
+        """It must neither refresh the cached verdict nor flip _healthy, which backs
+        the replica's /-/healthz and so its place in the load balancer rotation."""
+        r = self._replica(active=False)
+        r._healthy = True
+
+        async def cancelled():
+            raise asyncio.CancelledError()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: cancelled()
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await r.check_health()
+        assert r._healthy is True
+        assert r._self_health_evaluated is False
+
+
 class TestBoundedPushGuard:
     """A push that never completes must not silence the replica permanently."""
 
@@ -1591,13 +1698,12 @@ class TestBoundedPushGuard:
 
     def test_overdue_ref_is_abandoned(self, monkeypatch):
         import ray.serve._private.replica as replica_mod
-        from ray.serve._private.constants import RAY_SERVE_METRICS_PUSH_STUCK_S
 
         monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
-        started = time.time() - RAY_SERVE_METRICS_PUSH_STUCK_S - 1.0
-        # Absolute duration, not derived from the constant under test, so the bound
-        # itself is what the assertion pins.
-        assert self._manager()._push_blocked("ref", started) is False
+        # Absolute durations either side of the documented 20s, so the bound itself is
+        # pinned rather than whatever the constant happens to say.
+        assert self._manager()._push_blocked("ref", time.time() - 21.0) is False
+        assert self._manager()._push_blocked("ref", time.time() - 19.0) is True
 
 
 if __name__ == "__main__":
