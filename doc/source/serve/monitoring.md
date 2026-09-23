@@ -162,7 +162,7 @@ Call the `serve.status()` API to get Serve application details in Python. `serve
 
 To understand system-level behavior and to surface application-level details during runtime, you can leverage Ray logging.
 
-Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`. By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`. This includes both system-level logs from the Serve controller and proxy as well as access logs and custom user logs produced from within deployment replicas.
+Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`. By default, logs are written on each node under `/tmp/ray/session_latest/logs/serve/` without also being emitted to `stderr`. Set `RAY_SERVE_LOG_TO_STDERR=1` to mirror system, access, and user logs to actor standard error streams.
 
 In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
 

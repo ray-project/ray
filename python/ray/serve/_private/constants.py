@@ -394,7 +394,7 @@ RAY_SERVE_LOG_ENCODING = "TEXT"
 
 # Setting RAY_SERVE_LOG_TO_STDERR=0 will disable logging to the stdout and stderr.
 # Also, redirect them to serve's log files.
-RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "1")
+RAY_SERVE_LOG_TO_STDERR = get_env_bool("RAY_SERVE_LOG_TO_STDERR", "0")
 
 # Logging format attributes
 SERVE_LOG_REQUEST_ID = "request_id"

@@ -909,13 +909,20 @@ class TestLoggingAPI:
                 check_log_file(resp["logs_path"], [".*model_not_show.*"])
 
     @pytest.mark.parametrize("enable_access_log", [True, False])
-    def test_access_log_in_stderr(self, serve_and_ray_shutdown, enable_access_log):
+    @pytest.mark.parametrize(
+        "ray_instance",
+        [{"RAY_SERVE_LOG_TO_STDERR": "1"}],
+        indirect=True,
+    )
+    def test_access_log_in_stderr(
+        self, serve_and_ray_shutdown, ray_instance, enable_access_log
+    ):
         """Test that access logs in stderr respect the enable_access_log setting.
 
         Regression test: the log_access_log_filter was previously only applied
         to the file handler (memory_handler), not the stream handler (stderr).
-        Since RAY_SERVE_LOG_TO_STDERR defaults to True, access logs appeared in
-        stderr even when enable_access_log=False.
+        When RAY_SERVE_LOG_TO_STDERR is enabled, access logs must not appear in
+        stderr when enable_access_log=False.
         """
         logger = logging.getLogger("ray.serve")
 

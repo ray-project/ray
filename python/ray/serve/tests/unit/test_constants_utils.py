@@ -49,6 +49,12 @@ def test_ingress_request_router_forward_body_auto_by_default():
     assert RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY is None
 
 
+def test_log_to_stderr_disabled_by_default():
+    from ray.serve._private.constants import RAY_SERVE_LOG_TO_STDERR
+
+    assert RAY_SERVE_LOG_TO_STDERR is False
+
+
 def test_sync_methods_run_in_threadpool_by_default():
     from ray.serve._private.constants import RAY_SERVE_RUN_SYNC_IN_THREADPOOL
 
