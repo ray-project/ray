@@ -1161,6 +1161,7 @@ class ApplicationAutoscalingState:
                     else {},
                 )
                 for deployment_id, state in self._deployment_autoscaling_states.items()
+                if deployment_id in deployment_to_target_num_replicas
             }
             # Time the policy execution
             start_time = time.time()
@@ -1218,6 +1219,7 @@ class ApplicationAutoscalingState:
                     _skip_bound_check=_skip_bound_check,
                 )
                 for deployment_id, deployment_autoscaling_state in self._deployment_autoscaling_states.items()
+                if deployment_id in deployment_to_target_num_replicas
             }
 
     def update_running_replica_ids(
