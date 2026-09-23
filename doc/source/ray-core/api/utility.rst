@@ -11,6 +11,11 @@ Utility
 
    ray.util.serialization.register_serializer
    ray.util.serialization.deregister_serializer
+   ray.util.pickle_guard.forbid_untrusted_unpickling
+   ray.util.pickle_guard.allow_unsafe_unpickling
+   ray.util.pickle_guard.is_unpickling_forbidden
+   ray.util.pickle_guard.guard_iterator
+   ray.util.pickle_guard.UntrustedUnpicklingError
 
    ray.util.tpu.get_current_pod_worker_count
    ray.util.tpu.get_current_pod_name

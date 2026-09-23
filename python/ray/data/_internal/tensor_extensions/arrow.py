@@ -140,6 +140,8 @@ def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
         if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
             # Opt-in only: files written by Ray 2.49-2.54 used cloudpickle.
             # WARNING: Do not enable this for files from untrusted sources.
+            # ``ray.cloudpickle.loads`` is exempt from the untrusted-unpickling
+            # guard, which is what this explicit opt-in relies on.
             return cloudpickle.loads(serialized)
         raise ValueError(
             f"Unable to deserialize {field_name}. If this file was written by "

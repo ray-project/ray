@@ -3,4 +3,5 @@ paths:
   - "python/ray/data/_internal/datasource/**/*.py"
   - "python/ray/data/_internal/datasource_v2/**/*.py"
 ---
-- Call `raise_on_pickle_object_columns(table)` on every `pa.Table` read from external data (parquet, Arrow IPC, a service or library returning Arrow) before yielding or materializing it, and add a reject test. deserializing from unknown sources is a RCE bug and has to be avoided.
+- Datasource code runs with unpickling blocked, on the driver and in read tasks, and pickled-object Arrow columns from files are refused automatically. Do not add per-reader pickle checks. Never wrap external bytes in `ArrowPythonObjectType` and never call `ray.cloudpickle.loads` on them; use the stdlib `pickle` so the guard applies.
+- A reader whose format can carry pickle (numpy object arrays, torch files) exposes an explicit opt-in, defaults it off, wraps only that call in `allow_unsafe_unpickling()`, and adds a reject test that plants a payload in real file bytes and proves it never runs.

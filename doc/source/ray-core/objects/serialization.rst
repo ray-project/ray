@@ -355,6 +355,43 @@ For even more detailed information, set environmental variable ``RAY_PICKLE_VERB
 serialization with python-based backend instead of C-Pickle, so you can debug into python code at the middle of serialization.
 However, this would make serialization much slower.
 
+Blocking untrusted unpickling
+-----------------------------
+
+Unpickling bytes you don't control executes arbitrary code. Ray provides a guard that refuses
+any unpickle naming a class or function while a block of code runs, so a library that quietly
+calls ``pickle.loads`` on file or network bytes fails instead of running attacker code:
+
+.. testcode::
+
+    import pickle
+    from ray.util.pickle_guard import forbid_untrusted_unpickling, UntrustedUnpicklingError
+
+    class Payload:
+        pass
+
+    data = pickle.dumps(Payload())
+    try:
+        with forbid_untrusted_unpickling(hint="Pass trusted=True to load this file."):
+            pickle.loads(data)
+    except UntrustedUnpicklingError:
+        print("refused")
+
+.. testoutput::
+
+    refused
+
+Pickles that contain only primitives (numbers, strings, bytes, lists, dicts) still load, because
+they never look up a global. Ray's own object transport is exempt: ``ray.get``, task arguments
+and function loading go through ``ray.cloudpickle.loads``, which is reserved for bytes Ray
+produced. Code that opts into the guard must use the stdlib ``pickle`` for external bytes so the
+guard applies, and wraps only a call the user explicitly trusts in ``allow_unsafe_unpickling()``.
+
+The guard is not a sandbox: it stops attacker-controlled *bytes*, not hostile code already
+running in the process. The flag covers the thread that entered ``forbid_untrusted_unpickling()``;
+helper threads a library starts don't inherit it. Ray Data sets it around all datasource code
+and turns it off when ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1`` is set on every node.
+
 Known Issues
 ------------
 

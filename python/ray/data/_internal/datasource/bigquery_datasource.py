@@ -1,7 +1,6 @@
 import logging
 from typing import TYPE_CHECKING, List, Optional
 
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -84,9 +83,6 @@ class BigQueryDatasource(Datasource):
             client = _create_read_client()
             reader = client.read_rows(stream.name)
             table = reader.to_arrow()
-            # Unpickling untrusted data can execute arbitrary code. Reject object
-            # columns unless the user has explicitly opted in.
-            raise_on_pickle_object_columns(table)
             return table
 
         if self._query:

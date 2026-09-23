@@ -21,6 +21,7 @@ same dispatch shape V1 uses for ``plan_read_op_with_checkpoint_filter``.
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
@@ -33,6 +34,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data.block import Block
 from ray.data.context import DataContext
 
@@ -64,7 +66,9 @@ def plan_read_files_op(
             manifest = scanner.prune_input_split(FileManifest(block))
             if len(manifest) == 0:
                 continue
-            for table in reader.read(manifest):
+            # Forbid unpickling flag set around the reader only; ``block_udf`` and fused
+            # downstream transforms run between yields, unguarded.
+            for table in guard_iterator(partial(reader.read, manifest)):
                 if block_udf is not None:
                     table = block_udf(table)
                 yield table

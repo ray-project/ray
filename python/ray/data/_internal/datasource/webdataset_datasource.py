@@ -10,6 +10,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
 from ray._common.utils import env_bool
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
@@ -285,7 +286,9 @@ def _default_decoder(
                 )
             import torch
 
-            sample[key] = torch.load(io.BytesIO(value), weights_only=False)
+            # Explicit opt-in: lift the forbid flag for this call only.
+            with allow_unsafe_unpickling():
+                sample[key] = torch.load(io.BytesIO(value), weights_only=False)
         elif extension in ["pickle", "pkl"]:
             if not allow_unsafe:
                 raise ValueError(
@@ -297,7 +300,8 @@ def _default_decoder(
                 )
             import pickle
 
-            sample[key] = pickle.loads(value)
+            with allow_unsafe_unpickling():
+                sample[key] = pickle.loads(value)
     return sample
 
 

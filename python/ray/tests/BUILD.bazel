@@ -1306,6 +1306,21 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_pickle_guard",
+    size = "small",
+    srcs = ["test_pickle_guard.py"],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 sh_test(
     name = "test_exported_symbols_unix",
     size = "small",

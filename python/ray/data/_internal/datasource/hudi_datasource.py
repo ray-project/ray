@@ -3,7 +3,6 @@ import os
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
 
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -63,9 +62,6 @@ class HudiDatasource(Datasource):
                 file_group_reader = HudiFileGroupReader(table_uri, options)
                 batch = file_group_reader.read_file_slice_by_base_file_path(p)
                 table = pyarrow.Table.from_batches([batch])
-                # Unpickling untrusted data can execute arbitrary code. Reject object
-                # columns unless the user has explicitly opted in.
-                raise_on_pickle_object_columns(table)
                 yield table
 
         hudi_table = (

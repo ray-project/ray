@@ -83,6 +83,7 @@ from ray.data._internal.logical.operators import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.untrusted_unpickling import forbid_untrusted_unpickling
 from ray.data._internal.util import (
     _autodetect_parallelism,
     get_compute_strategy_for_read_api,
@@ -596,15 +597,19 @@ def _read_datasource_v2(
     sample = None
     if datasource.schema_needs_file_sample:
         # Sample a few files for schema inference. Listed again (cheaply) during
-        # execution inside the ListFiles op — no caching layer needed.
-        sample = sample_files(indexer, datasource.paths, filesystem, pruners)
+        # execution inside the ListFiles op — no caching layer needed. Sampling,
+        # schema inference and partition discovery parse file bytes on the
+        # driver, so they run with the forbid flag set.
+        with forbid_untrusted_unpickling():
+            sample = sample_files(indexer, datasource.paths, filesystem, pruners)
         if len(sample) == 0:
             raise ValueError(
                 f"no files found under {datasource.paths!r}. Check the path and any "
                 "configured `partition_filter` or `file_extensions` filters."
             )
 
-    schema = datasource.infer_schema(sample)
+    with forbid_untrusted_unpickling():
+        schema = datasource.infer_schema(sample)
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
     # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
@@ -615,7 +620,8 @@ def _read_datasource_v2(
     # here (rather than mutating ``datasource._partitioning`` inside
     # ``infer_schema``) leaves the datasource instance immutable across
     # reads.
-    resolved_partitioning = datasource.resolve_partitioning(sample)
+    with forbid_untrusted_unpickling():
+        resolved_partitioning = datasource.resolve_partitioning(sample)
     scanner = datasource.create_scanner(
         schema=schema,
         filesystem=filesystem,
@@ -1148,6 +1154,14 @@ def read_zarr(
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
+
+    .. warning::
+
+        Arrays whose metadata declares the numcodecs ``pickle`` codec are
+        refused, because decoding them unpickles chunk bytes from the store,
+        which can execute arbitrary code. Set
+        ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR=1`` on all nodes only for
+        stores you trust.
 
     **Output schemas.** ``read_zarr`` produces one of two schemas, selected by
     ``align_axis_0``: long-form or wide-form.

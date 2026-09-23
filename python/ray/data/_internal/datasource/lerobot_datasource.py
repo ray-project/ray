@@ -31,7 +31,6 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import (
     _check_import,
     _is_local_scheme,
@@ -465,28 +464,6 @@ def _resolve_filesystem(
     return fs, fs_root, video_root_uri, video_storage_options
 
 
-def _raise_on_pickle_object_meta_parquet(local_meta_dir: str, root_uri: str) -> None:
-    """Reject ``meta/**/*.parquet`` files that store pickled-object columns.
-
-    lerobot reads ``meta/tasks.parquet`` (and ``subtasks.parquet``,
-    ``episodes/**/*.parquet``) itself via pandas and HF datasets, which would
-    unpickle ``ray.data.arrow_pickled_object`` columns on the driver. Only parquet
-    footers are read here; no row data is decoded.
-    """
-    meta_dir = Path(local_meta_dir)
-    for path in sorted(meta_dir.rglob("*.parquet")):
-        # Read the schema outside the ``try`` so a corrupt file's ``ArrowInvalid``
-        # (a ``ValueError`` subclass) isn't relabeled as a pickle rejection.
-        schema = pq.read_schema(path)
-        try:
-            # Unpickling untrusted data can execute arbitrary code. Reject object
-            # columns unless the user has explicitly opted in.
-            raise_on_pickle_object_columns(schema.empty_table())
-        except ValueError as e:
-            rel = path.relative_to(meta_dir).as_posix()
-            raise ValueError(f"{root_uri!r}: meta/{rel}: {e}") from e
-
-
 def _load_lerobot_metadata(
     root: Union[str, Path],
     fs: "fsspec.AbstractFileSystem",
@@ -505,16 +482,17 @@ def _load_lerobot_metadata(
 
     # repo_id is decorative for read-only use (error messages / HF Hub fallback
     # target); we pass the root itself so any fallback fails clearly.
+    # lerobot parses ``meta/*.parquet`` itself with pandas and HF datasets. This
+    # runs inside the datasource constructor, where unpickling is blocked, so a
+    # pickled-object column in those files is refused before lerobot reads it.
     if "://" not in root_uri:
         # Local path: lerobot reads it directly.
-        _raise_on_pickle_object_meta_parquet(os.path.join(root_uri, "meta"), root_uri)
         return LeRobotDatasetMetadata(repo_id=root_uri, root=root_uri)
 
     # Remote URI: copy meta/ locally and let lerobot parse the local copy.
     local_root = tempfile.mkdtemp(prefix="ray_data_lerobot_")
     try:
         fs.get(f"{fs_root}/meta", os.path.join(local_root, "meta"), recursive=True)
-        _raise_on_pickle_object_meta_parquet(os.path.join(local_root, "meta"), root_uri)
         meta = LeRobotDatasetMetadata(repo_id=root_uri, root=local_root)
     except Exception:
         # The finalizer below is attached to ``meta``, which doesn't exist yet, so
@@ -857,9 +835,6 @@ def _read_lerobot_segment(
     for path in parquet_segs:
         with fs.open(path, "rb") as f:
             table = pq.read_table(f, filters=filters)
-        # Unpickling untrusted data can execute arbitrary code. Reject object
-        # columns unless the user has explicitly opted in.
-        raise_on_pickle_object_columns(table)
         pq_tables.append(table)
     full = pa.concat_tables(pq_tables) if pq_tables else None
     if full is None or full.num_rows == 0:
