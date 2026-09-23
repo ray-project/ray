@@ -1151,10 +1151,15 @@ class Worker:
         # TPU_VISIBLE_CHIPS, ..) then respect that in the sense that only IDs
         # that appear in (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR,
         # HIP_VISIBLE_DEVICES, NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..)
-        # should be returned.
+        # should be returned. When set via a worker's runtime_env, original_ids
+        # may be narrower than the node raylet's resource pool, so raylet slot
+        # indices in assigned_ids can exceed len(original_ids).
         if self.original_visible_accelerator_ids.get(resource_name, None) is not None:
             original_ids = self.original_visible_accelerator_ids[resource_name]
-            assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            if all(i < len(original_ids) for i in assigned_ids):
+                assigned_ids = {str(original_ids[i]) for i in assigned_ids}
+            else:
+                assigned_ids = {str(x) for x in original_ids[: len(assigned_ids)]}
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
