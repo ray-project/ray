@@ -10,8 +10,8 @@ Out-of-memory errors (OOMs) are one of the most common issues Ray Data users enc
 
 This guide describes what OOMs look like and provides practical guidance for mitigating them.
 
-For a lower-level explanation of how Ray Data treats memory, read 
-{ref}`Ray Data Memory Model <data_memory_management>` and  
+For a lower-level explanation of how Ray Data treats memory, read
+{ref}`Ray Data Memory Model <data_memory_management>` and
 {doc}`Ray Core Resource Isolation </ray-core/resource-isolation-with-cgroupv2>`
 
 
@@ -34,7 +34,7 @@ When the Ray OOM killer proactively kills a task or actor, you might see an erro
   - bytes in use: 0
   - objects evictable: 0
   - bytes evictable: 0
-  
+
   - objects created by worker: 0
   - bytes created by worker: 0
   - objects restored: 0
@@ -43,7 +43,7 @@ When the Ray OOM killer proactively kills a task or actor, you might see an erro
   - bytes received: 0
   - objects errored: 0
   - bytes errored: 0
-  
+
   Eviction Stats:
   (global lru) capacity: 35098657996
   (global lru) used: 0%
@@ -84,7 +84,7 @@ You can see the number of Ray OOM kills in the "Ray OOM Kills (Tasks and Actors)
 When the kernel OOM killer kills a Ray process before the Ray OOM killer, you might see an error like this:
 
 ```
-(raylet) Task _map_task failed. There are infinite retries remaining, so the task will be retried. Error:                                                                                      
+(raylet) Task _map_task failed. There are infinite retries remaining, so the task will be retried. Error:
 (raylet) A worker died or was killed while executing a task by an unexpected system error. To troubleshoot the problem, check the logs for the dead worker. Lease ID: 2100000005000000ffffffffffffffffffffffffffffffffffffffffffffffff Worker ID: 863d8a6a594d60f8d143462b96cd3bf4270eafe617aaf2d2ca7266cb Node ID: 4cb25bc084aeb5a31ca5402ad589ae042a71165a8e2dd8418fecee26 Worker IP address: 10.0.50.112 Worker port: 10015 Worker PID: 2938 Worker exit type: SYSTEM_ERROR Worker exit detail: Worker unexpectedly exits with a connection error code 2. End of file. Some common causes include: (1) the process was killed by the OOM killer due to high memory usage, (2) ray stop --force was called, or (3) the worker crashed unexpectedly due to SIGSEGV or another unexpected error.
 ```
 
