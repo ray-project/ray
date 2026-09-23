@@ -10,5 +10,5 @@ nonword: true
 # complete sentences that end with a colon. These fragments recur before code
 # blocks. Flag only, since the right rewrite depends on what the example shows.
 tokens:
-  - '\bfor example:'
+  - '\bfor (?:example|instance):'
   - "\\bhere(?:'s| is) an example\\b"

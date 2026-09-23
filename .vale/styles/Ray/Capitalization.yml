@@ -10,4 +10,6 @@ ignorecase: false
 # legitimately keep the title's capitals, and scripts/ray_style_autofix.py would
 # rewrite those blindly.
 tokens:
-  - 'Ray (?:Tasks?|Actors?)\b'
+# "Ray Cluster" is deliberately left out. It appears mostly in page and section
+# titles ("Ray Clusters Overview") and in the "Ray Cluster Launcher" component name.
+  - 'Ray (?:Tasks?|Actors?|Objects?|Workers?|Nodes?|Placement Groups?)\b'
