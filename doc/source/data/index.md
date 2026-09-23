@@ -71,8 +71,8 @@ AI workloads revolve around deep learning models, which are computationally inte
 Ray Data treats AI workloads as a first-class use case and offers four advantages:
 
 - **Faster and cheaper for deep learning**: Ray Data streams data between CPU preprocessing tasks and GPU inference or training tasks. Keeping GPUs active maximizes resource utilization and reduces costs.
-- **Framework friendly**: Ray Data integrates with common AI frameworks such as vLLM, PyTorch, Hugging Face, and TensorFlow, and with common cloud providers such as AWS, GCP, and Azure.
-- **Support for multi-modal data**: Ray Data uses Apache Arrow and pandas and supports many data formats used in ML workloads, such as Parquet, Lance, images, JSON, CSV, audio, and video.
+- **Framework-friendly**: Ray Data integrates with common AI frameworks such as vLLM, PyTorch, Hugging Face, and TensorFlow, and with common cloud providers such as AWS, GCP, and Azure.
+- **Support for multimodal data**: Ray Data uses Apache Arrow and pandas and supports many data formats used in ML workloads, such as Parquet, Lance, images, JSON, CSV, audio, and video.
 - **Scalable by default**: Ray Data builds on Ray to scale automatically across heterogeneous clusters of CPU and GPU machines. The same code runs unchanged on one machine or on hundreds of nodes processing hundreds of TB of data.
 
 % https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
@@ -176,6 +176,6 @@ The following case studies use Ray Data for training ingest:
 
 The following case studies use Ray Data for batch inference:
 
-- [ByteDance scales offline inference with multi-modal LLMs to 200 TB on Ray Data](https://www.anyscale.com/blog/how-bytedance-scales-offline-inference-with-multi-modal-llms-to-200TB-data).
+- [ByteDance scales offline inference with multimodal LLMs to 200 TB on Ray Data](https://www.anyscale.com/blog/how-bytedance-scales-offline-inference-with-multi-modal-llms-to-200TB-data).
 - [Spotify's ML platform built on Ray Data for batch inference](https://engineering.atspotify.com/2023/02/unleashing-ml-innovation-at-spotify-with-ray/).
 - [Sewer AI speeds up object detection on videos 3x using Ray Data](https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video).
