@@ -15,8 +15,6 @@ Get started with Ray Data's {class}`Dataset <ray.data.Dataset>` abstraction for 
 * {ref}`Consume data <consuming_key_concept>`
 * {ref}`Save data <saving_key_concept>`
 
-(datasets)=
-
 ## What is a dataset?
 
 Ray Data's main abstraction is a {class}`Dataset <ray.data.Dataset>`, which represents a distributed collection of data. Datasets are designed for machine learning workloads and can efficiently handle data collections larger than a single machine's memory.
