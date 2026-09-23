@@ -513,7 +513,7 @@ class DeploymentSchema(BaseModel):
             "[1, 100]. "
         ),
     )
-    topology_spread: Dict[str, int] = Field(
+    topology_spread: Dict[str, StrictInt] = Field(
         default=DEFAULT.VALUE,
         description=(
             "A dict from a node label key to the minimum number of distinct values "

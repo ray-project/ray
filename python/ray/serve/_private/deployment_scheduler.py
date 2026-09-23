@@ -322,9 +322,9 @@ class DeploymentSchedulingInfo:
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
-    topology_spread: Optional[Dict[str, int]] = None
-    # Built once from `topology_spread`. None means the profile's floor applies.
-    floor_constraints: Optional[Tuple["SchedulingConstraint", ...]] = None
+    # Built once at deploy time from `topology_spread`, or else from
+    # `RAY_SERVE_MIN_REPLICA_NODES`. A floor of 1 is always met, so it is left out.
+    floors: Tuple["MinTopologyDomainsConstraint", ...] = ()
 
     @property
     def required_resources(self) -> RequestedResources:
@@ -453,14 +453,37 @@ def _filter_nodes_by_label_selector(
     }
 
 
+def _label_value(
+    node_id: str, label_key: str, node_labels: Dict[str, Dict[str, str]]
+) -> Optional[str]:
+    """The node's value for `label_key`, or None if it has no such label.
+
+    The raylet sets `ray.io/node-id` on every node, so a node is always its own
+    domain for that key, even before the label cache holds its labels.
+    """
+    value = node_labels.get(node_id, {}).get(label_key)
+    if value is None and label_key == RAY_NODE_ID_LABEL:
+        return node_id
+    return value
+
+
+def _exclusion_selector(exclusions: Dict[str, Set[str]]) -> Dict[str, str]:
+    """One `!in(...)` label selector entry for each key with values to avoid."""
+    return {
+        key: f"!in({','.join(sorted(values))})"
+        for key, values in exclusions.items()
+        if values
+    }
+
+
 @dataclass
 class SchedulingContext:
-    """The cluster facts a filter needs to evaluate its rule for one replica."""
+    """The cluster facts a rule needs to evaluate itself for one replica."""
 
     deployment_id: DeploymentID
     num_replicas: int
-    num_active_nodes: int
     nodes_occupied_by_deployment: Set[str]
+    # Labels of every active node.
     node_labels: Dict[str, Dict[str, str]]
 
 
@@ -483,23 +506,19 @@ class DownscaleContext:
 
 
 class SchedulingConstraint:
-    """One placement rule, applied at every point where it has an opinion.
+    """One hard placement rule, applied at every point where it has an opinion.
 
-    `nodes_to_avoid` names nodes the replica must not use. The scheduler both
-    drops them from the candidates and unions them with every other rule's
-    set into one `ray.io/node-id` selector for Ray Core, so two rules that
-    each forbid a node compose. `eligible` narrows the candidates by any
-    other test against cached node state. `required_labels` adds a selector
-    on any other label key; the scheduler raises if two rules set the same
-    key. `may_stop` vetoes a downscale that would break the rule. Each default
-    is a no-op, so a constraint overrides only the points it cares about.
+    `exclusions` names, for each node label key, the values a replica must
+    avoid. The scheduler drops the matching nodes and merges every rule's
+    values for a key into one `!in(...)` selector for Ray Core, so two rules
+    that exclude on the same key compose. `eligible` narrows the candidates by
+    any other test against cached node state. `may_stop` vetoes a downscale
+    that would break the rule. Each default is a no-op, so a constraint
+    overrides only the points it cares about.
     """
 
-    def applies_to(self, scheduling_request: ReplicaSchedulingRequest) -> bool:
-        return True
-
-    def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
-        return set()
+    def exclusions(self, ctx: SchedulingContext) -> Dict[str, Set[str]]:
+        return {}
 
     def eligible(
         self,
@@ -508,9 +527,6 @@ class SchedulingConstraint:
     ) -> Dict[str, AvailableNodeResources]:
         return candidates
 
-    def required_labels(self, ctx: SchedulingContext) -> Dict[str, str]:
-        return {}
-
     def may_stop(self, replica_id: ReplicaID, ctx: DownscaleContext) -> bool:
         return True
 
@@ -518,19 +534,13 @@ class SchedulingConstraint:
 class MinTopologyDomainsConstraint(SchedulingConstraint):
     """Spreads a deployment over at least `min_domains` values of one node label.
 
-    A node's domain is its value for `label_key`. `ray.io/node-id` names the
-    node itself, so a floor on it is a floor on distinct nodes. A node without
-    the label has no domain: the rule never counts it and never excludes it.
-    While the deployment covers fewer domains than the floor, every node in an
-    occupied domain is rejected, so the next replica lands in a new one. The
-    floor is capped by the replica count and by the number of domains among
-    active nodes, so it never rejects every node.
-
-    The node rule travels to Ray as a `ray.io/node-id` exclusion through
-    `nodes_to_avoid`. Any other rule travels as an exclusion on its own label
-    through `required_labels`, which names the domain rather than a node list,
-    so it stays right when a node joins an occupied domain and the autoscaler
-    can read which domains are wanted.
+    A node's domain is its value for `label_key`. Every node is its own
+    `ray.io/node-id` domain, so a floor on that key is a floor on distinct
+    nodes. While the deployment covers fewer domains than the floor, the rule
+    excludes every occupied domain and every node without the label, so the
+    next replica lands in a new domain. The floor is capped by the replica
+    count and by the number of domains among active nodes, so it never
+    excludes every node.
     """
 
     def __init__(self, label_key: str, min_domains: int):
@@ -541,126 +551,68 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
     def label_key(self) -> str:
         return self._label_key
 
-    def applies_to(self, scheduling_request: ReplicaSchedulingRequest) -> bool:
-        """A gang's placement group is reserved before the replica exists, so
-        no label can be attached to it and the floor cannot be enforced."""
-        return scheduling_request.gang_placement_group is None
-
-    def _is_node_rule(self) -> bool:
-        return self._label_key == RAY_NODE_ID_LABEL
-
-    def _domain(
-        self, node_id: str, node_labels: Dict[str, Dict[str, str]]
-    ) -> Optional[str]:
-        if self._is_node_rule():
-            return node_id
-        return node_labels.get(node_id, {}).get(self._label_key)
-
     def _occupied_domains(self, ctx: SchedulingContext) -> Set[str]:
         """The domains the deployment covers. An unlabeled node counts for none."""
         return {
             domain
             for node_id in ctx.nodes_occupied_by_deployment
-            if (domain := self._domain(node_id, ctx.node_labels)) is not None
+            if (domain := _label_value(node_id, self._label_key, ctx.node_labels))
+            is not None
         }
 
     def floor_is_unmet(self, ctx: SchedulingContext) -> bool:
-        if self._is_node_rule():
-            num_domains = ctx.num_active_nodes
-        else:
-            num_domains = len(
-                {
-                    domain
-                    for node_id in ctx.node_labels
-                    if (domain := self._domain(node_id, ctx.node_labels)) is not None
-                }
-            )
+        num_domains = len(
+            {
+                domain
+                for node_id in ctx.node_labels
+                if (domain := _label_value(node_id, self._label_key, ctx.node_labels))
+                is not None
+            }
+        )
         floor = min(self._min_domains, ctx.num_replicas, num_domains)
         return len(self._occupied_domains(ctx)) < floor
 
-    def _domains_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
-        """The occupied domains, while the deployment covers fewer than the floor."""
-        return self._occupied_domains(ctx) if self.floor_is_unmet(ctx) else set()
-
-    def nodes_to_avoid(self, ctx: SchedulingContext) -> Set[str]:
-        if not self._is_node_rule():
-            return set()
-        return self._domains_to_avoid(ctx)
+    def exclusions(self, ctx: SchedulingContext) -> Dict[str, Set[str]]:
+        if not self.floor_is_unmet(ctx):
+            return {}
+        return {self._label_key: self._occupied_domains(ctx)}
 
     def eligible(
         self,
         candidates: Dict[str, AvailableNodeResources],
         ctx: SchedulingContext,
     ) -> Dict[str, AvailableNodeResources]:
-        """Keeps the nodes that can still move the deployment toward the floor.
+        """Drops nodes without the label while the floor is unmet.
 
-        A node without the label belongs to no domain, so it can never raise the
-        count. While the floor is unmet it is dropped along with the occupied
-        domains, otherwise a single unlabeled node absorbs every replica and the
-        floor never engages. The launch keeps its own fallback chain, so a
-        replica that fits nowhere else still lands there.
+        Such a node belongs to no domain, so it can never raise the count. If
+        it stayed a candidate, one unlabeled node could absorb every replica
+        and the floor would never engage. The launch keeps its own fallback
+        chain, so a replica that fits nowhere else still lands there.
         """
-        if self._is_node_rule() or not self.floor_is_unmet(ctx):
+        if not self.floor_is_unmet(ctx):
             return candidates
-        avoid = self._occupied_domains(ctx)
         return {
             node_id: resources
             for node_id, resources in candidates.items()
-            if (domain := self._domain(node_id, ctx.node_labels)) is not None
-            and domain not in avoid
+            if _label_value(node_id, self._label_key, ctx.node_labels) is not None
         }
-
-    def required_labels(self, ctx: SchedulingContext) -> Dict[str, str]:
-        if self._is_node_rule():
-            return {}
-        avoid = self._domains_to_avoid(ctx)
-        if not avoid:
-            return {}
-        return {self._label_key: f"!in({','.join(sorted(avoid))})"}
 
     def may_stop(self, replica_id: ReplicaID, ctx: DownscaleContext) -> bool:
         node_id = ctx.node_by_replica.get(replica_id)
         if node_id is None:
             return True
-        domain = self._domain(node_id, ctx.node_labels)
+        domain = _label_value(node_id, self._label_key, ctx.node_labels)
         if domain is None:
             return True
         replicas_per_domain: "Counter[str]" = Counter()
         for other_node_id, count in ctx.replicas_per_node.items():
-            other_domain = self._domain(other_node_id, ctx.node_labels)
+            other_domain = _label_value(other_node_id, self._label_key, ctx.node_labels)
             if other_domain is not None:
                 replicas_per_domain[other_domain] += count
         if replicas_per_domain[domain] > 1:
             return True
         floor = min(self._min_domains, ctx.target_num_replicas)
         return len(replicas_per_domain) > floor
-
-
-class MinReplicaNodesConstraint(MinTopologyDomainsConstraint):
-    """Spreads a deployment over at least `min_replica_nodes` nodes."""
-
-    def __init__(self, min_replica_nodes: int):
-        super().__init__(RAY_NODE_ID_LABEL, min_replica_nodes)
-
-
-class LabelSelectorConstraint(SchedulingConstraint):
-    """Applies a replica's own label selector.
-
-    `required_labels` stays empty because Ray already enforces this selector from
-    `ray_actor_options` or from the placement group bundles.
-    """
-
-    def __init__(self, label_selector: Dict[str, str]):
-        self._label_selector = label_selector
-
-    def eligible(
-        self,
-        candidates: Dict[str, AvailableNodeResources],
-        ctx: SchedulingContext,
-    ) -> Dict[str, AvailableNodeResources]:
-        return _filter_nodes_by_label_selector(
-            candidates, self._label_selector, ctx.node_labels
-        )
 
 
 class SchedulingPreference:
@@ -682,6 +634,9 @@ class NodeScorer(ABC):
     """Ranks the nodes that passed filtering and picks one for a replica."""
 
     fallback_scheduling_strategy: str = "DEFAULT"
+    # Whether Serve picks the node for a replica that no floor constrains.
+    # When False, such a replica goes to Ray Core with the fallback strategy.
+    places_unconstrained_replicas: bool = True
 
     @abstractmethod
     def choose(
@@ -722,9 +677,14 @@ class PackNodeScorer(NodeScorer):
 
 
 class SpreadNodeScorer(NodeScorer):
-    """Fewest replicas of the same deployment, then the most free space."""
+    """Fewest replicas of the same deployment, then the most free space.
+
+    Serve's view of free resources comes from a cache, while Ray Core's is live,
+    so a replica with no floor keeps Ray's own SPREAD placement.
+    """
 
     fallback_scheduling_strategy = "SPREAD"
+    places_unconstrained_replicas = False
 
     def choose(
         self,
@@ -765,23 +725,21 @@ class SpreadNodeScorer(NodeScorer):
 
 @dataclass(frozen=True)
 class SchedulingProfile:
-    """The constraints and the scorer that one scheduling strategy uses.
+    """The scorer, the preferences and the cluster wide rules of one strategy.
 
-    Strategies share constraint objects rather than reimplement them. A strategy
-    that wants no floor omits `MinReplicaNodesConstraint`; one that wants a
-    different floor names it with a different value. A rule is hard, and a
-    constraint, or soft, and a preference; the scheduler has no other hook.
+    Floors are not here. Each deployment carries its own, built when it is
+    deployed. `constraints` holds rules that apply to every deployment. A rule
+    is hard, and a constraint, or soft, and a preference.
     """
 
-    constraints: Tuple[SchedulingConstraint, ...]
     scorer: NodeScorer
     preferences: Tuple[SchedulingPreference, ...] = ()
+    constraints: Tuple[SchedulingConstraint, ...] = ()
 
 
 def default_scheduling_profile() -> SchedulingProfile:
     """The profile built from the cluster's environment variables."""
     return SchedulingProfile(
-        constraints=(MinReplicaNodesConstraint(RAY_SERVE_MIN_REPLICA_NODES),),
         scorer=PackNodeScorer()
         if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY
         else SpreadNodeScorer(),
@@ -828,7 +786,6 @@ class DeploymentScheduler(ABC):
         ] = defaultdict(dict)
         self._last_schedule_order_log_key: Optional[tuple] = None
         self._logged_placement_failures: Set[ReplicaID] = set()
-        self._logged_skipped_rules: Set[Tuple[DeploymentID, str]] = set()
         self._logged_short_downscales: Set[DeploymentID] = set()
         self._logged_serialized_floors: Set[DeploymentID] = set()
 
@@ -868,14 +825,14 @@ class DeploymentScheduler(ABC):
             "fallback_strategy"
         )
         info.max_replicas_per_node = replica_config.max_replicas_per_node
-        info.topology_spread = replica_config.topology_spread
-        info.floor_constraints = (
-            tuple(
-                MinTopologyDomainsConstraint(label_key, min_domains)
-                for label_key, min_domains in replica_config.topology_spread.items()
-            )
-            if replica_config.topology_spread
-            else None
+        # `topology_spread` replaces the cluster default for this deployment.
+        floors = replica_config.topology_spread or {
+            RAY_NODE_ID_LABEL: RAY_SERVE_MIN_REPLICA_NODES
+        }
+        info.floors = tuple(
+            MinTopologyDomainsConstraint(label_key, min_domains)
+            for label_key, min_domains in floors.items()
+            if min_domains > 1
         )
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
@@ -899,10 +856,8 @@ class DeploymentScheduler(ABC):
         assert not self._running_replicas[deployment_id]
         self._running_replicas.pop(deployment_id, None)
 
-        self._logged_skipped_rules = {
-            key for key in self._logged_skipped_rules if key[0] != deployment_id
-        }
         self._logged_short_downscales.discard(deployment_id)
+        self._logged_serialized_floors.discard(deployment_id)
         del self._deployments[deployment_id]
 
     def on_replica_stopping(self, replica_id: ReplicaID) -> None:
@@ -1075,8 +1030,8 @@ class DeploymentScheduler(ABC):
             target_labels: Node labels to prefer with a soft constraint.
             required_labels: Label selector the rules demand. An actor prefers
                 nodes that satisfy it and falls back to any node it may use.
-                Placement groups have no fallback selectors in Ray, so their
-                bundles carry it as a hard constraint.
+                Placement groups have no fallback selectors in Ray, so bundle 0
+                carries it as a hard constraint.
 
         Returns:
             True if the replica was successfully scheduled, False otherwise.
@@ -1118,11 +1073,15 @@ class DeploymentScheduler(ABC):
                 scheduling_request.placement_group_bundle_label_selector
             )
             if required_labels:
+                # The replica actor runs in bundle 0, so bundle 0 alone decides
+                # the replica's domain. A hard selector on every bundle could
+                # make a STRICT_SPREAD group impossible to place.
                 num_bundles = len(scheduling_request.placement_group_bundles)
                 bundle_label_selector = [
-                    {**(selector or {}), **required_labels}
+                    dict(selector or {})
                     for selector in (bundle_label_selector or [{}] * num_bundles)
                 ]
+                bundle_label_selector[0].update(required_labels)
             try:
                 pg = self._create_placement_group_fn(
                     CreatePlacementGroupRequest(
@@ -1451,46 +1410,58 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             deployment_id = scheduling_request.replica_id.deployment_id
             if deployment_id in deferred_deployments:
                 continue
-            constraints = self._constraints_for(deployment_id)
+            info = self._deployments[deployment_id]
             hosting_nodes = nodes_by_deployment[deployment_id]
             ctx = SchedulingContext(
                 deployment_id=deployment_id,
                 num_replicas=self._num_replicas(deployment_id),
-                num_active_nodes=len(active_nodes),
                 nodes_occupied_by_deployment=hosting_nodes,
                 node_labels=node_labels,
             )
-            active = self._applicable_constraints(constraints, scheduling_request)
+            # A pinned replica already has a hard node, and a gang replica's
+            # placement group was reserved before the replica existed, so no
+            # rule can move either one.
+            exempt = (
+                scheduling_request.target_node_id is not None
+                or scheduling_request.gang_placement_group is not None
+            )
+            floors = () if exempt else info.floors
+            rules = () if exempt else self._rules_for(deployment_id)
+            ray_places = (
+                exempt
+                or scheduling_request.is_non_strict_pack_pg()
+                or not (floors or self._profile.scorer.places_unconstrained_replicas)
+            )
             if (
                 scheduling_request.is_non_strict_pack_pg()
                 and self._awaits_a_domain(deployment_id)
-                and (unmet := self._unmet_domain_floors(active, ctx))
+                and (unmet := [f.label_key for f in floors if f.floor_is_unmet(ctx)])
             ):
                 # Ray placed an earlier group for this deployment and has not
                 # reported the node it landed on. Serve reads the domain only
-                # from a running replica, so placing another group now would
+                # from a running replica, so placing another group now could
                 # repeat that domain. Leave this one pending.
                 deferred_deployments.add(deployment_id)
                 self._log_once_about_serialized_floor(deployment_id, unmet)
                 continue
             try:
                 if scheduling_request.target_node_id is not None:
-                    # The caller pinned this replica with hard affinity, so there
-                    # is no node to choose and no rule may contradict the pin.
                     target_node: Optional[str] = scheduling_request.target_node_id
                     required_labels: Dict[str, str] = {}
-                elif scheduling_request.is_non_strict_pack_pg():
-                    # Ray places these bundles, so Serve cannot choose the node,
-                    # but the selector half of each rule still travels with it.
+                elif ray_places:
+                    # Ray Core chooses the node, but each rule's exclusions still
+                    # travel with the replica as a label selector.
                     target_node = None
-                    _, required_labels = self._collect_rules(active, ctx)
+                    required_labels = _exclusion_selector(
+                        self._collect_exclusions(rules, ctx)
+                    )
                 else:
                     target_node, required_labels = self._select_node(
                         scheduling_request,
                         available_resources_per_node,
                         node_to_assigned_replicas,
                         ctx,
-                        active,
+                        rules,
                     )
             except Exception:
                 # One deployment's unsupported or misconfigured option must not
@@ -1504,7 +1475,12 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 continue
-            if not self._bind_replica(scheduling_request, target_node, required_labels):
+            if not self._bind_replica(
+                scheduling_request,
+                target_node,
+                required_labels,
+                searched=not ray_places,
+            ):
                 continue
 
             bound_node = self._launching_replicas[deployment_id][
@@ -1597,23 +1573,6 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             for info in self._launching_replicas[deployment_id].values()
         )
 
-    @staticmethod
-    def _unmet_domain_floors(
-        constraints: Sequence[SchedulingConstraint], ctx: SchedulingContext
-    ) -> List[str]:
-        """The label keys whose domain floor this deployment has yet to reach.
-
-        The node floor is left out. Serve picks the node for those itself, so it
-        already knows the domain without waiting for the replica to run.
-        """
-        return [
-            c.label_key
-            for c in constraints
-            if isinstance(c, MinTopologyDomainsConstraint)
-            and c.label_key != RAY_NODE_ID_LABEL
-            and c.floor_is_unmet(ctx)
-        ]
-
     def _log_once_about_serialized_floor(
         self, deployment_id: DeploymentID, label_keys: List[str]
     ) -> None:
@@ -1628,68 +1587,22 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             "Scaling up is slower until the floor is met."
         )
 
-    def _constraints_for(
+    def _rules_for(
         self, deployment_id: DeploymentID
     ) -> Tuple[SchedulingConstraint, ...]:
-        """The deployment's own floors, or the profile's constraints.
-
-        `topology_spread` on a deployment replaces the cluster default floor for
-        that deployment only. Every other rule in the profile still applies.
-        """
-        info = self._deployments.get(deployment_id)
-        own = info.floor_constraints if info is not None else None
-        if not own:
-            return self._profile.constraints
-        return own + tuple(
-            constraint
-            for constraint in self._profile.constraints
-            if not isinstance(constraint, MinTopologyDomainsConstraint)
-        )
-
-    def _applicable_constraints(
-        self,
-        constraints: Sequence[SchedulingConstraint],
-        scheduling_request: ReplicaSchedulingRequest,
-    ) -> List[SchedulingConstraint]:
-        active = []
-        for constraint in constraints:
-            if constraint.applies_to(scheduling_request):
-                active.append(constraint)
-                continue
-            key = (
-                scheduling_request.replica_id.deployment_id,
-                type(constraint).__name__,
-            )
-            if key not in self._logged_skipped_rules:
-                self._logged_skipped_rules.add(key)
-                logger.info(
-                    f"{key[1]} does not apply to replicas of {key[0]} and is "
-                    "skipped for them."
-                )
-        return active
+        """The deployment's own floors plus the rules for the whole cluster."""
+        return self._deployments[deployment_id].floors + self._profile.constraints
 
     @staticmethod
-    def _collect_rules(
+    def _collect_exclusions(
         constraints: Sequence[SchedulingConstraint], ctx: SchedulingContext
-    ) -> Tuple[Set[str], Dict[str, str]]:
-        """Unions every node exclusion and merges every other label selector."""
-        nodes_to_avoid: Set[str] = set()
-        required_labels: Dict[str, str] = {}
+    ) -> Dict[str, Set[str]]:
+        """Unions every rule's excluded label values, key by key."""
+        exclusions: DefaultDict[str, Set[str]] = defaultdict(set)
         for constraint in constraints:
-            nodes_to_avoid |= constraint.nodes_to_avoid(ctx)
-            for key, value in constraint.required_labels(ctx).items():
-                if key == RAY_NODE_ID_LABEL or key in required_labels:
-                    raise ValueError(
-                        f"{type(constraint).__name__} sets label {key!r}, which "
-                        "another rule in the same profile already sets. Use "
-                        "nodes_to_avoid for node exclusions."
-                    )
-                required_labels[key] = value
-        if nodes_to_avoid:
-            required_labels[
-                RAY_NODE_ID_LABEL
-            ] = f"!in({','.join(sorted(nodes_to_avoid))})"
-        return nodes_to_avoid, required_labels
+            for key, values in constraint.exclusions(ctx).items():
+                exclusions[key] |= values
+        return exclusions
 
     def _select_node(
         self,
@@ -1701,18 +1614,21 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
     ) -> Tuple[Optional[str], Dict[str, str]]:
         """Returns the chosen node, if any, and the labels the bind must carry.
 
-        Every constraint runs both halves of its rule here, so the candidates
-        the scorer sees and the selector Ray receives agree on which rules
-        applied. Candidate narrowing never stops early for that reason.
+        The same exclusions narrow the candidates the scorer sees and form the
+        selector Ray receives, so both agree on which rules applied.
         """
-        nodes_to_avoid, required_labels = self._collect_rules(constraints, ctx)
+        exclusions = self._collect_exclusions(constraints, ctx)
         eligible = {
             node_id: resources
             for node_id, resources in available_resources_per_node.items()
-            if node_id not in nodes_to_avoid
+            if not any(
+                _label_value(node_id, key, ctx.node_labels) in values
+                for key, values in exclusions.items()
+            )
         }
         for constraint in constraints:
             eligible = constraint.eligible(eligible, ctx)
+        required_labels = _exclusion_selector(exclusions)
 
         tie_break_key = self._node_preference_key(ctx)
         for required_resources, label_selectors in self._build_placement_candidates(
@@ -1720,7 +1636,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         ):
             candidates = eligible
             for selector in label_selectors:
-                candidates = LabelSelectorConstraint(selector).eligible(candidates, ctx)
+                candidates = _filter_nodes_by_label_selector(
+                    candidates, selector, ctx.node_labels
+                )
             target_node = self._profile.scorer.choose(
                 ctx.deployment_id,
                 required_resources,
@@ -1747,14 +1665,16 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         scheduling_request: ReplicaSchedulingRequest,
         target_node: Optional[str],
         required_labels: Dict[str, str],
+        searched: bool,
     ) -> bool:
+        """Binds the replica. `searched` is True when Serve looked for a node."""
         replica_id = scheduling_request.replica_id
         resources_desc = _format_resources_for_scheduling_log(
             scheduling_request.requested_resources
         )
         if (
-            target_node is None
-            and not scheduling_request.is_non_strict_pack_pg()
+            searched
+            and target_node is None
             and replica_id not in self._logged_placement_failures
         ):
             self._logged_placement_failures.add(replica_id)
@@ -1762,8 +1682,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 outcome = "Ray places it once any node has room."
             elif scheduling_request.placement_group_bundles is not None:
                 outcome = (
-                    f"Its bundles carry {required_labels} as a hard selector, so "
-                    "it waits until a node satisfying that has room."
+                    f"Its bundle 0 carries {required_labels} as a hard selector, "
+                    "so it waits until a node satisfying that has room."
                 )
             else:
                 outcome = (
@@ -1849,7 +1769,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         4. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
         5. Prioritize newer replicas over older replicas.
         A replica is skipped if stopping it would leave the deployment on fewer
-        nodes than its floor, so downscaling never undoes the spread.
+        domains than its floor, so downscaling never undoes the spread.
         Note that this algorithm doesn't consider other non-serve actors on the same node.
         See more at https://github.com/ray-project/ray/issues/20599.
 
@@ -1940,14 +1860,11 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replicas_to_stop.update(replicas_by_gang_id[gang_id])
             return replicas_to_stop
 
+        rules = self._rules_for(deployment_id)
         refusals: "Counter[str]" = Counter()
         for replica_id in replicas_priority:
             veto = next(
-                (
-                    type(c).__name__
-                    for c in self._constraints_for(deployment_id)
-                    if not c.may_stop(replica_id, ctx)
-                ),
+                (type(c).__name__ for c in rules if not c.may_stop(replica_id, ctx)),
                 None,
             )
             if veto is not None:

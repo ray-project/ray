@@ -10,7 +10,7 @@ import pytest
 
 import ray
 from ray._raylet import NodeID
-from ray.serve._private import default_impl
+from ray.serve._private import default_impl, deployment_scheduler
 from ray.serve._private.common import (
     GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
@@ -29,8 +29,6 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
     DownscaleContext,
-    LabelSelectorConstraint,
-    MinReplicaNodesConstraint,
     MinTopologyDomainsConstraint,
     PackNodeScorer,
     ReplicaSchedulingRequest,
@@ -43,6 +41,7 @@ from ray.serve._private.deployment_scheduler import (
     SchedulingProfile,
     SpreadDeploymentSchedulingPolicy,
     SpreadNodeScorer,
+    _exclusion_selector,
     _filter_nodes_by_label_selector,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager
@@ -2041,20 +2040,40 @@ def make_scheduler(
     scorer,
     min_replica_nodes: int = 1,
     create_placement_group_fn=None,
-    constraints=None,
-    preferences=None,
+    constraints=(),
+    preferences=(),
 ):
-    if constraints is None:
-        constraints = [MinReplicaNodesConstraint(min_replica_nodes)]
-    return DefaultDeploymentScheduler(
+    """A scheduler whose deployments get `min_replica_nodes` as the cluster floor.
+
+    Floors are built when a deployment is deployed, from the
+    `RAY_SERVE_MIN_REPLICA_NODES` constant, so the constant is patched there.
+    """
+    scheduler = DefaultDeploymentScheduler(
         cluster_node_info_cache,
         "fake-head-node-id",
         create_placement_group_fn or default_impl._default_create_placement_group,
         profile=SchedulingProfile(
-            constraints=tuple(constraints),
             scorer=scorer,
-            preferences=tuple(preferences or ()),
+            preferences=tuple(preferences),
+            constraints=tuple(constraints),
         ),
+    )
+    deploy = scheduler.on_deployment_deployed
+
+    def on_deployment_deployed(deployment_id, replica_config):
+        with mock.patch.object(
+            deployment_scheduler, "RAY_SERVE_MIN_REPLICA_NODES", min_replica_nodes
+        ):
+            deploy(deployment_id, replica_config)
+
+    scheduler.on_deployment_deployed = on_deployment_deployed
+    return scheduler
+
+
+def deploy(scheduler, deployment_id, **config):
+    scheduler.on_deployment_created(deployment_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        deployment_id, rconfig(**(config or {"ray_actor_options": {"num_cpus": 1}}))
     )
 
 
@@ -2080,73 +2099,49 @@ def scheduled_node_ids(on_scheduled: Mock) -> List[str]:
 
 
 class TestSchedulingConstraints:
-    def _ctx(self, occupied, num_replicas=3, node_labels=None, num_active_nodes=3):
+    NODES = {"n1": {}, "n2": {}, "n3": {}}
+
+    def _ctx(self, occupied, num_replicas=3, node_labels=None):
         return SchedulingContext(
             deployment_id=DeploymentID(name="d1"),
             num_replicas=num_replicas,
-            num_active_nodes=num_active_nodes,
             nodes_occupied_by_deployment=set(occupied),
-            node_labels=node_labels or {},
+            node_labels=self.NODES if node_labels is None else node_labels,
         )
 
-    def test_min_replica_nodes_constraint_names_nodes_to_avoid(self):
-        constraint = MinReplicaNodesConstraint(2)
-        assert constraint.nodes_to_avoid(self._ctx(occupied=["n1"])) == {"n1"}
-        assert constraint.nodes_to_avoid(self._ctx(occupied=["n1", "n2"])) == set()
-        assert constraint.required_labels(self._ctx(occupied=["n1"])) == {}
+    def _node_floor(self, min_nodes):
+        return MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, min_nodes)
 
-    def test_min_replica_nodes_constraint_capped_by_replica_count(self):
-        constraint = MinReplicaNodesConstraint(2)
-        single = self._ctx(occupied=["n1"], num_replicas=1)
-        assert constraint.nodes_to_avoid(single) == set()
+    def test_node_floor_excludes_occupied_nodes(self):
+        """A node is its own `ray.io/node-id` domain, with or without the label."""
+        constraint = self._node_floor(2)
+        assert constraint.exclusions(self._ctx(occupied=["n1"])) == {
+            RAY_NODE_ID_LABEL: {"n1"}
+        }
+        assert constraint.exclusions(self._ctx(occupied=["n1", "n2"])) == {}
 
-    def test_min_replica_nodes_constraint_capped_by_node_count(self):
+    def test_node_floor_capped_by_replica_count(self):
+        constraint = self._node_floor(2)
+        assert constraint.exclusions(self._ctx(occupied=["n1"], num_replicas=1)) == {}
+
+    def test_node_floor_capped_by_node_count(self):
         """A floor above the cluster size never excludes every node."""
-        constraint = MinReplicaNodesConstraint(3)
-        ctx = self._ctx(occupied=["n1", "n2"], num_active_nodes=2)
-        assert constraint.nodes_to_avoid(ctx) == set()
+        constraint = self._node_floor(3)
+        ctx = self._ctx(occupied=["n1", "n2"], node_labels={"n1": {}, "n2": {}})
+        assert constraint.exclusions(ctx) == {}
 
-    def test_node_exclusions_from_two_rules_compose(self):
+    def test_exclusions_from_two_rules_merge(self):
+        """The floor and another rule on the same key compose into one selector."""
+
         class AvoidN2(SchedulingConstraint):
-            def nodes_to_avoid(self, ctx):
-                return {"n2"}
+            def exclusions(self, ctx):
+                return {RAY_NODE_ID_LABEL: {"n2"}}
 
-        avoid, labels = DefaultDeploymentScheduler._collect_rules(
-            [MinReplicaNodesConstraint(2), AvoidN2()], self._ctx(occupied=["n1"])
+        exclusions = DefaultDeploymentScheduler._collect_exclusions(
+            [self._node_floor(2), AvoidN2()], self._ctx(occupied=["n1"])
         )
-        assert avoid == {"n1", "n2"}
-        assert labels == {RAY_NODE_ID_LABEL: "!in(n1,n2)"}
-
-    def test_two_rules_on_one_label_key_is_an_error(self):
-        class WantsZoneA(SchedulingConstraint):
-            def required_labels(self, ctx):
-                return {"zone": "a"}
-
-        class WantsZoneB(SchedulingConstraint):
-            def required_labels(self, ctx):
-                return {"zone": "b"}
-
-        with pytest.raises(ValueError, match="already sets"):
-            DefaultDeploymentScheduler._collect_rules(
-                [WantsZoneA(), WantsZoneB()], self._ctx(occupied=[])
-            )
-
-    def test_a_rule_may_not_write_the_node_id_label_directly(self):
-        class RawNodeId(SchedulingConstraint):
-            def required_labels(self, ctx):
-                return {RAY_NODE_ID_LABEL: "!in(n9)"}
-
-        with pytest.raises(ValueError, match="nodes_to_avoid"):
-            DefaultDeploymentScheduler._collect_rules([RawNodeId()], self._ctx([]))
-
-    def test_label_selector_filter_leaves_binding_to_ray(self):
-        nodes = {"n1": AvailableNodeResources(), "n2": AvailableNodeResources()}
-        ctx = self._ctx(
-            occupied=[], node_labels={"n1": {"zone": "a"}, "n2": {"zone": "b"}}
-        )
-        node_filter = LabelSelectorConstraint({"zone": "a"})
-        assert set(node_filter.eligible(nodes, ctx)) == {"n1"}
-        assert node_filter.required_labels(ctx) == {}
+        assert exclusions == {RAY_NODE_ID_LABEL: {"n1", "n2"}}
+        assert _exclusion_selector(exclusions) == {RAY_NODE_ID_LABEL: "!in(n1,n2)"}
 
     def test_a_profile_composes_constraints(self):
         """A new rule needs no change to the scorer or to binding."""
@@ -2163,10 +2158,7 @@ class TestSchedulingConstraints:
         scheduler = make_scheduler(
             cache, PackNodeScorer(), constraints=[BanFirstNode()]
         )
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
-        scheduler.on_deployment_deployed(
-            d_id, rconfig(ray_actor_options={"num_cpus": 1})
-        )
+        deploy(scheduler, d_id)
 
         on_scheduled = Mock()
         scheduler.schedule(
@@ -2178,24 +2170,18 @@ class TestSchedulingConstraints:
         assert scheduled_node_ids(on_scheduled) == [node_2, node_2]
 
     def test_a_profile_is_immutable(self):
-        profile = SchedulingProfile(constraints=(), scorer=PackNodeScorer())
+        profile = SchedulingProfile(scorer=PackNodeScorer())
         with pytest.raises(AttributeError):
-            profile.constraints = (MinReplicaNodesConstraint(2),)
-        with pytest.raises(AttributeError):
-            profile.constraints += (MinReplicaNodesConstraint(2),)
+            profile.constraints = (self._node_floor(2),)
 
-    def test_a_profile_can_omit_the_floor(self):
-        """A strategy with no floor packs from the first replica."""
+    def test_without_a_floor_pack_packs_from_the_first_replica(self):
         d_id = DeploymentID(name="d1")
         node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
         cache = MockClusterNodeInfoCache()
         cache.add_node(node_1, {"CPU": 4})
         cache.add_node(node_2, {"CPU": 4})
-        scheduler = make_scheduler(cache, PackNodeScorer(), constraints=[])
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
-        scheduler.on_deployment_deployed(
-            d_id, rconfig(ray_actor_options={"num_cpus": 1})
-        )
+        scheduler = make_scheduler(cache, PackNodeScorer())
+        deploy(scheduler, d_id)
 
         on_scheduled = Mock()
         scheduler.schedule(
@@ -2206,11 +2192,11 @@ class TestSchedulingConstraints:
         )
         assert len(set(scheduled_node_ids(on_scheduled))) == 1
 
-    def test_min_replica_nodes_constraint_vetoes_a_stop(self):
+    def test_node_floor_vetoes_a_stop(self):
         d_id = DeploymentID(name="d1")
         replicas = [ReplicaID(unique_id=f"r{i}", deployment_id=d_id) for i in range(3)]
         node_by_replica = {replicas[0]: "n1", replicas[1]: "n1", replicas[2]: "n2"}
-        constraint = MinReplicaNodesConstraint(2)
+        constraint = self._node_floor(2)
 
         ctx = DownscaleContext(
             deployment_id=d_id,
@@ -2242,7 +2228,6 @@ class TestSchedulingConstraints:
             occupied=occupied,
             num_replicas=min_replicas,
             node_labels=self._slice_labels(),
-            num_active_nodes=4,
         )
 
     def _candidates(self):
@@ -2252,18 +2237,21 @@ class TestSchedulingConstraints:
         }
 
     def test_domain_constraint_excludes_occupied_domains(self):
-        """The rule travels on its own label, not as a node list."""
+        """The rule names the domain, not a node list."""
         constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
         ctx = self._slice_ctx(occupied=["n1"])
-        assert constraint.nodes_to_avoid(ctx) == set()
-        assert constraint.required_labels(ctx) == {self.SLICE: "!in(a)"}
+        assert constraint.exclusions(ctx) == {self.SLICE: {"a"}}
         # n4 carries no slice label, so it cannot help meet the floor either.
-        assert set(constraint.eligible(self._candidates(), ctx)) == {"n3"}
+        assert set(constraint.eligible(self._candidates(), ctx)) == {
+            "n1",
+            "n2",
+            "n3",
+        }
 
     def test_domain_constraint_lifts_once_floor_is_met(self):
         constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
         ctx = self._slice_ctx(occupied=["n1", "n3"])
-        assert constraint.required_labels(ctx) == {}
+        assert constraint.exclusions(ctx) == {}
         assert set(constraint.eligible(self._candidates(), ctx)) == {
             "n1",
             "n2",
@@ -2275,32 +2263,19 @@ class TestSchedulingConstraints:
         """A floor above the number of slices never excludes every slice."""
         constraint = MinTopologyDomainsConstraint(self.SLICE, 3)
         ctx = self._slice_ctx(occupied=["n1", "n3"])
-        assert constraint.required_labels(ctx) == {}
+        assert constraint.exclusions(ctx) == {}
 
     def test_domain_constraint_ignores_nodes_without_the_label(self):
         constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
-        # A replica on the CPU node occupies no slice, so nothing is excluded.
+        # A replica on the CPU node occupies no slice, so no slice is excluded.
         ctx = self._slice_ctx(occupied=["n4"])
-        assert constraint.required_labels(ctx) == {}
+        assert _exclusion_selector(constraint.exclusions(ctx)) == {}
 
     def test_unlabeled_node_is_not_a_candidate_while_the_floor_is_unmet(self):
         """Otherwise one unlabeled node absorbs every replica and the floor dies."""
         constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
-        # n4 carries no slice label, so it can never raise the domain count.
         ctx = self._slice_ctx(occupied=[])
         assert set(constraint.eligible(self._candidates(), ctx)) == {"n1", "n2", "n3"}
-        ctx = self._slice_ctx(occupied=["n1"])
-        assert set(constraint.eligible(self._candidates(), ctx)) == {"n3"}
-
-    def test_unlabeled_node_is_a_candidate_once_the_floor_is_met(self):
-        constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
-        ctx = self._slice_ctx(occupied=["n1", "n3"])
-        assert set(constraint.eligible(self._candidates(), ctx)) == {
-            "n1",
-            "n2",
-            "n3",
-            "n4",
-        }
 
     def test_a_cluster_with_no_labeled_node_is_left_alone(self):
         """A floor on a label no node carries never filters anything."""
@@ -2312,12 +2287,7 @@ class TestSchedulingConstraints:
             "n3",
             "n4",
         }
-        assert constraint.required_labels(ctx) == {}
-
-    def test_node_floor_is_a_domain_rule_on_node_id(self):
-        constraint = MinReplicaNodesConstraint(2)
-        assert isinstance(constraint, MinTopologyDomainsConstraint)
-        assert constraint.label_key == RAY_NODE_ID_LABEL
+        assert constraint.exclusions(ctx) == {}
 
     def test_domain_constraint_vetoes_a_stop(self):
         d_id = DeploymentID(name="d1")
@@ -2338,6 +2308,34 @@ class TestSchedulingConstraints:
         assert constraint.may_stop(replicas[2], ctx) is False
         # The CPU node is in no slice, so the rule has no opinion on it.
         assert constraint.may_stop(replicas[3], ctx) is True
+
+
+class TestDeploymentFloors:
+    """Each deployment's floors are built once, when it is deployed."""
+
+    def _floors(self, min_replica_nodes, **config):
+        scheduler = make_scheduler(
+            MockClusterNodeInfoCache(),
+            PackNodeScorer(),
+            min_replica_nodes=min_replica_nodes,
+        )
+        d_id = DeploymentID(name="d1")
+        deploy(scheduler, d_id, **config)
+        return [
+            (f.label_key, f._min_domains) for f in scheduler._deployments[d_id].floors
+        ]
+
+    def test_cluster_default_applies_without_topology_spread(self):
+        assert self._floors(2) == [(RAY_NODE_ID_LABEL, 2)]
+
+    def test_default_floor_of_one_is_left_out(self):
+        assert self._floors(1) == []
+
+    def test_topology_spread_replaces_the_cluster_default(self):
+        slice_key = "ray.io/tpu-slice-name"
+        assert self._floors(3, topology_spread={slice_key: 2}) == [(slice_key, 2)]
+        # A floor of 1 still replaces the default, and is itself always met.
+        assert self._floors(3, topology_spread={slice_key: 1}) == []
 
 
 class TestReplicaNodeFloor:
@@ -2394,7 +2392,7 @@ class TestReplicaNodeFloor:
         cache = MockClusterNodeInfoCache()
         cache.add_node(node_1, {"CPU": 4})
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
 
         on_scheduled = Mock()
         scheduler.schedule(
@@ -2458,7 +2456,7 @@ class TestReplicaNodeFloor:
         cache.add_node(node_1, {"CPU": 4}, labels={"zone": "b"})
         cache.add_node(full_node, {"CPU": 0}, labels={"zone": "b"})
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         scheduler.on_replica_running(
             ReplicaID(unique_id="r0", deployment_id=d_id), node_1
         )
@@ -2535,10 +2533,11 @@ class TestReplicaNodeFloor:
         assert first.target_node_id == node_1
         assert first.bundle_label_selector is None
         assert second.target_node_id is None
+        # Bundle 0 holds the replica actor, so only it carries the rule.
         assert second.bundle_label_selector == [
-            {RAY_NODE_ID_LABEL: f"!in({node_1})"} for _ in second.bundles
+            {RAY_NODE_ID_LABEL: f"!in({node_1})"},
+            {},
         ]
-        assert len(second.bundle_label_selector) == 2
 
     def test_bound_replica_still_carries_the_floor_selector(self):
         """Soft affinity can spill, so the rule travels with a placed replica too."""
@@ -2573,7 +2572,7 @@ class TestReplicaNodeFloor:
         cache.add_node("node1")
         cache.add_node("node2")
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         replicas = [ReplicaID(unique_id=f"r{i}", deployment_id=d_id) for i in range(4)]
         for replica_id in replicas[:3]:
             scheduler.on_replica_running(replica_id, "node1")
@@ -2602,7 +2601,7 @@ class TestReplicaNodeFloor:
         cache.add_node("n1")
         cache.add_node("n2")
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         r0, r1, r2 = (
             ReplicaID(unique_id=f"r{i}", deployment_id=d_id) for i in range(3)
         )
@@ -2629,7 +2628,7 @@ class TestReplicaNodeFloor:
                 return False
 
         scheduler = make_scheduler(cache, PackNodeScorer(), constraints=[NoStops()])
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         scheduler.on_replica_running(
             ReplicaID(unique_id="r0", deployment_id=d_id), "n1"
         )
@@ -2657,7 +2656,7 @@ class TestReplicaNodeFloor:
         cache = MockClusterNodeInfoCache()
         cache.add_node("known")
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         known_a = ReplicaID(unique_id="known_a", deployment_id=d_id)
         known_b = ReplicaID(unique_id="known_b", deployment_id=d_id)
         on_unseen = ReplicaID(unique_id="on_unseen", deployment_id=d_id)
@@ -2683,7 +2682,7 @@ class TestReplicaNodeFloor:
         cache.add_node("n3")
         cache.draining_nodes["n1"] = 1
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         a1, b, d1 = (
             ReplicaID(unique_id=n, deployment_id=d_id) for n in ("a1", "b", "d1")
         )
@@ -2707,7 +2706,7 @@ class TestReplicaNodeFloor:
         cache.add_node("node1")
         cache.add_node("node2")
         scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         r1 = ReplicaID(unique_id="r1", deployment_id=d_id)
         r2 = ReplicaID(unique_id="r2", deployment_id=d_id)
         scheduler.on_replica_running(r1, "node1")
@@ -2877,32 +2876,57 @@ class TestTopologySpread:
 
 
 class TestSpreadNodeScorer:
-    def test_spread_is_per_deployment(self):
+    def test_prefers_fewest_replicas_of_the_same_deployment(self):
+        """Replicas of other deployments do not count against a node."""
         d_a, d_b = DeploymentID(name="a"), DeploymentID(name="b")
-        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
+        candidates = {
+            "n1": AvailableNodeResources({"CPU": 4}),
+            "n2": AvailableNodeResources({"CPU": 4}),
+        }
+        assigned = {
+            "n1": {ReplicaID(unique_id="a0", deployment_id=d_a)},
+            "n2": {
+                ReplicaID(unique_id="b0", deployment_id=d_b),
+                ReplicaID(unique_id="b1", deployment_id=d_b),
+            },
+        }
+        chosen = SpreadNodeScorer().choose(
+            d_a, RequestedResources({"CPU": 1}), candidates, assigned
+        )
+        assert chosen == "n2"
+
+    def test_prefers_most_free_space(self):
+        candidates = {
+            "n1": AvailableNodeResources({"CPU": 2}),
+            "n2": AvailableNodeResources({"CPU": 4}),
+        }
+        chosen = SpreadNodeScorer().choose(
+            DeploymentID(name="d1"), RequestedResources({"CPU": 1}), candidates, {}
+        )
+        assert chosen == "n2"
+
+    def test_replica_without_a_floor_keeps_ray_spread(self, caplog):
+        """Serve's resource view is cached, so it leaves an unconstrained replica
+        to Ray Core's SPREAD rather than choosing a node itself."""
+        d_id = DeploymentID(name="d1")
         cache = MockClusterNodeInfoCache()
-        cache.add_node(node_1, {"CPU": 4})
-        cache.add_node(node_2, {"CPU": 4})
+        cache.add_node(NodeID.from_random().hex(), {"CPU": 4})
         scheduler = make_scheduler(cache, SpreadNodeScorer())
-        for d_id in (d_a, d_b):
-            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
-            scheduler.on_deployment_deployed(
-                d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        deploy(scheduler, d_id)
+
+        on_scheduled = Mock()
+        with caplog.at_level(logging.INFO, logger="ray.serve"):
+            scheduler.schedule(
+                upscales={d_id: [make_request(d_id, "r0", 1, on_scheduled)]},
+                downscales={},
             )
 
-        on_scheduled_a, on_scheduled_b = Mock(), Mock()
-        scheduler.schedule(
-            upscales={
-                d_a: [make_request(d_a, f"r{i}", 1, on_scheduled_a) for i in range(2)],
-                d_b: [make_request(d_b, f"r{i}", 1, on_scheduled_b) for i in range(2)],
-            },
-            downscales={},
-        )
+        options = on_scheduled.call_args.args[0]._options
+        assert options["scheduling_strategy"] == "SPREAD"
+        assert "label_selector" not in options
+        assert "No node with room" not in caplog.text
 
-        assert set(scheduled_node_ids(on_scheduled_a)) == {node_1, node_2}
-        assert set(scheduled_node_ids(on_scheduled_b)) == {node_1, node_2}
-
-    def test_spread_counts_replicas_launched_in_an_earlier_loop(self):
+    def test_floor_counts_replicas_launched_in_an_earlier_loop(self):
         """Before Ray reports the first replica running, the second loop must
         still see it, or every replica of a zero CPU deployment lands together."""
         d_id = DeploymentID(name="d1")
@@ -2910,11 +2934,8 @@ class TestSpreadNodeScorer:
         cache = MockClusterNodeInfoCache()
         cache.add_node(node_1, {"CPU": 4})
         cache.add_node(node_2, {"CPU": 4})
-        scheduler = make_scheduler(cache, SpreadNodeScorer())
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
-        scheduler.on_deployment_deployed(
-            d_id, rconfig(ray_actor_options={"num_cpus": 0})
-        )
+        scheduler = make_scheduler(cache, SpreadNodeScorer(), min_replica_nodes=2)
+        deploy(scheduler, d_id, ray_actor_options={"num_cpus": 0})
 
         on_scheduled = Mock()
         for i in range(2):
@@ -2925,32 +2946,20 @@ class TestSpreadNodeScorer:
 
         assert set(scheduled_node_ids(on_scheduled)) == {node_1, node_2}
 
-    def test_prefers_most_free_space(self):
-        d_id = DeploymentID(name="d1")
-        node_1, node_2 = NodeID.from_random().hex(), NodeID.from_random().hex()
-        cache = MockClusterNodeInfoCache()
-        cache.add_node(node_1, {"CPU": 2})
-        cache.add_node(node_2, {"CPU": 4})
-        scheduler = make_scheduler(cache, SpreadNodeScorer())
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
-
-        on_scheduled = Mock()
-        scheduler.schedule(
-            upscales={d_id: [make_request(d_id, "r0", 1, on_scheduled)]}, downscales={}
-        )
-
-        assert scheduled_node_ids(on_scheduled) == [node_2]
-
-    def test_falls_back_to_ray_core_spread(self):
+    def test_falls_back_to_ray_core_spread_when_no_node_fits(self):
         d_id = DeploymentID(name="d1")
         cache = MockClusterNodeInfoCache()
         cache.add_node(NodeID.from_random().hex(), {"CPU": 0})
-        scheduler = make_scheduler(cache, SpreadNodeScorer())
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        cache.add_node(NodeID.from_random().hex(), {"CPU": 0})
+        scheduler = make_scheduler(cache, SpreadNodeScorer(), min_replica_nodes=2)
+        deploy(scheduler, d_id)
 
         on_scheduled = Mock()
         scheduler.schedule(
-            upscales={d_id: [make_request(d_id, "r0", 1, on_scheduled)]}, downscales={}
+            upscales={
+                d_id: [make_request(d_id, f"r{i}", 1, on_scheduled) for i in range(2)]
+            },
+            downscales={},
         )
 
         assert (
@@ -2998,7 +3007,7 @@ class TestSchedulingPreferences:
         scheduler = make_scheduler(
             cache, PackNodeScorer(), preferences=[StopFromSecondFirst()]
         )
-        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        deploy(scheduler, d_id)
         r1 = ReplicaID(unique_id="r1", deployment_id=d_id)
         r2 = ReplicaID(unique_id="r2", deployment_id=d_id)
         scheduler.on_replica_running(r1, "n1")
@@ -3090,39 +3099,142 @@ def test_spread_pg_still_carries_the_floor_selector():
     assert request.bundle_label_selector == [{RAY_NODE_ID_LABEL: f"!in({node_1})"}]
 
 
-def test_floor_does_not_apply_to_gang_replicas(caplog):
+def _ray_placed_pg_request(d_id, unique_id, strategy, bundles):
+    return make_request(
+        d_id,
+        unique_id,
+        1,
+        Mock(),
+        actor_options={"name": unique_id},
+        placement_group_bundles=bundles,
+        placement_group_strategy=strategy,
+    )
+
+
+def test_node_floor_waits_for_groups_that_ray_places():
+    """Ray chooses the node for a SPREAD group, so Serve learns it only once the
+    replica runs. Two groups in one cycle could otherwise share a node."""
+    d_id = DeploymentID(name="pg")
+    cache = MockClusterNodeInfoCache()
+    nodes = [NodeID.from_random().hex() for _ in range(3)]
+    for node_id in nodes:
+        cache.add_node(node_id, {"CPU": 4})
+    create_pg_fn = Mock(side_effect=MockPlacementGroup)
+    scheduler = make_scheduler(
+        cache,
+        PackNodeScorer(),
+        min_replica_nodes=2,
+        create_placement_group_fn=create_pg_fn,
+    )
+    bundles = [{"CPU": 1}]
+    deploy(
+        scheduler,
+        d_id,
+        placement_group_bundles=bundles,
+        placement_group_strategy="SPREAD",
+    )
+
+    scheduler.schedule(
+        upscales={
+            d_id: [
+                _ray_placed_pg_request(d_id, f"r{i}", "SPREAD", bundles)
+                for i in range(2)
+            ]
+        },
+        downscales={},
+    )
+    assert create_pg_fn.call_count == 1
+
+    scheduler.on_replica_running(
+        ReplicaID(unique_id="r0", deployment_id=d_id), nodes[0]
+    )
+    scheduler.schedule(upscales={}, downscales={})
+
+    assert create_pg_fn.call_count == 2
+    assert create_pg_fn.call_args.args[0].bundle_label_selector == [
+        {RAY_NODE_ID_LABEL: f"!in({nodes[0]})"}
+    ]
+
+
+def test_floor_rides_on_bundle_0_only():
+    """A hard exclusion on every bundle of a STRICT_SPREAD group would need two
+    nodes outside the occupied one, and this cluster has only one."""
+    d_id = DeploymentID(name="pg")
+    node_a, node_b = NodeID.from_random().hex(), NodeID.from_random().hex()
+    cache = MockClusterNodeInfoCache()
+    cache.add_node(node_a, {"CPU": 4})
+    cache.add_node(node_b, {"CPU": 4})
+    create_pg_fn = Mock(side_effect=MockPlacementGroup)
+    scheduler = make_scheduler(
+        cache,
+        PackNodeScorer(),
+        min_replica_nodes=2,
+        create_placement_group_fn=create_pg_fn,
+    )
+    bundles = [{"CPU": 1}, {"CPU": 1}]
+    deploy(
+        scheduler,
+        d_id,
+        placement_group_bundles=bundles,
+        placement_group_strategy="STRICT_SPREAD",
+    )
+    scheduler.on_replica_running(ReplicaID(unique_id="r0", deployment_id=d_id), node_a)
+
+    scheduler.schedule(
+        upscales={d_id: [_ray_placed_pg_request(d_id, "r1", "STRICT_SPREAD", bundles)]},
+        downscales={},
+    )
+
+    assert create_pg_fn.call_args.args[0].bundle_label_selector == [
+        {RAY_NODE_ID_LABEL: f"!in({node_a})"},
+        {},
+    ]
+
+
+def test_deleting_a_deployment_clears_its_logs():
+    d_id = DeploymentID(name="d1")
+    scheduler = make_scheduler(MockClusterNodeInfoCache(), PackNodeScorer())
+    deploy(scheduler, d_id)
+    scheduler._logged_serialized_floors.add(d_id)
+    scheduler._logged_short_downscales.add(d_id)
+
+    scheduler.on_deployment_deleted(d_id)
+
+    assert d_id not in scheduler._logged_serialized_floors
+    assert d_id not in scheduler._logged_short_downscales
+
+
+def test_floor_does_not_apply_to_gang_replicas():
     d_id = DeploymentID(name="gang")
     node_1 = NodeID.from_random().hex()
     cache = MockClusterNodeInfoCache()
     cache.add_node(node_1, {"CPU": 4})
     scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
-    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    deploy(scheduler, d_id)
     scheduler.on_replica_running(ReplicaID(unique_id="r0", deployment_id=d_id), node_1)
 
     on_scheduled = Mock()
-    with caplog.at_level(logging.INFO, logger="ray.serve"):
-        scheduler.schedule(
-            upscales={
-                d_id: [
-                    make_request(
-                        d_id,
-                        "r1",
-                        1,
-                        on_scheduled,
-                        gang_placement_group=MockPlacementGroup(
-                            CreatePlacementGroupRequest(
-                                [{"CPU": 1}], "STRICT_PACK", None, "g"
-                            )
-                        ),
-                        gang_pg_index=0,
-                    )
-                ]
-            },
-            downscales={},
-        )
+    scheduler.schedule(
+        upscales={
+            d_id: [
+                make_request(
+                    d_id,
+                    "r1",
+                    1,
+                    on_scheduled,
+                    gang_placement_group=MockPlacementGroup(
+                        CreatePlacementGroupRequest(
+                            [{"CPU": 1}], "STRICT_PACK", None, "g"
+                        )
+                    ),
+                    gang_pg_index=0,
+                )
+            ]
+        },
+        downscales={},
+    )
 
     assert "label_selector" not in on_scheduled.call_args.args[0]._options
-    assert "MinReplicaNodesConstraint does not apply" in caplog.text
 
 
 def test_non_strict_pack_pg_is_placed_by_ray_core():

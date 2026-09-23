@@ -74,13 +74,13 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 
 ### Scheduling pipeline
 
-The scheduler places each pending replica in three steps, largest resource request first:
+The scheduler places pending replicas largest resource request first. Serve chooses the node itself when pack scheduling is on, or when the deployment has a floor above 1 from `topology_spread` or `RAY_SERVE_MIN_REPLICA_NODES`. Otherwise it hands the replica to Ray Core with the `SPREAD` strategy. When Serve chooses, it works in three steps:
 
 1. **Filter**: Apply each placement rule in turn and drop the nodes it rejects. A `label_selector` rejects nodes without matching labels. A floor rule from `topology_spread`, or from `RAY_SERVE_MIN_REPLICA_NODES` when the deployment sets none, rejects every node in a domain the deployment already occupies while the deployment covers fewer domains than its floor.
 2. **Score**: Rank the surviving nodes with the active scorer. The spread scorer is the default. It prefers the node with the fewest replicas of the same deployment, then the most free resources. Setting `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` selects the pack scorer, which prefers nodes that already run replicas and picks the tightest fit to minimize fragmentation. If a `fallback_strategy` is provided, the scheduler tries the primary labels first and then each fallback in order.
 3. **Bind**: Launch the replica on the chosen node with a soft `NodeAffinitySchedulingStrategy`. For deployments with `placement_group_bundles` and the `STRICT_PACK` strategy, the placement group is created with the chosen node as a soft target. Placement groups with other strategies are handed to Ray Core, which decides where the bundles land.
 
-Every rule in step 1 is also a label selector, and the launch in step 3 carries it. For a plain replica the selector is a preference: Ray tries nodes that satisfy the rules first and accepts any node the deployment's own selectors allow if none of those has room. A replica therefore never waits on a rule alone, and if the chosen node fills up before Ray places the replica, Ray still prefers a node that keeps the rule. Placement groups have no fallback selectors in Ray, so their bundles carry the rules as a hard constraint and wait until a node that satisfies them has room. Replicas pinned to a node by the ingress request router skip the rules, because the pin is already a hard constraint.
+Every rule in step 1 is also a label selector, and the launch carries it, including when Ray Core chooses the node. For a plain replica the selector is a preference: Ray tries nodes that satisfy the rules first and accepts any node the deployment's own selectors allow if none of those has room. A replica therefore never waits on a rule alone, and if the chosen node fills up before Ray places the replica, Ray still prefers a node that keeps the rule. Placement groups have no fallback selectors in Ray, so bundle 0, where the replica actor runs, carries the rules as a hard constraint and waits until a node that satisfies them has room. Replicas pinned to a node by the ingress request router, and gang replicas, skip the rules, because a hard constraint already places them.
 
 ### Downscaling behavior
 
@@ -156,13 +156,12 @@ How the floor behaves:
 
 - The scheduler caps the floor by the replica count and by the number of distinct label values among live nodes, so a floor above the cluster never blocks a replica.
 - A node without the label is in no domain, so it can never raise the count. While the floor is unmet the scheduler skips it, otherwise a single unlabeled node would absorb every replica and the floor would never engage. Once the floor is met it is a candidate again. The launch keeps its own fallback chain, so a replica that fits nowhere else still lands there and never waits on the floor alone.
-- While the floor is unmet, the replica prefers nodes outside the occupied domains and falls back to any node its own `label_selector` allows, so a replica never waits on the floor alone. Placement group bundles carry the rule as a hard constraint instead.
+- While the floor is unmet, the replica prefers nodes outside the occupied domains and falls back to any node its own `label_selector` allows, so a replica never waits on the floor alone. For a placement group, bundle 0 carries the rule as a hard constraint instead.
+- For a placement group whose strategy isn't `STRICT_PACK`, Ray Core chooses the nodes, and Serve learns the domain only once the replica runs. Until the floor is met, Serve starts the next replica of that deployment only after the previous one is up.
 - Downscaling skips a replica whose stop would drop the deployment below the floor for the new replica count.
 - A deployment that sets `topology_spread` replaces the cluster default from `RAY_SERVE_MIN_REPLICA_NODES` for itself. Other deployments keep the default.
 
-:::{warning}
-Don't pin the same label key that `topology_spread` uses. If a `label_selector`, a `fallback_strategy` entry, or a `placement_group_bundle_label_selector` names the key the floor is spreading over, the floor's selector replaces the pinned value rather than combining with it. For a placement group the bundles then carry the negation of the pin, so the replica lands anywhere except the value you asked for. Pin a different key, or drop the floor on that key.
-:::
+Serve rejects a config whose `label_selector`, `fallback_strategy` entry, or `placement_group_bundle_label_selector` names a key that `topology_spread` spreads over, because pinning a value and spreading over the same key contradict each other. Pin a different key, or drop the floor on that key.
 
 Compare this with `max_replicas_per_node`, which caps replicas per node and needs a new value whenever the replica count or node size changes. A floor states the availability goal directly and stays correct as the deployment scales. You can't set `topology_spread` together with `gang_scheduling_config`, because a gang's placement group is reserved before any replica exists.
 

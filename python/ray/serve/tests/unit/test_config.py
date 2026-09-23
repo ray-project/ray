@@ -677,6 +677,37 @@ class TestReplicaConfig:
         with pytest.raises(ValueError, match="Expected a positive integer"):
             ReplicaConfig.create(Class, tuple(), dict(), topology_spread={"zone": 0})
 
+    @pytest.mark.parametrize(
+        "pin",
+        [
+            {"ray_actor_options": {"label_selector": {"zone": "us-a"}}},
+            {
+                "ray_actor_options": {
+                    "fallback_strategy": [{"label_selector": {"zone": "us-a"}}]
+                }
+            },
+            {
+                "placement_group_bundles": [{"CPU": 1}, {"CPU": 1}],
+                "placement_group_bundle_label_selector": [{}, {"zone": "us-a"}],
+            },
+        ],
+    )
+    def test_topology_spread_rejects_a_pinned_key(self, pin):
+        """Pinning a value of a key and spreading over it contradict each other."""
+
+        class Class:
+            pass
+
+        with pytest.raises(ValueError, match="already pins"):
+            ReplicaConfig.create(
+                Class, tuple(), dict(), topology_spread={"zone": 2}, **pin
+            )
+
+        # Pinning a different key is fine.
+        ReplicaConfig.create(
+            Class, tuple(), dict(), topology_spread={"ray.io/node-id": 2}, **pin
+        )
+
     def test_placement_group_options_validation(self):
         class Class:
             pass

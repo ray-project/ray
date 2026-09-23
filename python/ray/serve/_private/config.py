@@ -949,6 +949,29 @@ class ReplicaConfig:
                     "positive integer."
                 )
 
+        # Pinning a value of a key and spreading over the same key contradict
+        # each other, and the floor's selector would silently replace the pin.
+        selectors = [self.ray_actor_options.get("label_selector")]
+        selectors += [
+            fallback.get("label_selector")
+            for fallback in self.ray_actor_options.get("fallback_strategy") or []
+            if isinstance(fallback, dict)
+        ]
+        selectors += self.placement_group_bundle_label_selector or []
+        pinned = {
+            key
+            for selector in selectors
+            if isinstance(selector, dict)
+            for key in selector
+            if key in self.topology_spread
+        }
+        if pinned:
+            raise ValueError(
+                f"topology_spread spreads over {sorted(pinned)}, which a label "
+                "selector already pins. Pin a different label key, or remove the "
+                "floor on that key."
+            )
+
     def _validate_placement_group_options(self) -> None:
         if self.placement_group_strategy is not None:
             if self.placement_group_bundles is None:

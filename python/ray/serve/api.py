@@ -602,10 +602,10 @@ def deployment(
             before the scheduler may pack them. `{"ray.io/node-id": 2}` keeps the
             replicas on at least two nodes. `{"ray.io/tpu-slice-name": 3}` keeps
             them on at least three TPU slices. The floor is capped by the replica
-            count and by the number of distinct values among live nodes, and a
-            node without the label is never counted or excluded. Overrides the
-            cluster default from `RAY_SERVE_MIN_REPLICA_NODES` for this
-            deployment. This cannot be set together with gang_scheduling_config.
+            count and by the number of distinct values among live nodes. A key
+            can't also be pinned by a label selector. Overrides the cluster
+            default from `RAY_SERVE_MIN_REPLICA_NODES` for this deployment.
+            This cannot be set together with gang_scheduling_config.
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.

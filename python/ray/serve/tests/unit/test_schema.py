@@ -594,6 +594,14 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
+    @pytest.mark.parametrize("count", [True, "2", 2.0])
+    def test_topology_spread_counts_are_strict_integers(self, count):
+        """A bool or a string is rejected rather than converted to a count."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["topology_spread"] = {"ray.io/node-id": count}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
     def test_topology_spread_round_trips_through_deployment(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["topology_spread"] = {"ray.io/tpu-slice-name": 3}
