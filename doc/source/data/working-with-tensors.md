@@ -5,12 +5,15 @@ myst:
 ---
 
 (working_with_tensors)=
+(working-with-tensors--numpy)=
 
-# Working with Tensors / NumPy
+# Working with tensors and NumPy
 
-N-dimensional arrays (in other words, tensors) are ubiquitous in ML workloads. This guide describes the limitations and best practices of working with such data.
+Tensors, or n-dimensional arrays, are ubiquitous in machine learning workloads. This guide describes the limitations of and best practices for working with tensor data in Ray Data.
 
-## Tensor data representation
+(tensor-data-representation)=
+
+## How does Ray Data represent tensors?
 
 Ray Data represents tensors as [NumPy ndarrays](https://numpy.org/doc/stable/reference/arrays.ndarray.html).
 
@@ -25,7 +28,9 @@ print(ds)
 Dataset(num_rows=100, schema=...)
 ```
 
-### Batches of fixed-shape tensors
+(batches-of-fixed-shape-tensors)=
+
+### How does Ray Data batch fixed-shape tensors?
 
 If your tensors have a fixed shape, Ray Data represents batches as regular ndarrays.
 
@@ -40,7 +45,9 @@ dtype('uint8')
 
 ```
 
-### Batches of variable-shape tensors
+(batches-of-variable-shape-tensors)=
+
+### How does Ray Data batch variable-shape tensors?
 
 If your tensors vary in shape, Ray Data represents batches as arrays of object dtype.
 
@@ -55,7 +62,7 @@ dtype('O')
 
 ```
 
-The individual elements of these object arrays are regular ndarrays.
+Each element of these object arrays is a regular ndarray.
 
 ```{doctest}
 >>> batch["image"][0].dtype
@@ -68,8 +75,9 @@ dtype('uint8')
 ```
 
 (transforming_tensors)=
+(transforming-tensor-data)=
 
-## Transforming tensor data
+## Transform tensor data
 
 Call {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.map_batches` to transform tensor data.
 
@@ -96,16 +104,17 @@ def batch_increase_brightness(batch: Dict[str, np.ndarray]) -> Dict:
 ds.map_batches(batch_increase_brightness, batch_size="auto")
 ```
 
-You can use `batch_size="auto"` to let Ray Data automatically pick an appropriate batch size based on the size of your data.
+Set `batch_size="auto"` to have Ray Data pick a batch size based on the size of your data.
 
-In addition to NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays and objects implementing `__array__` (for example, `torch.Tensor`) as tensor data.
+Besides NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays as tensor data. The same goes for returned objects that implement `__array__`, such as `torch.Tensor`.
 
-For more information on transforming data, read {ref}`Transforming data <transforming_data>`.
+For more information on transforming data, see {ref}`Transforming data <transforming_data>`.
 
+(saving-tensor-data)=
 
-## Saving tensor data
+## Save tensor data
 
-Save tensor data with formats like Parquet, NumPy, and JSON. To view all supported formats, see the {ref}`Saving Data API <saving-data-api>`.
+Save tensor data in formats such as Parquet, NumPy, and JSON. For all supported formats, see the {ref}`Saving Data API <saving-data-api>`.
 
 ::::{tab-set}
 
@@ -137,7 +146,7 @@ ds.write_numpy("/tmp/simple", column="image")
 
 :::{tab-item} JSON
 
-To save images in a JSON file, call {meth}`~ray.data.Dataset.write_json`.
+Call {meth}`~ray.data.Dataset.write_json` to save images in a JSON file.
 
 ```{testcode}
 import ray
@@ -150,4 +159,4 @@ ds.write_json("/tmp/simple")
 
 ::::
 
-For more information on saving data, read {ref}`Saving data <saving-data>`.
+For more information on saving data, see {ref}`Saving data <saving-data>`.
