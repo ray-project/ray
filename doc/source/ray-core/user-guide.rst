@@ -17,7 +17,7 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     actors
     objects
     handling-dependencies
-    scheduling/index.rst
+    scheduling/index
     fault-tolerance
     patterns/index
     direct-transport/direct-transport
