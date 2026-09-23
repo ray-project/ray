@@ -10,19 +10,13 @@ myst:
 
 
 :::{warning}
-`num_returns="dynamic"` {ref}`generator API <dynamic_generators>` is deprecated and will be removed in an upcoming version.
-Use the {ref}`streaming generator API<generators>` instead.
-Ray emits a runtime `RayDeprecationWarning` when you use `num_returns="dynamic"`.
+`num_returns="dynamic"` {ref}`generator API <dynamic_generators>` is deprecated and will be removed in an upcoming version. Use the {ref}`streaming generator API<generators>` instead. Ray emits a runtime `RayDeprecationWarning` when you use `num_returns="dynamic"`.
 :::
 
-Python generators are functions that behave like iterators, yielding one
-value per iteration. Ray supports remote generators for two use cases:
+Python generators are functions that behave like iterators, yielding one value per iteration. Ray supports remote generators for two use cases:
 
-1. To reduce max heap memory usage when returning multiple values from a remote
-   function. See the {ref}`design pattern guide <generator-pattern>` for an
-   example.
-2. When the number of return values is set dynamically by the remote function
-   instead of by the caller.
+1. To reduce max heap memory usage when returning multiple values from a remote function. See the {ref}`design pattern guide <generator-pattern>` for an example.
+2. When the number of return values is set dynamically by the remote function instead of by the caller.
 
 Remote generators can be used in both actor and non-actor tasks.
 
@@ -30,14 +24,9 @@ Remote generators can be used in both actor and non-actor tasks.
 
 ## `num_returns` set by the task caller
 
-Where possible, the caller should set the remote function's number of return values using `@ray.remote(num_returns=x)` or `foo.options(num_returns=x).remote()`.
-Ray will return this many `ObjectRefs` to the caller.
-The remote task should then return the same number of values, usually as a tuple or list.
-Compared to setting the number of return values dynamically, this adds less complexity to user code and less performance overhead, as Ray will know exactly how many `ObjectRefs` to return to the caller ahead of time.
+Where possible, the caller should set the remote function's number of return values using `@ray.remote(num_returns=x)` or `foo.options(num_returns=x).remote()`. Ray will return this many `ObjectRefs` to the caller. The remote task should then return the same number of values, usually as a tuple or list. Compared to setting the number of return values dynamically, this adds less complexity to user code and less performance overhead, as Ray will know exactly how many `ObjectRefs` to return to the caller ahead of time.
 
-Without changing the caller's syntax, we can also use a remote generator function to yield the values iteratively.
-The generator should yield the same number of return values specified by the caller, and these will be stored one at a time in Ray's object store.
-An error will be raised for generators that yield a different number of values from the one specified by the caller.
+Without changing the caller's syntax, we can also use a remote generator function to yield the values iteratively. The generator should yield the same number of return values specified by the caller, and these will be stored one at a time in Ray's object store. An error will be raised for generators that yield a different number of values from the one specified by the caller.
 
 For example, we can swap the following code that returns a list of return values:
 
@@ -55,21 +44,15 @@ for this code, which uses a generator function:
 :end-before: __large_values_generator_end__
 ```
 
-The advantage of doing so is that the generator function does not need to hold all of its return values in memory at once.
-It can yield the arrays one at a time to reduce memory pressure.
+The advantage of doing so is that the generator function does not need to hold all of its return values in memory at once. It can yield the arrays one at a time to reduce memory pressure.
 
 (dynamic-generators)=
 
 ## `num_returns` set by the task executor
 
-In some cases, the caller may not know the number of return values to expect from a remote function.
-For example, suppose we want to write a task that breaks up its argument into equal-size chunks and returns these.
-We may not know the size of the argument until we execute the task, so we don't know the number of return values to expect.
+In some cases, the caller may not know the number of return values to expect from a remote function. For example, suppose we want to write a task that breaks up its argument into equal-size chunks and returns these. We may not know the size of the argument until we execute the task, so we don't know the number of return values to expect.
 
-In these cases, we can use a remote generator function that returns a *dynamic* number of values.
-To use this feature, set `num_returns="dynamic"` in the `@ray.remote` decorator or the remote function's `.options()`.
-Then, when invoking the remote function, Ray will return a *single* `ObjectRef` that will get populated with an `DynamicObjectRefGenerator` when the task completes.
-The `DynamicObjectRefGenerator` can be used to iterate over a list of `ObjectRefs` containing the actual values returned by the task.
+In these cases, we can use a remote generator function that returns a *dynamic* number of values. To use this feature, set `num_returns="dynamic"` in the `@ray.remote` decorator or the remote function's `.options()`. Then, when invoking the remote function, Ray will return a *single* `ObjectRef` that will get populated with an `DynamicObjectRefGenerator` when the task completes. The `DynamicObjectRefGenerator` can be used to iterate over a list of `ObjectRefs` containing the actual values returned by the task.
 
 ```{literalinclude} ../doc_code/generator.py
 :language: python
@@ -87,10 +70,7 @@ We can also pass the `ObjectRef` returned by a task with `num_returns="dynamic"`
 
 ## Exception handling
 
-If a generator function raises an exception before yielding all its values, the values that it already stored will still be accessible through their `ObjectRefs`.
-The remaining `ObjectRefs` will contain the raised exception.
-This is true for both static and dynamic `num_returns`.
-If the task was called with `num_returns="dynamic"`, the exception will be stored as an additional final `ObjectRef` in the `DynamicObjectRefGenerator`.
+If a generator function raises an exception before yielding all its values, the values that it already stored will still be accessible through their `ObjectRefs`. The remaining `ObjectRefs` will contain the raised exception. This is true for both static and dynamic `num_returns`. If the task was called with `num_returns="dynamic"`, the exception will be stored as an additional final `ObjectRef` in the `DynamicObjectRefGenerator`.
 
 ```{literalinclude} ../doc_code/generator.py
 :language: python

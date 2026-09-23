@@ -15,18 +15,12 @@ myst:
 </a>
 ```
 
-This tutorial shows you how to estimate the value of π using a [Monte Carlo method](https://en.wikipedia.org/wiki/Monte_Carlo_method)
-that works by randomly sampling points within a 2x2 square.
-We can use the proportion of the points that are contained within the unit circle centered at the origin
-to estimate the ratio of the area of the circle to the area of the square.
-Given that we know the true ratio to be π/4, we can multiply our estimated ratio by 4 to approximate the value of π.
-The more points that we sample to calculate this approximation, the closer the value should be to the true value of π.
+This tutorial shows you how to estimate the value of π using a [Monte Carlo method](https://en.wikipedia.org/wiki/Monte_Carlo_method) that works by randomly sampling points within a 2x2 square. We can use the proportion of the points that are contained within the unit circle centered at the origin to estimate the ratio of the area of the circle to the area of the square. Given that we know the true ratio to be π/4, we can multiply our estimated ratio by 4 to approximate the value of π. The more points that we sample to calculate this approximation, the closer the value should be to the true value of π.
 
 ```{image} ../images/monte_carlo_pi.png
 ```
 
-We use Ray {ref}`tasks <ray-remote-functions>` to distribute the work of sampling and Ray {ref}`actors <ray-remote-classes>` to track the progress of these distributed sampling tasks.
-The code can run on your laptop and can be easily scaled to large {ref}`clusters <cluster-index>` to increase the accuracy of the estimate.
+We use Ray {ref}`tasks <ray-remote-functions>` to distribute the work of sampling and Ray {ref}`actors <ray-remote-classes>` to track the progress of these distributed sampling tasks. The code can run on your laptop and can be easily scaled to large {ref}`clusters <cluster-index>` to increase the accuracy of the estimate.
 
 To get started, install Ray via `pip install -U ray`. See {ref}`Installing Ray <installation>` for more installation options.
 
@@ -42,8 +36,7 @@ First, let's include all modules needed for this tutorial and start a local Ray 
 
 
 ## Defining the Progress Actor
-Next, we define a Ray actor that can be called by sampling tasks to update progress.
-Ray actors are essentially stateful services that anyone with an instance (a handle) of the actor can call its methods.
+Next, we define a Ray actor that can be called by sampling tasks to update progress. Ray actors are essentially stateful services that anyone with an instance (a handle) of the actor can call its methods.
 
 ```{literalinclude} ../doc_code/monte_carlo_pi.py
 :language: python
@@ -51,13 +44,10 @@ Ray actors are essentially stateful services that anyone with an instance (a han
 :end-before: __defining_actor_end__
 ```
 
-We define a Ray actor by decorating a normal Python class with {func}`ray.remote <ray.remote>`.
-The progress actor has `report_progress()` method that will be called by sampling tasks to update their progress individually
-and `get_progress()` method to get the overall progress.
+We define a Ray actor by decorating a normal Python class with {func}`ray.remote <ray.remote>`. The progress actor has `report_progress()` method that will be called by sampling tasks to update their progress individually and `get_progress()` method to get the overall progress.
 
 ## Defining the Sampling Task
-After our actor is defined, we now define a Ray task that does the sampling up to `num_samples` and returns the number of samples that are inside the circle.
-Ray tasks are stateless functions. They execute asynchronously, and run in parallel.
+After our actor is defined, we now define a Ray task that does the sampling up to `num_samples` and returns the number of samples that are inside the circle. Ray tasks are stateless functions. They execute asynchronously, and run in parallel.
 
 ```{literalinclude} ../doc_code/monte_carlo_pi.py
 :language: python
@@ -65,9 +55,7 @@ Ray tasks are stateless functions. They execute asynchronously, and run in paral
 :end-before: __defining_task_end__
 ```
 
-To convert a normal Python function as a Ray task, we decorate the function with {func}`ray.remote <ray.remote>`.
-The sampling task takes a progress actor handle as an input and reports progress to it.
-The above code shows an example of calling actor methods from tasks.
+To convert a normal Python function as a Ray task, we decorate the function with {func}`ray.remote <ray.remote>`. The sampling task takes a progress actor handle as an input and reports progress to it. The above code shows an example of calling actor methods from tasks.
 
 ## Creating a Progress Actor
 Once the actor is defined, we can create an instance of it.
@@ -78,9 +66,7 @@ Once the actor is defined, we can create an instance of it.
 :end-before: __creating_actor_end__
 ```
 
-To create an instance of the progress actor, simply call `ActorClass.remote()` method with arguments to the constructor.
-This creates and runs the actor on a remote worker process.
-The return value of `ActorClass.remote(...)` is an actor handle that can be used to call its methods.
+To create an instance of the progress actor, simply call `ActorClass.remote()` method with arguments to the constructor. This creates and runs the actor on a remote worker process. The return value of `ActorClass.remote(...)` is an actor handle that can be used to call its methods.
 
 ## Executing Sampling Tasks
 Now the task is defined, we can execute it asynchronously.
@@ -91,9 +77,7 @@ Now the task is defined, we can execute it asynchronously.
 :end-before: __executing_task_end__
 ```
 
-We execute the sampling task by calling `remote()` method with arguments to the function.
-This immediately returns an `ObjectRef` as a future
-and then executes the function asynchronously on a remote worker process.
+We execute the sampling task by calling `remote()` method with arguments to the function. This immediately returns an `ObjectRef` as a future and then executes the function asynchronously on a remote worker process.
 
 ## Calling the Progress Actor
 While sampling tasks are running, we can periodically query the progress by calling the actor `get_progress()` method.
@@ -104,10 +88,7 @@ While sampling tasks are running, we can periodically query the progress by call
 :end-before: __calling_actor_end__
 ```
 
-To call an actor method, use `actor_handle.method.remote()`.
-This invocation immediately returns an `ObjectRef` as a future
-and then executes the method asynchronously on the remote actor process.
-To fetch the actual returned value of `ObjectRef`, we use the blocking {func}`ray.get() <ray.get>`.
+To call an actor method, use `actor_handle.method.remote()`. This invocation immediately returns an `ObjectRef` as a future and then executes the method asynchronously on the remote actor process. To fetch the actual returned value of `ObjectRef`, we use the blocking {func}`ray.get() <ray.get>`.
 
 ## Calculating π
 Finally, we get number of samples inside the circle from the remote sampling tasks and calculate π.

@@ -13,14 +13,11 @@ This document explains how the open-source autoscaler v2 works in Ray 2.48 and o
 
 ## Overview
 
-The autoscaler is responsible for resizing the cluster based on resource demand from tasks, actors, and placement groups.
-To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud instance providers through the Instance Manager.
-The following sections describe these components in detail.
+The autoscaler is responsible for resizing the cluster based on resource demand from tasks, actors, and placement groups. To achieve this, it follows a structured process: evaluating worker group configurations, periodically reconciling cluster state with user constraints, applying bin-packing strategies to pending workload demands, and interacting with cloud instance providers through the Instance Manager. The following sections describe these components in detail.
 
 ## Worker Group Configurations
 
-Worker groups (also referred to as node types) define the sets of nodes that the Ray autoscaler scales.
-Each worker group represents a logical category of nodes with the same resource configurations, such as CPU, memory, GPU, or custom resources.
+Worker groups (also referred to as node types) define the sets of nodes that the Ray autoscaler scales. Each worker group represents a logical category of nodes with the same resource configurations, such as CPU, memory, GPU, or custom resources.
 
 The autoscaler dynamically adjusts the cluster size by adding or removing nodes within each group as workload demands change. In other words, it scales the cluster by modifying the number of nodes per worker group according to the specified scaling rules and resource requirements.
 
@@ -32,8 +29,7 @@ Worker groups can be configured in these ways:
 The configuration specifies the logical resources each node has in a worker group, along with the minimum and maximum number of nodes that should exist in each group.
 
 :::{note}
-Although the autoscaler fulfills pending resource demands and releases idle nodes, it doesn't perform the actual scheduling of Ray tasks, actors, or placement groups. Scheduling is handled internally by Ray.
-The autoscaler does its own simulation of scheduling decisions on pending demands periodically to determine which nodes to launch or to stop. See the next sections for details.
+Although the autoscaler fulfills pending resource demands and releases idle nodes, it doesn't perform the actual scheduling of Ray tasks, actors, or placement groups. Scheduling is handled internally by Ray. The autoscaler does its own simulation of scheduling decisions on pending demands periodically to determine which nodes to launch or to stop. See the next sections for details.
 :::
 
 
@@ -41,12 +37,10 @@ The autoscaler does its own simulation of scheduling decisions on pending demand
 
 The entry point of the autoscaler is [monitor.py](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L332), which starts a GCS client and runs the reconciliation loop.
 
-This process is launched on the head node by the [start_head_processes](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439) function when using the `ray up` cluster launcher.
-When running under KubeRay, it instead runs as a [separate autoscaler container](https://github.com/ray-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194) in the Head Pod.
+This process is launched on the head node by the [start_head_processes](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/_private/node.py#L1439) function when using the `ray up` cluster launcher. When running under KubeRay, it instead runs as a [separate autoscaler container](https://github.com/ray-project/kuberay/blob/94fa7d3eb793aa1278142f8e585cbe568fec3ae3/ray-operator/controllers/ray/common/pod.go#L191-L194) in the Head Pod.
 
 :::{warning}
-In the case of the cluster launcher, if the autoscaler process crashes, then there is no autoscaling.
-While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes by the default container restart policy.
+In the case of the cluster launcher, if the autoscaler process crashes, then there is no autoscaling. While in the case of KubeRay, Kubernetes restarts the autoscaler container if it crashes by the default container restart policy.
 :::
 
 
@@ -58,8 +52,7 @@ The process periodically [reconciles](https://github.com/ray-project/ray/blob/03
 4. **The latest cloud instances** ([queried from the cloud instance provider's implementation](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/autoscaler.py#L205-L207)): The list of instances managed by the cloud instance provider implementation.
 5. **The latest worker group configurations** (queried from the cluster YAML file or the RayCluster CRD).
 
-The preceding information is retrieved at the beginning of each reconciliation loop.
-The Reconciler uses this information to construct its internal state and perform "[passive](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L159)" instance lifecycle transitions by observations. This is the [sync phase](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120).
+The preceding information is retrieved at the beginning of each reconciliation loop. The Reconciler uses this information to construct its internal state and perform "[passive](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L159)" instance lifecycle transitions by observations. This is the [sync phase](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L112-L120).
 
 After the sync phase, the Reconciler performs the [following steps](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L840) in order with the `ResourceDemandScheduler`:
 
@@ -77,15 +70,13 @@ If any error occurs, such as an error from the cloud instance provider or a time
 
 
 :::{note}
-All scaling decisions from steps 1–5 are accumulated purely in memory.
-No interaction with the cloud instance provider occurs until step 6.
+All scaling decisions from steps 1–5 are accumulated purely in memory. No interaction with the cloud instance provider occurs until step 6.
 :::
 
 
 ## Bin Packing and Worker Group Selection
 
-The autoscaler applies the following scoring logic to evaluate each existing node. It selects the node with the highest score and assigns it a subset of feasible demands.
-It also applies the same scoring logic to each worker group and selects the one with the highest score to launch new instances.
+The autoscaler applies the following scoring logic to evaluate each existing node. It selects the node with the highest score and assigns it a subset of feasible demands. It also applies the same scoring logic to each worker group and selects the one with the highest score to launch new instances.
 
 [Scoring](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/scheduler.py#L430) is based on a tuple of four values:
 
@@ -170,8 +161,7 @@ Once transitions are triggered by the Reconciler, subscribers perform side effec
 
 
 :::{note}
-These transitions trigger side effects, but side effects don't trigger new transitions directly.
-Instead, their results are observed from external state during the sync phase; subsequent transitions are triggered based on those observations.
+These transitions trigger side effects, but side effects don't trigger new transitions directly. Instead, their results are observed from external state during the sync phase; subsequent transitions are triggered based on those observations.
 :::
 
 

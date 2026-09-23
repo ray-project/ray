@@ -12,8 +12,7 @@ Compiled Graph currently provides experimental support for GPU communication and
 
 To enable this feature, specify `_overlap_gpu_communication=True` when calling {func}`dag.experimental_compile() <ray.dag.DAGNode.experimental_compile>`.
 
-The following code has GPU communication and computation operations that benefit
-from overlapping.
+The following code has GPU communication and computation operations that benefit from overlapping.
 
 ```{literalinclude} ../doc_code/cgraph_overlap.py
 :language: python

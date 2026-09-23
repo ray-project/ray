@@ -78,10 +78,7 @@ The entity ID is a unique identifier for the entity associated with an event. It
 1. **Association**: Links execution events with definition events (e.g., task lifecycle events with task definition events)
 2. **Merging**: Groups events with the same entity ID and type for merging before export
 
-For example:
-\- Task events use `task_id + task_attempt` as the entity ID
-\- Actor events use `actor_id` as the entity ID
-\- Driver job events use `job_id` as the entity ID
+For example: \- Task events use `task_id + task_attempt` as the entity ID \- Actor events use `actor_id` as the entity ID \- Driver job events use `job_id` as the entity ID
 
 ## Event Recording and Buffering (C++ Side)
 

@@ -9,12 +9,10 @@ myst:
 # Ray Compiled Graph (beta)
 
 :::{warning}
-Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject to change and expected to evolve.
-The API is available from Ray 2.32, but it's recommended to use a version after 2.44.
+Ray Compiled Graph is currently in beta (since Ray 2.44). The APIs are subject to change and expected to evolve. The API is available from Ray 2.32, but it's recommended to use a version after 2.44.
 :::
 
-As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential.
-{ref}`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
+As large language models (LLMs) become common, programming distributed systems with multiple GPUs is essential. {ref}`Ray Core APIs <core-key-concepts>` facilitate using multiple GPUs but have limitations such as:
 
 * System overhead of ~1 ms per task launch, which is unsuitable for high-performance tasks like LLM inference.
 * Lack of support for direct GPU-to-GPU communication, requiring manual development with external libraries like NVIDIA Collective Communications Library ([NCCL](https://developer.nvidia.com/nccl)).
@@ -24,8 +22,7 @@ Ray Compiled Graph gives you a Ray Core-like API but with:
 - **Less than 50us system overhead** for workloads that repeatedly execute the same task graph.
 - **Native support for GPU-GPU communication** with NCCL.
 
-For example, consider the following Ray Core code, which sends data to an actor
-and gets the result:
+For example, consider the following Ray Core code, which sends data to an actor and gets the result:
 
 ```{testcode}
 :skipif: True
@@ -52,8 +49,7 @@ ref = graph.execute(data)
 ray.get(ref)
 ```
 
-Ray Compiled Graph has a static execution model. It's different from classic Ray APIs, which are eager. Because
-of the static nature, Ray Compiled Graph can perform various optimizations such as:
+Ray Compiled Graph has a static execution model. It's different from classic Ray APIs, which are eager. Because of the static nature, Ray Compiled Graph can perform various optimizations such as:
 
 - Pre-allocate resources so that it can reduce system overhead.
 - Prepare NCCL communicators and apply deadlock-free scheduling.
