@@ -85,6 +85,13 @@ HTTP_PROXY_TIMEOUT = 60
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
+# Stop rolling updates at the startup failure threshold, including health check
+# failures. Keep surviving replicas until a deploy changes the target.
+# Set to "0" to keep retrying after any new replica has started.
+RAY_SERVE_STOP_FAILED_ROLLING_UPDATES = get_env_bool(
+    "RAY_SERVE_STOP_FAILED_ROLLING_UPDATES", "1"
+)
+
 #: Max processing latency metric configuration.
 #: Rolling window duration for calculating max processing latency (in seconds).
 RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
