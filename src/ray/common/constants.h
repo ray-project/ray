@@ -74,7 +74,7 @@ constexpr char kDashboardAgentListenPortName[] = "dashboard_agent_listen_port";
 constexpr char kGcsServerPortName[] = "gcs_server_port";
 
 /// The version of Ray
-constexpr char kRayVersion[] = "2.58.0";
+constexpr char kRayVersion[] = "2.58.1";
 
 /*****************************/
 /* ENV labels for autoscaler */
