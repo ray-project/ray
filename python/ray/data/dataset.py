@@ -5240,18 +5240,30 @@ class Dataset:
                 # Partial overwrite with Ray Data expressions
                 ds.write_iceberg(
                     table_identifier="events.user_activity",
-                    catalog_kwargs={"name": "default", "type": "rest"},
+                    catalog_kwargs={"name": "default", "type": "sql"},
                     mode=SaveMode.OVERWRITE,
                     overwrite_filter=col("date") >= "2024-10-28"
+                )
+
+                # Write through an Iceberg REST catalog. The catalog has to serve the
+                # REST spec's table update endpoint; a read-only catalog rejects the
+                # commit. The same properties work for ``ray.data.read_iceberg``.
+                ds.write_iceberg(
+                    table_identifier="db_name.table_name",
+                    catalog_kwargs={
+                        "name": "rest",
+                        "type": "rest",
+                        "uri": "https://catalog.example.com/api/catalog",
+                        "warehouse": "warehouse_name",
+                        "token": "<bearer-token>",
+                    },
                 )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
             catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
                 function (such as name, type, etc.). For the function definition, see
-                `pyiceberg catalog
-                <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-                #pyiceberg.catalog.load_catalog>`_.
+                `pyiceberg catalog <https://py.iceberg.apache.org/reference/pyiceberg/catalog/#pyiceberg.catalog.load_catalog>`_.
             catalog: An optional :class:`~ray.data.Catalog` (e.g.
                 :class:`~ray.data.DatabricksUnityCatalog`). When provided, the catalog
                 supplies ``catalog_kwargs`` pointing at its Iceberg REST endpoint.
