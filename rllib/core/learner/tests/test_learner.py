@@ -439,17 +439,17 @@ class TestLearner(unittest.TestCase):
     def test_minibatch_count_is_fixed_without_minibatch_size(self):
         """`num_epochs` > 1 without `minibatch_size` must pin the number of steps too.
 
-        The iterator then takes `batch.count` rows per module and works the number of
-        minibatches out from the data. On a shard, `count` is the row count of
-        whichever module was sliced last, so a single row more in the largest module
-        changes that number on one Learner only -- and Learners that take a different
-        number of steps deadlock each other. So the count has to be settled before
-        the Learners agree, not after.
+        One minibatch is then the whole batch -- all of every module's rows -- so the
+        widest module governs and the count is `num_epochs` on every Learner, however
+        the shards were cut. The Learners settle on it before the update rather than
+        each deriving it afterwards, which is what keeps the path safe if the
+        minibatch size ever stops being the batch itself.
         """
         learner = self._build_two_module_learner()
         rows = get_cartpole_dataset_reader(batch_size=512).next()
-        # What `ShardBatchIterator` hands a Learner: `mod2` was sliced last, so it --
-        # not the larger `mod1` -- decides `count`.
+        # What `ShardBatchIterator` hands a Learner: `mod2` was sliced last, so its
+        # 32 rows -- not the 129 of `mod1` -- became the batch's env step count. The
+        # minibatch size must not be taken from that number.
         batch = MultiAgentBatch({"mod1": rows[:129], "mod2": rows[:32]}, env_steps=32)
 
         proposed = []
@@ -461,9 +461,11 @@ class TestLearner(unittest.TestCase):
         learner._sync_update_plan = _record
         results = learner.update(batch=learner._convert_batch_type(batch), num_epochs=2)
 
-        # ceil(2 * 129 / 32) = 9 minibatches, each taking 32 rows per module.
-        self.assertEqual([UpdatePlan(skip=False, num_minibatches=9)], proposed)
-        self.assertEqual(9 * 32 * 2, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
+        # 2 minibatches, each taking the 129 rows of the widest module from both
+        # modules (`mod2` cycles): exactly `num_epochs` passes, not the 9 that
+        # `ceil(2 * 129 / 32)` would have made of the env step count.
+        self.assertEqual([UpdatePlan(skip=False, num_minibatches=2)], proposed)
+        self.assertEqual(2 * 129 * 2, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
 
     def test_epochs_survive_a_dropped_module(self):
         """Dropping a module must not cost the other modules their epochs.

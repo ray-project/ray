@@ -1274,14 +1274,15 @@ class Learner(Checkpointable):
             # by `MiniBatchCyclicIterator`; decide that before counting minibatches.
             batch = self._set_slicing_by_batch_id(batch, value=True)
             # `num_epochs` > 1 without `minibatch_size` cycles the batch as well: one
-            # minibatch is the whole batch, so that the iterator makes exactly
-            # `num_epochs` passes. Resolve that here, before the Learners agree on a
-            # number of minibatches, so that what they agree on is what the iterator
-            # will do. `batch.count` can be 0 with rows still present -- a shard takes
-            # its env steps from whichever module was sliced last, and that module may
-            # have been empty and dropped above -- so fall back to the rows.
+            # minibatch is the whole batch, which per module means all of its rows.
+            # Not `batch.count`, which is env steps -- a different unit that only
+            # coincides with the rows when there is a single module, and that a shard
+            # cannot even report faithfully (`ShardBatchIterator` splits each module
+            # separately, so a shard has no env steps of its own). Resolve it here,
+            # before the Learners agree on a number of minibatches, so that what they
+            # agree on is what the iterator will do.
             if not minibatch_size and num_epochs > 1:
-                minibatch_size = batch.count or max(
+                minibatch_size = max(
                     (len(b) for b in batch.policy_batches.values()), default=0
                 )
 

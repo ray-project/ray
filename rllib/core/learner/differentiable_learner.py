@@ -493,8 +493,13 @@ class DifferentiableLearner(Checkpointable):
             if minibatch_size:
                 batch_iter_cls = MiniBatchCyclicIterator
             elif num_epochs > 1:
-                # `minibatch_size` was not set but `num_epochs` > 1.
-                minibatch_size = batch.count
+                # `minibatch_size` was not set but `num_epochs` > 1, so one minibatch
+                # is the whole batch: per module, all of its rows. Not `batch.count`,
+                # which is env steps -- a different unit that only coincides with the
+                # rows when there is a single module.
+                minibatch_size = max(
+                    (len(b) for b in batch.policy_batches.values()), default=0
+                )
                 # Note that there is no need to shuffle here, b/c we don't have
                 # minibatches.
                 batch_iter_cls = MiniBatchCyclicIterator
