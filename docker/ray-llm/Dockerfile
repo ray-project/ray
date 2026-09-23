@@ -80,7 +80,9 @@ PY
     git apply "${VLLM_PIXTRAL_TRANSFORMERS_5_17_PATCH}"
 )
 
-sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
+# libdw-dev provides elfutils/libdwfl.h, which DeepGEMM's DeepJIT submodule
+# includes (vLLM's own image installs elfutils-devel for the same reason).
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake libdw-dev
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
