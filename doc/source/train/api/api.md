@@ -178,6 +178,7 @@ See {ref}`train-deprecated-api` for the old API references and the [Ray Train V2
     :nosignatures:
     :toctree: doc/
 
+    ~train.annotate
     ~train.get_all_reported_checkpoints
     ~train.get_checkpoint
     ~train.get_context

@@ -5,11 +5,13 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.observability.annotation import Annotation
 from ray._common.retry import retry
 from ray._common.utils import env_float
 from ray.actor import ActorHandle
@@ -17,6 +19,7 @@ from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+    TRAIN_ANNOTATION_SOURCE,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import (
     SynchronizationActor,
@@ -27,6 +30,8 @@ from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_p
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
+from ray.train.v2._internal.metrics.base import RUN_ID_TAG_KEY, RUN_NAME_TAG_KEY
+from ray.train.v2._internal.metrics.worker import WORKER_WORLD_RANK_TAG_KEY
 from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
     context_watchdog,
@@ -145,6 +150,22 @@ class TrainContext:
         # Ray train initializes worker with current report index
         # report_call_index should start at the current report index
         self.report_call_index = self.current_report_index
+
+    @cached_property
+    def annotation(self) -> Annotation:
+        """The annotation emitter for this worker.
+
+        Cached because ``ray.train.report`` annotates on every call, and the base
+        tags are fixed for the lifetime of the context.
+        """
+        return Annotation(
+            source=TRAIN_ANNOTATION_SOURCE,
+            base_tags={
+                RUN_NAME_TAG_KEY: self.get_experiment_name(),
+                RUN_ID_TAG_KEY: self.train_run_context.run_id,
+                WORKER_WORLD_RANK_TAG_KEY: str(self.get_world_rank()),
+            },
+        )
 
     def get_experiment_name(self) -> str:
         return self.train_run_context.run_config.name
