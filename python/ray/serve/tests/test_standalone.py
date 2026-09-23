@@ -709,19 +709,16 @@ def test_serve_start_proxy_location(ray_shutdown, options):
     assert client.get_serve_details()["proxy_location"] == expected
 
 
-# The Python proxy only sits in the HTTP request path (and emits
-# ``proxy_http_request`` spans) in the default ingress mode. Under HAProxy or
-# direct ingress the data plane bypasses it, so proxy-span assertions do not
-# apply; skip proxy-focused tracing tests in those modes.
+# HAProxy and direct ingress bypass the Python proxy, so it emits no
+# ``proxy_http_request`` spans. Skip proxy-focused tracing tests in those modes.
 _ALT_INGRESS_ENABLED = RAY_SERVE_ENABLE_HA_PROXY or RAY_SERVE_ENABLE_DIRECT_INGRESS
 
 
 def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
-    """Whether a span file for ``component`` records a span named ``span_name``.
+    """Return whether a span file contains the given span name.
 
-    The default file exporter opens the span file at setup time, so a file
-    merely existing does not prove a span was emitted; the exported span JSON
-    embeds its name, so assert on file contents instead.
+    The exporter creates the file during setup, so file existence alone does
+    not prove that a span was emitted.
     """
     if not os.path.isdir(spans_dir):
         return False
@@ -798,10 +795,8 @@ def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
     serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.5))
     client = _get_global_client()
 
-    # Change the config after startup so the checkpoint is the only place the
-    # new value exists: Ray replays the controller's constructor args on
-    # restart, so a config passed to serve.start() would be restored even
-    # without a checkpoint.
+    # Change the config after startup so recovery depends on the checkpoint,
+    # not on the original constructor args.
     updated_config = TracingConfig(enabled=True, sampling_ratio=1.0)
     ray.get(client._controller.reconfigure_global_tracing_config.remote(updated_config))
     assert ray.get(client._controller.get_tracing_config.remote()) == updated_config
@@ -820,12 +815,7 @@ def test_serve_tracing_config_survives_controller_recovery(ray_shutdown):
     reason="Proxy does not emit request spans under HAProxy/direct ingress.",
 )
 def test_serve_tracing_config_enabled_at_runtime_reaches_proxy(ray_shutdown):
-    """Enabling tracing at runtime propagates to an already-running proxy.
-
-    The proxy subscribes to the GLOBAL_TRACING_CONFIG long poll, so a config
-    change made after the proxy started still reaches it and it begins emitting
-    spans. This is the runtime-reconfiguration path this PR adds.
-    """
+    """Verify tracing can be enabled on an already-running proxy."""
     # Start with tracing disabled so the proxy has not set tracing up yet:
     # OpenTelemetry only honors the first set_tracer_provider per process, so a
     # proxy that started enabled could not adopt a later change.
@@ -857,8 +847,8 @@ def test_serve_tracing_config_enabled_at_runtime_reaches_proxy(ray_shutdown):
     )
 
     def proxy_emits_span() -> bool:
-        # Drive traffic each poll so the proxy has a request to trace once its
-        # long-poll callback has set tracing up.
+        # Send a request on each poll so the proxy can emit a span after
+        # tracing is enabled.
         httpx.post(f"{url}/")
         return _span_file_contains(spans_dir, "proxy", "proxy_http_request")
 
@@ -870,12 +860,7 @@ def test_serve_tracing_config_enabled_at_runtime_reaches_proxy(ray_shutdown):
 
 
 def test_reconfigure_rejects_bad_exporter_import_path(ray_shutdown):
-    """A bad exporter_import_path is rejected before it is checkpointed/broadcast.
-
-    The controller resolves the path eagerly, so `serve deploy` / `apply_config`
-    fails fast and the previously-applied config is left untouched (rather than
-    persisting a value that would only break later at each proxy/replica).
-    """
+    """Verify an invalid exporter path is rejected before the config is persisted."""
     good_config = TracingConfig(enabled=True, sampling_ratio=1.0)
     serve.start(tracing_config=good_config)
     client = _get_global_client()
@@ -891,12 +876,10 @@ def test_reconfigure_rejects_bad_exporter_import_path(ray_shutdown):
 
 
 def test_serve_tracing_config_checkpoint_cleared_on_shutdown(ray_shutdown):
-    """A runtime tracing change does not leak across serve.shutdown().
+    """Verify the tracing checkpoint is cleared on serve.shutdown().
 
-    A runtime `reconfigure` checkpoints the config so it survives controller
-    recovery; shutdown must then delete that checkpoint, so a fresh
-    serve.start() in the same cluster is not shadowed by the previous run's
-    config. Regression coverage for #65437 review (the delete had no test).
+    The checkpoint is used to restore runtime tracing changes after a controller
+    restart, but it should not carry over to a new Serve instance after shutdown.
     """
     serve.start(tracing_config=TracingConfig(enabled=True, sampling_ratio=0.25))
     client = _get_global_client()

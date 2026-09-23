@@ -1495,9 +1495,8 @@ class ProxyActorInterface(ABC):
         # Tracing is configured after startup via the GLOBAL_TRACING_CONFIG long
         # poll (see `_update_tracing_config`), not through the constructor.
         self._tracing_config: Optional[TracingConfig] = None
-        # Whether setup_tracing has already succeeded in this process. Tracing is
-        # set up at most once: OpenTelemetry only honors the first
-        # set_tracer_provider call per process.
+        # Track whether tracing has already been set up for this proxy.
+        # OpenTelemetry only allows the tracer provider to be set once per process.
         self._tracing_setup_succeeded = False
         self._log_buffer_size = log_buffer_size
 
@@ -1634,10 +1633,8 @@ class ProxyActorInterface(ABC):
         if self._tracing_setup_succeeded:
             # OpenTelemetry only honors the first set_tracer_provider call in a
             # process, so a changed config cannot be applied here: re-running
-            # setup would keep the original sampler and duplicate span
-            # processors. Store the new config first so this warns only once
-            # (not on every controller-recovery re-broadcast), then surface
-            # that the change is not applied rather than silently dropping it.
+            # setup would keep the original sampler and duplicate span processors.
+            # Store the new config so we don't warn again on the next broadcast.
             if tracing_config != self._tracing_config:
                 self._tracing_config = tracing_config
                 logger.warning(

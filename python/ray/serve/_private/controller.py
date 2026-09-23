@@ -139,9 +139,10 @@ def _coerce_tracing_config(
 
     The global tracing config must never be None -- it is the single source of
     truth for ``setup_tracing`` and its fields default from the
-    RAY_SERVE_TRACING_* env vars. Callers pass a validated model or None:
-    ``api.py`` coerces a user-supplied dict to a TracingConfig before the
-    controller starts, and ``apply_config`` passes the schema-validated model.
+    RAY_SERVE_TRACING_* env vars. Every caller passes either a validated model
+    or None: ``api.py`` converts a user-supplied dict to a TracingConfig before
+    the controller starts, and ``apply_config`` passes the schema-validated
+    model.
     """
     return tracing_config if tracing_config is not None else TracingConfig()
 
@@ -205,13 +206,10 @@ class ServeController:
             global_logging_config = pickle.loads(log_config_checkpoint)
         self.reconfigure_global_logging_config(global_logging_config)
 
-        # Tracing config: a checkpointed config (persisted only for a runtime
-        # change via `serve deploy`) takes precedence over the constructor arg.
-        # Apply it, but do NOT checkpoint it here: Ray replays the constructor
-        # arg on restart, so persisting the initial config buys nothing and
-        # would let a controller killed without shutdown() shadow a later
-        # serve.start(tracing_config=...). Only runtime changes are
-        # checkpointed (see reconfigure_global_tracing_config).
+        # Prefer the checkpointed tracing config when recovering the controller.
+        # The initial config is not checkpointed because Ray already replays the
+        # constructor args on restart. Runtime config changes are checkpointed so
+        # they are not lost during controller recovery.
         tracing_config_checkpoint = self.kv_store.get(TRACING_CONFIG_CHECKPOINT_KEY)
         if tracing_config_checkpoint is not None:
             global_tracing_config = pickle.loads(tracing_config_checkpoint)
@@ -380,14 +378,10 @@ class ServeController:
     def _apply_global_tracing_config(
         self, global_tracing_config: TracingConfig, *, checkpoint: bool
     ):
-        """Store, optionally checkpoint, broadcast, and log the tracing config.
+        """Apply and broadcast the global tracing config, and persist it when needed.
 
-        ``global_tracing_config`` must already be coerced. ``checkpoint``
-        persists it so a *runtime* change survives controller recovery; the
-        initial config from the constructor is applied without a checkpoint,
-        since Ray replays the constructor arg on restart. The resolved config
-        is logged because env vars are read controller-side, so this is the
-        only place the effective, cluster-wide config is visible.
+        Log the resolved config here because tracing env vars are read by the
+        controller, making this the effective cluster-wide configuration.
         """
         self.global_tracing_config = global_tracing_config
         if checkpoint:
@@ -402,13 +396,10 @@ class ServeController:
     def reconfigure_global_tracing_config(
         self, global_tracing_config: Optional[TracingConfig]
     ):
-        """Apply a new global tracing config at runtime: checkpoint and broadcast.
+        """Apply a new global tracing config at runtime.
 
-        Coerced/validated here because it is broadcast to every proxy (which
-        would otherwise fail on a malformed payload), and the exporter path is
-        resolved eagerly so an invalid `serve deploy` / `apply_config` fails
-        fast instead of persisting a value that only breaks later at each
-        proxy/replica's `setup_tracing` (and reloads on controller recovery).
+        Validate the exporter path before persisting the config so an invalid
+        configuration is rejected before it reaches proxies and replicas.
         """
         global_tracing_config = _coerce_tracing_config(global_tracing_config)
         validate_tracing_exporter_import_path(global_tracing_config)
@@ -1312,12 +1303,13 @@ class ServeController:
         )
         self._target_capacity = config.target_capacity
 
-        # If a global tracing config is provided in the declarative config,
-        # apply it: this checkpoints it and broadcasts it via long poll.
-        # Proxies that have not yet set up tracing (started before it was
-        # enabled, or created afterward) pick it up; a proxy already tracing
-        # keeps its config for the life of its process (OpenTelemetry sets the
-        # tracer provider once). Replicas read the config when they start.
+        # Apply the global tracing config from the declarative config.
+        # The controller checkpoints the config and sends it to proxies through
+        # long poll. A proxy can apply the config only if tracing has not already
+        # been set up in that process. Once tracing is set up, later config changes
+        # do not affect that proxy. New replicas read the latest config when they start.
+        #
+        # TODO(#66385): Support tracing config updates for live proxies and replicas.
         if config.tracing_config is not None:
             self.reconfigure_global_tracing_config(config.tracing_config)
 

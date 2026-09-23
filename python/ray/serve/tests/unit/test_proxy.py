@@ -491,16 +491,9 @@ class TestgRPCProxy:
 
 
 def test_update_tracing_config_swallows_setup_failure():
-    """A bad tracing config must not crash the proxy's long-poll handler.
+    """Verify a tracing setup failure does not break the long-poll callback.
 
-    Regression coverage for #65437 review: `_update_tracing_config` runs as a
-    long-poll callback, so a raising `setup_tracing` (e.g. a bad
-    `exporter_import_path`) must be swallowed. Setup is left marked
-    unsucceeded so a later (valid) delivery can retry.
-
-    `_update_tracing_config` only reads/writes `_tracing_setup_succeeded`,
-    `_tracing_config`, and `_node_ip_address`, so exercise it against a
-    lightweight stand-in rather than constructing a full proxy actor.
+    A failed setup should remain retryable when a valid config is received later.
     """
     proxy = SimpleNamespace(
         _tracing_setup_succeeded=False,
@@ -508,8 +501,7 @@ def test_update_tracing_config_swallows_setup_failure():
         _node_ip_address="fake-node-ip",
     )
 
-    # A bogus exporter path raises inside setup_tracing; the callback must not
-    # propagate it (which would wedge the proxy's long poll client).
+    # A tracing setup failure should not propagate from the long-poll callback.
     ProxyActorInterface._update_tracing_config(
         proxy,
         TracingConfig(enabled=True, exporter_import_path="no.such.module:nope"),

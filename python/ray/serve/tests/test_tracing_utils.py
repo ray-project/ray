@@ -114,17 +114,13 @@ def test_validate_tracing_exporter_with_string():
 
 
 def test_validate_tracing_exporter_import_path():
-    """The controller-side fail-fast validator resolves the exporter path.
-
-    Regression coverage for #65437 review: a bad `exporter_import_path` must
-    fail the deploy request rather than being checkpointed/broadcast.
-    """
+    """Verify invalid tracing exporter paths are rejected before deployment."""
     # Disabled tracing never resolves the path, even a bogus one.
     validate_tracing_exporter_import_path(
         TracingConfig(enabled=False, exporter_import_path="no.such.module:nope")
     )
 
-    # Enabled with an empty path falls back to the (importable) default.
+    # An empty exporter path uses the default exporter.
     validate_tracing_exporter_import_path(TracingConfig(enabled=True))
     validate_tracing_exporter_import_path(
         TracingConfig(
@@ -132,7 +128,7 @@ def test_validate_tracing_exporter_import_path():
         )
     )
 
-    # Enabled with a bogus path fails fast.
+    # An invalid exporter path should be rejected.
     with pytest.raises((ImportError, AttributeError)):
         validate_tracing_exporter_import_path(
             TracingConfig(enabled=True, exporter_import_path="no.such.module:nope")

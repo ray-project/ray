@@ -1192,12 +1192,8 @@ class Replica:
         tracing_config = ray.get(
             self._controller_handle.get_tracing_config.remote()  # type: ignore[attr-defined]
         )
-        # Never let a bad tracing config crash replica startup: mirror the
-        # proxy's long-poll handler, which logs and continues. A bad
-        # `exporter_import_path` raises out of `import_attr` inside
-        # `setup_tracing`; the controller validates the path at deploy time,
-        # but that check runs against the head node, so a path importable
-        # there may still fail to import on this worker node.
+        # A tracing setup failure should not prevent the replica from starting.
+        # The exporter may be available on the head node but missing on this worker.
         try:
             is_tracing_setup_successful = setup_tracing(
                 component_type=ServeComponentType.REPLICA,
