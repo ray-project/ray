@@ -512,6 +512,11 @@ class ServeController:
     def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
+    def _should_autoscale_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> bool:
+        return self.autoscaling_state_manager.should_autoscale_deployment(deployment_id)
+
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._dump_replica_states_for_testing(
             deployment_id

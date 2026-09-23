@@ -5,7 +5,7 @@ import threading
 import time
 from copy import copy
 from functools import partial
-from typing import List
+from typing import List, Tuple
 
 import httpx
 import pytest
@@ -28,6 +28,7 @@ from ray.serve._private.test_utils import (
     check_target_groups_ready,
     get_application_url,
 )
+from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.schema import (
     ApplicationStatus,
@@ -1147,15 +1148,29 @@ def test_terminally_failed_rolling_update_survives_controller_restart(
     assert _deployment_details(client).recent_dead_replicas == []
 
 
-def _rolling_update_config(deployment: dict) -> ServeDeploySchema:
-    return ServeDeploySchema(
-        applications=[
-            {
-                "name": SERVE_DEFAULT_APP_NAME,
-                "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
-                "deployments": [deployment],
-            }
-        ]
+def _rolling_update_config(
+    *deployments: dict,
+    import_path: str = "ray.serve.tests.test_config_files.fail_on_flag.build",
+) -> ServeDeploySchema:
+    """Config for the default app; no deployments means no config overrides."""
+    app = {"name": SERVE_DEFAULT_APP_NAME, "import_path": import_path}
+    if deployments:
+        app["deployments"] = list(deployments)
+    return ServeDeploySchema(applications=[app])
+
+
+def _config_options(client, deployment: str = "FailOnFlag") -> Tuple[int, int]:
+    config = _deployment_details(client, deployment).deployment_config
+    return config.num_replicas, config.max_ongoing_requests
+
+
+def _autoscaling_config(client, deployment: str = "FailOnFlag"):
+    config = _deployment_details(client, deployment).deployment_config
+    # Details report an unset option as the DEFAULT sentinel rather than None.
+    return (
+        None
+        if config.autoscaling_config is DEFAULT.VALUE
+        else config.autoscaling_config
     )
 
 
@@ -1417,59 +1432,189 @@ def test_instance_details_report_restoring_unset_options(serve_instance):
 def test_sparse_config_rollback_restores_code_defined_options(
     serve_instance, restart_controller
 ):
-    """Rollback restores values from the decorator and reuses surviving replicas."""
+    """Rollback restores values from the decorator and reuses surviving replicas.
+
+    Traffic runs from before the failing update until after the rollback and
+    must never see a non-200 response.
+    """
     client = serve_instance
-    sparse = {
-        "name": "default",
-        "import_path": "ray.serve.tests.test_config_files.fail_on_flag.build",
-    }
-    client.deploy_apps(ServeDeploySchema(**{"applications": [sparse]}))
-    wait_for_condition(check_running)
+    client.deploy_apps(_rolling_update_config())
+    wait_for_condition(check_running, timeout=60)
     initial_pids = _running_replica_pids(client)
     assert len(initial_pids) == 2
-    assert _deployment_details(client).deployment_config.max_ongoing_requests == 7
+    assert _config_options(client) == (2, 7)
 
-    # The runtime environment override makes new replicas fail to start.
-    failing = copy(sparse)
-    failing["deployments"] = [
-        {
-            "name": "FailOnFlag",
-            "max_ongoing_requests": 3,
-            "ray_actor_options": {"runtime_env": {"env_vars": {"FAIL_ON_INIT": "1"}}},
-        }
-    ]
-    client.deploy_apps(ServeDeploySchema(**{"applications": [failing]}))
+    stop = threading.Event()
+    started = threading.Event()
+    status_codes = []
+    errors = []
+
+    def send_requests():
+        with httpx.Client(timeout=10) as http:
+            while not stop.is_set():
+                try:
+                    status_codes.append(http.get("http://localhost:8000/").status_code)
+                except Exception as exc:
+                    errors.append(repr(exc))
+                finally:
+                    started.set()
+                stop.wait(0.005)
 
     def check_deploy_failed():
-        status = serve.status().applications["default"]
+        status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert status.status == ApplicationStatus.DEPLOY_FAILED
         deployment = status.deployments["FailOnFlag"]
         assert deployment.status_trigger == "REPLICA_STARTUP_FAILED"
         assert set(deployment.replica_states) == {"RUNNING"}
         return True
 
-    wait_for_condition(check_deploy_failed, timeout=60)
-    surviving_pids = _running_replica_pids(client)
-    assert len(surviving_pids) == 1 and set(surviving_pids) <= set(initial_pids)
-    assert _deployment_details(client).deployment_config.max_ongoing_requests == 3
-
-    if restart_controller:
-        old_pid = ray.get(client._controller.get_pid.remote())
-        ray.kill(client._controller, no_restart=False)
-        wait_for_condition(
-            lambda: ray.get(client._controller.get_pid.remote()) != old_pid
+    traffic = threading.Thread(target=send_requests, daemon=True)
+    traffic.start()
+    try:
+        assert started.wait(timeout=15)
+        # The runtime environment override makes new replicas fail to start.
+        client.deploy_apps(
+            _rolling_update_config(
+                {
+                    "name": "FailOnFlag",
+                    "max_ongoing_requests": 3,
+                    "ray_actor_options": {
+                        "runtime_env": {"env_vars": {"FAIL_ON_INIT": "1"}}
+                    },
+                }
+            )
         )
         wait_for_condition(check_deploy_failed, timeout=60)
+        surviving_pids = _running_replica_pids(client)
+        assert len(surviving_pids) == 1 and set(surviving_pids) <= set(initial_pids)
+        assert _config_options(client) == (2, 3)
 
-    # Removing both overrides reuses the survivor and replaces the missing replica.
-    client.deploy_apps(ServeDeploySchema(**{"applications": [sparse]}))
+        if restart_controller:
+            old_pid = ray.get(client._controller.get_pid.remote())
+            ray.kill(client._controller, no_restart=False)
+            wait_for_condition(
+                lambda: ray.get(client._controller.get_pid.remote()) != old_pid
+            )
+            wait_for_condition(check_deploy_failed, timeout=60)
+
+        # Removing both overrides reuses the survivor and replaces the missing
+        # replica.
+        client.deploy_apps(_rolling_update_config())
+        wait_for_condition(check_running, timeout=60)
+        wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
+        assert set(surviving_pids) <= set(_running_replica_pids(client))
+        assert _config_options(client) == (2, 7)
+        served_before_rollback = len(status_codes)
+        wait_for_condition(lambda: len(status_codes) > served_before_rollback + 10)
+    finally:
+        stop.set()
+        traffic.join(timeout=15)
+
+    assert not traffic.is_alive()
+    assert not errors, errors
+    assert set(status_codes) == {200}, {
+        code: status_codes.count(code) for code in set(status_codes)
+    }
+
+
+def test_new_config_restores_only_the_overrides_it_drops(serve_instance):
+    """Options the new config still sets update; the ones it drops return to code."""
+    client = serve_instance
+    client.deploy_apps(_rolling_update_config())
+    wait_for_condition(check_running, timeout=60)
+    assert _config_options(client) == (2, 7)
+
+    client.deploy_apps(
+        _rolling_update_config(
+            {"name": "FailOnFlag", "num_replicas": 5, "max_ongoing_requests": 3}
+        )
+    )
+    wait_for_condition(lambda: _config_options(client) == (5, 3), timeout=60)
+    wait_for_condition(check_running, timeout=60)
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 5, timeout=60)
+
+    client.deploy_apps(
+        _rolling_update_config({"name": "FailOnFlag", "max_ongoing_requests": 4})
+    )
+    wait_for_condition(lambda: _config_options(client) == (2, 4), timeout=60)
     wait_for_condition(check_running, timeout=60)
     wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
-    assert set(surviving_pids) <= set(_running_replica_pids(client))
-    assert _deployment_details(client).deployment_config.max_ongoing_requests == 7
-    for _ in range(10):
-        r = httpx.get("http://localhost:8000/", timeout=10)
-        assert r.status_code == 200 and r.text == "ok"
+    assert httpx.get("http://localhost:8000/", timeout=10).text == "ok"
+
+
+def test_removing_autoscaling_config_restores_static_num_replicas(serve_instance):
+    """Dropping autoscaling_config stops autoscaling and restores num_replicas."""
+    client = serve_instance
+    deployment_id = DeploymentID("FailOnFlag", SERVE_DEFAULT_APP_NAME)
+
+    def autoscaled() -> bool:
+        return ray.get(
+            client._controller._should_autoscale_deployment_for_testing.remote(
+                deployment_id
+            )
+        )
+
+    client.deploy_apps(_rolling_update_config())
+    wait_for_condition(check_running, timeout=60)
+    assert _autoscaling_config(client) is None
+    assert not autoscaled()
+
+    client.deploy_apps(
+        _rolling_update_config(
+            {
+                "name": "FailOnFlag",
+                "autoscaling_config": {"min_replicas": 1, "max_replicas": 5},
+            }
+        )
+    )
+    wait_for_condition(lambda: _autoscaling_config(client) is not None, timeout=60)
+    wait_for_condition(check_running, timeout=60)
+    assert autoscaled()
+
+    client.deploy_apps(_rolling_update_config())
+    wait_for_condition(lambda: _autoscaling_config(client) is None, timeout=60)
+    wait_for_condition(check_running, timeout=60)
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
+    assert _config_options(client) == (2, 7)
+    assert not autoscaled()
+
+
+def test_multi_deployment_overrides_revert_independently(serve_instance):
+    """Each deployment reverts only the overrides its own config entry drops."""
+    client = serve_instance
+    chain = "ray.serve.tests.test_config_files.rolling_update_chain.build"
+    code_defined = {"D1": (1, 11), "D2": (2, 13)}
+    d1_override = {"name": "D1", "num_replicas": 2, "max_ongoing_requests": 3}
+    d2_override = {"name": "D2", "num_replicas": 3, "max_ongoing_requests": 4}
+
+    def check(expected):
+        app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app.status == ApplicationStatus.RUNNING
+        for name, (num_replicas, max_ongoing_requests) in expected.items():
+            assert _config_options(client, name) == (num_replicas, max_ongoing_requests)
+            assert len(_running_replica_pids(client, name)) == num_replicas
+        assert httpx.get("http://localhost:8000/", timeout=10).text == "v1"
+        return True
+
+    client.deploy_apps(_rolling_update_config(import_path=chain))
+    wait_for_condition(check, expected=code_defined, timeout=60)
+
+    client.deploy_apps(
+        _rolling_update_config(d1_override, d2_override, import_path=chain)
+    )
+    wait_for_condition(check, expected={"D1": (2, 3), "D2": (3, 4)}, timeout=60)
+
+    # D2 reverts whether its entry is left without options or dropped entirely.
+    client.deploy_apps(
+        _rolling_update_config(d1_override, {"name": "D2"}, import_path=chain)
+    )
+    wait_for_condition(
+        check, expected={"D1": (2, 3), "D2": code_defined["D2"]}, timeout=60
+    )
+    client.deploy_apps(
+        _rolling_update_config(d1_override, import_path=chain), _blocking=True
+    )
+    check({"D1": (2, 3), "D2": code_defined["D2"]})
 
 
 if __name__ == "__main__":

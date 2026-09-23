@@ -5014,10 +5014,6 @@ class TestDeploymentDAG:
         assert len(topology.nodes["cache"].outbound_deployments) == 0
 
 
-if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", __file__]))
-
-
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
 @patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
@@ -5123,3 +5119,7 @@ class TestConfigOverridesFromBuild:
         recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
         assert "runtime_env" not in self._actor_options(recovered)
         assert self._num_replicas(recovered) == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
