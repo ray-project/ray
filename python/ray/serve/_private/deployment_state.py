@@ -5510,9 +5510,11 @@ class DeploymentState:
             )
 
     def expected_push_rate(self) -> float:
-        """Health-bearing reports per second this deployment's replicas should send.
+        """Heartbeats per second this deployment's replicas should send.
 
-        Erring low is safe: it can only make the controller decide it is keeping up.
+        The self-check runs twice per health-check period and each run heartbeats, so
+        that cadence is the only thing feeding the registry. Erring low is safe: it can
+        only make the controller decide it is keeping up.
         """
         info = self._target_state.info
         if info is None:
@@ -5520,14 +5522,8 @@ class DeploymentState:
         running = self._replicas.count(states=[ReplicaState.RUNNING])
         if not running:
             return 0.0
-        config = info.deployment_config
-        autoscaling = config.autoscaling_config
-        if (
-            autoscaling is not None
-            and autoscaling.metrics_interval_s <= config.health_check_period_s
-        ):
-            return running / autoscaling.metrics_interval_s
-        return running * 2.0 / config.health_check_period_s
+        # health_check_period_s is a PositiveFloat, so it cannot be zero here.
+        return running * 2.0 / info.deployment_config.health_check_period_s
 
     def _apply_pushed_health(self, replica: "DeploymentReplica") -> None:
         """Hand the replica its latest pushed self-health before the health check."""

@@ -12065,19 +12065,32 @@ class TestIngestLagGate:
         ds._replicas = SimpleNamespace(count=lambda states: running)
         return ds
 
-    def test_expected_rate_follows_the_metric_cadence(self):
-        # The interval must not be half the period, or the metric and heartbeat
-        # branches coincide and the assertion pins neither.
-        ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=2.0)
-        assert ds.expected_push_rate() == 50.0  # 100 replicas / 2s, not 100*2/10s
-
-    def test_expected_rate_falls_back_to_the_heartbeat_cadence(self):
+    def test_expected_rate_is_the_heartbeat_cadence(self):
         ds = self._ds_for_rate(period_s=20.0, metrics_interval_s=None)
         assert ds.expected_push_rate() == 10.0  # 100 replicas * 2 / 20s
-        # A metric cadence slower than the period cannot carry health on its own,
-        # so the heartbeat sets the rate.
-        ds = self._ds_for_rate(period_s=20.0, metrics_interval_s=60.0)
-        assert ds.expected_push_rate() == 10.0
+
+    def test_expected_rate_ignores_the_metric_cadence(self):
+        """Only the heartbeat feeds the registry here; metric reports do not carry
+        health until the carriage PR. Counting on them would overstate what the fleet
+        owes and latch ingest_lagging() on forever."""
+        for interval in (2.0, 10.0, 60.0):
+            ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=interval)
+            assert ds.expected_push_rate() == 20.0  # 100 * 2 / 10s, whatever interval
+
+    def test_a_healthy_fleet_is_never_judged_lagging(self, monkeypatch):
+        """Regression: the expected rate must match what the senders actually do, or a
+        fleet heartbeating exactly on cadence reads as lagging and probe timeouts stop
+        being charged to replicas that have genuinely hung."""
+        clock = [1000.0]
+        r = self._registry(monkeypatch, clock)
+        ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=2.0)
+        r.set_expected_rate(ds.expected_push_rate())
+        r.ingest_lagging()  # opens the window
+        # 100 replicas heartbeating twice per 10s period over a 30s window.
+        for i in range(int(100 * 2 / 10.0 * r._RATE_WINDOW_S)):
+            r.record(f"r{i}", clock[0], True)
+        clock[0] += r._RATE_WINDOW_S
+        assert not r.ingest_lagging()
 
     def test_expected_rate_is_zero_without_a_target_or_replicas(self):
         ds = self._ds_for_rate(period_s=10.0, metrics_interval_s=5.0, running=0)
