@@ -193,7 +193,7 @@ label   int64
 :::::
 
 
-For more information on creating datasets, see {ref}`Loading Data <loading_data>`.
+For more information on creating datasets, see {ref}`Loading data <loading_data>`.
 
 (transforming_images)=
 
@@ -333,4 +333,4 @@ ds.write_numpy("/tmp/simple", column="image")
 
 ::::
 
-For more information on saving data, see {ref}`Saving data <loading_data>`.
+For more information on saving data, see {ref}`Saving data <saving-data>`.
