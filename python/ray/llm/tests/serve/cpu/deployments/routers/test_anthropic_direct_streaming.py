@@ -1,4 +1,5 @@
 import sys
+import time
 
 import httpx
 import pytest
@@ -17,27 +18,11 @@ from ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils import (
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import (
     MOCK_ANTHROPIC_INPUT_TOKENS,
-    MOCK_ANTHROPIC_TEXT,
+    MOCK_ANTHROPIC_STREAM_CHUNK_DELAY_S,
+    MOCK_ANTHROPIC_STREAM_CHUNKS,
 )
 
 MODEL_ID = "test-model"
-
-
-def _messages_body(*, stream: bool) -> dict:
-    return {
-        "model": MODEL_ID,
-        "max_tokens": 32,
-        "messages": [{"role": "user", "content": "hi"}],
-        "stream": stream,
-    }
-
-
-def _sse_event_types(body: str) -> list[str]:
-    return [
-        line[len("event: ") :]
-        for line in body.splitlines()
-        if line.startswith("event: ")
-    ]
 
 
 @requires_direct_streaming
@@ -68,34 +53,45 @@ class TestAnthropicDirectStreaming:
             build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
         )
 
-    def test_messages_non_streaming(self, base_url):
-        resp = httpx.post(
-            f"{base_url}/v1/messages",
-            json=_messages_body(stream=False),
-            timeout=30,
-        )
-        assert resp.status_code == 200, resp.text
-        payload = resp.json()
-        assert payload["type"] == "message"
-        assert payload["role"] == "assistant"
-        assert payload["model"] == MODEL_ID
-        assert payload["content"][0]["text"] == MOCK_ANTHROPIC_TEXT
+    def test_anthropic_paths_pass_through_haproxy(self, base_url):
+        """Engine-native Anthropic paths reach the replica through HAProxy.
 
-    def test_messages_streaming(self, base_url):
-        resp = httpx.post(
+        The OpenAPI test owns the contract that real vLLM registers these
+        routes. This test only proves the paths pass through and that
+        ``/v1/messages`` is not buffered before the response completes.
+        """
+        t_first = None
+        lines = []
+        with httpx.stream(
+            "POST",
             f"{base_url}/v1/messages",
-            json=_messages_body(stream=True),
+            json={
+                "model": MODEL_ID,
+                "max_tokens": 32,
+                "messages": [{"role": "user", "content": "hi"}],
+                "stream": True,
+            },
             timeout=30,
-        )
-        assert resp.status_code == 200, resp.text
-        assert resp.headers["content-type"].startswith("text/event-stream")
-        events = _sse_event_types(resp.text)
-        assert events.index("message_start") < events.index("content_block_delta")
-        assert events.index("content_block_delta") < events.index("message_stop")
-        assert MOCK_ANTHROPIC_TEXT in resp.text
+        ) as resp:
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith("text/event-stream")
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                if t_first is None:
+                    t_first = time.monotonic()
+                lines.append(line)
+        t_done = time.monotonic()
 
-    def test_count_tokens(self, base_url):
-        resp = httpx.post(
+        assert t_first is not None
+        # The mock delays each chunk. A buffered hop delivers them together,
+        # so the gap between the first line and stream completion collapses.
+        assert t_done - t_first >= MOCK_ANTHROPIC_STREAM_CHUNK_DELAY_S / 2
+        body = "\n".join(lines)
+        for chunk in MOCK_ANTHROPIC_STREAM_CHUNKS:
+            assert chunk in body
+
+        count_resp = httpx.post(
             f"{base_url}/v1/messages/count_tokens",
             json={
                 "model": MODEL_ID,
@@ -103,8 +99,8 @@ class TestAnthropicDirectStreaming:
             },
             timeout=30,
         )
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["input_tokens"] == MOCK_ANTHROPIC_INPUT_TOKENS
+        assert count_resp.status_code == 200, count_resp.text
+        assert count_resp.json()["input_tokens"] == MOCK_ANTHROPIC_INPUT_TOKENS
 
 
 if __name__ == "__main__":
