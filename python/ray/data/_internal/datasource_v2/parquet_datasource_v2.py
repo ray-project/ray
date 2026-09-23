@@ -17,16 +17,16 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    ParquetDatasource,
-    check_for_legacy_tensor_type,
-)
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
-    DataSourceV2,
+    FileDataSourceV2,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.parquet_utils import (
+    PARQUET_FILE_EXTENSIONS,
+    check_for_legacy_tensor_type,
+)
 from ray.data._internal.datasource_v2.readers.file_reader import (
     INCLUDE_PATHS_COLUMN_NAME,
 )
@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class ParquetDatasourceV2(DataSourceV2[FileManifest]):
+class ParquetDatasourceV2(FileDataSourceV2):
     """V2 Parquet datasource.
 
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the
@@ -94,7 +94,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
-        self._file_extensions = file_extensions or ParquetDatasource._FILE_EXTENSIONS
+        self._file_extensions = file_extensions or PARQUET_FILE_EXTENSIONS
         self._ignore_missing_paths = ignore_missing_paths
         # Resolve "skip_paths" through the same path normalization as the
         # input paths so exact-match comparison against the resolved paths the

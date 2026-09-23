@@ -438,11 +438,21 @@ class ServeController:
         ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
             if autoscaling_metrics_codec.is_columnar(handle_metric_report):
-                # Wire-detected on the frame magic, so a mixed fleet mid-rollout is
-                # read correctly whatever each sender chose to emit. Timed apart from
-                # decompress: separating the two codecs is the point of the metric.
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
                 decode_start = time.monotonic()
-                d = autoscaling_metrics_codec.decode_handle_flat(handle_metric_report)
+                try:
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                except Exception:
+                    # The sender never reads this call's ObjectRef, so an unparseable
+                    # report would otherwise vanish with no trace on either side. The
+                    # handle keeps its last good data until the drop path times it out.
+                    logger.exception("Dropping an undecodable columnar metric report.")
+                    return
                 self._health_metrics_tracker.record_columnar_decode(
                     (time.monotonic() - decode_start) * 1000
                 )
@@ -458,7 +468,11 @@ class ServeController:
                 )
                 return
             decompress_start = time.monotonic()
-            handle_metric_report = decompress_metric_report(handle_metric_report)
+            try:
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            except Exception:
+                logger.exception("Dropping an undecompressible handle metric report.")
+                return
             self._health_metrics_tracker.record_decompress(
                 (time.monotonic() - decompress_start) * 1000
             )

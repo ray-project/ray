@@ -10,15 +10,15 @@ import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
 
 import ray
-from ray.data._internal.datasource.parquet_datasource import (
-    _row_group_uncompressed_size,
-)
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     FileChunks,
     RowGroupInfo,
 )
 from ray.data._internal.datasource_v2.chunkers.parquet_row_group_coalescing import (
     coalesce_row_groups,
+)
+from ray.data._internal.datasource_v2.parquet_utils import (
+    _row_group_uncompressed_size,
 )
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
