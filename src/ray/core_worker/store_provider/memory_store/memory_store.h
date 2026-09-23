@@ -174,6 +174,7 @@ class CoreWorkerMemoryStore {
 
  private:
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
+  FRIEND_TEST(TestMemoryStore, TestUnhandledErrorCallbacksRunOutsideLock);
 
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
@@ -189,8 +190,23 @@ class CoreWorkerMemoryStore {
                  bool abort_if_any_object_is_exception,
                  bool at_most_num_objects);
 
-  /// Called when an object is deleted from the store.
-  void OnDelete(std::shared_ptr<RayObject> obj);
+  /**
+   * @brief Invokes the unhandled-error handler with `mu_` released.
+   *
+   * @param obj Error object that `IsUnhandledError` accepted under the lock.
+   */
+  void ReportUnhandledError(const std::shared_ptr<RayObject> &obj)
+      ABSL_LOCKS_EXCLUDED(mu_);
+
+  /**
+   * @brief Reports all unhandled errors with `mu_` released, then rethrows the
+   * first exception thrown by a handler.
+   *
+   * @param unhandled_errors Error objects collected under the lock.
+   */
+  void ReportUnhandledErrors(
+      const std::vector<std::shared_ptr<RayObject>> &unhandled_errors)
+      ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Emplace the given object entry to the in-memory-store and update stats properly.
   void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
