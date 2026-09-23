@@ -84,8 +84,7 @@ public class Counter {
 }
 ```
 
-Then, in Python, you can call the preceding Java remote function, or create an actor
-from the preceding Java class.
+Then, in Python, you can call the preceding Java remote function, or create an actor from the preceding Java class.
 
 ```{literalinclude} ./doc_code/cross_language.py
 :language: python
@@ -107,8 +106,7 @@ Suppose you have a Python module as follows:
 * You should decorate the function or class with `@ray.remote`.
 :::
 
-Then, in Java, you can call the preceding Python remote function, or create an actor
-from the preceding Python class.
+Then, in Java, you can call the preceding Python remote function, or create an actor from the preceding Python class.
 
 ```java
 package io.ray.demo;
@@ -153,8 +151,7 @@ public class JavaCallPythonDemo {
 
 ## Cross-language data serialization
 
-Ray automatically serializes and deserializes the arguments and return values of Ray calls
-if their types are the following:
+Ray automatically serializes and deserializes the arguments and return values of Ray calls if their types are the following:
 
 > - Primitive data types
 >   : ```{list-table}
@@ -199,16 +196,13 @@ if their types are the following:
 >   : - ActorHandle
 
 :::{note}
-* Be aware of float / double precision between Python and Java. If Java is using a
-  float type to receive the input argument, the double precision Python data
-  reduces to float precision in Java.
+* Be aware of float / double precision between Python and Java. If Java is using a float type to receive the input argument, the double precision Python data reduces to float precision in Java.
 * BigInteger can support a max value of 2^64-1. See:
   <https://github.com/msgpack/msgpack/blob/master/spec.md#int-format-family>.
   If the value is larger than 2^64-1, then sending the value to Python raises an exception.
 :::
 
-The following example shows how to pass these types as parameters and how to
-return these types.
+The following example shows how to pass these types as parameters and how to return these types.
 
 You can write a Python function which returns the input data:
 
@@ -218,8 +212,7 @@ You can write a Python function which returns the input data:
 :end-before: __serialization_end__
 ```
 
-Then you can transfer the object from Java to Python, and back from Python
-to Java:
+Then you can transfer the object from Java to Python, and back from Python to Java:
 
 ```java
 package io.ray.demo;

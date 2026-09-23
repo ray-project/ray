@@ -11,9 +11,7 @@ myst:
 This page describes how to use Ray's native cgroup v2 based resource isolation to significantly improve the reliability of a Ray Cluster.
 
 :::{note}
-This feature is only available in Ray version 2.51.0 and above on Linux. The complete memory monitoring system that uses cgroup v2 to
-improve system stability is available in Ray version 2.56.0 and above. See {ref}`Out-Of-Memory Prevention <ray-oom-prevention>` for
-more details.
+This feature is only available in Ray version 2.51.0 and above on Linux. The complete memory monitoring system that uses cgroup v2 to improve system stability is available in Ray version 2.56.0 and above. See {ref}`Out-Of-Memory Prevention <ray-oom-prevention>` for more details.
 :::
 
 :::{note}
@@ -131,8 +129,7 @@ ray start --enable-resource-isolation \
 ```
 
 
-If you are using the {doc}`Ray Cluster Launcher </cluster/vms/user-guides/launching-clusters/on-premises>`, you must add the resource isolation flags into the
-`head_start_ray_commands` and `worker_start_ray_commands`.
+If you are using the {doc}`Ray Cluster Launcher </cluster/vms/user-guides/launching-clusters/on-premises>`, you must add the resource isolation flags into the `head_start_ray_commands` and `worker_start_ray_commands`.
 
 
 ### Enable Resource Isolation with the SDK
