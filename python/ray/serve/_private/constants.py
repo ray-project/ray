@@ -639,14 +639,12 @@ RAY_SERVE_FORCE_LOCAL_TESTING_MODE = get_env_bool(
 )
 
 # Run sync methods defined in the replica in a thread pool by default.
-RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0")
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1")
 
 RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
-    "Calling sync method '{method_name}' directly on the "
-    "asyncio loop. In a future version, sync methods will be run in a "
-    "threadpool by default. Ensure your sync methods are thread safe "
-    "or keep the existing behavior by making them `async def`. Opt "
-    "into the new behavior by setting "
+    "Calling sync method '{method_name}' directly on the asyncio loop because "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0. This can block other requests. Make "
+    "the method `async def` or restore threadpool dispatch by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
 )
 
