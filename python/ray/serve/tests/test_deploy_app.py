@@ -582,6 +582,42 @@ def test_update_config_user_config(serve_instance):
     wait_for_condition(check)
 
 
+def test_deploy_app_removed_user_config(serve_instance):
+    client = serve_instance
+    app_name = "removed-user-config"
+    config = {
+        "applications": [
+            {
+                "name": app_name,
+                "route_prefix": "/removed-user-config",
+                "import_path": "ray.serve.tests.test_config_files.pizza.serve_dag",
+                "deployments": [{"name": "Adder", "user_config": {"increment": 10}}],
+            }
+        ]
+    }
+
+    def app_running_with_healthy_adder():
+        status = serve.status().applications[app_name]
+        return (
+            status.status == ApplicationStatus.RUNNING
+            and status.deployments["Adder"].status == DeploymentStatus.HEALTHY
+        )
+
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
+    wait_for_condition(app_running_with_healthy_adder, timeout=15)
+    url = get_application_url("HTTP", app_name=app_name)
+    wait_for_condition(
+        lambda: httpx.post(url, json=["ADD", 2]).text == "12 pizzas please!"
+    )
+
+    config["applications"][0]["deployments"] = [{"name": "Adder"}]
+    client.deploy_apps(ServeDeploySchema.model_validate(config))
+    wait_for_condition(app_running_with_healthy_adder, timeout=15)
+    wait_for_condition(
+        lambda: httpx.post(url, json=["ADD", 2]).text == "4 pizzas please!"
+    )
+
+
 def test_update_config_max_ongoing_requests(serve_instance):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
     client = serve_instance
