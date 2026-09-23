@@ -200,16 +200,17 @@ def finalizer_patch(
     # Guard the add operation with a resourceVersion test operation.
     # If the CR changed since it was read, the apiserver rejects the whole patch
     # instead of letting "add /metadata/finalizers" replace finalizers added concurrently.
-    resource_version_path = "/metadata/resourceVersion"
-    return [test_patch(resource_version_path, resource_version), add_patch(path, value)]
+    return [resource_version_test_patch(resource_version), add_patch(path, value)]
+
+
+def resource_version_test_patch(resource_version: str) -> Dict[str, Any]:
+    path = "/metadata/resourceVersion"
+    value = resource_version
+    return {"op": "test", "path": path, "value": value}
 
 
 def add_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "add", "path": path, "value": value}
-
-
-def test_patch(path: str, value: Any) -> Dict[str, Any]:
-    return {"op": "test", "path": path, "value": value}
 
 
 def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
