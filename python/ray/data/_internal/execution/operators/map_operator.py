@@ -678,7 +678,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             InputDataBuffer,
         )
 
-        return any(isinstance(dep, InputDataBuffer) for dep in self.input_dependencies)
+        return isinstance(self.input_dependency, InputDataBuffer)
 
     def _data_task_id_for(self, task_index: int) -> str:
         """The lineage id of this operator's ``task_index``-th fresh task.
