@@ -8,6 +8,13 @@ produces that number, which is a hardware question.
 Use this for the fast tests. Use :mod:`~.nvrx` and :mod:`~.dcgm` for the slow
 ones that check the causal chain.
 
+:class:`CudaHang` and :class:`CollectiveDesync` are the exception: they produce
+real faults on real GPUs and need nothing but torch. They exist because
+``nvidia-resiliency-ext`` ships wheels only for cp312/cp314 on
+``manylinux_2_39``, while Ray's GPU image is Python 3.10 on Ubuntu 22.04 --
+two independent mismatches, so NVRx does not pip-install there. These are the
+same two faults, without the dependency.
+
     from ray.train.v2._internal.execution.health.testing import symptoms
 
     def train_func(config):
@@ -144,6 +151,80 @@ class NumericalFault(Symptom):
         )
         self._report({self.metric: reported}, step)
         return reported
+
+
+@dataclass
+class CudaHang(Symptom):
+    """Wedge this rank's CUDA stream, the way NVRx's ``GPU_SLEEP`` does.
+
+    ``torch.cuda._sleep`` queues a kernel that spins for a number of clock
+    cycles; ``1 << 62`` is several human lifetimes, so the stream never drains.
+    The rank stops advancing its collectives while its process stays alive and
+    its node stays healthy -- which is the hang the detector is for.
+
+    Needs a GPU and nothing else. No NVRx, no extra wheel.
+    """
+
+    delay_s: float = 0.0
+    cycles: int = 1 << 62
+    _fired: bool = field(default=False, init=False)
+
+    def fire(self, step: int) -> bool:
+        """Wedge the stream if this rank is the target. Returns whether it did."""
+        if self._fired or not self.targets(step):
+            return False
+        import torch
+
+        if not torch.cuda.is_available():
+            raise RuntimeError("CudaHang needs a CUDA device")
+        self._fired = True
+        if self.delay_s:
+            time.sleep(self.delay_s)
+        device = torch.cuda.current_device()
+        import logging
+
+        logging.getLogger(__name__).critical(
+            "[fault-injection] wedging CUDA stream on rank %s device %s at step %s",
+            _rank(),
+            device,
+            step,
+        )
+        torch.cuda._sleep(self.cycles)
+        return True
+
+
+@dataclass
+class CollectiveDesync(Symptom):
+    """This rank skips a collective its peers are waiting on.
+
+    The purest input for a RAS-based detector: the skipped op leaves this rank's
+    collective count one behind its peers', every other rank blocks inside the
+    all-reduce, and nothing advances again. That is exactly the shape
+    ``mismatched_comms`` keys on -- counts differ, every rank still RUNNING.
+
+    Needs torch.distributed already initialized, which Ray Train's torch backend
+    does. Nothing else.
+
+        fault = CollectiveDesync(rank=3, start_step=50)
+        for step, batch in enumerate(loader):
+            ...
+            if not fault.maybe_skip(step):
+                dist.all_reduce(grads)
+    """
+
+    def maybe_skip(self, step: int) -> bool:
+        """Whether this rank should skip the collective at ``step``."""
+        if not self.targets(step):
+            return False
+        import logging
+
+        logging.getLogger(__name__).critical(
+            "[fault-injection] rank %s skipping the collective at step %s; its "
+            "peers will block",
+            _rank(),
+            step,
+        )
+        return True
 
 
 @dataclass

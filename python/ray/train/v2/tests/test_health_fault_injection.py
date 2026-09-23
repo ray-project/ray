@@ -191,6 +191,43 @@ def test_the_global_control_hits_every_rank_on_one_step():
     assert fault.observe(step=6) == 1.8
 
 
+# ----------------------------------------------------------------------
+# The two GPU faults that need no NVRx
+# ----------------------------------------------------------------------
+def test_collective_desync_skips_only_the_target_rank_and_only_after_start():
+    """The purest RAS input: one rank one op behind, everyone else blocked."""
+    os.environ["RANK"] = "3"
+    fault = symptoms.CollectiveDesync(rank=3, start_step=50)
+    assert fault.maybe_skip(49) is False
+    assert fault.maybe_skip(50) is True
+
+    os.environ["RANK"] = "0"
+    assert fault.maybe_skip(50) is False
+
+
+def test_cuda_hang_only_fires_once():
+    os.environ["RANK"] = "4"
+    fault = symptoms.CudaHang(rank=4, start_step=0)
+    with mock.patch.dict(sys.modules, {"torch": mock.MagicMock()}):
+        sys.modules["torch"].cuda.is_available.return_value = True
+        assert fault.fire(1) is True
+        assert fault.fire(2) is False  # already wedged; do not queue another
+
+
+def test_cuda_hang_refuses_without_a_gpu():
+    os.environ["RANK"] = "4"
+    fault = symptoms.CudaHang(rank=4)
+    with mock.patch.dict(sys.modules, {"torch": mock.MagicMock()}):
+        sys.modules["torch"].cuda.is_available.return_value = False
+        with pytest.raises(RuntimeError, match="needs a CUDA device"):
+            fault.fire(0)
+
+
+def test_cuda_hang_ignores_other_ranks():
+    os.environ["RANK"] = "0"
+    assert symptoms.CudaHang(rank=4).fire(0) is False
+
+
 def test_symptoms_report_through_the_real_api():
     os.environ["RANK"] = "4"
     symptoms.NumericalFault(rank=4, bad_value=99.0).observe(step=7)
