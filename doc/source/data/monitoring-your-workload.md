@@ -65,7 +65,7 @@ Most metrics are available only for physical operators that use the map operatio
 For an overview of every dataset that has run or is running on your cluster, see the **Ray Data Overview** table in the {ref}`jobs view <dash-jobs-view>`. The table appears once the first dataset starts executing on the cluster and shows dataset details such as the following:
 
 * Execution progress, measured in blocks
-* Execution state, which is running, failed, or finished
+* Execution state, such as running, failed, or finished
 * Dataset start and end time
 * Dataset-level metrics, such as the sum of rows processed over all operators
 
@@ -80,7 +80,7 @@ For a finer-grained view, expand a dataset row in the table to see the same deta
 ```
 
 :::{tip}
-When summing the values of all the individual operators doesn't produce a meaningful dataset-level metric, look at the operator-level metrics of the last operator instead. For example, to calculate a dataset's throughput, use the **Rows Outputted** value of the dataset's last operator, because the dataset-level metric sums the rows outputted over all operators.
+When summing the values of all the individual operators doesn't produce a meaningful dataset-level metric, the operator-level metrics of the last operator might be more useful. For example, to calculate a dataset's throughput, use the **Rows Outputted** value of the dataset's last operator, because the dataset-level metric sums the rows outputted over all operators.
 :::
 
 ### Ray dashboard metrics
@@ -490,7 +490,7 @@ context.verbose_stats_logs = True
 
 With verbose stats on, Ray Data adds the following outputs:
 
-* **Extra metrics**: A dictionary of metrics that components such as operators and executors can add to. Some of these stats duplicate the default output, but the dictionary gives you more insight into the dataset's execution.
+* **Extra metrics**: A dictionary of metrics that components such as operators and executors can add to. Some of these stats duplicate the default output, but the dictionary gives advanced users more insight into the dataset's execution.
 * **Runtime metrics**: A high-level breakdown of the dataset execution's runtime. For each operator, these stats show the time the operator took to complete and that time as a fraction of the total execution time. Because multiple operators can run concurrently, these percentages don't necessarily sum to 100%. Instead, they show how long each operator runs relative to the full dataset execution.
 * **Block transform time breakdown**: Ray Data splits each operator's block transform time, which it measures per output block, into the input prep, function body, and output block build phases, so you can see which part of the transform the time went to.
 

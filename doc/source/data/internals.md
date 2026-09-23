@@ -171,7 +171,7 @@ Range-partitioning shuffle is also a classical algorithm. It splits the dataset 
 
 ### How does Ray Data plan execution?
 
-The following sections describe operators, plans, the planner, and plan optimization.
+The following sections describe operators, plans, the planner, plan optimization, and the types of physical operators.
 
 #### What are operators?
 
