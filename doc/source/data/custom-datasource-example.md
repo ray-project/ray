@@ -6,19 +6,19 @@ myst:
 
 (custom_datasource)=
 
-# Advanced: Read and Write Custom File Types
+# Advanced: Read and write custom file types
 
-This guide shows you how to extend Ray Data to read and write file types that aren't natively supported. This is an advanced guide, and you'll use unstable internal APIs.
+This advanced guide shows you how to extend Ray Data to read and write file types that it doesn't support natively. The guide relies on unstable internal APIs.
 
-Images are already supported with the {func}`~ray.data.read_images` and {meth}`~ray.data.Dataset.write_images` APIs, but this example shows you how to implement them for illustrative purposes.
+Ray Data already supports images with the {func}`~ray.data.read_images` and {meth}`~ray.data.Dataset.write_images` APIs. This example shows you how to implement them anyway, as an illustration.
 
 ## Read data from files
 
 :::{tip}
-If you're not contributing to Ray Data, you don't need to create a {class}`~ray.data.Datasource`. Instead, you can call {func}`~ray.data.read_binary_files` and decode files with {meth}`~ray.data.Dataset.map`.
+If you're not contributing to Ray Data, you don't need to create a {class}`~ray.data.Datasource`. Instead, call {func}`~ray.data.read_binary_files` and decode files with {meth}`~ray.data.Dataset.map`.
 :::
 
-The core abstraction for reading files is {class}`~ray.data.datasource.FileBasedDatasource`. It provides file-specific functionality on top of the {class}`~ray.data.Datasource` interface.
+The core abstraction for reading files is {class}`~ray.data.datasource.FileBasedDatasource`. It provides file-specific behavior on top of the {class}`~ray.data.Datasource` interface.
 
 To subclass {class}`~ray.data.datasource.FileBasedDatasource`, implement the constructor and `_read_stream`.
 
@@ -36,7 +36,7 @@ Call the superclass constructor and specify the files you want to read. Optional
 
 `_read_stream` is a generator that yields one or more blocks of data from a file.
 
-[Blocks](https://github.com/ray-project/ray/blob/23d3bfcb9dd97ea666b7b4b389f29b9cc0810121/python/ray/data/block.py#L54) are a Data-internal abstraction for a collection of rows. They can be PyArrow tables, pandas DataFrames, or dictionaries of NumPy arrays.
+[Blocks](https://github.com/ray-project/ray/blob/23d3bfcb9dd97ea666b7b4b389f29b9cc0810121/python/ray/data/block.py#L54) are Ray Data's internal abstraction for a collection of rows. They can be PyArrow tables, pandas DataFrames, or dictionaries of NumPy arrays.
 
 Don't create a block directly. Instead, add rows of data to a [DelegatingBlockBuilder](https://github.com/ray-project/ray/blob/23d3bfcb9dd97ea666b7b4b389f29b9cc0810121/python/ray/data/_internal/delegating_block_builder.py#L10).
 
@@ -48,7 +48,7 @@ Don't create a block directly. Instead, add rows of data to a [DelegatingBlockBu
 
 ### Read your data
 
-Once you've implemented `ImageDatasource`, call {func}`~ray.data.read_datasource` to read images into a {class}`~ray.data.Dataset`. Ray Data reads your files in parallel.
+After you implement `ImageDatasource`, call {func}`~ray.data.read_datasource` to read images into a {class}`~ray.data.Dataset`. Ray Data reads your files in parallel.
 
 ```{literalinclude} doc_code/custom_datasource_example.py
 :language: python
@@ -59,18 +59,18 @@ Once you've implemented `ImageDatasource`, call {func}`~ray.data.read_datasource
 ## Write data to files
 
 :::{note}
-The write interface is under active development and might change in the future. If you have feature requests, [open a GitHub Issue](https://github.com/ray-project/ray/issues/new?assignees=&labels=enhancement%2Ctriage&projects=&template=feature-request.yml&title=%5B%3CRay+component%3A+Core%7CRLlib%7Cetc...%3E%5D+).
+The write interface is under active development and might change. To request a feature, [open a GitHub issue](https://github.com/ray-project/ray/issues/new?assignees=&labels=enhancement%2Ctriage&projects=&template=feature-request.yml&title=%5B%3CRay+component%3A+Core%7CRLlib%7Cetc...%3E%5D+).
 :::
 
-The core abstractions for writing data to files are {class}`~ray.data.datasource.RowBasedFileDatasink` and {class}`~ray.data.datasource.BlockBasedFileDatasink`. They provide file-specific functionality on top of the {class}`~ray.data.Datasink` interface.
+The core abstractions for writing data to files are {class}`~ray.data.datasource.RowBasedFileDatasink` and {class}`~ray.data.datasource.BlockBasedFileDatasink`. They provide file-specific behavior on top of the {class}`~ray.data.Datasink` interface.
 
-If you want to write one row per file, subclass {class}`~ray.data.datasource.RowBasedFileDatasink`. Otherwise, subclass {class}`~ray.data.datasource.BlockBasedFileDatasink`.
+To write one row per file, subclass {class}`~ray.data.datasource.RowBasedFileDatasink`. Otherwise, subclass {class}`~ray.data.datasource.BlockBasedFileDatasink`.
 
-In this example, you'll write one image per file, so you'll subclass {class}`~ray.data.datasource.RowBasedFileDatasink`. To subclass {class}`~ray.data.datasource.RowBasedFileDatasink`, implement the constructor and {meth}`~ray.data.datasource.RowBasedFileDatasink.write_row_to_file`.
+This example writes one image per file, so it subclasses {class}`~ray.data.datasource.RowBasedFileDatasink`. To subclass {class}`~ray.data.datasource.RowBasedFileDatasink`, implement the constructor and {meth}`~ray.data.datasource.RowBasedFileDatasink.write_row_to_file`.
 
 ### Implement the constructor
 
-Call the superclass constructor and specify the folder to write to. Optionally, specify a string representing the file format (for example, `"png"`). Ray Data uses the file format as the file extension.
+Call the superclass constructor and specify the folder to write to. Optionally, specify a string for the file format, such as `"png"`. Ray Data uses the file format as the file extension.
 
 ```{literalinclude} doc_code/custom_datasource_example.py
 :language: python
@@ -90,7 +90,7 @@ Call the superclass constructor and specify the folder to write to. Optionally, 
 
 ### Write your data
 
-Once you've implemented `ImageDatasink`, call {meth}`~ray.data.Dataset.write_datasink` to write images to files. Ray Data writes to multiple files in parallel.
+After you implement `ImageDatasink`, call {meth}`~ray.data.Dataset.write_datasink` to write images to files. Ray Data writes to multiple files in parallel.
 
 ```{literalinclude} doc_code/custom_datasource_example.py
 :language: python
