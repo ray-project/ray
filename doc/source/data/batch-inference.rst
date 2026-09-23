@@ -260,7 +260,7 @@ from the beginning would be expensive.
 To enable job-level checkpointing, configure a
 :class:`~ray.data.checkpoint.CheckpointConfig` on the current
 :class:`~ray.data.DataContext`. See the
-:ref:`Execution Configurations <execution_configurations>` guide for details.
+:ref:`Execution configurations <execution_configurations>` guide for details.
 
 Using GPUs for inference
 ~~~~~~~~~~~~~~~~~~~~~~~~
