@@ -10,18 +10,21 @@ myst:
 
 Get started with Ray Data's {class}`Dataset <ray.data.Dataset>` abstraction for distributed data processing. This guide covers four core capabilities of Ray Data:
 
-* {ref}`Loading data <loading_key_concept>`
-* {ref}`Transforming data <transforming_key_concept>`
-* {ref}`Consuming data <consuming_key_concept>`
-* {ref}`Saving data <saving_key_concept>`
+* {ref}`Load data <loading_key_concept>`
+* {ref}`Transform data <transforming_key_concept>`
+* {ref}`Consume data <consuming_key_concept>`
+* {ref}`Save data <saving_key_concept>`
 
-## Datasets
+(datasets)=
+
+## What is a dataset?
 
 Ray Data's main abstraction is a {class}`Dataset <ray.data.Dataset>`, which represents a distributed collection of data. Datasets are designed for machine learning workloads and can efficiently handle data collections larger than a single machine's memory.
 
 (loading_key_concept)=
+(loading-data)=
 
-## Loading data
+## Load data
 
 Create datasets from sources such as local files, Python objects, and cloud storage services, including S3 and GCS. Ray Data integrates with any [filesystem that Arrow supports](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html).
 
@@ -42,8 +45,9 @@ ds.show(limit=1)
 For more on creating datasets from different sources, see {ref}`Loading data <loading_data>`.
 
 (transforming_key_concept)=
+(transforming-data)=
 
-## Transforming data
+## Transform data
 
 Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations across your cluster.
 
@@ -92,8 +96,9 @@ shape: (150, 6)
 For more transformation options, see {ref}`Transforming data <transforming_data>`.
 
 (consuming_key_concept)=
+(consuming-data)=
 
-## Consuming data
+## Consume data
 
 Access dataset contents with methods such as {meth}`~ray.data.Dataset.take_batch` and {meth}`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray tasks or actors for distributed processing.
 
@@ -117,7 +122,7 @@ For more on working with dataset contents, see {ref}`Iterating over data <iterat
 
 (saving_key_concept)=
 
-## Saving data
+## Save data
 
 Export processed datasets to a variety of formats and storage locations with methods such as {meth}`~ray.data.Dataset.write_parquet` and {meth}`~ray.data.Dataset.write_csv`.
 

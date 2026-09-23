@@ -23,7 +23,7 @@ internals
 
 Ray Data is a scalable data processing library for AI workloads, built on Ray. It provides APIs for common operations such as {ref}`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data uses a {ref}`streaming execution engine <streaming-execution>` to process large datasets efficiently and keep utilization high across both CPU and GPU workloads.
 
-## Quick start
+## Quickstart
 
 To learn more about installing Ray and its libraries, see {ref}`Installing Ray <installation>`. To install Ray Data, run the following command:
 
@@ -164,7 +164,9 @@ Read the API reference
 :::
 ::::
 
-## Case studies for Ray Data
+(case-studies-for-ray-data)=
+
+## Case studies
 
 The following case studies use Ray Data for training ingest:
 
