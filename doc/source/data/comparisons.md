@@ -9,7 +9,7 @@ myst:
 ## How does Ray Data compare to other solutions for offline inference?
 
 :::{dropdown} Batch services: AWS Batch and GCP Batch
-Cloud providers such as AWS, GCP, and Azure provide batch services that manage compute infrastructure for you. Each service works the same way. You provide the code, and the service runs your code on each node in a cluster. Infrastructure management is necessary, but it's often not enough. These services have limitations, such as a lack of software libraries for optimized parallelization, efficient data transfer, and easy debugging. They suit you only if you're experienced enough to write your own optimized batch inference code.
+Cloud providers such as AWS, GCP, and Azure provide batch services that manage compute infrastructure for you. These services follow a similar model, where you provide the code and the service runs it on each node in a cluster. Infrastructure management is necessary, but it's often not enough. These services have limitations, such as a lack of software libraries for optimized parallelization, efficient data transfer, and easy debugging. They suit you only if you're experienced enough to write your own optimized batch inference code.
 
 Ray Data abstracts away more than infrastructure management. It also abstracts away sharding your dataset, parallelizing inference over the shards, and transferring data from storage to CPU to GPU.
 :::
