@@ -107,7 +107,7 @@ threading.Thread(target=lambda: ds_b.materialize()).start()
 
 ## Use subclusters with Ray Train
 
-When you pass the Datasets to a `TorchTrainer` or any other `DataParallelTrainer`, set the selectors through `ray.train.DataConfig`, which takes a per-dataset `ExecutionOptions` map. See {ref}`train-validating-checkpoints` for the full pattern, including how to set the training-side selector through `DataConfig` and the validation-side selector inside your `validation_fn`.
+When you pass the Datasets to a `TorchTrainer` or any other `DataParallelTrainer`, `ray.train.DataConfig` is the more convenient entry point. It takes a per-dataset `ExecutionOptions` map. See {ref}`train-validating-checkpoints` for the full pattern, including how to set the training-side selector through `DataConfig` and the validation-side selector inside your `validation_fn`.
 
 ## API reference
 
