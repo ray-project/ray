@@ -1,0 +1,69 @@
+# Temporary rayci config for validating a new GPU AMI before it replaces the
+# ImageId on the production GPU queues.
+#
+# This is a verbatim transcription of raycicmd's builtin `prPipelineConfig`
+# (ray-project/rayci, raycicmd/builtin_configs.go) with exactly three lines
+# changed: the `gpu`, `gpu-large` and `g6-large` runner queues point at the
+# experimental queues instead of the production ones. Every existing GPU step
+# therefore lands on the new AMI with no edits to any *.rayci.yml file.
+#
+# Usage: on a scratch Buildkite pipeline only, pass this to the upload step:
+#
+#     run_rayci.sh -upload -config .buildkite/rayci.gpu-experimental.config.yaml
+#
+# The production ray-pr / ray-branch pipelines do not reference this file.
+#
+# Note that `-config` REPLACES the builtin config wholesale rather than merging
+# into it, so any key dropped from this file silently reverts to its zero value.
+# Keep it in sync with builtin_configs.go while it lives here.
+#
+# Delete this file once the GPU driver upgrade has been rolled out to the
+# production queues and the experimental queues have been torn down.
+
+artifacts_bucket: ray-ci-artifact-pr-public
+
+ci_temp: s3://ray-ci-artifact-pr-public/ci-temp/
+ci_work_repo: 029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp
+forge_prefix: cr.ray.io/rayproject/
+
+builder_queues:
+  builder: builder_queue_pr
+  builder-arm64: builder_queue_arm64_pr
+  builder-windows: builder_queue_windows_pr
+
+runner_queues:
+  default: runner_queue_small_pr
+  small: runner_queue_small_pr
+  medium: runner_queue_medium_pr
+  large: runner_queue_pr
+  windows: windows_queue_pr
+  macos: macos
+  macos-arm64: macos-pr-arm64
+  medium-arm64: runner_queue_arm64_medium_pr
+
+  # The only divergence from the builtin PR config. Backed by the experimental
+  # queues added in ray-project/reef (ci-stack-module).
+  gpu: gpu_experimental_runner_queue_pr
+  gpu-large: gpu_large_experimental_runner_queue_pr
+  g6-large: g6_large_experimental_runner_queue_pr
+
+builder_priority: 1
+runner_priority: 1
+
+env:
+  BUILDKITE_BAZEL_CACHE_URL: https://bazel-cache-dev.s3.us-west-2.amazonaws.com
+  BUILDKITE_CACHE_READONLY: "true"
+  RAYCI_STAGE: premerge
+
+build_env_keys:
+  - RAYCI_DISABLE_TEST_DB
+  - RAYCI_MICROCHECK_RUN
+
+hook_env_keys:
+  - RAYCI_CHECKOUT_DIR
+
+skip_tags:
+  - disabled
+  - skip-on-premerge
+
+allow_concurrency_group_prefixes: []
