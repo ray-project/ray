@@ -45,7 +45,7 @@ class Sandbox:
 
     def __init__(
         self,
-        image: str,
+        image: Optional[str] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[str, int, float]] = None,
         env: Optional[Dict[str, str]] = None,
@@ -57,6 +57,7 @@ class Sandbox:
         dns: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
+        restore_from: Optional[str] = None,
         **kwargs,
     ):
         env = env or {}
@@ -73,21 +74,39 @@ class Sandbox:
             pass
 
         self.runtime = SandboxRuntime()
-        self.instance_id = self.runtime.create(
-            image=image,
-            cpu=cpu,
-            memory=memory,
-            env=env,
-            workdir=workdir,
-            ttl_seconds=ttl_seconds,
-            timeout_seconds=timeout_seconds,
-            rootless=rootless,
-            network=network,
-            dns=dns,
-            capabilities=capabilities,
-            readonly=readonly,
-            **kwargs,
-        )
+        if restore_from:
+            self.instance_id = self.runtime.restore(
+                checkpoint_path=restore_from,
+                cpu=cpu,
+                memory=memory,
+                env=env,
+                workdir=workdir,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                network=network if network != "none" else None,
+                dns=dns,
+                capabilities=capabilities,
+                readonly=readonly,
+                **kwargs,
+            )
+        else:
+            if not image:
+                raise ValueError("Must provide either 'image' or 'restore_from'")
+            self.instance_id = self.runtime.create(
+                image=image,
+                cpu=cpu,
+                memory=memory,
+                env=env,
+                workdir=workdir,
+                ttl_seconds=ttl_seconds,
+                timeout_seconds=timeout_seconds,
+                rootless=rootless,
+                network=network,
+                dns=dns,
+                capabilities=capabilities,
+                readonly=readonly,
+                **kwargs,
+            )
 
     def __del__(self):
         try:
@@ -186,6 +205,47 @@ class Sandbox:
             SandboxStatus of the sandbox instance.
         """
         return self.runtime.get_status(self.instance_id)
+
+    def checkpoint(
+        self,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Create a checkpoint of the running sandbox.
+
+        Args:
+            checkpoint_path: Path where the checkpoint directory will be saved.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            timeout_seconds: Timeout for the checkpoint operation.
+
+        Returns:
+            Absolute path to the checkpoint directory.
+        """
+        return self.runtime.checkpoint(
+            self.instance_id,
+            checkpoint_path=checkpoint_path,
+            leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
+
+    def pause(self, timeout_seconds: float = 10.0) -> None:
+        """Pause the running sandbox instance.
+
+        Args:
+            timeout_seconds: Timeout for pause operation.
+        """
+        self.runtime.pause(self.instance_id, timeout_seconds=timeout_seconds)
+
+    def resume(self, timeout_seconds: float = 10.0) -> None:
+        """Resume a paused sandbox instance.
+
+        Args:
+            timeout_seconds: Timeout for resume operation.
+        """
+        self.runtime.resume(self.instance_id, timeout_seconds=timeout_seconds)
 
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""
