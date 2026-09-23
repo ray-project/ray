@@ -33,6 +33,10 @@ from ray.util.state import list_actors
 # Windows CI runs these on a shared, heavily loaded shard where multi-node
 # cluster convergence routinely overruns wait_for_condition's 10s default.
 WAIT_TIMEOUT_S = 60
+# With prefer-local off, sequential requests leave both replicas idle and pow-2 routing
+# picks by coin flip; 10 samples all land on one replica 0.2% of the time, 30 makes that
+# negligible.
+NUM_ROUTING_SAMPLES = 30
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=WAIT_TIMEOUT_S):
@@ -554,14 +558,16 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 # the ingress_request_router use-server delegation, then this skip dropped.
 @skip_if_haproxy("balances across replicas without node-local preference")
 @pytest.mark.parametrize("set_flag", [True, False])
-def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
+def test_proxy_prefers_replicas_on_same_node(
+    ray_cluster: Cluster, set_flag, monkeypatch
+):
     """When the feature flag is turned on via env var, verify that http proxy routes to
     replicas on the same node when possible. Otherwise if env var is not set, http proxy
     should route to all replicas equally.
     """
 
     if not set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "0"
+        monkeypatch.setenv("RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "0")
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -571,7 +577,10 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     serve.start(http_options={"location": "HeadOnly"})
     head_node_id = get_head_node_id()
 
-    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
+    # No max_ongoing_requests cap: the router narrows to the local replica at most once,
+    # so a replica that declines while the previous request is still being retired sends
+    # the request to the other node, which is by design and not a routing failure.
+    @serve.deployment(num_replicas=2)
     def f():
         return ray.get_runtime_context().get_node_id()
 
@@ -580,14 +589,13 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
 
     # Since they're sent sequentially, all requests should be routed to
     # the replica on the head node
-    responses = [httpx.post("http://localhost:8000").text for _ in range(10)]
+    responses = [
+        httpx.post("http://localhost:8000").text for _ in range(NUM_ROUTING_SAMPLES)
+    ]
     if set_flag:
         assert all(resp == head_node_id for resp in responses)
     else:
         assert len(set(responses)) == 2
-
-    if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
-        del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
 
 
 class TestHealthzAndRoutes:
@@ -690,8 +698,13 @@ class TestHealthzAndRoutes:
             expected_text="success",
             timeout=WAIT_TIMEOUT_S,
         )
-        assert httpx.get("http://127.0.0.1:8000/-/routes").status_code == 200
-        assert httpx.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8000/-/routes",
+            expected_code=200,
+            expected_text='{"/":"default"}',
+            timeout=WAIT_TIMEOUT_S,
+        )
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8001/-/healthz",
@@ -699,8 +712,13 @@ class TestHealthzAndRoutes:
             expected_text="success",
             timeout=WAIT_TIMEOUT_S,
         )
-        assert httpx.get("http://127.0.0.1:8001/-/routes").status_code == 200
-        assert httpx.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8001/-/routes",
+            expected_code=200,
+            expected_text='{"/":"default"}',
+            timeout=WAIT_TIMEOUT_S,
+        )
 
         # Deleting the deployment drops the replicas on all nodes. The proxies and
         # controller stay alive (the worker proxy drains), so the count is the
