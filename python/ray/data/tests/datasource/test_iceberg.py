@@ -34,6 +34,7 @@ from ray.data._internal.datasource.parquet_datasource import (
 )
 from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
@@ -303,6 +304,53 @@ def test_get_read_tasks_can_disable_bounded_memory(monkeypatch):
     assert scanned_task_counts == [expected_task_count]
 
 
+def test_get_read_task_rejects_pickle_object_columns(monkeypatch, tmp_path):
+    """A scan result carrying a pickled-object column must be rejected before
+    anything is unpickled."""
+    from pyiceberg.io import pyarrow as pyi_pa_io
+
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    poisoned = pa.table(
+        {"value": [1, 2], "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2)}
+    )
+
+    class FakeArrowScan:
+        def __init__(self, **kwargs):
+            pass
+
+        def to_table(self, tasks):
+            return poisoned
+
+    monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+    schema = pyi_schema.Schema(
+        pyi_types.NestedField(
+            field_id=1, name="value", field_type=pyi_types.LongType(), required=False
+        )
+    )
+
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(
+            _get_read_task(
+                tasks=("file-1",),
+                table_io=object(),
+                table_metadata=object(),
+                row_filter=object(),
+                case_sensitive=True,
+                limit=None,
+                schema=schema,
+                read_file_tasks_sequentially=False,
+            )
+        )
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 def test_get_read_task_normalizes_batch_schemas(monkeypatch):
     from pyiceberg.io import pyarrow as pyi_pa_io
 
@@ -477,6 +525,32 @@ def test_empty_projection_has_zero_size_estimate():
 
     assert iceberg_ds.estimate_inmemory_data_size() == 0
     assert all(task.metadata.size_bytes == 0 for task in iceberg_ds.get_read_tasks(3))
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+def test_read_task_remains_compact_with_large_table_metadata():
+    shared_metadata = "x" * (1024 * 1024)
+    catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table = catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+    with table.transaction() as transaction:
+        transaction.set_properties({"ray.test.large_metadata": shared_metadata})
+
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    read_task_ref = ray.put(iceberg_ds.get_read_tasks(1)[0])
+
+    read_task_size = ray.experimental.get_local_object_locations([read_task_ref])[
+        read_task_ref
+    ]["object_size"]
+    assert read_task_size < len(shared_metadata) // 2
+
+    read_task = ray.get(read_task_ref)
+    assert sum(block.num_rows for block in read_task()) == 101
 
 
 @pytest.mark.skipif(

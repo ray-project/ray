@@ -318,7 +318,8 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     ray.shutdown()
     redis_addr = os.environ["RAY_REDIS_ADDRESS"]
     host, port = parse_address(redis_addr)
-    if os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1":
+    is_cluster_mode = os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1") != "1"
+    if is_cluster_mode:
         cli = redis.RedisCluster(host, int(port))
     else:
         cli = redis.Redis(host, int(port))
@@ -327,9 +328,21 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
     c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
     assert set(cli.keys()) == set(c1_keys + c2_keys)
-    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
+    if not is_cluster_mode:
+        cli.config_resetstat()
+    assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
     assert set(cli.keys()) == set(c2_keys)
-    gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
+    if not is_cluster_mode:
+        # Cleanup uses DEL by default: one DEL DUMMY from its Redis connection
+        # setup plus one DEL per key. An exact delta proves which verb the
+        # delete loop used.
+        commandstats = cli.info("commandstats")
+        assert commandstats.get("cmdstat_del", {}).get("calls") == len(c1_keys) + 1
+        assert commandstats.get("cmdstat_unlink", {}).get("calls", 0) == 0
+    # Cleaning an already-clean namespace is idempotent and still succeeds.
+    assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
+    assert set(cli.keys()) == set(c2_keys)
+    assert gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
     assert len(cli.keys()) == 0
 
 

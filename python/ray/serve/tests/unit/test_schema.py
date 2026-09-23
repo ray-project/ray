@@ -19,6 +19,7 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    gRPCOptions,
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
@@ -66,6 +67,11 @@ def get_valid_runtime_envs() -> List[Dict]:
             "env_vars": {"OMP_NUM_THREADS": "32", "EXAMPLE_VAR": "hello"},
             "excludes": "imaginary_file.txt",
         },
+        # Runtime_env pointing at directories already present on every node.
+        {
+            "working_dir": "local:///app",
+            "py_modules": ["local:///app/lib"],
+        },
     ]
 
 
@@ -80,7 +86,9 @@ def get_invalid_runtime_envs() -> List[Dict]:
                 "/Desktop/my_project",
                 TEST_DEPLOY_GROUP_PINNED_URI,
             ],
-        }
+        },
+        # A "local://" URI must carry an absolute path
+        {"working_dir": "local://relative/path"},
     ]
 
 
@@ -537,7 +545,7 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
-    def test_gang_scheduling_config_scale_to_zero_rejected(self):
+    def test_gang_scheduling_config_scale_to_zero(self):
         deployment_schema = self.get_minimal_deployment_schema()
         deployment_schema["num_replicas"] = "auto"
         deployment_schema["gang_scheduling_config"] = {"gang_size": 3}
@@ -545,11 +553,9 @@ class TestDeploymentSchema:
             "min_replicas": 0,
             "max_replicas": 9,
         }
-        with pytest.raises(
-            ValueError,
-            match="Scale to zero isn't supported for gang scheduling",
-        ):
-            DeploymentSchema.model_validate(deployment_schema)
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.autoscaling_config["min_replicas"] == 0
+        assert schema.gang_scheduling_config.gang_size == 3
 
     def test_gang_scheduling_config_invalid_num_replicas(self):
         deployment_schema = self.get_minimal_deployment_schema()
@@ -1025,16 +1031,22 @@ class TestServeDeploySchema:
             ServeDeploySchema.model_validate(deploy_config_dict)
 
     def test_deploy_with_grpc_options(self):
-        """gRPC options can be specified."""
+        """gRPC options can be specified and round-trip to `gRPCOptions`."""
 
         deploy_config_dict = {
             "grpc_options": {
                 "port": 9000,
                 "grpc_servicer_functions": ["foo.bar"],
+                "enable_reflection": False,
             },
             "applications": [],
         }
-        ServeDeploySchema.model_validate(deploy_config_dict)
+        deploy_schema = ServeDeploySchema.model_validate(deploy_config_dict)
+        grpc_options = gRPCOptions(**deploy_schema.grpc_options.model_dump())
+        assert grpc_options.port == 9000
+        assert grpc_options.grpc_servicer_functions == ["foo.bar"]
+        assert grpc_options.enable_reflection is False
+        assert gRPCOptions().enable_reflection is True
 
     @pytest.mark.parametrize(
         "input_val,error,output_val",

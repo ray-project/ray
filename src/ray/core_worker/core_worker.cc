@@ -1803,7 +1803,7 @@ Status CoreWorker::GetLocationFromOwner(
   if (timeout_ms < 0) {
     ready_promise->get_future().wait();
   } else if (ready_promise->get_future().wait_for(
-                 std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
+                 std::chrono::milliseconds(timeout_ms)) != std::future_status::ready) {
     std::ostringstream stream;
     stream << "Failed querying object locations within " << timeout_ms
            << " milliseconds.";
@@ -3439,6 +3439,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
                        << "index: " << item_index;
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
+        waiter->OnObjectReportAccepted();
         if (!status.ok()) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
@@ -3446,9 +3447,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable. "
               << status;
-        }
-        waiter->OnObjectReportAccepted();
-        if (!status.ok()) {
+
           waiter->OnObjectConsumed(waiter->TotalObjectGenerated());
           if (actor_metadata) {
             actor_metadata->Teardown();
@@ -3801,7 +3800,11 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    worker_context_->MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    if (worker_context_->MaybeInitializeJobInfo(job_id,
+                                                request.task_spec().job_config())) {
+      reference_counter_->SetLineagePinningEnabled(
+          worker_context_->ShouldPinObjectLineage());
+    }
     task_counter_.SetJobId(job_id);
   }
 
@@ -4158,11 +4161,6 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;
   }
-  auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
-  if (!reference_exists) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
-  }
-
   // For generator tasks where we haven't yet received the task reply, the
   // internal ObjectRefs may not be added yet, so we don't find out about these
   // until the task finishes.
@@ -4178,7 +4176,11 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
       // ObjectID so that we can update its location.
       reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     }
-    RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
+  }
+  if (!reference_counter_->AddObjectLocation(object_id, node_id)) {
+    // The ref may be dropped and free objects sent before this report arrives, so free
+    // the additional copies here.
+    FreeObjectOnNodesAsync(object_id, {node_id});
   }
 }
 
@@ -4996,6 +4998,9 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
 
 void CoreWorker::FreeObjectOnNodesAsync(const ObjectID &object_id,
                                         const absl::flat_hash_set<NodeID> &locations) {
+  RAY_LOG(DEBUG) << absl::StrFormat("Freeing object %s asynchronously via request.",
+                                    object_id.Hex());
+
   const size_t warn_backlog = static_cast<size_t>(
       RayConfig::instance().free_local_objects_backlog_warn_objects_per_node());
   for (const auto &node_id : locations) {

@@ -146,7 +146,7 @@ class LLMRouter:
             self._kv_token_tracker.start_reservation_broadcast(get_llm_router_handle())
             # Lazy import: this module pulls in vLLM's renderer;
             # keep it off the non-KV ingress import path.
-            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
                 Tokenizer,
             )
 
@@ -180,7 +180,7 @@ class LLMRouter:
         # body has no routing payload, so fall back to token-less routing.
         request_token_ids = None
         if self._tokenizer is not None and routing_payload is not None:
-            from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+            from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (  # noqa: E501
                 TokenizeError,
             )
 

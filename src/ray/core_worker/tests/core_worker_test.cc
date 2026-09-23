@@ -158,7 +158,9 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+        [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+          core_worker_->FreeObjectOnNodesAsync(object_id, locations);
+        },
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
         false);
@@ -204,6 +206,8 @@ class CoreWorkerTest : public ::testing::Test {
         fake_total_lineage_bytes_gauge_,
         /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
         /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {},
+        /*free_stale_unconsumed_generator_objects_async=*/
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         /*clock=*/clock_);
 
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
@@ -1320,8 +1324,8 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
                                      object_size,
                                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                                      true);
-  // NOTE: this triggers a publish to no subscribers so its not stored in any mailbox but
-  // bumps the sequence id by 1
+  // No raylet has subscribed to this object yet, so this update is skipped and
+  // consumes no sequence id.
   reference_counter_->AddObjectLocation(object_id, node_id);
 
   rpc::PubsubLongPollingRequest request;
@@ -1385,11 +1389,11 @@ TEST_F(CoreWorkerTest, HandlePubsubWorkerObjectLocationsChannelRetries) {
     EXPECT_EQ(msg.worker_object_locations_message().node_ids_size(), 1);
     EXPECT_EQ(msg.worker_object_locations_message().object_size(), object_size);
     EXPECT_EQ(msg.worker_object_locations_message().node_ids(0), node_id.Binary());
-    // Subscribe snapshot is seq 2; coalesced retry snapshot is seq 3.
+    // Subscribe snapshot is seq 1; coalesced retry snapshot is seq 2.
     EXPECT_EQ(msg.sequence_id(), expected_sequence_id);
   };
-  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/2);
-  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/3);
+  CheckMessage(long_polling_reply1.pub_messages(0), /*expected_sequence_id=*/1);
+  CheckMessage(long_polling_reply2.pub_messages(0), /*expected_sequence_id=*/2);
 }
 
 class HandleWaitForActorRefDeletedRetriesTest
@@ -1790,6 +1794,39 @@ TEST_F(CoreWorkerTest, FreeLocalObjectsKeepsBufferingPastWarnThreshold) {
   }
   EXPECT_EQ(total, kNumObjects);  // Nothing dropped past the warn threshold.
   warn_objects = prev;
+}
+
+// Tests that if a raylet location report to the owner arrives after the ref was dropped,
+// we still free that copy.
+TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
+  const NodeID node_id = core_worker_->GetCurrentNodeId();
+  auto report_location = [&](const ObjectID &object_id) {
+    rpc::UpdateObjectLocationBatchRequest request;
+    request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    request.set_node_id(node_id.Binary());
+    auto *update = request.add_object_location_updates();
+    update->set_object_id(object_id.Binary());
+    update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+    rpc::UpdateObjectLocationBatchReply reply;
+    core_worker_->HandleUpdateObjectLocationBatch(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true);
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+  EXPECT_TRUE(local_raylet_client_->free_local_objects_batches.empty());
+
+  report_location(object_id);
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 }
 
 }  // namespace core

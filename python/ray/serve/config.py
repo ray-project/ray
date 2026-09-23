@@ -61,6 +61,10 @@ class AutoscalingContext:
     Note: The aggregated_metrics and raw_metrics fields support lazy evaluation.
     You can pass callables that will be evaluated only when accessed, with results
     cached for subsequent accesses.
+
+    Note: total_num_requests and total_queued_requests are both aggregated over
+    `look_back_period_s` using the deployment's `aggregation_function`, so under `min`
+    or `max` they report the window trough or peak rather than the current value.
     """
 
     def __init__(
@@ -112,10 +116,10 @@ class AutoscalingContext:
 
         # Built-in metrics
         self._total_num_requests_value = (
-            total_num_requests  #: Total number of requests across all replicas.
+            total_num_requests  #: Ongoing (running + queued) requests.
         )
         self._total_queued_requests_value = (
-            total_queued_requests  #: Number of requests currently queued.
+            total_queued_requests  #: Requests queued at handles.
         )
 
         # Custom metrics - store potentially lazy callables privately
@@ -172,9 +176,9 @@ class AutoscalingContext:
 
     @property
     def total_running_requests(self) -> float:
-        # NOTE: for non-additive aggregation functions, total_running_requests is not
-        # accurate, consider this is an approximation.
-        return self.total_num_requests - self.total_queued_requests
+        # Approximate: the two operands are reduced over independently derived windows,
+        # so their difference can even go negative. Clamped until they share one window.
+        return max(0.0, self.total_num_requests - self.total_queued_requests)
 
     @property
     def total_pending_async_requests(self) -> int:
@@ -962,11 +966,16 @@ class gRPCOptions(BaseModel):
             be added and no gRPC server will be started. The servicer functions need to
             be importable from the context of where Serve is running.
         request_timeout_s: End-to-end timeout for gRPC requests.
+        enable_reflection (bool):
+            Enable the gRPC server reflection protocol on Serve's gRPC proxy so
+            tools such as grpcurl and grpcui can discover and call the registered
+            gRPC services. Default to True.
     """
 
     port: int = DEFAULT_GRPC_PORT
     grpc_servicer_functions: List[str] = []
     request_timeout_s: Optional[float] = None
+    enable_reflection: bool = True
 
     @property
     def grpc_servicer_func_callable(self) -> List[Callable]:

@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--shuffle-strategy",
         required=False,
-        default=ShuffleStrategy.SORT_SHUFFLE_PULL_BASED,
+        default=ShuffleStrategy.SHUFFLE_V2.value,
         nargs="?",
         type=str,
         help="Strategy to use when shuffling data (see ShuffleStrategy for accepted values)",
@@ -74,11 +74,11 @@ def main(args):
             else None
         )
         ds = ray.data.read_parquet(path, override_num_blocks=override_num_blocks)
-        # Cast string columns to large_string: on low-cardinality keys a single
-        # group's string data can exceed 2GB per column, overflowing Arrow's
-        # int32 string offsets when the shuffle reduce sorts the partition
-        # into one contiguous table.
-        ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
+
+        if args.aggregate:
+            ds = ds.select_columns(list(dict.fromkeys([*args.group_by, "column05"])))
+        else:
+            ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
         grouped_ds = ds.groupby(args.group_by)
         consume_fn(grouped_ds)
 

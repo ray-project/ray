@@ -5,6 +5,7 @@ import pickle
 import time
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -21,6 +22,7 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
@@ -385,75 +387,118 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
+    def _record_metrics_delay(
+        self,
+        timestamp: float,
+        deployment_id: DeploymentID,
+        report_delay: Callable[..., None],
+        record_delay: Optional[Callable[[float], None]] = None,
+    ) -> None:
+        """Report ingest delay. Only deployment/application tags are set, so these
+        metrics stay bounded no matter how many sources report."""
+        delay_ms = (time.time() - timestamp) * 1000
+        report_delay(
+            delay_ms,
+            tags={
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+            },
+        )
+        if record_delay is not None:
+            record_delay(delay_ms)
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(replica_metric_report, bytes):
+            decompress_start = time.monotonic()
             replica_metric_report = decompress_metric_report(replica_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
-        latency = time.time() - replica_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = replica_metric_report.replica_id.deployment_id.name
-        application = replica_metric_report.replica_id.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all replicas of a deployment, so we omit the
-        # per-replica tag to keep cardinality bounded.
-        self.replica_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+        self._record_metrics_delay(
+            replica_metric_report.timestamp,
+            replica_metric_report.replica_id.deployment_id,
+            self.replica_metrics_delay_histogram.observe,
+            self._health_metrics_tracker.record_replica_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
+        )
+        self._health_metrics_tracker.record_replica_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
-            handle_metric_report = decompress_metric_report(handle_metric_report)
+            if autoscaling_metrics_codec.is_columnar(handle_metric_report):
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
+                decode_start = time.monotonic()
+                try:
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                except Exception:
+                    # The sender never reads this call's ObjectRef, so an unparseable
+                    # report would otherwise vanish with no trace on either side. The
+                    # handle keeps its last good data until the drop path times it out.
+                    logger.exception("Dropping an undecodable columnar metric report.")
+                    return
+                self._health_metrics_tracker.record_columnar_decode(
+                    (time.monotonic() - decode_start) * 1000
+                )
+                self._record_metrics_delay(
+                    d["timestamp"],
+                    d["deployment_id"],
+                    self.handle_metrics_delay_histogram.observe,
+                    self._health_metrics_tracker.record_handle_metrics_delay,
+                )
+                self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
+                self._health_metrics_tracker.record_handle_ingest(
+                    (time.monotonic() - ingest_start) * 1000
+                )
+                return
+            decompress_start = time.monotonic()
+            try:
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            except Exception:
+                logger.exception("Dropping an undecompressible handle metric report.")
+                return
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
         # Decompression (above) always yields a HandleMetricReport.
         handle_metric_report = cast(HandleMetricReport, handle_metric_report)
-        latency = time.time() - handle_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = handle_metric_report.deployment_id.name
-        application = handle_metric_report.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all handles of a deployment, so we omit the
-        # per-handle tag to keep cardinality bounded.
-        self.handle_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+        self._record_metrics_delay(
+            handle_metric_report.timestamp,
+            handle_metric_report.deployment_id,
+            self.handle_metrics_delay_histogram.observe,
+            self._health_metrics_tracker.record_handle_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
+        )
+        self._health_metrics_tracker.record_handle_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_async_inference_task_queue(
         self, report: AsyncInferenceTaskQueueMetricReport
     ):
         """Record async inference task queue metrics pushed from QueueMonitor."""
-        latency = time.time() - report.timestamp_s
-        latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.async_inference_task_queue_metrics_delay_gauge.set(
-            latency_ms,
-            tags={
-                "deployment": report.deployment_id.name,
-                "application": report.deployment_id.app_name,
-            },
+        self._record_metrics_delay(
+            report.timestamp_s,
+            report.deployment_id,
+            self.async_inference_task_queue_metrics_delay_gauge.set,
         )
         self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 

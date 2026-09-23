@@ -19,7 +19,7 @@ from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     build_tokenize_request,
 )

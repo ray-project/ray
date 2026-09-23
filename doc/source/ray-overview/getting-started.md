@@ -329,7 +329,7 @@ Learn more about Ray Serve
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> RLlib: Industry-Grade Reinforcement Learning
 :animate: fade-in-slide-down
 
-[RLlib](../rllib/index.rst) is a reinforcement learning (RL) library that offers high performance implementations of popular RL algorithms and supports various training environments. RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
+{doc}`RLlib <../rllib/index>` is a reinforcement learning (RL) library that offers high performance implementations of popular RL algorithms and supports various training environments. RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 ````{note}
 To run this example, install `rllib` and either `tensorflow` or `pytorch`:
@@ -668,7 +668,7 @@ Try Ray on Anyscale
 Use built-in observability tools to monitor and debug Ray applications and clusters. These tools help you understand your application's performance and identify bottlenecks.
 
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray dashboard: Web GUI to monitor and debug Ray
 :animate: fade-in-slide-down
 
 Ray dashboard provides a visual interface that displays real-time system metrics, node-level resource monitoring, job profiling, and task visualizations. The dashboard is designed to help users understand the performance of their Ray applications and identify potential issues.
@@ -691,7 +691,7 @@ The dashboard automatically becomes available when running Ray scripts. Access t
 :outline:
 :expand:
 
-Learn more about Ray Dashboard
+Learn more about Ray dashboard
 ```
 
 `````

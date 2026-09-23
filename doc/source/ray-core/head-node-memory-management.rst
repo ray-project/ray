@@ -14,8 +14,8 @@ When running Ray clusters for extended periods, the head node's memory usage can
 Why Head Node Memory Grows  
 ---------------------------  
   
-- The Ray Dashboard provides a web interface for cluster monitoring and debugging. For more details, see :ref:`observability-getting-started`.
-- The Ray Dashboard caches cluster events in memory for display and debugging purposes. The ``RAY_DASHBOARD_MAX_EVENTS_TO_CACHE`` environment variable controls the cache size. For implementation details, see the `event caching code <https://github.com/ray-project/ray/blob/814768317813afca2f0af740f58d024b059ae7d7/python/ray/dashboard/modules/event/event_head.py#L35>`_.  
+- The Ray dashboard provides a web interface for cluster monitoring and debugging. For more details, see :ref:`observability-getting-started`.
+- The Ray dashboard caches cluster events in memory for display and debugging purposes. The ``RAY_DASHBOARD_MAX_EVENTS_TO_CACHE`` environment variable controls the cache size. For implementation details, see the `event caching code <https://github.com/ray-project/ray/blob/814768317813afca2f0af740f58d024b059ae7d7/python/ray/dashboard/modules/event/event_head.py#L35>`_.  
 - The dashboard processes and stores logs and metadata from jobs and workers, which accumulate over time in long-running clusters.  
   
 Mitigation Strategies  
@@ -28,7 +28,7 @@ Running tasks or actors on the head node isn't recommended because it hosts crit
 
 See :ref:`vms-large-cluster-configure-head-node` for head-node best practices.
 
-Disable the Dashboard  
+Disable the dashboard  
 ~~~~~~~~~~~~~~~~~~~~~  
   
 If you don't need the dashboard, disabling it removes event caching and related memory overhead. This reduces observability into the system so it's not recommended for production clusters.
@@ -101,7 +101,7 @@ Best Practices
 3. **Set appropriate Kubernetes resource limits** (match requests for memory and GPU).
 
 .. note::
-    You *can* disable the dashboard, but doing so severely limits observability and isn't **recommended for production**. If you choose to disable it, see the `Disable the Dashboard` section in the preceding text.
+    You *can* disable the dashboard, but doing so severely limits observability and isn't **recommended for production**. If you choose to disable it, see the `Disable the dashboard` section in the preceding text.
 
 Troubleshooting
 ---------------  

@@ -16,9 +16,10 @@ class FileScanner(Scanner[FileManifest]):
     """Base scanner for file-based datasources.
 
     Subclasses implement format-specific ``read_schema()`` and
-    ``create_reader()``. Shuffling and parallel bucketing are handled
-    upstream in the ``ListFiles`` transform chain (``shuffle_files`` +
-    ``RoundRobinPartitioner`` via ``plan_list_files_op``), not here.
+    ``create_reader()``. File shuffling is handled by the ``FileIndexer``
+    after path discovery and before metadata fetch; parallel bucketing is
+    handled upstream in the ``ListFiles`` transform chain
+    (``RoundRobinPartitioner`` via ``plan_list_files_op``), not here.
 
     PyArrow Dataset-based scanners should subclass ``ArrowFileScanner``;
     use ``FileScanner`` directly for non-Arrow file formats.
@@ -33,14 +34,3 @@ class FileScanner(Scanner[FileManifest]):
 
     def __post_init__(self) -> None:
         _validate_shuffle_arg(self.shuffle)
-
-    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Return a filtered view of ``manifest``.
-
-        Default: identity. Subclasses that support file-level predicate
-        pruning (e.g. :class:`ArrowFileScanner`'s ``partition_predicate``)
-        override this to drop rows whose partition values fail the
-        predicate. Invoked per-block from
-        :func:`plan_read_files_op.do_read`.
-        """
-        return manifest

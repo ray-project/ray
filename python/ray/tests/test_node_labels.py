@@ -2,13 +2,13 @@ import os
 import subprocess
 import sys
 import tempfile
-from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.accelerators.tpu import TPUAcceleratorManager
+from ray._private.test_utils import mock_accelerator_detection
 from ray.cluster_utils import AutoscalingCluster
 
 
@@ -16,9 +16,10 @@ def check_cmd_stderr(cmd):
     return subprocess.run(cmd, stderr=subprocess.PIPE).stderr.decode("utf-8")
 
 
-def add_default_labels_for_test(node_info, labels):
-    labels["ray.io/node-id"] = node_info["NodeID"]
-    return labels
+def custom_labels(node_info):
+    # Ray fills the reserved ray.io/ namespace itself (node id, accelerator type,
+    # ...) with machine-dependent values; custom labels can never use that prefix.
+    return {k: v for k, v in node_info["Labels"].items() if not k.startswith("ray.io/")}
 
 
 @pytest.mark.parametrize(
@@ -29,9 +30,7 @@ def add_default_labels_for_test(node_info, labels):
 def test_ray_start_set_node_labels_from_json(call_ray_start):
     ray.init(address=call_ray_start)
     node_info = ray.nodes()[0]
-    assert node_info["Labels"] == add_default_labels_for_test(
-        node_info, {"gpu_type": "A100", "region": "us"}
-    )
+    assert custom_labels(node_info) == {"gpu_type": "A100", "region": "us"}
 
 
 @pytest.mark.parametrize(
@@ -42,9 +41,7 @@ def test_ray_start_set_node_labels_from_json(call_ray_start):
 def test_ray_start_set_node_labels_from_string(call_ray_start):
     ray.init(address=call_ray_start)
     node_info = ray.nodes()[0]
-    assert node_info["Labels"] == add_default_labels_for_test(
-        node_info, {"gpu_type": "A100", "region": "us"}
-    )
+    assert custom_labels(node_info) == {"gpu_type": "A100", "region": "us"}
 
 
 @pytest.mark.parametrize(
@@ -57,18 +54,18 @@ def test_ray_start_set_node_labels_from_string(call_ray_start):
 def test_ray_start_set_empty_node_labels(call_ray_start):
     ray.init(address=call_ray_start)
     node_info = ray.nodes()[0]
-    assert node_info["Labels"] == add_default_labels_for_test(node_info, {})
+    assert custom_labels(node_info) == {}
 
 
 def test_ray_init_set_node_labels(shutdown_only):
     labels = {"gpu_type": "A100", "region": "us"}
     ray.init(labels=labels)
     node_info = ray.nodes()[0]
-    assert node_info["Labels"] == add_default_labels_for_test(node_info, labels)
+    assert custom_labels(node_info) == labels
     ray.shutdown()
     ray.init(labels={})
     node_info = ray.nodes()[0]
-    assert node_info["Labels"] == add_default_labels_for_test(node_info, {})
+    assert custom_labels(node_info) == {}
 
 
 def test_node_labels_connect_only_false(shutdown_only):
@@ -125,14 +122,14 @@ def test_cluster_add_node_with_labels(ray_start_cluster):
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
     node_info = ray.nodes()[0]
-    assert node_info["Labels"] == add_default_labels_for_test(node_info, labels)
+    assert custom_labels(node_info) == labels
     head_node_id = ray.nodes()[0]["NodeID"]
 
     cluster.add_node(num_cpus=1, labels={})
     cluster.wait_for_nodes()
     for node in ray.nodes():
         if node["NodeID"] != head_node_id:
-            assert node["Labels"] == add_default_labels_for_test(node, {})
+            assert custom_labels(node) == {}
 
 
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
@@ -158,9 +155,7 @@ def test_autoscaler_set_node_labels(autoscaler_v2, shutdown_only):
 
         for node in ray.nodes():
             if node["Resources"].get("CPU", 0) == 1:
-                assert node["Labels"] == add_default_labels_for_test(
-                    node, {"region": "us"}
-                )
+                assert custom_labels(node) == {"region": "us"}
     finally:
         cluster.shutdown()
 
@@ -175,9 +170,11 @@ def test_ray_start_set_node_labels_from_file(shutdown_only):
         subprocess.check_call(cmd)
         ray.init(address="auto")
         node_info = ray.nodes()[0]
-        assert node_info["Labels"] == add_default_labels_for_test(
-            node_info, {"gpu_type": "A100", "region": "us", "market-type": "spot"}
-        )
+        assert custom_labels(node_info) == {
+            "gpu_type": "A100",
+            "region": "us",
+            "market-type": "spot",
+        }
     finally:
         subprocess.check_call(["ray", "stop", "--force"])
         os.remove(test_file_path)
@@ -191,7 +188,7 @@ def test_get_default_ray_node_labels(shutdown_only, monkeypatch):
     monkeypatch.setenv("RAY_NODE_ZONE", "us-central2-b")
     monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v4-16")
 
-    ray.init(resources={"TPU": 4})
+    ray.init(resources={"TPU": 4}, num_gpus=0)
     node_info = ray.nodes()[0]
     labels = node_info["Labels"]
 
@@ -209,13 +206,7 @@ def test_get_default_tpu_labels(shutdown_only, monkeypatch):
     monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-32")
     monkeypatch.setenv("TPU_TOPOLOGY", "4x8")
 
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value=["TPU"],
-    ), patch(
-        "ray._private.accelerators.get_accelerator_manager_for_resource",
-        return_value=TPUAcceleratorManager(),
-    ):
+    with mock_accelerator_detection(TPUAcceleratorManager):
         ray.init(resources={"TPU": 4})
         node_info = ray.nodes()[0]
         labels = node_info["Labels"]

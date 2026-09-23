@@ -73,6 +73,8 @@ Results to expect
 -----------------
 The tuner will explore the hyperparameter space via random sampling and find
 configurations that achieve reward of 475+ on CartPole within 2 million timesteps.
+Each trial also stops after `--stop-iters` training iterations, so that a trial
+sampling poor hyperparameters does not train for the full timestep budget.
 The best trial's hyperparameters will be logged at the end of training.
 """
 
@@ -129,19 +131,23 @@ config = (
         lr=tune.loguniform(0.0001, 0.005),
         vf_loss_coeff=tune.uniform(0.5, 2.0),
         entropy_coeff=tune.uniform(0.001, 0.02),
-        # Use tune.qrandint(a, b, q) for discrete params in [a, b) with step q (defaults to 1)
+        # Use tune.randint(a, b) and tune.qrandint(a, b, q) with multiples
+        # of q for discrete params
         train_batch_size_per_learner=tune.qrandint(256, 2048, 64),
-        target_network_update_freq=tune.qrandint(1, 6),
-        broadcast_interval=tune.qrandint(2, 11),
-        circular_buffer_num_batches=tune.qrandint(2, 6),
-        circular_buffer_iterations_per_batch=tune.qrandint(1, 5),
+        target_network_update_freq=tune.randint(1, 6),
+        broadcast_interval=tune.randint(2, 11),
+        circular_buffer_num_batches=tune.randint(2, 6),
+        circular_buffer_iterations_per_batch=tune.randint(1, 5),
     )
 )
 
-# Stopping criteria: either reach target reward or max timesteps
+# Stopping criteria: whichever of target reward, max timesteps, or max training
+# iterations is reached first. The iteration cap bounds trials that sample poor
+# hyperparameters and would otherwise keep training until --stop-timesteps.
 stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+    TRAINING_ITERATION: args.stop_iters,
 }
 
 

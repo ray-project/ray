@@ -5,6 +5,7 @@ FROM $BASE_IMAGE
 ARG BUILDKITE_BAZEL_CACHE_URL
 ARG PYTHON=3.10
 ARG CUDA_VERSION=12.8.1
+ARG NCCL_VERSION=2.28.9-1+cuda12.9
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -15,19 +16,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 #
 # Empty for anyone building these images outside CI, and then this is exactly the index
 # pip would have used anyway, so an external build behaves as it does today.
+#
+# ENV rather than ARG on purpose: the *.build.Dockerfile images build FROM this
+# image (directly or via another base) and install packages themselves, and the
+# persisted value is what carries the index into those derived builds.
 ARG RAYCI_IMAGE_PIP_INDEX_URL=""
 ENV PIP_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 ENV UV_INDEX_URL=${RAYCI_IMAGE_PIP_INDEX_URL:-https://pypi.org/simple}
 
-# pip refuses a plain-HTTP index unless the host is named as trusted, with loopback the
-# one exemption -- and this address is a name, not loopback. The refusal is silent: the
-# index is dropped and the install fails with "from versions: none" rather than a
-# connection error (release 104844, cython==3.0.12 in the wheel build). Arrives the same
-# way as the index above and is empty outside CI, where the index is public PyPI over
-# HTTPS and there is nothing to trust.
-ARG RAYCI_IMAGE_PIP_TRUSTED_HOST=""
-ENV PIP_TRUSTED_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
-ENV UV_INSECURE_HOST=${RAYCI_IMAGE_PIP_TRUSTED_HOST}
 ENV TZ=America/Los_Angeles
 
 ENV RAY_BUILD_ENV=ubuntu22.04_clang14_cuda${CUDA_VERSION}_py$PYTHON
@@ -56,6 +52,11 @@ ln -s /usr/bin/clang-format-14 /usr/bin/clang-format
 ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
 ln -s /usr/bin/clang-14 /usr/bin/clang
 
+apt-get install -y -qq --allow-change-held-packages --allow-downgrades "libnccl2=${NCCL_VERSION}" "libnccl-dev=${NCCL_VERSION}"
+apt-mark hold libnccl2 libnccl-dev
+command -v ncclras  # Fail the build if the pin did not stick or the client binary is missing.
+dpkg-query -W -f='${Package} ${Version}\n' libnccl2 libnccl-dev
+
 # Install docker CLI
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
@@ -69,7 +70,7 @@ apt-get install -y docker-ce-cli
 
 echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}" >> /root/.bazelrc
 
-curl -fsSL https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 EOF
 

@@ -208,8 +208,8 @@ Tuning read resources
 ~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray requests 1 CPU per read task, which means one read task per CPU can execute concurrently.
-For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
-For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
+For datasources that benefit from more IO parallelism, you can reserve fewer CPUs for each read task.
+For example, use ``ray.data.read_parquet(path, num_cpus=0.25)`` to allow up to four read tasks per CPU.
 
 .. _parquet_column_pruning:
 
@@ -230,7 +230,7 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
     ds = ray.data.read_parquet(
         "s3://anonymous@ray-example-data/iris.parquet",
     ).select_columns(["sepal.length", "variety"])
-    
+
     print(ds.schema())
 
 .. testoutput::
