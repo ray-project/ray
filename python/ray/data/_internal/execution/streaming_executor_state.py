@@ -962,8 +962,8 @@ def process_completed_tasks(
                                     topology, lineage_tracker, state, task, e
                                 )
                             except LineageReconstructionError as recon_error:
-                                # Untracked / unrecoverable: fall through to the
-                                # error path, carrying why reconstruction failed.
+                                # In case lineage reconstruction fails, abort the task
+                                task.mark_aborted(recon_error)
                                 _record_errored_block(recon_error, state.op.name)
                         except Exception as e:
                             _record_errored_block(e, state.op.name)

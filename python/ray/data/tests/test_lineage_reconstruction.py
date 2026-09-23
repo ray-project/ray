@@ -303,7 +303,55 @@ def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
     assert task not in fetcher._drained_tasks
 
 
-def test_failed_reconstruction_carries_the_original_loss_and_the_reason():
+@reconstruction_enabled
+def test_failed_reconstruction_aborts_the_lost_task_once(
+    ray_start_regular_shared, restore_data_context, monkeypatch  # noqa: F405
+):
+    """A loss whose reconstruction fails must abort its task only once.
+
+    With a tracker, ``on_data_ready`` leaves the lost task ACTIVE for the executor
+    to abort. A failure path that skips the abort leaves the task polled every
+    tick, so the same loss is counted again until ``max_errored_blocks`` runs out.
+    """
+    # Bounds the run if the task is never aborted: the same loss would be counted
+    # again every tick and, with an unlimited budget, spin forever.
+    DataContext.get_current().max_errored_blocks = 1
+    reconstruction_attempts = []
+
+    def fail_reconstruction(topology, lineage_tracker, state, task, lost_error):
+        reconstruction_attempts.append(task.task_index())
+        raise LineageReconstructionError(lost_error, "failed by test")
+
+    def lost_output(self, max_bytes_to_read, metadata_fetcher):
+        # A lost output stays lost: every read raises until the executor stops
+        # polling the task.
+        raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+
+    monkeypatch.setattr(
+        "ray.data._internal.execution.streaming_executor_state."
+        "_reconstruct_lost_object",
+        fail_reconstruction,
+    )
+    monkeypatch.setattr(DataOpTask, "on_data_ready", lost_output)
+
+    abort_errors = []
+    original_mark_aborted = DataOpTask.mark_aborted
+
+    def recording_mark_aborted(self, exception):
+        abort_errors.append(exception)
+        original_mark_aborted(self, exception)
+
+    monkeypatch.setattr(DataOpTask, "mark_aborted", recording_mark_aborted)
+
+    ray.data.range(1).take_all()
+
+    # The executor aborted the lost task once, with the reconstruction error.
+    assert [type(error) for error in abort_errors] == [LineageReconstructionError]
+    # The task was re-attempted once.
+    assert reconstruction_attempts == [0]
+
+
+def test_reconstruction_error_wraps_object_lost_error():
     """An ``ObjectLostError`` triggers a lineage reconstruction attempt that fails.
 
     Test that the LineageReconstructionError carries both the original ObjectLostError
