@@ -68,6 +68,8 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+# Created by serve_instance_with_signal in ray/serve/tests/conftest.py.
+SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 

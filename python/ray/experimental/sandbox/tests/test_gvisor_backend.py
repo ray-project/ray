@@ -14,6 +14,8 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
+    SandboxError,
+    SandboxExecError,
     SandboxNotFoundError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
@@ -764,6 +766,78 @@ def test_netns_create_failure_leaves_no_slirp4netns(ensure_slirp4netns):
             )
         )
     assert _slirp4netns_pids() == before
+
+
+def test_exec_as_named_user_resolves_inside_the_sandbox():
+    """A user name resolves against the running sandbox's own passwd, so a
+    user the image ships and one added after boot both work and agree with
+    their numeric ids."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", readonly=False)
+    )
+    try:
+        by_name = backend.exec_command(sb, "id -u", user="nobody", timeout=30)
+        assert by_name.exit_code == 0, by_name.stderr
+        by_id = backend.exec_command(sb, "id -u", user="65534", timeout=30)
+        assert by_name.stdout.strip() == by_id.stdout.strip() == "65534"
+
+        res = backend.exec_command(sb, "adduser -D -u 4321 alice", timeout=30)
+        assert res.exit_code == 0, res.stderr
+        res = backend.exec_command(sb, "id -u && id -g", user="alice", timeout=30)
+        assert res.exit_code == 0, res.stderr
+        assert res.stdout.split() == ["4321", "4321"]
+
+        with pytest.raises(SandboxExecError, match="nosuch"):
+            backend.exec_command(sb, "true", user="nosuch", timeout=30)
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_resolve_exec_user(monkeypatch):
+    """Numeric users pass through untouched; names resolve via the passwd and
+    group files read from inside the sandbox, so no host copy of the root
+    filesystem is involved."""
+    backend = GVisorSandboxBackend()
+    files = {
+        "/etc/passwd": (
+            b"root:x:0:0:root:/root:/bin/bash\n"
+            b"postfix:x:102:104::/var/spool/postfix:/usr/sbin/nologin\n"
+            b"short:x:7\n"
+        ),
+        "/etc/group": b"mail:x:8:\n",
+    }
+    reads = []
+
+    def fake_read_file(sandbox_id, path):
+        assert sandbox_id == "sb-1"
+        reads.append(path)
+        return files[path]
+
+    monkeypatch.setattr(backend, "read_file", fake_read_file)
+
+    assert backend._resolve_exec_user("sb-1", "1000") == "1000"
+    assert backend._resolve_exec_user("sb-1", "1000:1000") == "1000:1000"
+    assert reads == []  # numeric ids never touch the sandbox
+    assert backend._resolve_exec_user("sb-1", "postfix") == "102:104"
+    assert reads == ["/etc/passwd"]  # the group file is read only for a group name
+    assert backend._resolve_exec_user("sb-1", "postfix:8") == "102:8"
+    assert backend._resolve_exec_user("sb-1", "postfix:mail") == "102:8"
+    assert backend._resolve_exec_user("sb-1", "1000:mail") == "1000:8"
+    # A truncated passwd line has no login group: uid only.
+    assert backend._resolve_exec_user("sb-1", "short") == "7"
+    with pytest.raises(SandboxExecError, match="'nosuch' not found"):
+        backend._resolve_exec_user("sb-1", "nosuch")
+    with pytest.raises(SandboxExecError, match="'nosuch' not found"):
+        backend._resolve_exec_user("sb-1", "postfix:nosuch")
+
+    # An account file the sandbox cannot serve is an exec error, not a crash.
+    def unreadable(sandbox_id, path):
+        raise SandboxError("cat: not found")
+
+    monkeypatch.setattr(backend, "read_file", unreadable)
+    with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
+        backend._resolve_exec_user("sb-1", "postfix")
 
 
 if __name__ == "__main__":

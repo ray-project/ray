@@ -34,6 +34,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     _SHUFFLE_REDUCE_RUNTIME_ENV,
+    _merged_reduce_runtime_env,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
@@ -150,7 +151,11 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        remote_args.update(self._reduce_ray_remote_args)
+        user_args = dict(self._reduce_ray_remote_args)
+        user_runtime_env = user_args.pop("runtime_env", None)
+        remote_args.update(user_args)
+        if user_runtime_env is not None:
+            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
         remote_args["num_returns"] = "streaming"
         return remote_args
 
