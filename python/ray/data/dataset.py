@@ -53,6 +53,7 @@ from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.qdrant_datasink import QdrantDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
@@ -6647,6 +6648,85 @@ class Dataset:
             vector_column=vector_column,
             batch_size=batch_size,
             distance_metric=distance_metric,
+        )
+
+        self.write_datasink(
+            datasink,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )
+
+    @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
+    def write_qdrant(
+        self,
+        *,
+        url: str,
+        collection: Optional[str] = None,
+        collection_column: Optional[str] = None,
+        api_key: Optional[str] = None,
+        id_column: str = "id",
+        vector_column: str = "vector",
+        vector_name: Optional[str] = None,
+        batch_size: int = 256,
+        distance: str = "Cosine",
+        client_kwargs: Optional[Dict[str, Any]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+        concurrency: Optional[int] = None,
+    ) -> None:
+        """Write the dataset to `Qdrant <https://qdrant.tech/>`_.
+
+        Each row becomes a point: ``id_column`` is the ID, ``vector_column`` is
+        the vector, and the other columns are the payload. Writes are upserts.
+        A missing collection is created with the vector size of the data.
+
+        Examples:
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100).map_batches(
+                    lambda batch: {"id": batch["id"], "vector": ...}
+                )
+                ds.write_qdrant(url="http://localhost:6333", collection="docs")
+
+        Args:
+            url: URL of the Qdrant server.
+            collection: Collection to write to. Set this or
+                ``collection_column``.
+            collection_column: Column with each row's collection name. It isn't
+                written to the payload.
+            api_key: API key. Defaults to the ``QDRANT_API_KEY`` environment
+                variable.
+            id_column: Column of point IDs: unsigned integers or UUIDs.
+                Rows with a null ID are skipped.
+            vector_column: Column of vectors.
+            vector_name: Named vector to write to. Defaults to the unnamed
+                vector.
+            batch_size: Points per upsert request.
+            distance: Distance metric for a new collection: ``"Cosine"``,
+                ``"Euclid"``, ``"Dot"``, or ``"Manhattan"``.
+            client_kwargs: Extra arguments for ``qdrant_client.QdrantClient``.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write
+                tasks.
+            concurrency: The maximum number of Ray tasks to run concurrently.
+                Set this to control number of tasks to run concurrently. This
+                doesn't change the total number of tasks run. By default,
+                concurrency is dynamically decided based on the available
+                resources.
+        """
+        datasink = QdrantDatasink(
+            collection=collection,
+            collection_column=collection_column,
+            url=url,
+            api_key=api_key,
+            id_column=id_column,
+            vector_column=vector_column,
+            vector_name=vector_name,
+            batch_size=batch_size,
+            distance=distance,
+            client_kwargs=client_kwargs,
         )
 
         self.write_datasink(
