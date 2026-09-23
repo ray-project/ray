@@ -309,10 +309,14 @@ def _add_channel_metadata(
     """
     import pyarrow as pa
 
-    if values is None or not isinstance(block, pa.Table):
-        # `include_metadata=False`, or a pandas block, which
-        # `DelegatingBlockBuilder` produces for row values Arrow cannot hold.
+    if values is None:
+        # `include_metadata=False`.
         return block
 
+    # `_read_stream` builds its blocks from dict rows, which
+    # `DelegatingBlockBuilder` always turns into an Arrow table. Any other
+    # block type is a bug upstream of this call; fail rather than hand the
+    # block back without the column.
+    assert isinstance(block, pa.Table), type(block)
     column = pa.array(values, type=pa.map_(pa.string(), pa.string()))
     return block.append_column(CHANNEL_METADATA_COLUMN, column)
