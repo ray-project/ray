@@ -8,13 +8,7 @@ myst:
 
 # Advanced: Read and Write Custom File Types
 
-<!-- vale off -->
-
-<!-- Ignoring Vale because of future tense. -->
-
 This guide shows you how to extend Ray Data to read and write file types that aren't natively supported. This is an advanced guide, and you'll use unstable internal APIs.
-
-<!-- vale on -->
 
 Images are already supported with the {func}`~ray.data.read_images` and {meth}`~ray.data.Dataset.write_images` APIs, but this example shows you how to implement them for illustrative purposes.
 
@@ -72,13 +66,7 @@ The core abstractions for writing data to files are {class}`~ray.data.datasource
 
 If you want to write one row per file, subclass {class}`~ray.data.datasource.RowBasedFileDatasink`. Otherwise, subclass {class}`~ray.data.datasource.BlockBasedFileDatasink`.
 
-<!-- vale off -->
-
-<!-- Ignoring Vale because of future tense. -->
-
 In this example, you'll write one image per file, so you'll subclass {class}`~ray.data.datasource.RowBasedFileDatasink`. To subclass {class}`~ray.data.datasource.RowBasedFileDatasink`, implement the constructor and {meth}`~ray.data.datasource.RowBasedFileDatasink.write_row_to_file`.
-
-<!-- vale on -->
 
 ### Implement the constructor
 

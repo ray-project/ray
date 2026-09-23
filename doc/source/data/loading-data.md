@@ -276,7 +276,7 @@ Ray Data relies on PyArrow for authentication with Google Cloud Storage. For mor
 
 :::
 
-:::{tab-item} ABS
+:::{tab-item} Azure Blob Storage
 
 To read files from Azure Blob Storage, install the [Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
 
