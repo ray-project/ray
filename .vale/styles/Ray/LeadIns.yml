@@ -1,0 +1,14 @@
+extends: existence
+message: "Write a complete-sentence lead-in, such as 'The following example shows ...:', instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#lists-and-punctuation'
+level: warning
+ignorecase: true
+# `nonword: true` because Vale otherwise wraps each token in word boundaries, and the
+# boundary after a trailing colon never matches at the end of a line.
+nonword: true
+# From the "Lists and punctuation" section of writing-style.md: lead-ins are
+# complete sentences that end with a colon. These fragments recur before code
+# blocks. Flag only, since the right rewrite depends on what the example shows.
+tokens:
+  - '\bfor example:'
+  - "\\bhere(?:'s| is) an example\\b"
