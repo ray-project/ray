@@ -36,7 +36,11 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     TimeStampedValue,
 )
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    IngressRequestRouterConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
@@ -407,7 +411,8 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
 
     llm_server = LLMServer.bind()
     app = llm_server._with_ingress_request_router(
-        IngressRequestRouter.bind(llm_deployment=llm_server)
+        IngressRequestRouter.bind(llm_deployment=llm_server),
+        config=IngressRequestRouterConfig(),
     )
     runtime_context = Mock()
     runtime_context.runtime_env = {}

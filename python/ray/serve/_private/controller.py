@@ -36,7 +36,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, IngressRequestRouterConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     DEFAULT_LATENCY_BUCKET_MS,
@@ -1210,6 +1210,13 @@ class ServeController:
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
+                        "ingress_request_router_config": (
+                            IngressRequestRouterConfig.from_proto(
+                                args.ingress_request_router_config
+                            )
+                            if args.HasField("ingress_request_router_config")
+                            else None
+                        ),
                         "uses_multiplexing": args.uses_multiplexing,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
@@ -1687,12 +1694,24 @@ class ServeController:
             return []
 
         ingress_request_router_targets = []
+        ingress_request_router_forward_body = False
         if ingress_request_router_deployment_name is not None:
             ingress_request_router_targets = self._get_targets_for_protocol(
                 self._get_running_replica_details_for_deployment(
                     app_name, ingress_request_router_deployment_name
                 ),
                 RequestProtocol.HTTP,
+            )
+            router_info = self.deployment_state_manager.get_deployment(
+                DeploymentID(
+                    app_name=app_name,
+                    name=ingress_request_router_deployment_name,
+                )
+            )
+            ingress_request_router_forward_body = bool(
+                router_info
+                and router_info.ingress_request_router_config
+                and router_info.ingress_request_router_config.forward_request_body
             )
 
         target_groups = []
@@ -1709,6 +1728,9 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_request_router_forward_body=(
+                        ingress_request_router_forward_body
+                    ),
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )

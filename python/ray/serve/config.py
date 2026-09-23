@@ -419,6 +419,12 @@ class RequestRouterConfig(BaseModel):
                 "custom-request-router.html#gotchas-and-limitations"
             ) from e
 
+    def requires_request_body(self) -> bool:
+        """Whether this router needs request arguments to select a replica."""
+        return bool(
+            getattr(self.get_request_router_class(), "requires_request_body", False)
+        )
+
 
 DEFAULT_METRICS_INTERVAL_S = 10.0
 

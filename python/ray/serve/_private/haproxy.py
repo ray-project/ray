@@ -75,7 +75,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_TUNE_BUFSIZE,
     RAY_SERVE_HAPROXY_UPDATE_LATENCY_BUCKETS_S,
-    RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
@@ -180,6 +179,19 @@ def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
     body = ",\n".join(
         f"    [{json.dumps(name)}] = {{ {', '.join(_server_lua(s) for s in pool)} }}"
         for name, pool in routers.items()
+    )
+    return "{\n" + body + "\n}"
+
+
+def _format_forward_body_lua(
+    backends: "List[BackendConfig]", routers: "Dict[str, List[ServerConfig]]"
+) -> str:
+    """Render per-application body-forwarding decisions as a Lua table."""
+    body = ",\n".join(
+        f"    [{json.dumps(backend.name)}] = "
+        f"{str(backend.ingress_request_router_forward_body).lower()}"
+        for backend in backends
+        if backend.name in routers
     )
     return "{\n" + body + "\n}"
 
@@ -518,6 +530,10 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+
+    # Whether HAProxy should buffer and forward request bodies to this app's
+    # ingress request router.
+    ingress_request_router_forward_body: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -1270,7 +1286,7 @@ class HAProxyApi(ProxyApi):
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-            FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
+            FORWARD_BODY_BY_APP=_format_forward_body_lua(backends, routers),
             # HAProxy's req_get_headers() returns lowercase header keys,
             # so lowercase here for the Lua lookup. Empty string disables
             # forwarding entirely.
@@ -1322,6 +1338,11 @@ class HAProxyApi(ProxyApi):
                 http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
+            ingress_request_router_forward_body = any(
+                backend.ingress_request_router_servers
+                and backend.ingress_request_router_forward_body
+                for backend in http_backends
+            )
 
             # Enrich HTTP backends with precomputed health check configuration strings
             http_backends_with_health_config = [
@@ -1401,7 +1422,7 @@ class HAProxyApi(ProxyApi):
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
                     ),
                     "ingress_request_router_forward_body": (
-                        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+                        ingress_request_router_forward_body
                     ),
                     "ingress_request_router_header_prefix": (
                         SERVE_INGRESS_ROUTER_HEADER_PREFIX
@@ -2096,6 +2117,9 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            ingress_request_router_forward_body=(
+                target_group.ingress_request_router_forward_body
+            ),
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,

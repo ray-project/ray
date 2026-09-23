@@ -23,6 +23,7 @@ from ray._common.test_utils import (
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
 from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
@@ -1222,7 +1223,11 @@ def test_multiplexed_routing_retry(shutdown_ray):
                 }
 
     server = ModelServer.bind()
-    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
+    serve.run(
+        server._with_ingress_request_router(
+            IngressRouter.bind(server), config=IngressRequestRouterConfig()
+        )
+    )
     # Wait for HAProxy to install the ingress router before exercising model
     # selection. Readiness requests do not touch multiplexed routing state.
     wait_for_condition(

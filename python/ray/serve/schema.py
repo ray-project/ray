@@ -1665,6 +1665,10 @@ class TargetGroup(BaseModel):
             "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
     )
+    ingress_request_router_forward_body: bool = Field(
+        False,
+        description="Whether HAProxy forwards request bodies to this app's router.",
+    )
     # Name of the application's ingress deployment (the deployment that serves
     # the data-plane traffic). Empty when not applicable (e.g. proxy target groups).
     ingress_deployment_name: str = Field(

@@ -12,6 +12,7 @@ from ray.serve._private.build_app import (
 )
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -568,7 +569,8 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
 
     ingress_app = Ingress.bind()
     app = ingress_app._with_ingress_request_router(
-        IngressRequestRouter.bind(llm_deployment=ingress_app)
+        IngressRequestRouter.bind(llm_deployment=ingress_app),
+        config=IngressRequestRouterConfig(forward_request_body=True),
     )
 
     built_app: BuiltApplication = build_app(
@@ -581,6 +583,9 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
     assert set(built_app.deployment_handles) == {"Ingress"}
     assert built_app.ingress_request_router_deployment is not None
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
+    assert built_app.ingress_request_router_config == IngressRequestRouterConfig(
+        forward_request_body=True
+    )
 
 
 def test_build_app_requires_ingress_request_router_to_be_single_deployment(
@@ -610,7 +615,8 @@ def test_build_app_requires_ingress_request_router_to_be_single_deployment(
     ):
         ingress_app = Ingress.bind()
         app = ingress_app._with_ingress_request_router(
-            IngressRequestRouter.bind(RouterChild.bind())
+            IngressRequestRouter.bind(RouterChild.bind()),
+            config=IngressRequestRouterConfig(),
         )
         build_app(
             app,
@@ -633,7 +639,10 @@ def test_build_app_rejects_ingress_request_router_in_main_app_graph(monkeypatch)
 
     ingress_request_router = IngressRequestRouter.bind()
     ingress_app = Ingress.bind(ingress_request_router)
-    app = ingress_app._with_ingress_request_router(ingress_request_router)
+    app = ingress_app._with_ingress_request_router(
+        ingress_request_router,
+        config=IngressRequestRouterConfig(),
+    )
 
     with pytest.raises(
         ValueError,
@@ -664,7 +673,8 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
 
     ingress_app = Ingress.bind()
     app = ingress_app._with_ingress_request_router(
-        IngressRequestRouter.bind(llm_deployment=ingress_app)
+        IngressRequestRouter.bind(llm_deployment=ingress_app),
+        config=IngressRequestRouterConfig(),
     )
 
     built_app: BuiltApplication = build_app(
@@ -852,7 +862,8 @@ def test_build_app_allows_custom_ingress_request_router_in_direct_streaming(
 
     ingress_app = Ingress.bind()
     app = ingress_app._with_ingress_request_router(
-        IngressRequestRouter.bind(server=ingress_app)
+        IngressRequestRouter.bind(server=ingress_app),
+        config=IngressRequestRouterConfig(),
     )
 
     built_app: BuiltApplication = build_app(

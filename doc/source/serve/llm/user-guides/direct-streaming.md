@@ -136,13 +136,7 @@ If you set `request_router_config`, direct streaming uses it as-is. Otherwise it
 
 ### Body-aware routers
 
-Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. By default HAProxy doesn't forward the request body to the router, because buffering and re-emitting large bodies adds time to first token (TTFT). Body-independent policies are unaffected. Round-robin and power of two ignore the body, and session-aware policies key on the header instead.
-
-If your policy needs the body, enable forwarding:
-
-```bash
-export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
-```
+Some policies score replicas using the request body, for example {ref}`prefix-aware routing <prefix-aware-routing-guide>`, which keys on the prompt or messages. Serve automatically forwards bodies for routers that declare this requirement. It skips body forwarding for body-independent policies such as round-robin, power of two, and session affinity.
 
 With forwarding on, HAProxy has to receive and buffer the request body before it can route. That wait adds to TTFT. The more of the body it waits for, the longer routing is delayed and the more memory HAProxy holds. To bound that cost, HAProxy buffers only up to `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` bytes. When a request body is larger than that cap, HAProxy stops waiting and routes on the leading bytes it already has. It flags the routing call as carrying a truncated body, so the policy knows it's scoring against a prefix rather than the full payload.
 

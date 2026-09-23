@@ -461,6 +461,10 @@ class FIFOMixin:
 class RequestRouter(ABC):
     """Abstract interface for a request router (how the router calls it)."""
 
+    # Ingress request routers use this to decide whether HAProxy must buffer and
+    # forward request bodies before asking this router to select a replica.
+    requires_request_body = False
+
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
     # If this deadline is repeatedly missed, it will be exponentially increased up to

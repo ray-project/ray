@@ -973,7 +973,7 @@ RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
 # active. Bodies longer than this are truncated; the Lua forwards what it has
 # with an `X-Body-Truncated: <bytes>/<content-length>` header so the router can
 # do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
-# Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
+# Only consulted when an application's ingress request router requires the body.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
     "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 8 * 1024 * 1024
 )
@@ -996,20 +996,6 @@ RAY_SERVE_HAPROXY_H2_FE_INITIAL_WINDOW_SIZE = get_env_int(
 )  # 64KB
 RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS = get_env_int(
     "RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS", 100
-)
-
-# Escape hatch: when true, HAProxy forwards the (possibly truncated) request
-# body to /internal/route and the router reads it. Off by default because for
-# large payloads the body buffering / re-emit cost adds noticeable time-to-
-# first-response. Skipping the forward is fine for any policy whose decision
-# does not depend on the request body: round-robin and power-of-two ignore
-# the body entirely, and session-aware policies key on the ``x-session-id``
-# header (forwarded with the request line) rather than the body.
-#
-# Flip this to true if the configured request router needs the body for its
-# decision, e.g. prefix-aware / prefix-cache routing.
-RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY = get_env_bool(
-    "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", False  # type: ignore[arg-type]
 )
 
 # Optional flat header map returned by /internal/route. HAProxy applies these

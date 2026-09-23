@@ -25,6 +25,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -45,6 +46,29 @@ def _get_direct_streaming_serve_options(
             request_router_class=RoundRobinRouter,
         )
     return override_serve_options
+
+
+def _ingress_request_router_requires_body(llm_configs: List[LLMConfig]) -> bool:
+    """Whether direct-streaming routing needs the HTTP request body.
+
+    A multi-model ingress needs the body to select a deployment from the OpenAI
+    ``model`` field. A single-model ingress only needs it when that deployment's
+    replica-selection policy declares that it uses request arguments.
+    """
+    if len(llm_configs) > 1:
+        return True
+
+    for llm_config in llm_configs:
+        request_router_config = llm_config.deployment_config.get(
+            "request_router_config",
+            RequestRouterConfig(request_router_class=RoundRobinRouter),
+        )
+        if isinstance(request_router_config, dict):
+            request_router_config = RequestRouterConfig(**request_router_config)
+        if request_router_config.requires_request_body():
+            return True
+
+    return False
 
 
 def _build_direct_streaming_llm_deployment(
@@ -262,7 +286,10 @@ def build_openai_app(builder_config: dict) -> Application:
         return direct_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
                 server=direct_deployment, llm_config=llm_configs[0]
-            )
+            ),
+            config=IngressRequestRouterConfig(
+                forward_request_body=_ingress_request_router_requires_body(llm_configs)
+            ),
         )
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
