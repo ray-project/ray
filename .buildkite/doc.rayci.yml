@@ -192,13 +192,13 @@ steps:
   # build (premerge skips that tag), so no PR event, fork or not, ever runs the
   # token-bearing step. It runs only on push to master.
   #
-  # Self-gated on the diff. rayci evaluates file-based tag rules on premerge
-  # only; master builds are run-all (see the note in .buildkite/always.rules.txt),
-  # so this step is scheduled on *every* master merge, not just redirect ones.
-  # The first command exits early when the merge didn't touch doc/redirects/, so
-  # the token and the RtD API are used only when a redirect actually changed. The
-  # gate is best-effort: if the parent commit can't be resolved (a shallow
-  # checkout), it falls through to apply rather than risk skipping a real change.
+  # Not gated on the diff. The step isn't scheduled on every master merge, only
+  # on some postmerge builds, so a HEAD~1..HEAD check sees one commit out of
+  # many and skips any redirect change that landed in between. Instead the step
+  # runs `apply` on every run and lets it converge: when the live project already
+  # matches current.yaml, `apply` makes only read calls, prints
+  # "apply: no changes", and exits 0. A redirect merge reaches RtD on the next
+  # run that schedules this step, whichever commit that run is on.
   #
   # Drift and deletion. `apply` converges the project to the file: a live
   # redirect absent from current.yaml is deleted. That's the intended one-write-
@@ -214,20 +214,6 @@ steps:
       - oss
       - skip-on-premerge
     commands:
-      # Exit early unless this master commit changed doc/redirects/. Ray squash-
-      # merges, so HEAD~1..HEAD is exactly the merged change set. `git diff
-      # --quiet` exits 0 for no change (skip), 1 for a change (apply), and a
-      # different non-zero on git error, so a shallow checkout or a git failure
-      # falls through to apply rather than silently skip a real redirect change.
-      # (A `git diff | grep -q .` pipe would mask the diff's exit status and skip
-      # on error, the opposite of what we want here.)
-      - |
-        if git rev-parse -q --verify HEAD~1 >/dev/null; then
-          if git diff --quiet HEAD~1 HEAD -- doc/redirects/; then
-            echo "no doc/redirects/ change in this merge; nothing to apply"
-            exit 0
-          fi
-        fi
       # Same fail-closed guard as the validate step: current.yaml is the only file
       # the compose order below names. To add another, name it here and in the
       # apply command in compose order, then update this guard.
