@@ -6,20 +6,13 @@ myst:
 
 (inspecting-data)=
 
-# Inspecting Data
+# Inspecting data
 
-Inspect {class}`Datasets <ray.data.Dataset>` to better understand your data.
-
-This guide shows you how to:
-
-* [Describe datasets](#describing-datasets)
-* [Inspect rows](#inspecting-rows)
-* [Inspect batches](#inspecting-batches)
-* [Inspect execution statistics](#inspecting-execution-statistics)
+Inspect a {class}`Dataset <ray.data.Dataset>` to understand your data. This guide shows you how to [describe a dataset](#describing-datasets), [inspect rows](#inspecting-rows) and [batches](#inspecting-batches), and [view execution statistics](#inspecting-execution-statistics).
 
 (describing-datasets)=
 
-## Describing datasets
+## Describe datasets
 
 {class}`Datasets <ray.data.Dataset>` are tabular. To view a dataset's column names and types, call {meth}`Dataset.schema() <ray.data.Dataset.schema>`.
 
@@ -41,7 +34,7 @@ petal width (cm)   double
 target             int64
 ```
 
-For more information like the number of rows, print the Dataset.
+To view more information, such as the number of rows, print the dataset.
 
 ```{testcode}
 import ray
@@ -57,7 +50,7 @@ Dataset(num_rows=..., schema=...)
 
 (inspecting-rows)=
 
-## Inspecting rows
+## Inspect rows
 
 To get a list of rows, call {meth}`Dataset.take() <ray.data.Dataset.take>` or {meth}`Dataset.take_all() <ray.data.Dataset.take_all>`. Ray Data represents each row as a dictionary.
 
@@ -74,16 +67,15 @@ print(rows)
 [{'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}]
 ```
 
-
-For more information on working with rows, see {ref}`Transforming rows <transforming_rows>` and {ref}`Iterating over rows <iterating-over-rows>`.
+For more information on working with rows, see {ref}`Transforming rows <transforming_rows>` and {ref}`Iterate over rows <iterating-over-rows>`.
 
 (inspecting-batches)=
 
-## Inspecting batches
+## Inspect batches
 
-A batch contains data from multiple rows. To inspect batches, call `Dataset.take_batch() <ray.data.Dataset.take_batch>`.
+A batch contains data from multiple rows. To inspect batches, call {meth}`Dataset.take_batch() <ray.data.Dataset.take_batch>`.
 
-By default, Ray Data represents batches as dicts of NumPy ndarrays. To change the type of the returned batch, set `batch_format`. The batch format is independent from how Ray Data stores the underlying blocks, so you can use any batch format regardless of the internal block representation.
+By default, Ray Data represents batches as dictionaries of NumPy ndarrays. To change the type of the returned batch, set `batch_format`. The batch format is independent of how Ray Data stores the underlying blocks, so you can use any batch format with any internal block representation.
 
 ::::{tab-set}
 
@@ -129,7 +121,7 @@ print(batch)
 
 :::
 
-:::{tab-item} pyarrow
+:::{tab-item} PyArrow
 
 ```{testcode}
 import ray
@@ -159,14 +151,15 @@ target: [[0,0]]
 
 ::::
 
-For more information on working with batches, see {ref}`Transforming batches <transforming_batches>` and {ref}`Iterating over batches <iterating-over-batches>`.
+For more information on working with batches, see {ref}`Transforming batches <transforming_batches>` and {ref}`Iterate over batches <iterating-over-batches>`.
 
+(inspecting-execution-statistics)=
 
-## Inspecting execution statistics
+## Inspect execution statistics
 
-Ray Data calculates statistics during execution for each operator, such as wall clock time and memory usage.
+During execution, Ray Data calculates statistics for each operator, such as wall-clock time and memory usage.
 
-To view stats about your {class}`Datasets <ray.data.Dataset>`, call {meth}`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. The stats are also persisted under `/tmp/ray/session_*/logs/ray-data/ray-data.log`. For more on how to read this output, see {ref}`Monitoring Your Workload with the Ray Data Dashboard <monitoring-your-workload>`.
+To view the statistics for a {class}`Dataset <ray.data.Dataset>`, call {meth}`Dataset.stats() <ray.data.Dataset.stats>` on an executed dataset. Ray Data also persists the statistics to `/tmp/ray/session_*/logs/ray-data/ray-data.log`. To learn how to read this output, see {ref}`Monitoring your workload with the Ray Data dashboard <monitoring-your-workload>`.
 
 <!-- This snippet below is skipped because of  https://github.com/ray-project/ray/issues/54101. -->
 
