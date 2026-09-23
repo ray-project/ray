@@ -29,6 +29,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_LLM_ROUTER_HTTP_TIMEOUT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
+    get_llm_serve_runtime_env,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -87,6 +88,7 @@ logger = get_logger(__name__)
 
 DEFAULT_INGRESS_OPTIONS = {
     "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
+    "ray_actor_options": {"runtime_env": get_llm_serve_runtime_env()},
     "autoscaling_config": {
         "target_ongoing_requests": DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     },
@@ -307,13 +309,17 @@ class OpenAiIngress(DeploymentProtocol):
             if base_model_id in self._default_serve_handles:
                 if model_id == base_model_id:
                     default_handle = self._default_serve_handles[model_id]
-                    configured_handle = default_handle.options(stream=True)
+                    configured_handle = default_handle.options(
+                        stream=True,
+                        _by_reference=False,
+                    )
                     self._configured_serve_handles[model_id] = configured_handle
                 else:
                     default_handle = self._default_serve_handles[base_model_id]
                     configured_handle = default_handle.options(
                         stream=True,
                         multiplexed_model_id=model_id,
+                        _by_reference=False,
                     )
                     self._configured_serve_handles[model_id] = configured_handle
             else:

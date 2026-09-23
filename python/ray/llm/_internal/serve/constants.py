@@ -1,4 +1,6 @@
 import os
+from copy import deepcopy
+from typing import Any, Dict, Optional
 
 ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT = int(
     os.getenv("RAYLLM_ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT", "1")
@@ -68,6 +70,26 @@ RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING = (
 RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS = (
     os.environ.get("RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS", "0") == "1"
 )
+
+_RAY_SERVE_LLM_REPLICA_ENV_DEFAULTS = {
+    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD": "0",
+    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",
+}
+
+
+def get_llm_serve_runtime_env(
+    runtime_env: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Apply Serve LLM replica defaults while preserving explicit overrides."""
+    runtime_env = deepcopy(runtime_env or {})
+    env_vars = {
+        name: os.environ.get(name, default)
+        for name, default in _RAY_SERVE_LLM_REPLICA_ENV_DEFAULTS.items()
+    }
+    env_vars.update(runtime_env.get("env_vars", {}))
+    runtime_env["env_vars"] = env_vars
+    return runtime_env
+
 
 MAX_NUM_STOPPING_SEQUENCES = int(os.getenv("RAYLLM_MAX_NUM_STOPPING_SEQUENCES", "8"))
 ENV_VARS_TO_PROPAGATE = {

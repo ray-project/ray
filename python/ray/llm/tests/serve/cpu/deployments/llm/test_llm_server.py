@@ -654,6 +654,9 @@ class TestGetDeploymentOptions:
             serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
             == "bar"
         )
+        env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
         assert (
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
@@ -689,10 +692,30 @@ class TestGetDeploymentOptions:
             serve_options["ray_actor_options"]["runtime_env"]["env_vars"]["FOO"]
             == "bar"
         )
+        env_vars = serve_options["ray_actor_options"]["runtime_env"]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
         assert (
             "worker_process_setup_hook"
             in serve_options["ray_actor_options"]["runtime_env"]
         )
+
+    def test_serve_llm_replica_loop_env_overrides_are_respected(self):
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            runtime_env={
+                "env_vars": {
+                    "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD": "1",
+                    "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "1",
+                }
+            },
+        )
+
+        env_vars = LLMServer.get_deployment_options(llm_config)["ray_actor_options"][
+            "runtime_env"
+        ]["env_vars"]
+        assert env_vars["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "1"
+        assert env_vars["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "1"
 
     def test_deferred_placement_group_for_tpu_topology(self):
         """Test that Serve skips PG creation when deferred placement group is required."""
