@@ -7,6 +7,10 @@ from pyarrow.fs import FileSystem
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.listing.file_pruners import (
+    FilePruner,
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.logical_optimizers import (
     SupportsColumnPruning,
     SupportsFilterPushdown,
@@ -58,6 +62,22 @@ class ArrowFileScanner(
         if self.partitioning is None:
             return set()
         return set(self.partitioning.field_names or [])
+
+    @override
+    def metadata_row_count_is_exact(self) -> bool:
+        """``True`` when no row-reducing pushdown is set on this scanner.
+
+        A Parquet footer's ``num_rows`` is the file's total, with nothing in it
+        to say how many rows survive a filter, so for this scanner the question
+        collapses to "is anything reducing rows?". Column projection is
+        deliberately not consulted: it changes the width of the output, never
+        the row count.
+        """
+        return (
+            self.predicate is None
+            and self.partition_predicate is None
+            and self.limit is None
+        )
 
     def read_schema(self) -> pa.Schema:
         """Return the logical schema after column pruning.
@@ -175,35 +195,45 @@ class ArrowFileScanner(
         return replace(self, partition_predicate=combined)
 
     @override
-    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Filter manifest to only files matching ``self.partition_predicate``.
+    def pushed_partition_predicate(self) -> Optional["Expr"]:
+        return self.partition_predicate
 
-        Called by :func:`plan_read_files_op.do_read` for every incoming
-        manifest block. No-op when either the predicate or the
-        partitioning spec is absent. Uses
-        :class:`PathPartitionParser` to parse partition values from
-        each file path and evaluate the predicate.
+    @override
+    def pushed_partition_pruner(self) -> Optional["FilePruner"]:
+        if self.partition_predicate is None or self.partitioning is None:
+            # No spec, no partition values -- same guard as ``prune_input_split``.
+            return None
+        return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
+
+    @override
+    def prune_input_split(self, input_split: FileManifest) -> FileManifest:
+        """Keep only the files matching ``self.partition_predicate``.
+
+        No-op when either the predicate or the partitioning spec is absent.
+        Partition values are parsed out of each file path by
+        :class:`PathPartitionParser`.
         """
         if self.partition_predicate is None or self.partitioning is None:
-            return manifest
+            return input_split
 
         parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 
-        for i, path in enumerate(manifest.paths):
+        for i, path in enumerate(input_split.paths):
             if parser.evaluate_predicate_on_partition(path, self.partition_predicate):
                 keep_indices.append(i)
 
-        if len(keep_indices) == len(manifest):
-            return manifest
+        if len(keep_indices) == len(input_split):
+            return input_split
 
-        pruned_count = len(manifest) - len(keep_indices)
+        pruned_count = len(input_split) - len(keep_indices)
         logger.debug(
             "Partition pruning removed %d of %d files",
             pruned_count,
-            len(manifest),
+            len(input_split),
         )
 
-        block = manifest.as_block()
-        pruned_block = block.take(keep_indices)
+        block = input_split.as_block()
+        # An untyped empty list infers null indices: ArrowNotImplementedError.
+        pruned_block = block.take(pa.array(keep_indices, type=pa.int64()))
         return FileManifest(pruned_block)

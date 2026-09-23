@@ -12,11 +12,13 @@ from ray._raylet import NodeID
 from ray.serve._private.application_state import ApplicationState
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
+    DeploymentTargetInfo,
     GangReservationResult,
     HandleMetricReport,
     ReplicaID,
@@ -60,9 +62,11 @@ from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
 from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
+    REMOVED_GANG_PG_NAMES,
     MockDeploymentActorWrapper,
     MockKVStore,
     MockPlacementGroup,
+    MockReplicaActorWrapper,
     dead_replicas_context,
     replica_rank_context,
     uninitialized_replicas_context,
@@ -2644,6 +2648,80 @@ def test_deploy_with_consistent_constructor_failure(
         check_counts(ds, total=0)
         timer.advance(10)  # simulate time passing between each call to update
 
+    # A fresh deploy with no running replica is broadcast as unavailable.
+    assert _last_broadcast_target_info(ds).is_available is False
+
+
+def _last_broadcast_target_info(ds: DeploymentState) -> DeploymentTargetInfo:
+    key = (LongPollNamespace.DEPLOYMENT_TARGETS, TEST_DEPLOYMENT_ID)
+    for call in reversed(ds._long_poll_host.notify_changed.call_args_list):
+        if key in call[0][0]:
+            return call[0][0][key]
+    raise AssertionError("DEPLOYMENT_TARGETS was never broadcast")
+
+
+def test_terminally_failed_rolling_update_keeps_old_replicas_available(
+    mock_deployment_state_manager, mock_max_per_replica_retry_count
+):
+    """A failed update must not make surviving old replicas unavailable to routers."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, v1 = deployment_info(num_replicas=2, version="1")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert _last_broadcast_target_info(ds).is_available is True
+
+    # Rolling update, one replica at a time: one old replica is stopped and
+    # one replica of the new version is started.
+    info_2, v2 = deployment_info(num_replicas=2, version="2")
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+    check_counts(
+        ds,
+        total=3,
+        by_state=[
+            (ReplicaState.RUNNING, 1, v1),
+            (ReplicaState.STOPPING, 1, v1),
+            (ReplicaState.STARTING, 1, v2),
+        ],
+    )
+    ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+    # The new version fails until the startup threshold is reached.
+    threshold = 2 * mock_max_per_replica_retry_count
+    for _ in range(threshold):
+        new_replica = ds._replicas.get(states=[ReplicaState.STARTING])[0]
+        assert new_replica.version == v2
+        new_replica._actor.set_failed_to_start()
+        dsm.update()
+        new_replica._actor.set_done_stopping()
+        dsm.update()
+
+    assert ds._replica_constructor_retry_counter == threshold
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+    assert (
+        ds.curr_status_info.status_trigger
+        == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+    )
+    assert ds._terminally_failed()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+
+    # The surviving old replica keeps serving.
+    target_info = _last_broadcast_target_info(ds)
+    assert target_info.is_available is True
+    assert len(target_info.running_replicas) == 1
+    for _ in range(5):
+        dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    assert ds._last_broadcasted_availability is True
+
 
 def test_deploy_with_partial_constructor_failure(
     mock_deployment_state_manager, mock_max_per_replica_retry_count
@@ -4295,6 +4373,46 @@ def test_resource_requirements_none():
     replica.resource_requirements()
 
 
+def test_gang_pg_leak_detection_survives_state_api_failure(
+    mock_deployment_state_manager,
+):
+    """The controller must still start when the state API is unreachable.
+
+    get_active_placement_group_ids() calls the dashboard, which Serve does not
+    otherwise need, so a failure there must not drop a live gang reservation.
+    """
+    create_deployment_state_manager, _, _, _ = mock_deployment_state_manager
+    gang_pg_name = f"{GANG_PG_NAME_PREFIX}app_D_abc123"
+    pg_table = {"pg-id-1": {"name": gang_pg_name}}
+
+    with patch("ray.util.placement_group_table", return_value=pg_table), patch(
+        "ray.util.get_placement_group"
+    ), patch("ray.util.remove_placement_group") as mock_remove, patch.object(
+        ds_mod,
+        "get_active_placement_group_ids",
+        side_effect=ConnectionError("state API unavailable"),
+    ):
+        create_deployment_state_manager(placement_group_names=[gang_pg_name])
+
+    mock_remove.assert_not_called()
+
+
+def test_gang_pg_leak_detection_removes_unoccupied_pg(mock_deployment_state_manager):
+    """Control for the test above: a gang PG with no live actors is still removed."""
+    create_deployment_state_manager, _, _, _ = mock_deployment_state_manager
+    gang_pg_name = f"{GANG_PG_NAME_PREFIX}app_D_abc123"
+    pg_table = {"pg-id-1": {"name": gang_pg_name}}
+
+    with patch("ray.util.placement_group_table", return_value=pg_table), patch(
+        "ray.util.get_placement_group"
+    ), patch("ray.util.remove_placement_group") as mock_remove, patch.object(
+        ds_mod, "get_active_placement_group_ids", return_value=set()
+    ):
+        create_deployment_state_manager(placement_group_names=[gang_pg_name])
+
+    mock_remove.assert_called_once()
+
+
 class TestActorReplicaWrapper:
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(
@@ -4841,13 +4959,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): req_per_replica
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -4863,7 +4974,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
@@ -5035,13 +5145,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): 2
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5057,7 +5160,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 2},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 2)]
                     },
@@ -5134,13 +5236,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): 1
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5156,7 +5251,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 1)]
                     },
@@ -5246,13 +5340,6 @@ class TestAutoscaling:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): 1
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5268,7 +5355,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 1},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timer.time() - 0.1, 1)]
                     },
@@ -5367,8 +5453,6 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
-            aggregated_queued_requests=1,
-            aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
         )
@@ -5487,8 +5571,6 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 1)],
-            aggregated_queued_requests=1,
-            aggregated_metrics={},
             metrics={},
             timestamp=timer.time(),
         )
@@ -5564,12 +5646,6 @@ class TestAutoscaling:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     ds._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
@@ -5679,12 +5755,6 @@ class TestAutoscaling:
             actor_id="d2_replica_actor_id",
             handle_source=DeploymentHandleSource.REPLICA,
             queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): 2
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     ds1._replicas.get()[0]._actor.replica_id.to_full_id_str(): [
@@ -5810,13 +5880,6 @@ class TestAutoscaling:
                 actor_id="test_actor",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): req_per_replica
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5832,7 +5895,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
@@ -5876,13 +5938,6 @@ class TestAutoscaling:
                 actor_id="test_actor",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timer.time() - 0.1, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        replica._actor.replica_id.to_full_id_str(): req_per_replica
-                        for replica in replicas
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         replica._actor.replica_id.to_full_id_str(): [
@@ -5898,7 +5953,6 @@ class TestAutoscaling:
             for replica in replicas:
                 replica_metric_report = ReplicaMetricReport(
                     replica_id=replica._actor.replica_id,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: req_per_replica},
                     metrics={
                         RUNNING_REQUESTS_KEY: [
                             TimeStampedValue(timer.time() - 0.1, req_per_replica)
@@ -8214,6 +8268,43 @@ def test_broadcasted_replicas_set_changed_flag_set_on_lightweight_broadcast_conf
         mock_get_infos.assert_not_called()
 
 
+def test_redeploy_onto_deleting_state_republishes(mock_deployment_state_manager):
+    """A redeploy reusing a deleting DeploymentState must republish its snapshots.
+
+    Deleting tombstones DEPLOYMENT_TARGETS, and that tombstone is evicted on
+    redeploy so routers don't inherit it. The reused state must also forget what
+    it last broadcast, or `*_if_changed` compares against the evicted snapshots
+    and never republishes them.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    dsm.save_checkpoint()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    ds.broadcast_deployment_config_if_changed()
+
+    # Start deleting; the state sticks around while the replica drains.
+    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+    assert ds.deleting
+
+    # Redeploy the *identical* config onto the still-deleting state.
+    ds._long_poll_host.reset_mock()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds._long_poll_host.remove_keys.assert_called_once()
+
+    # The config is unchanged, so without forgetting the last broadcast this
+    # short-circuits and the evicted key stays missing.
+    ds.broadcast_deployment_config_if_changed()
+    ds._long_poll_host.notify_changed.assert_called()
+
+
 def test_broadcast_deferred_while_replicas_recovering(mock_deployment_state_manager):
     """Regression test: During controller recovery, broadcast_running_replicas_if_changed() must
     be deferred until all RECOVERING replicas have transitioned, then fire once with
@@ -9365,6 +9456,127 @@ class TestGangRollingUpdate:
         self._mock_gang_pgs(dsm, gang_size, gang_size)
         dsm.update()
         self._finish_starting(ds)
+
+    def _gang_pg_names(self, ds):
+        return {r.pg_name for r in ds._gang_reservations.values()}
+
+    def test_gang_pg_removed_only_after_last_member_stops(
+        self, mock_deployment_state_manager
+    ):
+        """One gang shares one PG, so it is freed only once every member is gone."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        first, last = stopping[0], stopping[1]
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # The first member out must not tear the PG from a sibling still draining.
+        first._actor.set_done_stopping()
+        dsm.update()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        last._actor.set_done_stopping()
+        dsm.update()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def _depart(self, ds, replica):
+        """Fully reap a replica: gone from the container and from bookkeeping."""
+        ds._replicas.remove([replica.replica_id])
+        ds._unregister_gang_replica(replica.replica_id)
+
+    def test_gang_pg_kept_while_any_member_of_that_gang_remains(
+        self, mock_deployment_state_manager
+    ):
+        """Registered membership going empty is not proof the gang is gone: a
+        recovering member is unregistered but still holding the PG."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # Drop registered membership to empty while both members are still tracked,
+        # which is the state recovery leaves behind.
+        for r in stopping:
+            ds._unregister_gang_replica(r.replica_id)
+        ds._reclaim_empty_gang_placement_groups()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        self._depart(ds, stopping[0])
+        ds._reclaim_empty_gang_placement_groups()
+        assert REMOVED_GANG_PG_NAMES == []
+
+        self._depart(ds, stopping[1])
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+
+    def test_gang_pg_reservation_survives_a_failed_removal(
+        self, mock_deployment_state_manager
+    ):
+        """A failed removal must keep the reservation, or nothing can retry it."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        gang_id = stopping[0].gang_context.gang_id
+        for r in stopping:
+            self._depart(ds, r)
+        REMOVED_GANG_PG_NAMES.clear()
+
+        def boom(pg_name):
+            raise RuntimeError("gcs unavailable")
+
+        with patch.object(MockReplicaActorWrapper, "remove_gang_placement_group", boom):
+            ds._reclaim_empty_gang_placement_groups()
+        assert gang_id in ds._gang_reservations
+        assert gang_id in ds._gang_reclaim_candidates
+
+        # The retry has to survive the deployment going quiet, which is when the
+        # transitioning path that used to own this sweep stops running.
+        ds._in_transition = False
+        ds.check_and_update_replicas()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
+        assert gang_id not in ds._gang_reservations
+
+    def test_gang_pg_not_blocked_by_another_gang_recovering(
+        self, mock_deployment_state_manager
+    ):
+        """A recovering replica of a different gang must not hold this gang's PG."""
+        gang_size, num_replicas = 2, 4
+        dsm, ds = self._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm.update()
+
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert len(stopping) == gang_size
+        REMOVED_GANG_PG_NAMES.clear()
+
+        # Park a member of the OTHER gang in RECOVERING.
+        other = ds._replicas.get(states=[ReplicaState.RUNNING])[0]
+        ds._replicas.remove([other.replica_id])
+        ds._replicas.add(ReplicaState.RECOVERING, other)
+
+        for r in stopping:
+            self._depart(ds, r)
+        ds._reclaim_empty_gang_placement_groups()
+        assert len(REMOVED_GANG_PG_NAMES) == 1
 
     def test_stop_gang_atomically(self, mock_deployment_state_manager):
         """Stops one complete gang per wave, never partially tearing down a gang."""
@@ -10735,6 +10947,35 @@ class TestRankConsistencyMembershipGate:
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
         assert ds._rank_manager.consistency_calls == 0
+
+
+@pytest.mark.parametrize("aggregation_function, expected", [("max", 8), ("min", 2)])
+def test_aggregation_function_reaches_builtin_metrics(aggregation_function, expected):
+    """`max`/`min` now reduce the built-in running-requests metric. The removed simple
+    mode ignored `aggregation_function` and always reported a mean."""
+    asm = AutoscalingStateManager()
+    info, _ = deployment_info(
+        autoscaling_config={
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 6,
+            "aggregation_function": aggregation_function,
+        }
+    )
+    asm.register_deployment(TEST_DEPLOYMENT_ID, info, 1)
+    replica_id = ReplicaID(unique_id="r1", deployment_id=TEST_DEPLOYMENT_ID)
+    asm.update_running_replica_ids(TEST_DEPLOYMENT_ID, [replica_id])
+    asm.record_request_metrics_for_replica(
+        ReplicaMetricReport(
+            replica_id=replica_id,
+            metrics={
+                RUNNING_REQUESTS_KEY: [TimeStampedValue(1, 8), TimeStampedValue(2, 2)]
+            },
+            timestamp=2,
+        )
+    )
+
+    assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == expected
 
 
 if __name__ == "__main__":

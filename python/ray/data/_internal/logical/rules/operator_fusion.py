@@ -306,6 +306,17 @@ class FuseOperators(Rule):
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
 
+        # An AllToAllOperator that already absorbed a map must not absorb another.
+        # Map fusion runs first and collapses every fusable map chain, so a
+        # MapOperator still upstream of a fused shuffle was deliberately left
+        # unfused (e.g. incompatible compute strategies). The fused transform fn
+        # also carries a single `ctx.upstream_map_transformer`, so a second fusion
+        # would overwrite the first and silently drop that map.
+        if isinstance(down_op, AllToAllOperator) and any(
+            isinstance(op, AbstractMap) for op in down_op._logical_operators
+        ):
+            return False
+
         if up_op.get_additional_split_factor() > 1:
             return False
 
@@ -391,15 +402,15 @@ class FuseOperators(Rule):
         self._op_map.pop(down_op)
 
         if isinstance(up_op, ExternalHashShuffleReduceOp):
-            # External is single-input by design (no Join support).
             fused_op = ExternalHashShuffleReduceOp(
-                up_op.input_dependencies[0],
+                up_op.input_dependencies,
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,
                 reduce_fn=up_op._reduce_fn,
                 disallow_block_splitting=up_op._disallow_block_splitting,
                 reduce_ray_remote_args=up_op._reduce_ray_remote_args,
                 peak_memory_multiplier=up_op._peak_memory_multiplier,
+                should_emit_empty_partitions=up_op._emit_empty_partitions,
                 name=name,
                 fused_output_map_transformer=down_op.get_map_transformer(),
                 fused_output_map_task_kwargs=down_op.get_map_task_kwargs(),
@@ -788,6 +799,7 @@ class FuseOperators(Rule):
             sub_progress_bar_names=down_op._sub_progress_bar_names,
             name=name,
         )
+        op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         # Bottom out at the source logical op (e.g. Read()).
         input_op = up_logical_op
 

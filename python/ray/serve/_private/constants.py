@@ -446,6 +446,12 @@ SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# Kill switch for the columnar handle-metric wire format. On by default; set to 0 to
+# fall back to cloudpickle without a redeploy. The controller reads either format.
+RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS = get_env_bool(
+    "RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS", "1"
+)
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
@@ -749,7 +755,7 @@ RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
-RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
+RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "4096"))
 
 # Number of threads for HAProxy
 RAY_SERVE_HAPROXY_NBTHREAD = int(os.environ.get("RAY_SERVE_HAPROXY_NBTHREAD", "4"))
@@ -850,12 +856,16 @@ RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
     else None
 )
 
-RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    # Guarded by the truthiness check below; the two get() calls can't be
-    # narrowed by mypy.
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))  # type: ignore[arg-type]
-    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
-    else None
+# Connection timeout to a replica, in seconds. Replicas are in-cluster, so a
+# connect that takes seconds means the node is gone rather than busy; bounding
+# it lets `retry-on conn-failure` + `option redispatch` reach another replica
+# while the request still has budget.
+#
+# Set to 0 to disable. HAProxy stores an unset timeout as 0, so `timeout
+# connect 0s` is indistinguishable from omitting the directive: an infinite
+# connect timeout, plus HAProxy's "missing timeouts" startup warning.
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S", 5
 )
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
@@ -908,7 +918,7 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 # redispatch + the `backup` fallback take over. Health checks revive a false
 # positive in ~0.5s. Backup/fallback servers are never observed.
 RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
-    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "0"
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "1"
 )
 
 # Consecutive observed layer4 errors before a server is marked DOWN. Only
@@ -958,7 +968,7 @@ RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
 # do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
 # Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
-    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 8 * 1024 * 1024
 )
 
 # HAProxy tuning flags
@@ -1117,11 +1127,6 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 
 if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
     RAY_SERVE_HAPROXY_METRICS_ENABLED = True
-
-# Feature flag to aggregate metrics at the controller instead of the replicas or handles.
-RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
-    "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
-)
 
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
 # Disable this to keep deployment/application tags while dropping source identifiers

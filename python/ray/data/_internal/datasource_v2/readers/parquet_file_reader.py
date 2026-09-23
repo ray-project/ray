@@ -13,14 +13,18 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    _row_group_uncompressed_size,
-)
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
+from ray.data._internal.datasource_v2.parquet_utils import (
+    _get_safe_batch_size_for_nested_types,
+    _needs_nested_type_fallback,
+    _resolve_leaf_column_indices,
+    _resolve_read_columns,
+    _row_group_uncompressed_size,
+)
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -341,8 +345,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is with a row offset of 0 (the default
-          ``WholeFileChunker`` for non-chunking callers).
+          fragment is yielded as-is with a row offset of 0.
         - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
           naming the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
@@ -398,19 +401,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
-        """Use V1's nested-type fallback path when the fragment has nested
-        columns whose row-group size exceeds Arrow's ~2GB chunking limit
-        (ARROW-5030).
+        """Use the row-level nested-type fallback path when the fragment has
+        nested columns whose row-group size exceeds Arrow's ~2GB chunking
+        limit (ARROW-5030).
         """
         import pyarrow.compute as pc
 
         from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
-        from ray.data._internal.datasource.parquet_datasource import (
-            _get_safe_batch_size_for_nested_types,
-            _needs_nested_type_fallback,
-            _resolve_leaf_column_indices,
-            _resolve_read_columns,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             get_column_references,
         )

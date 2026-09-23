@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.datasource.parquet_datasource import (
+from ray.data._internal.datasource_v2.parquet_utils import (
     check_for_legacy_tensor_type,
 )
 from ray.data._internal.datasource_v2.readers.file_reader import (
