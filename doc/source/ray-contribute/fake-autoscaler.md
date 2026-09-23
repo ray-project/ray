@@ -99,7 +99,7 @@ Prerequisites:
 
 1. Make sure you have [Docker](https://docs.docker.com/get-docker/) installed.
 
-2. Make sure you have the [Docker Compose V2 plugin](https://docs.docker.com/compose/cli-command/#installing-compose-v2) installed.
+2. Make sure you have the [Docker Compose V2 plugin](https://docs.docker.com/compose/install/) installed.
 
 ## Using `RAY_FAKE_CLUSTER=1 ray up`
 

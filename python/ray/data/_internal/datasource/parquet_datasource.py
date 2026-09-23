@@ -1,4 +1,3 @@
-import hashlib
 import logging
 import math
 import os
@@ -26,6 +25,18 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
+from ray.data._internal.datasource_v2.logical_optimizers import (
+    _split_predicate_by_columns,
+)
+from ray.data._internal.datasource_v2.parquet_utils import (
+    PARQUET_FILE_EXTENSIONS,
+    _get_safe_batch_size_for_nested_types,
+    _needs_nested_type_fallback,
+    _resolve_leaf_column_indices,
+    _resolve_read_columns,
+    check_for_legacy_tensor_type,
+)
+from ray.data._internal.datasource_v2.readers.file_reader import _compute_row_hashes
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -61,7 +72,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
 )
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.data.expressions import BinaryExpr, Expr, Operation
+from ray.data.expressions import Expr
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -126,10 +137,6 @@ PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES = 10
 # reading too much data into memory.
 PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 
-# Arrow's nested type chunking limit
-# See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
-_ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
-
 _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
 
 
@@ -165,172 +172,6 @@ class _ParquetFragment:
         return _ParquetFragment(fragment, file_size)
 
 
-def check_for_legacy_tensor_type(schema):
-    """Check for the legacy tensor extension type and raise an error if found.
-
-    Ray Data uses an extension type to represent tensors in Arrow tables. Previously,
-    the extension type extended `PyExtensionType`. However, this base type can expose
-    users to arbitrary code execution. To prevent this, we don't load the type by
-    default.
-    """
-    import pyarrow as pa
-
-    for name, type in zip(schema.names, schema.types):
-        if isinstance(type, pa.UnknownExtensionType) and isinstance(
-            type, pa.PyExtensionType
-        ):
-            raise RuntimeError(
-                f"Ray Data couldn't infer the type of column '{name}' (got "
-                f"`UnknownExtensionType` with pickled class ref "
-                f"'{type.__arrow_ext_serialize__()}'). This might mean you're trying "
-                f"to read data written with an older version of Ray. Reading data "
-                f"written with older versions of Ray might expose you to arbitrary code "
-                f"execution. To try reading the data anyway, "
-                f"preset `RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
-                "To learn more, see https://github.com/ray-project/ray/issues/41314."
-            )
-
-
-@dataclass
-class _SplitPredicateResult:
-    """Result of splitting a predicate by column type.
-
-    Attributes:
-        data_predicate: Conjuncts referencing only data columns (for PyArrow
-            pushdown), or None if none could be extracted.
-        partition_predicate: Conjuncts referencing only partition columns
-            (for partition pruning), or None if none could be extracted.
-        residual_predicate: Conjuncts that mix partition and data columns
-            and can't be split safely (e.g. an ``OR`` straddling both
-            kinds). The caller must keep these as a ``Filter`` above the
-            read; dropping them would over-include rows.
-    """
-
-    data_predicate: Optional[Expr]
-    partition_predicate: Optional[Expr]
-    residual_predicate: Optional[Expr]
-
-
-def _split_predicate_by_columns(
-    predicate: Expr,
-    partition_columns: set,
-) -> _SplitPredicateResult:
-    """Split a predicate into data, partition, and residual parts.
-
-    This function walks the top-level ``AND`` chain and classifies each
-    conjunct by the columns it references:
-
-    - References only data columns (or none) → data bucket; pyarrow can
-      evaluate it at scan time.
-    - References only partition columns → partition bucket; the partition
-      parser can evaluate it from file paths.
-    - References both kinds (i.e. a non-``AND`` whose column set spans
-      both) → residual bucket; semantics-preserving splitting is
-      impossible (e.g. ``data > 5 OR partition == "US"``), so the caller
-      must keep these as a ``Filter`` above the read.
-
-    Args:
-        predicate: The predicate expression to analyze.
-        partition_columns: Set of partition column names.
-
-    Returns:
-        :class:`_SplitPredicateResult` with the three buckets. Combining
-        ``data_predicate``, ``partition_predicate``, and
-        ``residual_predicate`` with ``AND`` reproduces the original
-        predicate exactly.
-
-    Examples:
-        >>> from ray.data.expressions import col
-        >>> # Pure data predicate:
-        >>> result = _split_predicate_by_columns(col("data1") > 5, {"partition_col"})
-        >>> result.data_predicate is not None
-        True
-        >>> result.partition_predicate is None and result.residual_predicate is None
-        True
-
-        >>> # Pure partition predicate:
-        >>> result = _split_predicate_by_columns(col("partition_col") == "US", {"partition_col"})
-        >>> result.partition_predicate is not None
-        True
-        >>> result.data_predicate is None and result.residual_predicate is None
-        True
-
-        >>> # Mixed AND - can split into data and partition parts:
-        >>> result = _split_predicate_by_columns(
-        ...     (col("data1") > 5) & (col("partition_col") == "US"),
-        ...     {"partition_col"}
-        ... )
-        >>> result.data_predicate is not None and result.partition_predicate is not None
-        True
-        >>> result.residual_predicate is None
-        True
-
-        >>> # Mixed OR - kept as residual; caller wraps it in a Filter above:
-        >>> result = _split_predicate_by_columns(
-        ...     (col("data1") > 5) | (col("partition_col") == "US"),
-        ...     {"partition_col"}
-        ... )
-        >>> result.data_predicate is None and result.partition_predicate is None
-        True
-        >>> result.residual_predicate is not None
-        True
-    """
-    referenced_cols = set(get_column_references(predicate))
-    data_cols = referenced_cols - partition_columns
-    partition_cols_in_predicate = referenced_cols & partition_columns
-
-    if not partition_cols_in_predicate:
-        # Pure data predicate (or no column refs).
-        return _SplitPredicateResult(
-            data_predicate=predicate,
-            partition_predicate=None,
-            residual_predicate=None,
-        )
-
-    if not data_cols:
-        # Pure partition predicate.
-        return _SplitPredicateResult(
-            data_predicate=None,
-            partition_predicate=predicate,
-            residual_predicate=None,
-        )
-
-    # Mixed predicate - keep splitting if it's an AND chain.
-    if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-        left_result = _split_predicate_by_columns(predicate.left, partition_columns)
-        right_result = _split_predicate_by_columns(predicate.right, partition_columns)
-
-        def combine_predicates(
-            left: Optional[Expr], right: Optional[Expr]
-        ) -> Optional[Expr]:
-            if left and right:
-                return left & right
-            return left or right
-
-        return _SplitPredicateResult(
-            data_predicate=combine_predicates(
-                left_result.data_predicate, right_result.data_predicate
-            ),
-            partition_predicate=combine_predicates(
-                left_result.partition_predicate, right_result.partition_predicate
-            ),
-            residual_predicate=combine_predicates(
-                left_result.residual_predicate, right_result.residual_predicate
-            ),
-        )
-
-    # ``OR``/``NOT``/etc. straddling both column kinds — not safely
-    # splittable. Surface as residual so the caller doesn't silently drop
-    # it (the prior version returned ``(None, None)`` here, which let the
-    # surrounding ``AND`` chain push partial conjuncts and over-include
-    # rows that should have been filtered by this one).
-    return _SplitPredicateResult(
-        data_predicate=None,
-        partition_predicate=None,
-        residual_predicate=predicate,
-    )
-
-
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
 
@@ -346,7 +187,7 @@ class ParquetDatasource(Datasource):
     #       set this to None.
     _DEFAULT_NUM_FRAGMENTS_TO_INSPECT_FOR_SCHEMA: Optional[int] = 1
 
-    _FILE_EXTENSIONS = ["parquet"]
+    _FILE_EXTENSIONS = PARQUET_FILE_EXTENSIONS
 
     # Denotes number of batches to read ahead in a fragment. Default is 16
     # as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Dataset.html#pyarrow.dataset.Dataset.to_batches
@@ -1187,183 +1028,6 @@ def _coerce_pyarrow_fragment_batch_size(batch_size: int) -> int:
     return coerced
 
 
-def _has_susceptible_nested_types(schema: "pyarrow.Schema") -> bool:
-    """Check if a schema contains nested column types wrapping variable-length
-    leaves that are susceptible to Arrow's chunked array limitation (ARROW-5030).
-
-    The error only occurs when a nested container (list, struct, map) contains
-    a variable-length leaf (string, binary, and their large/view variants) whose
-    data exceeds ~2GB in a single row group. Fixed-width leaves (int, float,
-    bool, etc.) never trigger chunking.
-    """
-    import pyarrow as pa
-
-    # is_string_view / is_binary_view only exist in PyArrow >= 16.0
-    _has_view_types = hasattr(pa.types, "is_string_view")
-
-    def _is_variable_length(t):
-        return (
-            pa.types.is_string(t)
-            or pa.types.is_binary(t)
-            or pa.types.is_large_string(t)
-            or pa.types.is_large_binary(t)
-            or (_has_view_types and pa.types.is_string_view(t))
-            or (_has_view_types and pa.types.is_binary_view(t))
-        )
-
-    def _is_nested(t):
-        return (
-            pa.types.is_list(t)
-            or pa.types.is_large_list(t)
-            or pa.types.is_struct(t)
-            or pa.types.is_map(t)
-            or pa.types.is_fixed_size_list(t)
-        )
-
-    def _nested_contains_variable_length(t):
-        """Recursively check if a nested type contains a variable-length leaf."""
-        if _is_variable_length(t):
-            return True
-        if (
-            pa.types.is_list(t)
-            or pa.types.is_large_list(t)
-            or pa.types.is_fixed_size_list(t)
-        ):
-            return _nested_contains_variable_length(t.value_type)
-        if pa.types.is_struct(t):
-            return any(_nested_contains_variable_length(f.type) for f in t)
-        if pa.types.is_map(t):
-            return _nested_contains_variable_length(
-                t.key_type
-            ) or _nested_contains_variable_length(t.item_type)
-        return False
-
-    return any(
-        _is_nested(field.type) and _nested_contains_variable_length(field.type)
-        for field in schema
-    )
-
-
-def _row_group_uncompressed_size(
-    rg_meta: "pyarrow.parquet.RowGroupMetaData",
-    column_indices: Optional[List[int]] = None,
-) -> int:
-    """Total uncompressed byte size of columns in a row group.
-
-    When *column_indices* is ``None`` all columns are summed, otherwise only
-    the listed (leaf-level) column indices are included.
-
-    NOTE: We intentionally avoid ``rg_meta.total_byte_size`` because it can
-    return the *compressed* size for some files (apache/arrow#48138).
-    """
-    indices = range(rg_meta.num_columns) if column_indices is None else column_indices
-    return sum(rg_meta.column(i).total_uncompressed_size for i in indices)
-
-
-def _resolve_leaf_column_indices(
-    metadata: "pyarrow.parquet.FileMetaData",
-    columns: List[str],
-) -> List[int]:
-    """Map top-level column names to Parquet metadata leaf column indices.
-
-    Parquet metadata enumerates *leaf* columns (nested types are flattened),
-    and each leaf's ``path_in_schema`` starts with the top-level field name.
-    """
-    col_set = set(columns)
-    return [
-        i
-        for i in range(metadata.num_columns)
-        if metadata.row_group(0).column(i).path_in_schema.split(".")[0] in col_set
-    ]
-
-
-def _get_safe_batch_size_for_nested_types(
-    pf: "pyarrow.parquet.ParquetFile",
-    column_indices: Optional[List[int]] = None,
-) -> int:
-    """Compute a batch size that keeps each batch under Arrow's ~2GB nested-type
-    chunking threshold.
-
-    Uses Parquet row group metadata (uncompressed column sizes) to estimate
-    bytes per row, then picks a batch size with a 50% safety margin.
-    """
-    safe_batch_size = pf.metadata.num_rows
-    for rg_idx in range(pf.metadata.num_row_groups):
-        rg_meta = pf.metadata.row_group(rg_idx)
-        if rg_meta.num_rows == 0:
-            continue
-        uncompressed = _row_group_uncompressed_size(rg_meta, column_indices)
-        if uncompressed == 0:
-            continue
-        bytes_per_row = uncompressed / rg_meta.num_rows
-        rg_safe = max(int(_ARROW_CHUNK_LIMIT // bytes_per_row // 2), 1)
-        safe_batch_size = min(safe_batch_size, rg_safe)
-    return safe_batch_size
-
-
-def _needs_nested_type_fallback(
-    fragment: "ParquetFileFragment",
-    columns: Optional[List[str]] = None,
-) -> bool:
-    """Check if a fragment requires the fallback reader for nested types.
-
-    Returns True if the *requested* columns (or all columns when ``columns``
-    is ``None``) contain nested types AND any row group has uncompressed data
-    exceeding Arrow's ~2GB chunking threshold.
-    This is a metadata-only check (no data read).
-    """
-    import pyarrow as pa
-
-    physical_schema = fragment.physical_schema
-    if columns is not None:
-        physical_schema = pa.schema(
-            [
-                physical_schema.field(c)
-                for c in columns
-                if physical_schema.get_field_index(c) != -1
-            ]
-        )
-    if not _has_susceptible_nested_types(physical_schema):
-        return False
-    metadata = fragment.metadata
-    column_indices = (
-        _resolve_leaf_column_indices(metadata, columns)
-        if columns is not None and metadata.num_row_groups > 0
-        else None
-    )
-    # fragment.row_groups is non-None when the fragment is a subset of the
-    # file (e.g. only row group 0).  Only inspect those row groups to avoid
-    # falsely triggering the fallback because of a *different* large row
-    # group elsewhere in the same file.
-    if fragment.row_groups is not None:
-        rg_indices = [rg.id for rg in fragment.row_groups]
-    else:
-        rg_indices = range(metadata.num_row_groups)
-    return any(
-        _row_group_uncompressed_size(metadata.row_group(rg_idx), column_indices)
-        >= _ARROW_CHUNK_LIMIT
-        for rg_idx in rg_indices
-    )
-
-
-def _resolve_read_columns(
-    columns: Optional[List[str]],
-    filter_expr: Optional["pyarrow.dataset.Expression"],
-    filter_columns: Optional[List[str]],
-) -> Optional[List[str]]:
-    """Compute the union of projected and filter-referenced columns.
-
-    When a filter references columns outside the projection, we must read
-    the union so the filter can evaluate.  Returns ``None`` (meaning "all
-    columns") when filter_columns is unknown.
-    """
-    if filter_expr is not None and columns is not None:
-        if filter_columns is not None:
-            return list(dict.fromkeys(columns + filter_columns))
-        return None
-    return columns
-
-
 def _iter_batches_with_nested_fallback(
     fragment: "ParquetFileFragment",
     *,
@@ -1621,38 +1285,6 @@ def _read_batches_from(
             raise
 
     yield from _generate_tables()
-
-
-def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
-    """Compute deterministic uint64 hashes from file path and output row position.
-
-    ``start_row`` is the position within the output stream (post-filter), not
-    the physical file offset.  This means hashes are reproducible for a given
-    pipeline configuration (same file + same filter) but will differ across
-    reads with different filters.
-
-    Hashes the file path with MD5 to obtain a 64-bit seed, adds the row indices,
-    then applies the splitmix64 finalizer (a bijective 64-bit mixing function) to
-    produce well-distributed, reproducible hashes.  Fully vectorized via numpy.
-    """
-    path_seed = np.uint64(
-        int.from_bytes(
-            hashlib.md5(file_path.encode("utf-8")).digest()[:8], byteorder="little"
-        )
-    )
-    keys = path_seed + np.arange(start_row, start_row + num_rows, dtype=np.uint64)
-
-    # splitmix64 finalizer – a bijective 64-bit mixing function from
-    # Steele, Lea & Flood, "Fast Splittable Pseudorandom Number Generators",
-    # OOPSLA 2014.  Also used in Java's SplittableRandom.
-    # Reference: https://xorshift.di.unimi.it/splitmix64.c
-    keys ^= keys >> np.uint64(30)
-    keys *= np.uint64(0xBF58476D1CE4E5B9)
-    keys ^= keys >> np.uint64(27)
-    keys *= np.uint64(0x94D049BB133111EB)
-    keys ^= keys >> np.uint64(31)
-
-    return keys
 
 
 def _parse_partition_column_values(

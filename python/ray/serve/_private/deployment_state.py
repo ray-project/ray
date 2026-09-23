@@ -1614,8 +1614,13 @@ class ActorReplicaWrapper:
             stopped = True
         finally:
             # Remove the placement group both if the actor has already been deleted or
-            # it was just killed above.
-            if stopped and self._placement_group is not None:
+            # it was just killed above. A gang's PG is shared by every member, so the
+            # deployment frees that one once the whole gang is gone.
+            if (
+                stopped
+                and self._placement_group is not None
+                and self._gang_context is None
+            ):
                 try:
                     ray.util.remove_placement_group(self._placement_group)
                 except ValueError:
@@ -1626,6 +1631,19 @@ class ActorReplicaWrapper:
                     )
 
         return stopped
+
+    @staticmethod
+    def remove_gang_placement_group(pg_name: str) -> None:
+        """Remove a gang's shared placement group by name.
+
+        No member is guaranteed to hold a handle to it -- a recovered one never does --
+        so the deployment drives this once the gang is empty.
+        """
+        try:
+            ray.util.remove_placement_group(ray.util.get_placement_group(pg_name))
+        except ValueError:
+            # ValueError means the placement group is already gone.
+            logger.debug(f"Gang placement group {pg_name} was already removed.")
 
     def _check_active_health_check(self) -> ReplicaHealthCheckResponse:
         """Check the active health check (if any).
@@ -2949,6 +2967,18 @@ class DeploymentRankManager:
         return result
 
 
+@dataclass
+class GangReservation:
+    """A gang's shared placement group and the replicas it was reserved for.
+
+    Keyed on expected membership, not registered membership: a recovering member
+    cannot name its own gang yet, but it is still holding the PG.
+    """
+
+    pg_name: str
+    member_ids: Set[ReplicaID]
+
+
 class DeploymentState:
     """Manages the target state and replicas for a single deployment."""
 
@@ -3025,6 +3055,11 @@ class DeploymentState:
         # Updated on replica creation during upscaling and permanent removal during downscaling.
         self._gang_id_by_replica: Dict[ReplicaID, str] = {}
         self._replicas_by_gang_id: Dict[str, Set[ReplicaID]] = defaultdict(set)
+        # The deployment, not any member, owns a gang's PG: members share one PG and
+        # none of them is guaranteed to hold a handle to it.
+        self._gang_reservations: Dict[str, GangReservation] = {}
+        self._gang_id_by_member_id: Dict[ReplicaID, str] = {}
+        self._gang_reclaim_candidates: Set[str] = set()
 
         # Deployment-scoped actor lifecycle (per deployment)
         self._deployment_actors = DeploymentActorContainer(self._id)
@@ -3390,6 +3425,22 @@ class DeploymentState:
         }
         return expected_names == running_names
 
+    def forget_broadcasts(self) -> None:
+        """Drop the record of what was last broadcast for this deployment.
+
+        Callers that evict this deployment's long-poll snapshots must call this,
+        or the `*_if_changed` broadcasts compare against snapshots that no longer
+        exist and skip republishing them.
+        """
+        self._last_broadcasted_running_replica_infos = []
+        self._last_broadcasted_availability = None
+        self._last_broadcasted_deployment_config = None
+
+    @property
+    def deleting(self) -> bool:
+        """Whether this deployment is being torn down."""
+        return self._target_state.deleting
+
     def _replica_startup_failing(self) -> bool:
         """Check whether replicas are currently failing and the number of
         failures has exceeded a threshold.
@@ -3537,7 +3588,8 @@ class DeploymentState:
             return True
 
         running_replica_infos = self.get_running_replica_infos()
-        is_available = not self._terminally_failed()
+        # Keep routing to surviving replicas after a rolling update fails.
+        is_available = not self._terminally_failed() or len(running_replica_infos) > 0
 
         running_set_changed = set(self._last_broadcasted_running_replica_infos) != set(
             running_replica_infos
@@ -3833,9 +3885,11 @@ class DeploymentState:
         ):
             return True
 
+        # Reuse the aggregate from this tick's autoscaling decision instead of
+        # recomputing it just to format the log.
         curr_stats_str = (
             f"Current ongoing requests: "
-            f"{self._autoscaling_state_manager.get_total_num_requests_for_deployment(self._id):.2f}, "
+            f"{self._autoscaling_state_manager.get_last_decision_total_num_requests_for_deployment(self._id):.2f}, "
             f"current running replicas: "
             f"{self._replicas.count(states=[ReplicaState.RUNNING])}."
         )
@@ -4393,7 +4447,7 @@ class DeploymentState:
 
                 upscale.append(scheduling_request)
                 self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-                self._register_gang_replica(replica_id, gang_id)
+                self._register_gang_replica(replica_id, gang_context)
 
         return upscale
 
@@ -4570,7 +4624,7 @@ class DeploymentState:
                     and replica.gang_context is not None
                 ):
                     self._register_gang_replica(
-                        replica.replica_id, replica.gang_context.gang_id
+                        replica.replica_id, replica.gang_context
                     )
                 # This replica should be now be added to handle's replica
                 # set.
@@ -4756,13 +4810,37 @@ class DeploymentState:
         self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
         self._health_gauge_cache[replica_unique_id] = (value, now)
 
-    def _register_gang_replica(self, replica_id: ReplicaID, gang_id: str) -> None:
+    def _register_gang_replica(
+        self, replica_id: ReplicaID, gang_context: GangContext
+    ) -> None:
         """Register a replica in the gang membership bookkeeping."""
+        gang_id = gang_context.gang_id
         self._gang_id_by_replica[replica_id] = gang_id
         self._replicas_by_gang_id[gang_id].add(replica_id)
 
+        if not gang_context.pg_name or gang_id in self._gang_reservations:
+            return
+        member_ids = {
+            ReplicaID(unique_id, deployment_id=self._id)
+            for unique_id in gang_context.member_replica_ids
+        }
+        self._gang_reservations[gang_id] = GangReservation(
+            pg_name=gang_context.pg_name, member_ids=member_ids
+        )
+        for member_id in member_ids:
+            self._gang_id_by_member_id[member_id] = gang_id
+
     def _unregister_gang_replica(self, replica_id: ReplicaID) -> None:
-        """Remove a replica from the gang membership bookkeeping."""
+        """Remove a replica from the gang membership bookkeeping.
+
+        The gang is flagged off its reservation rather than off registered membership,
+        so a member force-stopped out of RECOVERING -- which never registers -- still
+        re-opens the question of whether its PG can be freed.
+        """
+        reserved_gang_id = self._gang_id_by_member_id.get(replica_id)
+        if reserved_gang_id is not None:
+            self._gang_reclaim_candidates.add(reserved_gang_id)
+
         gang_id = self._gang_id_by_replica.pop(replica_id, None)
         if gang_id is not None:
             members = self._replicas_by_gang_id.get(gang_id)
@@ -4770,6 +4848,38 @@ class DeploymentState:
                 members.discard(replica_id)
                 if not members:
                     self._replicas_by_gang_id.pop(gang_id, None)
+
+    def _reclaim_empty_gang_placement_groups(self) -> None:
+        """Free the PG of every gang whose members have all permanently left.
+
+        Must run after the STOPPING reap has re-added everything still draining: the
+        reap pops the whole bucket up front, so a membership test inside it would free
+        the PG out from under siblings that are still shutting down.
+        """
+        unreclaimed = set()
+        for gang_id in self._gang_reclaim_candidates:
+            reservation = self._gang_reservations.get(gang_id)
+            if reservation is None:
+                continue
+            if any(
+                self._replicas.get_by_id(member_id) is not None
+                for member_id in reservation.member_ids
+            ):
+                # A surviving member re-flags the gang when it departs.
+                continue
+            try:
+                ActorReplicaWrapper.remove_gang_placement_group(reservation.pg_name)
+            except Exception:
+                # Keep the reservation so a later tick can try again.
+                logger.exception(
+                    f"Failed to remove gang placement group {reservation.pg_name}."
+                )
+                unreclaimed.add(gang_id)
+                continue
+            self._gang_reservations.pop(gang_id, None)
+            for member_id in reservation.member_ids:
+                self._gang_id_by_member_id.pop(member_id, None)
+        self._gang_reclaim_candidates = unreclaimed
 
     def _clear_health_gauge_cache(self, replica_unique_id: str) -> None:
         """Remove a replica from the health-gauge cache (after it has
@@ -5104,6 +5214,11 @@ class DeploymentState:
         # check below still runs (it has its own lightweight guard).
         if self._in_transition:
             self._check_and_update_transitioning_replicas()
+
+        # After the reap above, so a membership test never races replicas the reap
+        # popped, and outside the `_in_transition` guard, so a removal that failed on
+        # an earlier tick is still retried once the deployment goes quiet.
+        self._reclaim_empty_gang_placement_groups()
 
         if not RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS:
             # When the replica tag is disabled, this is a single
@@ -5979,6 +6094,25 @@ class DeploymentStateManager:
             all_current_actor_names, all_current_placement_group_names
         )
 
+    def _evict_stale_long_poll_keys(self, deployment_id: DeploymentID) -> None:
+        """Drop long-poll snapshots describing a previous incarnation of this id.
+
+        The delete path tombstones DEPLOYMENT_TARGETS (is_available=False) so
+        existing handles fail fast, and that tombstone outlives the deployment it
+        described. A router subscribing afterwards would be handed it and reject
+        every request for the deployment that replaced it.
+        """
+        # `LongPollHost.remove_keys`'s `KeyType` doesn't include
+        # `Tuple[LongPollNamespace, DeploymentID]` keys.
+        self._long_poll_host.remove_keys(
+            # pyrefly: ignore[bad-argument-type]
+            [
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id),  # type: ignore[list-item]
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id.name),
+                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id),  # type: ignore[list-item]
+            ]
+        )
+
     def _create_deployment_state(self, deployment_id):
         self._deployment_scheduler.on_deployment_created(
             deployment_id, SpreadDeploymentSchedulingPolicy()
@@ -5992,13 +6126,7 @@ class DeploymentStateManager:
         # broadcast_running_replicas_if_changed short-circuits and never
         # overwrites the tombstone — freshly-subscribed routers would then
         # see is_available=False and reject every request.
-        self._long_poll_host.remove_keys(
-            [
-                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id),
-                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id.name),
-                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id),
-            ]
-        )
+        self._evict_stale_long_poll_keys(deployment_id)
 
         return DeploymentState(
             deployment_id,
@@ -6088,7 +6216,16 @@ class DeploymentStateManager:
                 if name.startswith(GANG_PG_NAME_PREFIX):
                     gang_pg_name_to_id[name] = pg_id_hex
 
-            occupied_pg_ids = get_active_placement_group_ids()
+            try:
+                occupied_pg_ids = get_active_placement_group_ids()
+            except Exception:
+                # The state API is optional infrastructure the controller otherwise
+                # does not need, so keep every gang PG rather than die on recovery.
+                logger.exception(
+                    "Failed to list active actors; skipping gang placement group "
+                    "leak detection for this recovery."
+                )
+                occupied_pg_ids = set(gang_pg_name_to_id.values())
             for gang_pg_name in gang_pg_names_in_cluster:
                 pg_id = gang_pg_name_to_id.get(gang_pg_name)
                 if pg_id is not None and pg_id not in occupied_pg_ids:
@@ -6458,6 +6595,12 @@ class DeploymentStateManager:
             )
             self._app_deployment_mapping[deployment_id.app_name].add(deployment_id.name)
             self._record_deployment_usage()
+        elif self._deployment_states[deployment_id].deleting:
+            # Redeploying onto a state that was being torn down reuses its
+            # DeploymentState, so creation (and its eviction) is skipped and the
+            # tombstone stays the stored snapshot for this id.
+            self._evict_stale_long_poll_keys(deployment_id)
+            self._deployment_states[deployment_id].forget_broadcasts()
 
         return self._deployment_states[deployment_id].deploy(deployment_info)
 
@@ -6839,11 +6982,16 @@ class DeploymentStateManager:
     def get_active_node_ids(self) -> Set[str]:
         """Return set of node ids with running replicas of any deployment.
 
-        This is used to determine which node has replicas. Only nodes with replicas and
-        head node should have active proxies.
+        This is used to determine which nodes should have active proxies. Ingress
+        request router replicas are excluded because they are created on proxy nodes;
+        counting them here would make a proxy node retain itself after all application
+        replicas on the node have stopped.
         """
         node_ids = set()
         for deployment_state in self._deployment_states.values():
+            info = deployment_state.target_info
+            if info is not None and info.ingress_request_router:
+                continue
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 

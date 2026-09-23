@@ -21,8 +21,12 @@ doc/README.md: always
 doc/source/images/ray-logo.png: always
 doc/source/data/images/dataset-arch.svg: always
 
-# Claude Code skills and agent files participate in no build.
+# Claude Code skills and agent files participate in no build. This holds for
+# both the doc subtree and the repo-root .claude/, which is Markdown plus a
+# settings JSON with no target of its own.
 doc/.claude/skills/sphinx-fix/SKILL.md: always
+.claude/skills/backport-docs/SKILL.md: always
+.claude/settings.json: always
 
 # Executable and config assets under doc/ are deliberately NOT exempt: they can
 # carry code that the code-oriented checks lint. pre_commit is the only

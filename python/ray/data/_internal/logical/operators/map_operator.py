@@ -26,6 +26,7 @@ from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
     Expr,
     StarExpr,
+    expand_projection_exprs,
     expand_star_exprs,
     exprlist_to_fields,
 )
@@ -409,6 +410,22 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             object.__setattr__(
                 self, "exprs", expand_star_exprs(self.exprs, input_schema)
             )
+        # Eagerly expand any expression that stands for several output
+        # columns (``UnnestExpr`` today) into ordinary named expressions, via
+        # ``Expr.expand_projection``. Unlike star expansion this runs even
+        # without an input schema: an unnest wrapping a UDF resolves its
+        # struct type from the UDF's declared ``return_dtype``. If an
+        # expression cannot be expanded at plan time it raises here, so no
+        # multi-column marker survives into optimizer rules or runtime
+        # evaluation.
+        object.__setattr__(
+            self,
+            "exprs",
+            expand_projection_exprs(
+                self.exprs,
+                input_schema if isinstance(input_schema, pa.Schema) else None,
+            ),
+        )
         if self.compute is None:
             object.__setattr__(
                 self,

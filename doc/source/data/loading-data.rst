@@ -312,6 +312,32 @@ To read formats other than Parquet, see the :ref:`Loading Data API <loading-data
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
+Reading files from the Hadoop Distributed File System
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To read files from the Hadoop Distributed File System (HDFS), install the Hadoop client
+on every relevant Ray node and set ``HADOOP_HOME``, ``JAVA_HOME``, and ``CLASSPATH`` so
+that `PyArrow can load the native HDFS library and the Hadoop Java client
+<https://arrow.apache.org/docs/python/filesystems.html#hadoop-file-system-hdfs>`_. If
+``libhdfs.so`` isn't under ``$HADOOP_HOME/lib/native``, also set
+``ARROW_LIBHDFS_DIR``. Then, pass a fully qualified ``hdfs://`` URI to a supported read
+API. For example:
+
+.. testcode::
+    :skipif: True
+
+    import ray
+
+    ds = ray.data.read_parquet("hdfs://hostname:8020/path/to/data")
+
+.. warning::
+
+    PyArrow HDFS embeds a Java Virtual Machine (JVM) in the Python process. On Linux,
+    its signal handling can conflict with Ray and cause the process to exit with
+    ``SIGSEGV`` or ``SIGABRT`` and create an ``hs_err_pid*.log`` file. See
+    :ref:`troubleshoot-pyarrow-hdfs-jvm-crashes` for the HotSpot signal-chaining
+    configuration and the last-resort fallback.
+
 Handling compressed files
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -402,7 +428,7 @@ Ray Data interoperates with libraries like pandas, NumPy, and Arrow.
             (Showing 3 of 3 rows)
 
         You can also create a :class:`~ray.data.dataset.Dataset` from a list of regular
-        Python objects. In the schema, the column name defaults to "item". 
+        Python objects. In the schema, the column name defaults to "item".
 
         .. testcode::
 
@@ -569,7 +595,7 @@ Ray Data interoperates with distributed data processing frameworks like `Daft <h
         the Dask DataFrame.
 
         ..
-          We skip the code snippet below because `from_dask` doesn't work with PyArrow 
+          We skip the code snippet below because `from_dask` doesn't work with PyArrow
           14 and later. For more information, see https://github.com/ray-project/ray/issues/54837
 
         .. testcode::
@@ -1202,7 +1228,7 @@ Synthetic datasets can be useful for testing and benchmarking.
 
         To create a synthetic :class:`~ray.data.Dataset` containing arrays, call
         :func:`~ray.data.range_tensor`. Ray Data packs an integer range into ndarrays of
-        the provided shape. In the schema, the column name defaults to "data". 
+        the provided shape. In the schema, the column name defaults to "data".
 
         .. testcode::
 
@@ -1236,6 +1262,15 @@ datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more detai
 
     # Write to a custom datasink.
     ds.write_datasink(YourCustomDatasink())
+
+Community-maintained connectors
+===============================
+
+The following connectors are maintained by the community and provide integrations
+with additional data systems:
+
+* `Apache Doris Ray Connector <https://github.com/jiangxt2/ray-doris>`_ - Read and write data between Ray Data and `Apache Doris <https://doris.apache.org/>`_.
+* `Kinetica Ray Connector <https://github.com/kineticadb/kinetica-ray>`_ - Read and write data between Ray Data and `Kinetica <https://www.kinetica.com/>`_.
 
 Performance considerations
 ==========================

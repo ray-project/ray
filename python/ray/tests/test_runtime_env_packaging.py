@@ -41,6 +41,7 @@ from ray._private.runtime_env.packaging import (
     get_uri_for_file,
     get_uri_for_package,
     is_tar_gz_uri,
+    is_tar_uri,
     is_whl_uri,
     is_zip_uri,
     remove_dir_from_filepaths,
@@ -1064,30 +1065,45 @@ def test_http_downloader_uses_smart_open_headers(tmp_path, monkeypatch):
     assert tp["timeout"] == 60
 
 
-def test_upload_working_dir_zip_with_upload_fn(tmp_path):
-    """Test that upload_working_dir_if_needed uses upload_fn for local zip files."""
-    # Create a temporary zip file
-    zip_path = tmp_path / "test_package.zip"
-    with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("hello.py", "print('hello')")
+@pytest.mark.parametrize(
+    "extension,mode",
+    [
+        (".zip", None),
+        (".tar.gz", "w:gz"),
+        (".tgz", "w:gz"),
+        (".tar.xz", "w:xz"),
+    ],
+)
+def test_upload_working_dir_archive_with_upload_fn(tmp_path, extension, mode):
+    """Local working_dir archives use the Job SDK upload callback."""
+    archive_path = tmp_path / f"test_package{extension}"
+    if extension == ".zip":
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("hello.py", "print('hello')")
+    else:
+        with tarfile.open(archive_path, mode) as archive:
+            content = b"print('hello')"
+            info = tarfile.TarInfo(name="hello.py")
+            info.size = len(content)
+            archive.addfile(info, io.BytesIO(content))
 
     captured_calls = []
 
     def mock_upload_fn(path, excludes=None, is_file=False):
         captured_calls.append({"path": path, "excludes": excludes, "is_file": is_file})
 
-    runtime_env = {"working_dir": str(zip_path)}
+    runtime_env = {"working_dir": str(archive_path)}
     result = upload_working_dir_if_needed(
         runtime_env, include_gitignore=True, upload_fn=mock_upload_fn
     )
 
     # Verify upload_fn was called with is_file=True
     assert len(captured_calls) == 1
-    assert captured_calls[0]["path"] == str(zip_path)
+    assert captured_calls[0]["path"] == str(archive_path)
     assert captured_calls[0]["is_file"] is True
 
     # Verify the working_dir was replaced with a GCS URI
-    expected_uri = get_uri_for_package(zip_path)
+    expected_uri = get_uri_for_package(archive_path)
     assert result["working_dir"] == expected_uri
 
 
@@ -1103,7 +1119,7 @@ class TestDownloadAndUnpackPackage:
                 # Add a file to the zip file so we can verify the file was extracted.
                 zip.writestr("file.txt", "Hello, world!")
 
-            # upload the zip file to GCS pkg_uri
+            # Upload the zip file to its GCS URI.
             pkg_uri = "gcs://my-zipfile.zip"
             upload_package_to_gcs(pkg_uri, zipfile_path.read_bytes())
 
@@ -1115,22 +1131,31 @@ class TestDownloadAndUnpackPackage:
                     gcs_client=None,
                 )
 
-    async def test_download_and_unpack_package_with_gcs_uri(self, ray_start_regular):
+    @pytest.mark.parametrize("extension,mode", [(".zip", None), (".tar.xz", "w:xz")])
+    async def test_download_and_unpack_package_with_gcs_uri(
+        self, ray_start_regular, extension, mode
+    ):
         # Test downloading and unpacking a GCS package with a GCS client.
 
         gcs_client = ray._private.worker.global_worker.gcs_client
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            zipfile_path = Path(temp_dir) / "test-zip-file.zip"
-            with zipfile.ZipFile(zipfile_path, "x") as zip:
-                # Add a file to the zip file so we can verify the file was extracted.
-                zip.writestr("file.txt", "Hello, world!")
+            package_path = Path(temp_dir) / f"test-package{extension}"
+            if extension == ".zip":
+                with zipfile.ZipFile(package_path, "x") as archive:
+                    archive.writestr("file.txt", "Hello, world!")
+            else:
+                with tarfile.open(package_path, mode) as archive:
+                    content = b"Hello, world!"
+                    info = tarfile.TarInfo(name="file.txt")
+                    info.size = len(content)
+                    archive.addfile(info, io.BytesIO(content))
 
-            # upload the zip file to GCS pkg_uri
-            pkg_uri = "gcs://my-zipfile.zip"
-            upload_package_to_gcs(pkg_uri, zipfile_path.read_bytes())
+            # Upload the package to its GCS URI.
+            pkg_uri = f"gcs://my-package{extension}"
+            upload_package_to_gcs(pkg_uri, package_path.read_bytes())
 
-            # Download the zip file from GCS pkg_uri
+            # Download the package from its GCS URI.
             local_dir = await download_and_unpack_package(
                 pkg_uri=pkg_uri,
                 base_directory=temp_dir,
@@ -1188,10 +1213,13 @@ class TestDownloadAndUnpackPackage:
             # Check that the file was extracted to the destination directory
             assert (Path(local_dir) / "file.txt").exists()
 
-    async def test_download_and_unpack_package_with_file_uri_tar_gz(self):
+    @pytest.mark.parametrize(
+        "extension,mode", [(".tar.gz", "w:gz"), (".tar.xz", "w:xz")]
+    )
+    async def test_download_and_unpack_package_with_file_uri_tar(self, extension, mode):
         with tempfile.TemporaryDirectory() as temp_dir:
-            tar_path = Path(temp_dir) / "test-tar-file.tar.gz"
-            with tarfile.open(tar_path, "w:gz") as tar:
+            tar_path = Path(temp_dir) / f"test-tar-file{extension}"
+            with tarfile.open(tar_path, mode) as tar:
                 file_content = b"Hello from tar!"
                 info = tarfile.TarInfo(name="top_level/file.txt")
                 info.size = len(file_content)
@@ -1414,6 +1442,19 @@ def test_get_uri_for_package_tgz(tmp_path):
     assert not uri.endswith(".zip")
 
 
+def test_get_uri_for_package_tar_xz(tmp_path):
+    tar_path = tmp_path / "my-pkg.tar.xz"
+    with tarfile.open(tar_path, "w:xz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tar_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.xz")
+    assert not uri.endswith(".zip")
+
+
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
@@ -1428,6 +1469,13 @@ def test_get_local_dir_from_uri_tar_gz():
     assert not str(local_dir).endswith(".gz")
 
 
+def test_get_local_dir_from_uri_tar_xz():
+    uri = "s3://bucket/archive.tar.xz"
+    local_dir = get_local_dir_from_uri(uri, "base_dir")
+    assert "tar" not in str(local_dir.name)
+    assert not str(local_dir).endswith(".xz")
+
+
 def test_is_tar_gz_uri():
     assert is_tar_gz_uri("s3://bucket/archive.tar.gz")
     assert is_tar_gz_uri("https://example.com/pkg.tar.gz")
@@ -1435,6 +1483,12 @@ def test_is_tar_gz_uri():
     assert not is_tar_gz_uri("s3://bucket/archive.zip")
     assert not is_tar_gz_uri("gcs://archive.whl")
     assert not is_tar_gz_uri("invalid_format")
+
+
+def test_is_tar_uri():
+    for extension in [".tar.gz", ".tgz", ".tar.bz2", ".tar.xz"]:
+        assert is_tar_uri(f"s3://bucket/archive{extension}")
+    assert not is_tar_uri("s3://bucket/archive.zip")
 
 
 def test_parse_uri_tar_gz():
@@ -1490,10 +1544,11 @@ def test_untar_package_with_top_level_dir(tmp_path):
     assert not tar_path.exists()
 
 
-def test_untar_package_path_traversal(tmp_path):
+@pytest.mark.parametrize("extension,mode", [(".tar.gz", "w:gz"), (".tar.xz", "w:xz")])
+def test_untar_package_path_traversal(tmp_path, extension, mode):
     """Verify that path traversal attacks are blocked."""
-    tar_path = tmp_path / "malicious.tar.gz"
-    with tarfile.open(tar_path, "w:gz") as tar:
+    tar_path = tmp_path / f"malicious{extension}"
+    with tarfile.open(tar_path, mode) as tar:
         file_content = b"malicious"
         info = tarfile.TarInfo(name="../../../etc/passwd")
         info.size = len(file_content)

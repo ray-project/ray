@@ -63,7 +63,6 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
     "sphinx_click.ext",
-    "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
     "sphinx_sitemap",
@@ -72,7 +71,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.autosummary",
     "sphinxcontrib.autodoc_pydantic",
-    "sphinxcontrib.redoc",
+    "sphinxcontrib.openapi",
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -134,7 +133,8 @@ llms_txt_exclude = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/*",
+    "rllib/package_ref/doc/*",
+    "rllib/package_ref/env/doc/*",
     # Deprecated pages: surfacing a superseded API/guide to an agent is worse
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
@@ -216,10 +216,6 @@ import template_collections
 # so it doesn't cause a build failure under -W (warnings-as-errors).
 suppress_warnings = [
     "config.cache",
-    # sphinxcontrib-redoc (unmaintained, 1.6.0) redundantly copies its bundled
-    # redoc.js asset; Sphinx 8's new copy_overwrite check flags the second copy over
-    # the existing (identical) file. Benign and not fixable upstream.
-    "misc.copy_overwrite",
 ]
 # Disable autodoc_pydantic features that can produce empty raw directives
 # (e.g. when schema JSON fails for models with non-serializable fields)
@@ -246,15 +242,8 @@ remove_from_toctrees = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/algorithm/*",
-    "rllib/package_ref/policy/*",
-    "rllib/package_ref/models/*",
-    "rllib/package_ref/catalogs/*",
-    "rllib/package_ref/rl_modules/*",
-    "rllib/package_ref/learner/*",
-    "rllib/package_ref/evaluation/*",
-    "rllib/package_ref/replay-buffers/*",
-    "rllib/package_ref/utils/*",
+    "rllib/package_ref/doc/*",
+    "rllib/package_ref/env/doc/*",
 ]
 
 myst_enable_extensions = [
@@ -337,6 +326,15 @@ html_baseurl = "https://docs.ray.io/en/latest/"
 # `READTHEDOCS_CANONICAL_URL` carries the correct host + current version slug;
 # fall back to html_baseurl for local builds. (DOC-1130)
 llms_txt_base_url = os.getenv("READTHEDOCS_CANONICAL_URL") or html_baseurl
+
+# Read the Docs serves a Markdown rendering of any page from that page's own
+# `.html` URL, under an `Accept: text/markdown` request — there is no separate
+# `.md` file to link to (`page.md`, `page.html.md`, and `?format=md` all 404).
+# So the `.html` links in llms.txt are already the Markdown links; nothing in
+# the file tells an agent that, hence this pointer. Content negotiation happens
+# on the rendered HTML, so it works the same whether a page's source is .rst or
+# .md, and it stays correct as pages migrate between the two.
+llms_txt_markdown_hint = True
 
 # `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
 # default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
@@ -478,6 +476,18 @@ if os.environ.get("LINKCHECK_ALL"):
         # 429: Rate limited
         "https://medium.com/*",
         "https://towardsdatascience.com/*",
+        # Local Ray dashboard/debugger URLs; unreachable from CI by design.
+        r"http://127\.0\.0\.1[:/].*",
+        # 403 to bots, live for humans (verified). They block the linkcheck
+        # user agent but serve real content in a browser.
+        r"https://goog-perftools\.sourceforge\.net/.*",  # gperftools docs
+        r"https://stackoverflow\.com/.*",
+        r"https://tech\.instacart\.com/.*",  # Medium-hosted blog
+        "https://buildkite.com/user/api-access-tokens",  # auth-gated settings page
+        # Intel Gaudi docs (formerly developer.habana.ai); 403 to bots.
+        r"https://www\.intel\.com/content/www/us/en/developer/platform/gaudi/.*",
+        # Slack workspace links; the auth-wall returns 403 to bots.
+        r"https://ray-distributed\.slack\.com/.*",
     ]
 else:
     # Only check links that point to the ray-project org on github, since those
@@ -505,7 +515,10 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    # Each banner carries its own `data-banner-key`, which js/dismissable-banner.js
+    # uses as the localStorage key so the two dismiss independently. Changing a key
+    # re-shows that banner for everyone who already dismissed it.
+    "announcement": """<div class="ray-banner" data-banner-key="ray-docs-banner-dismissed">Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" class="ray-banner__close" aria-label="Close the Anyscale credit banner">&times;</button></div><div class="ray-banner ray-banner--notice" data-banner-key="ray-docs-token-auth-banner-dismissed">Ray 2.59 enables token authentication by default for local clusters, and Ray 2.61 extends it to all clusters. <a href="https://docs.ray.io/en/latest/ray-security/token-auth.html">Read the rollout details</a><button type="button" class="ray-banner__close" aria-label="Close the token authentication banner">&times;</button></div>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -776,16 +789,17 @@ def setup(app):
     app.connect("source-read", apply_ipython3_lexer)
 
 
-redoc = [
-    {
-        "name": "Ray Jobs API",
-        "page": "cluster/running-applications/job-submission/api",
-        "spec": "cluster/running-applications/job-submission/openapi.yml",
-        "embed": True,
-    },
-]
-
-redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+# Render the Jobs API OpenAPI spec with sphinxcontrib-openapi's httpdomain
+# renderer, selected here rather than per-directive.
+#
+# Two notes for anyone changing this. The default renderer is "httpdomain:old",
+# which silently renders no request or response schemas at all -- just paths,
+# parameters, and status codes -- so leaving this unset would quietly drop most
+# of the reference content. And selecting the renderer through this config value
+# rather than by writing `.. openapi:httpdomain::` in the page avoids an
+# "unknown directive name" warning, which matters because .readthedocs.yaml sets
+# fail_on_warning: true.
+openapi_default_renderer = "httpdomain"
 
 autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 
@@ -795,9 +809,12 @@ autosummary_filename_map = AUTOSUMMARY_FILENAME_MAP
 # environment (doc/requirements-doc.lock.txt). Mocking an installed library
 # shadows the real module: an eager import in a documented class body then hits
 # the mock and aborts the whole package import as a misleading error. numpy and
-# pyarrow are installed, so they are not mocked. tensorflow is also installed (a
-# direct requirements-doc entry), but importing it for real breaks the autodoc
-# import of ray.rllib.algorithms.algorithm at build time, so it stays mocked.
+# pyarrow are installed, so they are not mocked. Heavy ML libraries (tensorflow,
+# torch, ...) are not installed in the docbuild environment and stay mocked here;
+# documented modules that use them import them lazily or under TYPE_CHECKING, so
+# the mock is enough to render their API. The doctest environment
+# (doctest_depset, fed by python/requirements/ml/*) installs them for real to run
+# the executable examples, but that is a separate depset from this build.
 # The mock list is shared with api_autogen.py and the API/doc consistency check
 # (ci/ray_ci/doc) via api_mock_imports.py, so the standalone stub generator and
 # the check see the same API surface this render produces. THIRD_PARTY_MOCK
