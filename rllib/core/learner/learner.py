@@ -1273,12 +1273,17 @@ class Learner(Checkpointable):
             # Sequence batches are sliced (and thus counted) in the sequence dimension
             # by `MiniBatchCyclicIterator`; decide that before counting minibatches.
             batch = self._set_slicing_by_batch_id(batch, value=True)
-            # `num_epochs` > 1 without `minibatch_size` cycles the batch as well: the
-            # iterator falls back to `batch.count` rows per module. Resolve that here,
-            # before the Learners agree on a number of minibatches, so that what they
-            # agree on is what the iterator will do.
+            # `num_epochs` > 1 without `minibatch_size` cycles the batch as well: one
+            # minibatch is the whole batch, so that the iterator makes exactly
+            # `num_epochs` passes. Resolve that here, before the Learners agree on a
+            # number of minibatches, so that what they agree on is what the iterator
+            # will do. `batch.count` can be 0 with rows still present -- a shard takes
+            # its env steps from whichever module was sliced last, and that module may
+            # have been empty and dropped above -- so fall back to the rows.
             if not minibatch_size and num_epochs > 1:
-                minibatch_size = batch.count
+                minibatch_size = batch.count or max(
+                    (len(b) for b in batch.policy_batches.values()), default=0
+                )
 
             if self.config.never_skip_update:
                 # Opt-out: no skip logic and no cross-Learner reconciliation (saves one

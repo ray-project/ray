@@ -425,6 +425,17 @@ class TestLearner(unittest.TestCase):
         self.assertIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
         self.assertNotIn("module_without_data", results)
 
+    def _build_two_module_learner(self):
+        """A Learner holding `mod1` and `mod2` in place of the default module."""
+        config = BaseTestingAlgorithmConfig()
+        learner = config.build_learner(env=self.ENV)
+        learner.remove_module(module_id=DEFAULT_MODULE_ID)
+        for module_id in ("mod1", "mod2"):
+            learner.add_module(
+                module_id=module_id, module_spec=config.get_rl_module_spec(env=self.ENV)
+            )
+        return learner
+
     def test_minibatch_count_is_fixed_without_minibatch_size(self):
         """`num_epochs` > 1 without `minibatch_size` must pin the number of steps too.
 
@@ -435,13 +446,7 @@ class TestLearner(unittest.TestCase):
         number of steps deadlock each other. So the count has to be settled before
         the Learners agree, not after.
         """
-        config = BaseTestingAlgorithmConfig()
-        learner = config.build_learner(env=self.ENV)
-        learner.remove_module(module_id=DEFAULT_MODULE_ID)
-        for module_id in ("mod1", "mod2"):
-            learner.add_module(
-                module_id=module_id, module_spec=config.get_rl_module_spec(env=self.ENV)
-            )
+        learner = self._build_two_module_learner()
         rows = get_cartpole_dataset_reader(batch_size=512).next()
         # What `ShardBatchIterator` hands a Learner: `mod2` was sliced last, so it --
         # not the larger `mod1` -- decides `count`.
@@ -459,6 +464,29 @@ class TestLearner(unittest.TestCase):
         # ceil(2 * 129 / 32) = 9 minibatches, each taking 32 rows per module.
         self.assertEqual([UpdatePlan(skip=False, num_minibatches=9)], proposed)
         self.assertEqual(9 * 32 * 2, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
+
+    def test_epochs_survive_a_dropped_module(self):
+        """Dropping a module must not cost the other modules their epochs.
+
+        A shard takes its env steps from whichever module was sliced last, so
+        dropping that module can leave `batch.count` at 0 while the rest of the batch
+        still holds rows. Read as a minibatch size, that 0 turns `num_epochs` passes
+        into one.
+        """
+        learner = self._build_two_module_learner()
+        rows = get_cartpole_dataset_reader(batch_size=512).next()
+        batch = MultiAgentBatch(
+            {
+                "mod1": rows[:129],
+                "mod2": SampleBatch({"obs": np.zeros((0, 4), dtype=np.float32)}),
+            },
+            # `mod2` was sliced last and came up empty, taking `count` down with it.
+            env_steps=0,
+        )
+
+        results = learner.update(batch=learner._convert_batch_type(batch), num_epochs=2)
+
+        self.assertEqual(2 * 129, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
 
     def test_never_skip_update(self):
         """`never_skip_update=True` opts out of the skip logic entirely: no
