@@ -246,11 +246,8 @@ def validate_tracing_exporter_import_path(
     """
     if not tracing_config.enabled:
         return
-    exporter_import_path = (
-        tracing_config.exporter_import_path or DEFAULT_TRACING_EXPORTER_IMPORT_PATH
-    )
-    # Only validate that the path can be imported.
-    import_attr(exporter_import_path)
+    # The model resolves the default exporter path, so import it directly.
+    import_attr(tracing_config.exporter_import_path)
 
 
 def setup_tracing(
@@ -283,9 +280,6 @@ def setup_tracing(
         return False
 
     tracing_exporter_import_path = tracing_config.exporter_import_path
-    # Fill default exporter if enabled but path is empty
-    if not tracing_exporter_import_path:
-        tracing_exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
     tracing_sampling_ratio = tracing_config.sampling_ratio
 
     # Check dependencies

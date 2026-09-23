@@ -1492,11 +1492,7 @@ class ProxyActorInterface(ABC):
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
-        # Tracing is configured after startup via the GLOBAL_TRACING_CONFIG long
-        # poll (see `_update_tracing_config`), not through the constructor.
         self._tracing_config: Optional[TracingConfig] = None
-        # Track whether tracing has already been set up for this proxy.
-        # OpenTelemetry only allows the tracer provider to be set once per process.
         self._tracing_setup_succeeded = False
         self._log_buffer_size = log_buffer_size
 
