@@ -446,6 +446,12 @@ SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# Kill switch for the columnar handle-metric wire format. On by default; set to 0 to
+# fall back to cloudpickle without a redeploy. The controller reads either format.
+RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS = get_env_bool(
+    "RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS", "1"
+)
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
@@ -749,7 +755,7 @@ RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
-RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
+RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "4096"))
 
 # Number of threads for HAProxy
 RAY_SERVE_HAPROXY_NBTHREAD = int(os.environ.get("RAY_SERVE_HAPROXY_NBTHREAD", "4"))
@@ -962,7 +968,7 @@ RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
 # do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
 # Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
-    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 8 * 1024 * 1024
 )
 
 # HAProxy tuning flags
