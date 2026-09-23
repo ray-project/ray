@@ -277,6 +277,9 @@ class Learner(Checkpointable):
         # The actual MultiRLModule used by this Learner.
         self._module: Optional[MultiRLModule] = None
         self._weights_seq_no = 0
+        # Whether the `update()` call currently in flight was skipped. Read it in
+        # `after_gradient_based_update`, which runs either way.
+        self._update_skipped = False
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -1129,7 +1132,8 @@ class Learner(Checkpointable):
 
         # `None` means: skip this update. `_create_iterator_if_necessary` has already
         # warned and counted it; only the per-update bookkeeping remains.
-        if batch_iter is None:
+        self._update_skipped = batch_iter is None
+        if self._update_skipped:
             self.after_gradient_based_update(timesteps=timesteps or {})
             if not _no_metrics_reduce:
                 return self.metrics.reduce()
@@ -1642,6 +1646,12 @@ class Learner(Checkpointable):
         Should be overridden to implement custom cleanup-, logging-, or non-gradient-
         based Learner/RLModule update logic after(!) gradient-based updates have been
         completed.
+
+        Also called for an update that was skipped (see `_should_skip_update`), so
+        that time-based logic (schedulers, target network syncs) keeps running.
+        `self._update_skipped` says which of the two it is; anything that reads back
+        what this update measured should check it, because those metrics hold values
+        from earlier updates or read NaN.
 
         Args:
             timesteps: Timesteps dict, which must have the key
