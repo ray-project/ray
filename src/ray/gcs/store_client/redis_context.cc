@@ -258,6 +258,54 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
   }
 }
 
+void RedisRequestContext::HandleFailure(RedisRequestContext *request_cxt,
+                                        bool reached_redis,
+                                        std::string_view error_msg) {
+  if (request_cxt->context_alive_.expired()) {
+    // The owning RedisAsyncContext is being destroyed and is flushing its
+    // pending callbacks; the event loop may be going away with it. There is
+    // nobody left to answer, and scheduling a retry timer would touch a
+    // dying io_context. Drop the request instead.
+    delete request_cxt;
+    return;
+  }
+  bool refunded = false;
+  if (!reached_redis) {
+    // The command never made it to Redis: the connection was gone, or hiredis
+    // accepted it on a context that then died. The attempt says nothing about
+    // the command, so give the retry back while the outage is young. The
+    // deadline belongs to the outage, not to this request, so every in-flight
+    // command expires at the same instant however long it had been retrying.
+    const absl::Time now = request_cxt->clock_.Now();
+    const absl::Time deadline = request_cxt->redis_context_->OutageDeadline(
+        now, absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms()));
+    if (now < deadline) {
+      ++request_cxt->pending_retries_;
+      refunded = true;
+    }
+  }
+  if (refunded) {
+    // During an outage every in-flight command comes through here once per
+    // backoff step, and nothing is being spent yet: one line per second is
+    // plenty.
+    RAY_LOG_EVERY_MS(WARNING, 1000)
+        << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+        << "] failed (" << error_msg
+        << "). Holding its retries while the reconnect is in flight.";
+  } else {
+    RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+                   << "] failed due to error " << error_msg << ". "
+                   << request_cxt->pending_retries_ << " retries left.";
+  }
+  auto delay = request_cxt->exp_back_off_.Current();
+  request_cxt->exp_back_off_.Next();
+  // Retry the request after a while.
+  execute_after(
+      request_cxt->io_service_,
+      [request_cxt]() { request_cxt->Run(); },
+      std::chrono::milliseconds(delay));
+}
+
 void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
                                           void *raw_reply,
                                           void *privdata) {
@@ -265,50 +313,11 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
-    if (request_cxt->context_alive_.expired()) {
-      // The owning RedisAsyncContext is being destroyed and is flushing its
-      // pending callbacks; the event loop may be going away with it. There is
-      // nobody left to answer, and scheduling a retry timer would touch a
-      // dying io_context. Drop the request instead.
-      delete request_cxt;
-      return;
-    }
-    bool refunded = false;
-    if (redis_reply == nullptr &&
-        request_cxt->clock_.Now() - request_cxt->start_time_ <
-            absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms())) {
-      // No reply at all means the command never made it to Redis: the
-      // connection was gone, or the context was still mid-connect when hiredis
-      // accepted it and then freed it. Either way the attempt says nothing
-      // about the command, so give the retry back and let the reconnect finish.
-      // The wall clock above is what bounds the wait.
-      ++request_cxt->pending_retries_;
-      refunded = true;
-    }
-    auto error_msg = redis_reply ? redis_reply->str
-                                 : (async_context ? async_context->errstr
-                                                  : "Redis connection unavailable");
-    if (refunded) {
-      // During an outage every in-flight command comes through here once per
-      // backoff step, and nothing is being spent yet: one line per second is
-      // plenty.
-      RAY_LOG_EVERY_MS(WARNING, 1000)
-          << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
-          << "] failed (" << error_msg
-          << "). Holding its retries while the reconnect is in flight.";
-    } else {
-      RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
-                     << "]"
-                     << " failed due to error " << error_msg << ". "
-                     << request_cxt->pending_retries_ << " retries left.";
-    }
-    auto delay = request_cxt->exp_back_off_.Current();
-    request_cxt->exp_back_off_.Next();
-    // Retry the request after a while.
-    execute_after(
-        request_cxt->io_service_,
-        [request_cxt]() { request_cxt->Run(); },
-        std::chrono::milliseconds(delay));
+    std::string error_msg =
+        redis_reply != nullptr     ? std::string(redis_reply->str, redis_reply->len)
+        : async_context != nullptr ? std::string(async_context->errstr)
+                                   : std::string("Redis connection unavailable");
+    HandleFailure(request_cxt, /*reached_redis=*/redis_reply != nullptr, error_msg);
   } else {
     // Measure while hiredis still owns the reply, and before anything is posted
     // to the io_service: `request_cxt` is deleted at the end of this branch, so
@@ -385,8 +394,10 @@ void RedisRequestContext::Run() {
 
   // A rejected submission has no hiredis callback. Use the owned Status for
   // diagnostics; the raw context may have been freed since submission returned.
-  RAY_LOG(ERROR) << "Redis command submission failed: " << status;
-  RedisResponseFn(nullptr, nullptr, this);
+  // HandleFailure logs it, rate-limited while the outage refunds retries: an
+  // unconditional line here would fire once per retry of every in-flight
+  // command for the whole grace period.
+  HandleFailure(this, /*reached_redis=*/false, status.message());
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
@@ -1069,6 +1080,15 @@ void RedisContext::OnAsyncDisconnected() {
   reconnecting_ = true;
   reconnect_attempts_left_ = RayConfig::instance().redis_db_connect_retries();
   reconnect_backoff_.Reset();
+  // Start the outage clock now, whether or not a command is in flight, so the
+  // grace period runs from the drop rather than from whichever command
+  // happens to fail first. A command flushed by hiredis before this callback
+  // may have stamped it a moment earlier already; that stamp stands.
+  if (redis_async_context_ != nullptr) {
+    redis_async_context_->OutageDeadline(
+        clock_.Now(),
+        absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms()));
+  }
   RAY_LOG(WARNING) << "Redis connection to " << BuildAddress(address_, port_)
                    << " was lost. Attempting to reconnect in place.";
   // Do not reconnect synchronously: hiredis is still tearing the old context
@@ -1287,6 +1307,8 @@ void RedisContext::OnAsyncConnected() {
   reconnect_backoff_.Reset();
   // Invalidate any retry timer still armed from this episode.
   ++reconnect_epoch_;
+  // The outage is over; the next one gets a fresh grace period.
+  redis_async_context_->ClearOutage();
   RAY_LOG(INFO) << "Reconnected to Redis at " << BuildAddress(address_, port_) << ".";
 }
 

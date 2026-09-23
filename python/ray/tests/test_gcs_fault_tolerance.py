@@ -921,8 +921,12 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     [
         generate_system_config_map(
             gcs_server_request_timeout_seconds=10,
-            redis_reconnect_grace_period_ms=5000,
-            redis_db_connect_retries=10,
+            # Wide on both sides of the survival check below: the old
+            # behaviour dies at ~3.5s, well before 8s even on a slow runner,
+            # while grace (15s) and the reconnect budget (30 attempts, ~27s)
+            # both outlast it.
+            redis_reconnect_grace_period_ms=15000,
+            redis_db_connect_retries=30,
         )
     ],
     indirect=True,
@@ -965,13 +969,13 @@ def test_redis_permanently_down_bounded_exit(
 
     # The grace period must hold first: with the probe draining against a dead
     # Redis, the old behaviour dies on its ~3.5s command budget, while the
-    # grace period (5s here) keeps the process alive past this check.
+    # grace period (15s here) keeps the process alive past this check.
     try:
-        time.sleep(4)
+        time.sleep(8)
         assert psutil.pid_exists(gcs_server_pid)
 
-        # And the exit must still come: grace (5s) + retry drain, or the
-        # reconnect budget (10 attempts), whichever runs out first.
+        # And the exit must still come: grace (15s) + retry drain, which
+        # expires before the reconnect budget (30 attempts) does.
         wait_for_pid_to_exit(gcs_server_pid, 120)
     finally:
         # Join the probe before fixture teardown races it, on the failure

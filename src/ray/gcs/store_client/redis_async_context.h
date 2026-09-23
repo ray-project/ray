@@ -27,6 +27,7 @@
 #include <optional>
 
 #include "absl/functional/function_ref.h"
+#include "absl/time/time.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 
@@ -128,6 +129,21 @@ class RedisAsyncContext {
   /// work checks this first and gives up instead.
   std::weak_ptr<bool> GetAliveToken() const { return alive_; }
 
+  /// Deadline until which a command that failed without reaching Redis may be
+  /// retried for free during the current outage. The first caller of an outage
+  /// stamps it at `now + grace`; everyone after sees the same deadline, so
+  /// every in-flight command expires together no matter when it was issued.
+  /// Thread-safe.
+  ///
+  /// \param now The current time.
+  /// \param grace The grace period, used only by the call that stamps it.
+  /// \return The deadline of the current outage.
+  absl::Time OutageDeadline(absl::Time now, absl::Duration grace);
+
+  /// End the current outage, so the next one gets its own deadline.
+  /// Thread-safe.
+  void ClearOutage();
+
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
   /// \param fn Callback that will be called after the command finishes.
@@ -194,6 +210,9 @@ class RedisAsyncContext {
   /// touch the flags above once they describe a different connection.
   /// Atomic because the socket handler reads it before taking `mutex_`.
   std::atomic<uint64_t> socket_generation_{0};
+  /// See OutageDeadline(). `kNoOutage` means no outage is in progress.
+  static constexpr int64_t kNoOutage = INT64_MIN;
+  std::atomic<int64_t> outage_deadline_ns_{kNoOutage};
   /// Sentinel letting a queued socket operation notice that this object was
   /// destroyed before its handler ran. Registering a hiredis connect callback
   /// arms a write wait immediately, and RedisContext::Connect tears the

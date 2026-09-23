@@ -27,6 +27,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/time/time.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/test_utils.h"
@@ -206,6 +207,36 @@ TEST_F(RedisAsyncContextTest, TestDisconnectHandlerUnsetIsNoop) {
   const int port = TEST_REDIS_SERVER_PORTS.front();
   RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
   ctx.NotifyDisconnected();
+}
+
+// The outage deadline is stamped once, by whoever gets there first, and every
+// later caller in the same outage sees that same deadline regardless of the
+// grace it passes. Clearing it lets the next outage start fresh.
+TEST_F(RedisAsyncContextTest, TestOutageDeadlineIsSharedAndResettable) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  const absl::Time t0 = absl::FromUnixSeconds(1000);
+  const absl::Time first = ctx.OutageDeadline(t0, absl::Seconds(60));
+  EXPECT_EQ(first, t0 + absl::Seconds(60));
+  // A command that shows up 30s into the outage does not get its own 60s.
+  EXPECT_EQ(ctx.OutageDeadline(t0 + absl::Seconds(30), absl::Seconds(60)), first);
+
+  ctx.ClearOutage();
+  const absl::Time t1 = t0 + absl::Seconds(500);
+  EXPECT_EQ(ctx.OutageDeadline(t1, absl::Seconds(60)), t1 + absl::Seconds(60));
+}
+
+// A zero grace period stamps a deadline equal to now, so nothing is ever
+// strictly before it: no refunds, which is the pre-reconnect behaviour.
+TEST_F(RedisAsyncContextTest, TestOutageDeadlineZeroGraceRefundsNothing) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+
+  const absl::Time now = absl::FromUnixSeconds(1000);
+  EXPECT_FALSE(now < ctx.OutageDeadline(now, absl::ZeroDuration()));
 }
 
 namespace {

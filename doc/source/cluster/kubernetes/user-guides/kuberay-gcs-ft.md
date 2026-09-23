@@ -384,16 +384,23 @@ retry behavior of individual Redis commands.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `RAY_redis_reconnect_grace_period_ms` | `60000` | How long a command waits out a reconnect before it starts spending its retry budget. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
+| `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
 | `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
 | `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |
 | `RAY_redis_retry_multiplier` | `2` | Backoff growth. |
 | `RAY_redis_retry_max_ms` | `1000` | Backoff ceiling. |
 | `RAY_num_redis_request_retries` | `5` | Retries for a single command once the grace period has passed. |
 
-Whichever bound is smaller ends it: with `RAY_redis_db_connect_retries=3` and a
-60 second grace period, GCS exits after three failed attempts rather than
-waiting out the minute.
+Whichever bound runs out first ends it. Under the defaults that is the grace
+period: the GCS health check keeps a Redis command in flight at all times, so
+GCS exits roughly when the grace period ends plus a few seconds of retry drain
+(`RAY_num_redis_request_retries` attempts at up to `RAY_redis_retry_max_ms`
+each), about 65 seconds. The reconnect budget, 120 attempts at a backoff capped
+at one second, lasts about two minutes and so does not decide the outcome
+unless you lower it: with `RAY_redis_db_connect_retries=3`, GCS exits after
+three failed attempts rather than waiting out the minute. To survive a longer
+failover, raise `RAY_redis_reconnect_grace_period_ms`; raising
+`RAY_redis_db_connect_retries` on its own does not help.
 
 Raise the grace period when a failover takes longer than a minute, which
 happens with a large Sentinel `down-after-milliseconds`:

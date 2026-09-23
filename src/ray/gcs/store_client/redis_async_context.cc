@@ -147,6 +147,20 @@ void RedisAsyncContext::Reset(
   AddWrite();
 }
 
+absl::Time RedisAsyncContext::OutageDeadline(absl::Time now, absl::Duration grace) {
+  int64_t deadline = outage_deadline_ns_.load();
+  if (deadline == kNoOutage) {
+    const int64_t stamped = absl::ToUnixNanos(now + grace);
+    // Lose the race gracefully: whoever stamped first defines the outage.
+    if (outage_deadline_ns_.compare_exchange_strong(deadline, stamped)) {
+      deadline = stamped;
+    }
+  }
+  return absl::FromUnixNanos(deadline);
+}
+
+void RedisAsyncContext::ClearOutage() { outage_deadline_ns_.store(kNoOutage); }
+
 bool RedisAsyncContext::IsConnected() {
   std::lock_guard<std::mutex> lock(mutex_);
   return redis_async_context_ != nullptr;

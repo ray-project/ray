@@ -186,6 +186,18 @@ struct RedisRequestContext {
   void Run();
 
  private:
+  /// Shared failure path for a reply that never came (connection gone), an
+  /// error reply, and a submission hiredis refused. A command that never
+  /// reached Redis gets its retry back while the current outage's shared
+  /// deadline has not passed; see RedisAsyncContext::OutageDeadline.
+  ///
+  /// \param request_cxt The failed request. Deleted here if its context is gone.
+  /// \param reached_redis Whether Redis saw the command (an error reply).
+  /// \param error_msg What went wrong, for the log line.
+  static void HandleFailure(RedisRequestContext *request_cxt,
+                            bool reached_redis,
+                            std::string_view error_msg);
+
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
