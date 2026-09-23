@@ -261,7 +261,7 @@ class LLMRouter:
     def create_token_trackers(
         self, server: DeploymentHandle, llm_config: "LLMConfig"
     ) -> Dict[DeploymentID, "KVTokenTracker"]:
-        """Register trackers before handle initialization; subclasses can add pools."""
+        """Register token trackers before handle initialization."""
         from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
             build_kv_token_tracker,
         )

@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
 from ray.serve.context import _get_serve_request_context
 from ray.serve.handle import DeploymentHandle
 
+# The tracker imports optional Dynamo code; only its type is needed here.
 if TYPE_CHECKING:
     from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
         KVTokenTracker,

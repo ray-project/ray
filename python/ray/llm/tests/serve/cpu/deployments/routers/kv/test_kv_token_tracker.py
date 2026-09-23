@@ -216,7 +216,7 @@ async def test_lifecycle_booking_end_to_end():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("decode", [False, True])
-async def test_peer_trackers_converge_through_request_lifecycle(decode):
+async def test_peer_lifecycle_sync(decode):
     """One atomic selection is replicated so every selection service books the
     same request, applies prefill completion, and frees it."""
     pytest.importorskip("dynamo.llm")
@@ -318,7 +318,7 @@ async def test_peer_trackers_converge_through_request_lifecycle(decode):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stage", ["prefill", "decode"])
-async def test_pd_load_isolation(monkeypatch, stage):
+async def test_pd_stage_load(monkeypatch, stage):
     """Prefill ignores resident blocks; decode ignores pending prefill work."""
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _NoLongPollTracker)
     trackers = [
@@ -327,7 +327,7 @@ async def test_pd_load_isolation(monkeypatch, stage):
         )
         for _ in range(2)
     ]
-    workers = [get_worker_id("long"), get_worker_id("short")]
+    workers = [get_worker_id("worker-1"), get_worker_id("worker-2")]
     routing, peer = trackers
     try:
         for rank, tracker in enumerate(trackers):
@@ -347,17 +347,18 @@ async def test_pd_load_isolation(monkeypatch, stage):
 
         handle = _TrackerBroadcastHandle(*trackers)
         routing.start_reservation_broadcast(handle)
-        await routing.select_worker("long", list(range(1024)), [workers[0]], 128)
-        await routing.select_worker("short", list(range(64)), [workers[1]], 128)
+        # Give worker 1 a larger request, then copy both bookings to the peer.
+        await routing.select_worker("req-1", list(range(1024)), [workers[0]], 128)
+        await routing.select_worker("req-2", list(range(64)), [workers[1]], 128)
         await routing.flush_reservation_broadcast()
         await handle.flush()
         await peer.flush_reservation_updates()
 
         for tracker in trackers:
-            await tracker.on_prefill_complete("long")
+            await tracker.on_prefill_complete("req-1")
             if stage == "prefill":
-                # Even optional engine progress must not add decode load to P.
-                await tracker.on_decode_progress("long", 32)
+                # Decode progress must not add load to the prefill tracker.
+                await tracker.on_decode_progress("req-1", 32)
             ignored_load = (
                 "potential_decode_blocks"
                 if stage == "prefill"
@@ -367,7 +368,7 @@ async def test_pd_load_isolation(monkeypatch, stage):
             pick = await tracker.select_worker(
                 f"probe-{tracker._ingress_replica_id}", list(range(16)), workers, 16
             )
-            # P chooses the now-idle worker. D chooses the smaller active KV load.
+            # P sees freed prefill work; D still sees worker 1's larger KV load.
             assert pick["worker_id"] == workers[0 if stage == "prefill" else 1]
     finally:
         for tracker in trackers:

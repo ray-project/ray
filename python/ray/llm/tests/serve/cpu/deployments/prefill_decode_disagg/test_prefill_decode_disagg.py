@@ -839,7 +839,7 @@ class TestBuildPDOpenaiApp:
 
 
 @pytest.mark.parametrize("nested", [False, True])
-def test_kv_aware_pd_rejects_moriio(nested):
+def test_pd_rejects_moriio(nested):
     connector = {"kv_connector": "MoRIIOConnector", "kv_role": "kv_both"}
     if nested:
         connector = {

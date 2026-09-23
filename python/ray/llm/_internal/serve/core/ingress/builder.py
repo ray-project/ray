@@ -17,6 +17,8 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.pd_router import LLMPDRouter
+from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -110,8 +112,6 @@ def _build_openai_ingress_request_router(
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
-    from ray.llm._internal.serve.core.ingress.router import LLMRouter
-
     ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
     if is_kv_aware(llm_config):
         runtime_env = _get_tokenizing_router_runtime_env(llm_config)
@@ -124,8 +124,6 @@ def _build_openai_ingress_request_router(
         "llm_config": llm_config if is_kv_aware(llm_config) else None,
     }
     if prefill_server is not None:
-        from ray.llm._internal.serve.core.ingress.pd_router import LLMPDRouter
-
         router_cls = LLMPDRouter
         bind_kwargs.update(prefill_server=prefill_server, prefill_config=prefill_config)
     deployment = serve.deployment(
