@@ -1,7 +1,16 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Callable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 from pyarrow.fs import FileSystem
@@ -59,6 +68,7 @@ class FileIndexer(ABC):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -81,6 +91,13 @@ class FileIndexer(ABC):
                 :meth:`list_file_infos` is never shuffled.
             execution_idx: Execution index used with ``shuffle_config`` to
                 derive a per-execution seed.
+            excluded_read_unit_ids: Ids of read units (see ``ReadUnit.id``) a
+                checkpoint already finished; they must not be listed. A file
+                path names the whole file and every indexer honors it. An
+                indexer that lists a file in parts also honors the ids its
+                reader reports for those parts (the footer-based Parquet
+                indexer: ``"<path>#rg<N>"`` per row group). Ids that name
+                nothing in the listing are ignored.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -238,6 +255,7 @@ class NonSamplingFileIndexer(FileIndexer):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         # This per-file listing path ignores predicate/limit/projected_columns;
         # they're consumed by metadata-aware indexers (e.g. the footer indexer).
@@ -252,6 +270,7 @@ class NonSamplingFileIndexer(FileIndexer):
             preserve_order=preserve_order,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
         )
         yield from self._process_file_infos_to_manifests(file_infos)
 
@@ -264,6 +283,7 @@ class NonSamplingFileIndexer(FileIndexer):
         preserve_order: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileInfo]:
         """Path discovery, then optional file shuffle, before metadata fetch.
 
@@ -277,6 +297,12 @@ class NonSamplingFileIndexer(FileIndexer):
             pruners=pruners,
             preserve_order=preserve_order,
         )
+        if excluded_read_unit_ids:
+            # A whole file a checkpoint finished. Dropped here, before any
+            # metadata fetch, so a metadata-aware subclass never reads its footer.
+            file_infos = (
+                fi for fi in file_infos if fi.path not in excluded_read_unit_ids
+            )
         if shuffle_config is None:
             yield from file_infos
             return

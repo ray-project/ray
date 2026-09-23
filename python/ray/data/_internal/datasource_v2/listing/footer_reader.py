@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Iterable, Iterator, NamedTuple
+from typing import TYPE_CHECKING, AbstractSet, Iterable, Iterator, NamedTuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -10,6 +10,9 @@ import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
 
 import ray
+from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
+    _row_group_unit_id,
+)
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     FileChunks,
     RowGroupInfo,
@@ -97,6 +100,7 @@ class FooterReader:
         projected_cols: list[str] | None = None,
         coalesce_bytes: int = 0,
         retried_io_errors: list[str] | None = None,
+        excluded_read_unit_ids: AbstractSet[str] | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -109,6 +113,11 @@ class FooterReader:
         # ~coalesce_bytes uncompressed before returning them, so the driver packs
         # fewer items. 0 disables coalescing (one chunk per physical row group).
         self.coalesce_bytes = coalesce_bytes
+        # Read unit ids a checkpoint already finished (``"<path>#rg<N>"`` for a
+        # row group). Those row groups are left out of every ``FileChunks``.
+        self.excluded_read_unit_ids: AbstractSet[str] = (
+            excluded_read_unit_ids or frozenset()
+        )
         self.filesystem = filesystem
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
         # Match Arrow's process-wide pools to the actor's IO concurrency so
@@ -287,6 +296,17 @@ class FooterReader:
             if metadata.num_row_groups
             else None
         )
+        all_rg_indices = [
+            i
+            for i in range(metadata.num_row_groups)
+            if _row_group_unit_id(path, i) not in self.excluded_read_unit_ids
+        ]
+        if len(all_rg_indices) < metadata.num_row_groups:
+            # Row groups a checkpoint already finished. Dropping them here,
+            # before the predicate split and before ``_read_footers`` counts
+            # rows toward a pushed-down limit, means a resumed job neither
+            # re-reads them nor stops listing early on their account.
+            fragment = fragment.subset(row_group_ids=all_rg_indices)
 
         if self.filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
@@ -298,7 +318,7 @@ class FooterReader:
                 fragment, self.filter, path
             )
             rg_indices: Iterable[int] = (
-                range(metadata.num_row_groups) if surviving is None else surviving
+                all_rg_indices if surviving is None else surviving
             )
             # Classify surviving groups as fully- vs partially-matching via
             # predicate negation: a group is fully matched iff
@@ -326,10 +346,10 @@ class FooterReader:
             # in that case, which would abort the whole read_footers batch.
             # Skip pruning: keep every row group and let the reader apply the
             # filter after null-fill. None can be an exact survivor.
-            rg_indices = range(metadata.num_row_groups)
+            rg_indices = all_rg_indices
             fully_by_idx = dict.fromkeys(rg_indices, False)
         else:
-            rg_indices = range(metadata.num_row_groups)
+            rg_indices = all_rg_indices
             # No predicate -> nothing to disqualify a group, so the lookup below
             # falls through to its fully-matched default for every group.
             fully_by_idx = {}
