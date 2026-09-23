@@ -218,7 +218,7 @@ Ray Data supports a wide range of preprocessing operations that you can use to t
 
 - For general preprocessing, see :ref:`Transforming Data <transforming_data>`.
 - For tabular data, see :ref:`Preprocessing Structured Data <preprocessing_structured_data>`.
-- For PyTorch tensors, see :ref:`Transformations with torch tensors <transform_pytorch>`.
+- For PyTorch tensors, see :ref:`Return Torch tensors from transformations <transform_pytorch>`.
 - For optimizing expensive preprocessing operations, see :ref:`Caching the preprocessed dataset <dataset_cache_performance>`.
 
 .. _train-datasets-input:
@@ -297,7 +297,7 @@ For more details, see the following sections for each framework:
         3. Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`.
         4. Create a dataset iterable via :meth:`ray.data.DataIterator.iter_torch_batches`.
 
-        For more details, see the :ref:`Migrating from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
+        For more details, see :ref:`Migrate from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
 
         **Option 2 (without Ray Data):**
 
@@ -500,7 +500,7 @@ Preprocessing structured data
 
 .. note::
     This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
-    Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
+    Ray Data operations such as `map_batches`. See the :ref:`Ray Data Working with PyTorch guide <working_with_pytorch>` for more details.
 
 For tabular data, use Ray Data :ref:`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
@@ -874,4 +874,4 @@ More data ingest guides
 -----------------------
 
 - :ref:`Weighted dataset mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
-- :ref:`Scaling Collation Functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.
+- :ref:`Scaling out expensive collate functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.

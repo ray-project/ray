@@ -10,21 +10,22 @@ myst:
 
 Ray Data integrates with the PyTorch ecosystem.
 
-This guide describes how to:
+This guide describes how to do the following:
 
-* {ref}`Iterate over your dataset as Torch tensors for model training <iterating_pytorch>`
-* {ref}`Write transformations that deal with Torch tensors <transform_pytorch>`
-* {ref}`Perform batch inference with Torch models <batch_inference_pytorch>`
-* {ref}`Save Datasets containing Torch tensors <saving_pytorch>`
-* {ref}`Migrate from PyTorch Datasets to Ray Data <migrate_pytorch>`
+* {ref}`Iterate over your dataset as Torch tensors for model training <iterating_pytorch>`.
+* {ref}`Write transformations that work with Torch tensors <transform_pytorch>`.
+* {ref}`Perform batch inference with Torch models <batch_inference_pytorch>`.
+* {ref}`Save datasets that contain Torch tensors <saving_pytorch>`.
+* {ref}`Migrate from PyTorch Datasets to Ray Data <migrate_pytorch>`.
 
 (iterating_pytorch)=
+(iterating-over-torch-tensors-for-training)=
 
-## Iterating over Torch tensors for training
+## Iterate over Torch tensors for training
 
-To iterate over batches of data in Torch format, call {meth}`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is represented as `Dict[str, torch.Tensor]`, with one tensor per column in the dataset.
+To iterate over batches of data in Torch format, call {meth}`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is a `Dict[str, torch.Tensor]`, with one tensor per column in the dataset.
 
-This is useful for training Torch models with batches from your dataset. For configuration details such as providing a `collate_fn` for customizing the conversion, see the API reference for {meth}`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+Use these batches to train Torch models on your dataset. For configuration details, such as how to provide a `collate_fn` that customizes the conversion, see the API reference for {meth}`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
 ```{testcode}
 import ray
@@ -44,9 +45,11 @@ for batch in ds.iter_torch_batches(batch_size=2):
 {'image': tensor([[[[...]]]], dtype=torch.uint8)}
 ```
 
-### Integration with Ray Train
+(integration-with-ray-train)=
 
-Ray Data integrates with {ref}`Ray Train <train-docs>` for easy data ingest for data parallel training, with support for PyTorch, PyTorch Lightning, or Hugging Face training.
+### Integrate with Ray Train
+
+Ray Data integrates with {ref}`Ray Train <train-docs>` to ingest data for data-parallel training with PyTorch, PyTorch Lightning, or Hugging Face.
 
 ```{testcode}
 import torch
@@ -86,18 +89,19 @@ trainer.fit()
 For more details, see the {ref}`Ray Train user guide <data-ingest-torch>`.
 
 (transform_pytorch)=
+(transformations-with-torch-tensors)=
 
-## Transformations with Torch tensors
+## Return Torch tensors from transformations
 
-Transformations applied with `map` or `map_batches` can return Torch tensors.
+Transformations that you apply with `map` or `map_batches` can return Torch tensors.
 
 :::{caution}
-Under the hood, Ray Data automatically converts Torch tensors to NumPy arrays. Subsequent transformations accept NumPy arrays as input, not Torch tensors.
+Ray Data automatically converts the returned Torch tensors to NumPy arrays. Subsequent transformations accept NumPy arrays as input, not Torch tensors.
 :::
 
 ::::{tab-set}
 
-:::{tab-item} map
+:::{tab-item} `map`
 
 ```{testcode}
 from typing import Dict
@@ -130,7 +134,7 @@ tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
 :::
 
-:::{tab-item} map_batches
+:::{tab-item} `map_batches`
 
 ```{testcode}
 from typing import Dict
@@ -167,7 +171,9 @@ tensor  ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
 
 For more information on transforming data, see {ref}`Transforming data <transforming_data>`.
 
-### Built-in PyTorch transforms
+(built-in-pytorch-transforms)=
+
+### Use built-in PyTorch transforms
 
 You can use built-in Torch transforms from `torchvision`, `torchtext`, and `torchaudio`.
 
@@ -251,10 +257,11 @@ tokenized_text  list<item: string>
 ::::
 
 (batch_inference_pytorch)=
+(batch-inference-with-pytorch)=
 
-## Batch inference with PyTorch
+## Run batch inference with PyTorch
 
-With Ray Datasets, you can do scalable offline batch inference with Torch models by mapping a pre-trained model over your data.
+To run scalable offline batch inference with Torch models in Ray Data, map a pre-trained model over your data.
 
 ```{testcode}
 from typing import Dict
@@ -306,15 +313,16 @@ predictions.show(limit=1)
 For more details, see the {ref}`Batch inference user guide <batch_inference_home>`.
 
 (saving_pytorch)=
+(saving-datasets-containing-torch-tensors)=
 
-## Saving Datasets containing Torch tensors
+## Save datasets that contain Torch tensors
 
-Datasets containing Torch tensors can be saved to files, like parquet or NumPy.
+You can save datasets that contain Torch tensors to files in formats such as Parquet or NumPy.
 
-For more information on saving data, read {ref}`Saving data <saving-data>`.
+For more information on saving data, see {ref}`Saving data <saving-data>`.
 
 :::{caution}
-Torch tensors that are on GPU devices can't be serialized and written to disk. Convert the tensors to CPU (`tensor.to("cpu")`) before saving the data.
+Torch tensors that are on GPU devices can't be serialized and written to disk. Before you save the data, move the tensors to CPU with `tensor.to("cpu")`.
 :::
 
 ::::{tab-set}
@@ -335,7 +343,7 @@ ds.write_parquet("s3://my-bucket/tensor")
 
 :::
 
-:::{tab-item} Numpy
+:::{tab-item} NumPy
 
 ```{testcode}
 :skipif: True
@@ -354,16 +362,19 @@ ds.write_numpy("s3://my-bucket/tensor", column="tensor")
 ::::
 
 (migrate_pytorch)=
+(migrating-from-pytorch-datasets-and-dataloaders)=
 
-## Migrating from PyTorch Datasets and DataLoaders
+## Migrate from PyTorch Datasets and DataLoaders
 
-If you're currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
+If you use PyTorch Datasets and DataLoaders, you can migrate to Ray Data to work with distributed datasets.
 
-PyTorch Datasets are replaced by the {class}`Dataset <ray.data.Dataset>` abstraction, and the PyTorch DataLoader is replaced by {meth}`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+The Ray Data {class}`Dataset <ray.data.Dataset>` abstraction replaces PyTorch Datasets, and {meth}`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` replaces the PyTorch DataLoader.
 
-### Built-in PyTorch Datasets
+(built-in-pytorch-datasets)=
 
-If you are using built-in PyTorch datasets, for example from `torchvision`, these can be converted to a Ray Dataset using the {meth}`from_torch() <ray.data.from_torch>` API.
+### Convert built-in PyTorch Datasets
+
+To convert a built-in PyTorch dataset, such as one from `torchvision`, to a Ray Dataset, use the {meth}`from_torch() <ray.data.from_torch>` API.
 
 ```{testcode}
 :skipif: True
@@ -391,16 +402,18 @@ Column  Type
 item    <class 'object'>
 ```
 
-### Custom PyTorch Datasets
+(custom-pytorch-datasets)=
 
-If you have a custom PyTorch Dataset, you can migrate to Ray Data by converting the logic in `__getitem__` to Ray Data read and transform operations.
+### Migrate custom PyTorch Datasets
 
-Any logic for reading data from cloud storage and disk can be replaced by one of the Ray Data `read_*` APIs, and any transformation logic can be applied as a {meth}`map <ray.data.Dataset.map>` call on the Dataset.
+To migrate a custom PyTorch Dataset to Ray Data, convert the logic in `__getitem__` to Ray Data read and transform operations.
 
-The following example shows a custom PyTorch Dataset, and what the analogous would look like with Ray Data.
+Replace any logic that reads data from cloud storage and disk with one of the Ray Data `read_*` APIs, and apply any transformation logic as a {meth}`map <ray.data.Dataset.map>` call on the Dataset.
+
+The following example shows a custom PyTorch Dataset and an analogous implementation in Ray Data.
 
 :::{note}
-Unlike PyTorch Map-style datasets, Ray Datasets aren't indexable.
+Unlike PyTorch map-style datasets, Ray Datasets aren't indexable.
 :::
 
 ::::{tab-set}
@@ -497,11 +510,13 @@ ds = ds.map(extract_label).map(transform_image)
 
 ::::
 
-### PyTorch DataLoader
+(pytorch-dataloader)=
 
-The PyTorch DataLoader can be replaced by calling {meth}`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to iterate over batches of the dataset.
+### Replace the PyTorch DataLoader
 
-The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the behavior may not necessarily be identical. For exact semantics and usage, see the API reference for {meth}`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+To replace the PyTorch DataLoader, call {meth}`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to iterate over batches of the dataset.
+
+The following table maps PyTorch DataLoader arguments to Ray Data. The behavior isn't necessarily identical. For exact semantics and usage, see the API reference for {meth}`iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
 ```{list-table}
 :header-rows: 1
@@ -515,15 +530,15 @@ The following table describes how the arguments for PyTorch DataLoader map to Ra
 * - `collate_fn`
   - `collate_fn` argument to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Use a callable class such as {class}`~ray.data.collate_fn.ArrowBatchCollateFn`, {class}`~ray.data.collate_fn.NumpyBatchCollateFn`, or {class}`~ray.data.collate_fn.PandasBatchCollateFn` for custom iterator collation. For expensive transformations, see {ref}`scaling collation functions <scaling_collation_functions>`.
 * - `sampler`
-  - Not supported. Can be manually implemented after iterating through the dataset with {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+  - Not supported. Implement it manually after iterating through the dataset with {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 * - `batch_sampler`
-  - Not supported. Can be manually implemented after iterating through the dataset with {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+  - Not supported. Implement it manually after iterating through the dataset with {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 * - `drop_last`
   - `drop_last` argument to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
 * - `num_workers`
   - Not needed. Ray Data automatically parallelizes reading and transforming data across the cluster, so there's no separate worker pool to configure for {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 * - `prefetch_factor`
-  - Use `prefetch_batches` argument to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to indicate how many batches to prefetch. The number of prefetching threads are automatically configured according to `prefetch_batches`.
+  - Use the `prefetch_batches` argument to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to set how many batches to prefetch. Ray Data configures the number of prefetching threads automatically based on `prefetch_batches`.
 * - `pin_memory`
-  - Pass in `device` to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to get tensors that have already been moved to the correct device.
+  - Pass `device` to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to get tensors that are already on the correct device.
 ```
