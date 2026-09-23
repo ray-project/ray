@@ -38,9 +38,10 @@ It should print a path inside your checkout.
 Run them in order. Each one fails fast if the previous was not really passing.
 
 ```bash
-python release/train_tests/health/00_preflight.py       # ~20s, no GPU work
-python release/train_tests/health/01_nccl_ras.py        # is RAS producing data?
-python release/train_tests/health/02_injected_fault.py  # does anything react?
+python release/train_tests/health/00_preflight.py        # ~20s, no GPU work
+python release/train_tests/health/01_nccl_ras.py         # is RAS producing data?
+python release/train_tests/health/02_injected_fault.py   # does anything react?
+python release/train_tests/health/03_collective_join.py  # does it react for the right reason?
 ```
 
 ### 00_preflight.py
@@ -97,6 +98,25 @@ them.
 
 Useful knobs: `--workers`, `--hang-rank` (keep it non-zero so a healthy peer
 survives), `--hang-step`, `--confirm-s`.
+
+### 03_collective_join.py
+
+The part a RAS-only detector cannot do. The job builds real NCCL subgroups --
+TP groups all-reduced every step, "PP" groups only every `--pp-every` steps --
+so for most of the run the PP communicators genuinely have frozen op counts
+while the job is healthy. That is the false positive a fixed-timeout detector
+produces, reproduced rather than simulated.
+
+```bash
+python release/train_tests/health/03_collective_join.py --no-hang   # phase 1 only
+python release/train_tests/health/03_collective_join.py             # both phases
+```
+
+Pass means: silence while the PP groups sit frozen, then a decision within
+seconds of the TP wedge. A fire during phase 1 is a real false positive and the
+script fails on it.
+
+Needs an even worker count (tp=2) and at least 4 ranks.
 
 ## The no-GPU demos
 

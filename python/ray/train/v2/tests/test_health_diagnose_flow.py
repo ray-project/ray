@@ -37,26 +37,52 @@ from ray.train.v2._internal.execution.health.adapters.nccl_ras_policy import (
 # Two nodes, two ranks each.
 TOPOLOGY = [(0, "nodeA"), (1, "nodeA"), (2, "nodeB"), (3, "nodeB")]
 
+# Trimmed from a real `nvidia-smi -q` on an A10G. The nesting matters: the
+# uncorrectable counters live under `Volatile` (this run) and `Aggregate`
+# (lifetime), and there is no field called plain "Uncorrectable". The full
+# capture is in tests/data/health/.
 _HEALTHY_SMI = """
-GPU 00000000:07:00.0
-    GPU Current Temp                  : 61 C
+    Clocks Event Reasons
+        HW Slowdown                                    : Not Active
+            HW Thermal Slowdown                        : Not Active
+            HW Power Brake Slowdown                    : Not Active
+        SW Thermal Slowdown                            : Not Active
     ECC Errors
         Volatile
-            Uncorrectable             : 0
-    Clocks Event Reasons
-        SW Thermal Slowdown           : Not Active
-        HW Thermal Slowdown           : Not Active
+            SRAM Uncorrectable Parity                  : 0
+            SRAM Uncorrectable SEC-DED                 : 0
+            DRAM Uncorrectable                         : 0
+        Aggregate
+            SRAM Uncorrectable Parity                  : 0
+            DRAM Uncorrectable                         : 0
+    Remapped Rows
+        Uncorrectable Error                            : 0
+        Remapping Failure Occurred                     : No
+    Temperature
+        GPU Current Temp                               : 39 C
+        GPU Slowdown Temp                              : 95 C
 """
 
 _FAULTY_SMI = """
-GPU 00000000:07:00.0
-    GPU Current Temp                  : 93 C
+    Clocks Event Reasons
+        HW Slowdown                                    : Not Active
+            HW Thermal Slowdown                        : Not Active
+            HW Power Brake Slowdown                    : Not Active
+        SW Thermal Slowdown                            : Active
     ECC Errors
         Volatile
-            Uncorrectable             : 4
-    Clocks Event Reasons
-        SW Thermal Slowdown           : Active
-        HW Thermal Slowdown           : Not Active
+            SRAM Uncorrectable Parity                  : 0
+            SRAM Uncorrectable SEC-DED                 : 0
+            DRAM Uncorrectable                         : 4
+        Aggregate
+            SRAM Uncorrectable Parity                  : 0
+            DRAM Uncorrectable                         : 4
+    Remapped Rows
+        Uncorrectable Error                            : 0
+        Remapping Failure Occurred                     : No
+    Temperature
+        GPU Current Temp                               : 96 C
+        GPU Slowdown Temp                              : 95 C
 """
 
 
@@ -234,12 +260,15 @@ def test_bulk_output_goes_to_storage_and_the_result_carries_the_path():
 
 def test_nvidia_smi_parsing_pulls_only_what_a_policy_acts_on():
     metrics, events = _parse_nvidia_smi(_FAULTY_SMI)
-    assert metrics["ecc_uncorrectable"] == 4.0
-    assert metrics["max_temp_c"] == 93.0
+    assert metrics["ecc_uncorrectable"] == 4.0  # Volatile only, not Volatile+Aggregate
+    assert metrics["ecc_uncorrectable_lifetime"] == 4.0
+    assert metrics["max_temp_c"] == 96.0
+    # 96 C is past this card's own 95 C slowdown point, read from the report.
     assert events == ["ecc_uncorrectable", "gpu_hot", "thermal_throttle"]
 
     metrics, events = _parse_nvidia_smi(_HEALTHY_SMI)
     assert metrics["ecc_uncorrectable"] == 0.0
+    assert metrics["slowdown_temp_c"] == 95.0
     assert events == []
 
 
