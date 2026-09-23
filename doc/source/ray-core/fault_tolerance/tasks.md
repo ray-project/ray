@@ -91,7 +91,7 @@ By default, Ray will **not** retry tasks upon exceptions thrown by application c
 ```
 
 
-Use `ray list tasks -f task_id=\<task_id\>` from {ref}`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
+Use `ray list tasks -f task_id=<task_id>` from {ref}`State API CLI <state-api-overview-ref>` to see task attempts failures and retries:
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`

@@ -50,7 +50,7 @@ Once a remote function is defined, it can be invoked using the `.remote()` metho
 
 Once the task is submitted to `NormalTaskSubmitter`, a worker process on some Ray node is selected to execute the task and this process is called scheduling.
 
-1. `NormalTaskSubmitter` first [waits](https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L33) for all the `ObjectRef` arguments to be available. Available means tasks that produce those `ObjectRef`\s finished execution and the data is available somewhere in the cluster.
+1. `NormalTaskSubmitter` first [waits](https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/normal_task_submitter.cc#L33) for all the `ObjectRef` arguments to be available. Available means tasks that produce those `ObjectRef`s finished execution and the data is available somewhere in the cluster.
 
    1. If the object pointed to by the `ObjectRef` is in the plasma store, the `ObjectRef` itself is sent to the executor and the executor will resolve the `ObjectRef` to the actual data (pull from remote plasma store if needed) before calling the user function.
    2. If the object pointed to by the `ObjectRef` is in the caller memory store, the data is [inlined](https://github.com/ray-project/ray/blob/e832bd843870cde7e66e7019ea82a366836f24d5/src/ray/core_worker/transport/dependency_resolver.cc#L26) and sent to the executor as part of the `PushTask` RPC just like other pass-by-value inline arguments.

@@ -290,7 +290,7 @@ RDT is currently in alpha and currently has the following limitations, which may
 For collective-based / two-sided tensor transports (Gloo and NCCL):
 
 * Only the process that created the collective group can submit actor tasks that return and pass RDT objects. If the creating process passes the actor handles to other processes, those processes can submit actor tasks as usual, but will not be able to use RDT objects.
-* Similarly, the process that created the collective group cannot serialize and pass RDT {class}`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the {class}`ray.ObjectRef`\s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
+* Similarly, the process that created the collective group cannot serialize and pass RDT {class}`ray.ObjectRefs <ray.ObjectRef>` to other Ray tasks or actors. Instead, the {class}`ray.ObjectRef`s can only be passed as direct arguments to other actor tasks, and those actors must be in the same collective group.
 * Each actor can only be in one collective group per tensor transport at a time.
 * No support for {func}`ray.put <ray.put>`.
 * No support for out-of-order actors such as async actors or actors with `max_concurrency` > 1.

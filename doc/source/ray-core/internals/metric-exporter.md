@@ -153,13 +153,15 @@ For gauges, counters, and sums, the recorder uses observable (asynchronous) inst
 
 High-cardinality labels can cause metric explosion, making metrics systems unusable. Ray implements cardinality reduction through label filtering and value aggregation.
 
-**Label Filtering** The system identifies high-cardinality labels based on the `RAY_metric_cardinality_level` environment variable. The logic is implemented in [MetricCardinality.get_high_cardinality_labels_to_drop()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/python/ray/_private/telemetry/metric_cardinality.py#L80):
+**Label Filtering**
+: The system identifies high-cardinality labels based on the `RAY_metric_cardinality_level` environment variable. The logic is implemented in [MetricCardinality.get_high_cardinality_labels_to_drop()](https://github.com/ray-project/ray/blob/05e7efd5ef71dca7a396e6b5f15c8ff16960c5db/python/ray/_private/telemetry/metric_cardinality.py#L80):
 
-  - **`legacy`**: All labels are preserved (default behavior before Ray 2.53)
-  - **`recommended`**: The `WorkerId` label is dropped (default since Ray 2.53)
-  - **`low`**: Both `WorkerId` and `Name` labels are dropped for tasks and actors
+  - **\`legacy\`**: All labels are preserved (default behavior before Ray 2.53)
+  - **\`recommended\`**: The `WorkerId` label is dropped (default since Ray 2.53)
+  - **\`low\`**: Both `WorkerId` and `Name` labels are dropped for tasks and actors
 
-**Aggregation process** For observable gauges, counters, and sums, aggregation happens in the callback registered with the OpenTelemetry SDK in the Python recorder:
+**Aggregation process**
+: For observable gauges, counters, and sums, aggregation happens in the callback registered with the OpenTelemetry SDK in the Python recorder:
 
   - **Collection**: The callback collects all observations for a metric from an internal observations map.
   - **Label Filtering**: The callback drops high-cardinality labels from tag sets based on `MetricCardinality.get_high_cardinality_labels_to_drop()`.

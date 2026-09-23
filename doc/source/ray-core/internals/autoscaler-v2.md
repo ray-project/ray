@@ -122,13 +122,13 @@ As described in the previous section, the autoscaler accumulates scaling decisio
 Scaling decisions are represented as a list of [InstanceUpdateEvent](https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/src/ray/protobuf/instance_manager.proto#L135) records. For example:
 
 - **For launching new instances**:
-  - `instance_id`: A randomly generated ID for Instance Manager tracking.
-  - `instance_type`: The type of instance to launch.
-  - `new_instance_status`: `QUEUED`.
+  \- `instance_id`: A randomly generated ID for Instance Manager tracking.
+  \- `instance_type`: The type of instance to launch.
+  \- `new_instance_status`: `QUEUED`.
 
 - **For terminating instances**:
-  - `instance_id`: The ID of the instance to stop.
-  - `new_instance_status`: `TERMINATING` or `RAY_STOP_REQUESTED`.
+  \- `instance_id`: The ID of the instance to stop.
+  \- `new_instance_status`: `TERMINATING` or `RAY_STOP_REQUESTED`.
 
 These update events are passed to the Instance Manager, which transitions instance statuses.
 

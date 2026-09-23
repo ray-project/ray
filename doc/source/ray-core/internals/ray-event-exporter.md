@@ -217,9 +217,9 @@ The [AsyncHttpPublisherClient](https://github.com/ray-project/ray/blob/4ebdc0abe
 
 1. **Event Filtering**: Filters events using `events_filter_fn` (typically `_can_expose_event`)
 2. **JSON Conversion**: Converts protobuf events to JSON dictionaries
-   - Uses `message_to_json()` from protobuf
-   - Optionally preserves proto field names or converts to camelCase
-   - Runs in `ThreadPoolExecutor` to avoid blocking the event loop
+   \- Uses `message_to_json()` from protobuf
+   \- Optionally preserves proto field names or converts to camelCase
+   \- Runs in `ThreadPoolExecutor` to avoid blocking the event loop
 3. **HTTP POST**: Sends filtered events as JSON to the configured endpoint
 4. **Error Handling**: Catches exceptions and returns failure status
 5. **Session Management**: Uses `aiohttp.ClientSession` for HTTP requests
@@ -285,8 +285,8 @@ You need to implement:
 
 - **GetEntityId()**: Return a unique identifier for the entity (e.g., task ID + attempt, actor ID)
 - **MergeData()**: Implement merging logic for events with the same entity ID
-  - Definition events typically don't change when merged
-  - Lifecycle events append state transitions
+  \- Definition events typically don't change when merged
+  \- Lifecycle events append state transitions
 - **SerializeData()**: Convert the event data to a `RayEvent` protobuf
 - **GetEventType()**: Return the `EventType` enum value for this event
 

@@ -47,67 +47,66 @@ The following diagram illustrates this layered architecture and the data flow:
 :alt: Object Spilling Architecture
 ```
 
-<!-- 
-   Mermaid source (generate image from this):
-
-   flowchart TD
-       %% Node Definitions for Parallelism
-       A1["User Application 1"]
-       A2["User Application 2"]
-       B1["CoreWorker 1"]
-       B2["CoreWorker 2"]
-
-       %% Entry point connections
-       A1 -- "ray.put()" --> B1
-       A2 -- "ray.put()" --> B2
-
-       %% Main Logic paths (Parallel)
-       B1 -- "Step 1. Create" --> C["PlasmaStore"]
-       B2 -- "Step 1. Create" --> C
-
-       B1 -- "Step 2. Pin RPC" --> NM["NodeManager"]
-       B2 -- "Step 2. Pin RPC" --> NM
-
-       %% Alignment constraint
-       C ~~~ NM
-
-       %% Left: Memory Allocation Logic
-       subgraph PlasmaThread["Plasma Store Thread"]
-           C --> E["CreateRequestQueue<br/>ProcessRequests()"]
-       end
-
-       %% Right: Scheduling & Management
-       subgraph RayletThread["Raylet Main Thread"]
-           NM -- "PinObjectsAndWaitForFree()" --> F["LocalObjectManager"]
-           F -- "TryToSpillObjects()<br/>→ PopSpillWorker()" --> G["WorkerPool<br/>(IO Worker Pool)"]
-       end
-
-       %% Spilling Link (Cross-thread callback)
-       E -- "OOM: spill_objects_callback()<br/>→ main_service.post()" --> F
-
-       %% Parallel IO Workers
-       subgraph IOWorkerProcesses["Python IO Worker Processes"]
-           H1["Python IO Worker 1"]
-           H2["Python IO Worker 2"]
-           Hn["Python IO Worker N"]
-       end
-       G -- "gRPC" --> H1
-       G -- "gRPC" --> H2
-       G -- "gRPC" --> Hn
-
-       %% Storage Destination
-       H1 & H2 & Hn --> I[("External Storage<br/>(Filesystem / S3)")]
-
-       %% Styling
-       classDef memory fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-       classDef logic fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-       classDef storage fill:#f1f8e9,stroke:#33691e,stroke-width:2px;
-       classDef core fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
-
-       class C,E memory;
-       class NM,F,G logic;
-       class H1,H2,Hn,I storage;
-       class A1,A2,B1,B2 core; -->
+%    Mermaid source (generate image from this):
+%
+%    flowchart TD
+%        %% Node Definitions for Parallelism
+%        A1["User Application 1"]
+%        A2["User Application 2"]
+%        B1["CoreWorker 1"]
+%        B2["CoreWorker 2"]
+%
+%        %% Entry point connections
+%        A1 -- "ray.put()" --> B1
+%        A2 -- "ray.put()" --> B2
+%
+%        %% Main Logic paths (Parallel)
+%        B1 -- "Step 1. Create" --> C["PlasmaStore"]
+%        B2 -- "Step 1. Create" --> C
+%
+%        B1 -- "Step 2. Pin RPC" --> NM["NodeManager"]
+%        B2 -- "Step 2. Pin RPC" --> NM
+%
+%        %% Alignment constraint
+%        C ~~~ NM
+%
+%        %% Left: Memory Allocation Logic
+%        subgraph PlasmaThread["Plasma Store Thread"]
+%            C --> E["CreateRequestQueue<br/>ProcessRequests()"]
+%        end
+%
+%        %% Right: Scheduling & Management
+%        subgraph RayletThread["Raylet Main Thread"]
+%            NM -- "PinObjectsAndWaitForFree()" --> F["LocalObjectManager"]
+%            F -- "TryToSpillObjects()<br/>→ PopSpillWorker()" --> G["WorkerPool<br/>(IO Worker Pool)"]
+%        end
+%
+%        %% Spilling Link (Cross-thread callback)
+%        E -- "OOM: spill_objects_callback()<br/>→ main_service.post()" --> F
+%
+%        %% Parallel IO Workers
+%        subgraph IOWorkerProcesses["Python IO Worker Processes"]
+%            H1["Python IO Worker 1"]
+%            H2["Python IO Worker 2"]
+%            Hn["Python IO Worker N"]
+%        end
+%        G -- "gRPC" --> H1
+%        G -- "gRPC" --> H2
+%        G -- "gRPC" --> Hn
+%
+%        %% Storage Destination
+%        H1 & H2 & Hn --> I[("External Storage<br/>(Filesystem / S3)")]
+%
+%        %% Styling
+%        classDef memory fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+%        classDef logic fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+%        classDef storage fill:#f1f8e9,stroke:#33691e,stroke-width:2px;
+%        classDef core fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+%
+%        class C,E memory;
+%        class NM,F,G logic;
+%        class H1,H2,Hn,I storage;
+%        class A1,A2,B1,B2 core;
 
 :::{note}
 The Plasma store and the Raylet main event loop run in **separate threads**. The spill callback bridges them by posting work from the store thread to the main thread. Only `IsSpillingInProgress()` is called cross-thread (using `std::atomic`).
@@ -254,18 +253,17 @@ When an object is **deleted** (freed by owner), it is removed from `local_object
 :alt: Object State Transitions
 ```
 
-<!-- 
-   Mermaid source (generate image from this):
-
-   stateDiagram-v2
-       [*] --> Pinned : PinObjectsAndWaitForFree()
-       Pinned --> PendingSpill : SpillObjectsInternal()
-       PendingSpill --> Spilled : OnObjectSpilled()
-       PendingSpill --> Pinned : Spill failed (rollback)
-
-       Pinned --> [*] : ReleaseFreedObject()<br/>(unpin, remove from local_objects_)
-       PendingSpill --> [*] : ReleaseFreedObject()<br/>(deferred to spill completion)
-       Spilled --> [*] : ProcessSpilledObjectsDeleteQueue()<br/>(decrement url_ref_count) -->
+%    Mermaid source (generate image from this):
+%
+%    stateDiagram-v2
+%        [*] --> Pinned : PinObjectsAndWaitForFree()
+%        Pinned --> PendingSpill : SpillObjectsInternal()
+%        PendingSpill --> Spilled : OnObjectSpilled()
+%        PendingSpill --> Pinned : Spill failed (rollback)
+%
+%        Pinned --> [*] : ReleaseFreedObject()<br/>(unpin, remove from local_objects_)
+%        PendingSpill --> [*] : ReleaseFreedObject()<br/>(deferred to spill completion)
+%        Spilled --> [*] : ProcessSpilledObjectsDeleteQueue()<br/>(decrement url_ref_count)
 
 
 ## Spill Scheduling
@@ -487,43 +485,42 @@ The following sequence diagram shows the end-to-end interactions between compone
 :alt: Spill Path Sequence Diagram
 ```
 
-<!-- 
-   Mermaid source (generate image from this):
-
-   sequenceDiagram
-       participant App as User Application
-       participant CW as CoreWorker
-       participant PS as PlasmaStore<br/>(store thread)
-       participant CRQ as CreateRequestQueue
-       participant LOM as LocalObjectManager<br/>(main thread)
-       participant WP as WorkerPool
-       participant IO as Python IO Worker
-       participant FS as External Storage
-
-       App->>CW: ray.put(obj)
-       CW->>PS: Create(object_id, size)
-       PS->>CRQ: ProcessRequests()
-
-       alt Space available
-           CRQ-->>PS: OK
-           PS-->>CW: PlasmaObject
-       else OutOfMemory
-           CRQ->>CRQ: trigger_global_gc_()
-           CRQ->>LOM: spill_objects_callback_()<br/>[post to main_service]
-           LOM->>LOM: SpillObjectUptoMaxThroughput()
-           LOM->>LOM: TryToSpillObjects()<br/>[batch by size/count]
-           LOM->>LOM: SpillObjectsInternal()<br/>[pinned → pending_spill]
-           LOM->>WP: PopSpillWorker()
-           WP-->>LOM: io_worker
-           LOM->>IO: SpillObjects RPC<br/>[object_refs + owner_addrs]
-           IO->>FS: Write fused objects to file
-           FS-->>IO: file path
-           IO-->>LOM: spilled_objects_urls
-           LOM->>LOM: OnObjectSpilled()<br/>[pending_spill → spilled_url]<br/>[update url_ref_count]
-           LOM->>CW: ReportObjectSpilled()<br/>[notify owner]
-           LOM-->>CRQ: IsSpillingInProgress() = true
-           Note over CRQ: Retry ProcessRequests()<br/>after delay_on_oom_ms
-       end -->
+%    Mermaid source (generate image from this):
+%
+%    sequenceDiagram
+%        participant App as User Application
+%        participant CW as CoreWorker
+%        participant PS as PlasmaStore<br/>(store thread)
+%        participant CRQ as CreateRequestQueue
+%        participant LOM as LocalObjectManager<br/>(main thread)
+%        participant WP as WorkerPool
+%        participant IO as Python IO Worker
+%        participant FS as External Storage
+%
+%        App->>CW: ray.put(obj)
+%        CW->>PS: Create(object_id, size)
+%        PS->>CRQ: ProcessRequests()
+%
+%        alt Space available
+%            CRQ-->>PS: OK
+%            PS-->>CW: PlasmaObject
+%        else OutOfMemory
+%            CRQ->>CRQ: trigger_global_gc_()
+%            CRQ->>LOM: spill_objects_callback_()<br/>[post to main_service]
+%            LOM->>LOM: SpillObjectUptoMaxThroughput()
+%            LOM->>LOM: TryToSpillObjects()<br/>[batch by size/count]
+%            LOM->>LOM: SpillObjectsInternal()<br/>[pinned → pending_spill]
+%            LOM->>WP: PopSpillWorker()
+%            WP-->>LOM: io_worker
+%            LOM->>IO: SpillObjects RPC<br/>[object_refs + owner_addrs]
+%            IO->>FS: Write fused objects to file
+%            FS-->>IO: file path
+%            IO-->>LOM: spilled_objects_urls
+%            LOM->>LOM: OnObjectSpilled()<br/>[pending_spill → spilled_url]<br/>[update url_ref_count]
+%            LOM->>CW: ReportObjectSpilled()<br/>[notify owner]
+%            LOM-->>CRQ: IsSpillingInProgress() = true
+%            Note over CRQ: Retry ProcessRequests()<br/>after delay_on_oom_ms
+%        end
 
 **Restore Path** (spilled object needed again):
 
@@ -531,31 +528,30 @@ The following sequence diagram shows the end-to-end interactions between compone
 :alt: Restore Path Sequence Diagram
 ```
 
-<!-- 
-   Mermaid source (generate image from this):
-
-   sequenceDiagram
-       participant Task as Task / ray.get()
-       participant OM as ObjectManager
-       participant OD as ObjectDirectory
-       participant LOM as LocalObjectManager<br/>(main thread)
-       participant WP as WorkerPool
-       participant IO as Python IO Worker
-       participant FS as External Storage
-
-       Task->>OM: Request object
-       OM->>OD: Lookup object location
-       OD-->>OM: spilled_url
-       OM->>LOM: AsyncRestoreSpilledObject()<br/>[object_id, url]
-       LOM->>LOM: Dedup check<br/>[objects_pending_restore_]
-       LOM->>WP: PopRestoreWorker()
-       WP-->>LOM: io_worker
-       LOM->>IO: RestoreSpilledObjects RPC
-       IO->>FS: Read file at offset
-       IO->>IO: Parse header (24 bytes)<br/>[addr_len, metadata_len, buf_len]
-       IO->>IO: put_file_like_object()<br/>[back into Plasma]
-       IO-->>LOM: bytes_restored_total
-       LOM-->>Task: Object available in Plasma -->
+%    Mermaid source (generate image from this):
+%
+%    sequenceDiagram
+%        participant Task as Task / ray.get()
+%        participant OM as ObjectManager
+%        participant OD as ObjectDirectory
+%        participant LOM as LocalObjectManager<br/>(main thread)
+%        participant WP as WorkerPool
+%        participant IO as Python IO Worker
+%        participant FS as External Storage
+%
+%        Task->>OM: Request object
+%        OM->>OD: Lookup object location
+%        OD-->>OM: spilled_url
+%        OM->>LOM: AsyncRestoreSpilledObject()<br/>[object_id, url]
+%        LOM->>LOM: Dedup check<br/>[objects_pending_restore_]
+%        LOM->>WP: PopRestoreWorker()
+%        WP-->>LOM: io_worker
+%        LOM->>IO: RestoreSpilledObjects RPC
+%        IO->>FS: Read file at offset
+%        IO->>IO: Parse header (24 bytes)<br/>[addr_len, metadata_len, buf_len]
+%        IO->>IO: put_file_like_object()<br/>[back into Plasma]
+%        IO-->>LOM: bytes_restored_total
+%        LOM-->>Task: Object available in Plasma
 
 **Delete Path** (object goes out of scope):
 
@@ -563,38 +559,37 @@ The following sequence diagram shows the end-to-end interactions between compone
 :alt: Delete Path Sequence Diagram
 ```
 
-<!-- 
-   Mermaid source (generate image from this):
-
-   sequenceDiagram
-       participant Owner as Object Owner
-       participant LOM as LocalObjectManager<br/>(main thread)
-       participant WP as WorkerPool
-       participant IO as Python IO Worker
-       participant FS as External Storage
-
-       Owner->>LOM: PubSub: object eviction<br/>(or owner death)
-       LOM->>LOM: ReleaseFreedObject()<br/>[is_freed_ = true]
-
-       alt Object is PINNED
-           LOM->>LOM: Unpin immediately<br/>[remove from pinned_objects_]
-       else Object is SPILLED / PENDING_SPILL
-           LOM->>LOM: Push to<br/>spilled_object_pending_delete_
-       end
-
-       LOM->>LOM: Batch: objects_pending_deletion_
-       LOM->>LOM: FlushFreeObjects()
-
-       Note over LOM: ProcessSpilledObjectsDeleteQueue()
-       LOM->>LOM: url_ref_count_[base_url] -= 1
-       alt ref_count == 0
-           LOM->>WP: PopDeleteWorker()
-           WP-->>LOM: io_worker
-           LOM->>IO: DeleteSpilledObjects RPC
-           IO->>FS: os.remove(file)<br/>[retry up to 3x on failure]
-       else ref_count > 0
-           Note over LOM: File still has live objects,<br/>skip deletion
-       end -->
+%    Mermaid source (generate image from this):
+%
+%    sequenceDiagram
+%        participant Owner as Object Owner
+%        participant LOM as LocalObjectManager<br/>(main thread)
+%        participant WP as WorkerPool
+%        participant IO as Python IO Worker
+%        participant FS as External Storage
+%
+%        Owner->>LOM: PubSub: object eviction<br/>(or owner death)
+%        LOM->>LOM: ReleaseFreedObject()<br/>[is_freed_ = true]
+%
+%        alt Object is PINNED
+%            LOM->>LOM: Unpin immediately<br/>[remove from pinned_objects_]
+%        else Object is SPILLED / PENDING_SPILL
+%            LOM->>LOM: Push to<br/>spilled_object_pending_delete_
+%        end
+%
+%        LOM->>LOM: Batch: objects_pending_deletion_
+%        LOM->>LOM: FlushFreeObjects()
+%
+%        Note over LOM: ProcessSpilledObjectsDeleteQueue()
+%        LOM->>LOM: url_ref_count_[base_url] -= 1
+%        alt ref_count == 0
+%            LOM->>WP: PopDeleteWorker()
+%            WP-->>LOM: io_worker
+%            LOM->>IO: DeleteSpilledObjects RPC
+%            IO->>FS: os.remove(file)<br/>[retry up to 3x on failure]
+%        else ref_count > 0
+%            Note over LOM: File still has live objects,<br/>skip deletion
+%        end
 
 
 ## Configuration
