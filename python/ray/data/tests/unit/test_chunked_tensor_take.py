@@ -232,7 +232,7 @@ def test_chunked_tensor_take(tensor_cls, chunks):
 
     plan = try_prepare_chunked_tensor_take(column, max_output_rows=10)
 
-    assert plan is not None
+    assert isinstance(plan, chunked_tensor_take.PreparedFixedShapedTensorTake)
     row_bytes = math.prod(column.type.shape) * np.dtype(np.float32).itemsize
     assert plan.subbatch_rows == max(
         1,
@@ -326,7 +326,7 @@ def test_chunked_tensor_take_across_scratch_subbatches():
     indices = np.random.default_rng(42).permutation(rows).astype(np.int64)
     plan = try_prepare_chunked_tensor_take(column, max_output_rows=rows)
 
-    assert plan is not None
+    assert isinstance(plan, chunked_tensor_take.PreparedFixedShapedTensorTake)
     assert 0 < plan.subbatch_rows < rows
     output = plan.take(indices)
     np.testing.assert_array_equal(output.to_numpy(), values[indices])
@@ -343,7 +343,7 @@ def test_chunked_tensor_take_allows_one_row_to_exceed_scratch_cap():
 
     plan = try_prepare_chunked_tensor_take(column, max_output_rows=1)
 
-    assert plan is not None
+    assert isinstance(plan, chunked_tensor_take.PreparedFixedShapedTensorTake)
     assert plan.subbatch_rows == 1
     assert (
         plan.values_per_row * plan.value_dtype.itemsize
