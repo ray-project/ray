@@ -15,6 +15,7 @@ from ray.data._internal.execution.backpressure_policy import (
     get_backpressure_policies,
 )
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
@@ -116,6 +117,11 @@ def _disable_data_reconstruction_if_unsupported(
     Warns once per dataset when disabling, since Ray Core lineage reconstruction
     is also off for this job and a lost object will fail the dataset.
 
+    A map operator whose bundler slices blocks (strict streaming repartition) is
+    not supported either: it splits one block across several tasks, but the
+    lineage graph records whole-block dependencies, so reconstructing any of
+    those tasks would drop or duplicate rows.
+
     Args:
         dag: The physical plan's output operator.
         dataset_id: The ID of the dataset being executed.
@@ -124,7 +130,11 @@ def _disable_data_reconstruction_if_unsupported(
         True if the plan contains an operator reconstruction does not support.
     """
     for op in dag.post_order_iter():
-        if isinstance(op, (InputDataBuffer, MapOperator)):
+        if isinstance(op, InputDataBuffer):
+            continue
+        if isinstance(op, MapOperator) and not isinstance(
+            op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
             continue
         if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
             logger.warning(

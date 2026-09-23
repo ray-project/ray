@@ -96,7 +96,7 @@ def _assert_every_row_once(ids, expected):
     )
 
 
-def test_flag_off_builds_no_tracker(
+def test_flag_off_disables_data_lineage_reconstruction(
     ray_start_regular_shared, trackers, lose_output  # noqa: F405
 ):
     """By default the job leaves reconstruction to Ray Core: execution must not touch
@@ -178,13 +178,23 @@ def test_two_losses_under_one_seed_match_baseline(
             5,
             id="count",
         ),
+        pytest.param(
+            lambda: len(
+                ray.data.range(2)
+                .repartition(target_num_rows_per_block=1, strict=True)
+                .take_all()
+            ),
+            2,
+            id="strict_repartition",
+        ),
     ],
 )
 @reconstruction_enabled
 def test_unsupported_plan_disables_reconstruction(
     ray_start_regular_shared, trackers, run_plan, expected  # noqa: F405
 ):
-    """A plan with a non-map operator runs without the lineage machinery."""
+    """A plan with a non-map operator, or a map operator whose bundler slices blocks
+    (strict streaming repartition), runs without the lineage machinery."""
     assert run_plan() == expected
     assert trackers == []
 
