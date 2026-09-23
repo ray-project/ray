@@ -793,6 +793,15 @@ class ReplicaHealthPushRegistry:
     ) -> Optional[Tuple[float, float, bool, Optional[int]]]:
         return self._state.get(replica_unique_id)
 
+    def discard(self, replica_unique_id: str) -> None:
+        """Drop a replica that has permanently stopped.
+
+        The age-based prune is only a backstop for ids that stop pushing without a
+        stop event; it is gated on size, so nothing reclaims a dead replica's entry
+        on a fleet that never crosses the threshold.
+        """
+        self._state.pop(replica_unique_id, None)
+
 
 class ActorReplicaWrapper:
     """Wraps a Ray actor for a deployment replica.
@@ -5786,6 +5795,8 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._clear_health_gauge_cache(replica_id)
+                if self._health_push_registry is not None:
+                    self._health_push_registry.discard(replica_id)
                 if self._rank_manager.has_replica_rank(replica_id):
                     # Only release rank if assigned. Replicas that failed allocation
                     # or never reached RUNNING state won't have ranks.

@@ -11832,6 +11832,38 @@ class TestPushedHealthRegressions:
         # Within _PRUNE_MIN_INTERVAL_S the O(N) prune must not re-run.
         assert "old0" in r._state
 
+    def test_registry_discards_a_stopped_replica(self):
+        """The prune is size-gated, so a fleet that never crosses the threshold would
+        otherwise hold a dead replica's entry for the life of the controller."""
+        r = ReplicaHealthPushRegistry()
+        now = time.time()
+        r.record("gone", now, True)
+        assert r.get("gone") is not None
+        r.discard("gone")
+        assert r.get("gone") is None
+        r.discard("gone")  # idempotent: the reap can run after a controller restart
+
+    def test_a_stopped_replica_leaves_the_registry(self, mock_deployment_state_manager):
+        """Pins the reap call site: without it the entry survives the replica."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        registry = ReplicaHealthPushRegistry()
+        dsm._health_push_registry = registry
+        dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        ds._health_push_registry = registry
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        replica = ds._replicas.get()[0]
+        unique_id = replica.replica_id.unique_id
+        registry.record(unique_id, time.time(), True)
+        ds.delete()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        assert registry.get(unique_id) is None
+
     def test_in_flight_probe_does_not_overwrite_a_newer_push(self, monkeypatch):
         w = TestPushedHealth._wrapper(TestPushedHealth())
         # A probe is in flight when an unhealthy push lands...
