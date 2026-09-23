@@ -793,7 +793,7 @@ If you get serialization errors when reading from Hugging Face filesystems, try 
 
 ### Load data from ML libraries
 
-Ray Data interoperates with PyTorch and TensorFlow datasets.
+Ray Data interoperates with Hugging Face, PyTorch, and TensorFlow datasets.
 
 :::::{tab-set}
 
@@ -857,7 +857,7 @@ Dataset(num_rows=50000, schema={item: object})
 To convert a TensorFlow dataset to a Ray Dataset, call {func}`~ray.data.from_tf`.
 
 :::{warning}
-{class}`~ray.data.from_tf` doesn't support parallel reads. Only use this function with small datasets such as MNIST or CIFAR.
+{func}`~ray.data.from_tf` doesn't support parallel reads. Only use this function with small datasets such as MNIST or CIFAR.
 :::
 
 ```{testcode}
