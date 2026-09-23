@@ -15,7 +15,7 @@ To avoid contention, assign each Dataset to its own *subcluster*, a labeled subs
 Subclusters fit use cases such as the following:
 
 - **Asynchronous validation during training**: A training Dataset feeds the trainer. A validation Dataset feeds a separate validation task on different hardware. See {ref}`train-validating-checkpoints` for the Ray Train integration.
-- **Multitenancy on a shared workspace**: Several Datasets share one Anyscale workspace without disturbing each other. The Datasets can belong to different users, different pipelines, or different stages of one workflow.
+- **Multitenancy on a shared cluster**: Several Datasets share one Ray cluster without disturbing each other. The Datasets can belong to different users, different pipelines, or different stages of one workflow.
 
 ## How do subclusters work?
 

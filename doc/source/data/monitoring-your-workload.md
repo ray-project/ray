@@ -130,7 +130,7 @@ For more about the Ray dashboard, including setup instructions, see {ref}`Ray da
 
 Ray Data emits Prometheus metrics that you can use to monitor dataset execution. Ray Data tags the metrics with `dataset` and `operator` labels, so you can identify which dataset and operator each metric comes from.
 
-To access these metrics, query the Prometheus server running on the Ray head node. The default Prometheus server URL is `http://<head-node-ip>:8080`.
+To access these metrics, query the Prometheus server running on the Ray head node. The default Prometheus server URL is `http://<head-node-ip>:9090`.
 
 The following tables list all Ray Data metrics, grouped by category.
 
