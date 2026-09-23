@@ -50,7 +50,7 @@ class DashboardAgent:
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
         is_head: bool = False,
-        disable_gpu_metrics: bool = False,
+        enable_gpu_metrics: bool = True,
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
@@ -81,7 +81,7 @@ class DashboardAgent:
         self.raylet_name = raylet_name
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
-        self.gpu_metrics_enabled = not disable_gpu_metrics
+        self.enable_gpu_metrics = enable_gpu_metrics
         self.session_name = session_name
 
         # grpc server is None in mininal.
@@ -449,9 +449,10 @@ if __name__ == "__main__":
         help=("If this arg is set, metrics report won't be enabled from the agent."),
     )
     parser.add_argument(
-        "--disable-gpu-metrics",
-        action="store_true",
-        help="Disable GPU metric collection in the dashboard agent.",
+        "--enable-gpu-metrics",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable GPU metric collection in the dashboard agent.",
     )
     parser.add_argument(
         "--head",
@@ -527,8 +528,8 @@ if __name__ == "__main__":
             object_store_name=args.object_store_name,
             raylet_name=args.raylet_name,
             disable_metrics_collection=args.disable_metrics_collection,
-            disable_gpu_metrics=args.disable_gpu_metrics,
             is_head=args.head,
+            enable_gpu_metrics=args.enable_gpu_metrics,
             session_name=args.session_name,
         )
 
