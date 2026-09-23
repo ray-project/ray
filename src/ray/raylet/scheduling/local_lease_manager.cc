@@ -809,7 +809,10 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
   }
   RAY_LOG(DEBUG) << "RayLease " << lease_spec.LeaseId() << " has args of size "
                  << lease_arg_bytes;
+  const size_t pinned_bytes_before = pinned_lease_arguments_bytes_;
   PinLeaseArgs(lease_spec, std::move(args));
+  RAY_CHECK_GE(pinned_lease_arguments_bytes_, pinned_bytes_before);
+  const size_t newly_pinned_bytes = pinned_lease_arguments_bytes_ - pinned_bytes_before;
   RAY_LOG(DEBUG) << "Size of pinned task args is now " << pinned_lease_arguments_bytes_;
   if (max_pinned_lease_arguments_bytes_ == 0) {
     // Max threshold for pinned args is not set.
@@ -822,7 +825,8 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
         << lease_arg_bytes
         << ", but the max memory allowed for arguments of granted leases is only "
         << max_pinned_lease_arguments_bytes_;
-  } else if (pinned_lease_arguments_bytes_ > max_pinned_lease_arguments_bytes_) {
+  } else if (newly_pinned_bytes > 0 &&
+             pinned_lease_arguments_bytes_ > max_pinned_lease_arguments_bytes_) {
     ReleaseLeaseArgs(lease_spec.LeaseId());
     RAY_LOG(DEBUG) << "Cannot grant lease " << lease_spec.LeaseId()
                    << " with arguments of size " << lease_arg_bytes
