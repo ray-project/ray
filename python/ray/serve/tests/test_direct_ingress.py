@@ -62,6 +62,15 @@ from ray.serve.schema import (
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
 
+# A replica only appears in target_groups once it is running and its
+# direct-ingress port is allocated, which lags the app reporting RUNNING.
+# Measured just over 10s under CI-like contention.
+TARGET_GROUP_CONVERGENCE_TIMEOUT_S = 60
+
+# Driving an app to the terminal DEPLOY_FAILED state means exhausting replica
+# retries, which measures up to ~21s under CI-like contention.
+DEPLOY_FAILED_TIMEOUT_S = 60
+
 
 @ray.remote
 class Collector:
@@ -696,7 +705,7 @@ def test_replica_gives_up_after_max_port_retries_for_http(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -730,7 +739,7 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -769,7 +778,7 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
         )
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_instance):
@@ -1316,7 +1325,7 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
         assert set(grpc_ports) == expected_grpc_ports
         return True
 
-    wait_for_condition(_func, timeout=10)
+    wait_for_condition(_func, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S)
 
     # check status of the deployment
     serve_details = ServeInstanceDetails(
@@ -2478,7 +2487,7 @@ def test_deploy_app_custom_exception(_skip_if_ff_not_enabled, serve_instance):
         assert "custom exception info" in status.message
         return True
 
-    wait_for_condition(check_custom_exception, timeout=10)
+    wait_for_condition(check_custom_exception, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 # Copied from test_controller.py
@@ -2510,6 +2519,16 @@ def test_get_serve_instance_details_json_serializable(
         return "1"
 
     serve.run(autoscaling_app.bind())
+
+    def snapshot_has_all_target_groups() -> bool:
+        snapshot = ray.get(controller.get_serve_instance_details.remote())
+        assert len(snapshot["target_groups"]) == 2
+        return True
+
+    wait_for_condition(
+        snapshot_has_all_target_groups, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S
+    )
+
     details = ray.get(controller.get_serve_instance_details.remote())
     details_json = json.dumps(details)
     controller_details = ray.get(controller.get_actor_details.remote())
