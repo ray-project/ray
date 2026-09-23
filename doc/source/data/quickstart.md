@@ -6,11 +6,9 @@ myst:
 
 (data_quickstart)=
 
-# Ray Data Quickstart
+# Ray Data quickstart
 
-Get started with Ray Data's {class}`Dataset <ray.data.Dataset>` abstraction for distributed data processing.
-
-This guide introduces you to the core capabilities of Ray Data:
+Get started with Ray Data's {class}`Dataset <ray.data.Dataset>` abstraction for distributed data processing. This guide covers four core capabilities of Ray Data:
 
 * {ref}`Loading data <loading_key_concept>`
 * {ref}`Transforming data <transforming_key_concept>`
@@ -19,13 +17,13 @@ This guide introduces you to the core capabilities of Ray Data:
 
 ## Datasets
 
-Ray Data's main abstraction is a {class}`Dataset <ray.data.Dataset>`, which represents a distributed collection of data. Datasets are specifically designed for machine learning workloads and can efficiently handle data collections that exceed a single machine's memory.
+Ray Data's main abstraction is a {class}`Dataset <ray.data.Dataset>`, which represents a distributed collection of data. Datasets are designed for machine learning workloads and can efficiently handle data collections larger than a single machine's memory.
 
 (loading_key_concept)=
 
 ## Loading data
 
-Create datasets from various sources including local files, Python objects, and cloud storage services like S3 or GCS. Ray Data seamlessly integrates with any [filesystem supported by Arrow](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html).
+Create datasets from sources such as local files, Python objects, and cloud storage services, including S3 and GCS. Ray Data integrates with any [filesystem that Arrow supports](http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html).
 
 ```{testcode}
 import ray
@@ -41,13 +39,13 @@ ds.show(limit=1)
 {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 ```
 
-To learn more about creating datasets from different sources, read {ref}`Loading data <loading_data>`.
+For more on creating datasets from different sources, see {ref}`Loading data <loading_data>`.
 
 (transforming_key_concept)=
 
 ## Transforming data
 
-Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations across your cluster for better performance.
+Apply user-defined functions (UDFs) to transform datasets. Ray automatically parallelizes these transformations across your cluster.
 
 ```{testcode}
 from typing import Dict
@@ -91,13 +89,13 @@ shape: (150, 6)
 (Showing 10 of 150 rows)
 ```
 
-To explore more transformation capabilities, read {ref}`Transforming data <transforming_data>`.
+For more transformation options, see {ref}`Transforming data <transforming_data>`.
 
 (consuming_key_concept)=
 
 ## Consuming data
 
-Access dataset contents through convenient methods like {meth}`~ray.data.Dataset.take_batch` and {meth}`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray Tasks or Actors for distributed processing.
+Access dataset contents with methods such as {meth}`~ray.data.Dataset.take_batch` and {meth}`~ray.data.Dataset.iter_batches`. You can also pass datasets directly to Ray tasks or actors for distributed processing.
 
 ```{testcode}
 # Extract the first 3 rows as a batch for processing
@@ -115,13 +113,13 @@ print(transformed_ds.take_batch(batch_size=3))
     'petal area (cm^2)': array([0.28, 0.28, 0.26])}
 ```
 
-For more details on working with dataset contents, see {ref}`Iterating over Data <iterating-over-data>` and {ref}`Saving Data <saving-data>`.
+For more on working with dataset contents, see {ref}`Iterating over data <iterating-over-data>` and {ref}`Saving data <saving-data>`.
 
 (saving_key_concept)=
 
 ## Saving data
 
-Export processed datasets to a variety of formats and storage locations using methods like {meth}`~ray.data.Dataset.write_parquet`, {meth}`~ray.data.Dataset.write_csv`, and more.
+Export processed datasets to a variety of formats and storage locations with methods such as {meth}`~ray.data.Dataset.write_parquet` and {meth}`~ray.data.Dataset.write_csv`.
 
 ```{testcode}
 :hide:
@@ -146,6 +144,5 @@ print(os.listdir("/tmp/iris"))
 
 ['..._000000.parquet', '..._000001.parquet']
 ```
-
 
 For more information on saving datasets, see {ref}`Saving data <saving-data>`.
