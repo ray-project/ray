@@ -1325,6 +1325,45 @@ class TestModelMultiplexing:
         for task in done:
             assert task.result() in {r2, r3}
 
+    async def test_replica_actor_died_removed_from_model_ids(self, pow_2_router):
+        """
+        A replica that dies must also be dropped from the multiplexed model ID
+        mapping, not just from the replica set.
+
+        The mapping is otherwise only rebuilt by `update_replicas`, so until the
+        controller broadcasts the new replica set it keeps pointing at a replica
+        that is no longer in `self._replicas`, and the next request for that
+        model raises a `KeyError`.
+        """
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1.set_queue_len_response(
+            queue_len=0,
+            exception=ActorDiedError(),
+        )
+        r2 = FakeRunningReplica("r2", model_ids={})
+        r2.set_queue_len_response(0)
+        s.update_replicas([r1, r2])
+
+        assert s._multiplexed_model_id_to_replica_ids.get("m1") == {r1.replica_id}
+
+        # Routing the first request surfaces the ActorDiedError and evicts r1.
+        request = fake_pending_request(model_id="m1")
+        task = loop.create_task(s._choose_replica_for_request(request))
+        assert (await task) == r2
+        assert r1.replica_id not in s.curr_replicas
+        assert s._multiplexed_model_id_to_replica_ids.get("m1") == set()
+
+        # Subsequent requests for m1 start with a fresh routing context, so they
+        # read the mapping again. They must fall back to r2 rather than select
+        # the dead replica.
+        for _ in range(10):
+            request = fake_pending_request(model_id="m1")
+            task = loop.create_task(s._choose_replica_for_request(request))
+            assert (await task) == r2
+
 
 @pytest.mark.asyncio
 async def test_get_queue_len_cancelled_on_timeout(pow_2_router):
