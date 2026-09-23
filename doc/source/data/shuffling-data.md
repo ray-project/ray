@@ -148,7 +148,7 @@ The following benchmark compares steady-state training throughput for local buff
 This option randomizes the order of {ref}`blocks <data_key_concepts>` in a dataset. The operation alone doesn't involve heavy computation or communication, but Ray Data must materialize all blocks in memory before it randomizes their order in the queue for the subsequent operation.
 
 :::{note}
-By default, Ray Data doesn't guarantee any particular block order when it reads blocks from different files in parallel, unless you set `DataContext.execution_options.preserve_order` to true. As a result, this option is mainly relevant when Ray Data yields blocks from a relatively small set of very large files.
+By default, Ray Data doesn't guarantee any particular block order when it reads blocks from different files in parallel, unless you set `DataContext.execution_options.preserve_order` to true. As a result, this option is mainly relevant when Ray Data yields blocks from a relatively small set of large files.
 :::
 
 :::{note}
@@ -221,7 +221,7 @@ Shuffle optimization is an active area of development. If your dataset uses a sh
 
 ### When should you use global per-epoch shuffling?
 
-Use global per-epoch shuffling only if your model is sensitive to the randomness of the training data. According to a [theoretical foundation](https://arxiv.org/abs/1709.10432), all gradient-descent-based model trainers benefit from improved global shuffle quality. In practice, the benefit is particularly pronounced for tabular data and models. However, the more global the shuffle, the more expensive the shuffling operation. Data transfer costs compound this increase in distributed data-parallel training on a multi-node cluster. This cost can be prohibitive for very large datasets.
+Use global per-epoch shuffling only if your model is sensitive to the randomness of the training data. According to a [theoretical foundation](https://arxiv.org/abs/1709.10432), all gradient-descent-based model trainers benefit from improved global shuffle quality. In practice, the benefit is particularly pronounced for tabular data and models. However, the more global the shuffle, the more expensive the shuffling operation. Data transfer costs compound this increase in distributed data-parallel training on a multi-node cluster. This cost can be prohibitive for large datasets.
 
 To find the best tradeoff between preprocessing time and cost and per-epoch shuffle quality, measure the precision gain per training step for your model under different shuffling policies, such as no shuffling, local shuffling, or global shuffling.
 
