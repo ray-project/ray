@@ -117,9 +117,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # A minibatch takes `minibatch_size` rows from every module, so a module
             # with none makes the whole batch unusable -- `__iter__` refuses to cycle
             # it, and this raises the same way because the count is worked out before
-            # the loop starts. A Learner never reaches either: `_should_skip_update`
-            # skips any batch with an empty module. This guards direct users of the
-            # iterator.
+            # the loop starts. A Learner only gets here with `never_skip_update`,
+            # which asks for this error instead of a skip; otherwise it drops such a
+            # module (single Learner) or skips the update (a group). This also guards
+            # direct users of the iterator.
             raise ValueError(
                 "One of the module batches is empty! Minibatches need "
                 "`minibatch_size` samples from every module_id."
@@ -305,12 +306,13 @@ class ShardBatchIterator:
             #  "lockstep"), the `ShardBatchIterator` cannot be used.
             batch_to_send = {}
             for pid, sub_batch in self._batch.policy_batches.items():
-                batch_size = math.ceil(len(sub_batch) / self._num_shards)
-                start = batch_size * i
-                end = min(start + batch_size, len(sub_batch))
+                # Try to not leave any shard empty
+                size, remainder = divmod(len(sub_batch), self._num_shards)
+                start = i * size + min(i, remainder)
+                end = start + size + (1 if i < remainder else 0)
                 batch_to_send[pid] = sub_batch[int(start) : int(end)]
             # TODO (Avnish): int(batch_size) ? How should we shard MA batches really?
-            new_batch = MultiAgentBatch(batch_to_send, int(batch_size))
+            new_batch = MultiAgentBatch(batch_to_send, int(end - start))
             yield new_batch
 
 

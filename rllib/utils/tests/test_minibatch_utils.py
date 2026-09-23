@@ -7,6 +7,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
+    ShardBatchIterator,
     ShardEpisodesIterator,
 )
 from ray.rllib.utils.test_utils import check
@@ -107,6 +108,41 @@ def test_explicit_num_total_minibatches_wins():
         )
     )
     assert 3 == len(minibatches)
+
+
+@pytest.mark.parametrize(
+    "num_rows, num_shards, expected",
+    [
+        (128, 2, [64, 64]),
+        (4, 4, [1, 1, 1, 1]),
+        (5, 4, [2, 1, 1, 1]),
+        (9, 4, [3, 2, 2, 2]),
+        (3, 4, [1, 1, 1, 0]),
+    ],
+    ids=[
+        "divides-evenly",
+        "one-row-each",
+        "remainder-of-one",
+        "remainder-of-one-less",
+        "fewer-rows-than-shards",
+    ],
+)
+def test_shard_batch_iterator_spreads_the_remainder(num_rows, num_shards, expected):
+    """Shards differ by at most one row, so none is starved while another has two.."""
+    batch = MultiAgentBatch(
+        {"p0": SampleBatch({"obs": np.arange(num_rows, dtype=np.float32)})},
+        env_steps=num_rows,
+    )
+    shards = [shard.policy_batches for shard in ShardBatchIterator(batch, num_shards)]
+
+    assert expected == [len(shard["p0"]) for shard in shards]
+    # Every shard keeps every ModuleID, and together the shards are the batch again:
+    # in order, with no row dropped or handed out twice.
+    assert all(["p0"] == list(shard.keys()) for shard in shards)
+    check(
+        np.arange(num_rows, dtype=np.float32),
+        np.concatenate([shard["p0"]["obs"] for shard in shards]),
+    )
 
 
 class TestMinibatchUtils(unittest.TestCase):

@@ -124,8 +124,8 @@ LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME = (
     "learner_update_skipped_empty_batch_lifetime"
 )
 LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME = "learner_update_skipped_for_peer_lifetime"
-LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME = (
-    "learner_env_steps_dropped_on_skip_lifetime"
+LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME = (
+    "learner_module_steps_dropped_on_skip_lifetime"
 )
 
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...

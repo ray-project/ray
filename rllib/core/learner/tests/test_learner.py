@@ -12,7 +12,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME,
     LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
@@ -348,7 +348,9 @@ class TestLearner(unittest.TestCase):
             self.assertEqual(
                 0, all_modules.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
             )
-            self.assertEqual(0, all_modules[LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME])
+            self.assertEqual(
+                0, all_modules[LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME]
+            )
             # The module is still reported on (its learning rate is logged every
             # update), but with no gradient step there is no loss.
             self.assertNotIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
@@ -401,6 +403,27 @@ class TestLearner(unittest.TestCase):
             UpdatePlan(skip=True, num_minibatches=7),
         ):
             self.assertEqual(plan, learner._sync_update_plan(plan))
+
+    def test_single_learner_drops_modules_without_data(self):
+        """With a single Learner, a module without rows is dropped, not skipped over.
+
+        Only a group of Learners has to skip such an update: every module runs its
+        own all-reduce, so the Learners cannot train different sets of modules. A
+        lone Learner has nobody to stay in step with and trains on the rest.
+        """
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        batch = get_cartpole_dataset_reader(batch_size=512).next().as_multi_agent()
+        batch.policy_batches["module_without_data"] = SampleBatch(
+            {"obs": np.zeros((0, 4), dtype=np.float32)}
+        )
+
+        results = learner.update(batch=learner._convert_batch_type(batch))
+
+        self.assertEqual(
+            0, results[ALL_MODULES].get(LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME, 0)
+        )
+        self.assertIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
+        self.assertNotIn("module_without_data", results)
 
     def test_never_skip_update(self):
         """`never_skip_update=True` opts out of the skip logic entirely: no

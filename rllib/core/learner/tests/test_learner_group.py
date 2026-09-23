@@ -27,7 +27,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     LEARNER_CONNECTOR,
-    LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME,
     LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
@@ -133,7 +133,7 @@ FAKE_MA_EPISODES_WO_P1[0].to_numpy()
 NO_DATA = MultiAgentBatch(policy_batches={}, env_steps=0)
 
 
-def fake_batch(num_timesteps):
+def fake_batch(num_timesteps, *, env_steps=None):
     rng = np.random.default_rng(0)
     return MultiAgentBatch(
         {
@@ -146,7 +146,7 @@ def fake_batch(num_timesteps):
                 }
             )
         },
-        env_steps=num_timesteps,
+        env_steps=num_timesteps if env_steps is None else env_steps,
     )
 
 
@@ -325,7 +325,7 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             # nobody trains, and each Learner reports why it skipped.
             before = weights()
             with_data, starved = MetricsLogger.peek_results(
-                learner_group.update(batches=[fake_batch(128), NO_DATA])
+                learner_group.update(batches=[fake_batch(128, env_steps=1), NO_DATA])
             )
             check(before, weights())
             self.assertEqual(
@@ -334,8 +334,12 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
             self.assertEqual(
                 1, with_data[ALL_MODULES][LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME]
             )
+            # Module steps, not env steps: a shard from `ShardBatchIterator` carries
+            # the row count of whichever module it sliced last (`env_steps=1` here),
+            # so counting env steps would report 1 instead of the 128 rows dropped.
             self.assertEqual(
-                128, with_data[ALL_MODULES][LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME]
+                128,
+                with_data[ALL_MODULES][LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME],
             )
 
             # The same, but with `minibatch_size` set and the starved Learner handed a

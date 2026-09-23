@@ -55,7 +55,7 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DATASET_NUM_ITERS_TRAINED,
     DATASET_NUM_ITERS_TRAINED_LIFETIME,
-    LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME,
     LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
@@ -1256,6 +1256,16 @@ class Learner(Checkpointable):
             for module_id in list(batch.policy_batches.keys()):
                 if not self.should_module_be_updated(module_id, batch):
                     del batch.policy_batches[module_id]
+            # A module with no rows cannot produce minibatches. With a single Learner
+            # there is nobody to stay in step with, so drop it and train on whatever
+            # is left. In a group, dropping it on one Learner only would leave the
+            # Learners with different module sets -- each module has its own
+            # all-reduce -- so there the whole update is skipped instead (see
+            # `_should_skip_update`).
+            if self.config.num_learners <= 1:
+                for module_id in list(batch.policy_batches.keys()):
+                    if len(batch.policy_batches[module_id]) == 0:
+                        del batch.policy_batches[module_id]
             # Sequence batches are sliced (and thus counted) in the sequence dimension
             # by `MiniBatchCyclicIterator`; decide that before counting minibatches.
             batch = self._set_slicing_by_batch_id(batch, value=True)
@@ -1324,7 +1334,10 @@ class Learner(Checkpointable):
                         )
                     # Diagnostics, summed across Learners when aggregated: how many
                     # shards were actually empty vs. how many good shards were thrown
-                    # away to stay in sync -- and how much data that was.
+                    # away to stay in sync -- and how much data that was. In module
+                    # steps, not env steps: `ShardBatchIterator` gives a shard the row
+                    # count of whichever module it happened to slice last, so
+                    # `batch.env_steps()` is not meaningful here.
                     self.metrics.log_value(
                         (
                             ALL_MODULES,
@@ -1336,8 +1349,8 @@ class Learner(Checkpointable):
                         reduce="lifetime_sum",
                     )
                     self.metrics.log_value(
-                        (ALL_MODULES, LEARNER_ENV_STEPS_DROPPED_ON_SKIP_LIFETIME),
-                        batch.env_steps(),
+                        (ALL_MODULES, LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME),
+                        sum(len(b) for b in batch.policy_batches.values()),
                         reduce="lifetime_sum",
                     )
                     return None
