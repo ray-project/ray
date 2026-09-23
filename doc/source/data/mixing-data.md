@@ -155,7 +155,7 @@ Keep the following limitations in mind when you mix datasets:
 
 - **Transform before mixing.** Avoid calling {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.filter` after {meth}`~ray.data.Dataset.mix`. Downstream transformations can combine or split blocks before they reach the trainer, which breaks the row-ratio guarantees that {meth}`~ray.data.Dataset.mix` provides. Apply per-dataset transforms upstream of {meth}`~ray.data.Dataset.mix`.
 - **Match input schemas.** {meth}`~ray.data.Dataset.mix` doesn't unify schemas for you. Apply {meth}`~ray.data.Dataset.map` or {meth}`~ray.data.Dataset.select_columns` upstream to make all inputs structurally identical.
-- **Avoid heavily skewed weights.** All input datasets execute concurrently, with a portion of cluster resources divided equally between them. With heavily skewed weights, such as `[0.95, 0.05]`, the high-weight dataset might bottleneck while the low-weight dataset idles. Keep weights within roughly 5x of each other, such as `[0.4, 0.3, 0.2, 0.1]`.
+- **Avoid heavily skewed weights.** This is a current limitation. All input datasets execute concurrently, with a portion of cluster resources divided equally between them. With heavily skewed weights, such as `[0.95, 0.05]`, the high-weight dataset might bottleneck while the low-weight dataset idles. For now, keep weights within roughly 5x of each other, such as `[0.4, 0.3, 0.2, 0.1]`.
 
 ## See also
 
