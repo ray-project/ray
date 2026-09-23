@@ -10,8 +10,8 @@ from ray._private.accelerators import (
     get_accelerator_manager_for_resource,
 )
 from ray._private.accelerators.mlu import (
-    MLU_VISIBLE_DEVICES_ENV_VAR,
-    NOSET_MLU_VISIBLE_DEVICES_ENV_VAR,
+    CN_VISIBLE_DEVICES_ENV_VAR,
+    NOSET_CN_VISIBLE_DEVICES_ENV_VAR,
 )
 
 
@@ -31,7 +31,7 @@ def test_mlu_accelerator_manager_api():
     assert MLUAcceleratorManager.get_resource_name() == "MLU"
     assert (
         MLUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        == MLU_VISIBLE_DEVICES_ENV_VAR
+        == CN_VISIBLE_DEVICES_ENV_VAR
     )
     assert MLUAcceleratorManager.validate_resource_request_quantity(0.5) == (
         True,
@@ -47,39 +47,40 @@ def test_get_current_node_accelerator_type():
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
-    monkeypatch.delenv(MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
+    monkeypatch.delenv(CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
+    monkeypatch.setenv("MLU_VISIBLE_DEVICES", "2")
     assert MLUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "0,1,2")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "0,1,2")
     assert MLUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
         "0",
         "1",
         "2",
     ]
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "")
     assert MLUAcceleratorManager.get_current_process_visible_accelerator_ids() == []
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "NoDevFiles")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "NoDevFiles")
     assert MLUAcceleratorManager.get_current_process_visible_accelerator_ids() == []
 
 
 def test_set_current_process_visible_accelerator_ids(monkeypatch):
-    monkeypatch.delenv(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
+    monkeypatch.delenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
     MLUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "2"])
-    assert os.environ[MLU_VISIBLE_DEVICES_ENV_VAR] == "0,2"
+    assert os.environ[CN_VISIBLE_DEVICES_ENV_VAR] == "0,2"
 
-    monkeypatch.setenv(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, "false")
+    monkeypatch.setenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, "false")
     MLUAcceleratorManager.set_current_process_visible_accelerator_ids(["1"])
-    assert os.environ[MLU_VISIBLE_DEVICES_ENV_VAR] == "1"
+    assert os.environ[CN_VISIBLE_DEVICES_ENV_VAR] == "1"
 
-    monkeypatch.setenv(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, "true")
+    monkeypatch.setenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, "true")
     MLUAcceleratorManager.set_current_process_visible_accelerator_ids(["3"])
-    assert os.environ[MLU_VISIBLE_DEVICES_ENV_VAR] == "1"
+    assert os.environ[CN_VISIBLE_DEVICES_ENV_VAR] == "1"
 
 
 def test_ray_registers_mlu_resources_without_type(monkeypatch, shutdown_only):
-    monkeypatch.delenv(MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
+    monkeypatch.delenv(CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
     with patch(
         "ray._private.accelerators.get_all_accelerator_resource_names",
         return_value={"MLU"},
@@ -102,7 +103,7 @@ def test_ray_registers_mlu_resources_without_type(monkeypatch, shutdown_only):
 def test_ray_limits_and_isolates_visible_mlus(monkeypatch, shutdown_only):
     import ray
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
     with patch(
         "ray._private.accelerators.get_all_accelerator_resource_names",
         return_value={"MLU"},
@@ -120,7 +121,7 @@ def test_ray_limits_and_isolates_visible_mlus(monkeypatch, shutdown_only):
         def assignment(self):
             return (
                 ray.get_runtime_context().get_accelerator_ids()["MLU"],
-                os.environ[MLU_VISIBLE_DEVICES_ENV_VAR],
+                os.environ[CN_VISIBLE_DEVICES_ENV_VAR],
             )
 
     actors = [MLUActor.remote() for _ in range(3)]
@@ -134,8 +135,8 @@ def test_ray_limits_and_isolates_visible_mlus(monkeypatch, shutdown_only):
 def test_ray_respects_noset_mlu_visible_devices(monkeypatch, shutdown_only):
     import ray
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5")
-    monkeypatch.setenv(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, "true")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5")
+    monkeypatch.setenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, "true")
     with patch(
         "ray._private.accelerators.get_all_accelerator_resource_names",
         return_value={"MLU"},
@@ -150,7 +151,7 @@ def test_ray_respects_noset_mlu_visible_devices(monkeypatch, shutdown_only):
     def get_assignment():
         return (
             ray.get_runtime_context().get_accelerator_ids()["MLU"],
-            os.environ[MLU_VISIBLE_DEVICES_ENV_VAR],
+            os.environ[CN_VISIBLE_DEVICES_ENV_VAR],
         )
 
     accelerator_ids, visible_devices = ray.get(get_assignment.remote())
@@ -161,8 +162,8 @@ def test_ray_respects_noset_mlu_visible_devices(monkeypatch, shutdown_only):
 def test_ray_mlu_task_ids_reuse_and_actor_environment(monkeypatch, shutdown_only):
     import ray
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
-    monkeypatch.delenv(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
+    monkeypatch.delenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
     with patch.object(
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
@@ -174,7 +175,7 @@ def test_ray_mlu_task_ids_reuse_and_actor_environment(monkeypatch, shutdown_only
     def task(num_mlus):
         time.sleep(0.1)
         ids = ray.get_runtime_context().get_accelerator_ids()["MLU"]
-        return ids, os.environ[MLU_VISIBLE_DEVICES_ENV_VAR]
+        return ids, os.environ[CN_VISIBLE_DEVICES_ENV_VAR]
 
     no_mlu_ids, no_mlu_visible = ray.get(task.options(resources={"MLU": 0}).remote(0))
     assert no_mlu_ids == []
@@ -200,14 +201,14 @@ def test_ray_mlu_task_ids_reuse_and_actor_environment(monkeypatch, shutdown_only
         def assignment(self):
             return (
                 ray.get_runtime_context().get_accelerator_ids()["MLU"],
-                os.environ[MLU_VISIBLE_DEVICES_ENV_VAR],
+                os.environ[CN_VISIBLE_DEVICES_ENV_VAR],
             )
 
         def replace_visible_devices(self):
-            os.environ[MLU_VISIBLE_DEVICES_ENV_VAR] = "user-controlled"
+            os.environ[CN_VISIBLE_DEVICES_ENV_VAR] = "user-controlled"
 
         def visible_devices(self):
-            return os.environ[MLU_VISIBLE_DEVICES_ENV_VAR]
+            return os.environ[CN_VISIBLE_DEVICES_ENV_VAR]
 
     actor = MutableEnvironmentActor.remote()
     actor_ids, actor_visible = ray.get(actor.assignment.remote())
@@ -219,7 +220,7 @@ def test_ray_mlu_task_ids_reuse_and_actor_environment(monkeypatch, shutdown_only
 def test_ray_fractional_mlu_assignments(monkeypatch, shutdown_only):
     import ray
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
     with patch.object(
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
@@ -231,7 +232,7 @@ def test_ray_fractional_mlu_assignments(monkeypatch, shutdown_only):
     class FractionalMLUActor:
         def assignment(self):
             ids = ray.get_runtime_context().get_accelerator_ids()["MLU"]
-            return ids, os.environ[MLU_VISIBLE_DEVICES_ENV_VAR]
+            return ids, os.environ[CN_VISIBLE_DEVICES_ENV_VAR]
 
     actors = [FractionalMLUActor.remote() for _ in range(6)]
     assignments = ray.get([actor.assignment.remote() for actor in actors])
@@ -257,7 +258,7 @@ def test_ray_mlu_placement_group_assignments(monkeypatch, shutdown_only):
     from ray.util.placement_group import placement_group
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5,6,7")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6,7")
     with patch.object(
         MLUAcceleratorManager,
         "get_current_node_num_accelerators",
@@ -273,7 +274,7 @@ def test_ray_mlu_placement_group_assignments(monkeypatch, shutdown_only):
         def assignment(self):
             return (
                 ray.get_runtime_context().get_accelerator_ids()["MLU"],
-                os.environ[MLU_VISIBLE_DEVICES_ENV_VAR],
+                os.environ[CN_VISIBLE_DEVICES_ENV_VAR],
             )
 
     actors = [
@@ -301,8 +302,8 @@ def test_ray_mlu_zero_resource_environment(
     import ray
     from ray._private.accelerators import RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR
 
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4,5")
-    monkeypatch.delenv(NOSET_MLU_VISIBLE_DEVICES_ENV_VAR, raising=False)
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5")
+    monkeypatch.delenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
     if override_on_zero is None:
         monkeypatch.delenv(
             RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
@@ -325,7 +326,7 @@ def test_ray_mlu_zero_resource_environment(
     def task_visible_devices():
         return (
             ray.get_runtime_context().get_accelerator_ids()["MLU"],
-            os.environ.get(MLU_VISIBLE_DEVICES_ENV_VAR),
+            os.environ.get(CN_VISIBLE_DEVICES_ENV_VAR),
         )
 
     @ray.remote(num_cpus=1, resources={"MLU": 0})
@@ -333,7 +334,7 @@ def test_ray_mlu_zero_resource_environment(
         def visible_devices(self):
             return (
                 ray.get_runtime_context().get_accelerator_ids()["MLU"],
-                os.environ.get(MLU_VISIBLE_DEVICES_ENV_VAR),
+                os.environ.get(CN_VISIBLE_DEVICES_ENV_VAR),
             )
 
     assert ray.get(task_visible_devices.remote()) == ([], expected_visible)
@@ -344,9 +345,9 @@ def test_ray_mlu_assignments_across_nodes(monkeypatch, ray_start_cluster):
     import ray
 
     cluster = ray_start_cluster
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "4")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4")
     cluster.add_node(num_cpus=1, resources={"MLU": 1, "mlu_node_a": 1})
-    monkeypatch.setenv(MLU_VISIBLE_DEVICES_ENV_VAR, "5")
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "5")
     cluster.add_node(num_cpus=1, resources={"MLU": 1, "mlu_node_b": 1})
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
@@ -355,7 +356,7 @@ def test_ray_mlu_assignments_across_nodes(monkeypatch, ray_start_cluster):
     def assignment():
         return (
             ray.get_runtime_context().get_accelerator_ids()["MLU"],
-            os.environ[MLU_VISIBLE_DEVICES_ENV_VAR],
+            os.environ[CN_VISIBLE_DEVICES_ENV_VAR],
         )
 
     node_a = assignment.options(resources={"MLU": 1, "mlu_node_a": 1}).remote()
