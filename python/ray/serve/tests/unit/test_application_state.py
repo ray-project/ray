@@ -3776,6 +3776,71 @@ class TestApplicationLevelAutoscaling:
 
         assert new_deployment_state_manager._scaling_decisions[d1_id] == 3
 
+    @patch("ray.serve._private.application_state.build_serve_application", Mock())
+    @patch(
+        "ray.serve._private.application_state.check_obj_ref_ready_nowait",
+        Mock(return_value=True),
+    )
+    def test_app_level_autoscaling_policy_bytes_survive_recovery_and_update(
+        self, mocked_application_state_manager
+    ):
+        """The serialized policy must be carried through every target state.
+
+        A policy that lives only in the app's runtime_env can be imported by
+        the build task but not by the controller, so the controller relies on
+        the bytes the build task returned. Dropping them from the target state
+        on recovery or on a same-code-version update lets the next checkpoint
+        persist None, and the recovery after that imports the policy by path in
+        the controller and crashes it.
+        """
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        serialized_policy = cloudpickle.dumps(simple_app_level_policy)
+
+        def config(max_ongoing_requests):
+            return ServeApplicationSchema(
+                name="test_app",
+                import_path="fa.ke",
+                route_prefix="/",
+                # Not importable in this process, like a runtime_env-only module.
+                autoscaling_policy={"policy_function": "hidden_app:app_policy"},
+                deployments=[
+                    {"name": "a", "max_ongoing_requests": max_ongoing_requests}
+                ],
+            )
+
+        def recover():
+            return ApplicationStateManager(
+                MockDeploymentStateManager(kv_store),
+                AutoscalingStateManager(),
+                MockEndpointState(),
+                kv_store,
+                LoggingConfig(),
+            )
+
+        def policy_bytes(manager):
+            return manager._application_states[
+                "test_app"
+            ]._target_state.serialized_application_autoscaling_policy_def
+
+        with patch(
+            "ray.get",
+            Mock(return_value=(serialized_policy, [deployment_params("a", "/")], None)),
+        ):
+            app_state_manager.apply_app_configs([config(5)])
+            app_state_manager.update()
+        assert policy_bytes(app_state_manager) == serialized_policy
+
+        app_state_manager.save_checkpoint()
+        recovered = recover()
+        assert policy_bytes(recovered) == serialized_policy
+
+        # Same import_path and runtime_env: applied in place without a rebuild.
+        recovered.apply_app_configs([config(11)])
+        assert policy_bytes(recovered) == serialized_policy
+
+        recovered.save_checkpoint()
+        assert recover()._autoscaling_state_manager._application_has_policy("test_app")
+
     def test_app_level_autoscaling_policy_deregistration_on_deletion(
         self, mocked_application_state_manager
     ):

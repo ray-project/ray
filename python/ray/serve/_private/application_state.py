@@ -384,6 +384,7 @@ class ApplicationState:
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
             external_scaler_enabled=checkpoint_data.external_scaler_enabled,
+            serialized_application_autoscaling_policy_def=checkpoint_data.serialized_application_autoscaling_policy_def,
             build=checkpoint_data.build,
         )
 
@@ -716,6 +717,9 @@ class ApplicationState:
                     target_capacity=target_capacity,
                     target_capacity_direction=target_capacity_direction,
                     external_scaler_enabled=config.external_scaler_enabled,
+                    # The code version is unchanged, so the build task's
+                    # serialized policy is still the right one.
+                    serialized_application_autoscaling_policy_def=self._target_state.serialized_application_autoscaling_policy_def,
                     build=build,
                 )
             except (TypeError, ValueError, RayServeException):
