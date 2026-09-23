@@ -7,21 +7,6 @@
 
   cluster:
     byod:
-      runtime_env:
-        # Enable verbose stats for resource manager (to troubleshoot autoscaling)
-        RAY_DATA_DEBUG_RESOURCE_MANAGER: "1"
-        # Fail the test if Ray OOM-kills a worker, or a worker dies unexpectedly
-        RAYTEST_FAIL_ON_RAY_OOM_KILL: "1"
-        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "1"
-        # Fail the test if a node dies
-        RAYTEST_FAIL_ON_DEAD_NODES: "1"
-        # Ray Data attempts to limit cluster-wide object store usage of primary copies
-        # to 50% with its `ResourceBudget` backpressure policy. Since Ray Data doesn't
-        # keep track of secondary copies, the worst case utilization is 50% * 2 copies
-        # = 100%. If we exceed this amount on a linear pipeline, it means backpressure
-        # is very broken.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "100"
-
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
     cluster_compute: fixed_size_cpu_compute.yaml
@@ -33,16 +18,13 @@
 - name: "read_parquet_fixed_size"
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 3600
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
@@ -50,10 +32,6 @@
 - name: "read_large_parquet_fixed_size"
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1073741824"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -65,6 +43,7 @@
     #
     # 3650722201 is ~3.4 GiB, the maximum heap memory observed in our tests.
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
       --iter-bundles --memory 3650722201
@@ -84,14 +63,11 @@
 - name: read_tfrecords
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
       --iter-bundles
@@ -113,14 +89,11 @@
 - name: write_parquet
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
     anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
@@ -245,9 +218,6 @@
         RAY_max_direct_call_object_size: "8192"
         # Footer read tuning. The 84-group key is read-bound and wants large bins.
         RAY_DATA_PARQUET_BIN_PACKING_BYTES: "536870912"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -276,9 +246,6 @@
         # Footer read tuning. The 7M-group key is shuffle-bound and measured
         # best at 64 MiB.
         RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -305,9 +272,6 @@
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -340,9 +304,6 @@
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -394,13 +355,6 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   matrix:
@@ -411,6 +365,7 @@
   run:
     timeout: 3600
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=1342177280
       python join_benchmark.py
       --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
       --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
@@ -427,9 +382,6 @@
       runtime_env:
         RAY_DATA_DEFAULT_SHUFFLE_STRATEGY: "shuffle_v2"
         RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   matrix:
@@ -459,9 +411,6 @@
         RAY_DATA_DEFAULT_SHUFFLE_STRATEGY: "shuffle_v2"
         RAY_DATA_ENABLE_EXTERNAL_SHUFFLE: "1"
         RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   matrix:
@@ -586,12 +535,6 @@
 - name: streaming_split
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_FOOTER_BATCH_SIZE: "50"
-        RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE: "50"
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 300
@@ -601,11 +544,11 @@
   variations:
     - __suffix__: regular
       run:
-        script: python streaming_split_benchmark.py --num-workers 10
+        script: RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50 RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50 RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864 python streaming_split_benchmark.py --num-workers 10
 
     - __suffix__: regular_equal
       run:
-        script: python streaming_split_benchmark.py --num-workers 10 --equal-split
+        script: RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50 RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50 RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864 python streaming_split_benchmark.py --num-workers 10 --equal-split
 
     - __suffix__: early_stop
       # This test case will early stop the data ingestion iteration on the GPU actors.
@@ -614,7 +557,7 @@
       # There was a bug in Ray Data that caused GPU memory leak (see #34819).
       # We add this test case to cover this scenario.
       run:
-        script: python streaming_split_benchmark.py --num-workers 10 --early-stop
+        script: RAY_DATA_PARQUET_FOOTER_BATCH_SIZE=50 RAY_DATA_PARQUET_FOOTER_RESULT_BATCH_SIZE=50 RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864 python streaming_split_benchmark.py --num-workers 10 --early-stop
 
 ############
 # Mix tests
@@ -623,10 +566,6 @@
 - name: mix
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_FOOTER_NUM_ACTORS: "4"
     anyscale_sdk_2026: true
     cluster_compute: dataset_mixing/compute_8_cpu.yaml
   run:
@@ -638,12 +577,14 @@
     - __suffix__: 8ds_equal
       run:
         script: >
+          RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
           python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 16
           --max-rows-per-worker 100000
 
     - __suffix__: 8ds_power_law
       run:
         script: >
+          RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
           python dataset_mixing/mix_benchmark.py --num-datasets 8
           --weights 128 64 32 16 8 4 2 1 --num-workers 16
           --max-rows-per-worker 100000
@@ -651,12 +592,14 @@
     - __suffix__: 8ds_equal_random_mix
       run:
         script: >
+          RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
           python dataset_mixing/mix_benchmark.py --num-datasets 8 --num-workers 1
           --random-mix --max-rows-per-worker 100000
 
     - __suffix__: 8ds_power_law_random_mix
       run:
         script: >
+          RAY_DATA_PARQUET_FOOTER_NUM_ACTORS=4
           python dataset_mixing/mix_benchmark.py --num-datasets 8
           --weights 128 64 32 16 8 4 2 1 --num-workers 1
           --random-mix --max-rows-per-worker 100000
@@ -692,10 +635,6 @@
   working_dir: nightly_tests
 
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
 
   variations:
@@ -705,6 +644,7 @@
       run:
         timeout: 4800
         script: >
+          RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
           python dataset/training_ingest_benchmark.py
           --data-loader s3_parquet --simulated-training-time 0.01
 
@@ -714,6 +654,7 @@
       run:
         timeout: 4800
         script: >
+          RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
           python dataset/training_ingest_benchmark.py
           --data-loader s3_url_image --simulated-training-time 0.01
 
@@ -723,6 +664,7 @@
       run:
         timeout: 4800
         script: >
+          RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
           python dataset/training_ingest_benchmark.py
           --data-loader s3_read_images --simulated-training-time 0.01
 
@@ -732,6 +674,7 @@
       run:
         timeout: 4800
         script: >
+          RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
           python dataset/training_ingest_benchmark.py
           --data-loader s3_parquet --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
@@ -742,6 +685,7 @@
       run:
         timeout: 4800
         script: >
+          RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
           python dataset/training_ingest_benchmark.py
           --data-loader s3_url_image --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
@@ -752,6 +696,7 @@
       run:
         timeout: 4800
         script: >
+          RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
           python dataset/training_ingest_benchmark.py
           --data-loader s3_read_images --simulated-training-time 0.01
           --device cuda --pin-memory --batch-sizes 32 64 --prefetch-batches 1 4
@@ -850,14 +795,11 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        # Footer read tuning: hold the pre-existing 64 MiB behaviour.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
 
   run:
     timeout: 2400
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data/tpch/parquet/sf10/lineitem --format parquet
       --iter-batches pyarrow
@@ -865,14 +807,11 @@
 - name: to_tf
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 2400
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       python read_and_consume_benchmark.py
       s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
       --to-tf image image
@@ -880,16 +819,13 @@
 - name: iter_torch_batches
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
     timeout: 2400
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       python read_and_consume_benchmark.py
       s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image
       --iter-torch-batches
@@ -901,26 +837,18 @@
 - name: map
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 1800
-    script: python map_benchmark.py --api map --sf 100
+    script: RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864 python map_benchmark.py --api map --sf 100
 
 - name: flat_map
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 1800
-    script: python map_benchmark.py --api flat_map --sf 100
+    script: RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864 python map_benchmark.py --api flat_map --sf 100
 
 - name: "map_batches_fixed_size_{{compute}}_{{format}}_{{repeat_map_batches}}"
   python: "3.10"
@@ -938,17 +866,13 @@
           repeat_map_batches: once
 
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1073741824"
-        RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD: "0.6"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
   run:
     timeout: 10800
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=1073741824 RAY_DATA_CLUSTER_SCALING_UP_UTIL_THRESHOLD=0.6
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
@@ -1068,18 +992,12 @@
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
     timeout: 10800
     script: >
+      RAY_DATA_PARQUET_BIN_PACKING_BYTES=67108864
       python random_shuffle_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 
@@ -1100,11 +1018,8 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        RAYTEST_FAIL_ON_DEAD_NODES: "0"
         RAY_MAX_LIMIT_FROM_API_SERVER: "20000"
         RAY_MAX_LIMIT_FROM_DATA_SOURCE: "20000"
-        # Only Ray OOM kills fail this test; workers are killed intentionally.
-        RAYTEST_FAIL_ON_UNEXPECTED_WORKER_FAILURE: "0"
     cluster_compute: heterogeneous_memory_compute_multitenancy.yaml
 
   run:
@@ -1166,23 +1081,15 @@
       case: []
       cluster_type: []
       args: []
-      fail_on_dead_nodes: []
-      max_obj_store_util_percent: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
-          fail_on_dead_nodes: 1
-          max_obj_store_util_percent: 100
 
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
-    byod:
-      runtime_env:
-        RAYTEST_FAIL_ON_DEAD_NODES: "{{fail_on_dead_nodes}}"
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "{{max_obj_store_util_percent}}"
   run:
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
@@ -1199,31 +1106,21 @@
       cluster_type: []
       args: []
       frequency: []
-      fail_on_dead_nodes: []
-      max_obj_store_util_percent: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 40 40
           frequency: weekly
-          fail_on_dead_nodes: 0 # Allow node death during test
-          max_obj_store_util_percent: 100
       - with:
           case: fake_gpu_fixed_size
           cluster_type: fake_gpu_fixed_size
           args: --inference-concurrency 40 40 --fake-gpu
           frequency: weekly
-          fail_on_dead_nodes: 0 # Allow node death during test
-          max_obj_store_util_percent: 100
 
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
-    byod:
-      runtime_env:
-        RAYTEST_FAIL_ON_DEAD_NODES: "{{fail_on_dead_nodes}}"
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "{{max_obj_store_util_percent}}"
 
   run:
     timeout: 3600
@@ -1239,20 +1136,16 @@
       case: []
       cluster_type: []
       args: []
-      fail_on_dead_nodes: []
     adjustments:
       - with:
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
-          fail_on_dead_nodes: 1
 
   cluster:
     anyscale_sdk_2026: true
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
-      runtime_env:
-        RAYTEST_FAIL_ON_DEAD_NODES: "{{fail_on_dead_nodes}}"
       type: cu123
       post_build_script: byod_install_text_embedding.sh
 
@@ -1303,9 +1196,6 @@
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:
@@ -1324,9 +1214,6 @@
     byod:
       runtime_env:
         RAY_max_direct_call_object_size: "8192"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:

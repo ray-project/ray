@@ -187,6 +187,8 @@ DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
 
+DEFAULT_DEBUG_RESOURCE_MANAGER = env_bool("RAY_DATA_DEBUG_RESOURCE_MANAGER", False)
+
 DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
 
 DEFAULT_PER_STAGE_MAP_TIMING = False
@@ -701,6 +703,8 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
+        debug_resource_manager: Whether progress output should include detailed Ray
+            Data resource-manager telemetry.
         accurate_map_phase_timing: Whether to break "Block transform time" down
             into input prep, function body, and output block build for row-based
             transforms such as :meth:`~ray.data.Dataset.map` and
@@ -1072,6 +1076,7 @@ class DataContext:
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
+    debug_resource_manager: bool = DEFAULT_DEBUG_RESOURCE_MANAGER
     accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
     per_stage_map_timing: bool = DEFAULT_PER_STAGE_MAP_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS

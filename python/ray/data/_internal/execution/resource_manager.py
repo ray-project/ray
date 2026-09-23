@@ -12,7 +12,7 @@ from typing import (
     Optional,
 )
 
-from ray._common.utils import env_bool, env_float
+from ray._common.utils import env_float
 from ray.data._internal.execution import create_resource_allocator
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -47,10 +47,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
-LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE: Optional[bool] = env_bool(
-    "RAY_DATA_DEBUG_RESOURCE_MANAGER", None
-)
 
 # Only warn that the cluster can't run any task once the operator has been starved of
 # its minimum resources for this long. This avoids spurious warnings while the cluster
@@ -154,6 +150,7 @@ class ResourceManager:
         self._output_operator = terminal_operator_from_topology(topology)
 
         self._block_ref_counter = block_ref_counter
+        self._debug_resource_manager = data_context.debug_resource_manager
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -363,9 +360,7 @@ class ResourceManager:
                 usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
             usage_str += f", {self._op_running_usages[op].object_store_memory_str()} object store"
 
-        # NOTE: Config can override requested verbosity level
-        if LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE is not None:
-            verbose = LOG_DEBUG_TELEMETRY_FOR_RESOURCE_MANAGER_OVERRIDE
+        verbose = verbose or self._debug_resource_manager
 
         if verbose:
             usage_str += (

@@ -578,6 +578,43 @@ py_test(
 )
 
 py_test(
+    name = "test_benchmark_health_checks",
+    size = "small",
+    srcs = [
+        "nightly_tests/dataset/benchmark_health_checks.py",
+        "ray_release/tests/test_benchmark_health_checks.py",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    imports = ["nightly_tests/dataset"],
+    tags = [
+        "release_unit",
+        "team:data",
+    ],
+    deps = [
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_data_release_test_guards",
+    size = "small",
+    srcs = ["ray_release/tests/test_data_release_test_guards.py"],
+    data = glob(
+        ["**/*.yaml"],
+        exclude = ["ray_release/**/*.yaml"],
+    ) + glob(["nightly_tests/**/*.py"]),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:data",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_anyscale_job_runner",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_runner.py"],

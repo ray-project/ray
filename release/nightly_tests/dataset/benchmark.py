@@ -7,19 +7,31 @@ import os
 import threading
 import time
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.core.generated import common_pb2
 from ray.data import DataContext
 from ray.util.state import list_runtime_envs
+
+try:
+    import benchmark_health_checks as health_checks
+except ModuleNotFoundError as exc:
+    if exc.name != "benchmark_health_checks":
+        raise
+    from release.nightly_tests.dataset import benchmark_health_checks as health_checks
 
 logger = logging.getLogger(__name__)
 
 PROMETHEUS_QUERY_TIMEOUT_S = 30
+PROMETHEUS_RANGE_STEP_S = 15
+
+PROMETHEUS_CATCH_UP_TIMEOUT_S = 120
+PROMETHEUS_CATCH_UP_POLL_INTERVAL_S = 5
 
 
-def _query_prometheus(query: str, timestamp: float):
+def _import_prometheus_client():
     # The release test runner copies prometheus_metrics.py into the workload directory.
     try:
         from prometheus_metrics import PrometheusClient
@@ -30,23 +42,133 @@ def _query_prometheus(query: str, timestamp: float):
         from release.ray_release.command_runner._prometheus_metrics import (
             PrometheusClient,
         )
+    return PrometheusClient
+
+
+def _run_prometheus_query(query_type: str, **kwargs):
+    PrometheusClient = _import_prometheus_client()
 
     async def run_query():
         client = PrometheusClient()
         try:
             return await asyncio.wait_for(
-                client.query_prometheus("query", query=query, time=timestamp),
+                client.query_prometheus(query_type, **kwargs),
                 timeout=PROMETHEUS_QUERY_TIMEOUT_S,
             )
         except asyncio.TimeoutError as exc:
             raise RuntimeError(
-                "Prometheus head-node memory query timed out after "
-                f"{PROMETHEUS_QUERY_TIMEOUT_S} seconds."
+                f"Prometheus query timed out after {PROMETHEUS_QUERY_TIMEOUT_S} "
+                f"seconds: {kwargs.get('query')!r}"
             ) from exc
         finally:
             await client.close()
 
     return asyncio.run(run_query())
+
+
+def _query_prometheus(query: str, timestamp: float):
+    """Instant query. Returns entries with a single ``value`` sample."""
+    return _run_prometheus_query("query", query=query, time=timestamp)
+
+
+def _query_prometheus_range(query: str, start_unix_time: float, end_unix_time: float):
+    """Range query. Returns entries with a list of ``values`` samples."""
+    return _run_prometheus_query(
+        "query_range",
+        query=query,
+        start=int(start_unix_time),
+        end=int(math.ceil(end_unix_time)),
+        step=PROMETHEUS_RANGE_STEP_S,
+    )
+
+
+def _session_label() -> str:
+    session_name = ray.get_runtime_context().get_session_name()
+    return f"SessionName={json.dumps(session_name)}"
+
+
+def _get_positive_worker_failure_metrics(metric_name: str) -> List[Dict[str, Any]]:
+    """Return positive worker-failure counters for the current Ray session."""
+    selector = f"{metric_name}{{{_session_label()}}}"
+    results = _query_prometheus(f"sum({selector}) by (Type, Name) > 0", time.time())
+    if results is None:
+        raise RuntimeError(
+            f"Failed to query Prometheus for worker-failure metric {metric_name!r}."
+        )
+    return results
+
+
+def _get_node_sample_unix_times() -> List[float]:
+    """Return each node's latest scrape timestamp; raises if Prometheus is down."""
+    results = _query_prometheus(
+        f"timestamp(ray_node_mem_used_host{{{_session_label()}}})", time.time()
+    )
+    if results is None:
+        raise RuntimeError("Failed to query Prometheus for node scrape timestamps.")
+    timestamps = []
+    for entry in results:
+        try:
+            timestamps.append(float(entry["value"][1]))
+        except (KeyError, IndexError, TypeError, ValueError):
+            continue
+    return timestamps
+
+
+def _get_oldest_node_sample_unix_time() -> Optional[float]:
+    timestamps = _get_node_sample_unix_times()
+    return min(timestamps) if timestamps else None
+
+
+def _wait_for_prometheus_to_catch_up(workload_end_unix_time: float) -> bool:
+    # Diagnostic: the catch-up wait assumes one series per node.
+    num_series = len(_get_node_sample_unix_times())
+    num_alive_nodes = sum(1 for node in ray.nodes() if node["Alive"])
+    print(
+        f"Prometheus reports scrape timestamps for {num_series} node(s); "
+        f"{num_alive_nodes} node(s) are alive."
+    )
+    if num_series != num_alive_nodes:
+        logger.warning(
+            "Prometheus node series count differs from the number of alive nodes. "
+            "The metrics catch-up wait may be unreliable."
+        )
+
+    caught_up = health_checks.wait_for_metrics_to_catch_up(
+        workload_end_unix_time=workload_end_unix_time,
+        oldest_node_sample_unix_time=_get_oldest_node_sample_unix_time,
+        timeout_s=PROMETHEUS_CATCH_UP_TIMEOUT_S,
+        poll_interval_s=PROMETHEUS_CATCH_UP_POLL_INTERVAL_S,
+    )
+    if not caught_up:
+        logger.warning(
+            "Prometheus did not report post-workload samples from every node within "
+            f"{PROMETHEUS_CATCH_UP_TIMEOUT_S}s. Running the cluster health checks on "
+            "possibly incomplete metrics."
+        )
+    return caught_up
+
+
+def _get_peak_object_store_utilization(
+    start_unix_time: float, end_unix_time: float
+) -> Optional[float]:
+    """Return the cluster-wide object-store peak over the window as a fraction."""
+    session_label = _session_label()
+    query = (
+        f"sum(ray_object_store_memory{{{session_label}}}) / on() "
+        f'sum(ray_resources{{Name="object_store_memory",{session_label}}})'
+    )
+    results = _query_prometheus_range(query, start_unix_time, end_unix_time)
+    if results is None:
+        raise RuntimeError("Failed to query Prometheus for object-store utilization.")
+    return health_checks.peak_metric_value(results)
+
+
+def _get_unexpectedly_dead_nodes() -> List[str]:
+    reasons = {
+        common_pb2.NodeDeathInfo.Reason.Value("UNEXPECTED_TERMINATION"),
+        common_pb2.NodeDeathInfo.Reason.Value("UNSPECIFIED"),
+    }
+    return health_checks.find_unexpectedly_dead_nodes(ray.nodes(), reasons)
 
 
 def _get_peak_head_node_memory_used_bytes(
@@ -243,11 +365,11 @@ class RuntimeEnvSetupTracker:
 
 
 def benchmark_py_modules() -> List[str]:
-    """Return paths to benchmark.py and the profiling
-    package for use in runtime_env py_modules."""
+    """Return the paths workers need to ``import benchmark`` via ``py_modules``."""
     dataset_dir = os.path.dirname(os.path.realpath(__file__))
     return [
         os.path.realpath(__file__),
+        os.path.join(dataset_dir, "benchmark_health_checks.py"),
         os.path.join(dataset_dir, "profiling"),
     ]
 
@@ -267,10 +389,27 @@ class Benchmark:
     """Runs benchmarks in a way that's compatible with our release test infrastructure.
 
     Args:
+        fail_on_worker_oom: Fail if Ray's memory monitor evicted a task or actor
+            worker. Expected idle-worker evictions are ignored.
+        fail_on_unexpected_worker_failure: Fail if a worker died without an eviction
+            recorded by Ray's memory monitor.
+        fail_on_dead_nodes: Fail if a node died unexpectedly during the test.
+        debug_progress_manager: Include verbose resource-manager details in Ray Data
+            progress output.
+        max_object_store_utilization: Fail if cluster-wide object-store utilization,
+            as reported by Prometheus over the whole benchmark run, exceeded this
+            fraction of aggregate capacity. Set to ``None`` to disable the check.
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
         max_sched_loop_duration_s: If set, fail if any dataset that executed during
             the run had a scheduling loop iteration longer than this limit.
+
+    The cluster health checks run in ``write_result`` after the metrics JSON is
+    written, and only when every case succeeded. The worker and object-store checks
+    need Prometheus (``RAY_PROMETHEUS_HOST``); outside the release infrastructure,
+    disable them with ``fail_on_worker_oom=False``,
+    ``fail_on_unexpected_worker_failure=False`` and
+    ``max_object_store_utilization=None``.
 
     Here's an example of typical usage:
 
@@ -300,18 +439,36 @@ class Benchmark:
     def __init__(
         self,
         *,
-        max_head_node_memory_bytes: int | None = None,
-        max_sched_loop_duration_s: float | None = None,
+        fail_on_worker_oom: bool = True,
+        fail_on_unexpected_worker_failure: bool = True,
+        fail_on_dead_nodes: bool = True,
+        debug_progress_manager: bool = True,
+        max_object_store_utilization: Optional[float] = 1.0,
+        max_head_node_memory_bytes: Optional[int] = None,
+        max_sched_loop_duration_s: Optional[float] = None,
     ):
+        if (
+            max_object_store_utilization is not None
+            and max_object_store_utilization < 0
+        ):
+            raise ValueError("max_object_store_utilization must be nonnegative.")
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
         if max_sched_loop_duration_s is not None and max_sched_loop_duration_s <= 0:
             raise ValueError("max_sched_loop_duration_s must be greater than 0.")
 
         self.result = {}
+        self._fail_on_worker_oom = fail_on_worker_oom
+        self._fail_on_unexpected_worker_failure = fail_on_unexpected_worker_failure
+        self._fail_on_dead_nodes = fail_on_dead_nodes
+        self._max_object_store_utilization = max_object_store_utilization
         self._max_head_node_memory_bytes = max_head_node_memory_bytes
         self._max_sched_loop_duration_s = max_sched_loop_duration_s
+        self._failed_cases: List[str] = []
+        self._first_case_start_unix_time: Optional[float] = None
+        self._last_case_end_unix_time: Optional[float] = None
 
+        DataContext.get_current().debug_resource_manager = debug_progress_manager
         # Stats summaries are required for the scheduling loop duration assertion
         # in `run_fn`.
         DataContext.get_current().enable_stats_summary_collection = True
@@ -335,6 +492,19 @@ class Benchmark:
         Call ``write_result`` in a ``finally`` block to save metrics even if this
         method fails.
         """
+        try:
+            self._run_case(name, fn, *fn_args, **fn_kwargs)
+        except BaseException:
+            self._failed_cases.append(name)
+            raise
+
+    def _run_case(
+        self,
+        name: str,
+        fn: Callable[..., Dict[Union[str, BenchmarkMetric], Any]],
+        *fn_args,
+        **fn_kwargs,
+    ):
         gc.collect()
 
         print(f"Running case: {name}")
@@ -350,6 +520,9 @@ class Benchmark:
             finally:
                 duration = time.perf_counter() - start_time
                 end_unix_time = time.time()
+                if self._first_case_start_unix_time is None:
+                    self._first_case_start_unix_time = start_unix_time
+                self._last_case_end_unix_time = end_unix_time
 
         assert fn_output is None or isinstance(fn_output, dict), fn_output
 
@@ -434,3 +607,75 @@ class Benchmark:
 
         print(f"Benchmark metrics exported to '{test_output_json}':")
         print(json.dumps(self.result, indent=4))
+
+        # Only check a successful run, so a failing case reports its own error.
+        if self._failed_cases:
+            print(
+                "Skipping cluster health checks because these benchmark cases "
+                f"failed: {self._failed_cases}"
+            )
+            return
+
+        failures = self._run_cluster_health_checks()
+        if failures:
+            raise AssertionError(
+                "Benchmark safety checks failed:\n- " + "\n- ".join(failures)
+            )
+
+    def _run_cluster_health_checks(self) -> List[str]:
+        """Return a description of every enabled check that failed."""
+        failures = []
+
+        worker_checks_enabled = (
+            self._fail_on_worker_oom or self._fail_on_unexpected_worker_failure
+        )
+        has_run_window = (
+            self._first_case_start_unix_time is not None
+            and self._last_case_end_unix_time is not None
+        )
+        object_store_check_enabled = (
+            self._max_object_store_utilization is not None and has_run_window
+        )
+        if self._max_object_store_utilization is not None and not has_run_window:
+            print("Skipping the object-store check: no benchmark case ran.")
+
+        if (worker_checks_enabled or object_store_check_enabled) and has_run_window:
+            print("Waiting for Prometheus to scrape post-workload metrics...")
+            _wait_for_prometheus_to_catch_up(self._last_case_end_unix_time)
+
+        if worker_checks_enabled:
+            failures.extend(
+                health_checks.check_worker_failures(
+                    fail_on_worker_oom=self._fail_on_worker_oom,
+                    fail_on_unexpected_worker_failure=(
+                        self._fail_on_unexpected_worker_failure
+                    ),
+                    query_positive_counters=_get_positive_worker_failure_metrics,
+                )
+            )
+
+        if self._fail_on_dead_nodes:
+            dead_nodes = _get_unexpectedly_dead_nodes()
+            if dead_nodes:
+                failures.append(f"Dead nodes found, node IDs: {dead_nodes}")
+
+        if object_store_check_enabled:
+            peak_utilization = _get_peak_object_store_utilization(
+                self._first_case_start_unix_time, self._last_case_end_unix_time
+            )
+            if peak_utilization is None:
+                logger.warning(
+                    "Prometheus returned no object-store utilization samples for the "
+                    "benchmark window; skipping the object-store check."
+                )
+            else:
+                print(
+                    f"Peak cluster-wide object-store utilization: {peak_utilization:.1%}"
+                )
+            failures.extend(
+                health_checks.check_object_store_utilization(
+                    peak_utilization, self._max_object_store_utilization
+                )
+            )
+
+        return failures

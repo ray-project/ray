@@ -245,7 +245,11 @@ if __name__ == "__main__":
             "py_modules": benchmark_py_modules() + [os.path.abspath(hmbi.__file__)],
         }
     )
-    benchmark = Benchmark()
+    # Workers are killed intentionally and node death is allowed.
+    benchmark = Benchmark(
+        fail_on_unexpected_worker_failure=False,
+        fail_on_dead_nodes=False,
+    )
     holder = {}
 
     def benchmark_fn():
