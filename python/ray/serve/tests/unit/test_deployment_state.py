@@ -11794,7 +11794,10 @@ def test_apply_pushed_health_hands_off_to_wrapper():
     rep.replica_id.unique_id = "r1"
     ds._health_push_registry.record("r1", 123.0, True)
     DeploymentState._apply_pushed_health(ds, rep)
-    rep.record_pushed_health.assert_called_once()
+    # Pin the tuple order, not just the call: the splat makes a swap of the two
+    # floats silent, and it would feed replica-clock in as received_at.
+    received_at = ds._health_push_registry.get("r1")[1]
+    rep.record_pushed_health.assert_called_once_with(123.0, received_at, True, None)
 
     absent = Mock()
     absent.replica_id.unique_id = "nope"
@@ -11804,6 +11807,14 @@ def test_apply_pushed_health_hands_off_to_wrapper():
     ds._health_push_registry = None
     DeploymentState._apply_pushed_health(ds, rep)
     assert rep.record_pushed_health.call_count == 1
+
+
+def test_deployment_replica_forwards_pushed_health():
+    """The DeploymentReplica hop must hand the wrapper the tuple unreordered."""
+    rep = DeploymentReplica.__new__(DeploymentReplica)
+    rep._actor = Mock()
+    rep.record_pushed_health(1.0, 2.0, False, 3)
+    rep._actor.record_pushed_health.assert_called_once_with(1.0, 2.0, False, 3)
 
 
 class TestPushedHealthRegressions:
