@@ -49,8 +49,8 @@ class DashboardAgent:
         events_export_addr=None,
         listen_port=ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
         disable_metrics_collection: bool = False,
-        disable_gpu_metrics: bool = False,
         is_head: bool = False,
+        disable_gpu_metrics: bool = False,
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
