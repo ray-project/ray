@@ -374,13 +374,11 @@ class ReadFiles(
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        from ray.data._internal.datasource.parquet_datasource import (
-            _split_predicate_by_columns,
-            combine_predicates,
-        )
         from ray.data._internal.datasource_v2.logical_optimizers import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
+            _split_predicate_by_columns,
+            combine_predicates,
         )
         from ray.data._internal.logical.operators.map_operator import Filter
 
@@ -453,7 +451,7 @@ class ListFiles(LogicalOperator, SourceOperator):
 
     paths: List[str]
     file_indexer: "FileIndexer"
-    filesystem: "FileSystem"
+    filesystem: Optional["FileSystem"]
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
@@ -467,10 +465,10 @@ class ListFiles(LogicalOperator, SourceOperator):
     )
     # Pushed-down read constraints, populated by the optimizer rules
     # (``predicate_pushdown`` / ``projection_pushdown`` / ``limit_pushdown``).
-    # A ``StreamingFileChunker`` (e.g. the Parquet footer chunker) uses them to
+    # A metadata-aware indexer (the Parquet ``FooterFileIndexer``) uses them to
     # prune row groups, size only projected columns, and stop listing early;
-    # the per-file listing path ignores them. Whether footer-based chunking runs
-    # is decided by the indexer's chunker type, not a flag here -- this op stays
+    # the per-file listing path ignores them. Whether footer reads happen is
+    # decided by the indexer type, not a flag here -- this op stays
     # format-agnostic.
     predicate: Optional[Expr] = None
     projected_columns: Optional[List[str]] = None

@@ -7,16 +7,20 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
     Tuple,
     TypeVar,
     Union,
 )
 
+import numpy as np
+import pandas as pd
+
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_ops.transform_pyarrow import concat, concat_and_sort
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import find_partition_index
+from ray.data._internal.util import find_insertion_index
 from ray.data.block import (
     AggType,
     Block,
@@ -319,12 +323,19 @@ class TableBlockAccessor(BlockAccessor):
             If key is None then the k column is omitted.
         """
 
-        if self.num_rows() == 0:
-            return self._empty_table()
-
         # Resolve target aggregation column names (to avoid conflicts)
-        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(aggs)
+        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(
+            [agg.name for agg in aggs]
+        )
         keys: List[str] = sort_key.get_columns()
+        is_global_aggregation = keys is None or len(keys) == 0
+
+        # An empty block holds no groups, so a keyed aggregation has nothing to
+        # emit. A global aggregation still has exactly one group -- the whole
+        # block -- and must emit its identity row (``count()`` of an empty
+        # dataset is 0, not "no answer").
+        if self.num_rows() == 0 and not is_global_aggregation:
+            return self._empty_table()
 
         builder = self.builder()
 
@@ -344,8 +355,15 @@ class TableBlockAccessor(BlockAccessor):
             ]
 
             # Step 2: Apply aggregations to provided group's block
-            for i in range(len(aggs)):
-                accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_block)
+            #
+            # NOTE: An empty group block leaves the accumulators at their identity
+            #       values. Skip it, since not every ``AggregateFn`` handles a
+            #       zero-row block.
+            if BlockAccessor.for_block(group_block).num_rows() > 0:
+                for i in range(len(aggs)):
+                    accumulators[i] = aggs[i].accumulate_block(
+                        accumulators[i], group_block
+                    )
 
             # Step 3: Compose resulting row from
             #   - Grouped by column's values
@@ -424,7 +442,9 @@ class TableBlockAccessor(BlockAccessor):
         builder = block_accessor.builder()
 
         # Resolve aggregation names as resulting column names (collisions)
-        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(aggs)
+        resolved_agg_col_names: List[str] = _resolve_aggregated_column_names(
+            [agg.name for agg in aggs]
+        )
 
         keys: List[str] = sort_key.get_columns()
 
@@ -477,22 +497,69 @@ class TableBlockAccessor(BlockAccessor):
     ):
         partitions = []
 
-        # For each boundary value, count the number of items that are less
-        # than it. Since the block is sorted, these counts partition the items
-        # such that boundaries[i] <= x < boundaries[i + 1] for each x in
-        # partition[i]. If `descending` is true, `boundaries` would also be
-        # in descending order and we only need to count the number of items
-        # *greater than* the boundary value instead.
-        bounds = [
-            find_partition_index(self._table, boundary, sort_key)
-            for boundary in boundaries
+        columns = sort_key.get_columns()
+        descending = sort_key.get_descending()
+
+        key_columns = [
+            BlockColumnAccessor.for_column(self._table[col]).to_numpy()
+            for col in columns
         ]
 
+        # Per-column null check, computed once per block instead of once per
+        # boundary inside ``find_insertion_index``. Arrow's ``null_count`` is
+        # O(1) — the common path. For non-Arrow inputs (e.g. pandas ``Series``,
+        # which has no ``null_count`` attribute), fall back to ``pd.isna`` so
+        # we correctly detect dtype-specific nulls — ``pd.NA`` for nullable
+        # ``Int64``/``StringDtype``, ``NaT`` for datetimes, ``None`` for object
+        # columns. The O(n) scan happens once per column, not per boundary.
+        has_nulls = []
+        for col, np_c in zip(columns, key_columns):
+            arrow_col = self._table[col]
+            if hasattr(arrow_col, "null_count"):
+                has_null = arrow_col.null_count > 0 or (
+                    np_c.dtype.kind == "f" and bool(np.isnan(np_c).any())
+                )
+            else:
+                has_null = bool(pd.isna(np_c).any())
+            has_nulls.append(has_null)
+
+        # To obtain partition indices from boundaries we employ following algorithm:
+        #
+        #   1. For every boundary value we determine insertion index into the
+        #      list of key column values (ie, for boundary value ``b`` we determine
+        #      an index i, such that ``key_column[i] <= b < key_column[i+1]``, thus
+        #      determining the boundary of 2 partitions established by b).
+        #
+        #   2. Subsequently, list of such insertion indexes is traversed to derive
+        #      partitions as ``table[insertion_index[i], insertion_index[i+1]``
+        #
+        insertion_indices = np.arange(len(boundaries))
+
+        for idx, boundary in enumerate(boundaries):
+            # Avoid repeating insertion index search for duplicated boundaries
+            #
+            # NOTE: Boundaries currently are not de-duplicated and hence we have
+            #       to skip repeating insertion point searches here.
+            if idx > 0 and boundary == boundaries[idx - 1]:
+                insertion_indices[idx] = insertion_indices[idx - 1]
+            else:
+                insertion_indices[idx] = find_insertion_index(
+                    key_columns,
+                    boundary,
+                    descending,
+                    has_nulls=has_nulls,
+                    # NOTE: Search for next insertion index could be started off the
+                    #       last one, rather than 0
+                    start_from_idx=(0 if idx == 0 else insertion_indices[idx - 1]),
+                )
+
         last_idx = 0
-        for idx in bounds:
+        for idx in insertion_indices:
             partitions.append(self._table[last_idx:idx])
             last_idx = idx
+
         partitions.append(self._table[last_idx:])
+
         return partitions
 
     @classmethod
@@ -573,21 +640,26 @@ class TableBlockAccessor(BlockAccessor):
         raise NotImplementedError
 
 
-def _resolve_aggregated_column_names(aggs: Sequence["AggregateFn"]) -> List[str]:
+def _resolve_aggregated_column_names(agg_names: Sequence[str]) -> List[str]:
     """Resolves aggregation column names to be unique (in case of collisions)"""
 
+    # Occurrences of each *original* name. Counting the original rather than the
+    # suffixed name is what gives successive duplicates successive suffixes.
     name_counts: Dict[str, int] = collections.defaultdict(int)
+    taken: Set[str] = set()
 
     resolved_agg_names: List[str] = []
 
-    for agg in aggs:
-        name = agg.name
-        # Check for conflicts with existing aggregation
-        # name.
-        if name in name_counts:
-            name = TableBlockAccessor._munge_conflict(name, name_counts[name])
+    for agg_name in agg_names:
+        name = agg_name
+        # Suffix until the name is free. Looping (rather than suffixing once)
+        # also covers a suffixed name colliding with an aggregation that is
+        # explicitly called that, as in ``["a", "a_2", "a"]``.
+        while name in taken:
+            name_counts[agg_name] += 1
+            name = TableBlockAccessor._munge_conflict(agg_name, name_counts[agg_name])
 
-        name_counts[name] += 1
+        taken.add(name)
         resolved_agg_names.append(name)
 
     return resolved_agg_names

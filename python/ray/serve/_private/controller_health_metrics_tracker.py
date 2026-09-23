@@ -68,6 +68,11 @@ class ControllerHealthMetricsTracker:
     decompress_durations: Deque[float] = field(
         default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
     )
+    # Kept apart from decompress_durations: the two codecs are not comparable, and
+    # blending them hides exactly the difference columnar is meant to make.
+    columnar_decode_durations: Deque[float] = field(
+        default_factory=lambda: deque(maxlen=_INGEST_METRICS_HISTORY_SIZE)
+    )
 
     # Monotonic counters since controller start.
     handle_reports_received: int = 0
@@ -122,6 +127,9 @@ class ControllerHealthMetricsTracker:
     def record_decompress(self, duration_ms: float):
         self.decompress_durations.append(duration_ms)
 
+    def record_columnar_decode(self, duration_ms: float):
+        self.columnar_decode_durations.append(duration_ms)
+
     def collect_metrics(self) -> ControllerHealthMetrics:
         """Collect and return current health metrics."""
         now = time.time()
@@ -169,6 +177,9 @@ class ControllerHealthMetricsTracker:
             list(self.replica_ingest_durations)
         )
         decompress_stats = DurationStats.from_values(list(self.decompress_durations))
+        columnar_decode_stats = DurationStats.from_values(
+            list(self.columnar_decode_durations)
+        )
         ingest_reports_received = (
             self.handle_reports_received + self.replica_reports_received
         )
@@ -221,6 +232,7 @@ class ControllerHealthMetricsTracker:
             handle_ingest_duration_ms=handle_ingest_stats,
             replica_ingest_duration_ms=replica_ingest_stats,
             metrics_decompress_duration_ms=decompress_stats,
+            columnar_decode_duration_ms=columnar_decode_stats,
             handle_reports_received=self.handle_reports_received,
             replica_reports_received=self.replica_reports_received,
             ingest_reports_received=ingest_reports_received,

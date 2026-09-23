@@ -7,16 +7,23 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray._common.usage import usage_lib
 from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector, poller, util
+from ray.data._internal.usage.actor import _UsageCollectionActor
 from ray.data._internal.usage.execution_callback import UsageCallback
 
 
 @pytest.fixture
 def mock_record(monkeypatch):
+    """Run the usage actor's logic on a local instance instead of the
+    cluster-wide actor, capturing the payload it would flush to GCS."""
     recorded = []
     monkeypatch.setattr(
-        collector,
+        collector, "_send_to_usage_actor", _UsageCollectionActor().record
+    )
+    monkeypatch.setattr(
+        usage_lib,
         "record_extra_usage_tag",
         lambda key, value: recorded.append((key, value)),
     )
@@ -34,16 +41,15 @@ def executor():
 
 @pytest.fixture
 def reset_collector(monkeypatch):
-    collector.reset_for_testing()
     monkeypatch.delenv("RAY_DATA_USAGE_DISABLED", raising=False)
-    # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 for driver-created
-    # clusters, so the env var can't keep the opt-out gate open. Patch the gate.
-    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: True)
+    # ``ray.init()`` force-sets RAY_USAGE_STATS_ENABLED=0 whenever it starts a
+    # local cluster, and ``ray.data.range`` auto-starts one mid-test. Connect
+    # first so the documented opt-in below isn't clobbered.
+    ray.init(ignore_reinit_error=True)
+    monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "1")
     # Prometheus isn't running in tests, so stub the counter query fn;
     # the readers degrade to None without any network I/O.
     monkeypatch.setattr(collector, "query_prometheus_counter", lambda promql: None)
-    yield
-    collector.reset_for_testing()
 
 
 def test_round_trip_payload_shape(reset_collector, mock_record, executor):
@@ -193,14 +199,15 @@ def test_unknown_operators_anonymized(reset_collector):
     assert collector.anonymize_op_name(write_op) == "WriteCustom"
 
 
-def test_limit_anonymized_to_class_name(reset_collector, executor):
+def test_limit_anonymized_to_class_name(reset_collector, mock_record, executor):
     """Limit's runtime name embeds the row count (e.g. ``limit=10``); telemetry
     must collapse it back to ``Limit`` so the value isn't recorded."""
     ds = ray.data.range(100).limit(10)
     callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
-    entry = collector.get_executions()[callback._execution_id]
-    plan_ops = [op.name for op in entry.workload.ops]
+    _, payload_json = mock_record[-1]
+    entry = json.loads(payload_json)["executions"][0]
+    plan_ops = [op["name"] for op in entry["workload"]["ops"]]
     assert "Limit" in plan_ops
     assert not any(op.startswith("limit=") for op in plan_ops)
 
@@ -216,7 +223,6 @@ def test_does_not_record_when_disabled_via_env_var(
     callback.after_execution_succeeds(executor)
 
     assert mock_record == []
-    assert collector.get_executions() == {}
 
 
 def test_does_not_record_when_usage_stats_opted_out(
@@ -224,14 +230,13 @@ def test_does_not_record_when_usage_stats_opted_out(
 ):
     """Privacy gate: opting out of Ray usage stats (RAY_USAGE_STATS_ENABLED=0,
     ``ray disable-usage-stats``, etc.) must also disable Ray Data collection."""
-    monkeypatch.setattr(collector, "usage_stats_enabled", lambda: False)
+    monkeypatch.setenv("RAY_USAGE_STATS_ENABLED", "0")
     ds = ray.data.range(10)
     callback = UsageCallback(ds._logical_plan)
     callback.before_execution_starts(executor)
     callback.after_execution_succeeds(executor)
 
     assert mock_record == []
-    assert collector.get_executions() == {}
 
 
 def test_does_not_raise_on_internal_errors(

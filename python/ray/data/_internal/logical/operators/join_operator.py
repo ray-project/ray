@@ -260,4 +260,15 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
         except (pa.ArrowTypeError, pa.ArrowInvalid, pa.ArrowKeyError, ValueError):
             return None
+        except Exception as exc:
+            # Polars is imported lazily, so its exception types can only be
+            # referenced once the package is installed.
+            try:
+                from polars.exceptions import PolarsError
+            except ImportError:
+                pass
+            else:
+                if isinstance(exc, PolarsError):
+                    return None
+            raise
         return joined.schema
