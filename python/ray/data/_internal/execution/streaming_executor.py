@@ -30,6 +30,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -104,6 +105,37 @@ def _log_ray_data_env_vars() -> None:
         logger.debug(f"RAY_DATA environment variables: {formatted}")
     else:
         logger.debug("No RAY_DATA environment variables set.")
+
+
+def _disable_data_reconstruction_if_unsupported(
+    dag: PhysicalOperator, dataset_id: str
+) -> bool:
+    """Whether Ray Data lineage reconstruction must be disabled for this plan.
+
+    Only plans made entirely of map operators fed by a source are supported.
+    Warns once per dataset when disabling, since Ray Core lineage reconstruction
+    is also off for this job and a lost object will fail the dataset.
+
+    Args:
+        dag: The physical plan's output operator.
+        dataset_id: The ID of the dataset being executed.
+
+    Returns:
+        True if the plan contains an operator reconstruction does not support.
+    """
+    for op in dag.post_order_iter():
+        if isinstance(op, (InputDataBuffer, MapOperator)):
+            continue
+        if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
+            logger.warning(
+                f"Ray Data lineage reconstruction is disabled for dataset "
+                f"{dataset_id}: it contains operator {op.name!r}, which "
+                "reconstruction doesn't support. Ray Core lineage reconstruction "
+                "is also disabled for this job, so a lost object will fail the "
+                "dataset."
+            )
+        return True
+    return False
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -231,11 +263,12 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._lineage_tracker = (
-            LineageTracker()
-            if self._data_context.enable_ray_data_reconstruction
-            else None
-        )
+        self._lineage_tracker = None
+        if (
+            self._data_context.enable_ray_data_reconstruction
+            and not _disable_data_reconstruction_if_unsupported(dag, self._dataset_id)
+        ):
+            self._lineage_tracker = LineageTracker()
         self._block_ref_counter = BlockRefCounter()
         self._topology = build_streaming_topology(
             dag, self._options, self._block_ref_counter, self._lineage_tracker

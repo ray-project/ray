@@ -161,6 +161,35 @@ def test_two_losses_under_one_seed_match_baseline(
 
 
 @pytest.mark.parametrize(
+    ("run_plan", "expected"),
+    [
+        pytest.param(
+            lambda: len(ray.data.range(2).map(lambda row: row).limit(1).take_all()),
+            1,
+            id="limit",
+        ),
+        pytest.param(
+            lambda: len(ray.data.range(1).union(ray.data.range(1)).take_all()),
+            2,
+            id="union",
+        ),
+        pytest.param(
+            lambda: ray.data.range(10).filter(lambda row: row["id"] < 5).count(),
+            5,
+            id="count",
+        ),
+    ],
+)
+@reconstruction_enabled
+def test_unsupported_plan_disables_reconstruction(
+    ray_start_regular_shared, trackers, run_plan, expected  # noqa: F405
+):
+    """A plan with a non-map operator runs without the lineage machinery."""
+    assert run_plan() == expected
+    assert trackers == []
+
+
+@pytest.mark.parametrize(
     ("num_rows", "num_blocks", "batch_size", "one_row_blocks"),
     [
         pytest.param(20, 2, 20, False, id="fan_in_2_to_1"),

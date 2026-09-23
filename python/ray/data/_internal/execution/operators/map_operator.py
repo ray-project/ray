@@ -847,8 +847,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         original id, so the lineage tracker sees the plan's re-execution rather than
         a new task.
         """
-        # The executor only builds a lineage tracker for linear map-only plans, so
-        # the child's owner is this operator's single downstream map.
+        # The executor only builds a lineage tracker for map-only plans, so the
+        # child's owner is this operator's single downstream map.
         (child_op,) = self.output_dependencies
         assert isinstance(child_op, MapOperator), type(child_op)
         assert child_op.owns_data_task(child_task_id), child_task_id
