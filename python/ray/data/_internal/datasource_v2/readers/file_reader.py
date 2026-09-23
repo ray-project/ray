@@ -242,7 +242,7 @@ class FileReader(Reader[FileManifest]):
         scanner_kwargs.update(self._arrow_scanner_kwargs())
 
         rows_read = 0
-        for table, origin in self._read_fragment_batches(
+        for table, position in self._read_fragment_batches(
             dataset, scanner_kwargs, input_split
         ):
             if self._limit is not None:
@@ -255,7 +255,9 @@ class FileReader(Reader[FileManifest]):
             # the fragment path: hive partitions.
             derived_items: List[Tuple[str, Any]] = []
             if self._partition_parser is not None:
-                derived_items.extend(self._partition_parser(origin.unit.source).items())
+                derived_items.extend(
+                    self._partition_parser(position.unit.source).items()
+                )
 
             for name, value in derived_items:
                 if (
@@ -286,7 +288,7 @@ class FileReader(Reader[FileManifest]):
                 if column.name in table.column_names:
                     table = table.drop([column.name])
                 table = table.append_column(
-                    column.name, column.compute(origin, table.num_rows)
+                    column.name, column.compute(position, table.num_rows)
                 )
 
             if self._columns is not None:
@@ -353,12 +355,12 @@ class FileReader(Reader[FileManifest]):
     ) -> List[ReadUnitFragment]:
         """Return the :class:`ReadUnitFragment` list to scan for this manifest.
 
-        ``unit`` is the :class:`ReadUnit` the fragment stands for.
-        ``file_row_offset`` is the cumulative pre-filter row count of all
-        rows in the underlying file that precede this fragment. It seeds
-        :attr:`ReadUnitPosition.source_row_offset` so chunked sub-fragments of
-        the same file position their rows correctly instead of all counting
-        from zero.
+        Each pairs the :class:`ReadUnit` with the pyarrow fragment covering
+        it and ``unit_start_row``, the pre-filter index in the file of the
+        unit's first row. The reader copies that onto every
+        :class:`ReadUnitPosition` it yields for the unit, so sub-fragments of
+        one file position their rows correctly instead of all counting from
+        zero.
 
         Default impl returns one whole-file fragment per file in the
         dataset, the unit named by its path (paths are deduped in
@@ -366,7 +368,7 @@ class FileReader(Reader[FileManifest]):
         per-row chunk metadata (e.g. :class:`ParquetFileReader`) override
         this to fan a single file fragment out into N sub-fragments — one
         per row-group slice — based on :attr:`FileManifest.file_chunk_metadatas`,
-        each paired with its read unit and its starting row offset in the file.
+        each paired with its read unit and the row in the file where it starts.
         """
         return [
             ReadUnitFragment(
@@ -381,11 +383,11 @@ class FileReader(Reader[FileManifest]):
         scanner_kwargs: dict,
         manifest: FileManifest,
     ) -> Iterator[Tuple[pa.Table, ReadUnitPosition]]:
-        """Yield non-empty ``(table, origin)`` pairs.
+        """Yield non-empty ``(table, position)`` pairs.
 
-        ``origin.unit_row_offset`` is the post-filter row position of the
+        ``position.rows_before`` is the post-filter row position of the
         first row of ``table`` within its read unit. ``iterate_with_retry``
-        skips already-yielded items on retry, so the offset reflects only
+        skips already-yielded items on retry, so the cursor reflects only
         the rows that actually surface to the caller — matching V1 row-hash
         semantics even when a fragment fails partway through.
 
@@ -448,14 +450,14 @@ class FileReader(Reader[FileManifest]):
         scanner_kwargs: dict,
     ) -> Iterator[Tuple[pa.Table, ReadUnitPosition]]:
         """Read each fragment in ``fragments_with_offsets`` in order, yielding
-        ``(table, origin)`` pairs.
+        ``(table, position)`` pairs.
 
-        Each input is a :class:`ReadUnitFragment`. The yielded origin
-        carries its ``file_row_offset`` as ``source_row_offset``
-        (the row position of the fragment's first row within its underlying
-        file) and a ``unit_row_offset`` that starts at zero and accumulates
-        per yielded batch, so a synthesized column keys off the right window
-        even when chunking fans one file into multiple sub-fragments sharing
+        Each input is a :class:`ReadUnitFragment`. Every yielded
+        :class:`ReadUnitPosition` carries the fragment's ``unit`` and
+        ``unit_start_row`` unchanged, plus ``rows_before``: a cursor that
+        starts at zero for each unit and advances by each yielded table's
+        row count. A synthesized column therefore keys off the right window
+        even when chunking fans one file into several sub-fragments sharing
         ``fragment.path``.
 
         ``iterate_with_retry`` is scoped to a single fragment so a
@@ -470,8 +472,8 @@ class FileReader(Reader[FileManifest]):
         ctx = DataContext.get_current()
         for fragment_to_read in fragments_with_offsets:
             fragment = fragment_to_read.fragment
-            file_row_offset = fragment_to_read.file_row_offset
-            offset = file_row_offset
+            # Post-filter cursor: rows already yielded from this unit.
+            rows_before = 0
             for table in iterate_with_retry(
                 partial(self._iter_fragment_tables, fragment, scanner_kwargs),
                 f"read fragment {fragment.path}",
@@ -480,10 +482,10 @@ class FileReader(Reader[FileManifest]):
                 if table.num_rows > 0:
                     yield table, ReadUnitPosition(
                         unit=fragment_to_read.unit,
-                        unit_row_offset=offset - file_row_offset,
-                        source_row_offset=file_row_offset,
+                        rows_before=rows_before,
+                        unit_start_row=fragment_to_read.unit_start_row,
                     )
-                    offset += table.num_rows
+                    rows_before += table.num_rows
 
     def _iter_fragment_tables(
         self,

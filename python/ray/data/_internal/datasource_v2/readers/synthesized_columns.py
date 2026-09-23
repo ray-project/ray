@@ -68,23 +68,30 @@ def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.nda
 @DeveloperAPI
 @dataclass(frozen=True)
 class ReadUnitPosition:
-    """The read unit a table of rows came from and where in it they sit; the
-    input to a synthesized column.
+    """Where one table of yielded rows sits within its read unit; the input
+    to :meth:`SynthesizedColumn.compute`.
+
+    The reader attaches one to every table it yields. A unit usually comes
+    out as several tables, so ``rows_before`` is a cursor that advances by
+    each table's row count: a row group read as tables of 1000, 1000 and 500
+    rows gets positions with ``rows_before`` 0, 1000 and 2000.
 
     Attributes:
-        unit: The read unit the batch belongs to. ``unit.source`` is the
-            file path for file readers.
-        unit_row_offset: Rows the reader already yielded from ``unit``
-            before this table, after any pushed-down filter. Together with
-            ``unit.id`` this positions every row of the batch.
-        source_row_offset: Pre-filter index within ``unit.source`` of the
-            unit's first row; ``0`` when the unit is the whole file. Lets
-            ``row_hash`` keep its file-wide position semantics.
+        unit: The read unit the rows came from. ``unit.source`` is the file
+            path for file readers.
+        rows_before: Rows the reader already yielded from ``unit`` before
+            this table, counted after any pushed-down filter. Row ``i`` of
+            the table is row ``rows_before + i`` of the unit's output.
+        unit_start_row: Pre-filter index in ``unit.source`` of the unit's
+            first row; ``0`` when the unit is the whole file. Constant for a
+            unit, copied from :class:`~ray.data._internal.datasource_v2.read_units.ReadUnitFragment`.
+            ``unit_start_row + rows_before`` places the table in its file,
+            which is what ``row_hash`` hashes.
     """
 
     unit: ReadUnit
-    unit_row_offset: int = 0
-    source_row_offset: int = 0
+    rows_before: int = 0
+    unit_start_row: int = 0
 
 
 @DeveloperAPI
@@ -104,7 +111,7 @@ class SynthesizedColumn(ABC):
             position within its read unit. ``True`` makes the reader scan
             each unit (row group) separately and report a precise
             :attr:`ReadUnitPosition.unit` /
-            :attr:`ReadUnitPosition.unit_row_offset`.
+            :attr:`ReadUnitPosition.rows_before`.
             ``False`` (the default) lets it scan a file's row groups
             together, and the unit is the whole file.
     """
@@ -150,7 +157,7 @@ class RowHashColumn(SynthesizedColumn):
     def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
         hashes = _compute_row_hashes(
             position.unit.source,
-            position.source_row_offset + position.unit_row_offset,
+            position.unit_start_row + position.rows_before,
             num_rows,
         )
         return pa.array(hashes, type=pa.uint64())

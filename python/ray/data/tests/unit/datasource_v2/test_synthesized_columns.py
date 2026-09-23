@@ -95,7 +95,7 @@ def test_read_unit_boundaries_control_row_group_fan_out(
     assert [f.unit.id for f in fragments] == [
         unit_id.format(path=path) for unit_id in expected_unit_ids
     ]
-    assert [f.file_row_offset for f in fragments] == [
+    assert [f.unit_start_row for f in fragments] == [
         ROW_GROUP_SIZE * i for i in range(len(expected_unit_ids))
     ]
     assert all(f.unit.source == path for f in fragments)
@@ -110,12 +110,12 @@ def test_whole_file_manifest_row_is_one_unit_even_with_boundaries(tmp_path):
 
     fragments = reader._get_fragments_to_read(dataset, _manifest([(path, None)]))
 
-    assert [(f.unit.id, f.file_row_offset) for f in fragments] == [(path, 0)]
+    assert [(f.unit.id, f.unit_start_row) for f in fragments] == [(path, 0)]
     assert fragments[0].unit.num_rows == NUM_ROWS
 
 
 def test_row_hash_is_the_same_whether_read_whole_or_by_row_group(tmp_path):
-    """``source_row_offset`` seeds row hashes so a row-group read of a file
+    """``unit_start_row`` seeds row hashes so a row-group read of a file
     hashes each row exactly as a whole-file read does."""
     path = _write_file(tmp_path / "data.parquet")
     reader = ParquetFileReader(synthesized_columns=(RowHashColumn(),))

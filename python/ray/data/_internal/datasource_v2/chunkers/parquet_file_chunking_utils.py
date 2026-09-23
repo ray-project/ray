@@ -71,7 +71,7 @@ def _fragments_from_row_group_ids(
     metadata = _with_io_retry(
         lambda: fragment.metadata, f"read Parquet footer for {path}"
     )
-    # Cumulative pre-filter row offset at the start of each physical row group.
+    # prefix[i] == pre-filter index in the file of row group i's first row.
     prefix = [0] * (metadata.num_row_groups + 1)
     for i in range(metadata.num_row_groups):
         prefix[i + 1] = prefix[i] + metadata.row_group(i).num_rows
@@ -88,7 +88,7 @@ def _fragments_from_row_group_ids(
                 count=metadata.num_row_groups,
                 num_rows=metadata.row_group(rg_id).num_rows,
             ),
-            prefix[rg_id],
+            unit_start_row=prefix[rg_id],
         )
         for rg_id in ids
     ]
