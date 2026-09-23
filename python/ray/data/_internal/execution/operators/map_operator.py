@@ -576,19 +576,20 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
 
-        # A reconstruction child's input set was assembled complete by its producer
-        # (`_release_reconstruction_children`), and it must run against *exactly* that
-        # set. `RebundleQueue` would merge it with whatever else is pending -- running
-        # two children as one task and stranding one of them -- or `slice()` it to hit
-        # the row target, re-emitting part of a block. So bypass the bundler.
+        # Reconstruction inputs must be submitted without bundling, as they are
+        # already bundled by the parent operator. Seed inputs are bundled by this
+        # operator's bundler before they are stored in `_seed_task_inputs`, so they
+        # should also be submitted without bundling. Re-bundling could merge or slice
+        # them, which would modify the inputs passed to the reconstruction tasks.
         #
-        # This costs no backpressure: `OpState.dispatch_next_task` is the only caller of
-        # `add_input` and only runs for operators `get_eligible_operators` has already
-        # cleared, so the strict contract holds here exactly as it does below. The stamp
-        # is read rather than popped; `_lineage_for_submission` still pops it at
-        # submission to name the task.
-        if self._pending_child_ids and any(
-            entry.ref.hex() in self._pending_child_ids for entry in refs.blocks
+        # Skipping the bundler does not skip backpressure, because `add_input` is only
+        # called for operators that `get_eligible_operators` has already cleared.
+        if (
+            self._pending_child_ids
+            and any(entry.ref.hex() in self._pending_child_ids for entry in refs.blocks)
+        ) or (
+            self._pending_seed_ids
+            and any(entry.ref.hex() in self._pending_seed_ids for entry in refs.blocks)
         ):
             self._try_schedule_task(refs, strict=True)
             return
@@ -705,8 +706,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         recorded it and `_lineage_for_submission` cannot look it up. Without this the
         re-injected bundle is minted a fresh id and the plan never resolves.
 
-        Every block of the bundle is stamped, so a bundler merge cannot hide the one
-        that gets looked at.
+        Every block of the bundle is stamped. The stamp also tells `_add_input_inner`
+        to skip the bundler, so the bundle is resubmitted exactly as it first ran.
         """
         for block_ref in seed_input.block_refs:
             self._pending_seed_ids.setdefault(block_ref.hex(), deque()).append(
@@ -734,10 +735,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # it. `_reconstruct_lost_object` carries the id across instead. Check first --
         # the lookup below would find nothing for these blocks.
         #
-        # Every block of the seed input is stamped (so a bundler merge cannot hide the
-        # one we look at), so drain this bundle's entry from *all* of them rather than
-        # stopping at the first. A leftover entry would otherwise be picked up by a
-        # later re-injection of the same bundle and pair it with the wrong plan.
+        # Every block of the seed input is stamped, so drain this bundle's entry from
+        # *all* of them rather than stopping at the first. A leftover entry would
+        # otherwise be picked up by a later re-injection of the same bundle and pair
+        # it with the wrong plan.
         seed = None
         if self._pending_seed_ids:
             for block_ref in inputs.block_refs:
@@ -753,9 +754,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             seed_id, plan_id = seed
             return seed_id, plan_id, []
 
-        # One lookup, two uses. Passing every ref rather than just ``block_refs[0]``
-        # matters: `RebundleQueue` parks zero-row bundles and prepends them on the
-        # next merge, so the block of interest is not necessarily first.
+        # Pass every ref rather than just ``block_refs[0]``. `RebundleQueue` parks
+        # zero-row bundles and prepends them on the next merge, so the block of
+        # interest is not necessarily first.
         dependencies = self._lineage_tracker.resolve_dependencies(
             block_ref.hex() for block_ref in inputs.block_refs
         )
