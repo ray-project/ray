@@ -8,8 +8,8 @@ projection that dropped it, and build it per batch. A
 :class:`SynthesizedColumn` replaces the boolean, and the reader performs the
 four steps once for whatever columns it is given.
 
-A column is computed from a :class:`BatchOrigin`: the read unit the batch
-came from and the row offset within it. A column whose values depend on that
+A column is computed from a :class:`ReadUnitPosition`: the read unit the
+rows came from and their offset within it. A column whose values depend on that
 offset (``row_hash``, a checkpoint ID) sets
 :attr:`SynthesizedColumn.requires_read_unit_boundaries` so the reader never
 lets one batch span two row groups.
@@ -67,14 +67,15 @@ def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.nda
 
 @DeveloperAPI
 @dataclass(frozen=True)
-class BatchOrigin:
-    """Where a batch of rows came from; the input to a synthesized column.
+class ReadUnitPosition:
+    """The read unit a table of rows came from and where in it they sit; the
+    input to a synthesized column.
 
     Attributes:
         unit: The read unit the batch belongs to. ``unit.source`` is the
             file path for file readers.
         unit_row_offset: Rows the reader already yielded from ``unit``
-            before this batch, after any pushed-down filter. Together with
+            before this table, after any pushed-down filter. Together with
             ``unit.id`` this positions every row of the batch.
         source_row_offset: Pre-filter index within ``unit.source`` of the
             unit's first row; ``0`` when the unit is the whole file. Lets
@@ -102,9 +103,10 @@ class SynthesizedColumn(ABC):
         requires_read_unit_boundaries: Whether values depend on a row's
             position within its read unit. ``True`` makes the reader scan
             each unit (row group) separately and report a precise
-            :attr:`BatchOrigin.unit` / :attr:`BatchOrigin.unit_row_offset`.
+            :attr:`ReadUnitPosition.unit` /
+            :attr:`ReadUnitPosition.unit_row_offset`.
             ``False`` (the default) lets it scan a file's row groups
-            together, and the origin names the whole file.
+            together, and the unit is the whole file.
     """
 
     name: str
@@ -112,8 +114,8 @@ class SynthesizedColumn(ABC):
     requires_read_unit_boundaries: bool = False
 
     @abstractmethod
-    def compute(self, origin: BatchOrigin, num_rows: int) -> pa.Array:
-        """Build the column for a batch of ``num_rows`` rows read at ``origin``."""
+    def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
+        """Build the column for ``num_rows`` rows read at ``position``."""
         ...
 
 
@@ -125,8 +127,8 @@ class PathColumn(SynthesizedColumn):
     name = INCLUDE_PATHS_COLUMN_NAME
     type = pa.string()
 
-    def compute(self, origin: BatchOrigin, num_rows: int) -> pa.Array:
-        return pa.repeat(pa.scalar(origin.unit.source, type=pa.string()), num_rows)
+    def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
+        return pa.repeat(pa.scalar(position.unit.source, type=pa.string()), num_rows)
 
 
 @DeveloperAPI
@@ -145,10 +147,10 @@ class RowHashColumn(SynthesizedColumn):
     type = pa.uint64()
     requires_read_unit_boundaries = True
 
-    def compute(self, origin: BatchOrigin, num_rows: int) -> pa.Array:
+    def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
         hashes = _compute_row_hashes(
-            origin.unit.source,
-            origin.source_row_offset + origin.unit_row_offset,
+            position.unit.source,
+            position.source_row_offset + position.unit_row_offset,
             num_rows,
         )
         return pa.array(hashes, type=pa.uint64())

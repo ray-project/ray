@@ -14,7 +14,7 @@ from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.datasource_v2.readers.synthesized_columns import (  # noqa: F401
     INCLUDE_PATHS_COLUMN_NAME,
     ROW_HASH_COLUMN_NAME,
-    BatchOrigin,
+    ReadUnitPosition,
     SynthesizedColumn,
     # Re-exported: the legacy ``ParquetDatasource`` imports it from here.
     _compute_row_hashes,
@@ -357,7 +357,7 @@ class FileReader(Reader[FileManifest]):
         ``read_unit`` is the :class:`ReadUnit` the fragment stands for.
         ``file_row_offset`` is the cumulative pre-filter row count of all
         rows in the underlying file that precede this fragment. It seeds
-        :attr:`BatchOrigin.source_row_offset` so chunked sub-fragments of
+        :attr:`ReadUnitPosition.source_row_offset` so chunked sub-fragments of
         the same file position their rows correctly instead of all counting
         from zero.
 
@@ -379,7 +379,7 @@ class FileReader(Reader[FileManifest]):
         dataset: pds.Dataset,
         scanner_kwargs: dict,
         manifest: FileManifest,
-    ) -> Iterator[Tuple[pa.Table, BatchOrigin]]:
+    ) -> Iterator[Tuple[pa.Table, ReadUnitPosition]]:
         """Yield non-empty ``(table, origin)`` pairs.
 
         ``origin.unit_row_offset`` is the post-filter row position of the
@@ -445,7 +445,7 @@ class FileReader(Reader[FileManifest]):
         self,
         fragments_with_offsets: Iterator[Tuple[pds.Fragment, ReadUnit, int]],
         scanner_kwargs: dict,
-    ) -> Iterator[Tuple[pa.Table, BatchOrigin]]:
+    ) -> Iterator[Tuple[pa.Table, ReadUnitPosition]]:
         """Read each fragment in ``fragments_with_offsets`` in order, yielding
         ``(table, origin)`` pairs.
 
@@ -475,7 +475,7 @@ class FileReader(Reader[FileManifest]):
                 match=ctx.retried_io_errors,
             ):
                 if table.num_rows > 0:
-                    yield table, BatchOrigin(
+                    yield table, ReadUnitPosition(
                         unit=unit,
                         unit_row_offset=offset - file_row_offset,
                         source_row_offset=file_row_offset,
