@@ -279,8 +279,12 @@ def _join_tables_iter(
         left_table, right_table, left_on, right_on, join_type
     )
 
-    left_df = pl.from_arrow(preprocess_result_l.supported_projection).lazy()
-    right_df = pl.from_arrow(preprocess_result_r.supported_projection).lazy()
+    left_df = pl.from_arrow(
+        preprocess_result_l.supported_projection, rechunk=False
+    ).lazy()
+    right_df = pl.from_arrow(
+        preprocess_result_r.supported_projection, rechunk=False
+    ).lazy()
 
     target_join_type = join_type
     left_cols_suffix = left_columns_suffix
@@ -413,6 +417,21 @@ def _validate_suffix_collision(
             f"{side.capitalize()} columns suffix {suffix!r} collides with existing "
             f"{side} columns: {conflicting}"
         )
+
+
+_POLARS_MAX_THREADS_ENV_VAR = "POLARS_MAX_THREADS"
+
+
+def _with_polars_thread_cap(
+    ray_remote_args: Optional[Dict[str, Any]]
+) -> Dict[str, Any]:
+    args = dict(ray_remote_args or {})
+    runtime_env = dict(args.get("runtime_env") or {})
+    env_vars = dict(runtime_env.get("env_vars") or {})
+    env_vars.setdefault(_POLARS_MAX_THREADS_ENV_VAR, "1")
+    runtime_env["env_vars"] = env_vars
+    args["runtime_env"] = runtime_env
+    return args
 
 
 def _require_polars():
