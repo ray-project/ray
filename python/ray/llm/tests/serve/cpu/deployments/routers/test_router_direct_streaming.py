@@ -142,6 +142,26 @@ async def test_ingress_router_fallback(
         serve.run(app, name=app_name)
         router = serve.get_deployment_handle("GatedLLMRouter", app_name=app_name)
         actor = await router.get_actor.remote()
+        readiness_requests = 0
+
+        async def router_ready():
+            nonlocal readiness_requests
+            readiness_requests += 1
+            async with httpx.AsyncClient(timeout=20) as client:
+                response = await client.post(
+                    "http://127.0.0.1:8000/v1/completions",
+                    json={
+                        "model": "test-model",
+                        "prompt": "readiness",
+                        "max_tokens": 1,
+                    },
+                )
+            assert response.status_code == 200, response.text
+            return await router.get_num_requests.remote() > 0
+
+        # Serve readiness can precede HAProxy's router membership update.
+        await async_wait_for_condition(router_ready, timeout=60)
+        routed_before = await router.get_num_requests.remote()
 
         async def send_requests():
             nonlocal num_requests
@@ -191,17 +211,18 @@ async def test_ingress_router_fallback(
 
         def has_fallbacks():
             metrics = fetch_prometheus_metrics([f"127.0.0.1:{metrics_port}"])
+            # Each readiness probe may have added one fallback before the kill.
             return any(
                 sample.labels.get("application") == app_name
                 and sample.labels["reason"] == "router_unavailable"
-                and sample.value >= 8
+                and sample.value >= readiness_requests + 8
                 for sample in metrics.get(
                     "ray_serve_haproxy_ingress_router_fallbacks_total", []
                 )
             )
 
         await send_requests()
-        assert await router.get_num_requests.remote() == 8
+        assert await router.get_num_requests.remote() == routed_before + 8
         await gate.send.remote(clear=True)
         ray.kill(actor, no_restart=True)
 
