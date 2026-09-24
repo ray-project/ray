@@ -1856,9 +1856,9 @@ py_test(
 )
 
 py_test(
-    name = "test_push_based_split_iterator",
+    name = "test_push_split_coordinator",
     size = "medium",
-    srcs = ["tests/test_push_based_split_iterator.py"],
+    srcs = ["tests/test_push_split_coordinator.py"],
     tags = [
         "exclusive",
         "team:data",
