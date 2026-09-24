@@ -4,6 +4,7 @@ import pytest
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
@@ -11,6 +12,7 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
+from ray.serve._private.deployment_state import ReplicaHealthPushRegistry
 from ray.serve.schema import (
     ControllerHealthMetrics,
     DurationStats,
@@ -712,6 +714,43 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+class TestCarriedHealthIngest:
+    """Health a report carried reaches the same registry the heartbeat feeds, so
+    suppressing heartbeats does not make the controller think the fleet went quiet."""
+
+    def _controller(self):
+        c = ServeController.__new__(ServeController)
+        c._replica_health_push_registry = ReplicaHealthPushRegistry()
+        return c
+
+    def test_carried_health_is_recorded(self):
+        c = self._controller()
+        c._record_carried_health("r1", False, 50.0, 2, 99.0)
+        checked_at, _received, healthy, failures = c._replica_health_push_registry.get(
+            "r1"
+        )
+        assert (checked_at, healthy, failures) == (50.0, False, 2)
+
+    def test_a_report_carrying_nothing_is_ignored(self):
+        c = self._controller()
+        c._record_carried_health(None, True, 50.0, 0, 99.0)
+        c._record_carried_health("r1", None, 50.0, 0, 99.0)
+        assert c._replica_health_push_registry.get("r1") is None
+
+    def test_a_missing_check_time_falls_back_to_the_report_timestamp(self):
+        c = self._controller()
+        c._record_carried_health("r1", True, None, 0, 99.0)
+        assert c._replica_health_push_registry.get("r1")[0] == 99.0
+
+    def test_carriage_counts_as_an_arrival(self):
+        """The lag gate reads arrivals; carriage must feed it or suppressing
+        heartbeats would read as the fleet falling silent."""
+        c = self._controller()
+        before = c._replica_health_push_registry._arrivals
+        c._record_carried_health("r1", True, 50.0, 0, 99.0)
+        assert c._replica_health_push_registry._arrivals == before + 1
 
 
 if __name__ == "__main__":

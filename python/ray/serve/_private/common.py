@@ -987,6 +987,12 @@ class TimeStampedValue:
 TimeSeries = List[TimeStampedValue]
 
 
+# The replica in this process publishes its latest self-health here so a handle
+# report sent from the same process can carry it. Process-local by design: the
+# Router and the replica share a process but not a reference.
+_SELF_HEALTH_SNAPSHOT: Dict[str, Any] = {}
+
+
 @dataclass
 class HandleMetricReport:
     """Report from a deployment handle on queued and ongoing requests.
@@ -1017,6 +1023,12 @@ class HandleMetricReport:
         str, Dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
+    # Self-health of the replica whose process sent this report, when it asked the
+    # report to carry it. Defaults keep older senders decodable against this class.
+    health_replica_id: Optional[str] = None
+    healthy: Optional[bool] = None
+    health_checked_at: Optional[float] = None
+    health_consecutive_failures: Optional[int] = None
 
     @property
     def total_requests(self) -> float:
@@ -1057,6 +1069,11 @@ class ReplicaMetricReport:
     replica_id: ReplicaID
     metrics: Dict[str, TimeSeries]
     timestamp: float
+    # Replica-pushed self-health; None means this sender does not carry it and the
+    # controller falls back to the heartbeat or a pull probe.
+    healthy: Optional[bool] = None
+    health_checked_at: Optional[float] = None
+    health_consecutive_failures: Optional[int] = None
 
 
 @dataclass

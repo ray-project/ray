@@ -410,6 +410,21 @@ class ServeController:
         if record_delay is not None:
             record_delay(delay_ms)
 
+    def _record_carried_health(
+        self,
+        replica_unique_id: Optional[str],
+        healthy: Optional[bool],
+        checked_at: Optional[float],
+        failures: Optional[int],
+        fallback_ts: float,
+    ) -> None:
+        """Record self-health a metric report carried, if it carried any."""
+        if replica_unique_id is None or healthy is None:
+            return
+        self.record_replica_health(
+            replica_unique_id, checked_at or fallback_ts, healthy, failures
+        )
+
     def record_replica_health(
         self,
         replica_unique_id: str,
@@ -434,6 +449,13 @@ class ServeController:
             )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
+        self._record_carried_health(
+            replica_metric_report.replica_id.unique_id,
+            replica_metric_report.healthy,
+            replica_metric_report.health_checked_at,
+            replica_metric_report.health_consecutive_failures,
+            replica_metric_report.timestamp,
+        )
         self._record_metrics_delay(
             replica_metric_report.timestamp,
             replica_metric_report.replica_id.deployment_id,
@@ -477,6 +499,13 @@ class ServeController:
                     self.handle_metrics_delay_histogram.observe,
                     self._health_metrics_tracker.record_handle_metrics_delay,
                 )
+                self._record_carried_health(
+                    d["health_replica_id"],
+                    d["healthy"],
+                    d["health_checked_at"],
+                    d["health_consecutive_failures"],
+                    d["timestamp"],
+                )
                 self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
                 self._health_metrics_tracker.record_handle_ingest(
                     (time.monotonic() - ingest_start) * 1000
@@ -498,6 +527,13 @@ class ServeController:
             handle_metric_report.deployment_id,
             self.handle_metrics_delay_histogram.observe,
             self._health_metrics_tracker.record_handle_metrics_delay,
+        )
+        self._record_carried_health(
+            handle_metric_report.health_replica_id,
+            handle_metric_report.healthy,
+            handle_metric_report.health_checked_at,
+            handle_metric_report.health_consecutive_failures,
+            handle_metric_report.timestamp,
         )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
