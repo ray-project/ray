@@ -108,7 +108,7 @@ class InstrumentedIOContextWithThread {
 /// It provides a method to retrieve the appropriate `io_context` for instances of
 /// different classes.
 ///
-/// @param Policy The policy class that defines which types require dedicated
+/// @tparam Policy The policy class that defines which types require dedicated
 /// `io_context` instances.
 ///
 /// ## The Policy
