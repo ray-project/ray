@@ -668,7 +668,7 @@ doctest_each(
         exclude = [
             # These tests run on GPU (see below).
             "source/data/batch-inference.md",
-            "source/data/transforming-data.rst",
+            "source/data/transforming-data.md",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
         ],
@@ -681,7 +681,7 @@ doctest(
     name = "doctest[data-gpu]",
     files = [
         "source/data/batch-inference.md",
-        "source/data/transforming-data.rst",
+        "source/data/transforming-data.md",
     ],
     gpu = True,
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
