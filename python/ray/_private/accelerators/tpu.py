@@ -845,9 +845,12 @@ class TPUAcceleratorManager(AcceleratorManager):
                 os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
 
-        os.environ[
+        visible_chips_env_var = (
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join(str(chip) for chip in physical_chips)
+        )
+        visible_chips_str = ",".join(str(chip) for chip in physical_chips)
+        if os.environ.get(visible_chips_env_var) != visible_chips_str:
+            os.environ[visible_chips_env_var] = visible_chips_str
         if len(physical_chips) in (1, 2):
             expected_chip_bounds = (
                 TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
@@ -859,7 +862,8 @@ class TPUAcceleratorManager(AcceleratorManager):
                 != expected_chip_bounds
             ):
                 os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = expected_chip_bounds
-                os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
+                if os.environ.get(TPU_HOST_BOUNDS_ENV_VAR) != TPU_SINGLE_HOST_BOUNDS:
+                    os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
             else:
                 os.environ.setdefault(TPU_HOST_BOUNDS_ENV_VAR, TPU_SINGLE_HOST_BOUNDS)
         elif stale_subhost_bounds:
