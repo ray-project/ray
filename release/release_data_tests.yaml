@@ -1275,6 +1275,7 @@
 
 - name: "tpch_{{query}}"
   python: "3.10"
+  group: data-tpch
   frequency: manual
   matrix:
     setup:
@@ -1296,6 +1297,7 @@
 
 - name: "tpch_{{query}}"
   python: "3.10"
+  group: data-tpch
   frequency: nightly
   matrix:
     setup:
