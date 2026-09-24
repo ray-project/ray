@@ -3,6 +3,8 @@ import sys
 import pytest
 
 from ray.experimental.sandbox.config import (
+    ROOTFS_EROFS,
+    VALID_ROOTFS_TYPES,
     GVisorSandboxConfig,
     SandboxConfig,
     parse_memory_bytes,
@@ -21,6 +23,7 @@ def test_default_sandbox_config():
     assert config.readonly is True
     assert config.shell == "/bin/bash"
     assert config._ignore_cgroups is False
+    assert config._rootfs_type == ROOTFS_EROFS
 
     # SandboxConfig requires image
     with pytest.raises(TypeError):
@@ -69,6 +72,14 @@ def test_invalid_network_mode_rejected():
     # "sandbox" additionally requires rootless=False (see the test below).
     config = SandboxConfig(image="python:3.10-slim", network="sandbox", rootless=False)
     assert config.network == "sandbox"
+
+
+def test_invalid_rootfs_type_rejected():
+    with pytest.raises(ValueError, match="rootfs type"):
+        SandboxConfig(image="python:3.10-slim", _rootfs_type="squashfs")
+    for rootfs_type in VALID_ROOTFS_TYPES:
+        config = SandboxConfig(image="python:3.10-slim", _rootfs_type=rootfs_type)
+        assert config._rootfs_type == rootfs_type
 
 
 def test_dns_only_valid_with_host_side_networking():

@@ -9,6 +9,18 @@ from typing import Callable, Dict, List, Optional, Union
 # resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 
+# How a sandbox's root filesystem is served. The image cache stores every image
+# as an EROFS image. An EROFS sandbox, the default, boots from it directly, and
+# files keep the image's real owners. An overlayfs sandbox is for a rootfs that
+# needs host-side preparation (e.g. OCI createContainer hooks). It boots from a
+# copy of the cached image unpacked into a directory tree (see
+# image_utils.get_unpacked_rootfs), under a kernel overlay private to the
+# sandbox, so that preparation never modifies the cached image. Without mount
+# privilege, every file in an overlayfs sandbox belongs to the worker's user.
+ROOTFS_EROFS = "erofs"
+ROOTFS_OVERLAYFS = "overlayfs"
+VALID_ROOTFS_TYPES = (ROOTFS_EROFS, ROOTFS_OVERLAYFS)
+
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 
@@ -148,6 +160,7 @@ class SandboxConfig:
         default=None, repr=False, compare=False
     )
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
+    _rootfs_type: str = field(default=ROOTFS_EROFS, repr=False, compare=False)
 
     def __post_init__(self):
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
@@ -156,6 +169,11 @@ class SandboxConfig:
             raise ValueError(
                 f"Invalid network mode '{self.network}'. "
                 f"Expected one of {VALID_NETWORK_MODES}."
+            )
+        if self._rootfs_type not in VALID_ROOTFS_TYPES:
+            raise ValueError(
+                f"Invalid rootfs type '{self._rootfs_type}'. "
+                f"Expected one of {VALID_ROOTFS_TYPES}."
             )
         if self.network == "sandbox" and self.rootless:
             # runsc only rejects this at container start, after the pull.

@@ -4,6 +4,7 @@ import os
 import sys
 import tarfile
 import urllib.error
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -920,6 +921,292 @@ def test_repull_keeps_tree_for_running_sandboxes(tmp_path):
     pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     assert os.path.isfile(os.path.join(image_dir, ROOTFS_IMAGE))
+
+
+def _get_unpacked_rootfs(image_dir, preserve_owners=False):
+    return image_utils.get_unpacked_rootfs(image_dir, preserve_owners=preserve_owners)
+
+
+def _unpacked_names(image_dir):
+    return sorted(n for n in os.listdir(image_dir) if image_utils._is_unpacked(n))
+
+
+def _pull_sample(tmp_path):
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    return pull_and_extract_container_image(
+        str(local_tar), images_dir=str(tmp_path / "images")
+    )
+
+
+def _rebuild_image(image_dir):
+    """Make the image look rebuilt by giving it a new UUID (see
+    ``fake_fsck_erofs``)."""
+    with open(os.path.join(image_dir, f"{ROOTFS_IMAGE}.uuid"), "w") as f:
+        f.write(str(uuid.uuid4()))
+
+
+def _install_failing_fsck(tmp_path, monkeypatch):
+    """Put a fsck.erofs first on PATH that creates its target and fails."""
+    bin_dir = tmp_path / "failing-fsck-bin"
+    bin_dir.mkdir()
+    fsck = bin_dir / "fsck.erofs"
+    fsck.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "--extract"; exit 0; fi\n'
+        'mkdir -p "${1#--extract=}"\necho corrupt >&2\nexit 1\n'
+    )
+    fsck.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    image_utils.fsck_erofs_path.cache_clear()
+
+
+@pytest.mark.parametrize("preserve_owners", [False, True])
+def test_unpack_erofs_image(tmp_path, fake_fsck_erofs, preserve_owners):
+    image = os.path.join(_pull_sample(tmp_path), ROOTFS_IMAGE)
+    dest = tmp_path / "tree"
+
+    image_utils.unpack_erofs_image(image, str(dest), preserve_owners=preserve_owners)
+    assert (dest / "hello.txt").read_bytes() == b"hello"
+
+    args = (fake_fsck_erofs / "fsck.args").read_text().split()
+    assert f"--extract={dest}" in args
+    assert "--preserve-perms" in args
+    owner_flag = "--preserve-owner" if preserve_owners else "--no-preserve-owner"
+    assert {"--preserve-owner", "--no-preserve-owner"} & set(args) == {owner_flag}
+    assert args[-1] == image
+
+
+def test_unpack_erofs_image_reports_fsck_failure(
+    tmp_path, fake_fsck_erofs, monkeypatch
+):
+    image = os.path.join(_pull_sample(tmp_path), ROOTFS_IMAGE)
+    _install_failing_fsck(tmp_path, monkeypatch)
+    with pytest.raises(SandboxCreationError, match="corrupt"):
+        image_utils.unpack_erofs_image(
+            image, str(tmp_path / "tree"), preserve_owners=False
+        )
+
+
+@pytest.mark.parametrize(
+    "fsck_script, problem",
+    [
+        (None, "fsck.erofs is not in PATH"),
+        ("#!/bin/sh\necho 'usage: fsck.erofs [options] IMAGE'\n", "--extract"),
+    ],
+)
+def test_require_fsck_erofs(tmp_path, monkeypatch, fsck_script, problem):
+    bin_dir = tmp_path / "old-bin"
+    bin_dir.mkdir()
+    if fsck_script is not None:
+        fsck = bin_dir / "fsck.erofs"
+        fsck.write_text(fsck_script)
+        fsck.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    image_utils.fsck_erofs_path.cache_clear()
+    try:
+        with pytest.raises(SandboxCreationError, match=problem):
+            image_utils.require_fsck_erofs()
+    finally:
+        image_utils.fsck_erofs_path.cache_clear()
+
+
+def test_erofs_image_uuid_reads_the_superblock(tmp_path):
+    image_uuid = uuid.uuid4()
+    image = tmp_path / "rootfs.erofs"
+    image.write_bytes(
+        bytes(1024) + (0xE0F5E1E2).to_bytes(4, "little") + bytes(44) + image_uuid.bytes
+    )
+    assert image_utils._erofs_image_uuid(str(image)) == str(image_uuid)
+
+    image.write_bytes(bytes(2048))
+    with pytest.raises(SandboxCreationError, match="not an EROFS image"):
+        image_utils._erofs_image_uuid(str(image))
+
+
+def test_get_unpacked_rootfs_unpacks_once(tmp_path, fake_fsck_erofs):
+    """The image is unpacked once, next to it, into a directory private to
+    the worker and named after the image's UUID and the worker's ids."""
+    image_dir = _pull_sample(tmp_path)
+
+    tree = _get_unpacked_rootfs(image_dir)
+    assert _get_unpacked_rootfs(image_dir) == tree
+
+    unpacked = image_utils._unpacked_dir(image_dir, preserve_owners=False)
+    assert unpacked.endswith(f".uid.{os.getuid()}.gid.{os.getgid()}")
+    assert os.path.dirname(tree) == unpacked
+    assert os.path.dirname(unpacked) == image_dir
+    assert os.stat(unpacked).st_mode & 0o777 == 0o700
+    with open(os.path.join(tree, "hello.txt"), "rb") as f:
+        assert f.read() == b"hello"
+    invocations = (fake_fsck_erofs / "fsck.args").read_text().splitlines()
+    assert len(invocations) == 1
+
+
+def test_unpacked_dir_differs_by_owners_user_and_image(
+    tmp_path, fake_fsck_erofs, monkeypatch
+):
+    image_dir = _pull_sample(tmp_path)
+    mine = image_utils._unpacked_dir(image_dir, preserve_owners=False)
+    assert image_utils._is_unpacked(os.path.basename(mine))
+
+    preserved = image_utils._unpacked_dir(image_dir, preserve_owners=True)
+    assert preserved.endswith(".owners-preserved")
+    assert image_utils._is_unpacked(os.path.basename(preserved))
+    # Each ownership mode gets a copy of its own.
+    assert _get_unpacked_rootfs(image_dir, preserve_owners=True) != (
+        _get_unpacked_rootfs(image_dir, preserve_owners=False)
+    )
+
+    with monkeypatch.context() as m:
+        m.setattr(os, "getuid", lambda: 4242)
+        assert image_utils._unpacked_dir(image_dir, preserve_owners=False) != mine
+
+    _rebuild_image(image_dir)
+    assert image_utils._unpacked_dir(image_dir, preserve_owners=False) != mine
+
+
+def test_get_unpacked_rootfs_failure_leaves_nothing_behind(
+    tmp_path, fake_fsck_erofs, monkeypatch
+):
+    """A failed unpack raises with fsck.erofs's stderr and leaves no partial
+    copy."""
+    image_dir = _pull_sample(tmp_path)
+    _install_failing_fsck(tmp_path, monkeypatch)
+    with pytest.raises(SandboxCreationError, match="corrupt"):
+        _get_unpacked_rootfs(image_dir)
+    # A substring match also catches the temporary copy's dot-prefixed name.
+    assert not any(image_utils._UNPACKED_PREFIX in n for n in os.listdir(image_dir))
+
+
+def test_get_unpacked_rootfs_clears_interrupted_unpacks(tmp_path, fake_fsck_erofs):
+    image_dir = _pull_sample(tmp_path)
+    leftover = os.path.join(image_dir, image_utils._UNPACKED_TMP_PREFIX + "crashed")
+    os.makedirs(os.path.join(leftover, image_utils._UNPACKED_ROOT_DIR, "bin"))
+
+    _get_unpacked_rootfs(image_dir)
+    assert not os.path.exists(leftover)
+
+
+def test_get_unpacked_rootfs_reports_a_missing_image(tmp_path, fake_fsck_erofs):
+    image_dir = _pull_sample(tmp_path)
+    os.remove(os.path.join(image_dir, ROOTFS_IMAGE))
+    with pytest.raises(SandboxCreationError, match="cache entry is incomplete"):
+        _get_unpacked_rootfs(image_dir)
+
+
+def test_stale_cleanup_keeps_copies_of_the_current_image_file(
+    tmp_path, fake_fsck_erofs, monkeypatch
+):
+    """Every user's copy of the current image file stays, and copies of an
+    earlier one go."""
+    image_dir = _pull_sample(tmp_path)
+
+    def unpack_as_each_user():
+        names = [os.path.basename(os.path.dirname(_get_unpacked_rootfs(image_dir)))]
+        with monkeypatch.context() as m:
+            m.setattr(os, "getuid", lambda: 4242)
+            names.append(
+                os.path.basename(os.path.dirname(_get_unpacked_rootfs(image_dir)))
+            )
+        return names
+
+    unpack_as_each_user()
+    _rebuild_image(image_dir)
+    current = unpack_as_each_user()
+    assert len(_unpacked_names(image_dir)) == 4
+
+    image_utils._drop_stale_unpacked_copies(image_dir)
+    assert _unpacked_names(image_dir) == sorted(current)
+
+
+def test_cached_pull_keeps_stale_copies_while_the_image_is_used(
+    tmp_path, fake_fsck_erofs
+):
+    """A pull that finds the image cached leaves copies of an earlier image
+    file alone while a sandbox still uses the image."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir), instance_id="sb-old"
+    )
+    stale = _get_unpacked_rootfs(image_dir)
+    _rebuild_image(image_dir)
+
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(stale)
+
+
+def test_stale_cleanup_without_an_image_drops_every_unpacked_copy(
+    tmp_path, fake_fsck_erofs
+):
+    image_dir = _pull_sample(tmp_path)
+    _get_unpacked_rootfs(image_dir)
+    os.remove(os.path.join(image_dir, ROOTFS_IMAGE))
+
+    image_utils._drop_stale_unpacked_copies(image_dir)
+    assert _unpacked_names(image_dir) == []
+
+
+def test_repull_keeps_unpacked_copies_for_running_sandboxes(tmp_path, fake_fsck_erofs):
+    """Each re-pull while a sandbox still runs keeps the unpacked copies its
+    overlay may sit on. New sandboxes get a fresh copy of the new image, and
+    the old ones go with the first pull after no sandbox uses the image."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir), instance_id="sb-old"
+    )
+
+    trees = []
+    # Twice, so a copy carried over by one re-pull survives the next.
+    for _ in range(2):
+        trees.append(_get_unpacked_rootfs(image_dir))
+        # Force a re-pull.
+        stale = os.path.getmtime(local_tar) - 10
+        os.utime(os.path.join(image_dir, ".extracted"), (stale, stale))
+        pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+        assert os.listdir(os.path.join(image_dir, ".users")) == ["sb-old"]
+    fresh = _get_unpacked_rootfs(image_dir)
+    assert len({*trees, fresh}) == 3, "each image file gets its own copy"
+    assert all(os.path.isfile(os.path.join(t, "hello.txt")) for t in trees)
+
+    image_utils._release_image_use(image_dir, "sb-old")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert _unpacked_names(image_dir) == [os.path.basename(os.path.dirname(fresh))]
+
+
+def test_unpacked_copy_with_read_only_dirs_evicts_and_repulls(
+    tmp_path, fake_fsck_erofs
+):
+    """An image with 0555 directories (e.g. UBI's) still goes on eviction
+    with its unpacked copy, and pulls again cleanly."""
+    local_tar = tmp_path / "readonly-dirs.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("usr/bin")
+        ti.type = tarfile.DIRTYPE
+        ti.mode = 0o555
+        tar.addfile(ti)
+        data = b"#!/bin/sh\n"
+        ti = tarfile.TarInfo("usr/bin/tool")
+        ti.size = len(data)
+        ti.mode = 0o755
+        tar.addfile(ti, io.BytesIO(data))
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    tree = _get_unpacked_rootfs(image_dir)
+    assert os.stat(os.path.join(tree, "usr", "bin")).st_mode & 0o777 == 0o555
+
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+    assert (
+        pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+        == image_dir
+    )
 
 
 def test_dir_size_counts_hard_links_once(tmp_path):
