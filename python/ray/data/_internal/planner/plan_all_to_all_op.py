@@ -195,7 +195,7 @@ def _plan_sort_v2(
         )
 
     map_input_op = input_physical_op
-    if not user_boundaries:
+    if not user_boundaries and num_partitions > 1:
         map_input_op = SortSamplingOp(
             input_physical_op,
             data_context,
@@ -218,7 +218,8 @@ def _plan_sort_v2(
         data_context,
         num_partitions=num_partitions,
         reduce_fn=make_sort_reduce_fn(sort_key, data_context),
-        disallow_block_splitting=True,
+        # Reduce output is split to ``target_max_block_size``; the splits of a
+        # partition are emitted in order under the same partition key.
         preserve_partition_order=True,
         peak_memory_multiplier=_SORT_REDUCE_PEAK_MEMORY_MULTIPLIER,
         reduce_ray_remote_args=logical_op.ray_remote_args,

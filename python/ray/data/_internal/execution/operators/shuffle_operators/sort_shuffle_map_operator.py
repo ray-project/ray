@@ -37,6 +37,9 @@ class SortShuffleMapOp(ShuffleMapOp):
         self._sort_key = sort_key
         self._boundaries: Optional[List] = None
         user_boundaries = self._user_boundaries(sort_key)
+        if user_boundaries is None and num_partitions == 1:
+            # One partition: every row goes to it, nothing to sample.
+            user_boundaries = []
         if user_boundaries is None and not isinstance(input_op, SortSamplingOp):
             raise ValueError(
                 "SortShuffleMapOp requires either user-provided boundaries "

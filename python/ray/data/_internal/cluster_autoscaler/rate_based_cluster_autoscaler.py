@@ -26,6 +26,9 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
 )
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
+    ShuffleMapOp,
+)
 from ray.data._internal.util import get_max_task_capacity
 
 if TYPE_CHECKING:
@@ -34,7 +37,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-SHUFFLE_OP_TYPES = (AllToAllOperator, HashShufflingOperatorBase)
+SHUFFLE_OP_TYPES = (AllToAllOperator, HashShufflingOperatorBase, ShuffleMapOp)
+# Object-store shuffles that hold every input until they finish; their upstream
+# needs object store memory, not more CPUs.
+_OBJECT_STORE_ALL_TO_ALL_TYPES = (AllToAllOperator, ShuffleMapOp)
 
 
 def _to_resource_bundle(resources: ExecutionResources) -> Dict[str, float]:
@@ -504,7 +510,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         2. There is at least one incomplete all-to-all op in the pipeline.
         """
         has_incomplete_all_to_all = any(
-            isinstance(op, AllToAllOperator) and not op.has_completed()
+            isinstance(op, _OBJECT_STORE_ALL_TO_ALL_TYPES) and not op.has_completed()
             for op in self._shuffle_ops
         )
         if not has_incomplete_all_to_all:

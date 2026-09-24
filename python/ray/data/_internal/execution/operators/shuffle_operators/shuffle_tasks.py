@@ -363,4 +363,9 @@ def _shuffle_reduce_task(
                 map_task_context,
                 clock=TransformClock(),
             ):
+                if BlockAccessor.for_block(block).num_rows() == 0:
+                    # An unfused MapOperator bundles empty inputs with non-empty
+                    # ones, so it never emits an empty block for them; a fused
+                    # map sees one partition per task and would. Drop them.
+                    continue
                 yield from _yield_with_stats(block)
