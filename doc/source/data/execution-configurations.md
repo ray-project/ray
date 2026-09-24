@@ -33,7 +33,7 @@ ctx.execution_options.verbose_progress = True
 
 The following are some of the most important options:
 
-* `resource_limits`: Set a soft limit on resource usage during execution. For example, if other parts of your code require a minimum amount of resources, limit the resources that Ray Data uses. Auto-detected by default.
+* `resource_limits`: Set a soft limit on resource usage during execution. For example, if other parts of your code require a minimum amount of resources, you might want to limit the resources that Ray Data uses. Auto-detected by default.
 * `exclude_resources`: Deprecated. Use `label_selector` to constrain Ray Data work to labeled nodes.
 * `preserve_order`: Set this to preserve the ordering between blocks processed by operators under the streaming executor. Off by default.
 * `actor_locality_enabled`: Deprecated. Ray Data manages actor locality internally.

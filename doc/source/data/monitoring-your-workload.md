@@ -472,7 +472,7 @@ When you iterate over the data, Ray Data also generates iteration stats. You mig
 
 * **Iterator initialization**: The time Ray Data spent initializing the iterator. This time is internal to Ray Data.
 * **Time user thread is blocked**: The time Ray Data spent producing data in the iterator. If you haven't materialized the dataset before, this time is often the primary execution time of the dataset.
-* **Time in user thread**: The time spent in the user thread that iterates over the dataset, outside the Ray Data code. If this time is high, optimize the body of the loop that iterates over the dataset.
+* **Time in user thread**: The time spent in the user thread that iterates over the dataset, outside the Ray Data code. If this time is high, consider optimizing the body of the loop that iterates over the dataset.
 * **Batch iteration stats**: The stats for batch prefetching. These times are internal to Ray Data code, but you can still optimize them by tuning the prefetching process.
 
 (verbose-stats)=
