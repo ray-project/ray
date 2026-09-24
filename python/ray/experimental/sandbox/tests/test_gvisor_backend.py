@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -9,6 +10,8 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
+from ray.experimental.sandbox._internal import overlayfs
+from ray.experimental.sandbox.backend import gvisor
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
@@ -18,6 +21,7 @@ from ray.experimental.sandbox.exceptions import (
     SandboxExecError,
     SandboxNotFoundError,
 )
+from ray.experimental.sandbox.image_manager import BaseImageManager
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
@@ -527,7 +531,7 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     script = cmd[2]
 
     assert script.startswith(
-        "unshare --user --map-root-user --net --fork --kill-child "
+        "unshare --net --fork --kill-child --user --map-root-user "
     )
     assert script.endswith("run --bundle /tmp/rd sb-1")
     for fragment in (
@@ -544,7 +548,7 @@ def test_build_run_command_public_wraps_with_slirp4netns():
         # empty NSPID (which would resolve to /proc//ns/net).
         "kill -0 $HOLDER",
         '[ -n "$NSPID" ]',
-        "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc",
+        "exec nsenter --preserve-credentials -n -t $NSPID -U -- runsc",
         "--network host",
     ):
         assert fragment in script, fragment
@@ -576,6 +580,389 @@ def test_build_run_command_other_modes_unwrapped(network, rootless):
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+
+
+def _rootfs_overlay_for(in_userns: bool):
+    return overlayfs.RootfsOverlay(
+        lower="/lower",
+        mountpoint="/tmp/rd/rootfs",
+        tmpfs_dir="/tmp/rd/overlayfs-tmpfs",
+        in_userns=in_userns,
+    )
+
+
+def _overlayfs_run_argv(
+    network: str, in_userns: bool, rootless: bool = True, writable: bool = True
+) -> list:
+    """`_build_run_command` for an overlayfs sandbox over fixed paths."""
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        network=network,
+        rootless=rootless,
+        readonly=not writable,
+        _rootfs_type="overlayfs",
+    )
+    return GVisorSandboxBackend()._build_run_command(
+        cfg, "/tmp/rd", "sb-1", rootfs_overlay=_rootfs_overlay_for(in_userns)
+    )
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+@pytest.mark.parametrize(
+    "network,rootless",
+    [("none", True), ("none", False), ("host", True), ("sandbox", False)],
+)
+def test_build_run_command_overlayfs_sandbox_wraps_runsc_in_mount_namespace(
+    in_userns, network, rootless
+):
+    """An overlayfs sandbox's runsc starts in a private mount namespace that
+    first mounts the sandbox's kernel overlay. gVisor keeps the sandbox's own
+    writes in its --overlay2 layer."""
+    cmd = _overlayfs_run_argv(network, in_userns, rootless=rootless)
+
+    overlay = _rootfs_overlay_for(in_userns)
+    runsc = cmd[cmd.index("runsc") :]
+    # wrap's argv is pinned in test_overlayfs.
+    assert cmd == overlay.wrap(runsc)
+    assert runsc[runsc.index("--overlay2") + 1] == "root:dir=/tmp/rd/runsc-overlay2"
+    assert runsc[runsc.index("--network") + 1] == network
+    assert runsc[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+@pytest.mark.parametrize("rootless", [True, False])
+@pytest.mark.parametrize("network", ["none", "public"])
+def test_build_run_command_overlayfs_userns_drops_rootless(
+    monkeypatch, in_userns, rootless, network
+):
+    """Inside a user namespace, runsc runs as mapped root without --rootless
+    and keeps rootless mode's cgroup tolerance. Without one, its flags stay
+    as they are, for network="public" too."""
+    # --ignore-cgroups below must come from rootless mode alone.
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS", raising=False)
+    cmd = _overlayfs_run_argv(network, in_userns, rootless=rootless)
+
+    # With network="public", runsc's argv is inside a bash script.
+    words = " ".join(cmd).split()
+    runsc = words[words.index("runsc") :]
+    if in_userns:
+        assert "--rootless" not in runsc
+        assert ("--ignore-cgroups" in runsc) is rootless
+    else:
+        assert ("--rootless" in runsc) is rootless
+        assert "--ignore-cgroups" not in runsc
+
+
+def test_build_run_command_readonly_overlayfs_sandbox_has_no_overlay2():
+    cmd = _overlayfs_run_argv("none", in_userns=True, writable=False)
+    assert not any(a.startswith("--overlay2") for a in cmd)
+
+
+@pytest.mark.parametrize("in_userns", [True, False])
+def test_build_run_command_public_overlayfs_sandbox_runs_in_its_overlay(in_userns):
+    """With network="public", an overlayfs sandbox's whole namespace setup
+    runs inside its overlay's namespaces, which provide the user namespace if
+    any, so the holder only adds a network namespace. With mount privilege
+    there's no user namespace at all, so the overlay keeps the image's
+    owners."""
+    cmd = _overlayfs_run_argv("public", in_userns)
+
+    overlay = _rootfs_overlay_for(in_userns)
+    inner = cmd[len(overlay.wrap([])) :]
+    assert cmd == overlay.wrap(inner)
+    assert inner[:2] == ["bash", "-c"]
+    # The script's empty user-namespace arguments leave double spaces, which
+    # bash ignores.
+    script = " ".join(inner[2].split())
+    assert script.startswith(
+        "unshare --net --fork --kill-child "
+        "bash -c 'echo $$ > /tmp/rd/netns.pid; exec sleep infinity' & "
+    )
+    assert "exec nsenter --preserve-credentials -n -t $NSPID -- runsc" in script
+    assert "--userns-path" not in script
+    assert "--overlay2 root:dir=/tmp/rd/runsc-overlay2" in script
+
+
+class _StopBeforeRun(Exception):
+    pass
+
+
+class _RecordingImageManager:
+    """Records what create_sandbox asks of it, and writes a bundle whose
+    root.path is relative, as an _oci_spec_transform_fn may leave it."""
+
+    def __init__(self, lower):
+        self.lower = lower
+        self.bundle_kwargs = None
+        self.preserve_owners_calls = []
+        self.released = []
+
+    def pull_image(self, image, **kwargs):
+        return None
+
+    def release_image(self, image, instance_id):
+        self.released.append(image)
+
+    def get_workdir(self, image):
+        return None
+
+    def _get_unpacked_rootfs(self, image, *, preserve_owners):
+        self.preserve_owners_calls.append(preserve_owners)
+        return self.lower
+
+    def prepare_oci_bundle(self, root_dir, **kwargs):
+        self.bundle_kwargs = kwargs
+        path = os.path.join(root_dir, "config.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"root": {"path": "rootfs"}}, f)
+        return path
+
+
+def _create_until_run(tmp_path, monkeypatch, rootfs_type, mode, readonly=False):
+    """Run create_sandbox with a recording image manager up to the point it
+    would start runsc, and return what _build_run_command got and the
+    manager."""
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path / "sandboxes"))
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(overlayfs, "mount_mode", lambda: mode)
+    captured = {}
+
+    def _capture(config, root_dir, sandbox_id, rootfs_overlay=None):
+        captured.update(root_dir=root_dir, rootfs_overlay=rootfs_overlay)
+        raise _StopBeforeRun()
+
+    manager = _RecordingImageManager(lower=str(tmp_path / "lower"))
+    backend = GVisorSandboxBackend(image_manager=manager)
+    monkeypatch.setattr(backend, "_build_run_command", _capture)
+    with pytest.raises(_StopBeforeRun):
+        backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest", readonly=readonly, _rootfs_type=rootfs_type
+            )
+        )
+    return captured, manager
+
+
+@pytest.mark.parametrize("mode", list(overlayfs.MountMode))
+def test_create_sandbox_prepares_overlayfs_sandbox(tmp_path, monkeypatch, mode):
+    """create_sandbox unpacks an overlayfs sandbox's image with owners only
+    with mount privilege, and mounts its kernel overlay at root.path resolved
+    against the bundle."""
+    captured, manager = _create_until_run(tmp_path, monkeypatch, "overlayfs", mode)
+
+    overlay = captured["rootfs_overlay"]
+    assert manager.preserve_owners_calls == [mode is overlayfs.MountMode.PRIVILEGED]
+    assert manager.bundle_kwargs["_rootfs_type"] == "overlayfs"
+    assert overlay.lower == str(tmp_path / "lower")
+    # The fake bundle's root.path is relative, so this checks it resolves
+    # against the bundle.
+    assert overlay.mountpoint == os.path.join(captured["root_dir"], "rootfs")
+    assert overlay.in_userns is (mode is overlayfs.MountMode.USERNS)
+    assert os.path.isdir(overlay.tmpfs_dir)
+    assert os.path.isdir(os.path.join(captured["root_dir"], "runsc-overlay2"))
+
+
+def test_create_sandbox_readonly_overlayfs_sandbox_has_no_overlay2_dir(
+    tmp_path, monkeypatch
+):
+    """A readonly overlayfs sandbox gets no directory for gVisor's --overlay2
+    layer."""
+    captured, _ = _create_until_run(
+        tmp_path, monkeypatch, "overlayfs", overlayfs.MountMode.USERNS, readonly=True
+    )
+    assert not os.path.exists(os.path.join(captured["root_dir"], "runsc-overlay2"))
+
+
+def test_create_sandbox_erofs_sandbox_skips_overlay(tmp_path, monkeypatch):
+    """An EROFS sandbox gets no overlay, and prepare_oci_bundle gets its
+    rootfs type."""
+    captured, manager = _create_until_run(tmp_path, monkeypatch, "erofs", None)
+
+    assert captured["rootfs_overlay"] is None
+    assert manager.preserve_owners_calls == []
+    assert manager.bundle_kwargs["_rootfs_type"] == "erofs"
+
+
+def _create_overlayfs_sandbox(tmp_path, monkeypatch, manager):
+    """Run create_sandbox for an overlayfs sandbox with ``manager``, which is
+    expected to fail before runsc starts, release the image, and remove the
+    sandbox's bundle directory."""
+    sandboxes_dir = tmp_path / "sandboxes"
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(sandboxes_dir))
+    backend = GVisorSandboxBackend(image_manager=manager)
+    try:
+        backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", _rootfs_type="overlayfs")
+        )
+    finally:
+        assert manager.released == ["busybox:latest"]
+        assert not any(sandboxes_dir.glob("ray-sandbox-*"))
+
+
+@pytest.mark.parametrize("missing", ["unshare", "mount"])
+def test_create_sandbox_overlayfs_requires_util_linux(tmp_path, monkeypatch, missing):
+    """A missing tool an overlayfs sandbox needs fails its creation with
+    remediation."""
+    monkeypatch.setattr(
+        "shutil.which", lambda name: None if name == missing else f"/usr/bin/{name}"
+    )
+    manager = _RecordingImageManager(lower=str(tmp_path / "lower"))
+    with pytest.raises(SandboxCreationError, match=f"'{missing}'.*util-linux"):
+        _create_overlayfs_sandbox(tmp_path, monkeypatch, manager)
+
+
+def test_create_sandbox_overlayfs_fails_where_overlays_cant_mount(
+    tmp_path, monkeypatch
+):
+    """Without mount privilege and without unprivileged overlay mounts, an
+    overlayfs sandbox fails, naming what to check."""
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(overlayfs, "has_mount_privilege", lambda: False)
+    monkeypatch.setattr(overlayfs, "can_mount_in_userns", lambda: False)
+    manager = _RecordingImageManager(lower=str(tmp_path / "lower"))
+    with pytest.raises(SandboxCreationError) as err:
+        _create_overlayfs_sandbox(tmp_path, monkeypatch, manager)
+    assert "Linux 5.11" in str(err.value)
+    assert "kernel.apparmor_restrict_unprivileged_userns" in str(err.value)
+
+
+def test_create_sandbox_overlayfs_needs_manager_support(tmp_path, monkeypatch):
+    """An image manager without overlayfs support fails an overlayfs
+    sandbox."""
+
+    class _NoOverlayfsManager(_RecordingImageManager):
+        # BaseImageManager's default, which rejects overlayfs sandboxes.
+        _get_unpacked_rootfs = BaseImageManager._get_unpacked_rootfs
+
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(overlayfs, "mount_mode", lambda: overlayfs.MountMode.USERNS)
+    manager = _NoOverlayfsManager(lower=str(tmp_path / "lower"))
+    with pytest.raises(SandboxCreationError, match="doesn't support overlayfs"):
+        _create_overlayfs_sandbox(tmp_path, monkeypatch, manager)
+
+
+@pytest.fixture(params=list(overlayfs.MountMode))
+def overlay_mount_mode(request, monkeypatch, ensure_overlayfs_mount):
+    """Runs a test through each way of mounting an overlayfs sandbox's
+    overlay this host supports."""
+    mode = request.param
+    privileged = overlayfs.has_mount_privilege()
+    if mode is overlayfs.MountMode.PRIVILEGED and not privileged:
+        pytest.skip("this worker has no mount privilege")
+    if mode is overlayfs.MountMode.USERNS:
+        if privileged:
+            pytest.skip("a worker with mount privilege never uses a user namespace")
+        if not overlayfs.can_mount_in_userns():
+            pytest.skip("this host can't mount overlays in a user namespace")
+    monkeypatch.setattr(overlayfs, "mount_mode", lambda: mode)
+    return mode
+
+
+def _tree_snapshot(root: str) -> dict:
+    """Every entry under ``root``, keyed by relative path, with enough of its
+    lstat to tell whether anything was added, removed, modified or replaced."""
+    snapshot = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            path = os.path.join(dirpath, name)
+            st = os.lstat(path)
+            snapshot[os.path.relpath(path, root)] = (
+                st.st_mode,
+                st.st_size,
+                st.st_mtime_ns,
+                st.st_ino,
+            )
+    return snapshot
+
+
+def test_overlayfs_sandbox_leaves_shared_tree_untouched(overlay_mount_mode):
+    """Overlayfs sandboxes boot from the image's shared, unpacked tree. Their
+    writes, and the mount points runsc creates (here an explicit workdir on a
+    read-only root), never reach the tree. The overlay's root matches the
+    image's."""
+    backend = GVisorSandboxBackend()
+    manager = backend._image_manager
+    manager.pull_image("busybox:latest", instance_id="tree-snapshot")
+    try:
+        tree = manager._get_unpacked_rootfs(
+            "busybox:latest",
+            preserve_owners=overlay_mount_mode is overlayfs.MountMode.PRIVILEGED,
+        )
+        before = _tree_snapshot(tree)
+        writable = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                readonly=False,
+                _rootfs_type="overlayfs",
+            )
+        )
+        readonly = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                workdir="/work",
+                _rootfs_type="overlayfs",
+            )
+        )
+        erofs = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+        )
+        try:
+            assert backend.exec_command(writable, "touch /etc/probe").exit_code == 0
+            assert backend.exec_command(readonly, "touch /etc/probe").exit_code != 0
+            assert backend.exec_command(readonly, "touch /work/probe").exit_code == 0
+            assert backend.exec_command(readonly, "test -e /etc/probe").exit_code != 0
+            stat_root_mode = "stat -c %a /"
+            assert (
+                backend.exec_command(writable, stat_root_mode).stdout
+                == backend.exec_command(erofs, stat_root_mode).stdout
+            )
+        finally:
+            for sb in (erofs, readonly, writable):
+                backend.delete_sandbox(sb)
+        assert _tree_snapshot(tree) == before
+    finally:
+        manager.release_image("busybox:latest", "tree-snapshot")
+
+
+def test_overlayfs_sandbox_with_host_network_can_write_rootfs(overlay_mount_mode):
+    """A network="host" overlayfs sandbox boots and can write its rootfs."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="host",
+            readonly=False,
+            _rootfs_type="overlayfs",
+        )
+    )
+    try:
+        res = backend.exec_command(sb, "touch /probe && echo ok")
+        assert res.exit_code == 0, res.stderr
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_overlayfs_sandbox_with_public_network(ensure_slirp4netns, overlay_mount_mode):
+    """A network="public" overlayfs sandbox boots with a writable rootfs and
+    its tap device."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            readonly=False,
+            _rootfs_type="overlayfs",
+        )
+    )
+    try:
+        res = backend.exec_command(sb, "touch /probe && ip addr show tap0")
+        assert res.exit_code == 0, res.stderr
+    finally:
+        backend.delete_sandbox(sb)
 
 
 def test_create_sandbox_requires_slirp4netns(monkeypatch):
