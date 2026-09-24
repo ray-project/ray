@@ -1,18 +1,18 @@
 """Push-based streaming_split.
 
-A push-based alternative to ``stream_split_iterator.py``: instead of each
-train worker calling ``coordinator.get()`` per block, the coordinator pushes
-blocks to the workers, which iterate from a local queue.
+A coordinator actor runs the streaming executor and pushes each split's
+blocks to its consumer actor (e.g. a Ray Train worker), which iterates them
+from a local queue.
 
 How it works:
 
 - The coordinator runs the streaming executor and one pusher thread per
-  split; both are recreated every epoch, like the pull model.
-- Flow control is demand-driven and measured in rows: a consumer declares
-  the same ``prefetch_batches * batch_size`` row window the pull model
-  prefetches and reports what it consumes; the coordinator pushes whole
-  blocks while ``target_rows - (rows_pushed - rows_consumed)`` is positive.
-  The local queue stores the prefetched blocks.
+  split; both are recreated every epoch.
+- Flow control is demand-driven and measured in rows: a consumer declares a
+  ``prefetch_batches * batch_size`` row prefetch window and reports what it
+  consumes; the coordinator pushes whole blocks while
+  ``target_rows - (rows_pushed - rows_consumed)`` is positive. The local
+  queue stores the prefetched blocks.
 - Deliveries are sequence-numbered and reordered on arrival, so consumers
   work regardless of the hosting actor's concurrency (Ray executes a
   multi-threaded actor's tasks out of order).
@@ -107,9 +107,8 @@ _QueueItem = Union[_BlockDelivery, _EndOfEpoch, _ExecutorError]
 class PushSplitCoordinator:
     """Coordinator actor that pushes split output to registered consumers.
 
-    Runs the streaming executor (one per epoch, like SplitCoordinator) plus
-    one pusher thread per split, gated by the consumer's demand
-    (request_rows).
+    Runs the streaming executor (one per epoch) plus one pusher thread per
+    split, gated by the consumer's demand (request_rows).
     """
 
     # How often a demand-waiting pusher re-checks its stop event; requests
@@ -361,7 +360,7 @@ class PushSplitCoordinator:
                         self._current_executor
                     )
                     # Register the external consumers with the resource
-                    # manager (same as SplitCoordinator).
+                    # manager.
                     self._current_executor.set_external_consumer_bytes(0)
                     self._spawn_pushers()
                     logger.debug(
@@ -460,9 +459,10 @@ class PushSplitCoordinator:
                         self._wait_demand_s[split_idx] += time.monotonic() - t0
                         continue
 
-                # Blocks like a pull consumer would (preserving the
-                # executor's backpressure signals); raises StopIteration at
-                # end of stream. A multi-block bundle is sent whole.
+                # Blocks in the executor's output queue, registering this
+                # thread as a waiting consumer (preserving the executor's
+                # backpressure signals); raises StopIteration at end of
+                # stream. A multi-block bundle is sent whole.
                 t0 = time.monotonic()
                 bundle = output_iterator.get_next(split_idx)
                 self._wait_output_s[split_idx] += time.monotonic() - t0
@@ -543,14 +543,9 @@ class PushSplitCoordinator:
         The window only gates the pushers. Without this feed, a fast
         producer runs the whole epoch ahead of slow consumers and spills.
 
-        This is the analog of the pull coordinator's prefetched-bytes total,
-        which sums each client's sliding-window bytes plus the block it just
-        received (stream_split_iterator._get_total_prefetched_bytes). Here
-        pushed-minus-consumed covers the same set: blocks in flight or
-        queued at the consumer, plus one block via the consumer's lagged
-        consumed_bytes report (the being-batched block, standing in for
-        pull's just-received block). Pull's coordinator-buffered leftovers
-        have no analog because bundles are pushed whole.
+        Pushed-minus-consumed covers the blocks in flight or queued at the
+        consumer, plus one block via the consumer's lagged consumed_bytes
+        report (the block currently being batched).
         """
         executor = self._current_executor
         if executor is None:
@@ -728,11 +723,11 @@ class PushBasedDataIterator(DataIterator):
         self._output_split_idx = output_split_idx
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
-        # Epoch this split is currently consuming (see
-        # StreamSplitDataIterator._active_epoch for the threading protocol).
+        # Epoch this split is currently consuming. Written by the consuming
+        # thread; a stale generator uses it to detect that its epoch ended.
         self._active_epoch: Optional[int] = None
         # Prefetch window, refreshed by _create_batch_iterator from the
-        # user's iter_batches() arguments (same knobs as the pull model).
+        # user's iter_batches() arguments.
         self._prefetch_batches = 1
         self._prefetch_batch_size: Optional[int] = None
 
@@ -777,15 +772,14 @@ class PushBasedDataIterator(DataIterator):
             self._active_epoch = epoch
             receiver.begin_epoch(epoch)
 
-            # Prefetch window, in rows like the pull model's local window:
-            # declare a `prefetch_batches * batch_size` row window and report
-            # consumption; the coordinator computes what to send
-            # (target_rows - (rows_pushed - rows_consumed)) and pushes whole
-            # blocks while that is positive, so any positive window yields at
-            # least one block. Blocks pushed but not yet consumed sit in the
-            # local receiver queue — that queue IS the prefetch buffer.
-            # Without a batch size the window degenerates to one block in
-            # flight.
+            # Prefetch window, in rows: declare a `prefetch_batches *
+            # batch_size` row window and report consumption; the coordinator
+            # computes what to send (target_rows - (rows_pushed -
+            # rows_consumed)) and pushes whole blocks while that is
+            # positive, so any positive window yields at least one block.
+            # Blocks pushed but not yet consumed sit in the local receiver
+            # queue — that queue IS the prefetch buffer. Without a batch
+            # size the window degenerates to one block in flight.
             if self._prefetch_batches > 0 and self._prefetch_batch_size:
                 target_rows = self._prefetch_batches * self._prefetch_batch_size
             else:
@@ -793,11 +787,9 @@ class PushBasedDataIterator(DataIterator):
 
             def report(consumed_rows: int, consumed_bytes: int) -> None:
                 # One RPC per consumed block. Rows are reported at pop (they
-                # drive the window, like the pull model's window slide-out);
-                # bytes are reported one block late so the block currently
-                # being batched still counts as consumer-held for producer
-                # pacing (the pull model's just-received block plays the
-                # same role in its prefetched-bytes report).
+                # drive the window); bytes are reported one block late so
+                # the block currently being batched still counts as
+                # consumer-held for producer pacing.
                 self._coord_actor.request_rows.remote(
                     self._output_split_idx,
                     epoch,
