@@ -161,9 +161,9 @@ class TorchMetaLearner(TorchLearner):
             **kwargs,
         )
 
-        # `None` means: skip this update.
+        # `None` means: skip this update. No gradient-based update takes place, so
+        # `after_gradient_based_update` does not run either.
         if batch_iter is None:
-            self.after_gradient_based_update(timesteps=timesteps or {})
             if not _no_metrics_reduce:
                 return self.metrics.reduce()
             return

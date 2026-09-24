@@ -6,7 +6,7 @@ import numpy as np
 
 import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.learner.learner import Learner, UpdatePlan
+from ray.rllib.core.learner.learner import LR_KEY, Learner, UpdatePlan
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_torch
@@ -336,7 +336,14 @@ class TestLearner(unittest.TestCase):
             )
 
     def test_update_empty_batch_is_skipped(self):
-        """Tests that `update()` skips the gradient step for an empty train batch."""
+        """Tests that `update()` skips the gradient step for an empty train batch.
+
+        The gradient-based update's hooks are skipped with it: they bracket work
+        that did not happen, and anything they step (target networks, schedules) or
+        read back (this update's metrics) has nothing behind it.
+        """
+        from unittest import mock
+
         learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
         timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
 
@@ -351,23 +358,33 @@ class TestLearner(unittest.TestCase):
             self.assertEqual(
                 0, all_modules[LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME]
             )
-            # The module is still reported on (its learning rate is logged every
-            # update), but with no gradient step there is no loss.
-            self.assertNotIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
+            # The module carries only what building it logged: no loss, because no
+            # gradient step ran, and no learning rate, because the hook that logs it
+            # did not run either.
+            module_results = results[DEFAULT_MODULE_ID]
+            self.assertNotIn(learner.TOTAL_LOSS_KEY, module_results)
+            self.assertFalse([key for key in module_results if LR_KEY in key])
 
-        # Both ways an empty batch reaches `update()`.
-        check_skipped(
-            learner.update(
-                batch=MultiAgentBatch(policy_batches={}, env_steps=0),
-                timesteps=timesteps,
+        with mock.patch.object(learner, "before_gradient_based_update") as before, (
+            mock.patch.object(learner, "after_gradient_based_update")
+        ) as after:
+            # Both ways an empty batch reaches `update()`.
+            check_skipped(
+                learner.update(
+                    batch=MultiAgentBatch(policy_batches={}, env_steps=0),
+                    timesteps=timesteps,
+                )
             )
-        )
-        check_skipped(learner.update(episodes=[], timesteps=timesteps))
+            check_skipped(learner.update(episodes=[], timesteps=timesteps))
+            self.assertEqual(0, before.call_count)
+            self.assertEqual(0, after.call_count)
 
-        # A real batch after the skips must still train.
-        reader = get_cartpole_dataset_reader(batch_size=512)
-        batch = learner._convert_batch_type(reader.next().as_multi_agent())
-        results = learner.update(batch=batch)
+            # A real batch after the skips must still train, hooks and all.
+            reader = get_cartpole_dataset_reader(batch_size=512)
+            batch = learner._convert_batch_type(reader.next().as_multi_agent())
+            results = learner.update(batch=batch)
+            self.assertEqual(1, before.call_count)
+            self.assertEqual(1, after.call_count)
         self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
 
     def test_should_skip_update_single_learner(self):

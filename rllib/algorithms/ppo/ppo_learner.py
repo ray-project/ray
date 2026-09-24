@@ -104,13 +104,8 @@ class PPOLearner(Learner):
                 new_entropy_coeff,
                 window=1,
             )
-            # A skipped update measured no KL: the metric still carries the key
-            # from earlier updates and peeks as NaN, which is indistinguishable from
-            # a real update that diverged -- and that is what the warning in
-            # `_update_module_kl_coeff` is for.
             if (
                 config.use_kl_loss
-                and not self._update_skipped
                 and (module_id, LEARNER_RESULTS_KL_KEY) in self.metrics
             ):
                 kl_loss = convert_to_numpy(

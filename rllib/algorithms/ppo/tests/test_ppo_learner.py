@@ -86,10 +86,11 @@ class TestPPO(unittest.TestCase):
     def test_skipped_update_leaves_the_kl_coeff_alone(self):
         """A skipped update measures no KL, so it must not move the KL coefficient.
 
-        The metric keeps its key from earlier updates and peeks as NaN once its
-        window is empty, which is indistinguishable from an update that really did
-        diverge -- so reading it back on a skipped update warned the user about a
-        model problem that is not there.
+        `after_gradient_based_update` does not run for a skipped update, which is
+        what keeps this hook away from a metric it never measured: the key survives
+        from earlier updates and peeks as NaN once its window is empty, which is
+        indistinguishable from an update that really did diverge -- and warned the
+        user about a model problem that is not there.
         """
         learner = ppo.PPOConfig().training(kl_coeff=0.01).build_learner(env=self.ENV)
         # What an earlier, real update leaves behind once its window is empty.
