@@ -20,14 +20,14 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
     estimate_total_num_of_blocks,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-    ExternalHashShuffleMapOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_tasks import (  # noqa: E501
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     _DEFAULT_FETCH_THREADS,
     _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
-    _external_shuffle_reduce_task,
+    _disk_shuffle_reduce_task,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     extract_partition_id,
@@ -52,16 +52,16 @@ if typing.TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
-    """External-shuffle reduce operator.
+class DiskHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
+    """Disk-shuffle reduce operator.
 
     Structurally mirrors ``ShuffleReduceOp``: one wrapper bundle per partition
     per input in via ``_add_input_inner``, one reduce task out. Each wrapper
     carries ``shared_handles_ref`` + partition_id sentinel;
-    ``_external_shuffle_reduce_task`` uses those to fetch its partition's bytes
+    ``_disk_shuffle_reduce_task`` uses those to fetch its partition's bytes
     over Arrow Flight from each mapper's ``ShuffleFileServer``.
 
-    Supports one or more co-partitioned upstream ``ExternalHashShuffleMapOp``s.
+    Supports one or more co-partitioned upstream ``DiskHashShuffleMapOp``s.
     With multiple inputs (e.g. join) every input must be partitioned into the
     same ``num_partitions``; this op pairs up the per-partition wrappers across
     all inputs and the reducer receives one table list per input.
@@ -71,7 +71,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
     def __init__(
         self,
-        input_op: Union[ExternalHashShuffleMapOp, List[ExternalHashShuffleMapOp]],
+        input_op: Union[DiskHashShuffleMapOp, List[DiskHashShuffleMapOp]],
         data_context: DataContext,
         *,
         num_partitions: int,
@@ -79,20 +79,18 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         disallow_block_splitting: bool = False,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
-        name: str = "ExternalHashShuffleReduce",
+        name: str = "DiskHashShuffleReduce",
         should_emit_empty_partitions: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
     ):
         input_ops: List[PhysicalOperator] = (
-            [input_op]
-            if isinstance(input_op, ExternalHashShuffleMapOp)
-            else list(input_op)
+            [input_op] if isinstance(input_op, DiskHashShuffleMapOp) else list(input_op)
         )
         assert input_ops, (
-            "ExternalHashShuffleReduceOp requires at least one upstream "
-            "ExternalHashShuffleMapOp"
+            "DiskHashShuffleReduceOp requires at least one upstream "
+            "DiskHashShuffleMapOp"
         )
         super().__init__(
             name=name,
@@ -136,10 +134,10 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         self._reduce_bar: Optional["BaseProgressBar"] = None
 
         # =====================================================================
-        # External-shuffle-specific state below.
+        # Disk-shuffle-specific state below.
         # =====================================================================
 
-        # _external_shuffle_reduce_task tuning (internal defaults, not exposed):
+        # _disk_shuffle_reduce_task tuning (internal defaults, not exposed):
         self._max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH
         self._fetch_threads: int = _DEFAULT_FETCH_THREADS
 
@@ -184,7 +182,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         pending = self._pending_inputs.setdefault(partition_id, {})
         assert input_index not in pending, (
             f"input {input_index} already delivered a wrapper for partition "
-            f"{partition_id}; each ExternalHashShuffleMapOp must emit at most "
+            f"{partition_id}; each DiskHashShuffleMapOp must emit at most "
             f"one wrapper per partition"
         )
         pending[input_index] = refs
@@ -238,7 +236,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
             )
             map_task_context.kwargs.update(self._fused_output_map_task_kwargs)
 
-        block_gen = _external_shuffle_reduce_task.options(**reduce_options).remote(
+        block_gen = _disk_shuffle_reduce_task.options(**reduce_options).remote(
             *handles_refs,  # pyrefly: ignore[bad-argument-type]
             partition_id=partition_id,
             reduce_fn=self._reduce_fn,
@@ -408,7 +406,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         if self._num_inputs > 1:
             return None
         upstream = self.input_dependencies[0]
-        assert isinstance(upstream, ExternalHashShuffleMapOp)
+        assert isinstance(upstream, DiskHashShuffleMapOp)
         return upstream.num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
@@ -425,7 +423,7 @@ class ExternalHashShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     def incremental_resource_usage(self) -> ExecutionResources:
         memory = 0
         for upstream in self.input_dependencies:
-            assert isinstance(upstream, ExternalHashShuffleMapOp)
+            assert isinstance(upstream, DiskHashShuffleMapOp)
             sizes = [b for b in upstream.get_partition_bytes().values() if b > 0]
             if sizes:
                 avg_bytes = sum(sizes) / len(sizes)

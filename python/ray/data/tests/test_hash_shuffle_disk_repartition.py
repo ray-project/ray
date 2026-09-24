@@ -1,5 +1,5 @@
-"""``ds.repartition()`` through the external (file-transport) hash-shuffle
-variant. External-only tests (flag-off default, chained ops, on-disk
+"""``ds.repartition()`` through the disk-based (file-transport) hash-shuffle
+variant. Disk-only tests (flag-off default, chained ops, on-disk
 cleanup) follow the shared correctness block.
 """
 
@@ -25,12 +25,12 @@ from ray.tests.conftest import *  # noqa: F401, F403
 
 @pytest.fixture(autouse=True)
 def _assert_no_leftover_shuffle_dirs():
-    """After every test, assert no ``$TMPDIR/ray_shuffle_external_*`` dir
+    """After every test, assert no ``$TMPDIR/ray_shuffle_disk_*`` dir
     leaked. The map op's ``_teardown_shuffle`` fires ``_cleanup_shuffle_dir``
     tasks eagerly and waits up to 5s, so by the time pytest teardown runs
-    all external shuffle output should be gone.
+    all disk shuffle output should be gone.
     """
-    pattern = os.path.join(tempfile.gettempdir(), "ray_shuffle_external_*")
+    pattern = os.path.join(tempfile.gettempdir(), "ray_shuffle_disk_*")
     pre_existing = set(glob.glob(pattern))
     yield
     gc.collect()
@@ -46,32 +46,32 @@ def _assert_no_leftover_shuffle_dirs():
 # --- Correctness -------------------------------------------------------------
 
 
-def test_external_map_op_is_blocking_materializing():
-    """The resource manager must classify the external map op like the
+def test_disk_map_op_is_blocking_materializing():
+    """The resource manager must classify the disk-shuffle map op like the
     object-store ``ShuffleMapOp``: as a blocking, materializing operator.
 
     Otherwise the reduce op stays eligible for resource allocation during the
     map phase (shrinking the map's budget), and the map op loses the
     object-store backpressure exemption granted to materializing ops.
     """
-    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-        ExternalHashShuffleMapOp,
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+        DiskHashShuffleMapOp,
     )
     from ray.data._internal.execution.resource_manager import (
         _BLOCKING_MATERIALIZING_OPERATORS,
     )
 
-    assert issubclass(ExternalHashShuffleMapOp, _BLOCKING_MATERIALIZING_OPERATORS)
+    assert issubclass(DiskHashShuffleMapOp, _BLOCKING_MATERIALIZING_OPERATORS)
 
 
-def test_external_sort_reduce_uses_higher_multiplier(
+def test_disk_sort_reduce_uses_higher_multiplier(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """Sorted external reduces request 3x, matching object-store ShuffleReduceOp."""
-    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
-        ExternalHashShuffleReduceOp,
+    """Sorted disk-shuffle reduces request 3x, matching object-store ShuffleReduceOp."""
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+        DiskHashShuffleReduceOp,
     )
     from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
         SHUFFLE_PEAK_MEMORY_MULTIPLIER,
@@ -80,24 +80,24 @@ def test_external_sort_reduce_uses_higher_multiplier(
 
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     sorted_dag = get_execution_plan(
         ray.data.range(10).repartition(2, keys=["id"], sort=True)._logical_plan
     )[0].dag
     # isinstance doubles as the flag-on routing check and narrows the type.
-    assert isinstance(sorted_dag, ExternalHashShuffleReduceOp)
+    assert isinstance(sorted_dag, DiskHashShuffleReduceOp)
     assert sorted_dag._peak_memory_multiplier == 3
 
     plain_dag = get_execution_plan(
         ray.data.range(10).repartition(2, keys=["id"])._logical_plan
     )[0].dag
-    assert isinstance(plain_dag, ExternalHashShuffleReduceOp)
+    assert isinstance(plain_dag, DiskHashShuffleReduceOp)
     assert plain_dag._peak_memory_multiplier == SHUFFLE_PEAK_MEMORY_MULTIPLIER
 
 
 @pytest.mark.parametrize("num_partitions", [1, 8])
-def test_external_repartition_keys_preserves_rows(
+def test_disk_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -107,7 +107,7 @@ def test_external_repartition_keys_preserves_rows(
     partitions (1000 distinct keys) => exactly num_partitions output blocks."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     ds = ray.data.range(1000, override_num_blocks=10)
     out = ds.repartition(num_partitions, keys=["id"]).materialize()
@@ -116,7 +116,7 @@ def test_external_repartition_keys_preserves_rows(
     assert out.num_blocks() == num_partitions
 
 
-def test_external_same_key_lands_in_same_block(
+def test_disk_same_key_lands_in_same_block(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -124,7 +124,7 @@ def test_external_same_key_lands_in_same_block(
     """All rows sharing a key should end up in one block."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     ds = ray.data.range(500, override_num_blocks=10).map(
         lambda row: {"k": row["id"] % 25, "v": row["id"]}
@@ -135,7 +135,7 @@ def test_external_same_key_lands_in_same_block(
     assert out.count() == 500
 
 
-def test_external_more_partitions_than_keys_emits_empty_blocks(
+def test_disk_more_partitions_than_keys_emits_empty_blocks(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -144,7 +144,7 @@ def test_external_more_partitions_than_keys_emits_empty_blocks(
     partitions as empty (0-row) blocks that still carry the dataset schema."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     # 3 distinct keys into 50 partitions => at most 3 non-empty, >=47 empty.
     ds = ray.data.range(600, override_num_blocks=10).map(
@@ -169,7 +169,7 @@ def test_external_more_partitions_than_keys_emits_empty_blocks(
     _assert_keys_colocated(_keys_per_block(out, ["k"]))
 
 
-def test_external_repartition_empty_dataset(
+def test_disk_repartition_empty_dataset(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -177,7 +177,7 @@ def test_external_repartition_empty_dataset(
     """Empty dataset should still output N blocks"""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     ds = ray.data.range(100, override_num_blocks=4).filter(lambda row: False)
     out = ds.repartition(4, keys=["id"]).materialize()
@@ -191,7 +191,7 @@ def test_external_repartition_empty_dataset(
     assert rows_per_block == [0, 0, 0, 0]
 
 
-def test_external_repartition_preserves_null_typed_rows(
+def test_disk_repartition_preserves_null_typed_rows(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -201,7 +201,7 @@ def test_external_repartition_preserves_null_typed_rows(
     """
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     table = pa.table({"k": pa.nulls(10)})
     assert table.num_rows == 10
@@ -212,7 +212,7 @@ def test_external_repartition_preserves_null_typed_rows(
     assert out.num_blocks() == 4
 
 
-def test_external_repartition_with_sort_produces_sorted_partitions(
+def test_disk_repartition_with_sort_produces_sorted_partitions(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
@@ -220,7 +220,7 @@ def test_external_repartition_with_sort_produces_sorted_partitions(
     """Check that rows are sorted in every partition."""
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = True
+    ctx.use_disk_based_hash_shuffle = True
 
     ds = ray.data.range(200, override_num_blocks=4)
     out = ds.repartition(4, keys=["id"], sort=True)
@@ -231,32 +231,32 @@ def test_external_repartition_with_sort_produces_sorted_partitions(
             assert ids == sorted(ids)
 
 
-def test_external_flag_off_keeps_object_store_path(
+def test_disk_flag_off_keeps_object_store_path(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
     disable_fallback_to_object_extension,
 ):
-    """With flag=False the planner must NOT dispatch to the external variant.
+    """With flag=False the planner must NOT dispatch to the disk-based variant.
 
     Row count alone can't distinguish the two paths, and the on-disk shuffle
     dir gets cleaned up eagerly by ``_do_shutdown`` so a post-hoc filesystem
-    check races with cleanup. Patch ``ExternalHashShuffleMapOp.__init__`` to
-    raise so any construction of the external op fails the test immediately.
+    check races with cleanup. Patch ``DiskHashShuffleMapOp.__init__`` to
+    raise so any construction of the disk-shuffle op fails the test immediately.
     """
     from unittest import mock
 
-    from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-        ExternalHashShuffleMapOp,
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+        DiskHashShuffleMapOp,
     )
 
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = False
+    ctx.use_disk_based_hash_shuffle = False
 
     with mock.patch.object(
-        ExternalHashShuffleMapOp,
+        DiskHashShuffleMapOp,
         "__init__",
-        side_effect=AssertionError("external op was constructed with flag=False"),
+        side_effect=AssertionError("disk-shuffle op was constructed with flag=False"),
     ):
         ds = ray.data.range(200).repartition(4, keys=["id"])
         assert ds.count() == 200
