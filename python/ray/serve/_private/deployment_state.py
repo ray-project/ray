@@ -4036,12 +4036,13 @@ class DeploymentState:
         return uncovered
 
     def _stop_or_update_outdated_version_replicas(
-        self, max_to_stop: float = math.inf
+        self, max_to_stop: float = math.inf, reconfigure_only: bool = False
     ) -> bool:
         """Stop or update replicas with outdated versions.
 
         Stop replicas with versions that require the actor to be restarted, and
         reconfigure replicas that require refreshing deployment config values.
+        With `reconfigure_only`, leave the ones that need a restart untouched.
 
         For gang-scheduled deployments, replicas that need restarting are
         grouped by gang_id and stopped in complete gangs so that we never
@@ -4050,6 +4051,7 @@ class DeploymentState:
         Args:
             max_to_stop: max number of replicas to stop, by default,
                          it stops all replicas with an outdated version.
+            reconfigure_only: only reconfigure; put restart candidates back.
 
         Returns:
             Whether any replicas were stopped or reconfigured.
@@ -4104,7 +4106,7 @@ class DeploymentState:
             for _, gang_replicas in gangs.items():
                 # pyrefly: ignore[missing-attribute]
                 expected_size = gang_replicas[0].gang_context.world_size  # type: ignore[union-attr]
-                if len(gang_replicas) != expected_size:
+                if reconfigure_only or len(gang_replicas) != expected_size:
                     # Gang is incomplete (members may be RECOVERING/UPDATING);
                     # wait for them to stabilize before tearing down.
                     for replica in gang_replicas:
@@ -4132,6 +4134,9 @@ class DeploymentState:
             # A new one with the correct version will be started later as part of the
             # normal scale-up process.
             elif replica.version.requires_actor_restart(self._target_state.version):
+                if reconfigure_only:
+                    self._replicas.add(replica.actor_details.state, replica)
+                    continue
                 code_version_changes += 1
                 # If the replica is still `STARTING`, we don't need to go through the
                 # graceful stop period.
@@ -4268,16 +4273,12 @@ class DeploymentState:
 
         Each group costs its RUNNING members against the surplus above target, so
         groups that are still starting go first. The batch is capped by the
-        rollout size.
+        rollout size. Replicas on draining nodes are left to the migration flow.
         """
         old = [
             replica
             for replica in self._replicas.get(
-                states=[
-                    ReplicaState.STARTING,
-                    ReplicaState.PENDING_MIGRATION,
-                    ReplicaState.RUNNING,
-                ]
+                states=[ReplicaState.STARTING, ReplicaState.RUNNING]
             )
             if replica.version != target_version
             and replica.version.requires_actor_restart(target_version)
@@ -4455,6 +4456,10 @@ class DeploymentState:
             delta_replicas, to_stop = surge_counts
             if to_stop:
                 self._stop_old_replicas(to_stop)
+            # Replicas already on the new code may still need a lightweight change.
+            self._stop_or_update_outdated_version_replicas(
+                self._rollout_size(), reconfigure_only=True
+            )
 
         if delta_replicas == 0:
             return (upscale, downscale)
