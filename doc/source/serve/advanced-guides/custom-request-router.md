@@ -11,6 +11,11 @@ myst:
 This API is in alpha and may change before becoming stable.
 :::
 
+:::{note}
+Custom request routers on the ingress deployment require the Python proxy. On
+Linux, set `RAY_SERVE_ENABLE_HA_PROXY=0` on every node before starting Ray.
+:::
+
 Different Ray serve applications demand different logics for load balancing. For example, in serving LLMs you might want to have a different policy than balancing number of requests across replicas: e.g. balancing ongoing input tokens, balancing kv-cache utilization, etc. [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) is an abstraction in Ray Serve that allows extension and customization of load-balancing logic for each deployment.
 
 This guide shows how to use [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) API to achieve custom load balancing across replicas of a given deployment. It will cover the following:
