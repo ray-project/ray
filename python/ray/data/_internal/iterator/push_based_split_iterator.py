@@ -63,6 +63,7 @@ from ray.data.iterator import DataIterator
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import NodeIdStr
     from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,34 @@ class _ExecutorError:
 # Sequenced deliveries; errors arrive unsequenced (fail fast).
 _SequencedItem = Union[_BlockPush, _EndOfEpoch]
 _QueueItem = Union[_BlockDelivery, _EndOfEpoch, _ExecutorError]
+
+
+def streaming_split_push_based(
+    dataset: "Dataset",
+    n: int,
+    *,
+    equal: bool = False,
+    locality_hints: Optional[List["NodeIdStr"]] = None,
+) -> List["PushBasedDataIterator"]:
+    """Push-based counterpart of :meth:`Dataset.streaming_split`.
+
+    Same arguments and split semantics. Each returned iterator must be
+    iterated from inside an actor whose class mixes in
+    ``PushSplitReceiverMixin``.
+    """
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators import StreamingSplit
+    from ray.data.dataset import Dataset
+
+    op = StreamingSplit(
+        num_splits=n,
+        equal=equal,
+        input_dependencies=[dataset._logical_plan.dag],
+        locality_hints=locality_hints,
+    )
+    split_dataset = Dataset._from_parent(dataset, LogicalPlan(op, dataset.context))
+    split_dataset._set_uuid(dataset._uuid)
+    return PushBasedDataIterator.create(split_dataset, n)
 
 
 @ray.remote(num_cpus=0)
@@ -712,7 +741,7 @@ class PushBasedDataIterator(DataIterator):
         """Create the coordinator and one iterator per split.
 
         ``split_dataset`` must already be wrapped in a ``StreamingSplit``
-        logical op (see ``Dataset.streaming_split_push_based``).
+        logical op (see ``streaming_split_push_based``).
         """
         coord_actor = PushSplitCoordinator.options(
             # n barrier-blocked start_epoch calls + headroom for other RPCs.
