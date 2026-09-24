@@ -1,0 +1,15 @@
+{
+  "result": {
+    "debug_session_id": "oasess_fake000000000000000000000000000",
+    "analysis": {
+      "summary": "[CANNED TEST DATA - NOT A REAL ANALYSIS] The job failed because the entrypoint exited with RAY_JOB_ENTRYPOINT_COMMAND_ERROR: the driver raised <class 'ValueError'> inside <lambda>. This looks like the earlier regression #1234 reported by @someone. The worker logged:\n```\nRayTaskError: <lambda> failed with #1 & died\n```\nSee the runbook at https://example.invalid/runbook#retries. No real job, cluster or analysis is described here.",
+      "metrics_findings": [],
+      "log_findings": [],
+      "issues": [],
+      "next_steps": []
+    },
+    "metadata": {
+      "slack_thread": "https://anyscaleteam.slack.com/archives/C0FAKE0000/p0000000000000000"
+    }
+  }
+}

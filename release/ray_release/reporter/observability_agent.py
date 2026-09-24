@@ -79,6 +79,16 @@ ANNOTATION_STYLE = "info"
 # build page rather than the job it is about.
 ANNOTATION_SCOPE = "job"
 
+# TEMPORARY -- DO NOT MERGE. Stands in for the three things this reporter needs
+# and a PR build cannot give it: a real anyscale job, a real debug session, and
+# a test whose github issue the state machine is tracking. Set together by
+# release/run_release_test.sh. Remove all four, and the canned response file,
+# before merging.
+FAKE_RESPONSE_ENV = "RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE"
+FAKE_JOB_ID_ENV = "RELEASE_TEST_OBS_AGENT_FAKE_JOB_ID"
+FAKE_ISSUE_ENV = "RELEASE_TEST_OBS_AGENT_FAKE_ISSUE"
+FAKE_DEBUG_SESSION_ID = "oasess_fake000000000000000000000000000"
+
 # Github rejects an issue comment whose body is longer than this. The summary
 # is the only part of the body this reporter does not control the length of, so
 # it is what gets trimmed to fit.
@@ -149,6 +159,9 @@ class ObservabilityAgentReporter(Reporter):
                 f"{result.return_code}"
             )
             return
+
+        # TEMPORARY -- DO NOT MERGE, see FAKE_RESPONSE_ENV.
+        self._apply_fakes(test, result)
 
         # The job id is the Anyscale production job id, obtained through the
         # Anyscale SDK when the job was submitted; see AnyscaleJobManager.
@@ -318,6 +331,47 @@ class ObservabilityAgentReporter(Reporter):
             f"Commented the observability agent analysis on github issue "
             f"{issue_number} for test {test.get_name()}"
         )
+
+    @staticmethod
+    def _apply_fakes(test: Test, result: Result) -> None:
+        """TEMPORARY -- DO NOT MERGE. Stand in for the job and the issue.
+
+        A forced failure never reaches anyscale, so there is no job id; and a
+        PR build never runs RayTestDBReporter, so the test carries no issue
+        number. Both are supplied here so the rest of the path is the real one.
+        """
+        fake_job_id = os.environ.get(FAKE_JOB_ID_ENV)
+        if fake_job_id and not result.job_id:
+            logger.warning(
+                f"DO NOT MERGE: standing in a fake anyscale job id {fake_job_id}"
+            )
+            result.job_id = fake_job_id
+
+        fake_issue = os.environ.get(FAKE_ISSUE_ENV)
+        if fake_issue:
+            logger.warning(
+                f"DO NOT MERGE: targeting fake github issue {fake_issue} on "
+                f"the state machine's repo"
+            )
+            test[Test.KEY_GITHUB_ISSUE_NUMBER] = fake_issue
+
+    @staticmethod
+    def _fake_response() -> Optional[Dict[str, Any]]:
+        """TEMPORARY -- DO NOT MERGE. The canned query response, if configured.
+
+        Returns the parsed contents of the file named by FAKE_RESPONSE_ENV, or
+        None when it is unset, in which case the agent is called for real.
+        """
+        fake_response_file = os.environ.get(FAKE_RESPONSE_ENV)
+        if not fake_response_file:
+            return None
+        logger.warning(
+            f"DO NOT MERGE: serving a canned agent response from "
+            f"{fake_response_file}; no debug session is created and no slack "
+            f"thread is posted"
+        )
+        with open(fake_response_file, "rt", encoding="utf-8") as fp:
+            return json.load(fp)
 
     def _meta_data(self, *args: str) -> Optional[str]:
         """Run `buildkite-agent meta-data`, or None if it could not be run.
@@ -676,6 +730,10 @@ class ObservabilityAgentReporter(Reporter):
 
     def _create_debug_session(self, job_id: str) -> str:
         """Create a debug session for the job and return its id."""
+        # TEMPORARY -- DO NOT MERGE, see FAKE_RESPONSE_ENV.
+        if os.environ.get(FAKE_RESPONSE_ENV):
+            return FAKE_DEBUG_SESSION_ID
+
         response = self._post_json(
             f"debug_sessions/job/{job_id}",
             timeout=CREATE_DEBUG_SESSION_TIMEOUT,
@@ -713,6 +771,11 @@ class ObservabilityAgentReporter(Reporter):
                 }
             }
         """
+        # TEMPORARY -- DO NOT MERGE, see FAKE_RESPONSE_ENV.
+        fake_response = self._fake_response()
+        if fake_response is not None:
+            return fake_response
+
         return self._post_json(
             f"debug_sessions/{debug_session_id}/messages",
             json_data={"query": DEBUG_SESSION_QUERY},
