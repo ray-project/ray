@@ -119,6 +119,39 @@ By default, Ray tasks use 1 logical CPU resource and Ray actors use 1 logical CP
 
 You can also explicitly specify a task's or actor's logical resource requirements (for example, one task may require a GPU) instead of using default ones via {func}`ray.remote() <ray.remote>` and {meth}`task.options() <ray.remote_function.RemoteFunction.options>`/{meth}`actor.options() <ray.actor.ActorClass.options>`.
 
+(resource-dict-remote-options)=
+
+### Resource dictionaries and `ray.remote` options
+
+Some Ray APIs describe resource requirements as a dictionary of resource names to quantities.
+For example, a {ref}`placement group bundle <ray-placement-group-doc-ref>` can be written as
+`{"CPU": 2, "GPU": 1, "memory": 1073741824, "custom_resource": 1}`.
+The pre-defined resource keys correspond to the task and actor resource options:
+
+- `"CPU"` corresponds to `num_cpus`.
+- `"GPU"` corresponds to `num_gpus`.
+- `"memory"` corresponds to `memory` and is measured in bytes.
+- Custom resource names correspond to entries in the `resources` argument.
+
+`object_store_memory` configures the object store size and isn't a schedulable resource requirement.
+
+When you define a task or actor with {func}`ray.remote() <ray.remote>` or `.options()`,
+use the dedicated keyword arguments for pre-defined resources and the `resources` dictionary for custom resources:
+
+```python
+@ray.remote(
+    num_cpus=2,
+    num_gpus=1,
+    memory=1024 * 1024 * 1024,
+    resources={"custom_resource": 1},
+)
+def task():
+    ...
+```
+
+For APIs that accept a resource dictionary directly, the equivalent resource dictionary is
+`{"CPU": 2, "GPU": 1, "memory": 1073741824, "custom_resource": 1}`.
+
 ::::{tab-set}
 :::{tab-item} Python
 ```{literalinclude} ../doc_code/resources.py
