@@ -4,6 +4,10 @@ import os
 import tempfile
 from typing import List, Optional
 
+from ray._private.authentication.authentication_token_setup import (
+    _get_default_token_path,
+)
+from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
@@ -106,6 +110,16 @@ def _modify_context_impl(
 
     # Support for runtime_env['env_vars']
     env_vars.update(context.env_vars)
+
+    # Mount the token file rather than passing the token via --env, which is
+    # logged and visible in `ps`.
+    if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in env_vars:
+        token_path = env_vars.get("RAY_AUTH_TOKEN_PATH") or str(
+            _get_default_token_path()
+        )
+        if os.path.isfile(token_path):
+            container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
+            env_vars["RAY_AUTH_TOKEN_PATH"] = token_path
 
     # Set environment variables
     for env_var_name, env_var_value in env_vars.items():
