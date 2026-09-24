@@ -843,7 +843,6 @@ class ApplicationState:
                 DELETING: the application is being deleted.
             Error message (str):
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
-            build: Original build results on success, otherwise None.
         """
 
         if self._target_state.deleting:
@@ -909,6 +908,9 @@ class ApplicationState:
                 IN_PROGRESS: Task hasn't finished yet.
             Error message (str):
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
+            Build (AppBuild):
+                The original build results before config overrides if the
+                task finished successfully, otherwise None.
         """
         if self._build_app_task_info is None or self._build_app_task_info.finished:
             return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, "", None
