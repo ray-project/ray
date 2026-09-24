@@ -188,14 +188,14 @@ class TestHangingExecutionIssueDetector:
         )
 
         # Start detecting — all tasks were submitted at t=0, so no time has elapsed.
-        issues = detector.detect()
+        issues = detector.detect_periodic()
         assert len(issues) == 0
 
         # Advance perf_counter to trigger the issue detection
         mock_perf_counter.return_value = 10.0
 
-        # On the second detect() call, the hanging task should be detected
-        issues = detector.detect()
+        # On the second detect_periodic() call, the hanging task should be detected
+        issues = detector.detect_periodic()
         assert len(issues) > 0, "Expected hanging issue to be detected"
         assert issues[0].issue_type.value == "hanging"
         assert "has been running or stuck in scheduling for" in issues[0].message
@@ -238,7 +238,7 @@ def test_high_memory_detection(
         operators=operators,
         config=ctx.issue_detectors_config.high_memory_detector_config,
     )
-    issues = detector.detect()
+    issues = detector.detect_periodic()
 
     assert should_return_issue == bool(issues)
     if should_return_issue:
@@ -286,7 +286,7 @@ def test_high_memory_detection_on_execution_end(
         config=ctx.issue_detectors_config.high_memory_detector_config,
     )
 
-    issues = detector.detect_on_execution_end()
+    issues = detector.detect_final()
 
     assert (expected_memory_configuration is not None) == bool(issues)
     if expected_memory_configuration is not None:
@@ -295,7 +295,7 @@ def test_high_memory_detection_on_execution_end(
         assert expected_memory_configuration in normalized_message
         assert f"`memory={expected_memory}`" in normalized_message
     # Execution-end checks are one-shot to avoid duplicate warnings.
-    assert detector.detect_on_execution_end() == []
+    assert detector.detect_final() == []
 
 
 if __name__ == "__main__":

@@ -125,18 +125,18 @@ def test_invoke_final_detection():
     detector = IssueDetectorManager(executor)
     issue_detector = MagicMock()
     issue_detector.detection_time_interval_s.return_value = 30
-    issue_detector.detect.return_value = []
-    issue_detector.detect_on_execution_end.return_value = []
+    issue_detector.detect_periodic.return_value = []
+    issue_detector.detect_final.return_value = []
     detector._issue_detectors = [issue_detector]
     detector._last_detection_times = {
         issue_detector: float("inf"),
     }
 
     detector.invoke_periodic_detection()
-    issue_detector.detect.assert_not_called()
+    issue_detector.detect_periodic.assert_not_called()
 
     detector.invoke_final_detection()
-    issue_detector.detect_on_execution_end.assert_called_once_with()
+    issue_detector.detect_final.assert_called_once_with()
 
 
 def test_execution_end_detection_skips_disabled_detectors():
@@ -150,7 +150,7 @@ def test_execution_end_detection_skips_disabled_detectors():
 
     detector.invoke_final_detection()
 
-    issue_detector.detect_on_execution_end.assert_not_called()
+    issue_detector.detect_final.assert_not_called()
 
 
 @pytest.mark.parametrize(

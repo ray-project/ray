@@ -84,7 +84,7 @@ class HighMemoryIssueDetector(IssueDetector):
             config=ctx.issue_detectors_config.high_memory_detector_config,
         )
 
-    def detect(self) -> List[Issue]:
+    def detect_periodic(self) -> List[Issue]:
         issues = []
         for op in self._operators:
             if not isinstance(op, MapOperator):
@@ -123,7 +123,7 @@ class HighMemoryIssueDetector(IssueDetector):
 
         return issues
 
-    def detect_on_execution_end(self) -> List[Issue]:
+    def detect_final(self) -> List[Issue]:
         issues = []
         for op, memory_request in self._initial_memory_requests.items():
             issue = self._detect_issue_from_final_metrics(op, memory_request)

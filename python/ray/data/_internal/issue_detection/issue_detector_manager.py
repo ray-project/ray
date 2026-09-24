@@ -54,7 +54,7 @@ class IssueDetectorManager:
                 curr_time - self._last_detection_times[detector]
                 > detector.detection_time_interval_s()
             ):
-                issues.extend(detector.detect())
+                issues.extend(detector.detect_periodic())
 
                 self._last_detection_times[detector] = time.perf_counter()
 
@@ -65,7 +65,7 @@ class IssueDetectorManager:
         for detector in self._issue_detectors:
             if detector.detection_time_interval_s() == -1:
                 continue
-            issues.extend(detector.detect_on_execution_end())
+            issues.extend(detector.detect_final())
         self._report_issues(issues)
 
     def _report_issues(self, issues: List[Issue]) -> None:

@@ -35,10 +35,10 @@ class IssueDetector(ABC):
         pass
 
     @abstractmethod
-    def detect(self) -> List[Issue]:
+    def detect_periodic(self) -> List[Issue]:
         pass
 
-    def detect_on_execution_end(self) -> List[Issue]:
+    def detect_final(self) -> List[Issue]:
         """Detect issues after execution reaches a terminal state."""
         return []
 
