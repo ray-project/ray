@@ -2588,7 +2588,7 @@ utilsforecast==0.2.15
     # via statsforecast
 uv==0.8.9
     # via -r python/requirements/py313/test-requirements.txt
-uvicorn==0.22.0
+uvicorn==0.53.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2610,7 +2610,7 @@ virtualenv==21.2.4
     #   pytest-virtualenv
 wandb==0.26.0
     # via -r python/requirements/ml/py313/core-requirements.txt
-watchfiles==0.19.0
+watchfiles==1.3.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
