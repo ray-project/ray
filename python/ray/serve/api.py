@@ -664,6 +664,15 @@ def deployment(
             "gang_scheduling_config is provided. Please set max_replicas_per_node "
             "to None."
         )
+    if (
+        gang_scheduling_config not in [DEFAULT.VALUE, None]
+        and ray_actor_options not in [DEFAULT.VALUE, None]
+        and ray_actor_options.get("gpu_memory")
+    ):
+        raise ValueError(
+            "Setting gpu_memory in ray_actor_options is not allowed when "
+            "gang_scheduling_config is provided."
+        )
     if gang_scheduling_config not in [
         DEFAULT.VALUE,
         None,
