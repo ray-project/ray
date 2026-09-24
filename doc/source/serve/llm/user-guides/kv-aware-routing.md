@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Route LLM requests on measured KV cache overlap and token load with KVAwareRouter: installation, configuration, and tuning."
+    description: "Route LLM requests on measured KV cache overlap and token load with KVAwareRouter: installation, configuration, router comparison, and architecture."
 ---
 
 (kv-aware-routing-guide)=
@@ -13,7 +13,7 @@ Route each request to the replica that gives the best balance of KV cache reuse 
 `KVAwareRouter` is in alpha and may change before becoming stable.
 :::
 
-The router accounts for cached prompt prefixes across replicas, so requests can reuse work from earlier requests.
+Each replica reports KV block creation and eviction through vLLM-native KV events. The router uses these events to maintain a global view of KV cache state across replicas, allowing it to identify which replicas already hold KV blocks that overlap with a request’s prefix.
 
 `KVAwareRouter` uses this overlap to estimate the request’s remaining prefill work for each replica. It then combines this remaining prefill work with the replica’s active prefill and decode work. We call this combined estimate the replica’s token load. The request is routed to the replica with the lowest estimated token load.
 
@@ -30,7 +30,7 @@ The best policy depends on your workload. You can configure different routers th
 
 ## Installation
 
-Install the [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo) dependency in your cluster environment, for example in the image:
+The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. The selection service is responsible for request scoring, while Ray Serve manages replica discovery, request orchestration, request lifecycle, and KV event transport and synchronization. Install it in your cluster environment, for example in the image:
 
 ```bash
 pip install "ai-dynamo>=1.4.0"
@@ -38,7 +38,7 @@ pip install "ai-dynamo>=1.4.0"
 
 ## Configuration
 
-`KVAwareRouter` requires {ref}`direct streaming <direct-streaming-guide>` and request-body forwarding. Export all three environment variables before you start Serve:
+`KVAwareRouter` runs inside the `LLMRouter` ingress request router, so it needs the {ref}`direct streaming <direct-streaming-guide>` path. It scores on prompt tokens, so the ingress also needs the request body. Export all three environment variables before you start Serve:
 
 ```bash
 export RAY_SERVE_ENABLE_HA_PROXY=1
@@ -101,46 +101,6 @@ Run `serve run config.yaml`.
 :::
 ::::
 
-### Prefill/decode disaggregation
-
-Configure `KVAwareRouter` on **both** `prefill_config` and `decode_config` when using
-`build_pd_openai_app`. Use the same model and tokenizer configuration for both pools.
-For example, adapt the configuration above:
-
-```python
-from ray.serve.llm import build_pd_openai_app
-
-llm_config.engine_kwargs["kv_transfer_config"] = {
-    "kv_connector": "NixlConnector",
-    "kv_role": "kv_both",
-}
-app = build_pd_openai_app({
-    "prefill_config": llm_config.model_copy(deep=True),
-    "decode_config": llm_config.model_copy(deep=True),
-})
-serve.run(app)
-```
-
-Prefill routing balances prefix-cache reuse against load. Decode routing balances
-load after prefill finishes. Generated tokens stream directly from the decode
-server through HAProxy to the client.
-
-Decode-progress reporting is off by default. Enable
-`RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS=1` for load estimates that account for
-generation progress, including load decay when the request specifies an output
-token limit. This adds reporting overhead.
-
-The HAProxy routing timeout includes prefill. Set
-`RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S` high enough for your longest
-expected prefill, including queueing. Requests must fit within HAProxy's routing
-body limit; truncated requests are rejected.
-
-This configuration supports only chat and completion requests with single text
-prompts and data-parallel size 1. Other API endpoints, including model listing,
-are not supported on this P/D routing path.
-`MoRIIOConnector`, including inside `MultiConnector`, isn't supported with
-`KVAwareRouter`.
-
 ### Tuning
 
 Set these in the cluster environment:
@@ -163,6 +123,36 @@ Set these as `experimental_configs` keys on the `LLMConfig`:
 
 The router's scoring weights are also configurable. See [Tune the scoring weights](#tune-the-scoring-weights).
 
+## How it works
+
+Replica selection determines which `LLMServer` engine replica processes each request. This selection logic runs inside the `LLMRouter` ingress replica, with Dynamo’s selection service handling the scoring. The selection service maintains a global KV cache index and a view of the load on each replica, then uses this information to select the best candidate for each request. Ray Serve manages everything around this process:
+
+- **Replica discovery.** Ray Serve tracks which `LLMServer` replicas are running and which are eligible to receive traffic. The router only scores the available replicas.
+- **Request orchestration.** The ingress receives and tokenizes each request, selects a replica, and dispatches the request to it.
+- **Request lifecycle.** Engine replicas report prefill completion, decode progress, and request completion back to the ingress, which uses these updates to maintain its view of replica token load.
+- **Event transport and synchronization.** KV cache events are broadcast to all ingress replicas, while the ingress replicas synchronize token load updates with one another. This gives each ingress replica a consistent view of KV cache state and token load, enabling them to make consistent routing decisions.
+
+```{figure} ../images/kv_aware_routing_flow.png
+---
+width: 800px
+name: kv-aware-routing-flow
+---
+How a request flows through a KV-aware deployment.
+```
+
+1. The client sends a request to HAProxy.
+1. HAProxy forwards the prompt to an `LLMRouter` ingress replica. The router tokenizes it and asks the selection service to score the running `LLMServer` replicas on KV cache overlap and token load.
+1. The router returns the replica it selected.
+1. HAProxy sends the request to that replica.
+1. The replica streams the response back to the client with direct streaming.
+
+### How a replica is chosen
+
+Token load estimates how much work remains on each engine replica. It captures the two main phases of LLM inference: compute-bound prefill and memory-bound decode. For each candidate replica, the selection service estimates token load in KV blocks, and the router sends the request to the replica with the lowest estimated load.
+
+- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded blocks receive less because they must first be loaded back to the GPU.
+- **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache accumulated by active requests. This term captures the KV blocks associated with ongoing decode work, weighted by the estimated remaining output based on `max_tokens`.
+
 ### Tune the scoring weights
 
 The selection service exposes several scoring weights that you can tune to match the characteristics of your workload. These weights are configured through DYN_* environment variables in the `LLMConfig` `runtime_env`. Ray Serve LLM passes them to the ingress replicas where scoring runs:
@@ -181,22 +171,28 @@ llm_config = LLMConfig(
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Reduces the benefit of KV cache overlap as a replica’s prefill backlog grows relative to the least-loaded candidate. Increase it when cache affinity repeatedly favors a busy replica while others remain underutilized. |
 | `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Adds a cost for each request a replica is already serving. Increase it when many small requests tend to concentrate on the same replica. |
 
-For P/D deployments, cache-reuse and prefill weights apply to prefill selection.
-Decode selection balances decode load.
-
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
 
-### Tokenization
+### Tokenization at the ingress
 
-Use the same model and tokenizer configuration across ingress and engine replicas.
-Ingress tokenization adds work before generation; measure time to first token and
-throughput with representative prompts before enabling KV-aware routing.
+The router scores requests using token IDs, so each request is tokenized at the ingress using the same renderer and chat template as the engine. This has two implications:
+
+- **Tokenization adds CPU overhead at the ingress.** This is the primary reason to scale the number of ingress replicas.
+
+- **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
+
+
+### Scaling the ingress tier
+
+Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bound throughput. Two per node is usually enough, though the right number depends on your traffic.
+
+Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
 
 ## Limitations
 
 - **Direct streaming only.** `KVAwareRouter` inherits direct streaming's constraints, including one model per application and no LoRA- or multiplex-aware routing. See {ref}`direct-streaming-limitations`.
 - **No data-parallel deployments.** The router doesn't yet score individual data-parallel ranks. Support is planned.
-- **P/D constraints.** Disaggregated deployments require single text prompts. `MoRIIOConnector` is unsupported.
+- **No prefill-decode disaggregation.** The router doesn't yet support disaggregated prefill and decode. Support is planned.
 
 ## See also
 

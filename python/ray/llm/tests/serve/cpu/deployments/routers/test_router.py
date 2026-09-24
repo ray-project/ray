@@ -52,7 +52,7 @@ class _FakeRequest:
 
 
 class _DirectRouterReplica:
-    """RunningReplica stand-in for ``LLMRouter.pick_replica`` tests."""
+    """RunningReplica stand-in for ``LLMRouter._pick_replica`` tests."""
 
     def __init__(
         self,
@@ -75,7 +75,7 @@ def _new_direct_router(handle=None):
 
 
 def _selection_for(replica):
-    """Build a ``ReplicaSelection``-shaped mock that ``pick_replica`` reads."""
+    """Build a ``ReplicaSelection``-shaped mock that ``_pick_replica`` reads."""
     return MagicMock(replica_id=replica.replica_id.unique_id, _replica=replica)
 
 
@@ -141,7 +141,7 @@ class TestDirectStreamingLLMRouter:
     async def test_route_parses_body_into_routing_payload(self):
         """A parseable body becomes a routing payload passed positionally."""
         router = _new_direct_router()
-        router.pick_replica = AsyncMock(
+        router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
@@ -155,7 +155,7 @@ class TestDirectStreamingLLMRouter:
             "port": 9001,
             "replica_id": "DeploymentName#replica",
         }
-        _, kwargs = router.pick_replica.call_args
+        _, kwargs = router._pick_replica.call_args
         assert kwargs["handle"] is router._handle
         payload = kwargs["routing_payload"]
         assert isinstance(payload, SimpleNamespace)
@@ -171,7 +171,7 @@ class TestDirectStreamingLLMRouter:
         """A truncated body derives no key. ``route`` forwards ``None`` and
         warns once per replica."""
         router = _new_direct_router()
-        router.pick_replica = AsyncMock(
+        router._pick_replica = AsyncMock(
             return_value=("127.0.0.1", 9001, "DeploymentName#replica", None)
         )
 
@@ -184,7 +184,7 @@ class TestDirectStreamingLLMRouter:
             await router.route(request)
 
         # routing_payload is None on both calls. Warning fires once.
-        for call in router.pick_replica.call_args_list:
+        for call in router._pick_replica.call_args_list:
             assert call.kwargs["routing_payload"] is None
         assert mock_warning.call_count == 1
         assert router._warned_no_routing_key is True
@@ -192,7 +192,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_route_returns_503_on_pick_failure(self):
         router = _new_direct_router()
-        router.pick_replica = AsyncMock(side_effect=RuntimeError("no replicas"))
+        router._pick_replica = AsyncMock(side_effect=RuntimeError("no replicas"))
 
         with pytest.raises(HTTPException) as exc_info:
             await router.route(_FakeRequest(b"{}"))
@@ -202,7 +202,7 @@ class TestDirectStreamingLLMRouter:
     @pytest.mark.asyncio
     async def test_route_returns_400_on_bad_routing_request(self):
         router = _new_direct_router()
-        router.pick_replica = AsyncMock(side_effect=ValueError("empty prompt"))
+        router._pick_replica = AsyncMock(side_effect=ValueError("empty prompt"))
 
         with pytest.raises(HTTPException) as exc_info:
             await router.route(_FakeRequest(b"{}"))
@@ -213,7 +213,7 @@ class TestDirectStreamingLLMRouter:
     async def test_route_returns_503_on_deployment_unavailable(self):
         err = DeploymentUnavailableError(DeploymentID(name="LLMServer:test"))
         router = _new_direct_router()
-        router.pick_replica = AsyncMock(side_effect=err)
+        router._pick_replica = AsyncMock(side_effect=err)
 
         with pytest.raises(HTTPException) as exc_info:
             await router.route(_FakeRequest(b"{}"))
@@ -222,7 +222,7 @@ class TestDirectStreamingLLMRouter:
 
     @pytest.mark.asyncio
     async def test_pick_replica_returns_backend_endpoint_from_handle(self):
-        """``pick_replica`` reads the endpoint off the selection's replica."""
+        """``_pick_replica`` reads the endpoint off the selection's replica."""
         replica = _DirectRouterReplica(
             "r1",
             full_id="DeploymentName#r1",
@@ -232,7 +232,7 @@ class TestDirectStreamingLLMRouter:
         handle.choose_replica = _choose_replica_returning(replica)
         router = _new_direct_router(handle)
 
-        host, port, replica_id, token_endpoint = await router.pick_replica(
+        host, port, replica_id, token_endpoint = await router._pick_replica(
             handle=handle
         )
 
@@ -250,7 +250,7 @@ class TestDirectStreamingLLMRouter:
         handle.choose_replica = _choose_replica_returning(replica)
         router = _new_direct_router(handle)
 
-        *_, token_endpoint = await router.pick_replica(handle=handle)
+        *_, token_endpoint = await router._pick_replica(handle=handle)
 
         assert token_endpoint == "tcp://10.0.0.1:7557"
 
@@ -273,7 +273,7 @@ class TestDirectStreamingLLMRouter:
         router = _new_direct_router(handle)
 
         payload = SimpleNamespace(messages=[{"role": "user", "content": "hi"}])
-        await router.pick_replica(handle=handle, routing_payload=payload)
+        await router._pick_replica(handle=handle, routing_payload=payload)
 
         assert captured["args"] == (payload,)
         assert captured["kwargs"] == {"_reserve": False}
@@ -296,7 +296,7 @@ class TestDirectStreamingLLMRouter:
         handle.choose_replica = fake_choose_replica
         router = _new_direct_router(handle)
 
-        await router.pick_replica(handle=handle, routing_payload=None)
+        await router._pick_replica(handle=handle, routing_payload=None)
 
         assert captured["args"] == ()
         assert captured["kwargs"] == {"_reserve": False}
@@ -311,7 +311,7 @@ class TestDirectStreamingLLMRouter:
         router = _new_direct_router(handle)
 
         with pytest.raises(RuntimeError, match="no backend HTTP endpoint"):
-            await router.pick_replica(handle=handle)
+            await router._pick_replica(handle=handle)
 
 
 class TestRoutingPayload:

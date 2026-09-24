@@ -200,7 +200,7 @@ class LLMRouter:
             self._handle.options(session_id=session_id) if session_id else self._handle
         )
         try:
-            host, port, replica_id, token_endpoint = await self.pick_replica(
+            host, port, replica_id, token_endpoint = await self._pick_replica(
                 handle=handle,
                 routing_payload=routing_payload,
                 request_token_ids=request_token_ids,
@@ -311,7 +311,7 @@ class LLMRouter:
             return key
         return None
 
-    async def pick_replica(
+    async def _pick_replica(
         self,
         handle: DeploymentHandle,
         routing_payload: Optional[SimpleNamespace] = None,

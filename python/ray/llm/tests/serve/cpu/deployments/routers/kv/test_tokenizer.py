@@ -113,28 +113,28 @@ class TestRoute:
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
         router._tokenizer = None
-        router.pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
         request.headers = Headers({})
         await router.route(request)
-        assert router.pick_replica.call_args.kwargs["request_token_ids"] is None
+        assert router._pick_replica.call_args.kwargs["request_token_ids"] is None
 
     @pytest.mark.asyncio
     async def test_forwards_token_ids(self):
-        # A successful tokenization forwards its token ids to pick_replica.
+        # A successful tokenization forwards its token ids to _pick_replica.
         router = LLMRouter.__new__(LLMRouter)
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
-        router.pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
         request.headers = Headers({})
         await router.route(request)
-        assert router.pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
+        assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("pushed_token_key", ["trusted-key", None])
@@ -143,7 +143,7 @@ class TestRoute:
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
-        router.pick_replica = AsyncMock(
+        router._pick_replica = AsyncMock(
             return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
         )
         router.push_prompt_tokens = MagicMock(return_value=pushed_token_key)
@@ -169,7 +169,7 @@ class TestRoute:
         router._handle = MagicMock()
         router._tokenizer = MagicMock()
         router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
-        router.pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
+        router._pick_replica = AsyncMock(return_value=("h", 1, "rid", None))
 
         request = MagicMock()
         # Truncated prefix: not valid JSON, so it can't be parsed or tokenized.
@@ -178,7 +178,7 @@ class TestRoute:
         await router.route(request)
 
         router._tokenizer.tokenize.assert_not_called()
-        assert router.pick_replica.call_args.kwargs["request_token_ids"] is None
+        assert router._pick_replica.call_args.kwargs["request_token_ids"] is None
 
     @pytest.mark.asyncio
     async def test_tokenize_error_becomes_http_error(self):
@@ -192,7 +192,7 @@ class TestRoute:
                 "bad model", status_code=404, type="NotFoundError"
             )
         )
-        router.pick_replica = AsyncMock()
+        router._pick_replica = AsyncMock()
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
@@ -201,7 +201,7 @@ class TestRoute:
             await router.route(request)
         assert exc_info.value.status_code == 404
         assert exc_info.value.detail == "bad model"
-        router.pick_replica.assert_not_called()
+        router._pick_replica.assert_not_called()
 
 
 def _build_llm_app(request_router_class, runtime_env=None):

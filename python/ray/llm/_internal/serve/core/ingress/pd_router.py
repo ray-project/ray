@@ -77,7 +77,7 @@ class LLMPDRouter(LLMRouter):
         self, routing_payload: SimpleNamespace, token_ids: List[int], request_id: str
     ) -> IngressRoutingResponse:
         """Select D and stage tokens under the shared routing-attempt ID."""
-        host, port, replica_id, token_endpoint = await self.pick_replica(
+        host, port, replica_id, token_endpoint = await self._pick_replica(
             self.decode_server,
             routing_payload,
             token_ids,
