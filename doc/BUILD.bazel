@@ -698,7 +698,7 @@ doctest(
             "source/rllib/**/*.rst",
         ],
         exclude = [
-            "source/rllib/getting-started.rst",
+            "source/rllib/getting-started.md",
         ],
     ),
     tags = ["team:rllib"],
