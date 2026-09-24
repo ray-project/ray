@@ -1,7 +1,7 @@
 import glob
 import logging
 import os
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
@@ -9,9 +9,7 @@ from ray._private.ray_constants import env_bool
 logger = logging.getLogger(__name__)
 
 SUPA_VISIBLE_DEVICES_ENV_VAR = "SUPA_VISIBLE_DEVICES"
-NOSET_SUPA_VISIBLE_DEVICES_ENV_VAR = (
-    "RAY_EXPERIMENTAL_NOSET_SUPA_VISIBLE_DEVICES"
-)
+NOSET_SUPA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_SUPA_VISIBLE_DEVICES"
 
 
 class SupaGPUAcceleratorManager(AcceleratorManager):
@@ -40,7 +38,11 @@ class SupaGPUAcceleratorManager(AcceleratorManager):
         if supa_visible_devices == "NoDevFiles":
             return []
 
-        return list(supa_visible_devices.split(","))
+        return [
+            device.strip()
+            for device in supa_visible_devices.split(",")
+            if device.strip()
+        ]
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
@@ -54,14 +56,18 @@ class SupaGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
-        """Get Biren card model via torch_supa."""
+        """Get Biren card model via torch.supa."""
         try:
             import torch
 
             if hasattr(torch, "supa") and torch.supa.is_available():
                 return torch.supa.get_device_name(0)
-        except Exception:
-            logger.exception("Failed to detect Biren accelerator type.")
+        except Exception as e:
+            logger.debug("Failed to detect Biren accelerator type: %s", e)
+        return None
+
+    @staticmethod
+    def get_current_node_additional_resources() -> Optional[Dict[str, float]]:
         return None
 
     @staticmethod

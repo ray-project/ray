@@ -31,11 +31,10 @@ def test_autodetect_num_supa_without_devices(mock_glob):
 def test_supa_accelerator_manager_api():
     """Resource name, env var, and fractional-quantity contract."""
     assert Accelerator.get_resource_name() == "GPU"
-    assert (
-        Accelerator.get_visible_accelerator_ids_env_var() == "SUPA_VISIBLE_DEVICES"
-    )
+    assert Accelerator.get_visible_accelerator_ids_env_var() == "SUPA_VISIBLE_DEVICES"
     assert Accelerator.validate_resource_request_quantity(0.5) == (True, None)
     assert Accelerator.validate_resource_request_quantity(1) == (True, None)
+    assert Accelerator.get_current_node_additional_resources() is None
 
 
 def test_get_current_node_accelerator_type_no_torch(monkeypatch):
@@ -48,6 +47,9 @@ def test_get_current_node_accelerator_type_no_torch(monkeypatch):
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
     """Parse SUPA_VISIBLE_DEVICES: None / [] / list semantics."""
     monkeypatch.setenv("SUPA_VISIBLE_DEVICES", "0,1,2")
+    assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
+
+    monkeypatch.setenv("SUPA_VISIBLE_DEVICES", "0, 1, 2 ")
     assert Accelerator.get_current_process_visible_accelerator_ids() == ["0", "1", "2"]
 
     monkeypatch.delenv("SUPA_VISIBLE_DEVICES")
@@ -92,11 +94,14 @@ def test_visible_supa_type(monkeypatch, shutdown_only):
         Accelerator, "get_current_node_accelerator_type", return_value="BR104"
     ):
         from ray._private.accelerators import get_accelerator_manager_for_resource
+
         if hasattr(
             get_accelerator_manager_for_resource,
             "_resource_name_to_accelerator_manager",
         ):
-            del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            del (
+                get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            )
         manager = get_accelerator_manager_for_resource("GPU")
         assert manager is Accelerator
         assert manager.get_current_node_accelerator_type() == "BR104"
@@ -106,15 +111,16 @@ def test_visible_supa_type(monkeypatch, shutdown_only):
 def test_visible_supa_ids(monkeypatch, shutdown_only):
     """SUPA_VISIBLE_DEVICES limits available_resources['GPU']."""
     monkeypatch.setenv("SUPA_VISIBLE_DEVICES", "0,1,2")
-    with patch.object(
-        Accelerator, "get_current_node_num_accelerators", return_value=4
-    ):
+    with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=4):
         from ray._private.accelerators import get_accelerator_manager_for_resource
+
         if hasattr(
             get_accelerator_manager_for_resource,
             "_resource_name_to_accelerator_manager",
         ):
-            del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            del (
+                get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            )
 
         ray.init()
         assert ray.available_resources()["GPU"] == 3
@@ -124,15 +130,16 @@ def test_visible_supa_ids(monkeypatch, shutdown_only):
 def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
     """Auto-detected count > env-var-visible count: ray uses the smaller one."""
     monkeypatch.setenv("SUPA_VISIBLE_DEVICES", "0,1,2")
-    with patch.object(
-        Accelerator, "get_current_node_num_accelerators", return_value=8
-    ):
+    with patch.object(Accelerator, "get_current_node_num_accelerators", return_value=8):
         from ray._private.accelerators import get_accelerator_manager_for_resource
+
         if hasattr(
             get_accelerator_manager_for_resource,
             "_resource_name_to_accelerator_manager",
         ):
-            del get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            del (
+                get_accelerator_manager_for_resource._resource_name_to_accelerator_manager
+            )
 
         ray.init()
         assert ray.available_resources()["GPU"] == 3
