@@ -30,6 +30,7 @@
 ###############
 
 - name: "read_parquet_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     byod:
@@ -52,9 +53,10 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
-      --iter-bundles
+      --iter-bundles --sf 10
 
 - name: "read_large_parquet_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     byod:
@@ -82,9 +84,10 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
-      --iter-bundles --memory 3650722201
+      --iter-bundles --memory 3650722201 --sf 10
 
 - name: "read_images_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -94,9 +97,10 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles --sf 10
 
 - name: read_tfrecords
+  group: data-reads
   python: "3.10"
   cluster:
     byod:
@@ -118,9 +122,10 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
-      --iter-bundles
+      --iter-bundles --sf 10
 
 - name: "read_from_uris_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
@@ -128,7 +133,7 @@
 
   run:
     timeout: 5400
-    script: python read_from_uris_benchmark.py
+    script: python read_from_uris_benchmark.py --sf 10
 
 ###############
 # Writing tests
