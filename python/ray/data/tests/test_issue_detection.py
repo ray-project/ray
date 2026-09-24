@@ -229,6 +229,7 @@ def test_high_memory_detection(
     map_operator._metrics = MagicMock()
     map_operator._metrics.max_uss_bytes.num_samples = 1
     map_operator._metrics.max_uss_bytes.mean = actual_memory
+    map_operator._metrics.max_uss_bytes.max = actual_memory
     topology = {input_data_buffer: MagicMock(), map_operator: MagicMock()}
 
     operators = list(topology.keys())

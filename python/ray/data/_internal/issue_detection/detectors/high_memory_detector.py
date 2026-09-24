@@ -21,8 +21,9 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 HIGH_MEMORY_PERIODIC_WARNING = """
-Operator '{op_name}' uses {memory_per_task} of memory per worker on average, but Ray
-only requests {initial_memory_request} per worker at the start of the pipeline.
+Operator '{op_name}' uses {memory_per_task} of memory per worker on average (up to
+{max_memory}), but Ray only requests {initial_memory_request} per worker at the start
+of the pipeline.
 
 To avoid out-of-memory errors, consider setting `memory={recommended_memory_bytes}`
 ({recommended_memory}) in the appropriate function or method call. (This might be
@@ -100,10 +101,11 @@ class HighMemoryIssueDetector(IssueDetector):
                 max_uss_bytes.mean > (self._initial_memory_requests[op] or 0)
                 and max_uss_bytes.mean >= safe_memory_per_task
             ):
-                recommended_memory = _get_recommended_memory(max_uss_bytes.mean)
+                recommended_memory = _get_recommended_memory(max_uss_bytes.max)
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
                     memory_per_task=memory_string(max_uss_bytes.mean),
+                    max_memory=memory_string(max_uss_bytes.max),
                     initial_memory_request=memory_string(
                         self._initial_memory_requests[op] or 0
                     ),
