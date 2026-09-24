@@ -875,6 +875,7 @@ class ReplicaConfig:
         allowed_ray_actor_options = {
             # Resource options
             "accelerator_type",
+            "gpu_memory",
             "memory",
             "num_cpus",
             "num_gpus",
@@ -965,6 +966,12 @@ class ReplicaConfig:
                 "requirements for the actor must be a subset of the first "
                 "bundle."
             )
+
+            if self.ray_actor_options.get("gpu_memory"):
+                raise ValueError(
+                    "`gpu_memory` in `ray_actor_options` isn't supported with "
+                    "`placement_group_bundles`. Use `num_gpus` instead."
+                )
 
             first_bundle = self.placement_group_bundles[0]
 

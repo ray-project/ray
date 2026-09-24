@@ -117,7 +117,8 @@ def deploy_args_to_deployment_info(
         ray_actor_options = {
             k: v
             for k, v in replica_config.ray_actor_options.items()
-            if k not in {"num_gpus", "memory", "accelerator_type", "resources"}
+            if k
+            not in {"num_gpus", "gpu_memory", "memory", "accelerator_type", "resources"}
         }
         ray_actor_options["num_cpus"] = 0
         replica_config.update(
