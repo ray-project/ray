@@ -277,7 +277,7 @@ class SubscriberState {
         clock_(clock),
         connection_timeout_ms_(connection_timeout_ms),
         publish_batch_size_(publish_batch_size),
-        last_connection_update_time_ms_(clock_.SteadyNowMillis()),
+        last_activity_time_ms_(clock_.SteadyNowMillis()),
         publisher_id_binary_(publisher_id.Binary()) {}
 
   ~SubscriberState() {
@@ -362,6 +362,11 @@ class SubscriberState {
   bool IsActive() const;
 
   /**
+   * @brief Record a subscriber request or long-poll reply as activity.
+   */
+  void RefreshActivity() { last_activity_time_ms_ = clock_.SteadyNowMillis(); }
+
+  /**
    * @brief Returns the ID of this subscriber.
    *
    * @return Reference to the subscriber's unique ID.
@@ -386,8 +391,8 @@ class SubscriberState {
   uint64_t connection_timeout_ms_;
   /// The maximum number of objects to publish for each publish calls.
   const int64_t publish_batch_size_;
-  /// The last time long polling was connected in milliseconds.
-  double last_connection_update_time_ms_;
+  /// The last subscriber request or long-poll reply time in milliseconds.
+  double last_activity_time_ms_;
   std::string publisher_id_binary_;
 };
 
@@ -501,6 +506,7 @@ class Publisher : public PublisherInterface {
   FRIEND_TEST(PublisherTest, TestBatch);
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionExisted);
   FRIEND_TEST(PublisherTest, TestNodeFailureWhenConnectionDoesntExist);
+  FRIEND_TEST(PublisherTest, TestRegistrationSurvivesCleanupBeforeLongPoll);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscription);
   FRIEND_TEST(PublisherTest, TestUnregisterSubscriber);
   FRIEND_TEST(PublisherTest, TestRegistrationIdempotency);
