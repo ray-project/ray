@@ -1103,7 +1103,7 @@ ds.write_bigquery(
 
 ### Read from MongoDB
 
-To read data from MongoDB, call {func}`~ray.data.read_mongo` and specify the source URI, database, and collection. You also need to specify a pipeline to run against the collection.
+To read data from MongoDB, call {func}`~ray.data.read_mongo` and specify the source URI, database, and collection. You can also pass an [aggregation pipeline](https://www.mongodb.com/docs/manual/core/aggregation-pipeline/) to run against the collection. Without one, Ray Data reads the entire collection.
 
 ```{testcode}
 :skipif: True
