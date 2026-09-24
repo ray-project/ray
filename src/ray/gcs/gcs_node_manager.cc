@@ -628,23 +628,32 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   return death_info;
 }
 
-void GcsNodeManager::CachePassiveLocalNode(const rpc::GcsNodeInfo &node_info) {
+bool GcsNodeManager::TryHandlePassiveHeadRegistration(const rpc::GcsNodeInfo &node_info) {
   RAY_CHECK(node_info.is_head_node())
-      << "CachePassiveLocalNode must only cache the local head node.";
+      << "TryHandlePassiveHeadRegistration must only be given the local head node.";
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   absl::MutexLock lock(&mutex_);
-  // Check under mutex_ so the leader check and the cache write are a single critical
-  // section.
-  if (is_leader_fn_()) {
-    return;
-  }
+  // If the node is already known to be alive or dead, then it has already been
+  // registered and we don't need to cache it.
+  // Return true to indicate that the node registrition has been handled.
   if (alive_nodes_.contains(node_id) || dead_nodes_.contains(node_id)) {
-    return;
+    return true;
+  }
+  // If the GCS server is the leader:
+  // 1. If the local head node is already cached, then it will be registered in promotion
+  // process once it is promoted to leader.
+  // 2. If the local head node is not cached, then it should return false to indicate that
+  // the node registration has not been handled and the caller should register it in GCS
+  // table.
+  if (is_leader_fn_()) {
+    return passive_local_node_.has_value() &&
+           passive_local_node_->node_id() == node_info.node_id();
   }
   RAY_LOG(INFO) << "GCS server is in passive mode. Caching local head node "
                    "registration in-memory. node_id: "
                 << node_id;
-  passive_local_node_ = std::make_shared<rpc::GcsNodeInfo>(node_info);
+  passive_local_node_ = node_info;
+  return true;
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
@@ -652,14 +661,17 @@ void GcsNodeManager::AddNode(std::shared_ptr<const rpc::GcsNodeInfo> node) {
   AddNodeToCache(node);
 }
 
-void GcsNodeManager::AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node) {
+void GcsNodeManager::AddNodeToCache(std::shared_ptr<const rpc::GcsNodeInfo> node,
+                                    bool notify_listeners) {
   auto node_id = NodeID::FromBinary(node->node_id());
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
     alive_nodes_.emplace(node_id, node);
-    // Notify all listeners by posting back on their io_context
-    for (auto &listener : node_added_listeners_) {
-      listener.Post("NodeManager.AddNodeCallback", node);
+    if (notify_listeners) {
+      // Notify all listeners by posting back on their io_context
+      for (auto &listener : node_added_listeners_) {
+        listener.Post("NodeManager.AddNodeCallback", node);
+      }
     }
   }
 }
@@ -826,7 +838,10 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::MutexLock lock(&mutex_);
   for (const auto &[node_id, node_info] : gcs_init_data.Nodes()) {
     if (node_info.state() == rpc::GcsNodeInfo::ALIVE) {
-      AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info));
+      // Restoring the cache is not a node-added event: the caller hydrates the
+      // downstream managers itself. See GcsServer::HydrateManagers().
+      AddNodeToCache(std::make_shared<rpc::GcsNodeInfo>(node_info),
+                     /*notify_listeners=*/false);
 
       // Ask the raylet to do initialization in case of GCS restart.
       // The protocol is correct because when a new node joined, Raylet will do:
@@ -925,6 +940,34 @@ void GcsNodeManager::UpdateAliveNode(
   // variables
   alive_nodes_[node_id] =
       std::make_shared<const rpc::GcsNodeInfo>(std::move(new_node_info));
+}
+
+void GcsNodeManager::PromoteNodeManager() {
+  auto local_node = GetPassiveLocalNode();
+  if (!local_node.has_value()) {
+    return;
+  }
+
+  const NodeID node_id = NodeID::FromBinary(local_node->node_id());
+  RAY_LOG(INFO).WithField(node_id)
+      << "GCS promoted to leader. Registering the head node cached while passive.";
+  rpc::RegisterNodeRequest request;
+  *request.mutable_node_info() = *std::move(local_node);
+
+  auto reply = std::make_shared<rpc::RegisterNodeReply>();
+  // Runs from HandleRegisterNode's completion handler, which still holds mutex_ and has
+  // already added the node to alive_nodes_: releasing the cache only there is what keeps
+  // the head visible from one of the two at every point of the handover.
+  auto on_registered = [this, reply, node_id](
+                           const Status &, std::function<void()>, std::function<void()>) {
+    // mutex_ is held by HandleRegisterNode's on_done completion handler when this
+    // callback is invoked; assert here for Clang thread safety analysis and runtime
+    // verification.
+    mutex_.AssertHeld();
+    passive_local_node_.reset();
+    RAY_LOG(INFO).WithField(node_id) << "Registered the local head node on promotion.";
+  };
+  HandleRegisterNode(std::move(request), reply.get(), std::move(on_registered));
 }
 
 }  // namespace gcs

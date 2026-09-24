@@ -339,13 +339,20 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
-  // Mock storage for passive node caching.
+  // Mock storage for passive node caching. Returns whether the node was taken
+  // ownership of, mirroring GcsNodeManager::TryHandlePassiveHeadRegistration().
   std::shared_ptr<rpc::GcsNodeInfo> cached_passive_node;
-  auto cache_local_node_fn = [&cached_passive_node](const rpc::GcsNodeInfo &node_info) {
+  bool cache_accepts = true;
+  auto try_handle_passive_head_fn = [&cached_passive_node,
+                                     &cache_accepts](const rpc::GcsNodeInfo &node_info) {
+    if (!cache_accepts) {
+      return false;
+    }
     cached_passive_node = std::make_shared<rpc::GcsNodeInfo>(node_info);
+    return true;
   };
 
-  LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn, cache_local_node_fn);
+  LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn, try_handle_passive_head_fn);
 
   // 1. Passive mode: unallowed worker node registration & unregister must be BLOCKED.
   {
@@ -426,7 +433,31 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
     underlying.called_ = false;
   }
 
-  // 3. Leader mode: all RPCs work.
+  // 3. Promotion landed between the gate check above and the cache write, and the
+  // promotion path is not registering this head. Acknowledging it would drop it -- the
+  // raylet reads OK as registered and never retries -- so it must reach the real
+  // handler instead.
+  {
+    cache_accepts = false;
+    rpc::RegisterNodeRequest request;
+    request.mutable_node_info()->set_is_head_node(true);
+    rpc::RegisterNodeReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called](Status status,
+                                                  std::function<void()> f1,
+                                                  std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      callback_called = true;
+    };
+    proxy.HandleRegisterNode(request, &reply, send_reply_callback);
+    EXPECT_TRUE(callback_called);
+    EXPECT_TRUE(underlying.called_);
+    EXPECT_EQ(cached_passive_node, nullptr);
+    underlying.called_ = false;
+    cache_accepts = true;
+  }
+
+  // 4. Leader mode: all RPCs work.
   {
     is_leader = true;
     rpc::RegisterNodeRequest request;

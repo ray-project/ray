@@ -23,6 +23,34 @@ def pytest_runtest_setup(item):
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
 
 
+@pytest.fixture
+def fake_mkfs_erofs(tmp_path, monkeypatch):
+    """A stand-in ``mkfs.erofs`` first on PATH, for tests that need no gVisor.
+
+    It advertises ``--tar`` and copies the flattened tar it is handed to the
+    image path, so a cached ``rootfs.erofs`` is a tar the test can open and
+    inspect, with the owners the real build would store. Its argv lands in
+    ``mkfs.args`` next to the script. Yields the directory holding both.
+    """
+    from ray.experimental.sandbox._internal.image_utils import mkfs_erofs_path
+
+    bin_dir = tmp_path / "fake-mkfs-bin"
+    bin_dir.mkdir()
+    script = bin_dir / "mkfs.erofs"
+    script.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
+        "# args: --tar=f -b4096 -E^inline_data OUT TAR\n"
+        'cp "$5" "$4"\n'
+    )
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    mkfs_erofs_path.cache_clear()
+    yield bin_dir
+    mkfs_erofs_path.cache_clear()
+
+
 def _install_on_path(name: str, url: str) -> None:
     """Fetch a static binary into a temp dir prepended to PATH, or skip."""
     if shutil.which(name):

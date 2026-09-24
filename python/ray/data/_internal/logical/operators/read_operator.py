@@ -374,13 +374,11 @@ class ReadFiles(
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        from ray.data._internal.datasource.parquet_datasource import (
-            _split_predicate_by_columns,
-            combine_predicates,
-        )
         from ray.data._internal.datasource_v2.logical_optimizers import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
+            _split_predicate_by_columns,
+            combine_predicates,
         )
         from ray.data._internal.logical.operators.map_operator import Filter
 
@@ -453,7 +451,7 @@ class ListFiles(LogicalOperator, SourceOperator):
 
     paths: List[str]
     file_indexer: "FileIndexer"
-    filesystem: "FileSystem"
+    filesystem: Optional["FileSystem"]
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]

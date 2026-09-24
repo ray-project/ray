@@ -1,7 +1,16 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Callable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import numpy as np
 from pyarrow.fs import FileSystem
@@ -26,6 +35,12 @@ logger = logging.getLogger(__name__)
 
 
 class FileIndexer(ABC):
+    """Turns root paths into ``FileManifest`` blocks inside ``ListFiles`` tasks.
+
+    Chosen by ``DataSourceV2._get_file_indexer``. How a file is split into
+    manifest rows is the implementation's business, not this interface's.
+    """
+
     def as_whole_file_indexer(self) -> Optional["FileIndexer"]:
         """An equivalent indexer that emits each file exactly once, or ``None``.
 
@@ -45,7 +60,7 @@ class FileIndexer(ABC):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -53,12 +68,15 @@ class FileIndexer(ABC):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
         Args:
             paths: A column of paths pointing to files or directories.
-            filesystem: A PyArrow filesystem object.
+            filesystem: PyArrow filesystem to list through, or ``None`` for an
+                indexer that does its own IO (the framework forwards
+                ``DataSourceV2.filesystem`` unchanged).
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
             predicate: Pushed-down row filter. Indexers that read file
@@ -69,10 +87,19 @@ class FileIndexer(ABC):
             projected_columns: Pushed-down column projection, for metadata-aware
                 sizing. Others ignore it.
             shuffle_config: When set, listed files are shuffled after path
-                discovery and before metadata fetch (footer reads, chunking).
+                discovery and before any metadata fetch (footer reads).
                 :meth:`list_file_infos` is never shuffled.
             execution_idx: Execution index used with ``shuffle_config`` to
                 derive a per-execution seed.
+            excluded_read_unit_ids: Ids of read units (see ``ReadUnit.id``) a
+                checkpoint already finished; they must not be listed. This is
+                all or nothing: only pass completely checkpointed units. A
+                partially finished unit is skipped whole if passed. A file
+                path names the whole file and every indexer honors it. An
+                indexer that lists a file in parts also honors the ids its
+                reader reports for those parts (the footer-based Parquet
+                indexer: ``"<path>#rg<N>"`` per row group). Ids that name
+                nothing in the listing are ignored.
 
         Returns:
             An iterator of `FileManifest` objects, each of which contains a file path
@@ -85,7 +112,7 @@ class FileIndexer(ABC):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable["FileInfo"]:
@@ -222,7 +249,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -230,12 +257,14 @@ class NonSamplingFileIndexer(FileIndexer):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         # This per-file listing path ignores predicate/limit/projected_columns;
         # they're consumed by metadata-aware indexers (e.g. the footer indexer).
         # ``list_file_infos`` already skips zero-size files and applies pruners,
-        # so the manifest builder only has to chunk. Shuffle, when requested,
-        # happens after path discovery and before chunking.
+        # so this method only batches them into manifests, one row per file.
+        # Shuffle, when requested, happens after path discovery and before the
+        # manifests are built.
         file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,
@@ -243,6 +272,7 @@ class NonSamplingFileIndexer(FileIndexer):
             preserve_order=preserve_order,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
         )
         yield from self._process_file_infos_to_manifests(file_infos)
 
@@ -250,11 +280,12 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileInfo]:
         """Path discovery, then optional file shuffle, before metadata fetch.
 
@@ -268,6 +299,12 @@ class NonSamplingFileIndexer(FileIndexer):
             pruners=pruners,
             preserve_order=preserve_order,
         )
+        if excluded_read_unit_ids:
+            # A whole file a checkpoint finished. Dropped here, before any
+            # metadata fetch, so a metadata-aware subclass never reads its footer.
+            file_infos = (
+                fi for fi in file_infos if fi.path not in excluded_read_unit_ids
+            )
         if shuffle_config is None:
             yield from file_infos
             return
@@ -405,7 +442,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
     ) -> Iterable[FileInfo]:
@@ -420,6 +457,13 @@ class NonSamplingFileIndexer(FileIndexer):
         partition filters) are applied here, so both listing paths share one
         filtering point.
         """
+        if filesystem is None:
+            raise ValueError(
+                f"{type(self).__name__} lists files through a PyArrow filesystem, "
+                "but the datasource returned `filesystem=None`. Resolve one in the "
+                "datasource's `__init__` (see `_resolve_paths_and_filesystem`) or "
+                "return an indexer that does its own IO."
+            )
         pruners = pruners or []
         file_info_iterator = self._get_file_info_iterator(
             paths, filesystem, preserve_order
