@@ -9,6 +9,7 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import fs_utils
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -236,7 +237,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
+            fs_utils.rmtree(root_dir, ignore_errors=True)
             # The sandbox never registered, so delete_sandbox will not run
             # for it: release the image here to keep it evictable.
             self._image_manager.release_image(config.image, sandbox_id)
@@ -285,7 +286,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            shutil.rmtree(root_dir, ignore_errors=True)
+            fs_utils.rmtree(root_dir, ignore_errors=True)
             # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
 

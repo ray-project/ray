@@ -831,5 +831,25 @@ def test_dir_size_counts_hard_links_once(tmp_path):
     assert image_utils._dir_size_bytes(str(tree)) == 1010
 
 
+def test_pull_removes_a_build_tree_with_read_only_dirs(tmp_path):
+    """A 0555 directory in the image doesn't leave the build tree behind in
+    the cache."""
+    local_tar = tmp_path / "readonly-dirs.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("usr/bin")
+        ti.type = tarfile.DIRTYPE
+        ti.mode = 0o555
+        tar.addfile(ti)
+        data = b"#!/bin/sh\n"
+        ti = tarfile.TarInfo("usr/bin/tool")
+        ti.size = len(data)
+        ti.mode = 0o755
+        tar.addfile(ti, io.BytesIO(data))
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(tmp_path / "images")
+    )
+    assert not os.path.exists(os.path.join(image_dir, "rootfs"))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
