@@ -449,8 +449,16 @@ class TorchMetaLearner(TorchLearner):
     def _make_functional_call(
         self, params: Dict[ModuleID, NamedParamDict], batch: MultiAgentBatch
     ) -> Dict[ModuleID, NamedParamDict]:
-        """Make a functional forward call to all modules in the `MultiRLModule`."""
-        return self._module.foreach_module(
-            lambda mid, m: torch.func.functional_call(m, params[mid], batch[mid]),
-            return_dict=True,
-        )
+        """Makes a functional forward call for each module that has data in `batch`.
+
+        A module that is not in `batch` -- because it had no rows or is not to be
+        trained, see `_create_iterator_if_necessary` -- takes no part in this update.
+        """
+        return {
+            module_id: torch.func.functional_call(
+                self._module[module_id].unwrapped(),
+                params[module_id],
+                batch[module_id],
+            )
+            for module_id in batch
+        }

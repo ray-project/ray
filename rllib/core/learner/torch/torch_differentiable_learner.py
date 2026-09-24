@@ -164,31 +164,39 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         # TODO (simon): Add grad scalers later.
         total_loss = sum(loss_per_module.values())
 
-        # Use `torch`'s `autograd` to compute gradients and create a graph, so we can
-        # compute higher order gradients. Allow specified inputs not being used in outputs
-        # as probably not all modules/parameters of a `MultiRLModule` are used in the loss.
-        # Note, parameters are named parameters as this is needed by the
-        # `torch.func.functional_call`
-        # TODO (simon): Make sure this works for `MultiRLModule`s. This here can have
-        # all parameter tensors in a list. But the `functional_call` above needs named
-        # parameters for each module. Implement this via `foreach_module`.
-        grads = torch.autograd.grad(
-            total_loss,
-            sum((list(param.values()) for mid, param in params.items()), []),
-            create_graph=True,
-            retain_graph=True,
-            allow_unused=True,
-        )
-
-        # Map all gradients to their keys.
-        named_grads = {
-            module_id: {
-                name: grad for (name, _), grad in zip(module_params.items(), grads)
-            }
+        # Only the modules that contributed to the loss have gradients. A module that
+        # is not in `loss_per_module` had no data in this minibatch (see
+        # `_make_functional_call`) and is left out here, so that `apply_gradients`
+        # passes its parameters through unchanged.
+        params_in_loss = {
+            module_id: module_params
             for module_id, module_params in params.items()
+            if module_id in loss_per_module
         }
-
-        return named_grads
+        # Use `torch`'s `autograd` to compute gradients and create a graph, so we can
+        # compute higher order gradients. Allow specified inputs not being used in
+        # outputs, as not every parameter of a module is necessarily used in its
+        # loss. Note, parameters are named parameters as this is needed by the
+        # `torch.func.functional_call`.
+        grads = iter(
+            torch.autograd.grad(
+                total_loss,
+                [
+                    param
+                    for module_params in params_in_loss.values()
+                    for param in module_params.values()
+                ],
+                create_graph=True,
+                retain_graph=True,
+                allow_unused=True,
+            )
+        )
+        # Map the flat gradients back to their modules and names, in the order the
+        # parameters were passed in above.
+        return {
+            module_id: {name: next(grads) for name in module_params}
+            for module_id, module_params in params_in_loss.items()
+        }
 
     @override(DifferentiableLearner)
     def apply_gradients(
@@ -215,12 +223,19 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         # Note, because this is a functional update we cannot apply in-place
         # modifications of parameters.
         updated_params = {}
-        for module_id, module_grads in gradients.items():
-            if module_id not in policies_to_update:
-                updated_params[module_id] = params[module_id]
+        for module_id, module_params in params.items():
+            # A module without gradients took no part in this update (it had no data
+            # in the minibatch, see `compute_gradients`), like one that is not to be
+            # updated: its parameters pass through unchanged.
+            if module_id not in gradients or module_id not in policies_to_update:
+                updated_params[module_id] = module_params
                 continue
             updated_params[module_id] = {}
-            for name, grad in module_grads.items():
+            for name, grad in gradients[module_id].items():
+                if grad is None:
+                    # This parameter was not used in the loss.
+                    updated_params[module_id][name] = module_params[name]
+                    continue
                 # If updates should not be skipped turn `nan` and `inf` gradients to zero.
                 if (
                     not self.config.torch_skip_nan_gradients
@@ -257,11 +272,20 @@ class TorchDifferentiableLearner(DifferentiableLearner):
     def _make_functional_call(
         self, params: Dict[ModuleID, NamedParamDict], batch: MultiAgentBatch
     ) -> Dict[ModuleID, NamedParamDict]:
-        """Makes a functional call for each module in the `MultiRLModule`."""
-        return self._module.foreach_module(
-            lambda mid, m: torch.func.functional_call(m, params[mid], batch[mid]),
-            return_dict=True,
-        )
+        """Makes a functional call for each module that has data in `batch`.
+
+        A module that is not in `batch` -- because it had no rows or is not to be
+        trained, see `_create_iterator_if_necessary` -- takes no part in this update
+        and its parameters pass through unchanged.
+        """
+        return {
+            module_id: torch.func.functional_call(
+                self._module[module_id].unwrapped(),
+                params[module_id],
+                batch[module_id],
+            )
+            for module_id in batch
+        }
 
     @override(DifferentiableLearner)
     def _get_tensor_variable(
