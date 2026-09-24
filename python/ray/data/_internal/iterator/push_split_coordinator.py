@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.data.context import DataContext
@@ -251,7 +251,7 @@ class PushSplitCoordinator:
             stop_event.set()
         self._finish_split(epoch_id, split_idx)
 
-    def debug_state(self) -> Dict[str, Dict[int, int]]:
+    def debug_state(self) -> Dict[str, Dict[int, Any]]:
         """Snapshot of per-split flow-control state, for debugging/tests."""
         flows = self._flows
         return {
@@ -477,6 +477,7 @@ class PushSplitCoordinator:
     ) -> None:
         push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
         output_iterator = self._output_iterator
+        assert output_iterator is not None
         flow = self._flows[split_idx]
         # Deliveries carry a sequence number; the receiver reorders them.
         seq = 0

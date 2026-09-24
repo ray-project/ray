@@ -45,7 +45,18 @@ import logging
 import queue
 import threading
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    cast,
+)
 
 import ray
 from ray.data._internal.block_batching.interfaces import ResolvedBlock
@@ -216,8 +227,10 @@ class _MaterializedBatchIterator(BatchIterator):
     """BatchIterator over already-materialized blocks: skips the ref-level
     prefetch/resolve stages, inherits everything else unchanged."""
 
-    def _pipeline(self, resolved_blocks: Iterator[ResolvedBlock]):
-        batch_iter = self._blocks_to_batches(resolved_blocks)
+    # ``ref_bundles`` is an Iterator[ResolvedBlock] here (see
+    # PushBasedDataIterator._to_ref_bundle_iterator).
+    def _pipeline(self, ref_bundles: Iterator[Any]):
+        batch_iter = self._blocks_to_batches(ref_bundles)
         batch_iter = self._format_batches(batch_iter)
         if self._preserve_order:
             batch_iter = self._restore_original_batch_order(batch_iter)
@@ -244,10 +257,12 @@ class PushBasedDataIterator(DataIterator):
         ``split_dataset`` must already be wrapped in a ``StreamingSplit``
         logical op (see ``_create_split_dataset``).
         """
+        # pyrefly: ignore[missing-attribute]  # @ray.remote hides ActorClass.options
         coord_actor = PushSplitCoordinator.options(
             # n barrier-blocked start_epoch calls + headroom for other RPCs.
             max_concurrency=n + 2,
             label_selector={
+                # pyrefly: ignore[missing-attribute]  # constant lives in the Cython ext
                 ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
             },
         ).remote(split_dataset, n)
@@ -274,7 +289,7 @@ class PushBasedDataIterator(DataIterator):
     def _receiver_key(self) -> str:
         return f"{self._coord_actor._actor_id.hex()}:{self._output_split_idx}"
 
-    def _to_ref_bundle_iterator(
+    def _to_ref_bundle_iterator(  # pyrefly: ignore[bad-override]
         self,
     ) -> Tuple[Iterator[ResolvedBlock], Optional[DatasetStats], None]:
         # Deviates from the base contract on purpose: yields ResolvedBlock
@@ -306,8 +321,9 @@ class PushBasedDataIterator(DataIterator):
                     self._output_split_idx, self_handle, key=key
                 )
             )
-            epoch = ray.get(
-                self._coord_actor.start_epoch.remote(self._output_split_idx)
+            epoch = cast(
+                int,
+                ray.get(self._coord_actor.start_epoch.remote(self._output_split_idx)),
             )
             self._active_epoch = epoch
             receiver.begin_epoch(epoch)
@@ -367,7 +383,12 @@ class PushBasedDataIterator(DataIterator):
 
         return gen_blocks(), self._iter_stats, None
 
-    def _create_batch_iterator(self, ref_bundles_iter, **kwargs):
+    def _create_batch_iterator(
+        self,
+        ref_bundles_iter: Iterator[Any],
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        **kwargs,
+    ) -> BatchIterator:
         # Runs on the thread consuming batches (the block generator itself is
         # pulled from a helper thread). A default actor runs its tasks on the
         # main thread; blocking it would starve the delivery tasks and hang.
@@ -386,7 +407,9 @@ class PushBasedDataIterator(DataIterator):
         self._prefetch_batches = kwargs.get("prefetch_batches", 1)
         self._prefetch_batch_size = kwargs.get("batch_size")
         # The iterator yields ResolvedBlocks (see _to_ref_bundle_iterator).
-        return _MaterializedBatchIterator(ref_bundles_iter, **kwargs)
+        return _MaterializedBatchIterator(
+            ref_bundles_iter, prefetch_bytes_callback=prefetch_bytes_callback, **kwargs
+        )
 
     def _on_iteration_end(self, executor) -> None:
         """Notify the coordinator on any end of iteration (exhaustion, early
@@ -398,19 +421,27 @@ class PushBasedDataIterator(DataIterator):
         self._coord_actor.notify_split_finished.remote(epoch, self._output_split_idx)
 
     def stats(self) -> str:
-        stats = ray.get(self._coord_actor.stats.remote())
+        stats = cast(DatasetStats, ray.get(self._coord_actor.stats.remote()))
         summary = stats.to_summary()
         summary.iter_stats = self._iter_stats.to_summary().iter_stats
         return summary.to_string()
 
     def schema(self) -> Optional["Schema"]:
-        return ray.get(self._coord_actor.get_dataset_schema.remote())
+        return cast(
+            Optional["Schema"],
+            ray.get(self._coord_actor.get_dataset_schema.remote()),
+        )
 
     def get_context(self) -> DataContext:
-        return ray.get(self._coord_actor.get_dataset_context.remote())
+        return cast(
+            DataContext, ray.get(self._coord_actor.get_dataset_context.remote())
+        )
 
     def world_size(self) -> int:
         return self._world_size
 
-    def _get_dataset_tag(self) -> Dict[str, str]:
-        return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
+    def _get_dataset_tag(self) -> Dict[str, Optional[str]]:
+        return cast(
+            Dict[str, Optional[str]],
+            ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx)),
+        )

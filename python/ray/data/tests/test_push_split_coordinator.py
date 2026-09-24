@@ -149,8 +149,9 @@ def test_barrier_releases_when_teardown_fails(ray_start_regular_shared):
 
 def test_register_rejects_out_of_range_split(ray_start_regular_shared):
     coordinator = _make_coordinator()
+    receiver = _Receiver.remote()  # pyrefly: ignore[missing-attribute]
     with pytest.raises(ValueError, match="split_idx must be between"):
-        _get(coordinator.register.remote(2, _Receiver.remote(), key="test:2"))
+        _get(coordinator.register.remote(2, receiver, key="test:2"))
 
 
 def test_request_rows_only_updates_current_epoch(ray_start_regular_shared):

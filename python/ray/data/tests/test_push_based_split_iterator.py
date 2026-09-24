@@ -2,7 +2,7 @@
 
 import threading
 import time
-from typing import Optional
+from typing import Any, List, Optional
 
 import pytest
 
@@ -25,7 +25,7 @@ from ray.data._internal.iterator.push_split_coordinator import (
 # ---------------------------------------------------------------------------
 
 
-def _drain(q):
+def _drain(q) -> List[Any]:
     items = []
     while not q.empty():
         items.append(q.get_nowait())
@@ -102,7 +102,8 @@ def test_receiver_reset_swaps_queue():
     # A generator stuck on the old epoch's queue sees nothing new; the new
     # epoch's queue holds only the new delivery.
     assert old_queue.qsize() == 1
-    assert receiver.queue.get_nowait().block == "new"
+    item = receiver.queue.get_nowait()
+    assert isinstance(item, _BlockDelivery) and item.block == "new"
 
 
 # ---------------------------------------------------------------------------
@@ -156,6 +157,11 @@ class _Consumer(PushSplitReceiverMixin):
         return result
 
 
+def _make_consumers(iterators) -> List[Any]:
+    # pyrefly: ignore[missing-attribute]  # @ray.remote hides ActorClass.remote
+    return [_Consumer.remote(it) for it in iterators]
+
+
 def _run_epochs(consumers, kwargs_list=None, timeout_s: float = 120.0):
     kwargs_list = kwargs_list or [{}] * len(consumers)
     ray.get([c.start_epoch.remote(**kw) for c, kw in zip(consumers, kwargs_list)])
@@ -176,7 +182,7 @@ def _run_epochs(consumers, kwargs_list=None, timeout_s: float = 120.0):
 def test_push_split_equal_across_epochs(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=20)
     iterators = streaming_split_push_based(ds, 2, equal=True)
-    consumers = [_Consumer.remote(it) for it in iterators]
+    consumers = _make_consumers(iterators)
 
     for _ in range(2):
         results = _run_epochs(consumers)
@@ -186,7 +192,7 @@ def test_push_split_equal_across_epochs(ray_start_regular_shared):
 def test_push_split_early_exit_then_full_epoch(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=20)
     iterators = streaming_split_push_based(ds, 2, equal=True)
-    consumers = [_Consumer.remote(it) for it in iterators]
+    consumers = _make_consumers(iterators)
 
     results = _run_epochs(consumers, [{"max_rows": 200}, {}])
     assert results[0]["rows"] == 200
@@ -203,7 +209,7 @@ def test_push_split_error_propagation(ray_start_regular_shared):
 
     ds = ray.data.range(100).map(_boom)
     iterators = streaming_split_push_based(ds, 2)
-    consumers = [_Consumer.remote(it) for it in iterators]
+    consumers = _make_consumers(iterators)
 
     ray.get([c.start_epoch.remote(batch_size=10) for c in consumers])
     for consumer in consumers:
@@ -226,7 +232,7 @@ def test_push_split_flow_control_bounds_buffering(ray_start_regular_shared):
     block_rows = num_rows // num_blocks
     ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
     iterators = streaming_split_push_based(ds, 2, equal=True)
-    consumers = [_Consumer.remote(it) for it in iterators]
+    consumers = _make_consumers(iterators)
 
     ray.get([c.start_epoch.remote(delay_s=0.2) for c in consumers])
     coordinator = iterators[0]._coord_actor
@@ -235,7 +241,7 @@ def test_push_split_flow_control_bounds_buffering(ray_start_regular_shared):
     sampled = 0
     deadline = time.monotonic() + 120
     while sampled < 5 and time.monotonic() < deadline:
-        state = ray.get(coordinator.debug_state.remote())
+        state: Any = ray.get(coordinator.debug_state.remote())
         for split in state["rows_pushed"]:
             outstanding = state["rows_pushed"][split] - state["rows_consumed"][split]
             assert outstanding <= target_rows + block_rows, state
@@ -264,7 +270,7 @@ class _TaskThreadConsumer(PushSplitReceiverMixin):
 def test_push_split_rejects_actor_task_thread(ray_start_regular_shared):
     ds = ray.data.range(100)
     iterators = streaming_split_push_based(ds, 1)
-    consumer = _TaskThreadConsumer.remote()
+    consumer = _TaskThreadConsumer.remote()  # pyrefly: ignore[missing-attribute]
     with pytest.raises(Exception, match="background thread"):
         ray.get(consumer.iterate.remote(iterators[0]), timeout=60)
 
