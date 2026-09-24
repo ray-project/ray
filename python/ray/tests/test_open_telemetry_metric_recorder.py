@@ -10,6 +10,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
 from ray._private.metrics_agent import Gauge, Record
+from ray._private.telemetry.metric_exclusion import MetricsExclusionConfig
 from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
@@ -49,6 +50,50 @@ def test_register_gauge_metric(mock_get_meter, mock_set_meter_provider):
             frozenset({("label_key", "label_value")}): 42.0,
         }
     }
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_excluded_metrics_are_not_registered_or_cached(
+    mock_get_meter, mock_set_meter_provider
+):
+    mock_meter = MagicMock()
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder(
+        exclusion_config=MetricsExclusionConfig(
+            exclude_names=["excluded_gauge", "excluded_counter"],
+            exclude_patterns=["excluded_(sum|histogram)"],
+        )
+    )
+
+    recorder.register_gauge_metric("excluded_gauge", "gauge")
+    recorder.register_counter_metric("excluded_counter", "counter")
+    recorder.register_sum_metric("excluded_sum", "sum")
+    recorder.register_histogram_metric("excluded_histogram", "histogram", [1.0])
+    for name in (
+        "excluded_gauge",
+        "excluded_counter",
+        "excluded_sum",
+        "excluded_histogram",
+    ):
+        recorder.set_metric_value(name, {"dataset": "1"}, 1.0)
+    recorder.record_histogram_aggregated_batch(
+        "excluded_histogram",
+        [{"tags": {"dataset": "1"}, "bucket_counts": [1, 0]}],
+    )
+
+    assert recorder._registered_instruments == {}
+    assert recorder._gauge_observations_by_name == {}
+    assert recorder._counter_observations_by_name == {}
+    assert recorder._sum_observations_by_name == {}
+    mock_meter.create_observable_gauge.assert_not_called()
+    mock_meter.create_observable_counter.assert_not_called()
+    mock_meter.create_observable_up_down_counter.assert_not_called()
+    mock_meter.create_histogram.assert_not_called()
+
+    recorder.register_gauge_metric("kept_gauge", "gauge")
+    recorder.set_metric_value("kept_gauge", {"dataset": "1"}, 2.0)
+    assert _gauge_values(recorder)["kept_gauge"] == {frozenset({("dataset", "1")}): 2.0}
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.time.monotonic")
