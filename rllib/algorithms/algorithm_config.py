@@ -2365,8 +2365,9 @@ class AlgorithmConfig(_Config):
                 updates a policy has undergone on the Learner vs the EnvRunners.
                 See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
                 for more details.
-            never_skip_update: By default (False), a Learner skips an `update()` call
-                whose train batch is empty (no timesteps for any module; e.g. all
+            never_skip_update: Experimental; may change or be removed without a
+                deprecation cycle. By default (False), a Learner skips an `update()`
+                call whose train batch is empty (no timesteps for any module; e.g. all
                 sampled episodes were lost to EnvRunner or node failures), and with
                 `num_learners > 1` all Learners first agree on that via one small
                 collective per `update()`, so that they skip together and stay in

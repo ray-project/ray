@@ -44,6 +44,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     override,
@@ -1392,9 +1393,13 @@ class Learner(Checkpointable):
             )
         return batch_iter
 
+    @ExperimentalAPI
     @OverrideToImplementCustomLogic
     def _should_skip_update(self, batch: MultiAgentBatch) -> bool:
         """Returns whether this Learner wants to skip the current `update()` call.
+
+        Experimental: this hook and its contract may change or be removed without a
+        deprecation cycle.
 
         Called once per `update()` with the train batch (after modules not in
         `policies_to_train` have been removed). By default an update is skipped when
