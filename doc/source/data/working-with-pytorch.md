@@ -541,5 +541,5 @@ The following table maps PyTorch DataLoader arguments to Ray Data. The behavior 
 * - `prefetch_factor`
   - Use the `prefetch_batches` argument to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to set how many batches to prefetch. Ray Data configures the number of prefetching threads automatically based on `prefetch_batches`.
 * - `pin_memory`
-  - Pass `device` to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to get tensors that are already on the correct device. To pin host memory before the copy, also set its `pin_memory` argument, which is in alpha.
+  - Pass `device` to {meth}`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to get tensors that are already on the correct device. To pin host memory before the copy, also set its `pin_memory` argument. This argument is in alpha and applies only when the collate function returns tensors.
 ```
