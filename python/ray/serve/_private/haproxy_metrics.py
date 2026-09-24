@@ -184,14 +184,17 @@ class HAProxyMetricsCollector:
                 "did not contain a string replica_id), "
                 "'unknown_replica_id' (router returned a replica_id not "
                 "present in the current replica map), or 'router_unavailable' "
-                "(no router replicas). Applications opting into load-balanced "
-                "fallback continue serving requests after these failures."
+                "(no router replicas). Applications opting into router-failure "
+                "fallback can continue serving requests after these failures."
             ),
             tag_keys=("application", "reason"),
         )
         self.fallback_counter = metrics.Counter(
             "serve_haproxy_ingress_router_fallbacks",
-            description="Requests using backend balancing after an ingress router failure.",
+            description=(
+                "Requests routed after an ingress router failure using backend "
+                "balancing or a fallback Serve proxy."
+            ),
             tag_keys=("application", "reason"),
         )
         self.requests_counter = metrics.Counter(
@@ -350,7 +353,7 @@ class HAProxyMetricsCollector:
             self.fallback_counter.inc(tags={**tags, "reason": reason})
             if log_once(f"haproxy_ingress_router_fallback:{app_tag}:{reason}"):
                 logger.warning(
-                    "Routing fell back to load balancing: application=%s; reason=%s; "
+                    "Routing fell back after ingress router failure: application=%s; reason=%s; "
                     "router_status=%s. "
                     "Check ingress router logs and whether its selected replica "
                     "is still running and listed in HAProxy's server pool.",

@@ -1499,13 +1499,16 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
 
 
 @pytest.mark.asyncio
-async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
+@pytest.mark.parametrize("ingress_router_fallback", [False, True])
+async def test_pin_miss_falls_back_to_fallback_server(
+    haproxy_api_cleanup, ingress_router_fallback
+):
     """When the router pins a replica_id that is not in HAProxy's server map
     (the brief membership gap right after an app becomes RUNNING, where the
     router's in-process view runs ahead of HAProxy's config reload), HAProxy
     must hand the request to the fallback Serve proxy instead of returning 503.
-    The primary backend must not be load-balanced into, since that would break
-    session affinity."""
+    The request must reach the fallback server even with a healthy primary
+    replica, since balancing onto that replica would break session affinity."""
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -1550,6 +1553,7 @@ async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
                     host="127.0.0.1",
                     port=fallback_port,
                 ),
+                ingress_router_fallback=ingress_router_fallback,
             )
 
             await _start_router_haproxy(
@@ -1585,9 +1589,8 @@ async def test_pin_miss_falls_back_to_fallback_server(haproxy_api_cleanup):
                 _pin_miss_consistently_reaches_fallback, timeout=10
             )
 
-            # A pin-miss must route via the router backend, never through the
-            # plain primary backend (a silent router bypass). The router backend
-            # carries the fallback-served sessions; the plain backend stays 0.
+            # Both configurations route a pin-miss through the router backend
+            # to the head Serve proxy, even with a healthy primary replica.
             stats_csv = requests.get(
                 f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
             ).text
@@ -3022,10 +3025,10 @@ async def test_failed_spawn_retires_log_files(monkeypatch):
     "metrics_enabled,router_metrics_enabled",
     [(False, False), (True, False), (True, True)],
 )
-async def test_ingress_router_fallback_leastconn(
+async def test_ingress_router_fallback_uses_primary_backend(
     haproxy_api_cleanup, tmp_path, metrics_enabled, router_metrics_enabled
 ):
-    """Fallback avoids a replica busy with a router-selected request."""
+    """Router failures use primary replicas even when the head proxy is healthy."""
     release = threading.Event()
     router_failed = threading.Event()
     servers, threads, targets = [], [], []
@@ -3077,6 +3080,22 @@ async def test_ingress_router_fallback_leastconn(
     server, thread = _serve_fastapi_app(app, port, _healthz_ready(port))
     servers.append(server)
     threads.append(thread)
+    fallback_app = FastAPI()
+
+    @fallback_app.get("/-/healthz")
+    async def fallback_health():
+        return {}
+
+    @fallback_app.post("/predict")
+    async def fallback_predict():
+        return Response("fallback")
+
+    fallback_port = find_free_port()
+    fallback_server, fallback_thread = _serve_fastapi_app(
+        fallback_app, fallback_port, _healthz_ready(fallback_port)
+    )
+    servers.append(fallback_server)
+    threads.append(fallback_thread)
     backend = BackendConfig(
         name="llm",
         path_prefix="/",
@@ -3084,14 +3103,17 @@ async def test_ingress_router_fallback_leastconn(
         ingress_request_router_servers=[
             ServerConfig(name="router", host="127.0.0.1", port=port)
         ],
+        fallback_server=ServerConfig(
+            name="fallback", host="127.0.0.1", port=fallback_port
+        ),
         ingress_router_fallback=True,
     )
-    http_port = find_free_port()
+    http_port, stats_port = find_free_port(), find_free_port()
     try:
         api = await _start_router_haproxy(
             str(tmp_path),
             http_port,
-            find_free_port(),
+            stats_port,
             {"llm": backend},
             haproxy_api_cleanup,
             metrics_enabled=metrics_enabled,
@@ -3100,6 +3122,14 @@ async def test_ingress_router_fallback_leastconn(
         assert api.cfg.balance_algorithm == "leastconn"
         config = (tmp_path / "haproxy.cfg").read_text()
         lua = (tmp_path / "ingress_request_router.lua").read_text()
+        primary_backend = config.split("\nbackend llm\n", 1)[1].split(
+            "\nbackend llm-via-ingress-request-router\n", 1
+        )[0]
+        assert "balance random(1)" in primary_backend
+        assert (
+            "balance random(1)"
+            in config.split("\nbackend llm-via-ingress-request-router\n", 1)[1]
+        )
         assert ("log-format-sd" in config) == metrics_enabled
         assert ("fallback=%" in config) == router_metrics_enabled
         assert ("_metrics_t0" in lua) == router_metrics_enabled
@@ -3112,12 +3142,18 @@ async def test_ingress_router_fallback_leastconn(
                 assert response.status_code == 200
                 assert response.headers["x-replica-id"] == "b"
                 router_failed.set()
-                # Keep b busy throughout: repeated sequential requests must all
-                # pick a. Round-robin/random would eventually pick busy replica b.
+                # Router failures randomly select a healthy primary replica.
                 for _ in range(10):
                     result = await client.post("/predict", json={})
                     assert result.status_code == 200
-                    assert result.text == "a"
+                    assert result.text in {"a", "b"}
+                stats_csv = requests.get(
+                    f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
+                ).text
+                assert _backend_stot(stats_csv, "llm") >= 10, stats_csv
+                assert (
+                    _backend_stot(stats_csv, "llm-via-ingress-request-router") >= 1
+                ), stats_csv
                 release.set()
                 assert await response.aread() == b"started\ndone\n"
     finally:
@@ -3286,7 +3322,8 @@ async def test_ingress_router_fallback(
             warnings = [
                 record.getMessage()
                 for record in caplog.records
-                if "Routing fell back to load balancing" in record.getMessage()
+                if "Routing fell back after ingress router failure"
+                in record.getMessage()
                 and backend.app_name in record.getMessage()
             ]
             # All 12 fallbacks are counted, while repeated warnings are limited.

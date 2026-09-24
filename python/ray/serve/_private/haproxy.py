@@ -722,7 +722,6 @@ class HAProxyConfig:
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
-
     # Global retry policy for the defaults block (inherited by every backend).
     retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
     retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
