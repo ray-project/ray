@@ -29,6 +29,7 @@ from ray.serve._private.test_utils import (
     check_running,
     check_target_groups_ready,
     get_application_url,
+    skip_if_haproxy,
 )
 from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -2039,6 +2040,10 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
         ray.kill(failures)
 
 
+@skip_if_haproxy(
+    "the reload lags behind old replicas stopping on consecutive ticks, so a "
+    "request can reach a replica that already exited"
+)
 def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signal):
     """Surge bounds a code change that also scales the deployment up or down.
 
