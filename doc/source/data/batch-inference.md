@@ -19,8 +19,7 @@ Offline batch inference is a process for generating model predictions on a fixed
 ```
 
 :::{note}
-This guide is primarily focused on batch inference with deep learning frameworks.
-For more information on batch inference with LLMs, see {ref}`Working with LLMs <working-with-llms>`.
+This guide is primarily focused on batch inference with deep learning frameworks. For more information on batch inference with LLMs, see {ref}`Working with LLMs <working-with-llms>`.
 :::
 
 (batch_inference_quickstart)=
@@ -39,8 +38,7 @@ Using Ray Data for offline inference involves four basic steps:
 - **Step 3:** Transform your dataset using the pre-trained model by calling {meth}`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see {ref}`Transforming Data <transforming_data>`.
 - **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the {ref}`Iterating over data <iterating-over-data>` and {ref}`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see {doc}`the batch inference examples</data/examples>`.
-For how to configure batch inference, see {ref}`the configuration guide<batch_inference_configuration>`.
+For more in-depth examples for your use case, see {doc}`the batch inference examples</data/examples>`. For how to configure batch inference, see {ref}`the configuration guide<batch_inference_configuration>`.
 
 ::::{tab-set}
 :::{tab-item} HuggingFace
@@ -252,21 +250,13 @@ ds.show(limit=1)
 
 ### Job-level Checkpointing
 
-Use job-level checkpointing to make offline batch inference jobs resilient to failures
-like node restarts or transient execution errors.
+Use job-level checkpointing to make offline batch inference jobs resilient to failures like node restarts or transient execution errors.
 
-When enabled, Ray Data records progress during execution. If a batch inference
-job fails partway through processing, rerunning the same pipeline with the same
-checkpoint configuration resumes by skipping already-processed records instead
-of reprocessing the entire dataset.
+When enabled, Ray Data records progress during execution. If a batch inference job fails partway through processing, rerunning the same pipeline with the same checkpoint configuration resumes by skipping already-processed records instead of reprocessing the entire dataset.
 
-This is especially useful for large batch inference workloads where restarting
-from the beginning would be expensive.
+This is especially useful for large batch inference workloads where restarting from the beginning would be expensive.
 
-To enable job-level checkpointing, configure a
-{class}`~ray.data.checkpoint.CheckpointConfig` on the current
-{class}`~ray.data.DataContext`. See the
-{ref}`Execution Configurations <execution_configurations>` guide for details.
+To enable job-level checkpointing, configure a {class}`~ray.data.checkpoint.CheckpointConfig` on the current {class}`~ray.data.DataContext`. See the {ref}`Execution Configurations <execution_configurations>` guide for details.
 
 ### Using GPUs for inference
 
@@ -445,10 +435,7 @@ ds.map_batches(assert_batch, batch_size=2)
 
 ### Handling GPU out-of-memory failures
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease
-the batch size by following {ref}`these steps <batch_inference_batch_size>`. If your
-batch size is already set to 1, then use either a smaller model or GPU devices with more
-memory.
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following {ref}`these steps <batch_inference_batch_size>`. If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
 
 For advanced users working with large models, you can use model parallelism to shard the model across multiple GPUs.
 
@@ -460,13 +447,9 @@ For an example where preprocessing is done in a separate `map` call, see {doc}`I
 
 ### Handling CPU out-of-memory failures
 
-If you run out of CPU RAM, you likely have too many model replicas that are running concurrently on the same node. For example, if a model
-uses 5 GB of RAM when created / run, and a machine has 16 GB of RAM total, then no more
-than three of these models can be run at the same time. The default resource assignments
-of one CPU per task/actor might lead to `OutOfMemoryError` from Ray in this situation.
+If you run out of CPU RAM, you likely have too many model replicas that are running concurrently on the same node. For example, if a model uses 5 GB of RAM when created / run, and a machine has 16 GB of RAM total, then no more than three of these models can be run at the same time. The default resource assignments of one CPU per task/actor might lead to `OutOfMemoryError` from Ray in this situation.
 
-Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
-3 of these actors per node, you can override the CPU or memory:
+Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most 3 of these actors per node, you can override the CPU or memory:
 
 ```{testcode}
 :skipif: True

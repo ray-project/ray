@@ -266,10 +266,7 @@ Ray State APIs allow you to access **states** of **resources** through **summary
 ### User guides
 
 #### Getting a summary of states of entities by type
-Return the summarized information of the given Ray entity (Objects, Actors, Tasks).
-It is recommended to start monitoring states through summary APIs first. When you find anomalies
-(e.g., Actors running for a long time, Tasks that are not scheduled for a long time),
-you can use `list` or `get` APIs to get more details for an individual abnormal entity.
+Return the summarized information of the given Ray entity (Objects, Actors, Tasks). It is recommended to start monitoring states through summary APIs first. When you find anomalies (e.g., Actors running for a long time, Tasks that are not scheduled for a long time), you can use `list` or `get` APIs to get more details for an individual abnormal entity.
 
 **Summarize all actors**
 
@@ -320,8 +317,7 @@ print(summarize_tasks())
 **Summarize all objects**
 
 :::{note}
-By default, objects are summarized by callsite. However, callsite is not recorded by Ray by default.
-To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray cluster:
+By default, objects are summarized by callsite. However, callsite is not recorded by Ray by default. To get callsite info, set env variable `RAY_record_ref_creation_sites=1` when starting the Ray cluster:
 
 ```bash
 RAY_record_ref_creation_sites=1 ray start --head
@@ -580,8 +576,7 @@ See {ref}`state CLI reference <state-api-cli-ref>` for more details about `ray g
 
 (state-api-log-doc)=
 
-State API also allows you to access Ray logs. Note that you cannot access the logs from a dead node.
-By default, the API prints logs from a head node.
+State API also allows you to access Ray logs. Note that you cannot access the logs from a dead node. By default, the API prints logs from a head node.
 
 **Get all retrievable log file names from a head node in a cluster**
 
@@ -721,32 +716,22 @@ See {ref}`state CLI reference<state-api-cli-ref>` for more details about `ray lo
 
 #### Failure Semantics
 
-The State APIs don't guarantee to return a consistent or complete snapshot of the cluster all the time. By default,
-all Python SDKs raise an exception when output is missing from the API. The CLI returns a partial result
-and provides warning messages. Here are cases where there can be missing output from the API.
+The State APIs don't guarantee to return a consistent or complete snapshot of the cluster all the time. By default, all Python SDKs raise an exception when output is missing from the API. The CLI returns a partial result and provides warning messages. Here are cases where there can be missing output from the API.
 
 **Query Failures**
 
-State APIs query "data sources" (e.g., GCS, raylets, etc.) to obtain and build the snapshot of the Cluster.
-However, data sources are sometimes unavailable (e.g., the source is down or overloaded). In this case, APIs
-return a partial (incomplete) snapshot of the Cluster, and users are informed that the output is incomplete through a warning message.
-All warnings are printed through Python's `warnings` library, and they can be suppressed.
+State APIs query "data sources" (e.g., GCS, raylets, etc.) to obtain and build the snapshot of the Cluster. However, data sources are sometimes unavailable (e.g., the source is down or overloaded). In this case, APIs return a partial (incomplete) snapshot of the Cluster, and users are informed that the output is incomplete through a warning message. All warnings are printed through Python's `warnings` library, and they can be suppressed.
 
 **Data Truncation**
 
-When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability
-(when this happens, there's no way to choose truncated data). When truncation happens it is informed through Python's
-`warnings` module.
+When the returned number of entities (number of rows) is too large (> 100K), state APIs truncate the output data to ensure system stability (when this happens, there's no way to choose truncated data). When truncation happens it is informed through Python's `warnings` module.
 
 **Garbage Collected Resources**
 
-Depending on the lifecycle of the resources, some "finished" resources are not accessible
-through the APIs because they are already garbage collected.
+Depending on the lifecycle of the resources, some "finished" resources are not accessible through the APIs because they are already garbage collected.
 
 :::{note}
-Do not to rely on this API to obtain correct information on finished resources.
-For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage.
-Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
+Do not to rely on this API to obtain correct information on finished resources. For example, Ray periodically garbage collects DEAD state Actor data to reduce memory usage. Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
 :::
 
 ### API Reference
@@ -759,9 +744,7 @@ Or it cleans up the FINISHED state of Tasks when its lineage goes out of scope.
 
 
 ## Using Ray CLI tools from outside the cluster
-These CLI commands have to be run on a node in the Ray Cluster. Examples for
-executing these commands from a machine outside the Ray Cluster are provided
-below.
+These CLI commands have to be run on a node in the Ray Cluster. Examples for executing these commands from a machine outside the Ray Cluster are provided below.
 
 ::::{tab-set}
 :::{tab-item} VM Cluster Launcher
@@ -773,9 +756,7 @@ $ ray exec <cluster config file> "ray status"
 :::
 
 :::{tab-item} KubeRay
-Execute a command on the cluster using `kubectl exec` and the configured
-RayCluster name. Ray uses the Service targeting the Ray head pod to
-execute a CLI command on the cluster.
+Execute a command on the cluster using `kubectl exec` and the configured RayCluster name. Ray uses the Service targeting the Ray head pod to execute a CLI command on the cluster.
 
 ```shell
 # First, find the name of the Ray head service.

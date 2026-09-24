@@ -8,8 +8,7 @@ myst:
 
 # Transforming Data
 
-Transformations let you process and modify your dataset. You can compose transformations
-to express a chain of computations.
+Transformations let you process and modify your dataset. You can compose transformations to express a chain of computations.
 
 :::{note}
 Transformations are lazy by default. They aren't executed until you trigger consumption of the data by {ref}`iterating over the Dataset <iterating-over-data>`, {ref}`saving the Dataset <saving-data>`, or {ref}`inspecting properties of the Dataset <inspecting-data>`.
@@ -22,14 +21,12 @@ This guide shows you how to scale transformations (or user-defined functions (UD
 ## Transforming rows
 
 :::{tip}
-If your transformation is vectorized, call {meth}`~ray.data.Dataset.map_batches` for
-better performance. To learn more, see {ref}`Transforming batches <transforming_batches>`.
+If your transformation is vectorized, call {meth}`~ray.data.Dataset.map_batches` for better performance. To learn more, see {ref}`Transforming batches <transforming_batches>`.
 :::
 
 ### Transforming rows with map
 
-If your transformation returns exactly one row for each input row, call
-{meth}`~ray.data.Dataset.map`. This transformation is automatically parallelized across your Ray cluster.
+If your transformation returns exactly one row for each input row, call {meth}`~ray.data.Dataset.map`. This transformation is automatically parallelized across your Ray cluster.
 
 ```{testcode}
 import os
@@ -46,9 +43,7 @@ ds = (
 )
 ```
 
-The user defined function passed to {meth}`~ray.data.Dataset.map` should be of type
-`Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words, your function should
-input and output a dictionary with keys of strings and values of any type. For example:
+The user defined function passed to {meth}`~ray.data.Dataset.map` should be of type `Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words, your function should input and output a dictionary with keys of strings and values of any type. For example:
 
 ```{testcode}
 from typing import Any, Dict
@@ -66,8 +61,7 @@ def fn(row: Dict[str, Any]) -> Dict[str, Any]:
 
 ### Transforming rows with flat map
 
-If your transformation returns multiple rows for each input row, call
-{meth}`~ray.data.Dataset.flat_map`. This transformation is automatically parallelized across your Ray cluster.
+If your transformation returns multiple rows for each input row, call {meth}`~ray.data.Dataset.flat_map`. This transformation is automatically parallelized across your Ray cluster.
 
 ```{testcode}
 from typing import Any, Dict, List
@@ -87,10 +81,7 @@ print(
 [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 ```
 
-The user defined function passed to {meth}`~ray.data.Dataset.flat_map` should be of type
-`Callable[[Dict[str, Any]], List[Dict[str, Any]]]`. In other words your function should
-input a dictionary with keys of strings and values of any type and output a list of
-dictionaries that have the same type as the input, for example:
+The user defined function passed to {meth}`~ray.data.Dataset.flat_map` should be of type `Callable[[Dict[str, Any]], List[Dict[str, Any]]]`. In other words your function should input a dictionary with keys of strings and values of any type and output a list of dictionaries that have the same type as the input, for example:
 
 ```{testcode}
 from typing import Any, Dict, List
@@ -113,8 +104,7 @@ def fn(row: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 ## Transforming batches
 
-If your transformation can be vectorized using NumPy, PyArrow or Pandas operations, transforming
-batches is considerably more performant than transforming individual rows.
+If your transformation can be vectorized using NumPy, PyArrow or Pandas operations, transforming batches is considerably more performant than transforming individual rows.
 
 This transformation is automatically parallelized across your Ray cluster.
 
@@ -137,13 +127,9 @@ ds = (
 
 ### Configuring batch format
 
-Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or Arrow Tables. By
-default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
-specify `batch_format` in {meth}`~ray.data.Dataset.map_batches`. You can return either
-format from your function, but `batch_format` should match the input of your function.
+Ray Data represents batches as dicts of NumPy ndarrays, pandas DataFrames or Arrow Tables. By default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type, specify `batch_format` in {meth}`~ray.data.Dataset.map_batches`. You can return either format from your function, but `batch_format` should match the input of your function.
 
-When applying transformations to batches of rows, Ray Data could represent these batches as either NumPy's `ndarrays`,
-Pandas `DataFrame` or PyArrow `Table`.
+When applying transformations to batches of rows, Ray Data could represent these batches as either NumPy's `ndarrays`, Pandas `DataFrame` or PyArrow `Table`.
 
 When using
 : * `batch_format=numpy`, the input to the function is a dictionary where keys correspond to column names and values to column values represented as `ndarrays`.
@@ -199,9 +185,7 @@ ds = (
 :::
 ::::
 
-The user defined function can also be a Python generator that yields batches, so the function can also
-be of type `Callable[DataBatch, Iterator[[DataBatch]]`, where `DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray], pyarrow.Table]`.
-In this case, your function would look like:
+The user defined function can also be a Python generator that yields batches, so the function can also be of type `Callable[DataBatch, Iterator[[DataBatch]]`, where `DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray], pyarrow.Table]`. In this case, your function would look like:
 
 ```{testcode}
 from typing import Dict, Iterator
@@ -241,35 +225,23 @@ ds.map_batches(udf, batch_format="pyarrow")
 
 ### Configuring batch size
 
-Increasing `batch_size` improves the performance of vectorized transformations as well
-as performance of model inference. However, if your batch size is too large, your
-program might run into out-of-memory (OOM) errors.
+Increasing `batch_size` improves the performance of vectorized transformations as well as performance of model inference. However, if your batch size is too large, your program might run into out-of-memory (OOM) errors.
 
-Use `batch_size="auto"` to let Ray Data automatically determine an appropriate batch
-size based on the size of your data. For GPU workloads, you must specify an explicit
-integer batch size. If you encounter OOM errors with an explicit batch size, try decreasing it.
+Use `batch_size="auto"` to let Ray Data automatically determine an appropriate batch size based on the size of your data. For GPU workloads, you must specify an explicit integer batch size. If you encounter OOM errors with an explicit batch size, try decreasing it.
 
 (stateful_transforms)=
 
 ## Stateful/Class-based Transforms
 
-If your transform requires expensive setup such as downloading
-model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
-is used, the `__init__` method is called to perform setup exactly once on each worker.
-In contrast, functions are stateless, so any setup must be performed for each data item.
+If your transform requires expensive setup such as downloading model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class is used, the `__init__` method is called to perform setup exactly once on each worker. In contrast, functions are stateless, so any setup must be performed for each data item.
 
-Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes.
-To learn more about tasks and actors, read the
-{ref}`Ray Core Key Concepts <core-key-concepts>`.
+Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes. To learn more about tasks and actors, read the {ref}`Ray Core Key Concepts <core-key-concepts>`.
 
 To transform data with a Python class, complete these steps:
 
 1. Implement a class. Perform setup in `__init__` and transform data in `__call__`.
 
-2. Call {meth}`~ray.data.Dataset.map_batches`, {meth}`~ray.data.Dataset.map`, or
-   {meth}`~ray.data.Dataset.flat_map`. Pass a `ray.data.ActorPoolStrategy(...)` object to
-   the  `compute` argument to control how many workers Ray uses. Each worker transforms a partition
-   of data in parallel.
+2. Call {meth}`~ray.data.Dataset.map_batches`, {meth}`~ray.data.Dataset.map`, or {meth}`~ray.data.Dataset.flat_map`. Pass a `ray.data.ActorPoolStrategy(...)` object to the  `compute` argument to control how many workers Ray uses. Each worker transforms a partition of data in parallel.
 
 ::::{tab-set}
 :::{tab-item} CPU
@@ -357,8 +329,7 @@ You can optionally specify logical resources per transformation by using one of 
 
 Note that these are logical resources and don't impose limits on actual physical resource usage.
 
-Also, both `num_cpus` and `num_gpus` support fractional values less than 1. For example, specifying `num_cpus=0.5` on a cluster with 4 CPUs allows 8 concurrent tasks/actors to run.
-You can read more about resources in Ray here: {ref}`resource-requirements`.
+Also, both `num_cpus` and `num_gpus` support fractional values less than 1. For example, specifying `num_cpus=0.5` on a cluster with 4 CPUs allows 8 concurrent tasks/actors to run. You can read more about resources in Ray here: {ref}`resource-requirements`.
 
 ```{testcode}
 :hide:
@@ -380,8 +351,7 @@ ds.map_batches(uses_lots_of_memory, memory=1 * 1024 * 1024)
 
 You can specify the concurrency of the transformation by using the `compute` parameter.
 
-For functions, use `compute=ray.data.TaskPoolStrategy(size=n)` to cap the number of concurrent tasks. By default, Ray Data automatically determines the number of concurrent tasks.
-For classes, use `compute=ray.data.ActorPoolStrategy(size=n)` to use a fixed size actor pool of `n` workers. If `compute` isn't specified, an autoscaling actor pool is used by default.
+For functions, use `compute=ray.data.TaskPoolStrategy(size=n)` to cap the number of concurrent tasks. By default, Ray Data automatically determines the number of concurrent tasks. For classes, use `compute=ray.data.ActorPoolStrategy(size=n)` to use a fixed size actor pool of `n` workers. If `compute` isn't specified, an autoscaling actor pool is used by default.
 
 ```{testcode}
 import ray
@@ -402,9 +372,7 @@ ds.take_all()
 
 When transforming data, the order of {ref}`blocks <data_key_concepts>` isn't preserved by default.
 
-If the order of blocks needs to be preserved/deterministic,
-you can use {meth}`~ray.data.Dataset.sort` method, or set {attr}`ray.data.ExecutionOptions.preserve_order` to `True`.
-Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
+If the order of blocks needs to be preserved/deterministic, you can use {meth}`~ray.data.Dataset.sort` method, or set {attr}`ray.data.ExecutionOptions.preserve_order` to `True`. Note that setting this flag may negatively impact performance on larger cluster setups where stragglers are more likely.
 
 ```{testcode}
 import ray
@@ -419,8 +387,7 @@ ctx.execution_options.preserve_order = True
 
 ## Group-by and transforming groups
 
-To transform groups, call {meth}`~ray.data.Dataset.groupby` to group rows based on provided `key` column values.
-Then, call {meth}`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
+To transform groups, call {meth}`~ray.data.Dataset.groupby` to group rows based on provided `key` column values. Then, call {meth}`~ray.data.grouped_data.GroupedData.map_groups` to execute a transformation on each group.
 
 ::::{tab-set}
 :::{tab-item} NumPy
@@ -468,14 +435,10 @@ ds = (
 
 ## Advanced: Distributed UDFs with Placement Groups
 
-While all transformations are automatically parallelized across your Ray cluster, often times these transformations can be distributed themselves. For example, if you're using
-a large model, you may want to distribute the model across multiple nodes.
-You can do this by using {ref}`placement groups <ray-placement-group-doc-ref>` and `ray_remote_args_fn`, which can dynamically create placement groups for each model replica.
+While all transformations are automatically parallelized across your Ray cluster, often times these transformations can be distributed themselves. For example, if you're using a large model, you may want to distribute the model across multiple nodes. You can do this by using {ref}`placement groups <ray-placement-group-doc-ref>` and `ray_remote_args_fn`, which can dynamically create placement groups for each model replica.
 
 :::{warning}
-This example uses the deprecated `ray_remote_args_fn` API. Placement
-groups created this way aren't automatically cleaned up when Ray Data
-actors exit and may continue reserving cluster resources.
+This example uses the deprecated `ray_remote_args_fn` API. Placement groups created this way aren't automatically cleaned up when Ray Data actors exit and may continue reserving cluster resources.
 :::
 
 ```{testcode}
@@ -515,8 +478,7 @@ ds.take_all()
 
 ## Advanced: Asynchronous Transforms
 
-Ray Data supports asynchronous functions by using the `async` keyword. This is useful for performing asynchronous operations such as fetching data from a database or making HTTP requests.
-Note that this only works when using a class-based transform function and currently requires `uvloop==0.21.0`.
+Ray Data supports asynchronous functions by using the `async` keyword. This is useful for performing asynchronous operations such as fetching data from a database or making HTTP requests. Note that this only works when using a class-based transform function and currently requires `uvloop==0.21.0`.
 
 ```{testcode}
 import ray
@@ -549,13 +511,9 @@ ds.take_all()
 
 ## Expressions (Alpha)
 
-Ray Data expressions provide a way to specify column-based operations on datasets.
-Use {func}`~ray.data.expressions.col` to reference columns and {func}`~ray.data.expressions.lit` to create literal values.
-You can combine these with operators to create complex expressions for filtering,
-transformations, and computations.
+Ray Data expressions provide a way to specify column-based operations on datasets. Use {func}`~ray.data.expressions.col` to reference columns and {func}`~ray.data.expressions.lit` to create literal values. You can combine these with operators to create complex expressions for filtering, transformations, and computations.
 
-Expressions have to be used with {meth}`~ray.data.Dataset.with_column`. The core advantage of expressions
-is that because they operate on specific columns, Ray Data's optimizer can optimize the execution plan by reordering the operations.
+Expressions have to be used with {meth}`~ray.data.Dataset.with_column`. The core advantage of expressions is that because they operate on specific columns, Ray Data's optimizer can optimize the execution plan by reordering the operations.
 
 See {ref}`expressions-api` for more details.
 

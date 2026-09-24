@@ -8,8 +8,7 @@ myst:
 
 # Data Loading and Preprocessing
 
-Ray Train integrates with {ref}`Ray Data <data>` to offer a performant and scalable streaming solution for loading and preprocessing large datasets.
-Key advantages include:
+Ray Train integrates with {ref}`Ray Data <data>` to offer a performant and scalable streaming solution for loading and preprocessing large datasets. Key advantages include:
 
 - Streaming data loading and preprocessing, scalable to petabyte-scale data.
 - Scaling out heavy data preprocessing to CPU nodes, to avoid bottlenecking GPU training.
@@ -237,9 +236,7 @@ Ray Data splits all datasets across the training workers by default. {meth}`~ray
 Ray Data does data splitting in a streaming fashion on the fly.
 
 :::{note}
-Be aware that because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers.
-You might consider using [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) ({doc}`example <../examples/deepspeed/deepspeed_example>`) or
-utilities available in other frameworks that you can explore.
+Be aware that because Ray Data splits the evaluation dataset, you have to aggregate the evaluation results across workers. You might consider using [TorchMetrics](https://torchmetrics.readthedocs.io/en/latest/) ({doc}`example <../examples/deepspeed/deepspeed_example>`) or utilities available in other frameworks that you can explore.
 :::
 
 This behavior can be overwritten by passing in the `dataset_config` argument. For more information on configuring splitting logic, see {ref}`Splitting datasets <train-datasets-split>`.
@@ -326,16 +323,11 @@ The `LightningDataModule` is created with PyTorch `Dataset`s and `DataLoader`s. 
 ::::
 
 :::{tip}
-When using Torch or Hugging Face Datasets directly without Ray Data, make sure to instantiate your Dataset *inside* the `train_loop_per_worker`.
-Instantiating the Dataset outside of the `train_loop_per_worker` and passing it in via global scope
-can cause errors due to the Dataset not being serializable.
+When using Torch or Hugging Face Datasets directly without Ray Data, make sure to instantiate your Dataset *inside* the `train_loop_per_worker`. Instantiating the Dataset outside of the `train_loop_per_worker` and passing it in via global scope can cause errors due to the Dataset not being serializable.
 :::
 
 :::{note}
-When using PyTorch DataLoader with more than 1 worker, you should set the
-process start method to be `forkserver` or `spawn`.
-{ref}`Forking Ray Actors and Tasks is an anti-pattern <forking-ray-processes-antipattern>` that
-can lead to unexpected issues such as deadlocks.
+When using PyTorch DataLoader with more than 1 worker, you should set the process start method to be `forkserver` or `spawn`. {ref}`Forking Ray Actors and Tasks is an anti-pattern <forking-ray-processes-antipattern>` that can lead to unexpected issues such as deadlocks.
 
 ```python
 data_loader = DataLoader(
@@ -495,12 +487,10 @@ ds = ray.data.read_text(
 ## Preprocessing structured data
 
 :::{note}
-This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use
-Ray Data operations such as `map_batches`. See the {ref}`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
+This section is for tabular/structured data. The recommended way for preprocessing unstructured data is to use Ray Data operations such as `map_batches`. See the {ref}`Ray Data Working with Pytorch guide <working_with_pytorch>` for more details.
 :::
 
-For tabular data, use Ray Data {ref}`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations.
-You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
+For tabular data, use Ray Data {ref}`preprocessors <preprocessor-ref>`, which implement common data preprocessing operations. You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 ```{testcode}
 import base64
@@ -593,14 +583,7 @@ to step 2.
 - **The value is 0.** Data loading keeps up with training, and your workload isn't data loading bound. The time spent in the individual loading stages is hidden behind training, so there's nothing to gain from tuning the ingest pipeline. Look elsewhere for the bottleneck.
 - **The value is non-zero.** The training loop is blocking on batches, and every millisecond shown here is a millisecond your accelerators sit idle. Continue to step 2.
 
-To corroborate a non-zero reading, cross-reference GPU utilization, which the **GPU Usage**
-panel reports in the same dashboard. A training loop whose accelerators stay fed holds
-utilization high and steady. One that stalls on data loading shows the opposite: utilization
-collapses every time the loop runs dry waiting for the next batch and recovers once it
-arrives, so the chart swings continuously instead of settling. Unstable GPU utilization is
-often the first symptom users notice, and exposed data loading time is what explains it. A
-PyTorch profiler trace shows the same pattern at finer granularity, as gaps between kernel
-launches while the loop waits.
+To corroborate a non-zero reading, cross-reference GPU utilization, which the **GPU Usage** panel reports in the same dashboard. A training loop whose accelerators stay fed holds utilization high and steady. One that stalls on data loading shows the opposite: utilization collapses every time the loop runs dry waiting for the next batch and recovers once it arrives, so the chart swings continuously instead of settling. Unstable GPU utilization is often the first symptom users notice, and exposed data loading time is what explains it. A PyTorch profiler trace shows the same pattern at finer granularity, as gaps between kernel launches while the loop waits.
 
 ```{figure} ../images/data_ingestion/spiky_gpu_utilization.png
 :align: center
@@ -797,31 +780,17 @@ train_ds = train_ds.map_batches(augment_data, batch_size="auto")
 ### Adding CPU-only nodes to your cluster
 If the GPU training is bottlenecked on expensive CPU preprocessing and the preprocessed Dataset is too large to fit in object store memory, then materializing the dataset doesn't work. In this case, Ray's native support for heterogeneous resources enables you to simply add more CPU-only nodes to your cluster, and Ray Data automatically scales out CPU-only preprocessing tasks to CPU-only nodes, making GPUs more saturated.
 
-In general, adding CPU-only nodes can help in two ways:
-\* Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck.
-\* Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to {ref}`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
+In general, adding CPU-only nodes can help in two ways: \* Adding more CPU cores helps further parallelize preprocessing. This approach is helpful when CPU compute time is the bottleneck. \* Increasing object store memory, which 1) allows Ray Data to buffer more data in between preprocessing and training stages, and 2) provides more memory to make it possible to {ref}`cache the preprocessed dataset <dataset_cache_performance>`. This approach is helpful when memory is the bottleneck.
 
 (isolating-ray-data-worker-processes)=
 
 ### Isolating Ray Data worker processes from training nodes
 
-You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes
-when training workers themselves run CPU or RAM-heavy operations
-such as storing large local shuffle buffers or running expensive collate functions.
-Launching more Ray Data processes would oversubscribe the training worker nodes.
-Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous
-cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
+You may sometimes want to prevent Ray Data CPU tasks from running on training worker nodes when training workers themselves run CPU or RAM-heavy operations such as storing large local shuffle buffers or running expensive collate functions. Launching more Ray Data processes would oversubscribe the training worker nodes. Instead, the Ray Data tasks should run on a separate set of CPU nodes in your heterogeneous cluster (for example, 4 GPU training nodes and 4 CPU-only nodes).
 
-One workaround is to force full-node exclusion by reserving all CPUs per training worker via
-`resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}` in `ScalingConfig`.
-This method is fragile since it's tied to node shapes, and Ray Data also doesn't exclude other
-resources such as object store memory properly, since the typical configuration is to only take up logical
-CPUs and GPUs.
+One workaround is to force full-node exclusion by reserving all CPUs per training worker via `resources_per_worker={"CPU": node_cpus // num_gpus_per_node, "GPU": 1}` in `ScalingConfig`. This method is fragile since it's tied to node shapes, and Ray Data also doesn't exclude other resources such as object store memory properly, since the typical configuration is to only take up logical CPUs and GPUs.
 
-The recommended approach is to use {ref}`subclusters <data_concurrent_execution>` to pin the
-training Dataset to CPU-only nodes. This correctly scopes the memory budget to only the nodes
-where data tasks can actually run. It requires adding labels to your worker node configurations and setting the
-`label_selector` in two places:
+The recommended approach is to use {ref}`subclusters <data_concurrent_execution>` to pin the training Dataset to CPU-only nodes. This correctly scopes the memory budget to only the nodes where data tasks can actually run. It requires adding labels to your worker node configurations and setting the `label_selector` in two places:
 
 ```python
 import ray
@@ -852,12 +821,7 @@ trainer = TorchTrainer(
 ```
 
 :::{tip}
-Before resorting to isolating Ray Data tasks from training nodes, consider offloading that
-heavy work from training workers to the data pipeline instead:
-{ref}`scale out expensive collation <scaling_collation_functions>`
-and use {ref}`map_batches-based shuffling <map_batches_shuffle>` in place of large local
-shuffle buffers. These reduce CPU pressure on training workers and often eliminate the
-need for node isolation entirely.
+Before resorting to isolating Ray Data tasks from training nodes, consider offloading that heavy work from training workers to the data pipeline instead: {ref}`scale out expensive collation <scaling_collation_functions>` and use {ref}`map_batches-based shuffling <map_batches_shuffle>` in place of large local shuffle buffers. These reduce CPU pressure on training workers and often eliminate the need for node isolation entirely.
 :::
 
 See {ref}`data_performance_tips` for more info on how to tune Ray Data.

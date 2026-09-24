@@ -15,15 +15,9 @@ myst:
 ```{figure} images/rllib-index-header.svg
 ```
 
-In this tutorial, you learn how to design, customize, and run an end-to-end RLlib learning experiment
-from scratch. This includes picking and configuring an {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`,
-running a couple of training iterations, saving the state of your
-{py:class}`~ray.rllib.algorithms.algorithm.Algorithm` from time to time, running a separate
-evaluation loop, and finally utilizing one of the checkpoints to deploy your trained model
-to an environment outside of RLlib and compute actions.
+In this tutorial, you learn how to design, customize, and run an end-to-end RLlib learning experiment from scratch. This includes picking and configuring an {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`, running a couple of training iterations, saving the state of your {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` from time to time, running a separate evaluation loop, and finally utilizing one of the checkpoints to deploy your trained model to an environment outside of RLlib and compute actions.
 
-You also learn how to customize your {ref}`RL environment <rllib-key-concepts-environments>`
-and your {ref}`neural network model <rllib-key-concepts-rl-modules>`.
+You also learn how to customize your {ref}`RL environment <rllib-key-concepts-environments>` and your {ref}`neural network model <rllib-key-concepts-rl-modules>`.
 
 ### Installation
 
@@ -38,30 +32,20 @@ pip install "ray[rllib]" torch "gymnasium[atari,accept-rom-license,mujoco]"
 
 ### Python API
 
-RLlib's Python API provides all the flexibility required for applying the library to any
-type of RL problem.
+RLlib's Python API provides all the flexibility required for applying the library to any type of RL problem.
 
-You manage RLlib experiments through an instance of the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`
-class. An {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` typically holds a neural
-network for computing actions, called `policy`, the {ref}`RL environment <rllib-key-concepts-environments>`
-that you want to optimize against, a loss function, an optimizer, and some code describing the
-algorithm's execution logic, like determining when to collect samples, when to update your model, etc..
+You manage RLlib experiments through an instance of the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` class. An {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` typically holds a neural network for computing actions, called `policy`, the {ref}`RL environment <rllib-key-concepts-environments>` that you want to optimize against, a loss function, an optimizer, and some code describing the algorithm's execution logic, like determining when to collect samples, when to update your model, etc..
 
-In {ref}`multi-agent training <rllib-multi-agent-environments-doc>`,
-{py:class}`~ray.rllib.algorithms.algorithm.Algorithm` manages the querying and optimization of multiple policies at once.
+In {ref}`multi-agent training <rllib-multi-agent-environments-doc>`, {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` manages the querying and optimization of multiple policies at once.
 
-Through the algorithm's interface, you can train the policy, compute actions, or store your
-algorithm's state through checkpointing.
+Through the algorithm's interface, you can train the policy, compute actions, or store your algorithm's state through checkpointing.
 
 
 #### Configure and build the algorithm
 
-You first create an {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance
-and change some default settings through the config object's various methods.
+You first create an {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance and change some default settings through the config object's various methods.
 
-For example, you can set the {ref}`RL environment <rllib-key-concepts-environments>`
-you want to use by calling the config's {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment`
-method:
+For example, you can set the {ref}`RL environment <rllib-key-concepts-environments>` you want to use by calling the config's {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment` method:
 
 ```python
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -74,16 +58,13 @@ config = (
 ```
 
 
-To scale your setup and define how many {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage,
-you can call the {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
-`EnvRunners` are used to collect samples for training updates from your {ref}`environment <rllib-key-concepts-environments>`.
+To scale your setup and define how many {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors you want to leverage, you can call the {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method. `EnvRunners` are used to collect samples for training updates from your {ref}`environment <rllib-key-concepts-environments>`.
 
 ```python
 config.env_runners(num_env_runners=2)
 ```
 
-For training-related settings or any algorithm-specific settings, use the
-{py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
+For training-related settings or any algorithm-specific settings, use the {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
 
 ```python
 config.training(
@@ -93,9 +74,7 @@ config.training(
 )
 ```
 
-Finally, you build the actual {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance
-through calling your config's {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo`
-method.
+Finally, you build the actual {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance through calling your config's {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo` method.
 
 ```python
 # Build the Algorithm (PPO).
@@ -110,9 +89,7 @@ See here to learn about all the {ref}`methods you can use to configure your Algo
 
 #### Run the algorithm
 
-After you built your {ref}`PPO <ppo>` from its configuration, you can `train` it for a number of
-iterations through calling the {py:meth}`~ray.rllib.algorithms.algorithm.Algorithm.train` method,
-which returns a result dictionary that you can pretty-print for debugging purposes:
+After you built your {ref}`PPO <ppo>` from its configuration, you can `train` it for a number of iterations through calling the {py:meth}`~ray.rllib.algorithms.algorithm.Algorithm.train` method, which returns a result dictionary that you can pretty-print for debugging purposes:
 
 ```python
 from pprint import pprint
@@ -124,12 +101,9 @@ for _ in range(4):
 
 #### Checkpoint the algorithm
 
-To save the current state of your {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`,
-create a checkpoint through calling its {py:meth}`~ray.rllib.algorithms.algorithm.Algorithm.save_to_path` method,
-which returns the directory of the saved checkpoint.
+To save the current state of your {py:class}`~ray.rllib.algorithms.algorithm.Algorithm`, create a checkpoint through calling its {py:meth}`~ray.rllib.algorithms.algorithm.Algorithm.save_to_path` method, which returns the directory of the saved checkpoint.
 
-Instead of not passing any arguments to this call and letting the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` decide where to save
-the checkpoint, you can also provide a checkpoint directory yourself:
+Instead of not passing any arguments to this call and letting the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` decide where to save the checkpoint, you can also provide a checkpoint directory yourself:
 
 ```python
 checkpoint_path = ppo.save_to_path()
@@ -141,12 +115,9 @@ checkpoint_path = ppo.save_to_path()
 
 #### Evaluate the algorithm
 
-RLlib supports setting up a separate {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
-for the sole purpose of evaluating your model from time to time on the {ref}`RL environment <rllib-key-concepts-environments>`.
+RLlib supports setting up a separate {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup` for the sole purpose of evaluating your model from time to time on the {ref}`RL environment <rllib-key-concepts-environments>`.
 
-Use your config's {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation` method
-to set up the details. By default, RLlib doesn't perform evaluation during training and only reports the
-results of collecting training samples with its "regular" {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup`.
+Use your config's {py:meth}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.evaluation` method to set up the details. By default, RLlib doesn't perform evaluation during training and only reports the results of collecting training samples with its "regular" {py:class}`~ray.rllib.env.env_runner_group.EnvRunnerGroup`.
 
 ```python
 config.evaluation(
@@ -173,20 +144,15 @@ for _ in range(3):
 
 #### RLlib with Ray Tune
 
-All online RLlib {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` classes are compatible with
-the {ref}`Ray Tune API <tune-api-ref>`.
+All online RLlib {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` classes are compatible with the {ref}`Ray Tune API <tune-api-ref>`.
 
 :::{note}
-The offline RL algorithms, like {ref}`BC <bc>`, {ref}`CQL <cql>`, and {ref}`MARWIL <marwil>`
-require more work on {ref}`Tune <tune-main>` and {ref}`Ray Data <data>`
-to add Ray Tune support.
+The offline RL algorithms, like {ref}`BC <bc>`, {ref}`CQL <cql>`, and {ref}`MARWIL <marwil>` require more work on {ref}`Tune <tune-main>` and {ref}`Ray Data <data>` to add Ray Tune support.
 :::
 
-This integration allows for utilizing your configured {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` in
-{ref}`Ray Tune <tune-main>` experiments.
+This integration allows for utilizing your configured {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` in {ref}`Ray Tune <tune-main>` experiments.
 
-For example, the following code performs a hyper-parameter sweep of your {ref}`PPO <ppo>`, creating three `Trials`,
-one for each of the configured learning rates:
+For example, the following code performs a hyper-parameter sweep of your {ref}`PPO <ppo>`, creating three `Trials`, one for each of the configured learning rates:
 
 ```python
 from ray import tune
@@ -217,10 +183,7 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
-Note that each {py:class}`~ray.tune.trial.Trial` creates a separate
-{py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance as a {ref}`Ray actor <actor-guide>`,
-assigns compute resources to each `Trial`, and runs them in parallel, if possible,
-on your Ray cluster:
+Note that each {py:class}`~ray.tune.trial.Trial` creates a separate {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance as a {ref}`Ray actor <actor-guide>`, assigns compute resources to each `Trial`, and runs them in parallel, if possible, on your Ray cluster:
 
 ```text
 Trial status: 3 RUNNING
@@ -235,9 +198,7 @@ Logical resource usage: 9.0/12 CPUs, 0/0 GPUs
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-`Tuner.fit()` returns a `ResultGrid` object that allows for a detailed analysis of the
-training process and for retrieving the {ref}`checkpoints <rllib-checkpoints-docs>` of the trained
-algorithms and their models:
+`Tuner.fit()` returns a `ResultGrid` object that allows for a detailed analysis of the training process and for retrieving the {ref}`checkpoints <rllib-checkpoints-docs>` of the trained algorithms and their models:
 
 ```python
 # Get the best result of the final iteration, based on a particular metric.
@@ -255,17 +216,9 @@ best_checkpoint = best_result.checkpoint
 
 #### Deploy a trained model for inference
 
-After training, you might want to deploy your models into a new environment, for example
-to run inference in production. For this purpose, you can use the checkpoint directory created
-in the preceding example. To read more about checkpoints, model deployments, and restoring algorithm state,
-see this {ref}`page on checkpointing <rllib-checkpoints-docs>` here.
+After training, you might want to deploy your models into a new environment, for example to run inference in production. For this purpose, you can use the checkpoint directory created in the preceding example. To read more about checkpoints, model deployments, and restoring algorithm state, see this {ref}`page on checkpointing <rllib-checkpoints-docs>` here.
 
-Here is how you would create a new model instance from the checkpoint and run inference through
-a single episode of your RL environment. Note in particular the use of the
-{py:meth}`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method to create
-the model and the
-{py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
-method to compute actions:
+Here is how you would create a new model instance from the checkpoint and run inference through a single episode of your RL environment. Note in particular the use of the {py:meth}`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method to create the model and the {py:meth}`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` method to compute actions:
 
 
 ```python
@@ -327,16 +280,11 @@ print(f"Reached episode return of {episode_return}.")
 
 
 :::{note}
-To watch the agent play the environment in a local pygame window, pass
-`render_mode="human"` to `gym.make(...)` and uncomment the `env.render()`
-call in the loop above. This requires a local display, so it's omitted here
-to keep the example runnable in headless environments.
+To watch the agent play the environment in a local pygame window, pass `render_mode="human"` to `gym.make(...)` and uncomment the `env.render()` call in the loop above. This requires a local display, so it's omitted here to keep the example runnable in headless environments.
 :::
 
 
-Alternatively, if you still have an {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running
-in your script, you can get the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` through the
-{py:meth}`~ray.rllib.algorithms.algorithm.Algorithm.get_module` method:
+Alternatively, if you still have an {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` instance up and running in your script, you can get the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` through the {py:meth}`~ray.rllib.algorithms.algorithm.Algorithm.get_module` method:
 
 ```python
 rl_module = ppo.get_module("default_policy")  # Equivalent to `rl_module = ppo.get_module()`
@@ -345,13 +293,9 @@ rl_module = ppo.get_module("default_policy")  # Equivalent to `rl_module = ppo.g
 
 ### Customizing your RL environment
 
-In the preceding examples, your {ref}`RL environment <rllib-key-concepts-environments>` was
-a [Farama gymnasium](https://gymnasium.farama.org) pre-registered one,
-like `Pendulum-v1` or `CartPole-v1`. However, if you would like to run your
-experiments against a custom one, see this tab below for a less-than-50-lines example.
+In the preceding examples, your {ref}`RL environment <rllib-key-concepts-environments>` was a [Farama gymnasium](https://gymnasium.farama.org) pre-registered one, like `Pendulum-v1` or `CartPole-v1`. However, if you would like to run your experiments against a custom one, see this tab below for a less-than-50-lines example.
 
-See here for an {ref}`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>`
-and how to customize them.
+See here for an {ref}`in-depth guide on how to setup RL environments in RLlib <rllib-environments-doc>` and how to customize them.
 
 :::{dropdown} Quickstart: Custom RL environment
 :animate: fade-in-slide-down
@@ -416,12 +360,7 @@ ppo_w_custom_env.train()
 
 ### Customizing your models
 
-In the preceding examples, because you didn't specify anything in your
-{py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, RLlib provided a default
-neural network model. If you would like to either reconfigure the type and size of RLlib's default models,
-for example define the number of hidden layers and their activation functions,
-or even write your own custom models from scratch using PyTorch, see here
-for a {ref}`detailed guide on the RLModule class <rlmodule-guide>`.
+In the preceding examples, because you didn't specify anything in your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, RLlib provided a default neural network model. If you would like to either reconfigure the type and size of RLlib's default models, for example define the number of hidden layers and their activation functions, or even write your own custom models from scratch using PyTorch, see here for a {ref}`detailed guide on the RLModule class <rlmodule-guide>`.
 
 See this tab below for a 30-lines example.
 
