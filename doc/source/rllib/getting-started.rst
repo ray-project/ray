@@ -66,7 +66,7 @@ For example, you can set the :ref:`RL environment <rllib-key-concepts-environmen
 you want to use by calling the config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.environment`
 method:
 
-.. testcode::
+.. code-block:: python
 
     from ray.rllib.algorithms.ppo import PPOConfig
 
@@ -81,14 +81,14 @@ To scale your setup and define how many :py:class:`~ray.rllib.env.env_runner.Env
 you can call the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
 ``EnvRunners`` are used to collect samples for training updates from your :ref:`environment <rllib-key-concepts-environments>`.
 
-.. testcode::
+.. code-block:: python
 
     config.env_runners(num_env_runners=2)
 
 For training-related settings or any algorithm-specific settings, use the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.training` method:
 
-.. testcode::
+.. code-block:: python
 
     config.training(
         lr=0.0002,
@@ -100,7 +100,7 @@ Finally, you build the actual :py:class:`~ray.rllib.algorithms.algorithm.Algorit
 through calling your config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build_algo`
 method.
 
-.. testcode::
+.. code-block:: python
 
     # Build the Algorithm (PPO).
     ppo = config.build_algo()
@@ -118,7 +118,7 @@ After you built your :ref:`PPO <ppo>` from its configuration, you can ``train`` 
 iterations through calling the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.train` method,
 which returns a result dictionary that you can pretty-print for debugging purposes:
 
-.. testcode::
+.. code-block:: python
 
     from pprint import pprint
 
@@ -136,7 +136,7 @@ which returns the directory of the saved checkpoint.
 Instead of not passing any arguments to this call and letting the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` decide where to save
 the checkpoint, you can also provide a checkpoint directory yourself:
 
-.. testcode::
+.. code-block:: python
 
     checkpoint_path = ppo.save_to_path()
 
@@ -154,14 +154,7 @@ Use your config's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 to set up the details. By default, RLlib doesn't perform evaluation during training and only reports the
 results of collecting training samples with its "regular" :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`.
 
-
-.. testcode::
-    :hide:
-
-    ppo.stop()
-
-
-.. testcode::
+.. code-block:: python
 
     config.evaluation(
         # Run one evaluation round every iteration.
@@ -181,12 +174,6 @@ results of collecting training samples with its "regular" :py:class:`~ray.rllib.
 
     for _ in range(3):
         pprint(ppo_with_evaluation.train())
-
-.. testcode::
-    :hide:
-
-    ppo_with_evaluation.stop()
-
 
 .. _rllib-with-ray-tune:
 
@@ -208,7 +195,7 @@ This integration allows for utilizing your configured :py:class:`~ray.rllib.algo
 For example, the following code performs a hyper-parameter sweep of your :ref:`PPO <ppo>`, creating three ``Trials``,
 one for each of the configured learning rates:
 
-.. testcode::
+.. code-block:: python
 
     from ray import tune
     from ray.rllib.algorithms.ppo import PPOConfig
@@ -259,7 +246,7 @@ on your Ray cluster:
 training process and for retrieving the :ref:`checkpoints <rllib-checkpoints-docs>` of the trained
 algorithms and their models:
 
-.. testcode::
+.. code-block:: python
     # Get the best result of the final iteration, based on a particular metric.
     best_result = results.get_best_result(
         metric="env_runners/episode_return_mean",
@@ -288,7 +275,7 @@ the model and the
 method to compute actions:
 
 
-.. testcode::
+.. code-block:: python
 
     from pathlib import Path
     import gymnasium as gym
@@ -377,7 +364,7 @@ and how to customize them.
 .. dropdown:: Quickstart: Custom RL environment
     :animate: fade-in-slide-down
 
-    .. testcode::
+    .. code-block:: python
 
         import gymnasium as gym
         from ray.rllib.algorithms.ppo import PPOConfig
@@ -435,12 +422,6 @@ and how to customize them.
         ppo_w_custom_env = config.build_algo()
         ppo_w_custom_env.train()
 
-    .. testcode::
-        :hide:
-
-        ppo_w_custom_env.stop()
-
-
 Customizing your models
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -456,7 +437,7 @@ See this tab below for a 30-lines example.
 .. dropdown:: Quickstart: Custom RLModule
     :animate: fade-in-slide-down
 
-    .. testcode::
+    .. code-block:: python
 
         import torch
 

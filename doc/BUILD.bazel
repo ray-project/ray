@@ -705,17 +705,6 @@ doctest(
 )
 
 doctest(
-    name = "doctest[rllib2]",
-    size = "enormous",
-    files = ["source/rllib/getting-started.rst"],
-    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
-    tags = [
-        "manual",
-        "team:rllib",
-    ],
-)
-
-doctest(
     name = "doctest[serve]",
     files = glob(
         include = [
