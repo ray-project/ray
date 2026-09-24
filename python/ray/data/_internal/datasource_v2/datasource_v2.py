@@ -173,12 +173,13 @@ class DataSourceV2(ABC, Generic[InputSplit]):
     ) -> Optional["FilePartitioner"]:
         """Partitioner that groups this source's listing rows into read units.
 
-        The partitioner is pickled into the listing tasks, so anything it holds
-        (such as an ``InMemorySizeEstimator``) must be cheap and I/O-free.
-        ``RoundRobinPartitioner`` with an estimator of the source's choosing
-        fits most formats; return something else when the listing rows carry
-        metadata worth grouping on (Parquet row-group stats), and ``None`` to
-        emit each listing block as one read unit.
+        Each listing task holds its own pickled copy of the partitioner, so
+        anything it carries (such as an ``InMemorySizeEstimator``) must pickle
+        cheaply; any I/O the estimator does runs once per listing task.
+        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats;
+        return something else when the listing rows carry metadata worth
+        grouping on (Parquet row-group stats), and ``None`` to emit each
+        listing block as one read unit.
 
         Args:
             hints: Sizing hints derived from ``DataContext`` and
