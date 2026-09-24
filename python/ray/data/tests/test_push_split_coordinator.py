@@ -7,6 +7,9 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray.data._internal.iterator.push_based_split_iterator import (
+    PushSplitReceiverMixin,
+)
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
     _create_split_dataset,
@@ -69,9 +72,25 @@ def test_flow_wait_for_room_wakes_on_report():
 # ---------------------------------------------------------------------------
 
 
+@ray.remote(num_cpus=0)
+class _Receiver(PushSplitReceiverMixin):
+    # No iterator creates receive state for these keys, so any deliveries
+    # are dropped.
+    pass
+
+
 def _make_coordinator(num_rows: int = 100, n: int = 2):
     split_dataset = _create_split_dataset(ray.data.range(num_rows), n, equal=True)
-    return PushSplitCoordinator.options(max_concurrency=n + 2).remote(split_dataset, n)
+    coordinator = PushSplitCoordinator.options(max_concurrency=n + 2).remote(
+        split_dataset, n
+    )
+    ray.get(
+        [
+            coordinator.register.remote(i, _Receiver.remote(), key=f"test:{i}")
+            for i in range(n)
+        ]
+    )
+    return coordinator
 
 
 def test_barrier_starts_one_epoch_for_all_splits(ray_start_regular_shared):
