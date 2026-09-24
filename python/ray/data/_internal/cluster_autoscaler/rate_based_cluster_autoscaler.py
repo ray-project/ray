@@ -4,7 +4,10 @@ import time
 from collections import Counter
 from typing import TYPE_CHECKING, Dict, List, Optional
 
-from .base_autoscaling_coordinator import AutoscalingCoordinator
+from .base_autoscaling_coordinator import (
+    STANDARD_RESOURCE_TYPES,
+    AutoscalingCoordinator,
+)
 from .base_cluster_autoscaler import ClusterAutoscaler
 from .default_autoscaling_coordinator import DefaultAutoscalingCoordinator
 from .resource_utilization_gauge import (
@@ -582,7 +585,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         self._autoscaling_coordinator.request_resources(
             resources=[r.copy() for r in resource_request],
             expire_after_s=self._autoscaling_request_expire_time_s,
-            request_remaining=True,
+            request_remaining=STANDARD_RESOURCE_TYPES,
         )
         self._last_request_time = time.monotonic()
 
@@ -601,7 +604,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
     def get_total_resources(self) -> ExecutionResources:
         resources = self._autoscaling_coordinator.get_reserved_resources()
         total = ExecutionResources.zero()
-        for res in resources:
+        for res in resources.values():
             total = total.add(ExecutionResources.from_resource_dict(res))
         return total
 

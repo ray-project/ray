@@ -24,7 +24,6 @@ from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentHandleSource,
     DeploymentID,
     HandleMetricReport,
@@ -119,10 +118,9 @@ class MetricSamples(NamedTuple):
             return []
         if self.source_offsets is None:
             return [float(self.values.max())]
+        bounds = self.source_offsets.tolist()
         return [
-            float(self.values[a:b].max())
-            for a, b in zip(self.source_offsets[:-1], self.source_offsets[1:])
-            if b > a
+            float(self.values[a:b].max()) for a, b in zip(bounds, bounds[1:]) if b > a
         ]
 
     def __bool__(self) -> bool:
@@ -169,6 +167,10 @@ class _HandleMetricStore:
         self.objects: Dict[str, HandleMetricReport] = dict()
         self.columnar: Dict[str, ColumnarHandleReport] = dict()
         self._report_ts: Dict[str, float] = dict()
+        # Controller-local receive times (monotonic). Used only for drop freshness;
+        # producer timestamps remain the ordering / is_fresher key.
+        self._received_at: Dict[str, float] = dict()
+        self._masked: Dict[str, Tuple[int, List[MetricSamples]]] = dict()
 
     def is_fresher(self, handle_id: str, timestamp: float) -> bool:
         """Whether `accept` would take this report. Lets the columnar path skip the
@@ -183,6 +185,10 @@ class _HandleMetricStore:
         if not self.is_fresher(report.handle_id, report.timestamp):
             return False
         self._report_ts[report.handle_id] = report.timestamp
+        # Stamp receive time only after the fresher gate passes so a rejected
+        # late frame cannot extend handle liveness.
+        self._received_at[report.handle_id] = time.monotonic()
+        self._masked.pop(report.handle_id, None)
         if isinstance(report, ColumnarHandleReport):
             self.columnar[report.handle_id] = report
             self.objects.pop(report.handle_id, None)
@@ -196,6 +202,23 @@ class _HandleMetricStore:
         self.objects.pop(handle_id, None)
         self.columnar.pop(handle_id, None)
         self._report_ts.pop(handle_id, None)
+        self._received_at.pop(handle_id, None)
+        self._masked.pop(handle_id, None)
+
+    def received_at(self, handle_id: str) -> Optional[float]:
+        """Controller-local monotonic time of the last accepted report, if any."""
+        return self._received_at.get(handle_id)
+
+    def masked(self, handle_id: str, generation: int) -> Optional[List[MetricSamples]]:
+        """The handle's mask if one was computed against this running set."""
+        cached = self._masked.get(handle_id)
+        return cached[1] if cached is not None and cached[0] == generation else None
+
+    def remember_masked(
+        self, handle_id: str, generation: int, samples: List[MetricSamples]
+    ) -> None:
+        """Cache a mask; invalidated by the next report for this handle."""
+        self._masked[handle_id] = (generation, samples)
 
     def all_reports(self) -> List[HandleReport]:
         """Every stored report, materialized so callers can drop while iterating."""
@@ -207,7 +230,9 @@ def _running_samples(payload: FlatHandleReport) -> Tuple[MetricSamples, List[str
     replica key. The encoder lays a metric's points out contiguously, so this is
     normally a view; a frame that is not pays one copy here rather than one per tick."""
     entries = payload["entries"]
-    rows = entries[entries[:, 0] == payload["mi"]]
+    # Drop data-free rows: they contribute nothing, and keeping their replica keys
+    # would let a replica that never reported knock the handle off the fast path.
+    rows = entries[(entries[:, 0] == payload["mi"]) & (entries[:, 3] > 0)]
     timestamps, values = payload["ts"], payload["val"]
     if not rows.size:
         empty = np.zeros(1, dtype=np.int64)
@@ -273,9 +298,9 @@ class DeploymentAutoscalingState:
         # (report timestamp, samples) memo of each replica's running series, so the
         # object->array conversion runs once per report, not once per decision tick.
         self._replica_running_memo: Dict[ReplicaID, _ReplicaRunningMemo] = dict()
-        # Async inference task queue length (from QueueMonitor).
-        # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
-        self._total_pending_async_requests: int = 0
+        # Bumped only when the running set actually changes, so a handle that has to
+        # mask out stopped replicas does it once per change, not once per tick.
+        self._running_gen: int = 0
 
         # Total-request aggregate from the most recent autoscaling decision, reused by
         # the scale up/down log so it isn't recomputed within the same tick.
@@ -412,9 +437,10 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         self._running_replicas = running_replicas
-        self._cached_running_replica_strs = {
-            r.to_full_id_str() for r in running_replicas
-        }
+        replica_strs = {r.to_full_id_str() for r in running_replicas}
+        if replica_strs != self._cached_running_replica_strs:
+            self._running_gen += 1
+        self._cached_running_replica_strs = replica_strs
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -490,12 +516,14 @@ class DeploymentAutoscalingState:
             if report.queued
         ]
 
-    def _handle_running_columnar_samples(
-        self, running: Set[str]
-    ) -> List[MetricSamples]:
-        """Each columnar handle's running samples, masked to replicas still in `running`
-        (mirrors _collect_handle_running_requests). Passed through whole while every
-        replica is still running; only a changed membership pays a per-source slice."""
+    def _handle_running_columnar_samples(self) -> List[MetricSamples]:
+        """Each columnar handle's running samples, masked to the replicas still
+        running (mirrors _collect_handle_running_requests). Zero copy throughout: the
+        whole frame passes through while every replica is still running, and the masked
+        case slices. A stale key costs one masking pass per running-set change, not one
+        per tick, since a handle lags the set for a whole report interval after every
+        scale-down."""
+        running = self._cached_running_replica_strs
         samples = []
         for report in self._handle_store.columnar.values():
             keys = report.running_keys
@@ -504,9 +532,18 @@ class DeploymentAutoscalingState:
             if running.issuperset(keys):
                 samples.append(report.running)
                 continue
-            samples += [
-                report.running.source(i) for i, key in enumerate(keys) if key in running
-            ]
+            cached = self._handle_store.masked(report.handle_id, self._running_gen)
+            if cached is None:
+                # Slices, so the masked samples stay views onto the stored frame.
+                cached = [
+                    report.running.source(i)
+                    for i, key in enumerate(keys)
+                    if key in running
+                ]
+                self._handle_store.remember_masked(
+                    report.handle_id, self._running_gen, cached
+                )
+            samples += cached
         return samples
 
     def _aggregate_samples(self, samples: List[MetricSamples]) -> float:
@@ -573,12 +610,6 @@ class DeploymentAutoscalingState:
             )
         )
 
-    def record_async_inference_task_queue_metrics(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ) -> None:
-        """Records task queue length from QueueMonitor for async inference."""
-        self._total_pending_async_requests = report.queue_length
-
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
 
@@ -591,17 +622,21 @@ class DeploymentAutoscalingState:
             2 * self._config.metrics_interval_s,
             RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
         )
-        now = time.time()
+        now_mono = time.monotonic()
         # Both stores hold reports with the same drop-relevant shape, so one loop. A
         # handle on a dead proxy/replica actor goes immediately; otherwise it goes when
-        # it has not reported for timeout_s, which is expected after a shutdown.
+        # the controller has not received an update for timeout_s. Age is measured from
+        # controller-local receive time so producer/controller clock skew cannot drop
+        # fresh reports early or retain phantoms past the timeout.
         for report in self._handle_store.all_reports():
             dead_actor = (
                 report.is_serve_component_source
                 and report.actor_id is not None
                 and report.actor_id not in alive_serve_actor_ids
             )
-            if not (dead_actor or now - report.timestamp >= timeout_s):
+            received_at = self._handle_store.received_at(report.handle_id)
+            timed_out = received_at is None or now_mono - received_at >= timeout_s
+            if not (dead_actor or timed_out):
                 continue
             self._handle_store.forget(report.handle_id)
             _log_dropped_handle(report, timeout_s, dead_actor)
@@ -693,7 +728,6 @@ class DeploymentAutoscalingState:
             raw_metrics=self._get_raw_custom_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
-            total_pending_async_requests=self._total_pending_async_requests,
         )
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
@@ -911,16 +945,14 @@ class DeploymentAutoscalingState:
 
         Wide columnar sources are sliced as array views (never re-materialized into
         per-point objects -- replica reports stay object while handle reports go
-        columnar, so a mixed fleet is steady state and this runs every tick); thin
+        columnar, so both stores are live at once and this runs every tick); thin
         object sources are converted to small arrays. Empty object series are dropped
         so they cannot flip metrics_collected_on_replicas and suppress handle-side
         running (mirrors the columnar empty-skip). Disjoint by dedup-at-write."""
         samples = self._replica_running_samples()
         metrics_collected_on_replicas = bool(samples)
         if not metrics_collected_on_replicas:
-            samples += self._handle_running_columnar_samples(
-                self._cached_running_replica_strs
-            )
+            samples += self._handle_running_columnar_samples()
             samples += MetricSamples.per_series(self._collect_handle_running_requests())
         samples += self._queued_columnar_samples()
         samples += MetricSamples.per_series(self._collect_handle_queued_requests())
@@ -1278,15 +1310,6 @@ class ApplicationAutoscalingState:
                 dep_id
             ].record_columnar_metrics_for_handle(payload)
 
-    def record_async_inference_task_queue_metrics(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics for a deployment."""
-        if report.deployment_id in self._deployment_autoscaling_states:
-            self._deployment_autoscaling_states[
-                report.deployment_id
-            ].record_async_inference_task_queue_metrics(report)
-
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]):
         """Drops handle metrics that are no longer valid.
 
@@ -1483,15 +1506,6 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(payload["deployment_id"].app_name)
         if app_state:
             app_state.record_columnar_metrics_for_handle(payload)
-
-    def record_async_inference_task_queue_metrics(
-        self,
-        report: AsyncInferenceTaskQueueMetricReport,
-    ) -> None:
-        """Record async inference task queue metrics from QueueMonitor."""
-        app_state = self._app_autoscaling_states.get(report.deployment_id.app_name)
-        if app_state:
-            app_state.record_async_inference_task_queue_metrics(report)
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():

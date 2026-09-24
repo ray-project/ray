@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
+from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
@@ -151,7 +152,19 @@ DEFAULT_SHUFFLE_INPUT_BATCH_BYTES = env_integer(
     "RAY_DATA_SHUFFLE_INPUT_BATCH_BYTES", 1024 * 1024 * 1024
 )
 
-DEFAULT_ENABLE_EXTERNAL_SHUFFLE = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+
+def _deduce_default_enable_disk_shuffle() -> bool:
+    legacy = env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+    if "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE" in os.environ:
+        logger.warning(
+            "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE is deprecated, please use "
+            "RAY_DATA_ENABLE_DISK_SHUFFLE instead"
+        )
+
+    return env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", legacy)
+
+
+DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
@@ -371,6 +384,12 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+# Retain the stats summary of each finished execution so it can be read back with
+# `ray.data.list_stats_summaries()`, disabled by default.
+DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION = env_bool(
+    "RAY_DATA_ENABLE_STATS_SUMMARY_COLLECTION", False
+)
+
 DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
@@ -403,7 +422,7 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 
 DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
-    1,
+    None,
 )
 
 
@@ -540,7 +559,8 @@ class AutoscalingConfig:
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
         actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
             This limits how many actors can be added at once to prevent resource contention
-            and scheduling pressure. Defaults to 1 for conservative scaling.
+            and scheduling pressure. Defaults to ``None``, leaving the delta bounded only by
+            the operator's resource budget and the pool's ``max_size``.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -592,6 +612,31 @@ def _default_fixed_shape_tensor_format():
     from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
     return FixedShapeTensorFormat.V2
+
+
+def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
+    """Read this job's core-level lineage reconstruction setting.
+
+    Reads ``disable_job_level_lineage_reconstruction`` off the core worker to
+    determine whether Ray Data's application-level fault tolerance mechanism
+    should be enabled.
+    """
+    if not global_worker.connected:
+        return None
+
+    try:
+        return bool(
+            global_worker.core_worker.get_disable_job_level_lineage_reconstruction()
+        )
+    except Exception:
+        logger.warning(
+            "Couldn't read `disable_job_level_lineage_reconstruction` from the "
+            "core worker. Ray Data may be running without fault tolerance "
+            "mechanism. Is the job level lineage reconstruction config correctly "
+            "propagated to the core worker?",
+            exc_info=True,
+        )
+        return False
 
 
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
@@ -836,7 +881,7 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Applies to the
-            ``SHUFFLE_V2`` shuffle strategy (including external hash shuffle).
+            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
             Other shuffle strategies ignore it. Input blocks are buffered per
             node and
             processed as a batch once this size is reached; remaining
@@ -845,11 +890,13 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_external_hash_shuffle: Whether keyed ``repartition()``,
+        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
-            external (on-disk, file-transport) shuffle instead of the object
-            store. Defaults to the ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``
-            environment variable (``False`` when unset).
+            disk-based (file-transport) shuffle instead of the object
+            store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
+            environment variable (``False`` when unset). Deprecated
+            aliases: ``use_external_hash_shuffle`` and the
+            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -868,6 +915,9 @@ class DataContext:
         use_polars_sort: Whether to use Polars for tabular dataset sorting operations.
         use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
+            disabled by default.
+        enable_stats_summary_collection: Retain the stats summary of each finished
+            execution so it can be read back with `ray.data.list_stats_summaries()`,
             disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
             store memory limit. If `None`, uses Ray's default.
@@ -913,6 +963,11 @@ class DataContext:
             otherwise, the system launches map tasks and actors with no logical
             ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
             for some APIs but not others. Defaults to ``False``.
+        enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
+            itself rather than relying on Ray Core lineage reconstruction.
+            This parameter should only be set using the job config. Explicitly setting
+            data reconstruction for context will not propagate the configuration to the
+            ray cluster.
     """
 
     # `None` means the block size is infinite.
@@ -990,7 +1045,7 @@ class DataContext:
     # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
     # hash-shuffle operations (keyed repartition, aggregations, joins).
     # When False, use the object-store path.
-    use_external_hash_shuffle: bool = DEFAULT_ENABLE_EXTERNAL_SHUFFLE
+    use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
 
     ################################################################
     # GPU Shuffle configuration
@@ -1085,6 +1140,7 @@ class DataContext:
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
+    enable_stats_summary_collection: bool = DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
@@ -1122,6 +1178,8 @@ class DataContext:
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
+
+    _enable_ray_data_reconstruction: Optional[bool] = None
 
     object_store_reservation_overshoot_ratio: Optional[
         float
@@ -1378,6 +1436,32 @@ class DataContext:
             stacklevel=stacklevel,
         )
 
+    # Deprecated alias of `use_disk_based_hash_shuffle`
+    @property
+    def use_external_hash_shuffle(self) -> bool:
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=3)
+
+        return self.use_disk_based_hash_shuffle
+
+    @use_external_hash_shuffle.setter
+    def use_external_hash_shuffle(self, value: bool) -> None:
+        # NOTE: One frame deeper than the getter -- assignment routes through
+        #       `DataContext.__setattr__`
+        self._warn_use_external_hash_shuffle_deprecated(stacklevel=4)
+
+        self.use_disk_based_hash_shuffle = value
+
+    @staticmethod
+    def _warn_use_external_hash_shuffle_deprecated(*, stacklevel: int) -> None:
+        # NOTE: `stacklevel` has to resolve to the caller, otherwise Python's
+        #       default filters drop the warning as library-internal
+        warnings.warn(
+            "`use_external_hash_shuffle` is deprecated, please configure "
+            "`use_disk_based_hash_shuffle` instead.",
+            DeprecationWarning,
+            stacklevel=stacklevel,
+        )
+
     @property
     def execution_callback_classes(self) -> List[Type["ExecutionCallback"]]:
         """Get the complete registry of execution callback classes.
@@ -1514,6 +1598,28 @@ class DataContext:
             raise TypeError(
                 "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
             )
+
+    @property
+    def enable_ray_data_reconstruction(self) -> bool:
+        """Whether Ray Data reconstructs lost objects itself."""
+        resolved = _resolve_enable_ray_data_reconstruction()
+        if self._enable_ray_data_reconstruction is not None:
+            if (
+                resolved is not None
+                and resolved != self._enable_ray_data_reconstruction
+            ):
+                raise ValueError(
+                    "The enable_ray_data_reconstruction value does not match "
+                    "the disable_job_level_lineage_reconstruction value in the "
+                    "cluster. When job level lineage reconstruction is disabled, "
+                    "data reconstruction must be enabled. When job level lineage "
+                    "reconstruction is enabled, data reconstruction must be "
+                    "disabled as core is configured to handle reconstruction in "
+                    "that configuration."
+                )
+            return self._enable_ray_data_reconstruction
+
+        return False if resolved is None else resolved
 
 
 # Backwards compatibility alias.

@@ -515,7 +515,10 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" id="close-banner" aria-label="Close banner">&times;</button>""",
+    # Each banner carries its own `data-banner-key`, which js/dismissable-banner.js
+    # uses as the localStorage key so the two dismiss independently. Changing a key
+    # re-shows that banner for everyone who already dismissed it.
+    "announcement": """<div class="ray-banner" data-banner-key="ray-docs-banner-dismissed">Try Ray with $100 credit — <a target="_blank" href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=banner">Start now</a><button type="button" class="ray-banner__close" aria-label="Close the Anyscale credit banner">&times;</button></div><div class="ray-banner ray-banner--notice" data-banner-key="ray-docs-token-auth-banner-dismissed">Ray 2.59 enables token authentication by default for local clusters, and Ray 2.61 extends it to all clusters. <a href="https://docs.ray.io/en/latest/ray-security/token-auth.html">Read the rollout details</a><button type="button" class="ray-banner__close" aria-label="Close the token authentication banner">&times;</button></div>""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },

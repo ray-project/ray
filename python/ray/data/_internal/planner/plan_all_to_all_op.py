@@ -15,11 +15,11 @@ from ray.data._internal.execution.operators.hash_shuffle_v2 import (
     _make_hash_partition_fn,
     _sort_reduce,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-    ExternalHashShuffleMapOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
 )
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
-    ExternalHashShuffleReduceOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -59,14 +59,14 @@ _SORT_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 def _select_shuffle_v2_op_classes(
     data_context: DataContext,
 ) -> Tuple[Type[PhysicalOperator], Type[PhysicalOperator], str]:
-    """Pick the SHUFFLE_V2 map/reduce op family: external (file-transport) or
-    object-store, per ``data_context.use_external_hash_shuffle``.
+    """Pick the SHUFFLE_V2 map/reduce op family: disk-based (file-transport) or
+    object-store, per ``data_context.use_disk_based_hash_shuffle``.
 
     Returns ``(map_cls, reduce_cls, name_prefix)`` where ``name_prefix`` is
-    ``"External"`` or ``""``, to be prepended to the op display names.
+    ``"Disk"`` or ``""``, to be prepended to the op display names.
     """
-    if data_context.use_external_hash_shuffle:
-        return ExternalHashShuffleMapOp, ExternalHashShuffleReduceOp, "External"
+    if data_context.use_disk_based_hash_shuffle:
+        return DiskHashShuffleMapOp, DiskHashShuffleReduceOp, "Disk"
     return ShuffleMapOp, ShuffleReduceOp, ""
 
 
@@ -100,8 +100,8 @@ def _plan_hash_shuffle_repartition_v2(
 ) -> PhysicalOperator:
     """Build the two-op Map → Reduce DAG for SHUFFLE_V2 hash-shuffle repartition.
 
-    Picks the external (file-transport) or object-store op pair based on
-    ``data_context.use_external_hash_shuffle``. Returns the reduce op; the
+    Picks the disk-based (file-transport) or object-store op pair based on
+    ``data_context.use_disk_based_hash_shuffle``. Returns the reduce op; the
     executor crawls upstream via its input_dependencies to find the map op.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey

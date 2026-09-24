@@ -1906,6 +1906,14 @@ class ServeInstanceDetails(BaseModel):
         description="Health metrics for the Ray Serve controller.",
     )
 
+    restores_unset_config_options: bool = Field(
+        default=False,
+        description=(
+            "Whether removing a deployment config override restores the value "
+            "defined in code. Older versions omit this field and keep the override."
+        ),
+    )
+
     @staticmethod
     def get_empty_schema_dict() -> Dict:
         """Empty Serve instance details dictionary.
