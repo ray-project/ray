@@ -1427,6 +1427,12 @@ class TestSelfHealthPush:
         m._pending_health_push_ref = None
         m._pending_health_push_started_s = 0.0
         m._pending_push_healthy = True
+        m._last_health_carrying_report_s = 0.0
+        # Module-global, so a carriage stamp from an earlier test would otherwise
+        # suppress this one's heartbeat.
+        from ray.serve._private.common import _SELF_HEALTH_SNAPSHOT
+
+        _SELF_HEALTH_SNAPSHOT.clear()
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._replica_id = SimpleNamespace(unique_id="r1")
@@ -1554,6 +1560,86 @@ class TestSelfHealthPush:
         assert (
             m._controller_handle.record_replica_health.remote.call_args.args[2] is False
         )
+
+    @pytest.mark.asyncio
+    async def test_carriage_suppresses_a_healthy_heartbeat(self):
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        m._last_health_carrying_report_s = time.time()  # a report just carried health
+        await m._eval_and_push_self_health()
+        assert m._self_healthy is True  # the check still ran
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_carriage_never_suppresses_unhealthy(self):
+        m = self._manager()
+
+        async def bad():
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        m._last_health_carrying_report_s = time.time()
+        await m._eval_and_push_self_health()
+        # The controller needs this to replace the replica; a report may be far off.
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stale_carriage_does_not_suppress(self):
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        # Older than the heartbeat's own cadence, so the heartbeat has to take over.
+        m._last_health_carrying_report_s = time.time() - m._self_health_period_s
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_report_that_was_never_sent_does_not_suppress(self):
+        """Regression: marking carriage when the report is built rather than sent lets
+        a push the in-flight guard skipped silence the heartbeat too."""
+        m = self._manager()
+
+        async def ok():
+            return None
+
+        m._eval_self_health_fn = ok
+        assert not m.reports_carry_health()  # nothing has carried anything yet
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_called_once()
+
+    def test_the_replica_report_carries_health(self, monkeypatch):
+        """The replica's own report carries health too, so a fleet whose replicas
+        push metrics needs no heartbeat at all."""
+        from types import SimpleNamespace
+
+        import ray.serve._private.replica as replica_mod
+
+        m = self._manager()
+        m._self_healthy = False
+        m._self_health_checked_at = 77.0
+        m._self_consecutive_failures = 2
+        m._pending_metrics_push_ref = None
+        m._pending_metrics_push_started_s = 0.0
+        m._autoscaling_config = SimpleNamespace(look_back_period_s=30.0)
+        m._metrics_store = SimpleNamespace(
+            data={}, prune_keys_and_compact_data=lambda ts: None
+        )
+        monkeypatch.setattr(replica_mod, "compress_metric_report", lambda r: r)
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m._push_autoscaling_metrics()
+        sent = m._controller_handle.record_autoscaling_metrics_from_replica.remote.call_args.args[
+            0
+        ]
+        assert sent.healthy is False
+        assert sent.health_checked_at == 77.0
+        assert sent.health_consecutive_failures == 2
 
     def test_self_check_runs_at_half_the_period(self, monkeypatch):
         from types import SimpleNamespace

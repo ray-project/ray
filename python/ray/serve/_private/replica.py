@@ -55,6 +55,7 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
+    _SELF_HEALTH_SNAPSHOT,
     RUNNING_REQUESTS_KEY,
     DeploymentID,
     ReplicaID,
@@ -441,6 +442,9 @@ class ReplicaMetricsManager:
         self._pending_health_push_started_s: float = 0.0
         # What the outstanding heartbeat carries; only meaningful while one is.
         self._pending_push_healthy: bool = True
+        # When a metric report last went out carrying health, so the heartbeat can
+        # stand down while the reports are doing its job.
+        self._last_health_carrying_report_s: float = 0.0
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -729,6 +733,16 @@ class ReplicaMetricsManager:
             period_s * 0.5,
         )
 
+    def reports_carry_health(self) -> bool:
+        """Whether a metric report carried health more recently than this heartbeat's
+        own cadence, which is the only case where the heartbeat adds nothing."""
+        window_s = self._self_health_period_s / 2
+        last = max(
+            self._last_health_carrying_report_s,
+            _SELF_HEALTH_SNAPSHOT.get("carried_at", 0.0) or 0.0,
+        )
+        return window_s > 0 and time.time() - last < window_s
+
     async def _eval_and_push_self_health(self):
         eval_fn = self._eval_self_health_fn
         if eval_fn is None:
@@ -766,6 +780,17 @@ class ReplicaMetricsManager:
                 self._last_counted_failure_s = counted_at
         self._self_healthy = healthy
         self._self_health_checked_at = time.time()
+        # Publish for the in-process Router to carry on its handle report.
+        _SELF_HEALTH_SNAPSHOT.update(
+            replica_id=self._replica_id.unique_id,
+            healthy=healthy,
+            checked_at=self._self_health_checked_at,
+            failures=self._self_consecutive_failures,
+        )
+        if healthy and self.reports_carry_health():
+            # An unhealthy result is never suppressed: the controller needs it to
+            # replace the replica, and a report may not be due for a while.
+            return
 
         with self._metrics_push_lock:
             in_flight = self._push_blocked(
@@ -1090,6 +1115,9 @@ class ReplicaMetricsManager:
             replica_id=self._replica_id,
             timestamp=time.time(),
             metrics=new_metrics,
+            healthy=self._self_healthy,
+            health_checked_at=self._self_health_checked_at,
+            health_consecutive_failures=self._self_consecutive_failures,
         )
         with self._metrics_push_lock:
             if self._push_blocked(
@@ -1097,6 +1125,10 @@ class ReplicaMetricsManager:
                 self._pending_metrics_push_started_s,
             ):
                 return  # Previous push still in flight, skip and try again later
+            if replica_metric_report.healthy is not None:
+                # Only now is it true that a report carried health; marking it at
+                # construction would suppress heartbeats for a push that was skipped.
+                self._last_health_carrying_report_s = time.time()
             self._pending_metrics_push_started_s = time.time()
             self._pending_metrics_push_ref = (
                 # Actor methods are resolved dynamically on the actor handle.
