@@ -316,8 +316,6 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
         "source/serve/doc_code/cross_node_parallelism_example.py",
-        "source/serve/doc_code/llm/llm_yaml_config_example.py",
-        "source/serve/doc_code/llm/qwen_example.py",
         "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
@@ -713,8 +711,6 @@ doctest(
         ],
         exclude = [
             "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/deploy-many-models/multi-app.md",
-            "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
         ],
     ),
