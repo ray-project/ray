@@ -840,5 +840,25 @@ def test_resolve_exec_user(monkeypatch):
         backend._resolve_exec_user("sb-1", "postfix")
 
 
+def test_delete_sandbox_removes_workdir_with_read_only_dirs():
+    """What a sandbox leaves in its workdir goes with it, even a 0555
+    directory with files in it."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", workdir="/work")
+    )
+    root_dir = backend._sandbox_metadata[sb]["root_dir"]
+    try:
+        res = backend.exec_command(
+            sb,
+            "mkdir -p /work/locked/sub && touch /work/locked/sub/f "
+            "&& chmod 0555 /work/locked",
+        )
+        assert res.exit_code == 0, res.stderr
+    finally:
+        backend.delete_sandbox(sb)
+    assert not os.path.exists(root_dir)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

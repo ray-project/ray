@@ -19,6 +19,7 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal import fs_utils
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -368,7 +369,7 @@ def extract_tar_layer(
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
                         if os.path.isdir(item_path) and not os.path.islink(item_path):
-                            shutil.rmtree(item_path, ignore_errors=True)
+                            fs_utils.rmtree(item_path, ignore_errors=True)
                         else:
                             try:
                                 os.remove(item_path)
@@ -387,7 +388,7 @@ def extract_tar_layer(
                         ownership, os.path.normpath(os.path.join(parent_rel, del_name))
                     )
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
-                    shutil.rmtree(del_path, ignore_errors=True)
+                    fs_utils.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
                     try:
                         os.remove(del_path)
@@ -402,7 +403,7 @@ def extract_tar_layer(
                         if os.path.isdir(target_path) and not os.path.islink(
                             target_path
                         ):
-                            shutil.rmtree(target_path, ignore_errors=True)
+                            fs_utils.rmtree(target_path, ignore_errors=True)
                         else:
                             os.remove(target_path)
                     except OSError:
@@ -714,7 +715,7 @@ def _drop_stale_rootfs_tree(image_dir: str) -> None:
     """
     stale = os.path.join(image_dir, "rootfs")
     if os.path.isdir(stale) and not _has_users(image_dir):
-        shutil.rmtree(stale, ignore_errors=True)
+        fs_utils.rmtree(stale, ignore_errors=True)
 
 
 def _dir_size_bytes(path: str) -> int:
@@ -810,7 +811,7 @@ def evict_least_recently_used_images(
                 if img_dir is not None and _has_users(img_dir):
                     continue
                 if img_dir is not None:
-                    shutil.rmtree(img_dir, ignore_errors=True)
+                    fs_utils.rmtree(img_dir, ignore_errors=True)
                 try:
                     os.remove(tar_path)
                 except OSError:
@@ -902,11 +903,11 @@ def pull_and_extract_container_image(
                     os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
                 )
             except Exception:
-                shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                fs_utils.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
             # The image replaces the tree; nothing reads the tree once the
             # Sentry mounts the image.
-            shutil.rmtree(tmp_rootfs_dir, ignore_errors=True)
+            fs_utils.rmtree(tmp_rootfs_dir, ignore_errors=True)
 
             with open(
                 os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
@@ -926,7 +927,7 @@ def pull_and_extract_container_image(
             if users and os.path.isdir(old_tree):
                 os.replace(old_tree, tmp_rootfs_dir)
             if os.path.exists(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
+                fs_utils.rmtree(target_dir, ignore_errors=True)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
