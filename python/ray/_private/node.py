@@ -1216,8 +1216,17 @@ class Node:
         # Try to generate a port that is far above the 'next available' one.
         # This solves issue #8254 where GRPC fails because the port assigned
         # from this method has been used by a different process.
+        #
+        # We use `random.SystemRandom` (rather than the `random` module's
+        # shared global instance) so that selecting a port does not consume
+        # from or perturb the global random state. Otherwise, a user who
+        # seeds `random` for reproducibility (e.g. `random.seed(42)`) before
+        # calling `ray.init()` would see different results depending on
+        # whether Ray happened to draw from the global generator. See
+        # https://github.com/ray-project/ray/issues/10145.
+        port_random = random.SystemRandom()
         for _ in range(ray_constants.NUM_PORT_RETRIES):
-            new_port = random.randint(port, 65535)
+            new_port = port_random.randint(port, 65535)
             if new_port in allocated_ports:
                 # This port is allocated for other usage already,
                 # so we shouldn't use it even if it's not in use right now.
