@@ -1,8 +1,9 @@
 import logging
 import os
 import re
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
+import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 
@@ -81,6 +82,29 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             )
         pynvml.nvmlShutdown()
         return cuda_device_type
+
+    @staticmethod
+    def get_current_node_accelerator_labels() -> Optional[Dict[str, str]]:
+        import ray._private.thirdparty.pynvml as pynvml
+
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return None
+        try:
+            totals = [
+                pynvml.nvmlDeviceGetMemoryInfo(
+                    pynvml.nvmlDeviceGetHandleByIndex(i)
+                ).total
+                for i in range(pynvml.nvmlDeviceGetCount())
+            ]
+        except pynvml.NVMLError:
+            return None
+        finally:
+            pynvml.nvmlShutdown()
+        if not totals:
+            return None
+        return {ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY: str(min(totals))}
 
     @staticmethod
     def _gpu_name_to_accelerator_type(name):

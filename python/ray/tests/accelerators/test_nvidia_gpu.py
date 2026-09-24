@@ -2,6 +2,7 @@ import sys
 
 import pytest
 
+import ray
 from ray._private.accelerators import NvidiaGPUAcceleratorManager
 from ray.tests.accelerators.mock_pynvml import (
     DeviceHandleMock,
@@ -61,6 +62,28 @@ def test_num_gpus_parsing(patch_mock_pynvml):
 @pytest.mark.parametrize("mock_nvml", [mock_nvml])
 def test_gpu_info_parsing(patch_mock_pynvml):
     assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "A100"
+
+
+@pytest.mark.parametrize("mock_nvml", [mock_nvml])
+def test_gpu_memory_label_unsupported(patch_mock_pynvml):
+    assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_labels() is None
+
+
+@pytest.mark.parametrize(
+    "mock_nvml",
+    [
+        PyNVMLMock(
+            [
+                DeviceHandleMock("NVIDIA L4", "GPU-0", memory_total=24 * 2**30),
+                DeviceHandleMock("NVIDIA L4", "GPU-1", memory_total=23 * 2**30),
+            ]
+        )
+    ],
+)
+def test_gpu_memory_label(patch_mock_pynvml):
+    assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_labels() == {
+        ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY: str(23 * 2**30)
+    }
 
 
 @pytest.mark.parametrize(
