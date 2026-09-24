@@ -217,6 +217,7 @@ doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
+doc/test_literal_paths.py: doc
 # The llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step. It sits under
 # doc/source/_ext/ but must not inherit that dir's doc_api.

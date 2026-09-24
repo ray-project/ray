@@ -390,6 +390,7 @@ doc/load_doc_cache.py
 doc/update_cache_env.py
 doc/rtd_doctor.py
 doc/test_no_new_rst.py
+doc/test_literal_paths.py
 .vale.ini
 .vale/
 # The three gallery configs are build inputs, not example inputs. They are
