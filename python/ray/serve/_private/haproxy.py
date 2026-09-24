@@ -9,6 +9,7 @@ import re
 import shutil
 import signal
 import string
+import sys
 import time
 from abc import ABC, abstractmethod
 from collections import deque
@@ -19,6 +20,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
+from ray._private.utils import (
+    detect_fate_sharing_support_linux,
+    set_kill_on_parent_death_linux,
+)
 from ray.serve._private.common import (
     NodeId,
     ReplicaID,
@@ -1118,10 +1123,20 @@ class HAProxyApi(ProxyApi):
         with open(stdout_path, "wb", buffering=0) as stdout_file, open(
             stderr_path, "wb", buffering=0
         ) as stderr_file:
+            # The manager can be terminated without running shutdown(), such as
+            # when `ray stop --force` kills its worker. Ensure HAProxy does not
+            # survive the manager and retain its listener ports in that case.
+            preexec_fn = (
+                set_kill_on_parent_death_linux
+                if sys.platform.startswith("linux")
+                and detect_fate_sharing_support_linux()
+                else None
+            )
             proc = await asyncio.create_subprocess_exec(
                 *args,
                 stdout=stdout_file,
                 stderr=stderr_file,
+                preexec_fn=preexec_fn,
             )
         # stdout/stderr paths are stashed on the proc so they travel with it to
         # _retire_log_files; asyncio's Process does not declare them.

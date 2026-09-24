@@ -462,6 +462,9 @@ py_test_module_list(
 # Minimal tests
 py_test_module_list(
     size = "large",
+    # Shorten direct-ingress draining because these tests repeatedly shut down
+    # or replace Serve applications within their target timeouts.
+    env = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01"},
     files = [
         "test_api.py",
     ],
@@ -480,6 +483,9 @@ py_test_module_list(
 # API tests that run faster
 py_test_module_list(
     size = "small",
+    # Shorten direct-ingress draining because these tests repeatedly shut down
+    # or replace Serve applications within their target timeouts.
+    env = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01"},
     files = [
         "test_api_2.py",
     ],
@@ -499,6 +505,9 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     timeout = "moderate",
+    # Shorten direct-ingress draining because these tests repeatedly shut down
+    # or replace Serve applications within their target timeouts.
+    env = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01"},
     files = [
         "test_model_composition.py",
     ],
@@ -517,9 +526,6 @@ py_test_module_list(
 # Post-wheel-build tests.
 py_test_module_list(
     size = "large",
-    # Release HAProxy listeners promptly because these tests restart Serve on
-    # the same ports.
-    env = {"RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S": "0.01"},
     files = [
         "test_runtime_env.py",
         "test_runtime_env_2.py",
