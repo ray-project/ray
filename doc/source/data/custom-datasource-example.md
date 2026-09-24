@@ -36,7 +36,7 @@ Call the superclass constructor and specify the files you want to read. Optional
 
 `_read_stream` is a generator that yields one or more blocks of data from a file.
 
-[Blocks](https://github.com/ray-project/ray/blob/23d3bfcb9dd97ea666b7b4b389f29b9cc0810121/python/ray/data/block.py#L54) are Ray Data's internal abstraction for a collection of rows. They can be PyArrow tables, pandas DataFrames, or dictionaries of NumPy arrays.
+[Blocks](https://github.com/ray-project/ray/blob/23d3bfcb9dd97ea666b7b4b389f29b9cc0810121/python/ray/data/block.py#L54) are Ray Data's internal abstraction for a collection of rows. They can be PyArrow tables or pandas DataFrames.
 
 Don't create a block directly. Instead, add rows of data to a [DelegatingBlockBuilder](https://github.com/ray-project/ray/blob/23d3bfcb9dd97ea666b7b4b389f29b9cc0810121/python/ray/data/_internal/delegating_block_builder.py#L10).
 
