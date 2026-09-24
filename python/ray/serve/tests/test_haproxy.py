@@ -497,6 +497,58 @@ def test_haproxy_failure(ray_shutdown):
     serve.shutdown()
 
 
+def test_root_path_direct_ingress(ray_shutdown):
+    """Check replica routing with a nonempty root_path."""
+    ray.init(num_cpus=4)
+    serve.start(http_options={"root_path": "/serve"})
+
+    app = FastAPI()
+
+    @app.get("/items/{item_id}")
+    def item(item_id: int):
+        return item_id
+
+    @serve.deployment
+    @serve.ingress(app)
+    class Ingress:
+        pass
+
+    serve.run(Ingress.bind(), route_prefix="/hello")
+    client = _get_global_client()
+
+    def check_replicas():
+        # Bypass HAProxy's fallback, which can mask broken replica routing.
+        details = ServeInstanceDetails(**client.get_serve_details())
+        replica_names = {
+            replica.actor_name
+            for replica in details.applications["default"]
+            .deployments["Ingress"]
+            .replicas
+        }
+        target_groups = ray.get(
+            client._controller.get_target_groups.remote(
+                "default", from_proxy_manager=True
+            )
+        )
+        targets = [target for group in target_groups for target in group.targets]
+        assert targets
+        assert {target.name for target in targets} <= replica_names
+        for target in targets:
+            url = f"http://localhost:{target.port}"
+            response = httpx.get(f"{url}/-/healthz")
+            assert response.status_code == 200
+            assert response.text == "success"
+            response = httpx.get(f"{url}/-/routes")
+            assert response.status_code == 200
+            assert response.json() == {"/hello": "default"}
+            response = httpx.get(f"{url}/hello/items/2")
+            assert response.status_code == 200
+            assert response.json() == 2
+        return True
+
+    wait_for_condition(check_replicas)
+
+
 def test_haproxy_get_target_groups(shutdown_ray):
     """Test that haproxy get_target_groups retrieves the correct target groups."""
     ray.init(num_cpus=4)
