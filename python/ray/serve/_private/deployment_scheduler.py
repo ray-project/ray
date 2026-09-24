@@ -10,6 +10,7 @@ from functools import total_ordering
 from typing import Any, Callable, DefaultDict, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray._common.utils import GPU_MEMORY_RESOURCE_NAME, resolve_gpu_memory
 from ray._raylet import (  # type: ignore[attr-defined]
     IMPLICIT_RESOURCE_PREFIX,
     node_labels_match_selector,
@@ -107,7 +108,7 @@ class Resources(dict):
         """
 
         keys = set(self.keys()) | set(other.keys())
-        custom_keys = keys - {"GPU", "CPU", "memory"}
+        custom_keys = keys - {"GPU", GPU_MEMORY_RESOURCE_NAME, "CPU", "memory"}
 
         for key in self.CUSTOM_PRIORITY:
             if self.get(key) < other.get(key):
@@ -118,6 +119,11 @@ class Resources(dict):
         if self.get("GPU") < other.get("GPU"):
             return True
         elif self.get("GPU") > other.get("GPU"):
+            return False
+
+        if self.get(GPU_MEMORY_RESOURCE_NAME) < other.get(GPU_MEMORY_RESOURCE_NAME):
+            return True
+        elif self.get(GPU_MEMORY_RESOURCE_NAME) > other.get(GPU_MEMORY_RESOURCE_NAME):
             return False
 
         if self.get("CPU") < other.get("CPU"):
@@ -190,6 +196,15 @@ class RequestedResources(Resources):
             return val
 
         return 0
+
+
+def _resolve_gpu_memory(
+    resources: RequestedResources, node_labels: Dict[str, str]
+) -> Optional[RequestedResources]:
+    if not resources.get(GPU_MEMORY_RESOURCE_NAME):
+        return resources
+    resolved = resolve_gpu_memory(resources, node_labels)
+    return None if resolved is None else RequestedResources(resolved)
 
 
 class ReplicaSchedulingRequestStatus(str, Enum):
@@ -571,7 +586,11 @@ class DeploymentScheduler(ABC):
                 if not target_node_id or target_node_id not in total_minus_replicas:
                     continue
 
-                total_minus_replicas[target_node_id] -= deployment.required_resources
+                total_minus_replicas[
+                    target_node_id
+                ] -= self._required_resources_on_node(
+                    deployment.required_resources, target_node_id
+                )
 
         for deployment_id, replica_nodes in self._running_replicas.items():
             deployment = self._deployments[deployment_id]
@@ -579,7 +598,9 @@ class DeploymentScheduler(ABC):
                 if node_id not in total_minus_replicas:
                     continue
 
-                total_minus_replicas[node_id] -= deployment.required_resources
+                total_minus_replicas[node_id] -= self._required_resources_on_node(
+                    deployment.required_resources, node_id
+                )
 
         def custom_min(a: AvailableNodeResources, b: AvailableNodeResources):
             keys = set(a.keys()) | set(b.keys())
@@ -596,6 +617,14 @@ class DeploymentScheduler(ABC):
             )
             for node_id in self._cluster_node_info_cache.get_active_node_ids()
         }
+
+    def _required_resources_on_node(
+        self, required_resources: RequestedResources, node_id: str
+    ) -> RequestedResources:
+        resolved = _resolve_gpu_memory(
+            required_resources, self._cluster_node_info_cache.get_node_labels(node_id)
+        )
+        return required_resources if resolved is None else resolved
 
     def _best_fit_node(
         self,
@@ -617,12 +646,16 @@ class DeploymentScheduler(ABC):
         chosen_node = None
 
         for node_id in available_resources:
-            if not available_resources[node_id].can_fit(required_resources):
+            resolved = _resolve_gpu_memory(
+                required_resources,
+                self._cluster_node_info_cache.get_node_labels(node_id),
+            )
+            if resolved is None or not available_resources[node_id].can_fit(resolved):
                 continue
 
             # TODO(zcin): We can make this better by only considering
             # custom resources that required_resources has.
-            remaining_space = available_resources[node_id] - required_resources
+            remaining_space = available_resources[node_id] - resolved
             # Tuple compares remaining space first, then the tie break key only on a tie.
             current_key = (
                 (remaining_space, tie_break_key(node_id))
@@ -1102,10 +1135,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             # resources rather than only from the calculated side), but
             # _get_available_resources_per_node is already best-effort.
             if target_node and target_node in available_resources_per_node:
-                available_resources_per_node[target_node] = (
-                    available_resources_per_node[target_node]
-                    - scheduling_request.requested_resources
+                used = self._required_resources_on_node(
+                    scheduling_request.requested_resources, target_node
                 )
+                available_resources_per_node[target_node] -= used
 
             # Mark the node as non-idle so subsequent replicas prefer it.
             if target_node and target_node not in node_to_assigned_replicas:
