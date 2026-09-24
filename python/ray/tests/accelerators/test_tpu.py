@@ -787,82 +787,31 @@ def test_strip_endpoint_port(input_endpoint, expected_host):
 
 
 def test_query_local_tpu_chip_coordinates(monkeypatch):
-    """Test _query_local_tpu_chip_coordinates JAX PJRT discovery,
-    environment configuration/restoration, and multi-host hostname guard.
-    """
-    # 1. Multi-host slice with missing worker hostnames returns None immediately.
-    monkeypatch.delenv("TPU_WORKER_HOSTNAMES", raising=False)
-    assert (
-        tpu._query_local_tpu_chip_coordinates(
-            parent_topology="4x4",
-            worker_hostnames="h0,h1",
-            num_hosts=4,
-            worker_id=1,
-        )
-        is None
+    """Verify JAX-based TPU coordinate discovery and multi-host hostname guard."""
+    # 1. Multi-host guard: skips discovery if TPU_WORKER_HOSTNAMES has fewer than num_hosts entries.
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1")
+    assert tpu._query_local_tpu_chip_coordinates(num_hosts=4) is None
+
+    # 2. Succeeds when all peer hostnames are present and jax.local_devices(backend="tpu") returns devices.
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4")
+    monkeypatch.setitem(
+        sys.modules,
+        "jax",
+        mock.MagicMock(
+            local_devices=lambda backend=None: [
+                mock.MagicMock(coords=(2, 0, 0)),
+                mock.MagicMock(coords=(3, 0, 0)),
+            ]
+        ),
     )
+    assert tpu._query_local_tpu_chip_coordinates(num_hosts=4) == [
+        [2, 0, 0],
+        [3, 0, 0],
+    ]
 
-    # 2. Queries jax.local_devices(backend="tpu") with sanitized slice env
-    #    and restores os.environ afterwards.
-    monkeypatch.setenv("TPU_VISIBLE_CHIPS", "0")
-    monkeypatch.setenv("TPU_PROCESS_BOUNDS", "1,1,1")
-    monkeypatch.setenv("WORLD_SIZE", "4")
-    monkeypatch.setenv("TPU_PROCESS_ADDRESSES", "stale:8471")
-    monkeypatch.setenv("TPU_PROCESS_PORT", "8471")
-
-    captured_env = {}
-
-    def _fake_local_devices(backend=None):
-        assert backend == "tpu"
-        captured_env.update(os.environ)
-        return [mock.MagicMock(coords=(2, 0, 0)), mock.MagicMock(coords=(3, 0, 0))]
-
-    mock_jax = mock.MagicMock(local_devices=_fake_local_devices)
-    monkeypatch.setitem(sys.modules, "jax", mock_jax)
-
-    assert tpu._query_local_tpu_chip_coordinates(
-        parent_topology="4x4",
-        worker_hostnames="[::1]:8471,10.0.0.2:8471,10.0.0.3,10.0.0.4",
-        num_hosts=4,
-        worker_id=2,
-    ) == [[2, 0, 0], [3, 0, 0]]
-
-    assert "TPU_VISIBLE_CHIPS" not in captured_env
-    assert "TPU_PROCESS_BOUNDS" not in captured_env
-    assert "WORLD_SIZE" not in captured_env
-    assert captured_env["TPU_WORKER_ID"] == "2"
-    assert captured_env["CLOUD_TPU_TASK_ID"] == "2"
-    assert captured_env["TPU_HOST_BOUNDS"] == "2,2,1"
-    assert (
-        captured_env["TPU_PROCESS_ADDRESSES"]
-        == "[::1]:8471,10.0.0.2:8471,10.0.0.3:8471,10.0.0.4:8471"
-    )
-    # Verify parent environment was restored.
-    assert os.environ["TPU_VISIBLE_CHIPS"] == "0"
-    assert os.environ["TPU_PROCESS_BOUNDS"] == "1,1,1"
-    assert os.environ["WORLD_SIZE"] == "4"
-    assert os.environ["TPU_PROCESS_ADDRESSES"] == "stale:8471"
-
-    # 3. Single-host 8-chip 2x4 (num_hosts=1) sets TPU_HOST_BOUNDS="1,1,1" rather than "1,2,1".
-    captured_env.clear()
-    tpu._query_local_tpu_chip_coordinates(
-        parent_topology="2x4",
-        num_hosts=1,
-        worker_id=0,
-    )
-    assert captured_env["TPU_HOST_BOUNDS"] == "1,1,1"
-
-    # 4. Returns None cleanly when JAX is unavailable or raises an exception.
+    # 3. Returns None cleanly when JAX is unavailable or raises an exception.
     monkeypatch.setitem(sys.modules, "jax", None)
-    assert (
-        tpu._query_local_tpu_chip_coordinates(
-            parent_topology="4x4",
-            worker_hostnames="h0,h1,h2,h3",
-            num_hosts=4,
-            worker_id=2,
-        )
-        is None
-    )
+    assert tpu._query_local_tpu_chip_coordinates(num_hosts=4) is None
 
 
 if __name__ == "__main__":

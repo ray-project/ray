@@ -548,7 +548,14 @@ def get_num_ready_tpu_slices(
         for n in nodes:
             node_id = n.get("NodeID")
             total_tpus = n.get("Resources", {}).get("TPU", 0)
-            avail_tpus = node_avail_resources.get(node_id, {}).get("TPU", 0)
+            # If the node is in ray.nodes() but hasn't heartbeated its state to GCS
+            # yet, default to total_tpus; once present in node_avail_resources, an
+            # omitted "TPU" key in Ray's sparse resource map means 0 available TPUs.
+            avail_tpus = (
+                node_avail_resources[node_id].get("TPU", 0)
+                if node_id in node_avail_resources
+                else total_tpus
+            )
 
             # If available TPUs < total TPUs on this specific node, it is in use
             if avail_tpus < total_tpus:
@@ -1614,11 +1621,7 @@ def _find_valid_parent_topologies(
 
 def _discover_tpu_node_coords(
     mock_coords: Optional[List[Tuple[str, int, List[int]]]] = None,
-    parent_topology: Optional[str] = None,
-    worker_hostnames: Optional[str] = None,
     num_hosts: int = 1,
-    worker_id: int = 0,
-    raise_on_error: bool = True,
 ) -> Dict[str, Any]:
     """Remote function: discover this TPU worker's physical chip coordinates.
 
@@ -1632,20 +1635,7 @@ def _discover_tpu_node_coords(
     if mock_coords is not None:
         return {"node_id": node_id, "coords": mock_coords}
 
-    coords_list = _query_local_tpu_chip_coordinates(
-        parent_topology=parent_topology,
-        worker_hostnames=worker_hostnames,
-        num_hosts=num_hosts,
-        worker_id=worker_id,
-    )
-    if not coords_list:
-        if raise_on_error:
-            raise RuntimeError(
-                "Failed to discover TPU chip coordinates on this worker via JAX. "
-                "Ensure jax[tpu] is installed on all TPU worker nodes."
-            )
-        return {"node_id": node_id, "coords": None}
-
+    coords_list = _query_local_tpu_chip_coordinates(num_hosts=num_hosts) or []
     return {
         "node_id": node_id,
         "coords": [("", i, c) for i, c in enumerate(coords_list)],
@@ -1659,10 +1649,14 @@ DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S: float = float(
 
 def _compute_subslice_labels_from_discovery(
     discovery_results: List[Optional[Dict[str, Any]]],
-    node_id_to_wid: Dict[str, Optional[str]],
+    nodes: List[Dict[str, Any]],
     parent_topology: str,
 ) -> Dict[str, Dict[str, str]]:
     """Parse coordinate discovery results into a worker_id -> labels mapping."""
+    node_id_to_wid = {
+        n["NodeID"]: n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+        for n in nodes
+    }
     discovered: Dict[str, Dict[str, str]] = {}
     for result in discovery_results:
         if not result or not result.get("coords"):
@@ -1702,54 +1696,47 @@ def _get_physical_to_label_worker_map(
         try:
             expected_workers = math.prod(_get_worker_dims_for_topology(parent_topology))
             slice_nodes = get_tpu_nodes_for_slice(slice_name)
-            if len(slice_nodes) == expected_workers:
-                slice_nodes.sort(
-                    key=lambda n: int(
-                        n.get("Labels", {}).get(
-                            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY, "0"
-                        )
-                    )
+            host_addrs = [n.get("NodeManagerAddress") for n in slice_nodes]
+            # libtpu binds TPU_PROCESS_PORT (8471) on each host, so every worker
+            # in the slice must have a distinct IP address.
+            if (
+                len(slice_nodes) == expected_workers
+                and all(host_addrs)
+                and len(set(host_addrs)) == expected_workers
+            ):
+                discover_remote = ray.remote(num_cpus=0, max_calls=1)(
+                    _discover_tpu_node_coords
                 )
-                host_addrs = [n.get("NodeManagerAddress", "") for n in slice_nodes]
-                if all(host_addrs) and len(set(host_addrs)) == expected_workers:
-                    worker_hostnames = ",".join(host_addrs)
-                    discover_remote = ray.remote(num_cpus=0, max_calls=1)(
-                        _discover_tpu_node_coords
-                    )
-                    results = ray.get(
-                        [
-                            discover_remote.options(
-                                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                                    node_id=node["NodeID"],
-                                    soft=False,
+                # Configure slice peer addresses and rank via runtime_env so
+                # libtpu/PJRT can form the multi-host slice and report global coordinates.
+                results = ray.get(
+                    [
+                        discover_remote.options(
+                            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                                node_id=node["NodeID"],
+                                soft=False,
+                            ),
+                            runtime_env={
+                                "env_vars": get_jax_env_vars(
+                                    worker_hostnames=host_addrs,
+                                    worker_id=i,
                                 )
-                            ).remote(
-                                parent_topology=parent_topology,
-                                worker_hostnames=worker_hostnames,
-                                num_hosts=expected_workers,
-                                worker_id=i,
-                                raise_on_error=False,
-                            )
-                            for i, node in enumerate(slice_nodes)
-                        ],
-                        timeout=timeout,
-                    )
-                    node_id_to_wid = {
-                        n["NodeID"]: n.get("Labels", {}).get(
-                            ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY
-                        )
-                        for n in slice_nodes
-                    }
-                    discovered = _compute_subslice_labels_from_discovery(
-                        results, node_id_to_wid, parent_topology
-                    )
-                    if len(discovered) == expected_workers:
-                        w_labels = discovered
-                        with _tpu_subslice_cache_lock:
-                            _tpu_subslice_cache[slice_name] = w_labels
+                            },
+                        ).remote(num_hosts=expected_workers)
+                        for i, node in enumerate(slice_nodes)
+                    ],
+                    timeout=timeout,
+                )
+                discovered = _compute_subslice_labels_from_discovery(
+                    results, slice_nodes, parent_topology
+                )
+                if len(discovered) == expected_workers:
+                    w_labels = discovered
+                    with _tpu_subslice_cache_lock:
+                        _tpu_subslice_cache[slice_name] = w_labels
         except Exception as e:
             logger.debug(
-                "On-demand coordinate discovery for slice '%s' skipped or failed: %s",
+                "TPU chip coordinate discovery for slice '%s' failed: %s",
                 slice_name,
                 e,
             )
@@ -1836,6 +1823,8 @@ def _discover_and_persist_subslices(
             accelerator_version=accelerator_version,
             chips_per_vm=chips_per_vm,
             head_reservation_timeout_s=head_reservation_timeout_s,
+            # Pin each bundle to a worker ID label so SlicePlacementGroup does not
+            # run a redundant _get_physical_to_label_worker_map discovery pass.
             bundle_label_selector=[
                 {
                     ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
@@ -1858,7 +1847,6 @@ def _discover_and_persist_subslices(
 
         # Fan out coordinate discovery to every worker in the slice.
         host_addrs = full_slice._get_placed_host_addrs(0)
-        worker_hostnames = ",".join(host_addrs) if host_addrs else None
         discover_remote = ray.remote(max_calls=1)(_discover_tpu_node_coords)
         results = ray.get(
             [
@@ -1866,13 +1854,18 @@ def _discover_and_persist_subslices(
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
                         placement_group=full_slice.placement_group,
                         placement_group_bundle_index=i,
-                    )
-                ).remote(
-                    parent_topology=parent_topology,
-                    worker_hostnames=worker_hostnames,
-                    num_hosts=full_slice.num_bundles,
-                    worker_id=i,
-                )
+                    ),
+                    runtime_env=(
+                        {
+                            "env_vars": get_jax_env_vars(
+                                worker_hostnames=host_addrs,
+                                worker_id=i,
+                            )
+                        }
+                        if host_addrs
+                        else None
+                    ),
+                ).remote(num_hosts=full_slice.num_bundles)
                 for i in range(full_slice.num_bundles)
             ],
             timeout=DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S,
@@ -1881,12 +1874,8 @@ def _discover_and_persist_subslices(
         # Compute physical positions → subslice labels.
         # The node's tpu-worker-id label is the key (what the scheduler sees).
         # The physical position determines subslice membership.
-        node_id_to_wid = {
-            n["NodeID"]: n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
-            for n in ray.nodes()
-        }
         subslice_labels_by_worker_id = _compute_subslice_labels_from_discovery(
-            results, node_id_to_wid, parent_topology
+            results, ray.nodes(), parent_topology
         )
 
         # Validate that every expected worker was labeled. If any worker
@@ -2206,6 +2195,10 @@ class SubslicePlacementGroup:
         self._slice_name = slice_name
         self._num_hosts = num_hosts
         self._chips_per_host = chips_per_host
+        self._tpu_resource_per_chip = get_tpu_resource_per_chip()
+        self._logical_devices_per_host = (
+            self._chips_per_host * self._tpu_resource_per_chip
+        )
         self._bundle_resources = bundle_resources
         self._head_placement_groups: List[PlacementGroup] = head_placement_groups or []
         self._bundle_label_selectors: List[Dict[str, str]] = (
@@ -2244,17 +2237,20 @@ class SubslicePlacementGroup:
 
     @PublicAPI(stability="alpha")
     def get_worker_addrs(self) -> List[Optional[str]]:
-        """Returns the IP addresses of all worker bundles in this subslice.
+        """Returns the IP addresses of all worker hosts in this subslice.
 
         Returns:
             A list of IP address strings (or None for unscheduled bundles)
-            ordered by bundle index (0 to num_hosts - 1).
+            ordered by host rank (0 to num_hosts - 1).
         """
         if self._placement_group is None:
             return [None] * self._num_hosts
+        bundles_per_host = max(
+            1, len(self._bundle_label_selectors) // max(1, self._num_hosts)
+        )
         return _get_pg_bundle_node_ips(
             self._placement_group,
-            range(self._num_hosts),
+            [h * bundles_per_host for h in range(self._num_hosts)],
         )
 
     @PublicAPI(stability="alpha")
@@ -2272,6 +2268,16 @@ class SubslicePlacementGroup:
     def chips_per_host(self) -> int:
         """TPU chips available per host."""
         return self._chips_per_host
+
+    @property
+    def tpu_resource_per_chip(self) -> int:
+        """The number of logical TPU resources per physical chip."""
+        return self._tpu_resource_per_chip
+
+    @property
+    def devices_per_host(self) -> int:
+        """The number of logical TPU devices per host for this subslice."""
+        return self._logical_devices_per_host
 
     @property
     def bundle_resources(self) -> Dict[str, float]:
@@ -2535,10 +2541,22 @@ def _build_subslice_pg(
     """Create a Ray placement group for the selected subslice workers and
     return a :class:`SubslicePlacementGroup` handle.
 
-    *resources_per_bundle* defaults to ``{"CPU": 1, "TPU": chips_per_vm}``.
+    *resources_per_bundle* defaults to ``{"CPU": 1, "TPU": chips_per_vm * get_tpu_resource_per_chip()}``.
     """
+    logical_devices_per_vm = chips_per_vm * get_tpu_resource_per_chip()
     if resources_per_bundle is None:
-        resources_per_bundle = {"CPU": 1, "TPU": chips_per_vm}
+        resources_per_bundle = {"CPU": 1, "TPU": logical_devices_per_vm}
+    else:
+        resources_per_bundle = resources_per_bundle.copy()
+        resources_per_bundle.setdefault("CPU", 1)
+        resources_per_bundle.setdefault("TPU", logical_devices_per_vm)
+
+    tpus_per_bundle = resources_per_bundle["TPU"]
+    bundles_per_host = (
+        max(1, int(logical_devices_per_vm // tpus_per_bundle))
+        if tpus_per_bundle > 0 and logical_devices_per_vm % tpus_per_bundle == 0
+        else 1
+    )
 
     bundle_label_selectors = [
         {
@@ -2546,10 +2564,11 @@ def _build_subslice_pg(
             ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: wid,
         }
         for wid in worker_ids
+        for _ in range(bundles_per_host)
     ]
 
     pg = placement_group(
-        bundles=[resources_per_bundle.copy() for _ in worker_ids],
+        bundles=[resources_per_bundle.copy() for _ in bundle_label_selectors],
         strategy=strategy,
         name=name,
         lifetime=lifetime,

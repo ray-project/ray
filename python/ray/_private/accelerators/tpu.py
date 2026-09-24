@@ -1,4 +1,3 @@
-import contextlib
 import glob
 import logging
 import os
@@ -9,7 +8,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 
 import ray
-from ray._common.network_utils import build_address, parse_address
+from ray._common.network_utils import parse_address
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 from ray.util.placement_group import (
@@ -426,100 +425,36 @@ def _get_physical_worker_id_from_coords(
     return linear_id
 
 
-@contextlib.contextmanager
-def _pjrt_slice_env(
-    parent_topology: Optional[str],
-    worker_hostnames: Optional[str],
-    num_hosts: int,
-    worker_id: int,
-):
-    """Temporarily set slice topology and host membership env vars for PJRT discovery.
-
-    `jax.local_devices(backend="tpu")` reads slice hostnames (`TPU_WORKER_HOSTNAMES`,
-    `TPU_PROCESS_ADDRESSES`), worker index (`TPU_WORKER_ID`, `CLOUD_TPU_TASK_ID`), and
-    topology bounds (`TPU_TOPOLOGY`, `TPU_HOST_BOUNDS`) from `os.environ`. Clears
-    process-level chip masks (`TPU_VISIBLE_CHIPS`, `TPU_PROCESS_BOUNDS`) so the runtime
-    discovers all local chips.
-    """
-    env_overrides: Dict[str, Optional[str]] = {
-        TPU_VISIBLE_CHIPS_ENV_VAR: None,
-        TPU_PROCESS_BOUNDS_ENV_VAR: None,
-        TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR: None,
-        "WORLD_SIZE": None,
-    }
-    if worker_hostnames:
-        env_overrides[TPU_WORKER_HOSTNAMES_ENV_VAR] = worker_hostnames
-        env_overrides[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
-        env_overrides[CLOUD_TPU_TASK_ID_ENV_VAR] = str(worker_id)
-        if TPU_PROCESS_ADDRESSES_ENV_VAR in os.environ:
-            port = os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471")
-            clean_hosts = [
-                host
-                for h in worker_hostnames.split(",")
-                if (host := _strip_endpoint_port(h))
-            ]
-            env_overrides[TPU_PROCESS_ADDRESSES_ENV_VAR] = ",".join(
-                build_address(h, port) for h in clean_hosts
-            )
-    if parent_topology:
-        env_overrides[GKE_TPU_TOPOLOGY_ENV_VAR] = parent_topology
-        try:
-            if num_hosts <= 1:
-                bounds_3d: Tuple[int, ...] = (1, 1, 1)
-            else:
-                w_dims = _get_worker_dims_for_topology(parent_topology)
-                bounds_3d = w_dims if len(w_dims) == 3 else (*w_dims, 1)
-            env_overrides[TPU_HOST_BOUNDS_ENV_VAR] = ",".join(str(d) for d in bounds_3d)
-        except Exception:
-            pass
-
-    saved_env = {k: os.environ.get(k) for k in env_overrides}
-    try:
-        for k, v in env_overrides.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-        yield
-    finally:
-        for k, prev_val in saved_env.items():
-            if prev_val is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = prev_val
-
-
 def _query_local_tpu_chip_coordinates(
-    parent_topology: Optional[str] = None,
-    worker_hostnames: Optional[str] = None,
     num_hosts: int = 1,
-    worker_id: int = 0,
 ) -> Optional[List[List[int]]]:
     """Query physical 2D (x, y) or 3D (x, y, z) coordinates of local TPU chips via JAX."""
-    effective_hostnames = worker_hostnames or os.environ.get(
-        TPU_WORKER_HOSTNAMES_ENV_VAR, ""
-    )
-    resolved_hosts = [h.strip() for h in effective_hostnames.split(",") if h.strip()]
+    resolved_hosts = [
+        h.strip()
+        for h in os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "").split(",")
+        if h.strip()
+    ]
+    # Guard against an incomplete multi-host environment: without all peer host
+    # addresses, PJRT initializes as a standalone host and reports local (0..1, 0..1, 0)
+    # coordinates instead of global slice coordinates.
     if num_hosts > 1 and len(resolved_hosts) < num_hosts:
         logger.debug(
             "Skipping TPU chip coordinate discovery: multi-host slice "
-            "(num_hosts=%d) requires all worker hostnames in %s, got %d (%r).",
+            "(num_hosts=%d) requires all worker hostnames in %s, got %d.",
             num_hosts,
             TPU_WORKER_HOSTNAMES_ENV_VAR,
             len(resolved_hosts),
-            effective_hostnames,
         )
         return None
 
-    with _pjrt_slice_env(parent_topology, worker_hostnames, num_hosts, worker_id):
-        try:
-            import jax  # type: ignore[import-untyped]
+    try:
+        import jax  # type: ignore[import-untyped]
 
-            devices = jax.local_devices(backend="tpu")
-            if devices:
-                return [list(d.coords) for d in devices]
-        except Exception as e:
-            logger.debug("Could not query TPU chip coordinates via JAX: %s", e)
+        devices = jax.local_devices(backend="tpu")
+        if devices:
+            return [list(d.coords) for d in devices]
+    except Exception as e:
+        logger.debug("Could not query TPU chip coordinates via JAX: %s", e)
 
     return None
 

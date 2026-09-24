@@ -9,7 +9,7 @@ import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
-from ray.util.placement_group import placement_group_table
+from ray._private.test_utils import mock_accelerator_detection
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
@@ -17,15 +17,6 @@ from ray.util.tpu import (
     get_tpu_num_slices_for_workers,
     get_tpu_worker_resources,
 )
-
-# --- Test Fixtures ---
-
-
-@pytest.fixture(autouse=True)
-def isolate_tpu_hardware_state(monkeypatch):
-    """Reset cached TPU hardware state and keep these tests off real libtpu."""
-    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
-    monkeypatch.setitem(sys.modules, "libtpu", None)
 
 
 def test_get_current_pod_name_smoke():
@@ -521,7 +512,7 @@ def test_single_host_slice_placement_group_heterogeneous_cluster(ray_start_clust
         ]
 
         # Verify placed node has the v6e accelerator type
-        v6e_pg_table = placement_group_table(v6e_handle.placement_group)
+        v6e_pg_table = ray.util.placement_group_table(v6e_handle.placement_group)
         v6e_node_id = v6e_pg_table["bundles_to_node_id"][0]
         v6e_node = next(n for n in ray.nodes() if n["NodeID"] == v6e_node_id)
         assert (
@@ -539,7 +530,7 @@ def test_single_host_slice_placement_group_heterogeneous_cluster(ray_start_clust
             {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X"}
         ]
 
-        v7x_pg_table = placement_group_table(v7x_handle.placement_group)
+        v7x_pg_table = ray.util.placement_group_table(v7x_handle.placement_group)
         v7x_node_id = v7x_pg_table["bundles_to_node_id"][0]
         v7x_node = next(n for n in ray.nodes() if n["NodeID"] == v7x_node_id)
         assert (
@@ -817,6 +808,35 @@ def _make_mock_tpu_node(
                 "S2_3": {"TPU": 4},
             },
             2,
+        ),
+        # Sparse resource map: node A is in available_resources_per_node() with
+        # "TPU" omitted because all 4 TPUs are allocated -> 0 ready slices.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"CPU": 8},
+                "B": {"TPU": 4},
+            },
+            0,
+        ),
+        # Newly registered node B has not yet heartbeated to
+        # available_resources_per_node() -> defaults to available (1 ready slice).
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"TPU": 4},
+            },
+            1,
         ),
     ],
 )
@@ -2909,32 +2929,30 @@ def test_tpu_resource_and_label_spec_resolution_with_visible_chips(monkeypatch):
     """
     monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,2,3")
     monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
-    monkeypatch.setattr(
-        TPUAcceleratorManager, "get_current_node_num_accelerators", lambda: 8
-    )
 
-    # Default host-level accounting: one TPU resource per physical chip.
-    spec_default = ResourceAndLabelSpec()
-    spec_default.resolve(is_head=False)
-    assert spec_default.to_resource_dict()["TPU"] == 4
+    with mock_accelerator_detection(TPUAcceleratorManager, 8):
+        # Default host-level accounting: one TPU resource per physical chip.
+        spec_default = ResourceAndLabelSpec()
+        spec_default.resolve(is_head=False)
+        assert spec_default.to_resource_dict()["TPU"] == 4
 
-    # Opt-in per-device accounting: the mask expands to all 8 logical devices.
-    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
-    spec_opt_in = ResourceAndLabelSpec()
-    spec_opt_in.resolve(is_head=False)
-    assert spec_opt_in.to_resource_dict()["TPU"] == 8
+        # Opt-in per-device accounting: the mask expands to all 8 logical devices.
+        monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+        spec_opt_in = ResourceAndLabelSpec()
+        spec_opt_in.resolve(is_head=False)
+        assert spec_opt_in.to_resource_dict()["TPU"] == 8
 
-    spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
-    spec_override.resolve(is_head=False)
-    assert spec_override.to_resource_dict()["TPU"] == 8
+        spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
+        spec_override.resolve(is_head=False)
+        assert spec_override.to_resource_dict()["TPU"] == 8
 
-    # A task holding half the node narrows the mask to the chips it owns.
-    # patch.dict restores the bounds the setter writes alongside the mask.
-    with patch.dict("os.environ", {}):
-        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
-            ["0", "1", "2", "3"]
-        )
-        assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0,1"
+        # A task holding half the node narrows the mask to the chips it owns.
+        # patch.dict restores the bounds the setter writes alongside the mask.
+        with patch.dict("os.environ", {}):
+            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+                ["0", "1", "2", "3"]
+            )
+            assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0,1"
 
 
 def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
@@ -2952,6 +2970,41 @@ def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
         )
         == 1
     )
+    with patch("ray.util.tpu.placement_group", return_value=MagicMock(id="mock_pg")):
+        sg_whole = ray.util.tpu._build_subslice_pg(
+            ["1", "0"],
+            0,
+            "v7x-slice",
+            "2x2x2",
+            "2x2x4",
+            4,
+            None,
+            "STRICT_SPREAD",
+            "",
+            None,
+        )
+        assert sg_whole.tpu_resource_per_chip == 2
+        assert sg_whole.devices_per_host == 8
+        assert sg_whole.bundle_resources == {"CPU": 1, "TPU": 8}
+        assert len(sg_whole.bundle_label_selector) == 2
+
+        sg_per_device = ray.util.tpu._build_subslice_pg(
+            ["1", "0"],
+            0,
+            "v7x-slice",
+            "2x2x2",
+            "2x2x4",
+            4,
+            {"TPU": 1},
+            "SPREAD",
+            "",
+            None,
+        )
+        assert sg_per_device.bundle_resources == {"CPU": 1, "TPU": 1}
+        assert len(sg_per_device.bundle_label_selector) == 16
+        assert [
+            s["ray.io/tpu-worker-id"] for s in sg_per_device.bundle_label_selector
+        ] == (["1"] * 8 + ["0"] * 8)
 
     monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "0")
     with pytest.raises(ValueError, match="must be a positive integer"):
