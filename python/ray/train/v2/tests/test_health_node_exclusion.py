@@ -12,9 +12,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.train.v2._internal.callbacks.health_callback import (
-    build_node_exclusion_selector,
-)
+from ray.train.health._internal.callback import build_node_exclusion_selector
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 

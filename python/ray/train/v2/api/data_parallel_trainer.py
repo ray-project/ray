@@ -246,6 +246,18 @@ class DataParallelTrainer:
         user_callbacks = [
             cb for cb in run_config_callbacks if isinstance(cb, UserCallback)
         ]
+
+        health_config = self.run_config.health_config
+        if health_config is not None and health_config.policies:
+            from ray.train.health._internal.callback import HealthCallback
+
+            callbacks.append(
+                HealthCallback(
+                    health_config,
+                    user_callbacks=user_callbacks,
+                    train_run_context=self.train_run_context,
+                )
+            )
         callbacks.append(
             UserCallbackHandler(
                 user_callbacks=user_callbacks, train_run_context=self.train_run_context
