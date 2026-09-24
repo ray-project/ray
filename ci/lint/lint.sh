@@ -164,4 +164,8 @@ docstring_only_scope() {
   python ci/ray_ci/doc/check_docstring_only.py
 }
 
+doc_literal_paths() {
+  python doc/test_literal_paths.py
+}
+
 "$@"
