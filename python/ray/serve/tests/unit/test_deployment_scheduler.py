@@ -566,6 +566,65 @@ def test_best_fit_node():
         Resources.CUSTOM_PRIORITY = original
 
 
+def test_best_fit_node_gpu_memory():
+    vram_key = ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node("small", labels={vram_key: str(24 * 10**9)})
+    cluster_node_info_cache.add_node("big", labels={vram_key: str(80 * 10**9)})
+    cluster_node_info_cache.add_node("unlabeled")
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+
+    def best_fit(gpu_memory, big_gpus=1):
+        return scheduler._best_fit_node(
+            required_resources=RequestedResources(CPU=1, gpu_memory=gpu_memory),
+            available_resources={
+                "small": AvailableNodeResources(GPU=1, CPU=8),
+                "big": AvailableNodeResources(GPU=big_gpus, CPU=8),
+                "unlabeled": AvailableNodeResources(GPU=1, CPU=8),
+            },
+        )
+
+    assert best_fit(4 * 10**10) == "big"
+    assert best_fit(4 * 10**10, big_gpus=0.4) is None
+    # 20GB is 0.8333 of the small GPU and 0.25 of the big one, so the small
+    # node leaves less GPU behind.
+    assert best_fit(2 * 10**10) == "small"
+
+
+def test_get_available_resources_per_node_gpu_memory():
+    d_id = DeploymentID("a", "b")
+    vram_key = ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+    cluster_node_info_cache.add_node(
+        "node1", {"GPU": 2, "CPU": 8}, labels={vram_key: str(80 * 10**9)}
+    )
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=None,
+    )
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        ReplicaConfig.create(
+            dummy, ray_actor_options={"num_cpus": 1, "gpu_memory": 2 * 10**10}
+        ),
+    )
+    cluster_node_info_cache.set_available_resources_per_node(
+        "node1", {"GPU": 2, "CPU": 8}
+    )
+    scheduler._on_replica_launching(
+        ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
+    )
+    available = scheduler._get_available_resources_per_node()["node1"]
+    assert available.get("GPU") == pytest.approx(1.75)
+    assert available.get("CPU") == 7
+
+
 def test_best_fit_node_tie_break_key():
     """Test that _best_fit_node uses tie_break_key only to break ties."""
 
@@ -1519,6 +1578,59 @@ class TestPackScheduling:
             assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
             assert scheduling_strategy.node_id == node_id_1
             assert call.kwargs == {"placement_group": None}
+
+    def test_gpu_memory_heterogeneous_gpus(self):
+        d_id = DeploymentID(name="deployment1")
+        vram_key = ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY
+        small = NodeID.from_random().hex()
+        big = NodeID.from_random().hex()
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(
+            small, {"GPU": 1, "CPU": 8}, labels={vram_key: str(24 * 10**9)}
+        )
+        cluster_node_info_cache.add_node(
+            big, {"GPU": 1, "CPU": 8}, labels={vram_key: str(80 * 10**9)}
+        )
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy, ray_actor_options={"num_cpus": 1, "gpu_memory": 4 * 10**10}
+            ),
+        )
+
+        on_scheduled_mock = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id=f"r{i}", deployment_id=d_id),
+                        actor_def=MockActorClass(),
+                        actor_resources={"CPU": 1, "gpu_memory": 4 * 10**10},
+                        actor_options={},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled_mock,
+                    )
+                    for i in range(3)
+                ]
+            },
+            downscales={},
+        )
+
+        strategies = [
+            call.args[0]._options["scheduling_strategy"]
+            for call in on_scheduled_mock.call_args_list
+        ]
+        assert len(strategies) == 3
+        pinned = [
+            s for s in strategies if isinstance(s, NodeAffinitySchedulingStrategy)
+        ]
+        assert [s.node_id for s in pinned] == [big, big]
 
     def test_max_replicas_per_node(self):
         """Test that at most `max_replicas_per_node` number of replicas

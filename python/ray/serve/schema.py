@@ -301,6 +301,14 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
+    gpu_memory: Optional[int] = Field(
+        default=None,
+        description=(
+            "Bytes of VRAM each replica needs on a single GPU. Ray converts it into "
+            "a GPU fraction for each node. Can't be combined with num_gpus."
+        ),
+        gt=0,
+    )
     memory: Optional[float] = Field(
         default=None,
         description=(

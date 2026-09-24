@@ -653,6 +653,31 @@ class TestReplicaConfig:
                 max_replicas_per_node=-1,
             )
 
+    def test_gpu_memory_option(self):
+        class Class:
+            pass
+
+        config = ReplicaConfig.create(
+            Class, ray_actor_options={"gpu_memory": 2 * 10**10}
+        )
+        assert config.resource_dict["gpu_memory"] == 2 * 10**10
+        with pytest.raises(ValueError):
+            ReplicaConfig.create(Class, ray_actor_options={"gpu_memory": -1})
+        with pytest.raises(ValueError, match="num_gpus"):
+            ReplicaConfig.create(
+                Class, ray_actor_options={"gpu_memory": 1, "num_gpus": 1}
+            )
+        with pytest.raises(ValueError, match="placement_group_bundles"):
+            ReplicaConfig.create(
+                Class,
+                ray_actor_options={"gpu_memory": 1},
+                placement_group_bundles=[{"CPU": 1, "GPU": 1}],
+            )
+        with pytest.raises(ValueError, match="gpu_memory"):
+            ReplicaConfig.create(
+                Class, placement_group_bundles=[{"CPU": 1, "gpu_memory": 1}]
+            )
+
     def test_placement_group_options_validation(self):
         class Class:
             pass

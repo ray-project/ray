@@ -7031,6 +7031,9 @@ class DeploymentStateManager:
                         "num_gpus", 0
                     )
                     > 0
+                    or deployment_state.target_info.replica_config.ray_actor_options.get(
+                        "gpu_memory"
+                    )
                 )
             ):
                 num_gpu_deployments += 1
