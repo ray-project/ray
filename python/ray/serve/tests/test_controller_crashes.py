@@ -16,7 +16,7 @@ if __name__ == "__main__":
     # Set by the target's `env` in BUILD.bazel, and inherited from here by the
     # raylet and so by the controller actor. Printed because a run without it
     # injects nothing at all, which is how this target rotted in the first place.
-    key = "RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING"
+    key = "RAY_SERVE_CRASH_PROBABILITY_TESTING"
     print(f"{key}={os.environ.get(key, '0')}")
 
     # Bazel's python stub builds sys.path in-process, so subprocesses need it

@@ -16,7 +16,7 @@ from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
-    RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING,
+    RAY_SERVE_CRASH_PROBABILITY_TESTING,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -569,7 +569,7 @@ def test_delete_application(serve_instance):
 # A replica killed mid-initialization by a controller restart is replaced without
 # reaching its destructor, which serve does not guarantee there (ray#66322).
 @pytest.mark.skipif(
-    RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING > 0,
+    RAY_SERVE_CRASH_PROBABILITY_TESTING > 0,
     reason="A replica killed mid-initialization is replaced without running __del__.",
 )
 @pytest.mark.asyncio

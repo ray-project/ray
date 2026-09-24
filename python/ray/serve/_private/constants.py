@@ -264,10 +264,10 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
-# Test-only. Crash the controller right after each checkpoint write with this
-# probability, so recovery runs from unpredictable points.
-RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING = get_env_float_non_negative(
-    "RAY_SERVE_CRASH_AFTER_CHECKPOINT_PROBABILITY_TESTING", 0.0
+# Test-only. Crash the controller at each injection point with this probability,
+# so recovery runs from points a test cannot target with `ray.kill`.
+RAY_SERVE_CRASH_PROBABILITY_TESTING = get_env_float_non_negative(
+    "RAY_SERVE_CRASH_PROBABILITY_TESTING", 0.0
 )
 
 # Dependency ordered shutdown deletes deployments in tiers, callers before

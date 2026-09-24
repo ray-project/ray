@@ -90,7 +90,7 @@ from ray.serve._private.utils import (
     get_all_live_placement_group_names,
     get_head_node_id,
     is_grpc_enabled,
-    maybe_crash_after_checkpoint,
+    maybe_crash_for_testing,
 )
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.generated.serve_pb2 import (
@@ -357,7 +357,7 @@ class ServeController:
         self.kv_store.put(
             LOGGING_CONFIG_CHECKPOINT_KEY, pickle.dumps(global_logging_config)
         )
-        maybe_crash_after_checkpoint()
+        maybe_crash_for_testing()
         self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
@@ -1311,7 +1311,7 @@ class ServeController:
                 )
             ),
         )
-        maybe_crash_after_checkpoint()
+        maybe_crash_for_testing()
 
         # Declaratively apply the new set of applications.
         # This will delete any applications no longer in the config that were
