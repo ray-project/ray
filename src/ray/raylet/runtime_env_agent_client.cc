@@ -49,7 +49,7 @@ namespace {
 // Exactly one of `succ_callback` and `fail_callback` is invoked.
 struct Request {
   http::verb method;
-  std::string_view target;
+  std::string target;
   std::string body;
   std::function<void(std::string)> succ_callback;
   std::function<void(ray::Status)> fail_callback;
@@ -528,7 +528,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     std::string payload = request.SerializeAsString();
 
     connection_pool_.enqueue(Request{http::verb::post,
-                                     HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV,
+                                     std::string(HTTP_PATH_GET_OR_CREATE_RUNTIME_ENV),
                                      std::move(payload),
                                      /*succ_callback=*/
                                      [succ_callback, fail_callback](std::string body) {
@@ -590,20 +590,20 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
     request.set_source_process("raylet");
     std::string payload = request.SerializeAsString();
 
-    connection_pool_.enqueue(Request{http::verb::post,
-                                     HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE,
-                                     std::move(payload),
-                                     /*succ_callback=*/
-                                     [succ_callback, fail_callback](std::string body) {
-                                       rpc::DeleteRuntimeEnvIfPossibleReply reply;
-                                       if (!reply.ParseFromString(body)) {
-                                         fail_callback(
-                                             Status::IOError("protobuf parse error"));
-                                       } else {
-                                         succ_callback(std::move(reply));
-                                       }
-                                     },
-                                     fail_callback});
+    connection_pool_.enqueue(
+        Request{http::verb::post,
+                std::string(HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE),
+                std::move(payload),
+                /*succ_callback=*/
+                [succ_callback, fail_callback](std::string body) {
+                  rpc::DeleteRuntimeEnvIfPossibleReply reply;
+                  if (!reply.ParseFromString(body)) {
+                    fail_callback(Status::IOError("protobuf parse error"));
+                  } else {
+                    succ_callback(std::move(reply));
+                  }
+                },
+                fail_callback});
   }
 
  private:
