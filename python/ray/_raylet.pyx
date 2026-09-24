@@ -2029,6 +2029,14 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                     "See https://github.com/ray-project/ray/issues/28688.")
 
 
+cdef object _get_gpu_memory(const unordered_map[c_string, double] &c_resources):
+    cdef unordered_map[c_string, double].const_iterator it = c_resources.const_find(
+        b"gpu_memory")
+    if it == c_resources.const_end():
+        return None
+    return dereference(it).second
+
+
 cdef void execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -2478,7 +2486,8 @@ cdef execute_task_with_cancellation_handler(
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
+        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids(
+            _get_gpu_memory(c_resources))
         omp_num_threads_overriden = ray._private.utils.set_omp_num_threads_if_unset()
     else:
         original_visible_accelerator_env_vars = None

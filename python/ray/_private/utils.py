@@ -272,10 +272,13 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
+def set_visible_accelerator_ids(
+    gpu_memory: Optional[float] = None,
+) -> Mapping[str, Optional[str]]:
     """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
     NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
-    environment variables based on the accelerator runtime. Return the original
+    environment variables based on the accelerator runtime, plus the MPS memory
+    limit for a gpu_memory request when enabled. Return the original
     environment variables.
     """
     from ray._private.ray_constants import env_bool
@@ -303,7 +306,41 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
         ).set_current_process_visible_accelerator_ids(accelerator_ids)
+    if gpu_memory:
+        original_visible_accelerator_env_vars.update(_set_gpu_memory_limit(gpu_memory))
     return original_visible_accelerator_env_vars
+
+
+def _set_gpu_memory_limit(gpu_memory: float) -> Mapping[str, Optional[str]]:
+    from ray._private.accelerators.nvidia_gpu import (
+        MPS_GPU_MEMORY_LIMIT_ENV_VAR,
+        MPS_PINNED_DEVICE_MEM_LIMIT_ENV_VAR,
+        NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR,
+        NvidiaGPUAcceleratorManager,
+    )
+    from ray._private.ray_constants import env_bool
+
+    if not env_bool(MPS_GPU_MEMORY_LIMIT_ENV_VAR, False):
+        return {}
+    gpu_instances = ray._private.worker.global_worker.core_worker.resource_ids().get(
+        "GPU", []
+    )
+    if len(gpu_instances) != 1:
+        return {}
+    device_ordinal = (
+        int(gpu_instances[0][0])
+        if env_bool(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR, False)
+        else 0
+    )
+    original = {
+        MPS_PINNED_DEVICE_MEM_LIMIT_ENV_VAR: os.environ.get(
+            MPS_PINNED_DEVICE_MEM_LIMIT_ENV_VAR
+        )
+    }
+    NvidiaGPUAcceleratorManager.set_current_process_gpu_memory_limit(
+        device_ordinal, gpu_memory
+    )
+    return original
 
 
 def reset_visible_accelerator_env_vars(

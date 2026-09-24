@@ -1,4 +1,6 @@
+import os
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -84,6 +86,38 @@ def test_gpu_memory_label(patch_mock_pynvml):
     assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_labels() == {
         ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY: str(23 * 2**30)
     }
+
+
+@pytest.mark.parametrize(
+    "noset,resource_ids,expected",
+    [
+        (False, [(3, 0.25)], "0=20480MB"),
+        (True, [(3, 0.25)], "3=20480MB"),
+        (False, [(0, 0.5), (1, 0.5)], None),
+    ],
+)
+def test_mps_gpu_memory_limit(monkeypatch, noset, resource_ids, expected):
+    monkeypatch.delenv("CUDA_MPS_PINNED_DEVICE_MEM_LIMIT", raising=False)
+    monkeypatch.setenv("RAY_ENABLE_MPS_GPU_MEMORY_LIMIT", "1")
+    if noset:
+        monkeypatch.setenv("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES", "1")
+    core_worker = MagicMock()
+    core_worker.resource_ids.return_value = {"GPU": resource_ids}
+    monkeypatch.setattr(
+        ray._private.worker.global_worker, "core_worker", core_worker, raising=False
+    )
+
+    original = ray._private.utils._set_gpu_memory_limit(20 * 2**30)
+    assert os.environ.get("CUDA_MPS_PINNED_DEVICE_MEM_LIMIT") == expected
+    if expected:
+        assert original == {"CUDA_MPS_PINNED_DEVICE_MEM_LIMIT": None}
+
+
+def test_mps_gpu_memory_limit_disabled(monkeypatch):
+    monkeypatch.delenv("CUDA_MPS_PINNED_DEVICE_MEM_LIMIT", raising=False)
+    monkeypatch.delenv("RAY_ENABLE_MPS_GPU_MEMORY_LIMIT", raising=False)
+    assert ray._private.utils._set_gpu_memory_limit(20 * 2**30) == {}
+    assert "CUDA_MPS_PINNED_DEVICE_MEM_LIMIT" not in os.environ
 
 
 @pytest.mark.parametrize(
