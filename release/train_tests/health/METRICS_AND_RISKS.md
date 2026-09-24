@@ -37,7 +37,7 @@ real run-hours, not a test.
 | metric | target | why it is the right one |
 |---|---|---|
 | **Breaking changes to `@DeveloperAPI` after the NVIDIA unblock date** | **0** | The entire point of the contracts milestone is to stop being a moving target for another team. One breaking change after they start costs them a rewrite and costs us the relationship. |
-| **Contract deltas found by the NCCL RAS port** | found *before* the unblock, not after | The port is the only thing that tests the contracts from outside. It found four in the prototype (`entity`, `artifacts`, `scope=WORKER`, `ProbeDegraded`); the next one found after the announcement is a broken promise. |
+| **Contract deltas found by the NCCL RAS port** | found *before* the unblock, not after | The port is the only thing that tests the contracts from outside. It found three in the prototype (`entity`, `artifacts`, `scope=WORKER`); the next one found after the announcement is a broken promise. |
 | **Lines deleted from `callbacks/nccl_ras.py`** | > 300 | If porting a detector to the framework does not delete its bespoke plumbing, the abstraction did not earn itself. |
 | **Adapter size** | an adapter is < 400 lines and imports only public contracts | Proxy for whether a third party can actually write one. |
 | **Step-time regression with a representative policy set** | < 1 % | The REP's own acceptance criterion. Collection must never perturb training. |
@@ -79,8 +79,9 @@ central claim rests on — the thing that still reports when a worker dies.
 
 **Mitigation:** give it its own milestone. Note what does *not* depend on it:
 NVSentinel is a `ClusterProbe`, so the NVSentinel case study can land without
-it. What does depend on it: every `NodeProbe`, node-scoped diagnostics
-(`nvidia-smi`), and all of pre-flight.
+it. What does depend on it: every `NodeProbe`. Node-scoped diagnostics
+(`nvidia-smi`) and pre-flight run today in a task pinned to the node, which
+works until the node cannot schedule work.
 
 ### 4. The NVSentinel milestone depends on two things we do not control
 

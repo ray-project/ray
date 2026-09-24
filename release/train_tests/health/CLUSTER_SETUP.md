@@ -142,77 +142,64 @@ try A10G before assuming the code is wrong.
 ### Step 0 — no GPU needed, run this first
 
 ```bash
-pytest python/ray/train/v2/tests/test_health*.py
-python -m ray.train.v2._internal.execution.health.examples.injected_faults_demo
+pytest python/ray/train/v2/tests/test_health*.py          # the framework
+pytest release/train_tests/health/test_nccl_ras_health.py # the user-side policy
 ```
 
-146 tests. If these fail, a GPU will not help.
+If these fail, a GPU will not help. The step-by-step GPU run order is in
+`README.md`.
 
 ### Step 1 — confirm RAS produces data at all (1 node, 2 GPUs)
 
 Before testing any detector, confirm the substrate works:
+`01_nccl_ras.py` runs an all-reduce job and saves `ncclras -f json`,
+`ncclras -f text` and `nvidia-smi -q` from every GPU node. By hand, during a
+running multi-GPU job, on a worker:
 
 ```bash
-# during a running multi-GPU job, on a worker:
 ncclras -f json -t 5 | head -40
 ```
 
-**Capture that output and keep it.** The port's parsing is reused from the
-merged callback, but every fixture in our tests was hand-written. A real report
-from your cluster, pinned as a fixture, is worth more than another unit test.
-Do the same for `nvidia-smi -q` — `_parse_nvidia_smi` was written against
-invented text and is the least trustworthy thing in the prototype.
+Keep the output. The fixtures in `data/` came from exactly this on a 4×A10G
+cluster; a capture from different hardware is worth adding next to them.
 
 ### Step 2 — the merged detector, on an injected hang (2 nodes)
 
-This needs no new code — it is shipped:
-
-```bash
-export NCCL_RAS_ENABLE=1                         # what Ray's GPU test sets
-export RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1
-export RAY_TRAIN_NCCL_RAS_ACTION=observe         # `fail` once you trust it
-export RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S=2  # CI's values: confirms in ~6s
-export RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S=4   # vs the 10 min default
-```
+`02_injected_fault.py` with no flag. No new code: it sets the merged
+detector's env vars (`RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`, a 2s poll and a
+20s confirm window instead of the 10 min default) and has one rank stop calling
+the all-reduce while staying alive. Expect `NCCLHangError`.
 
 `RAY_TRAIN_NCCLRAS_PATH` overrides where the client is found, if you end up
 with more than one.
 
-and in the training function:
+### Step 3 — the same detection as a user policy
 
-```python
-from ray.train.v2._internal.execution.health.testing import nvrx
-nvrx.inject(nvrx.GPU_SLEEP, delay_s=120, keep_alive=1, seed=7)
-```
-
-`keep_alive=1` keeps rank 0 healthy so there is a peer to compare against.
-Expect: op counts freeze on the wedged communicator, the detector warns at 60 s
-and confirms at the configured duration.
-
-Record **injection → first warning** and **injection → confirmation**. Those two
-numbers are the whole goodput argument, and they are what the REP's release
-test has to assert.
-
-### Step 3 — the port, against the same job
-
-Feed `RASPoller.next_result` into `NcclRasProbe` and check both reach the same
-verdict on the same hang. That is the migration's acceptance criterion: same
-detections, same timings.
+`02_injected_fault.py --ported`. Same job, same fault, but the detection is
+`nccl_ras_policy()` from `nccl_ras_health.py`, passed in through
+`RunConfig(health_config=...)`. Acceptance: the controller logs
+`[Health] pre-flight passed on N node(s)` before the workers start, it confirms
+at the same time Step 2 did, and it ends in `HealthDecisionError`.
 
 ### Step 4 — `DIAGNOSE`, the push path (2 nodes)
 
-The part that needs real hardware. On a confirmed hang, check that:
+Comes for free with Step 3; read the controller log. Check that:
 
-- the stack dump runs on **every rank** and the native frames are present
-  (needs `SYS_PTRACE`, see below);
-- `nvidia-smi -q` runs **once per node, not once per rank** — with 4 ranks per
-  host, a per-rank fan-out would produce four identical 40 KB reports;
-- both land in run storage, and the paths come back in
-  `ProbeResult.artifacts`;
-- the results appear in the next `HealthState`, and the follow-up decision
-  reads them.
+- the stack dump runs on the **stalled ranks** and the native frames are
+  present (needs `SYS_PTRACE`, see below);
+- `nvidia-smi -q` runs **once per node, not once per rank**;
+- both land in run storage under `health_diagnostics/`, and the paths are
+  logged as `[Health] diagnostic output:`;
+- the follow-up decision reads them — its reason says "found no hardware
+  fault", not "no diagnostics are configured".
 
-Then assert the `Evict` decision is *emitted* with the right node. Stop there.
+Do not try to trigger `EVICT` on real hardware yet; that needs a genuinely bad
+GPU. `EVICT` emission is unit-tested, and node exclusion on restart is
+verified on a 2-node CPU cluster in `test_health_node_exclusion.py`.
+
+### Step 5 — the UDF join
+
+`03_collective_join.py`, see `README.md`.
 
 ## Image dependencies
 
@@ -333,44 +320,19 @@ what upgrading to 2.11 lets you delete.
 | package | why you can skip it |
 |---|---|
 | `nvidia-resiliency-ext` | see below — and you do not need it |
-| `kubernetes` | only the NVSentinel inbound probe imports it |
-| `grpcio` + NVSentinel protos | only the NVSentinel outbound sink |
 | DCGM / `datacenter-gpu-manager` | `NvidiaSmiProbe` shells out to `nvidia-smi`, which is always there. DCGM is only for NVSentinel. |
 
 ### NVRx will not install on Ray's GPU image, and you do not need it
 
 `nvidia-resiliency-ext` 0.7.0 ships wheels only for **cp312 / cp314** on
-**manylinux_2_39** (glibc ≥ 2.39, i.e. Ubuntu 24.04). Python 3.12 is fine on the
-Anyscale image, but a 22.04 base is not — and Ray's own GPU base
-(`ubuntu22.04`, Python 3.10) misses on both counts. Either way pip finds no
-wheel and falls back to building C extensions from source.
+**manylinux_2_39** (glibc ≥ 2.39, i.e. Ubuntu 24.04). A 22.04 base misses, and
+pip falls back to building C extensions from source.
 
-Not worth fighting. The two faults you actually need are three lines each, and
-both ship in the harness with no dependency beyond torch:
-
-```python
-from ray.train.v2._internal.execution.health.testing import symptoms
-
-# wedge the CUDA stream — what NVRx's GPU_SLEEP does
-hang = symptoms.CudaHang(rank=3, start_step=50)
-...
-hang.fire(step)
-
-# or: one rank skips a collective. The purest RAS input — its op count
-# falls one behind while every peer blocks inside the all-reduce.
-desync = symptoms.CollectiveDesync(rank=3, start_step=50)
-...
-if not desync.maybe_skip(step):
-    dist.all_reduce(grads)
-```
-
-Prefer `CollectiveDesync` for testing the RAS detector: it produces the exact
-shape `mismatched_comms` keys on — counts differ, every rank still `RUNNING`.
-
-One tidy coincidence worth noting: NVRx's own support matrix requires
-**NCCL < 2.28.3 or >= 2.28.9** (2.28.3–2.28.8 have an in-process bug). Both
-recipes above satisfy it. If you later run NVRx on a 24.04 / py3.12 image,
-nothing needs to change.
+Not worth fighting. The fault the scripts inject is a few lines of plain torch,
+inline in `02_injected_fault.py` and `03_collective_join.py`: one rank stops
+calling the collective and sleeps, staying alive. That is the purest RAS input
+— its op count falls one behind while every peer blocks inside the all-reduce,
+and every rank still reports `RUNNING`.
 
 ## Two things that will bite
 

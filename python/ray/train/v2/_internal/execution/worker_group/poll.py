@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
 from ray.exceptions import RayActorError
@@ -13,6 +13,9 @@ from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.train.health.state import WorkerHealth
 
 ERR_CHAR_LIMIT = 1000
 
@@ -55,6 +58,7 @@ class WorkerStatus:
     training_report: Optional[_TrainingReport] = None
     return_value: Any = field(default=None)
     preemption_info: Optional[PreemptionInfo] = None
+    health: Optional["WorkerHealth"] = None
 
 
 @dataclass(frozen=True)

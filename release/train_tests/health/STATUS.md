@@ -1,89 +1,94 @@
-# What is built, what is not, and what the GPU tests actually cover
+# What is built, what is wired, and what the GPU tests prove
 
-## Probe kinds, and where NCCL RAS sits
+## The shape
 
-`NcclRasProbe` is a **`ClusterProbe` with `entity = "communicator"`** — not a
-`NodeProbe`, not a `WorkerProbe`.
+The user brings a probe, wraps it in a `HealthPolicy`, and passes it to the run.
+Ray Train owns the loop.
 
-A RAS report spans every rank in the mesh, is obtained by asking any *one*
-rank, and is keyed by communicator. As a `WorkerProbe` it would spawn N
-redundant `ncclras` subprocesses for identical data — and the hung rank is
-precisely the one that may not answer. As a `NodeProbe`, the same redundancy,
-and it is not node-keyed to begin with.
+```
+user code (nccl_ras_health.py)            Ray Train (python/ray/train/health/)
+─────────────────────────────             ────────────────────────────────────
+NcclRasProbe(ClusterProbe)    ─┐
+NcclRasReadyProbe(OnDemand)    ├ HealthPolicy ─ HealthConfig ─ RunConfig(health_config=)
+NcclHangEvaluator              ┘                                    │
+                                                                    ▼
+health.report({...}) ─ TrainContext ─ WorkerStatus.health ─▶ HealthManager
+                                                          (probes, evaluators,
+                                                           merge → HealthDecision)
+                                                                    │
+            UserCallback.after_health_decision ◀────────────────────┤
+            pre-flight / DIAGNOSE → OnDemandRunner ◀────────────────┤
+            REATTEMPT / EVICT → HealthDecisionError → FailurePolicy → restart,
+                                evicted nodes excluded by label selector
+```
 
-"Runs on the controller" describes the *orchestration*. The `ncclras` binary
-itself still has to execute on a node hosting a rank, because RAS listens on
-`127.0.0.1:28028` inside each NCCL process. The probe takes its transport as an
-injected `query` callable: in production that is `RASPoller.next_result`, which
-does `worker.execute_async(run_ncclras, ...)`; in `02_injected_fault.py` it is a
-Ray task pinned to a GPU node.
+## Layout
 
-| kind | where it runs | keyed by | implementations today |
-|---|---|---|---|
-| `WorkerProbe` | in each train worker, every poll | rank | **none** |
-| `NodeProbe` | in the node's `NodeMonitor` | node | **none** — the `NodeMonitor` does not exist yet |
-| `ClusterProbe` | controller, one read covers all | `entity` | `NVSentinelProbe` (node), `NcclRasProbe` (communicator) |
-| `OnDemandProbe` | pushed; `scope` says where | entity | `StackTraceProbe` (worker), `NvidiaSmiProbe` (node), `RasTextReportProbe` (worker) |
+```
+python/ray/train/health/
+  __init__.py      public exports
+  probe.py         ProbeResult, Probe | WorkerProbe | NodeProbe + NodeContext |
+                   ClusterProbe + ClusterContext | OnDemandProbe + its context
+  state.py         WorkerHealth, NodeHealth, HealthState
+  decision.py      Action, Cause, HealthDecision, Noop/Reattempt/Evict/Diagnose
+  policy.py        Evaluator, HealthPolicy, HealthConfig
+  report.py        report()
+  exceptions.py    HealthDecisionError
+  _internal/
+    manager.py     HealthManager, merge_decisions
+    on_demand.py   OnDemandRunner (DIAGNOSE and pre-flight dispatch)
+    callback.py    HealthCallback (controller integration)
+```
 
-## Built
+Outside that package, only the hooks it needs: `RunConfig.health_config`,
+`UserCallback.after_health_decision`, `WorkerStatus.health`,
+`TrainContext.report_health` + `TrainFnUtils.report_health`, and the
+`HealthCallback` registration in `DataParallelTrainer`.
 
-All of this is unit-tested (107 tests) and **none of it is wired into the Train
-runtime loop**. It is a library that nothing calls yet.
+## Where this differs from the REP
 
-| area | module | what it does |
+| addition | why |
+|---|---|
+| `ClusterProbe` with `entity` | NCCL RAS answers for the whole mesh from one query, keyed by communicator. As a `WorkerProbe` it would be N identical queries, and the hung rank is the one that may not answer. |
+| `ProbeResult.artifacts`, `OnDemandProbeContext.upload` | diagnostics produce files (stack dumps, `nvidia-smi -q`); the result carries the path, not the bytes |
+| `OnDemandProbe.scope` | `py-spy` must attach to the training process, so some diagnostics run in the worker rather than on the node |
+
+## Wired into the runtime
+
+| step | where | what happens |
 |---|---|---|
-| contracts | `probe.py` | `ProbeResult` (incl. `artifacts`), the four probe kinds, `ProbeDegraded`, contexts |
-| | `state.py` | `WorkerHealth`, `NodeHealth`, `HealthState` + typed reads |
-| | `decision.py` | `Action`, `Cause`, `Noop`/`Reattempt`/`Evict`/`Diagnose`, `merge_decisions` |
-| | `policy.py` | `Evaluator`, `HealthPolicy`, `HealthConfig` |
-| Collect | `report.py` | the `health.report()` accumulator |
-| Decide | `adapters/collective_join.py` | **RAS x UDF**: names the frozen communicator, sets the stall threshold in the job's own units |
-| pre-flight | `preflight.py` | `PreflightRunner`, screens candidate nodes before the worker group starts |
-| Decide | `manager.py` | `HealthManager`: ingest, run cluster probes, merge, lifecycle |
-| Act | `diagnostics.py` | `DiagnosticRunner`: targeting, per-probe isolation, pause/resume |
-| | `callbacks/health_callback.py` | node-exclusion label selector, manager lifecycle |
-| adapters | `nvsentinel.py` | inbound probe + evaluator, outbound health-event builder |
-| | `nccl_ras_policy.py` | the ported hang detector |
-| | `nccl_ras_diagnostics.py` | the three on-demand checks from #64928 / #66229 |
-| | `udf_signals.py` | straggler, SDC, numerical policies |
-| injection | `testing/` | `nvrx`, `dcgm`, `nvsentinel`, `symptoms` |
+| enable | `RunConfig.health_config` → `DataParallelTrainer` | registers `HealthCallback` when any policy is set |
+| pre-flight | `HealthCallback.on_controller_start_worker_group` | before each worker group is scheduled, the `OnDemandProbe`s of `preflight=True` policies run on every alive node that fits a worker and has not been screened yet; a failed check or an `Evict` from that policy's evaluators evicts the node |
+| collect: UDF | `health.report()` → `TrainFnUtils.report_health` → `TrainContext` → `WorkerStatus.health` | same path shape as `ray.train.report`; rides the existing status poll, no new RPC, not a barrier |
+| collect: cluster | background thread in the callback | polls each `ClusterProbe` on its `interval_s`, off the event loop; a failing probe is logged once and retried |
+| decide | `HealthManager.poll_decision()` | builds `HealthState`, runs every evaluator, merges one decision |
+| act: hook | `UserCallback.after_health_decision` | fires before any action, including pre-flight evictions |
+| act: diagnose | `OnDemandRunner.diagnose` | worker-scoped probes via `worker.execute_async`, node-scoped via a pinned task, all targets in parallel; output under `health_diagnostics/`; results land in the next `HealthState` |
+| act: reattempt / evict | `HealthDecisionError(WorkerGroupError)` | same path as a worker error, so `FailureConfig` applies |
+| act: evict | `on_controller_start_worker_group` | next worker group gets `ray.io/node-id: !in(...)`; verified on a 2-node CPU cluster |
 
-## Not built
+## Not wired
 
-Everything that connects the library to a running job — REP phases 3–6 and 9:
+- `WorkerProbe` execution inside `poll_status`.
+- The `NodeMonitor`. Node-scoped on-demand probes and pre-flight run in a task
+  pinned to the node, which does not survive a node that cannot schedule work.
+  No `NodeProbe` can run.
+- `stop_workers` pausing.
+- Pre-flight only screens nodes that exist when the worker group is scheduled.
+  If rejections leave too few nodes, the run waits for capacity like any other
+  unschedulable run; starting on spares is out of scope in the REP.
+- `EVICT` excludes the node on restart; it does not resize.
 
-- `WorkerStatus.health` — the field does not exist, so nothing a worker
-  produces reaches the controller.
-- `RunConfig.health_config` — no way for a user to turn any of this on.
-- `ray.train.health` — `report()` exists but is not exported.
-- `WorkerProbe` execution inside `RayTrainWorker.poll_status`.
-- **The `NodeMonitor` actor** — entirely absent. This is why there are no
-  `NodeProbe` implementations and why node-scoped diagnostics have nowhere to
-  run. It is also the component the REP leans on hardest: the thing that keeps
-  reporting when a worker hangs or dies.
-- `HealthManager` instantiated in `TrainController`.
-- Pre-flight invoked from the startup path. `PreflightRunner` exists and is
-  tested, but nothing calls it before scheduling, and with no `NodeMonitor`
-  there is nowhere for its node-scoped probes to run.
-- `UserCallback.after_health_decision`.
-- The controller acting on a decision — `REATTEMPT`, `EVICT`, `DIAGNOSE`.
+## What the GPU tests prove
 
-## What the GPU tests cover
-
-| script | exercises | does **not** exercise |
+| script | proves | does not prove |
 |---|---|---|
-| `00_preflight.py` | image + cluster prerequisites | anything about the health loop |
-| `01_nccl_ras.py` | that RAS emits parseable JSON under a real and a wedged job | any of our code |
-| `02_injected_fault.py` (A) | the **merged** detector, #64928 — shipped code, not ours | our code entirely; this is the control |
-| `02_injected_fault.py` (B) | **Collect + Decide**: `NcclRasProbe` parsing real reports, `NcclHangEvaluator` reaching a `HealthDecision` | **Act**, and the controller integration |
+| `01_nccl_ras.py` | RAS emits parseable JSON under a real and a wedged job | any of our code |
+| `02_injected_fault.py` (A) | the merged detector fires — the control | our code |
+| `02_injected_fault.py --ported` (B) | pre-flight runs on the GPU nodes; a user policy passed through `RunConfig` detects the hang; `DIAGNOSE` pushes diagnostics at the right ranks and nodes; `REATTEMPT` fails the run through the retry path | `EVICT` on real hardware |
+| `03_collective_join.py` | the UDF join keeps a slow step from being called a hang, still fires on a real wedge, and names the group; the control shows a fixed window does not | anything beyond one TP/PP layout |
 
-So part B answers *"does our probe understand real RAS output, and does our
-evaluator reach the right conclusion from it"*. It drives the `HealthManager`
-from a hand-rolled poll loop in the script, because the controller does not yet
-call it.
-
-What stays unproven until the wiring lands: that a decision reaches the
-controller, that `DIAGNOSE` actually pushes probes at workers and nodes, and
-that `EVICT` excludes a node on restart. The last of those is separately
-verified on a 2-node CPU cluster in `test_health_node_exclusion.py`, which is
-why a GPU adds nothing to it yet.
+An idle subgroup, such as a PP group between its all-reduces, never looks
+frozen to RAS: a communicator is only mismatched when its ranks' op counts
+differ. The false positive 03 reproduces is a rank that is late to a
+collective its peers are already in.

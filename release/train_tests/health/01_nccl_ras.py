@@ -45,23 +45,16 @@ def train_func(config):
     import torch.distributed as dist
 
     import ray.train
-    from ray.train.v2._internal.execution.health.testing import symptoms
 
     rank = ray.train.get_context().get_world_rank()
     device = torch.device(f"cuda:{torch.cuda.current_device()}")
     tensor = torch.ones(1024, 1024, device=device)
 
-    # One rank stops participating at `hang_step`, leaving its collective count
-    # one behind while every peer blocks inside the all-reduce. That is the
-    # exact shape `mismatched_comms` keys on.
-    desync = symptoms.CollectiveDesync(
-        rank=config["hang_rank"], start_step=config["hang_step"]
-    )
-
     for step in range(config["steps"]):
-        if config["hang"] and desync.maybe_skip(step):
-            # Sit out the collective, and keep the process alive so RAS can
-            # still report on it.
+        wedge = config["hang"] and rank == config["hang_rank"]
+        if wedge and step >= config["hang_step"]:
+            print(f"[fault-injection] rank {rank} left the collective", flush=True)
+            # Alive, so RAS can still report on it.
             time.sleep(config["steps"])
             continue
         dist.all_reduce(tensor)
@@ -119,13 +112,10 @@ def capture(out_dir: Path, wait_s: float) -> int:
         (out_dir / f"ncclras_{ip}.json").write_text(stdout)
         print(f"  {host}: captured RAS report, {n_comms} communicator(s)")
 
-        # The human-readable form, which a Diagnose pushes at hang time.
         _, _, text, _ = on_node(node_id, "ncclras -f text -t 5")
         if text.strip():
             (out_dir / f"ncclras_{ip}.txt").write_text(text)
 
-        # And the GPU snapshot, so `_parse_nvidia_smi` can be checked against
-        # real output instead of the invented text it was written against.
         _, smi_rc, smi, _ = on_node(node_id, "nvidia-smi -q")
         if smi_rc == 0 and smi.strip():
             (out_dir / f"nvidia-smi_{ip}.txt").write_text(smi)
@@ -178,13 +168,11 @@ def main() -> int:
         },
         scaling_config=ScalingConfig(num_workers=args.workers, use_gpu=True),
         run_config=RunConfig(
-            # RAS is what we are here to query; make sure it is on.
             worker_runtime_env={"env_vars": {"NCCL_RAS_ENABLE": "1"}},
         ),
     )
 
-    # fit() blocks, so run it alongside the capture. The daemon thread dies
-    # with the process once we have what we came for.
+    # fit() blocks; run it alongside the capture.
     threading.Thread(target=trainer.fit, daemon=True).start()
     return capture(args.out, args.wait)
 
