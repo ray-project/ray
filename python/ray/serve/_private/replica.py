@@ -718,7 +718,7 @@ class ReplicaMetricsManager:
             return False
         return time.time() - started_s < RAY_SERVE_METRICS_PUSH_STUCK_S
 
-    def start_self_health_pusher(self, eval_fn: Callable, period_s: float):
+    def start_self_health_pusher(self, eval_fn: Callable, period_s: float) -> None:
         """Periodically run the local health check and push the result.
 
         eval_fn raises when unhealthy. The check runs at half the configured period
@@ -739,11 +739,11 @@ class ReplicaMetricsManager:
         window_s = self._self_health_period_s / 2
         last = max(
             self._last_health_carrying_report_s,
-            _SELF_HEALTH_SNAPSHOT.get("carried_at", 0.0) or 0.0,
+            _SELF_HEALTH_SNAPSHOT.get("carried_at", 0.0),
         )
         return window_s > 0 and time.time() - last < window_s
 
-    async def _eval_and_push_self_health(self):
+    async def _eval_and_push_self_health(self) -> None:
         eval_fn = self._eval_self_health_fn
         if eval_fn is None:
             return  # the pusher registers this task only after setting the callable
@@ -2431,7 +2431,7 @@ class Replica:
             extra={"log_to_stderr": False},
         )
 
-    def _start_self_health_pusher(self):
+    def _start_self_health_pusher(self) -> None:
         if not RAY_SERVE_ENABLE_PUSH_HEALTH:
             # Leave _self_health_active False so remote probes keep running the user
             # check themselves, exactly as they do without this feature.
@@ -2442,7 +2442,7 @@ class Replica:
             self._deployment_config.health_check_period_s,
         )
 
-    async def check_health(self):
+    async def check_health(self) -> None:
         # Serve the self-health task's cached verdict while it is the active observer.
         # A healthy one expires, since a self-check that hangs stops refreshing it and
         # this probe is then the only thing that can notice; an unhealthy one does not,
@@ -2463,7 +2463,7 @@ class Replica:
             return
         await self._run_user_health_check()
 
-    async def _run_user_health_check(self):
+    async def _run_user_health_check(self) -> None:
         # Recovery can re-enter while the periodic task is part way through, and both
         # write _healthy, so serialize them and let the later verdict stand. Waiters
         # run their own check rather than adopting the one they waited on: a probe the
@@ -2471,7 +2471,7 @@ class Replica:
         async with self._health_check_lock:
             await self._run_user_health_check_locked()
 
-    async def _run_user_health_check_locked(self):
+    async def _run_user_health_check_locked(self) -> None:
         evaluated = False
         try:
             # Runs the user-defined check_health on the user code loop if defined.
@@ -3719,7 +3719,7 @@ class ReplicaActor:
         await self._replica_impl.initialize(deployment_config, rank, gang_context)
         return self._replica_impl.get_metadata()
 
-    async def check_health(self):
+    async def check_health(self) -> None:
         await self._replica_impl.check_health()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
