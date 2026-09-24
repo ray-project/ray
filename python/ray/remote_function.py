@@ -119,8 +119,10 @@ class RemoteFunction:
         # profiler is running, as nsight/rocprof-sys generate report
         # once the process exit.
         num_gpus = self._default_options.get("num_gpus") or 0
+        gpu_memory = self._default_options.get("gpu_memory") or 0
         if (
-            num_gpus > 0 and self._default_options.get("max_calls", None) is None
+            (num_gpus > 0 or gpu_memory > 0)
+            and self._default_options.get("max_calls", None) is None
         ) or any(
             [
                 s in (self._default_options.get(s) or {})

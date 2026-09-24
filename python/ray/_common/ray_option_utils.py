@@ -139,6 +139,7 @@ _common_options = {
         (list, type(None)), lambda x: validate_fallback_strategy(x)
     ),
     "accelerator_type": Option((str, type(None))),
+    "gpu_memory": _resource_option("gpu_memory"),
     "memory": _resource_option("memory"),
     "name": Option((str, type(None))),
     "num_cpus": _resource_option("num_cpus"),
