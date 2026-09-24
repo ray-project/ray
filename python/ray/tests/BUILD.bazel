@@ -516,6 +516,21 @@ py_test_module_list(
 ##### End 'minimal installation' tests #####
 
 py_test_module_list(
+    size = "medium",
+    files = [
+        "accelerators/test_mlu.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
     size = "small",
     files = [
         "accelerators/test_accelerators.py",
