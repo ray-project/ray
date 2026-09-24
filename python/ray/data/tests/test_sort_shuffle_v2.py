@@ -339,8 +339,10 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     assert isinstance(map_op, SortShuffleMapOp)
     assert not isinstance(map_op.input_dependencies[0], SortSamplingOp)
 
-    ctx.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
-    dag = get_execution_plan(ds._logical_plan)[0].dag
+    # Legacy sort: build a fresh dataset so it captures the new strategy.
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+    ds_legacy = ray.data.range(10, override_num_blocks=2).sort("id")
+    dag = get_execution_plan(ds_legacy._logical_plan)[0].dag
     assert isinstance(dag, AllToAllOperator)
 
 
