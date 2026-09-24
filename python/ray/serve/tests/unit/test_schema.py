@@ -589,6 +589,20 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
+    def test_gpu_memory(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["ray_actor_options"] = {"gpu_memory": 2 * 10**10}
+        DeploymentSchema.model_validate(deployment_schema)
+
+        deployment_schema["ray_actor_options"] = {"gpu_memory": 0}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+        deployment_schema["ray_actor_options"] = {"gpu_memory": 2 * 10**10}
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        with pytest.raises(ValueError, match="gpu_memory"):
+            DeploymentSchema.model_validate(deployment_schema)
+
     def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config(
         self,
     ):

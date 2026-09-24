@@ -995,6 +995,25 @@ def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config_mer
         )
 
 
+def test_mutually_exclusive_gpu_memory_and_gang_scheduling_config():
+    with pytest.raises(ValueError, match="gpu_memory"):
+
+        @serve.deployment(
+            num_replicas=2,
+            ray_actor_options={"gpu_memory": 10**9},
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        class A:
+            pass
+
+    @serve.deployment(num_replicas=2, ray_actor_options={"gpu_memory": 10**9})
+    class B:
+        pass
+
+    with pytest.raises(ValueError, match="gpu_memory"):
+        B.options(gang_scheduling_config=GangSchedulingConfig(gang_size=2))
+
+
 def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config():
     with pytest.raises(
         ValueError,
