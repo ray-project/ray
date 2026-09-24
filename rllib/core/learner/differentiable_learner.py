@@ -622,6 +622,12 @@ class DifferentiableLearner(Checkpointable):
 
         # Call the learner connector on the given `episodes` (if we have one).
         if training_data.episodes is not None:
+            # No episodes at all: nothing to build a batch from. Hand back an empty
+            # batch for `_create_iterator_if_necessary` to skip, instead of running the
+            # connector pipeline on no episodes: pieces such as
+            # `AddOneTsToEpisodesAndTruncate` index `episodes[0]` and would raise.
+            if len(training_data.episodes) == 0:
+                return MultiAgentBatch(policy_batches={}, env_steps=0)
             # If we want to learn from Episodes, we must have a LearnerConnector
             # pipeline to translate into a train batch first.
             if self._learner_connector is None:

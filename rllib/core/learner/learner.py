@@ -1545,6 +1545,16 @@ class Learner(Checkpointable):
 
         # Call the learner connector on the given `episodes` (if we have one).
         if training_data.episodes is not None:
+            # No episodes at all: this Learner's shard of a short list of episodes (or
+            # of episode refs) came up empty, or every episode it was sent was lost
+            # with its EnvRunner. There is nothing to build a batch from, so hand back
+            # an empty batch for `_create_iterator_if_necessary` to skip, instead of
+            # running the connector pipeline on no episodes: pieces such as
+            # `AddOneTsToEpisodesAndTruncate` index `episodes[0]` and would raise here,
+            # before the skip decision -- and a Learner that raises here leaves its
+            # peers waiting for it in `_sync_update_plan`.
+            if len(training_data.episodes) == 0:
+                return MultiAgentBatch(policy_batches={}, env_steps=0)
             # If we want to learn from Episodes, we must have a LearnerConnector
             # pipeline to translate into a train batch first.
             if self._learner_connector is None:
