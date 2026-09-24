@@ -41,12 +41,12 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ## Step 2: Submit the RayJob
 
-Create the RayJob custom resource with [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-job.batch-inference.yaml).
+Create the RayJob custom resource with [ray-job.batch-inference.yaml](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-job.batch-inference.yaml).
 
 Download the file with `curl`:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-job.batch-inference.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.batch-inference.yaml
 ```
 
 Note that the `RayJob` spec contains a spec for the `RayCluster`. This tutorial uses a single-node cluster with 4 GPUs. For production use cases, use a multi-node cluster where the head node doesn't have GPUs, so that Ray can automatically schedule GPU workloads on worker nodes which won't interfere with critical Ray processes on the head node.
@@ -57,7 +57,7 @@ Note the following fields in the `RayJob` spec, which specify the Ray image and 
         spec:
           containers:
             - name: ray-head
-              image: rayproject/ray-ml:2.6.3-gpu
+              image: rayproject/ray:2.58.0-py311-gpu
               resources:
                 limits:
                   nvidia.com/gpu: "4"

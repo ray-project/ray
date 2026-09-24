@@ -300,12 +300,29 @@ class BatchingNodeProviderTester:
             count = random.choice(range(10))
             create_node_requests.append((node_type, count))
 
+        # Generate terminate requests against the worker counts expected at the start
+        # of the update, so that each request terminates at least one node. A request
+        # for a type with no nodes left resolves to terminate_nodes([]), which is a
+        # no-op: the provider has nothing to delete and correctly reports no scale
+        # change, breaking the assertion in update(). Counts may still exceed the
+        # number of available nodes, so the "terminate up to count nodes" path is
+        # still exercised.
+        available = {
+            node_type: count
+            for node_type, count in self.expected_node_counts.items()
+            if node_type != "head" and count > 0
+        }
         terminate_nodes_requests = []
         for _ in range(num_terminates):
-            node_type = random.choice([f"type-{x}" for x in range(5)])
-            # Terminate up to 9 workers.
-            count = random.choice(range(10))
+            if not available:
+                break
+            node_type = random.choice(sorted(available))
+            # Terminate between 1 and 9 workers.
+            count = random.choice(range(1, 10))
             terminate_nodes_requests.append((node_type, count))
+            available[node_type] -= min(count, available[node_type])
+            if available[node_type] == 0:
+                del available[node_type]
 
         # 50% chance of the update being executed.
         safe_to_scale_flag = random.choice([True, False])

@@ -667,7 +667,7 @@ doctest_each(
         ],
         exclude = [
             # These tests run on GPU (see below).
-            "source/data/batch_inference.rst",
+            "source/data/batch-inference.rst",
             "source/data/transforming-data.rst",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
@@ -680,7 +680,7 @@ doctest_each(
 doctest(
     name = "doctest[data-gpu]",
     files = [
-        "source/data/batch_inference.rst",
+        "source/data/batch-inference.rst",
         "source/data/transforming-data.rst",
     ],
     gpu = True,

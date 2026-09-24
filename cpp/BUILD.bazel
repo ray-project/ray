@@ -8,6 +8,23 @@ load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:ray.bzl", "COPTS")
 
+# A random auth token generated at build time, kept out of source. Every cc_test
+# that uses RAY_TOKEN_AUTH_TEST_ENV must list ":auth_token_file" in its data so
+# $(location) resolves and the file lands in the test's runfiles.
+genrule(
+    name = "auth_token_file",
+    outs = ["auth_token"],
+    cmd = "python3 -c \"import secrets; print(secrets.token_hex(32), end='')\" > $@",
+)
+
+# These tests start their own cluster with `ray start --head` as a subprocess, so
+# the head and the driver only agree on a token when both read it from the
+# environment. RAY_AUTH_TOKEN_PATH points at the generated token file.
+RAY_TOKEN_AUTH_TEST_ENV = {
+    "RAY_AUTH_MODE": "token",
+    "RAY_AUTH_TOKEN_PATH": "$(location :auth_token_file)",
+}
+
 cc_binary(
     name = "libray_api.so",
     copts = COPTS,
@@ -218,6 +235,8 @@ cc_test(
         "src/ray/test/*.cc",
     ]),
     copts = COPTS,
+    data = [":auth_token_file"],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -246,8 +265,10 @@ cc_test(
         "counter.so",
         "plus.so",
         "src/ray/test/cluster/test_cross_language_invocation.py",
+        ":auth_token_file",
         ":ray_cpp_pkg_files",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -270,9 +291,11 @@ cc_test(
     ],
     copts = COPTS,
     data = [
+        ":auth_token_file",
         ":ray_cpp_pkg_files",
         "//java:libio_ray_ray_test.jar",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = [
         "no_macos",
@@ -340,7 +363,9 @@ cc_test(
     copts = COPTS,
     data = [
         "simple_kv_store.so",
+        ":auth_token_file",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -409,7 +434,9 @@ cc_test(
     ],
     data = [
         "metric_example.so",
+        ":auth_token_file",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     linkstatic = True,
     tags = ["team:core"],
     deps = [
@@ -447,7 +474,9 @@ py_test_module_list(
     data = [
         "counter.so",
         "plus.so",
+        ":auth_token_file",
     ],
+    env = RAY_TOKEN_AUTH_TEST_ENV,
     extra_srcs = [],
     files = [
         "test_python_call_cpp.py",
@@ -469,8 +498,8 @@ py_test(
         "simple_job.so",
     ],
     env = {
-        "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
         "SIMPLE_DRIVER_MAIN_PATH": "$(location simple_job)",
+        "SIMPLE_DRIVER_SO_PATH": "$(location simple_job.so)",
     },
     tags = [
         # TODO(ray-core): fix this test on apple silicon macos.

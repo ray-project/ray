@@ -6,11 +6,13 @@ import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.gang_scheduling_autoscaling_policy import (
     GangSchedulingAutoscalingPolicy,
 )
@@ -1594,6 +1596,33 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
         assert final_state[d2]["counter"] == 5
+
+
+def test_last_decision_total_num_requests_reuses_decision_value():
+    """record_autoscaling_metrics stashes the decision's total; the getter returns it
+    verbatim.
+    """
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=42.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+    )
+    assert st.get_last_decision_total_num_requests() == 42.0
 
 
 if __name__ == "__main__":
