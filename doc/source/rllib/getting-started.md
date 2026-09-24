@@ -34,7 +34,7 @@ pip install "ray[rllib]" torch "gymnasium[atari,accept-rom-license,mujoco]"
 
 RLlib's Python API provides all the flexibility required for applying the library to any type of RL problem.
 
-You manage RLlib experiments through an instance of the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` class. An {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` typically holds a neural network for computing actions, called `policy`, the {ref}`RL environment <rllib-key-concepts-environments>` that you want to optimize against, a loss function, an optimizer, and some code describing the algorithm's execution logic, like determining when to collect samples, when to update your model, etc..
+You manage RLlib experiments through an instance of the {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` class. An {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` typically holds a neural network for computing actions, called `policy`, the {ref}`RL environment <rllib-key-concepts-environments>` that you want to optimize against, a loss function, an optimizer, and some code describing the algorithm's execution logic, like determining when to collect samples, when to update your model, etc.\.
 
 In {ref}`multi-agent training <rllib-multi-agent-environments-doc>`, {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` manages the querying and optimization of multiple policies at once.
 
