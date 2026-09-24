@@ -694,7 +694,7 @@ def test_e2e_bursty(serve_instance_with_signal, aggregation_function):
             "min_replicas": 1,
             "max_replicas": 2,
             "look_back_period_s": 0.5,
-            "downscale_delay_s": 0.5,
+            "downscale_delay_s": 2.0,
             "upscale_delay_s": 0.5,
             "aggregation_function": aggregation_function,
         },
