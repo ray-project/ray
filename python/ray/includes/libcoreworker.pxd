@@ -193,7 +193,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CObjectID] &contained_object_id,
             const CAddress &caller_address,
             int64_t *task_output_inlined_bytes,
-            shared_ptr[CRayObject] *return_object)
+            shared_ptr[CRayObject] *return_object,
+            c_bool force_inline)
         CRayStatus SealReturnObject(
             const CObjectID &return_id,
             const shared_ptr[CRayObject] &return_object,
@@ -291,7 +292,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                     const c_vector[CObjectID] &contained_object_ids,
                     CObjectID *object_id, shared_ptr[CBuffer] *data,
                     c_bool inline_small_object,
-                    const optional[c_string] &tensor_transport)
+                    const optional[c_string] &tensor_transport,
+                    c_bool force_inline)
         CRayStatus CreateExisting(const shared_ptr[CBuffer] &metadata,
                                   const size_t data_size,
                                   const CObjectID &object_id,
@@ -316,7 +318,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
                 const CObjectID &object_id,
                 const c_vector[CReaderRefInfo] &remote_reader_ref_info)
-        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object)
+        CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
+                            const shared_ptr[CRayObject] &inlined_object)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,
                                 const CObjectID &generator_id,
                                 const unique_ptr[CAddress] &owner_address)
