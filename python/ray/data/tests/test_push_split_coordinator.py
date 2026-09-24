@@ -111,6 +111,13 @@ def test_barrier_waits_for_every_split(ray_start_regular_shared):
     assert ray.get([first, second]) == [0, 0]
 
 
+@pytest.mark.parametrize("split_idx", [-1, 2])
+def test_start_epoch_rejects_out_of_range_split(ray_start_regular_shared, split_idx):
+    coordinator = _make_coordinator()
+    with pytest.raises(ValueError, match="split_idx must be between"):
+        ray.get(coordinator.start_epoch.remote(split_idx))
+
+
 def test_request_rows_only_updates_current_epoch(ray_start_regular_shared):
     coordinator = _make_coordinator()
     ray.get([coordinator.start_epoch.remote(i) for i in range(2)])

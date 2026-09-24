@@ -160,6 +160,8 @@ class PushSplitCoordinator:
 
         # Guards epoch/barrier/finished-splits state.
         self._lock = threading.RLock()
+        # Barrier waiters sleep on this until the epoch can start.
+        self._barrier_cond = threading.Condition(self._lock)
         self._dataset_state_lock = threading.Lock()
         self._schema = None
 
@@ -167,7 +169,7 @@ class PushSplitCoordinator:
         self._output_iterator = None
         self._cur_epoch = -1
         self._num_unarrived_splits_at_barrier = n
-        # Barrier waiters spin until the last arrival's teardown completes.
+        # Barrier waiters wait until the last arrival's teardown completes.
         self._teardown_complete_for: Optional[int] = None
         self._finished_splits: Set[int] = set()
         self._gen_epoch_error: Optional[Exception] = None
@@ -211,6 +213,7 @@ class PushSplitCoordinator:
 
     def start_epoch(self, split_idx: int) -> int:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
+        self._check_split_idx(split_idx)
         return self._barrier(split_idx)
 
     def request_rows(
@@ -291,6 +294,12 @@ class PushSplitCoordinator:
             if self._current_executor is not None:
                 self._current_executor.shutdown(force=False)
 
+    def _check_split_idx(self, split_idx: int) -> None:
+        if not 0 <= split_idx < self._n:
+            raise ValueError(
+                f"split_idx must be between 0 and {self._n - 1}, got {split_idx}."
+            )
+
     def _is_executor_shutdown(self) -> bool:
         """For testing only."""
         with self._lock:
@@ -317,23 +326,28 @@ class PushSplitCoordinator:
             # barrier releases; done outside self._lock so exiting pushers
             # can still take it.
             self._teardown_epoch()
-            with self._lock:
+            with self._barrier_cond:
                 self._teardown_complete_for = starting_epoch
+                self._barrier_cond.notify_all()
 
         start_time = time.time()
-        while self._cur_epoch == starting_epoch and (
-            self._num_unarrived_splits_at_barrier != 0
-            or self._teardown_complete_for != starting_epoch
-        ):
-            if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
-                if log_once(f"push_split_blocked_{split_idx}_{starting_epoch}"):
-                    logger.warning(
-                        f"Push-based split (epoch={starting_epoch}, "
-                        f"split={split_idx}) blocked waiting on other clients "
-                        f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
-                        "clients must iterate their splits at the same time."
-                    )
-            time.sleep(0.1)
+        with self._barrier_cond:
+            while self._cur_epoch == starting_epoch and (
+                self._num_unarrived_splits_at_barrier != 0
+                or self._teardown_complete_for != starting_epoch
+            ):
+                if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
+                    if log_once(f"push_split_blocked_{split_idx}_{starting_epoch}"):
+                        logger.warning(
+                            f"Push-based split (epoch={starting_epoch}, "
+                            f"split={split_idx}) blocked waiting on other "
+                            f"clients for more than "
+                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
+                            "iterate their splits at the same time."
+                        )
+                # Woken by the last arrival; the timeout only paces the
+                # blocked-client warning.
+                self._barrier_cond.wait(timeout=1.0)
 
         self._try_start_new_epoch(starting_epoch)
 
