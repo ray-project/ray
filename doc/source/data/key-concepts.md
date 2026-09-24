@@ -48,8 +48,8 @@ The following diagram shows the complete planning process.
 
 Operators are the building blocks of these plans. Ray Data uses two kinds of operators, one for each plan:
 
-* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write `dataset = ray.data.read_parquet(...)`, Ray Data creates a `ReadOp` logical operator to specify what data to read.
-* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the `ReadOp` logical operator into a `TaskPoolMapOperator` physical operator that launches Ray tasks to read the data.
+* Logical plans consist of *logical operators* that describe *what* operation to perform. For example, when you write `dataset = ray.data.read_parquet(...)`, Ray Data creates a `Read` logical operator to specify what data to read.
+* Physical plans consist of *physical operators* that describe *how* to execute the operation. For example, Ray Data converts the `Read` logical operator into a `TaskPoolMapOperator` physical operator that launches Ray tasks to read the data.
 
 The following example shows how Ray Data builds a logical plan. As you chain operations, Ray Data constructs the logical plan behind the scenes:
 
@@ -71,14 +71,14 @@ Project
 
 When execution begins, Ray Data optimizes the logical plan and then translates it into a physical plan, which is a series of operators that implement the data transformations. The following happens during this translation:
 
-* A single logical operator can become multiple physical operators. For example, `ReadOp` becomes both `InputDataBuffer` and `TaskPoolMapOperator`.
-* Both logical and physical plans go through optimization passes. For example, `OperatorFusionRule` combines map operators to reduce serialization overhead.
+* A single logical operator can become multiple physical operators. For example, `Read` becomes both `InputDataBuffer` and `TaskPoolMapOperator`.
+* Both logical and physical plans go through optimization passes. For example, `FuseOperators` combines map operators to reduce serialization overhead.
 
-Each physical operator does the following:
+Physical operators do the following:
 
-* Takes in a stream of block references.
-* Performs its operation, either by transforming data with Ray tasks or actors, or by manipulating references.
-* Outputs another stream of block references.
+* Take in a stream of block references.
+* Perform their operation, either by transforming data with Ray tasks or actors, or by manipulating references.
+* Output another stream of block references.
 
 For more details on Ray tasks and actors, see {ref}`Ray Core Concepts <core-key-concepts>`.
 
