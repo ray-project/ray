@@ -1,8 +1,16 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+)
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -14,15 +22,20 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    _row_group_uncompressed_size,
-)
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
     _fragments_from_row_group_ids,
     _with_io_retry,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
+from ray.data._internal.datasource_v2.parquet_utils import (
+    _get_safe_batch_size_for_nested_types,
+    _needs_nested_type_fallback,
+    _resolve_leaf_column_indices,
+    _resolve_read_columns,
+    _row_group_uncompressed_size,
+)
+from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragment
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -35,14 +48,12 @@ from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
     SupportsMetadata,
 )
-from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import MiB, iterate_with_retry
-from ray.data.block import BlockMetadata
-from ray.data.checkpoint.generated_id import (
-    get_generated_id_column,
-    get_generated_id_column_name,
+from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+    SynthesizedColumn,
 )
-from ray.data.context import DataContext
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data._internal.util import MiB
+from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -206,8 +217,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         partitioning: "Optional[Partitioning]" = None,
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
-        include_paths: bool = False,
-        include_row_hash: bool = False,
+        synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -225,10 +235,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             ignore_prefixes: Prefixes to ignore when reading files.
             target_block_size: Target in-memory size per batch in bytes.
                 Used for adaptive batch sizing when ``batch_size`` is not set.
-            include_paths: If True, include the source file path in a
-                ``'path'`` column for each row.
-            include_row_hash: If True, include a deterministic uint64 hash
-                per row in a ``'row_hash'`` column.
+            synthesized_columns: Columns appended to every batch instead of
+                being read from the file (``PathColumn``, ``RowHashColumn``);
+                see :class:`FileReader`. One that requires read unit
+                boundaries makes each row group its own read unit.
             schema: Caller-supplied unified schema forwarded to the base
                 :class:`FileReader` for per-fragment inference override
                 and partition-column type casting.
@@ -247,8 +257,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             filesystem=filesystem,
             partitioning=partitioning,
             ignore_prefixes=ignore_prefixes,
-            include_paths=include_paths,
-            include_row_hash=include_row_hash,
+            synthesized_columns=synthesized_columns,
             schema=schema,
         )
         self._explicit_batch_size = batch_size
@@ -342,27 +351,27 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, int]]:
+    ) -> List[ReadUnitFragment]:
         """Fan file fragments into read-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is with a row offset of 0 (the default
-          ``WholeFileChunker`` for non-chunking callers).
+          fragment is yielded as-is, as a read unit named by its path with a
+          row offset of 0. When a synthesized column needs read unit
+          boundaries the unit also carries the file's row count, read from
+          the footer pyarrow opens to scan the file anyway.
         - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
           naming the exact physical row groups the bin assigned to this file
           (predicate pruning + bin packing already happened in ``ListFiles``);
           we slice the fragment via
           :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_row_group_ids`.
-          When ``include_row_hash`` or a generated ID column is on it fans
-          out one sub-fragment per row group, each paired with its cumulative
-          pre-filter row offset. For row hashes this keeps
-          ``_compute_row_hashes`` keys unique across sub-fragments that share
-          ``fragment.path``; for generated IDs it establishes the
-          one-row-group-per-fragment invariant
-          :meth:`_read_fragments_sequential` relies on to derive stable
-          ``(file, row group, row)`` identifiers.
+          When a synthesized column needs read unit boundaries
+          (``RowHashColumn``) it fans out one sub-fragment per row group,
+          each a :class:`ReadUnit` of its own paired with its cumulative
+          pre-filter row offset, so per-row values stay unique across
+          sub-fragments that share ``fragment.path``. Otherwise the groups
+          are scanned together as one unit named by the path.
 
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
@@ -373,36 +382,36 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-
-        generated_id_column = self._generated_id_column
-        if generated_id_column is not None:
-            self._validate_generated_id_column(path_to_fragment)
-
-        split_per_row_group = self._include_row_hash or generated_id_column is not None
-        fragments: List[Tuple[pds.Fragment, int]] = []
+        # Scan each row group on its own when a column's value depends on
+        # the row's position in the file (``RowHashColumn``); otherwise let
+        # pyarrow coalesce a file's groups into one scan.
+        per_row_group_offsets = any(
+            c.requires_read_unit_boundaries for c in self._synthesized_columns
+        )
+        fragments: List[ReadUnitFragment] = []
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
             fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
-                if split_per_row_group:
-                    num_row_groups = _with_io_retry(
-                        lambda: fragment.metadata.num_row_groups,
-                        f"read parquet metadata for {fragment.path}",
+                num_rows = None
+                if per_row_group_offsets:
+                    # The whole file is the unit; a column that positions rows
+                    # within their unit still needs its row count.
+                    num_rows = _with_io_retry(
+                        lambda: fragment.metadata.num_rows,
+                        f"read Parquet footer for {path}",
                     )
-                    fragments.extend(
-                        _fragments_from_row_group_ids(
-                            fragment,
-                            range(num_row_groups),
-                            per_row_group_offsets=True,
-                        )
+                fragments.append(
+                    ReadUnitFragment(
+                        fragment,
+                        ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
                     )
-                else:
-                    fragments.append((fragment, 0))
+                )
             else:
                 fragments.extend(
                     _fragments_from_row_group_ids(
                         fragment,
                         chunk_metadata["row_group_ids"],
-                        per_row_group_offsets=split_per_row_group,
+                        per_row_group_offsets=per_row_group_offsets,
                     )
                 )
         return fragments
@@ -428,19 +437,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
-        """Use V1's nested-type fallback path when the fragment has nested
-        columns whose row-group size exceeds Arrow's ~2GB chunking limit
-        (ARROW-5030).
+        """Use the row-level nested-type fallback path when the fragment has
+        nested columns whose row-group size exceeds Arrow's ~2GB chunking
+        limit (ARROW-5030).
         """
         import pyarrow.compute as pc
 
         from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
-        from ray.data._internal.datasource.parquet_datasource import (
-            _get_safe_batch_size_for_nested_types,
-            _needs_nested_type_fallback,
-            _resolve_leaf_column_indices,
-            _resolve_read_columns,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             get_column_references,
         )
@@ -666,95 +669,3 @@ class ParquetFileReader(FileReader, SupportsMetadata):
     @override
     def get_target_metadata_batch_size(self) -> Optional[int]:
         return self._COUNT_ROWS_BATCH_SIZE
-
-    @property
-    def _generated_id_column(self) -> Optional[str]:
-        """Name of the checkpointing-generated ID column, if configured."""
-        return get_generated_id_column_name()
-
-    def _validate_generated_id_column(
-        self, path_to_fragment: Dict[str, pds.ParquetFileFragment]
-    ) -> None:
-        """Raise if the configured generated ID column already exists on-disk.
-
-        The generated ID column is synthesized by the reader; a physical
-        column with the same name would be silently shadowed, so fail fast.
-        Checked once per read against a single fragment — ``FileReader.read``
-        builds the dataset with a unified schema, so one file is
-        representative.
-        """
-        generated_id_column = self._generated_id_column
-        if not path_to_fragment:
-            return
-        first_fragment = next(iter(path_to_fragment.values()))
-        physical_schema = _with_io_retry(
-            lambda: first_fragment.physical_schema,
-            f"read physical schema for {first_fragment.path}",
-        )
-        if physical_schema.get_field_index(generated_id_column) >= 0:
-            raise ValueError(
-                f"generated_id_column='{generated_id_column}' conflicts with an "
-                "existing column in the dataset. Choose a name that doesn't "
-                "collide with any input column."
-            )
-
-    @override
-    def _read_fragments_sequential(
-        self,
-        fragments_with_offsets: Iterator[Tuple[pds.Fragment, int]],
-        scanner_kwargs: dict,
-    ) -> Iterator[Tuple[pa.Table, str, int]]:
-        """Read fragments in order, attaching generated row IDs when configured.
-
-        Without a generated ID column this delegates to the base
-        implementation. With one, every incoming fragment must carry exactly
-        one row group (established by :meth:`_get_fragments_to_read`), and
-        each yielded batch gains a struct ID column identifying
-        ``(file, row group, row)``. ``in_group_offset`` counts rows already
-        emitted for this row group so ``row_id`` continues across batches,
-        while the yielded offset keeps the base method's file-row-offset
-        semantics for row hashing.
-        """
-        generated_id_column = self._generated_id_column
-        if generated_id_column is None:
-            yield from super()._read_fragments_sequential(
-                fragments_with_offsets, scanner_kwargs
-            )
-            return
-
-        ctx = DataContext.get_current()
-        for fragment, file_row_offset in fragments_with_offsets:
-            assert fragment.row_groups is not None and len(fragment.row_groups) == 1, (
-                "generated_id_column requires one row group per fragment, "
-                f"got {fragment.row_groups!r} for {fragment.path}"
-            )
-            row_group_idx = fragment.row_groups[0].id
-            fragment_metadata = _with_io_retry(
-                lambda: fragment.metadata,
-                f"read parquet metadata for {fragment.path}",
-            )
-            num_row_groups = fragment_metadata.num_row_groups
-            rg_num_rows = fragment_metadata.row_group(row_group_idx).num_rows
-            in_group_offset = 0
-            hash_offset = file_row_offset
-            for table in iterate_with_retry(
-                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
-                f"read fragment {fragment.path}",
-                match=ctx.retried_io_errors,
-            ):
-                if table.num_rows == 0:
-                    continue
-                table = table.append_column(
-                    generated_id_column,
-                    get_generated_id_column(
-                        path=fragment.path,
-                        row_group_idx=row_group_idx,
-                        num_row_groups=num_row_groups,
-                        total_num_rows=rg_num_rows,
-                        current_row_offset=in_group_offset,
-                        current_num_rows=table.num_rows,
-                    ),
-                )
-                yield table, fragment.path, hash_offset
-                in_group_offset += table.num_rows
-                hash_offset += table.num_rows

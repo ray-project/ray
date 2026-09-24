@@ -6,7 +6,6 @@ requires a shared Serve instance.
 import asyncio
 import logging
 import os
-import random
 import shutil
 import socket
 import sys
@@ -19,6 +18,7 @@ from opentelemetry import trace
 import ray
 import ray._private.state as state
 from ray import serve
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
@@ -46,16 +46,12 @@ from ray.serve.utils import get_trace_context
 from ray.util.state import list_actors
 
 
-def _get_random_port() -> int:
-    return random.randint(10000, 65535)
-
-
 @pytest.fixture
 def ray_cluster():
     if cluster_not_supported:
         pytest.skip("Cluster not supported")
     cluster = Cluster()
-    yield Cluster()
+    yield cluster
     serve.shutdown()
     ray.shutdown()
     cluster.shutdown()
@@ -107,7 +103,7 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
     assert handle.remote().result() == "from_f"
-    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get(get_application_url("HTTP", app_name="f")).text == "from_f"
 
     serve.context._global_client = None
     ray.shutdown()
@@ -122,8 +118,8 @@ def test_deployment(ray_cluster):
 
     handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
     assert handle.remote().result() == "from_g"
-    assert httpx.get("http://localhost:8000/say_hi_g").text == "from_g"
-    assert httpx.get("http://localhost:8000/say_hi_f").text == "from_f"
+    assert httpx.get(get_application_url("HTTP", app_name="g")).text == "from_g"
+    assert httpx.get(get_application_url("HTTP", app_name="f")).text == "from_f"
 
 
 def test_connect(ray_shutdown):
@@ -274,7 +270,7 @@ def test_middleware(ray_shutdown):
     from starlette.middleware import Middleware
     from starlette.middleware.cors import CORSMiddleware
 
-    port = _get_random_port()
+    port = find_free_port()
     # `middlewares` in HTTPOptions has been removed; passing it raises an error.
     # Use Serve's FastAPI integration to configure middlewares instead.
     with pytest.raises(ValueError, match="`middlewares` in HTTPOptions"):
@@ -294,7 +290,7 @@ def test_http_root_path(ray_shutdown):
     def hello():
         return "hello"
 
-    port = _get_random_port()
+    port = find_free_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
@@ -353,13 +349,13 @@ def test_no_http(ray_shutdown):
 
 def test_http_head_only(ray_cluster):
     cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4, dashboard_port=_get_random_port())
+    head_node = cluster.add_node(num_cpus=4, dashboard_port=find_free_port())
     cluster.add_node(num_cpus=4)
 
     ray.init(head_node.address)
     assert len(ray.nodes()) == 2
 
-    serve.start(proxy_location="HeadOnly", http_options={"port": _get_random_port()})
+    serve.start(proxy_location="HeadOnly", http_options={"port": find_free_port()})
 
     # Controller and proxy on the head node. Under HAProxy the proxy is the
     # HAProxyManager alongside the fallback ProxyActor, which registers asynchronously.
@@ -427,7 +423,7 @@ def test_serve_start_different_http_checkpoint_options_warning(
     serve.start()
 
     # create a different config
-    test_http = dict(host="127.1.1.8", port=_get_random_port())
+    test_http = dict(host="127.1.1.8", port=find_free_port())
 
     serve.start(http_options=test_http)
 
@@ -587,7 +583,8 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
 
     # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/").text == "May I take your order?"
+        lambda: httpx.get(get_application_url("HTTP")).text == "May I take your order?",
+        timeout=60,
     )
 
     serve.shutdown()

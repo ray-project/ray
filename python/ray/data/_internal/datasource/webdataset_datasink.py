@@ -2,7 +2,7 @@ import io
 import tarfile
 import time
 import uuid
-from typing import Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import pyarrow
 
@@ -14,12 +14,18 @@ from ray.data._internal.datasource.webdataset_datasource import (
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_datasink import BlockBasedFileDatasink
 
+WebDatasetEncoder = Callable[[Dict[str, Any]], Dict[str, Any]]
+WebDatasetEncoderSpec = Union[bool, str, WebDatasetEncoder]
+WebDatasetEncoderConfig = Optional[
+    Union[WebDatasetEncoderSpec, List[WebDatasetEncoderSpec]]
+]
+
 
 class WebDatasetDatasink(BlockBasedFileDatasink):
     def __init__(
         self,
         path: str,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: WebDatasetEncoderConfig = True,
         *,
         file_format: str = "tar",
         **file_datasink_kwargs,

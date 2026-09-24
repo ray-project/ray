@@ -184,21 +184,6 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   local_view->SetAvailableResource(resource_id, available);
 }
 
-bool ClusterResourceManager::DeleteResources(
-    scheduling::NodeID node_id, const std::vector<scheduling::ResourceID> &resource_ids) {
-  auto it = nodes_.find(node_id);
-  if (it == nodes_.end()) {
-    return false;
-  }
-
-  auto local_view = it->second.GetMutableLocalView();
-  for (const auto &resource_id : resource_ids) {
-    local_view->total.Set(resource_id, 0);
-    local_view->SetAvailableResource(resource_id, 0);
-  }
-  return true;
-}
-
 std::string ClusterResourceManager::GetNodeResourceViewString(
     scheduling::NodeID node_id) const {
   const auto &node = map_find_or_die(nodes_, node_id);

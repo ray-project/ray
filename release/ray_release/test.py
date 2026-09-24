@@ -55,18 +55,6 @@ BISECT_DAILY_RATE_LIMIT = 10
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
 
 
-def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
-    env_dict = {}
-    for env in env_list:
-        # an env can be "a=b" or just "a"
-        eq_pos = env.find("=")
-        if eq_pos < 0:
-            env_dict[env] = os.environ.get(env, "")
-        else:
-            env_dict[env[:eq_pos]] = env[eq_pos + 1 :]
-    return env_dict
-
-
 class TestState(enum.Enum):
     """
     Overall state of the test
@@ -464,7 +452,8 @@ class Test(dict):
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """Returns the runtime environment variables for the BYOD cluster."""
-        return _convert_env_list_to_dict(self._get_byod_config().get("runtime_env", []))
+        runtime_env = self._get_byod_config().get("runtime_env") or {}
+        return {name: str(value) for name, value in runtime_env.items()}
 
     def get_ray_version(self) -> Optional[str]:
         """
