@@ -45,6 +45,9 @@ The accelerators natively supported by Ray Core are:
    * - METAX GPU
      - GPU
      - Experimental, supported by the community
+   * - Biren
+     - GPU
+     - Experimental, supported by the community
    * - FuriosaAI
      - FURIOSA
      - Experimental, supported by the community
@@ -151,6 +154,16 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             You can set the ``CUDA_VISIBLE_DEVICES`` environment variable before starting a Ray node
             to limit the METAX GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
+            lets Ray only see devices 1 and 3.
+
+    .. tab-item:: Biren
+        :sync: Biren
+
+        .. tip::
+
+            You can set the ``SUPA_VISIBLE_DEVICES`` environment variable before starting a Ray node
+            to limit the Biren cards that are visible to Ray.
+            For example, ``SUPA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
 
     .. tab-item:: FuriosaAI
@@ -553,6 +566,45 @@ and assign accelerators to the task or actor by setting the corresponding enviro
             (gpu_task pid=51830) GPU IDs: [1]
             (gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
 
+    .. tab-item:: Biren
+        :sync: Biren
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            import os
+            import ray
+
+            ray.init(num_gpus=2)
+
+            @ray.remote(num_gpus=1)
+            class BirenActor:
+                def ping(self):
+                    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+                    print("SUPA_VISIBLE_DEVICES: {}".format(os.environ["SUPA_VISIBLE_DEVICES"]))
+
+            @ray.remote(num_gpus=1)
+            def biren_task():
+                print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+                print("SUPA_VISIBLE_DEVICES: {}".format(os.environ["SUPA_VISIBLE_DEVICES"]))
+
+            biren_actor = BirenActor.remote()
+            ray.get(biren_actor.ping.remote())
+            # The actor uses the first card so the task uses the second one.
+            ray.get(biren_task.remote())
+
+        .. testoutput::
+            :options: +MOCK
+
+            (BirenActor pid=52420) GPU IDs: [0]
+            (BirenActor pid=52420) SUPA_VISIBLE_DEVICES: 0
+            (biren_task pid=51830) GPU IDs: [1]
+            (biren_task pid=51830) SUPA_VISIBLE_DEVICES: 1
+
     .. tab-item:: FuriosaAI
         :sync: FuriosaAI
 
@@ -799,6 +851,28 @@ so multiple tasks and actors can share the same accelerator.
 
             # The four tasks created here can execute concurrently
             # and share the same GPU.
+            ray.get([f.remote() for _ in range(4)])
+
+    .. tab-item:: Biren
+        :sync: Biren
+
+        .. testcode::
+            :hide:
+
+            ray.shutdown()
+
+        .. testcode::
+
+            ray.init(num_cpus=4, num_gpus=1)
+
+            @ray.remote(num_gpus=0.25)
+            def f():
+                import time
+
+                time.sleep(1)
+
+            # The four tasks created here can execute concurrently
+            # and share the same Biren card.
             ray.get([f.remote() for _ in range(4)])
 
     .. tab-item:: FuriosaAI
