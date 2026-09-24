@@ -536,6 +536,12 @@ def test_deploy_application_basic(serve_instance):
     assert httpx.get(url, follow_redirects=True).text == '"Hello, world!"'
 
 
+# A controller restart leaves the route table transiently empty, so
+# get_application_url has no url to return.
+@pytest.mark.skipif(
+    RAY_SERVE_CRASH_PROBABILITY_TESTING > 0,
+    reason="get_application_url needs a route table the restart has not rebuilt yet.",
+)
 def test_delete_application(serve_instance):
     """Test delete single application"""
 

@@ -6807,6 +6807,8 @@ class DeploymentStateManager:
                     ): tombstone,
                 }
             )
+            # Routers hold the tombstone but the deletion is not checkpointed yet.
+            maybe_crash_for_testing()
             self._long_poll_host.remove_keys(
                 # pyrefly: ignore[bad-argument-type]
                 [(LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id)]  # type: ignore[list-item]
