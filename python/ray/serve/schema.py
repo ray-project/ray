@@ -280,7 +280,7 @@ class RayActorOptionsSchema(BaseModel):
         default={},
         description=(
             "This deployment's runtime_env. working_dir and "
-            "py_modules may contain only remote URIs."
+            "py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     num_cpus: Optional[float] = Field(
@@ -359,8 +359,9 @@ class RayActorOptionsSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -816,7 +817,7 @@ class ServeApplicationSchema(BaseModel):
         description=(
             "The runtime_env that the deployment graph will be run in. "
             "Per-deployment runtime_envs will inherit from this. working_dir "
-            "and py_modules may contain only remote URIs."
+            "and py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     host: str = Field(
@@ -897,8 +898,9 @@ class ServeApplicationSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -999,6 +1001,14 @@ class gRPCOptionsSchema(BaseModel):
     request_timeout_s: Optional[float] = Field(
         default=None,
         description="The timeout for gRPC requests. Defaults to no timeout.",
+    )
+    enable_reflection: bool = Field(
+        default=True,
+        description=(
+            "Enable the gRPC server reflection protocol on Serve's gRPC proxy "
+            "so tools such as grpcurl and grpcui can discover and call the "
+            "registered gRPC services. Defaults to True."
+        ),
     )
 
 
@@ -1775,6 +1785,15 @@ class ControllerHealthMetrics(BaseModel):
             "(rolling window, ms)."
         ),
     )
+
+    columnar_decode_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decode time for columnar metric reports (rolling window, ms). "
+            "Separate from metrics_decompress_duration_ms so the two wire formats "
+            "stay comparable."
+        ),
+    )
     handle_reports_received: int = Field(
         default=0, description="Total handle metric reports ingested since start."
     )
@@ -1885,6 +1904,14 @@ class ServeInstanceDetails(BaseModel):
     controller_health_metrics: ControllerHealthMetrics = Field(
         default_factory=ControllerHealthMetrics,
         description="Health metrics for the Ray Serve controller.",
+    )
+
+    restores_unset_config_options: bool = Field(
+        default=False,
+        description=(
+            "Whether removing a deployment config override restores the value "
+            "defined in code. Older versions omit this field and keep the override."
+        ),
     )
 
     @staticmethod

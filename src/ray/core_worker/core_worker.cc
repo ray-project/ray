@@ -3800,7 +3800,11 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   if (request.task_spec().type() == TaskType::ACTOR_CREATION_TASK ||
       request.task_spec().type() == TaskType::NORMAL_TASK) {
     auto job_id = JobID::FromBinary(request.task_spec().job_id());
-    worker_context_->MaybeInitializeJobInfo(job_id, request.task_spec().job_config());
+    if (worker_context_->MaybeInitializeJobInfo(job_id,
+                                                request.task_spec().job_config())) {
+      reference_counter_->SetLineagePinningEnabled(
+          worker_context_->ShouldPinObjectLineage());
+    }
     task_counter_.SetJobId(job_id);
   }
 
@@ -4157,11 +4161,6 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
         << "Attempting to add object location for a dead node. Ignoring this request.";
     return;
   }
-  auto reference_exists = reference_counter_->AddObjectLocation(object_id, node_id);
-  if (!reference_exists) {
-    RAY_LOG(DEBUG).WithField(object_id) << "Object not found";
-  }
-
   // For generator tasks where we haven't yet received the task reply, the
   // internal ObjectRefs may not be added yet, so we don't find out about these
   // until the task finishes.
@@ -4177,7 +4176,11 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
       // ObjectID so that we can update its location.
       reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
     }
-    RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
+  }
+  if (!reference_counter_->AddObjectLocation(object_id, node_id)) {
+    // The ref may be dropped and free objects sent before this report arrives, so free
+    // the additional copies here.
+    FreeObjectOnNodesAsync(object_id, {node_id});
   }
 }
 

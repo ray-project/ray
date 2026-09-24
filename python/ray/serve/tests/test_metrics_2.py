@@ -15,68 +15,32 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
+)
 from ray.serve._private.test_utils import (
+    METRICS_FIRST_EXPORT_TIMEOUT_S,
     PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
+    check_metric_float,
+    check_sum_metric_eq,
     get_application_url,
+    get_metric_dictionaries,
     ping_fruit_stand,
     ping_grpc_call_method,
     skip_if_haproxy,
+    wait_for_metric,
+    wait_for_metric_export,
 )
+from ray.serve._private.utils import format_actor_name
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
-from ray.serve.tests.test_metrics import (
-    check_metric_float_eq,
-    check_sum_metric_eq,
-    get_metric_dictionaries,
-)
 
-# A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
-# needs room for several full-length attempts. A newly registered series is the slow
-# thing to surface, so its debut gets the larger budget and value checks the smaller.
-METRICS_FIRST_EXPORT_TIMEOUT_S = 90
-METRICS_WAIT_TIMEOUT_S = 45
-METRICS_RETRY_INTERVAL_MS = 1000
 # Comfortably longer than the metric waits a held-open request has to survive.
 QUEUED_REQUEST_TIMEOUT_S = 300
-
-
-def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
-    """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
-    agent is not hammered while it catches up."""
-    wait_for_condition(
-        predicate,
-        timeout=budget_s,
-        retry_interval_ms=METRICS_RETRY_INTERVAL_MS,
-        **kwargs,
-    )
-
-
-def wait_for_metric_export(metric_name, timeseries, count=None):
-    """Waits for a series to surface, which is the slow step; count=None accepts
-    any number of samples."""
-
-    def check():
-        metrics = get_metric_dictionaries(
-            metric_name, timeseries=timeseries, wait=False
-        )
-        if count is None:
-            assert metrics, f"Metric {metric_name} not exported yet"
-        else:
-            assert (
-                len(metrics) == count
-            ), f"Expected {count} {metric_name}, got {len(metrics)}"
-        return True
-
-    wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
-
-
-def check_metric_float(**kwargs):
-    """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
-    own 20s default is larger than most callers' retry budgets."""
-    return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
 
 
 @serve.deployment
@@ -1024,7 +988,8 @@ class TestProxyStateMetrics:
         )
 
     def test_proxy_shutdown_duration_metric(self, metrics_start_shutdown):
-        """Test that proxy shutdown duration metric is recorded when proxy shuts down."""
+        """Test that the shutdown duration is recorded when a proxy is stopped and
+        replaced, which is the path where the controller outlives the proxy."""
 
         @serve.deployment
         def f():
@@ -1043,8 +1008,14 @@ class TestProxyStateMetrics:
             expected_tags={},
         )
 
-        # Shutdown serve, which will trigger proxy shutdown
-        serve.shutdown()
+        # Kill the proxy so the controller stops it and starts a replacement. Going
+        # through serve.shutdown() races the controller against its own exit: it
+        # records the duration in the tick that kills itself, too late to export.
+        node_id = ray.get_runtime_context().get_node_id()
+        proxy = ray.get_actor(
+            format_actor_name(SERVE_PROXY_NAME, node_id), namespace=SERVE_NAMESPACE
+        )
+        ray.kill(proxy, no_restart=True)
 
         # Wait for the shutdown duration metric to be recorded
         # The histogram metric will have _sum and _count suffixes

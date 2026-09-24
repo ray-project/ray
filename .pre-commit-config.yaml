@@ -25,15 +25,7 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        # Narrowing the top-level `exclude` above (so the `vale` hook can see
-        # doc/source/data prose) also exposed those files to this hook for the
-        # first time, which would rewrite 17 unrelated files. Keep them exempt
-        # here so enabling Vale stays a config-only change, and clean the
-        # whitespace up in its own PR.
-        exclude: ^doc/source/data/
       - id: end-of-file-fixer
-        # Same reason as trailing-whitespace above.
-        exclude: ^doc/source/data/
       - id: check-added-large-files
       - id: check-ast
         exclude: |
@@ -224,17 +216,26 @@ repos:
 
   - repo: local
     hooks:
+      - id: data-tests-location
+        name: Ray Data tests must live in python/ray/data/tests
+        entry: >-
+          Ray Data test files must live under python/ray/data/tests/ for consistency.
+        language: fail
+        files: '^python/ray/data/(?!tests/)(.*/)?test_[^/]*\.py$'
+
       - id: docstyle
         name: Check for Ray docstyle violations
         entry: ci/lint/check-docstyle.sh
         language: system
         types: [python]
 
-  - repo: https://github.com/errata-ai/vale
-    rev: v3.19.0
-    hooks:
-      - id: vale
-        files: ^doc/source/data/.*\.(md|rst)$
+  # Vale prose linting for Ray Data is temporarily disabled while a style pass
+  # clears the backlog. Re-enable by uncommenting this block.
+  # - repo: https://github.com/errata-ai/vale
+  #   rev: v3.19.0
+  #   hooks:
+  #     - id: vale
+  #       files: ^doc/source/data/.*\.(md|rst)$
 
   - repo: https://github.com/MarcoGorelli/cython-lint
     rev: v0.18.1

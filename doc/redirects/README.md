@@ -22,9 +22,12 @@ mirrors the live configuration exactly.
    at another redirect's source.
 2. Validate locally: `rtd-redirects validate doc/redirects/current.yaml`.
    No Read the Docs credentials needed.
-3. Open a PR. After it merges, a maintainer applies the change with
-   `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`.
-   CI automation for this step is planned; application is manual for now.
+3. Open a PR. After it merges, CI applies the change to the live project
+   automatically. A postmerge Buildkite step runs
+   `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`
+   on each postmerge run of master, and the change goes live on the next run
+   after the merge, which can be a few hours later. No manual apply step is
+   needed.
 
 ## Auditing drift
 

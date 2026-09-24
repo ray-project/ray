@@ -33,10 +33,10 @@ _MAGIC = b"SCR1"
 def is_columnar(buf: bytes) -> bool:
     """Wire-detect: True iff ``buf`` is a columnar (SCR1) frame.
 
-    The 4-byte magic is framed OUTSIDE the zlib stream, so any ingestion path can
-    route on the wire format alone -- independently of how the producer chose to
-    encode. A fleet mid-rollout (mixed columnar/cloudpickle senders) is then
-    handled correctly: the consumer reads whatever each sender actually emitted."""
+    The 4-byte magic is framed OUTSIDE the zlib stream, so a consumer routes on the
+    wire format alone, without decompressing and without assuming what the producer
+    emitted. That is what lets the ingest side ship ahead of the producer flip, and
+    lets the flip be reverted on its own."""
     return len(buf) >= 4 and buf[:4] == _MAGIC
 
 

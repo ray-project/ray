@@ -21,6 +21,24 @@ Ray exports a number of system metrics, which provide introspection into the sta
   - `recommended`: Drop high-cardinality labels. Ray internally determines specific labels; currently this includes only `WorkerId`. (This is the default behavior since Ray 2.53.)
   - `low`: Same as `recommended`, but also drops the Name label for tasks and actors.
 
+.. note::
+
+  Ray uses an optional NVML API to collect per-process GPU SM utilization. Ray
+  automatically skips this API for devices whose name matches a known PPU
+  device-name pattern (for example, ``PPU-ZW810``). For other NVML-compatible
+  libraries that don't safely support this API, set
+  ``RAY_SKIP_PROCESS_UTIL_API=true`` on each affected Ray node.
+  To skip specific device names, use the comma-separated
+  ``RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES`` environment variable (names are
+  matched case-insensitively and exactly).
+
+  These variables must be set in the Ray node and Dashboard Reporter process
+  environment before ``ray start`` (for example, in the Pod environment when
+  using KubeRay). They are not applied through ``runtime_env``. Ray continues to
+  report GPU process IDs, allocated GPU memory, and device-level utilization,
+  memory, power, and temperature metrics. Only per-process GPU utilization is
+  unavailable.
+
 .. list-table:: Ray System Metrics
    :header-rows: 1
 
