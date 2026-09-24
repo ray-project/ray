@@ -85,6 +85,13 @@ HTTP_PROXY_TIMEOUT = 60
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
+# Stop rolling updates at the startup failure threshold, including health check
+# failures. Keep surviving replicas until a deploy changes the target.
+# Set to "0" to keep retrying after any new replica has started.
+RAY_SERVE_STOP_FAILED_ROLLING_UPDATES = get_env_bool(
+    "RAY_SERVE_STOP_FAILED_ROLLING_UPDATES", "1"
+)
+
 #: Max processing latency metric configuration.
 #: Rolling window duration for calculating max processing latency (in seconds).
 RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
@@ -446,6 +453,12 @@ SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# Kill switch for the columnar handle-metric wire format. On by default; set to 0 to
+# fall back to cloudpickle without a redeploy. The controller reads either format.
+RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS = get_env_bool(
+    "RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS", "1"
+)
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"
@@ -485,11 +498,6 @@ RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
     10.0,
-)
-
-# Async inference task queue metrics push interval.
-RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
-    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
 )
 
 # Serve multiplexed matching timeout.

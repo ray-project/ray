@@ -3558,6 +3558,7 @@ class TestApplicationLevelAutoscaling:
                 deployment_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
+                None,
             )
             app_state.update()
 
@@ -3615,6 +3616,7 @@ class TestApplicationLevelAutoscaling:
                     deployment_infos,
                     BuildAppStatus.SUCCEEDED,
                     "",
+                    None,
                 )
                 app_state.update()
 
@@ -3773,6 +3775,71 @@ class TestApplicationLevelAutoscaling:
         new_app_state_manager.update()
 
         assert new_deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    @patch("ray.serve._private.application_state.build_serve_application", Mock())
+    @patch(
+        "ray.serve._private.application_state.check_obj_ref_ready_nowait",
+        Mock(return_value=True),
+    )
+    def test_app_level_autoscaling_policy_bytes_survive_recovery_and_update(
+        self, mocked_application_state_manager
+    ):
+        """The serialized policy must be carried through every target state.
+
+        A policy that lives only in the app's runtime_env can be imported by
+        the build task but not by the controller, so the controller relies on
+        the bytes the build task returned. Dropping them from the target state
+        on recovery or on a same-code-version update lets the next checkpoint
+        persist None, and the recovery after that imports the policy by path in
+        the controller and crashes it.
+        """
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        serialized_policy = cloudpickle.dumps(simple_app_level_policy)
+
+        def config(max_ongoing_requests):
+            return ServeApplicationSchema(
+                name="test_app",
+                import_path="fa.ke",
+                route_prefix="/",
+                # Not importable in this process, like a runtime_env-only module.
+                autoscaling_policy={"policy_function": "hidden_app:app_policy"},
+                deployments=[
+                    {"name": "a", "max_ongoing_requests": max_ongoing_requests}
+                ],
+            )
+
+        def recover():
+            return ApplicationStateManager(
+                MockDeploymentStateManager(kv_store),
+                AutoscalingStateManager(),
+                MockEndpointState(),
+                kv_store,
+                LoggingConfig(),
+            )
+
+        def policy_bytes(manager):
+            return manager._application_states[
+                "test_app"
+            ]._target_state.serialized_application_autoscaling_policy_def
+
+        with patch(
+            "ray.get",
+            Mock(return_value=(serialized_policy, [deployment_params("a", "/")], None)),
+        ):
+            app_state_manager.apply_app_configs([config(5)])
+            app_state_manager.update()
+        assert policy_bytes(app_state_manager) == serialized_policy
+
+        app_state_manager.save_checkpoint()
+        recovered = recover()
+        assert policy_bytes(recovered) == serialized_policy
+
+        # Same import_path and runtime_env: applied in place without a rebuild.
+        recovered.apply_app_configs([config(11)])
+        assert policy_bytes(recovered) == serialized_policy
+
+        recovered.save_checkpoint()
+        assert recover()._autoscaling_state_manager._application_has_policy("test_app")
 
     def test_app_level_autoscaling_policy_deregistration_on_deletion(
         self, mocked_application_state_manager
@@ -4008,6 +4075,122 @@ class TestApplicationLevelAutoscaling:
 
         assert d1_id in decisions
         assert decisions[d1_id] == 3  # Our policy scales to 3
+
+    def _create_two_deployment_app_config(self, has_policy: bool):
+        """App config with two autoscaling deployments, d1 and d2."""
+        autoscaling_config = {
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "initial_replicas": 1,
+        }
+        return self._create_app_config(
+            has_policy=has_policy,
+            deployments=[
+                DeploymentSchema(
+                    name="d1", autoscaling_config=dict(autoscaling_config)
+                ),
+                DeploymentSchema(
+                    name="d2", autoscaling_config=dict(autoscaling_config)
+                ),
+            ],
+        )
+
+    @pytest.mark.parametrize("has_policy", [False, True])
+    def test_get_decision_num_replicas_skips_untargeted_deployment(
+        self, mocked_application_state_manager, has_policy
+    ):
+        """A deployment that left the app's target state must not raise KeyError.
+
+        A deployment stays registered with the autoscaling state manager until
+        it is fully torn down, but it drops out of the application's target
+        deployments -- and therefore out of `deployment_to_target_num_replicas`
+        -- as soon as the new target state is set. Autoscaling must skip it
+        rather than indexing the caller's dict with a key it doesn't have.
+        """
+        app_state_manager, _, _ = mocked_application_state_manager
+
+        app_config = self._create_two_deployment_app_config(has_policy)
+        self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        assert asm.should_autoscale_deployment(d2_id)
+
+        # d2 has been removed from the app but is still registered because its
+        # replicas haven't finished stopping, so the caller only reports d1.
+        decisions = asm.get_decision_num_replicas("test_app", {d1_id: 1})
+
+        assert d1_id in decisions
+        assert d2_id not in decisions
+
+    def test_autoscale_after_deployment_removed_from_app(
+        self, mocked_application_state_manager
+    ):
+        """Removing one deployment must not stop the app's control loop.
+
+        `ApplicationStateManager.update` calls `autoscale()` before `update()`,
+        so a raise in `autoscale()` would prevent the removed deployment from
+        ever being deleted -- and therefore from ever being deregistered --
+        leaving the application unreconciled on every subsequent loop.
+        """
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        asm = app_state_manager._autoscaling_state_manager
+
+        autoscaling_config = {
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 0.0,
+        }
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        app_state_manager.deploy_app(
+            "test_app",
+            [
+                deployment_params(
+                    "d1", "/hi", autoscaling_config=dict(autoscaling_config)
+                ),
+                deployment_params("d2", autoscaling_config=dict(autoscaling_config)),
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state = app_state_manager._application_states["test_app"]
+        app_state_manager.update()
+        for deployment_id in (d1_id, d2_id):
+            deployment_state_manager.set_deployment_healthy(deployment_id)
+            asm.register_deployment(
+                deployment_id,
+                deployment_state_manager.deployment_infos[deployment_id],
+                1,
+            )
+
+        # Redeploy without d2. It drops out of the target state immediately but
+        # stays registered for autoscaling until its replicas finish stopping.
+        app_state_manager.deploy_app(
+            "test_app",
+            [
+                deployment_params(
+                    "d1", "/hi", autoscaling_config=dict(autoscaling_config)
+                )
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        assert app_state.target_deployments == ["d1"]
+        assert asm.should_autoscale_deployment(d2_id)
+
+        app_state_manager.update()
+
+        # d2 is marked for deletion only if `autoscale()` returned normally and
+        # `update()` got to run.
+        assert deployment_state_manager.deleting[d2_id] is True
 
     def test_multiple_applications_autoscaling_isolation(
         self, mocked_application_state_manager
@@ -5010,6 +5193,113 @@ class TestDeploymentDAG:
         # Verify leaf nodes have no dependencies
         assert len(topology.nodes["database"].outbound_deployments) == 0
         assert len(topology.nodes["cache"].outbound_deployments) == 0
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+class TestConfigOverridesFromBuild:
+    """Removing config overrides restores code defaults, including after recovery."""
+
+    SPARSE = ServeApplicationSchema(
+        name="test_app", import_path="fa.ke", route_prefix="/"
+    )
+
+    @staticmethod
+    def _build(app_state_manager, check_obj_ref_ready_nowait):
+        app_state_manager.apply_app_configs([TestConfigOverridesFromBuild.SPARSE])
+        app_state = app_state_manager._application_states["test_app"]
+        check_obj_ref_ready_nowait.return_value = True
+        app_state.update()
+        assert app_state._target_state.build is not None
+        return app_state
+
+    @staticmethod
+    def _with_overrides(**deployment_overrides):
+        return ServeApplicationSchema(
+            name="test_app",
+            import_path="fa.ke",
+            route_prefix="/",
+            deployments=[{"name": "a", **deployment_overrides}],
+        )
+
+    @staticmethod
+    def _num_replicas(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].deployment_config.num_replicas
+
+    @staticmethod
+    def _actor_options(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].replica_config.ray_actor_options
+
+    @staticmethod
+    def _recover(kv_store):
+        new_app_state_manager = ApplicationStateManager(
+            MockDeploymentStateManager(kv_store),
+            AutoscalingStateManager(),
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+        return new_app_state_manager._application_states["test_app"]
+
+    def test_removed_override_returns_to_code_defined_value(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+        app_state.apply_app_config(
+            self._with_overrides(
+                num_replicas=5,
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}},
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert app_state._target_state.build is not None
+        assert self._num_replicas(app_state) == 5
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        app_state.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+    def test_sparse_rollback_after_controller_restart(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        app_state.apply_app_config(
+            self._with_overrides(
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}}
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+        app_state_manager.save_checkpoint()
+
+        recovered = self._recover(kv_store)
+        assert recovered._target_state.build is not None
+        assert self._actor_options(recovered)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert "runtime_env" not in self._actor_options(recovered)
+        assert self._num_replicas(recovered) == 1
 
 
 if __name__ == "__main__":

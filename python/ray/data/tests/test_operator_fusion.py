@@ -534,6 +534,35 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     ctx.target_max_block_size = old_target_max_block_size
 
 
+@pytest.mark.parametrize(
+    "filter_kwargs, map_batches_kwargs",
+    [
+        # Map->Map fusion refused: compute strategies differ.
+        ({"compute": ray.data.TaskPoolStrategy(size=2)}, {"batch_size": None}),
+        # Map->Map fusion refused: Filter can modify #rows and MapBatches sets
+        # batch_size.
+        ({}, {"batch_size": 5}),
+    ],
+)
+def test_random_shuffle_fuses_at_most_one_upstream_map(
+    ray_start_regular_shared_2_cpus, filter_kwargs, map_batches_kwargs
+):
+    from ray.data._internal.util import explain_plan
+
+    # Two MapOperators left unfused by map fusion must not both be fused into the
+    # shuffle: only one `ctx.upstream_map_transformer` survives, so the outer map
+    # (here, Filter) would be silently dropped.
+    ds = ray.data.from_items(list(range(100)), override_num_blocks=10)
+    ds = ds.filter(lambda r: r["item"] % 2 == 0, **filter_kwargs)
+    ds = ds.map_batches(lambda b: b, **map_batches_kwargs)
+    ds = ds.random_shuffle()
+
+    assert sorted(extract_values("item", ds.take_all())) == list(range(0, 100, 2))
+    explain_str = explain_plan(ds._logical_plan)
+    assert "Filter(<lambda>)->MapBatches(<lambda>)->RandomShuffle" not in explain_str
+    assert "MapBatches(<lambda>)->RandomShuffle" in explain_str
+
+
 @pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
     ray_start_regular_shared_2_cpus, shuffle, configure_shuffle_method
@@ -574,9 +603,9 @@ def test_fuse_map_into_shuffle_reduce(
     assert sorted(extract_values("id", ds.take_all())) == list(range(100))
 
 
-@pytest.mark.parametrize("use_external", [False, True])
+@pytest.mark.parametrize("use_disk", [False, True])
 def test_fused_shuffle_reduce_preserves_operator_config(
-    ray_start_regular_shared_2_cpus, restore_data_context, use_external
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk
 ):
     """Fusing a map into ShuffleReduceOp must carry over operator-level config.
 
@@ -586,7 +615,7 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     """
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.use_external_hash_shuffle = use_external
+    ctx.use_disk_based_hash_shuffle = use_disk
 
     ds = (
         ray.data.range(100)
@@ -595,7 +624,7 @@ def test_fused_shuffle_reduce_preserves_operator_config(
     )
     dag = get_execution_plan(ds._logical_plan)[0].dag
 
-    prefix = "ExternalHashShuffleReduce" if use_external else "HashShuffleReduce"
+    prefix = "DiskHashShuffleReduce" if use_disk else "HashShuffleReduce"
     assert dag.name == (f"{prefix}(keys=('id',), partitions=4)->MapBatches(<lambda>)")
     assert dag._fused_output_map_transformer is not None
     assert dag._peak_memory_multiplier == 3

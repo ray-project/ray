@@ -503,26 +503,6 @@ steps:
       - block-core-cpp-sanitizer-tests
       - corebuild-multipy(python=3.10)
 
-  - block: "run dag tests"
-    key: block-dag-tests
-    depends_on: []
-
-  - label: ":ray: core: dag tests"
-    key: core_dag_tests
-    tags:
-      - core_python
-      - cgraphs_direct_transport
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag/... core
-        --install-mask all-ray-libraries
-        --python-version 3.10 --build-name corebuild-py3.10
-        --only-tags ray_dag_tests,compiled_graphs
-        --except-tags custom_setup
-    depends_on:
-      - block-dag-tests
-      - corebuild-multipy(python=3.10)
-
   - label: ":ray: core: flaky tests"
     key: core_flaky_tests
     tags:

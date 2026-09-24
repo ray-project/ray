@@ -80,6 +80,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
+    RAY_SERVE_STOP_FAILED_ROLLING_UPDATES,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
@@ -560,12 +561,19 @@ class DeploymentTargetState:
         be adjusted by the target_capacity.
     version: the goal version of the deployment.
     deleting: whether the deployment is being deleted.
+    rolling_update: whether this version is replacing an older version.
+        Cleared when the deployment reaches HEALTHY.
+    rolling_update_failed: whether the rolling update reached the startup failure
+        threshold. No more replicas are replaced until `deploy()` changes
+        the target. This flag survives controller restarts.
     """
 
     info: Optional[DeploymentInfo]
     target_num_replicas: int
     version: Optional[DeploymentVersion]
     deleting: bool
+    rolling_update: bool = False
+    rolling_update_failed: bool = False
 
     @classmethod
     def default(cls) -> "DeploymentTargetState":
@@ -3007,14 +3015,17 @@ class DeploymentState:
         self._dirty_set_rr_cursor: int = 0
 
         self._prev_startup_warning: float = time.time()
-        self._replica_constructor_error_msg: Optional[str] = None
-        # Counter for how many times replicas failed to start. This is reset to 0 when:
-        # (1) The deployment is deployed / re-deployed.
-        # (2) The deployment reaches the HEALTHY state.
-        self._replica_constructor_retry_counter: int = 0
+        self._replica_failure_message: Optional[str] = None
+        # Counts startup failures for all deployments. During rolling updates,
+        # also counts subsequent health-check failures of target-version replicas.
+        # Reset on a new deployment attempt or convergence to HEALTHY;
+        # count-only updates of terminally failed rolling updates preserve it.
+        self._replica_failure_count: int = 0
         # Flag for whether any replicas of the target version has successfully started.
         # This is reset to False when the deployment is re-deployed.
         self._replica_has_started: bool = False
+        # Tells the manager to checkpoint changes to the rolling update state.
+        self._target_state_changed: bool = False
         # Set when a deployment-scoped actor fails to start (constructor error).
         # Checked in check_curr_status to transition to DEPLOY_FAILED.
         self._deployment_actor_failed: Optional[str] = None
@@ -3447,8 +3458,7 @@ class DeploymentState:
         """
         return (
             self._target_state.target_num_replicas > 0
-            and self._replica_constructor_retry_counter
-            >= self._failed_to_start_threshold
+            and self._replica_failure_count >= self._failed_to_start_threshold
         )
 
     def _terminally_failed(self) -> bool:
@@ -3459,10 +3469,16 @@ class DeploymentState:
         any replicas of the target version that has successfully started),
         or if deployment-scoped actors have permanently failed to start.
         """
+        # Check rolling update failures even if some new replicas started.
+        # Stop replacing old replicas in the same tick that reaches the threshold.
         replica_failed = (
-            not self._replica_has_started and self._replica_startup_failing()
+            not self._replica_has_started or self._target_state.rolling_update
+        ) and self._replica_startup_failing()
+        return (
+            self._target_state.rolling_update_failed
+            or replica_failed
+            or self.deployment_actor_terminally_failed()
         )
-        return replica_failed or self.deployment_actor_terminally_failed()
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {r.actor_id for r in self._replicas.get() if r.actor_id is not None}
@@ -3690,6 +3706,11 @@ class DeploymentState:
         )
 
         if self._target_state.version == new_target_state.version:
+            # Changing only the replica count must not clear a failed update.
+            new_target_state.rolling_update = self._target_state.rolling_update
+            new_target_state.rolling_update_failed = (
+                self._target_state.rolling_update_failed
+            )
             # Record either num replica or autoscaling config lightweight update
             # Versions are equal here, and the new target state's version is
             # always set, so the old one is too.
@@ -3788,9 +3809,31 @@ class DeploymentState:
 
         old_target_state = self._target_state
         self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
+        if not self._target_state.rolling_update_failed:
+            self._target_state.rolling_update = (
+                RAY_SERVE_STOP_FAILED_ROLLING_UPDATES
+                and self._replicas.count(
+                    exclude_version=self._target_state.version,
+                    states=[
+                        ReplicaState.STARTING,
+                        ReplicaState.UPDATING,
+                        ReplicaState.RECOVERING,
+                        ReplicaState.RUNNING,
+                        ReplicaState.PENDING_MIGRATION,
+                    ],
+                )
+                > 0
+            )
         self._deployment_scheduler.on_deployment_deployed(
             self._id, deployment_info.replica_config
         )
+
+        # _set_target_state preserves terminal failures when the deployment
+        # version is unchanged. A count-only config reapply must not reset the
+        # retry budget or resume replacing healthy old replicas. Scaling down
+        # (including to zero) is still handled by scale_deployment_replicas().
+        if self._target_state.rolling_update_failed:
+            return True
 
         # Determine if the updated target state simply scales the current state.
         # Although the else branch handles the CONFIG_UPDATE, we also take this branch
@@ -3821,7 +3864,8 @@ class DeploymentState:
             f"Deploying new version of {self._id} "
             f"(initial target replicas: {target_num_replicas})."
         )
-        self._replica_constructor_retry_counter = 0
+        self._replica_failure_count = 0
+        self._replica_failure_message = None
         self._replica_has_started = False
         self._deployment_actor_failed = None
         self._deployment_actor_retry_counter = 0
@@ -4149,6 +4193,10 @@ class DeploymentState:
         # Short circuit if target replicas is 0 (the deployment is being
         # deleted) because this will be handled in the main loop.
         if self._target_state.target_num_replicas == 0:
+            return False
+
+        # Preserve surviving old replicas after a terminal failure.
+        if self._terminally_failed():
             return False
 
         # We include STARTING and UPDATING replicas here
@@ -4484,6 +4532,22 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
+        # Once a rolling update fails, keep it failed across autoscaling and
+        # controller restarts until deploy() changes the target.
+        self._mark_rolling_update_failed_if_needed()
+        if self._target_state.rolling_update_failed:
+            message = self._rolling_update_failed_message()
+            if self._curr_status_info.status != DeploymentStatus.DEPLOY_FAILED:
+                self._curr_status_info = self._curr_status_info.handle_transition(
+                    trigger=DeploymentStatusInternalTrigger.ROLLING_UPDATE_FAILED,
+                    message=message,
+                )
+            elif self._curr_status_info.message != message:
+                # Health failures may have already set DEPLOY_FAILED before the
+                # rollout became terminal. Refresh the message, keeping the trigger.
+                self._curr_status_info = self._curr_status_info.update_message(message)
+            return False, any_replicas_recovering
+
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
@@ -4513,11 +4577,11 @@ class DeploymentState:
                 trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
                 message=(
                     "The deployment failed to start "
-                    f"{self._replica_constructor_retry_counter} times "
+                    f"{self._replica_failure_count} times "
                     "in a row. This may be due to a problem with its "
                     "constructor or initial health check failing. See "
                     "controller logs for details. Error:\n"
-                    f"{self._replica_constructor_error_msg}"
+                    f"{self._replica_failure_message}"
                 ),
             )
             return False, any_replicas_recovering
@@ -4567,7 +4631,13 @@ class DeploymentState:
                 self._curr_status_info = self._curr_status_info.handle_transition(
                     trigger=DeploymentStatusInternalTrigger.HEALTHY
                 )
-                self._replica_constructor_retry_counter = 0
+                self._replica_failure_count = 0
+                self._replica_failure_message = None
+                if self._target_state.rolling_update:
+                    # The rolling update converged; later failures follow the
+                    # steady state rules again.
+                    self._target_state.rolling_update = False
+                    self._target_state_changed = True
                 # Deployment is in steady state: all replicas RUNNING at
                 # target version, no pending operations.
                 self._in_transition = False
@@ -4755,6 +4825,65 @@ class DeploymentState:
 
         return slow_replicas
 
+    def _mark_rolling_update_failed_if_needed(self) -> None:
+        """Mark threshold-reaching rolling updates for checkpointing."""
+        if (
+            self._target_state.rolling_update
+            and self._replica_startup_failing()
+            and not self._target_state.rolling_update_failed
+        ):
+            self._target_state.rolling_update_failed = True
+            self._target_state_changed = True
+            self._broadcasted_replicas_set_changed = True
+            logger.warning(
+                f"Rolling update of {self._id} failed: replicas of the new "
+                f"version failed to start {self._replica_failure_count} "
+                "times. Stopping the update; replicas of the previous version "
+                "keep running until a new deploy."
+            )
+
+    def _rolling_update_failed_message(self) -> str:
+        if self._replica_failure_count > 0:
+            return (
+                "The deployment failed to start "
+                f"{self._replica_failure_count} times "
+                "in a row during a rolling update. This may be due to a problem "
+                "with its constructor, initial health check or health checks "
+                "failing. The update is stopped and replicas of the previous "
+                "version keep running until a new deploy. See controller logs "
+                f"for details. Error:\n{self._replica_failure_message}"
+            )
+        # After a controller restart the counter starts from zero but the
+        # checkpointed target state remembers the failure.
+        return (
+            "The rolling update of this deployment failed before the controller "
+            "restarted: replicas of the new version repeatedly failed to start. "
+            "The update is stopped and replicas of the previous version keep "
+            "running until a new deploy."
+        )
+
+    def consume_target_state_changed(self) -> bool:
+        """Return whether the checkpointed target state changed since the last
+        call, and reset the flag."""
+        changed = self._target_state_changed
+        self._target_state_changed = False
+        return changed
+
+    def _record_replica_failure(self, error_msg: str) -> None:
+        """Consume one failure from the replica retry budget.
+
+        Startup failures and target-version health failures during a rolling
+        update share this budget. Callers decide which failures count, including
+        deduplicating gang failures and excluding healthy gang siblings.
+        """
+        self._replica_failure_count += 1
+        self._replica_failure_message = error_msg
+        # Exhausting the budget affects availability and must be checkpointed
+        # even when the failure is recorded after this tick's status checks.
+        self._broadcasted_replicas_set_changed = True
+        self._in_transition = True
+        self._mark_rolling_update_failed_if_needed()
+
     def record_replica_startup_failure(self, error_msg: str):
         """Record that a replica failed to start."""
 
@@ -4762,21 +4891,15 @@ class DeploymentState:
         if self._target_state.target_num_replicas == 0:
             return
 
-        # Increase startup failure counter (may change _terminally_failed()
-        # result, which affects broadcasted availability).
-        self._replica_constructor_retry_counter += 1
-        self._broadcasted_replicas_set_changed = True
-        self._in_transition = True
-        self._replica_constructor_error_msg = error_msg
+        self._record_replica_failure(error_msg)
 
         # Update the deployment message only if replicas are failing during
         # the very first time the controller is trying to start replicas of
         # this version.
         retrying_msg = ""
-        if not self._replica_has_started:
+        if not self._replica_has_started or self._target_state.rolling_update:
             remaining_retries = max(
-                self._failed_to_start_threshold
-                - self._replica_constructor_retry_counter,
+                self._failed_to_start_threshold - self._replica_failure_count,
                 0,
             )
             retrying_msg = f" {remaining_retries} more time(s)"
@@ -4911,11 +5034,21 @@ class DeploymentState:
             )
 
     def _stop_replica_mark_unhealthy_if_target_version(
-        self, replica: DeploymentReplica, graceful_stop: bool
+        self,
+        replica: DeploymentReplica,
+        graceful_stop: bool,
+        *,
+        count_failure: bool = True,
     ):
         """Stop the replica and mark deployment as UNHEALTHY if the replica is the target version."""
         self._stop_replica(replica, graceful_stop=graceful_stop)
         if replica.version == self._target_state.version:
+            if self._target_state.rolling_update and count_failure:
+                # Preserve a constructor exception if one was already recorded.
+                error_msg = self._replica_failure_message
+                if error_msg is None:
+                    error_msg = "A replica of the new version failed its health check."
+                self._record_replica_failure(error_msg)
             self._curr_status_info = self._curr_status_info.handle_transition(
                 trigger=DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED,
                 message="A replica's health check failed. This "
@@ -4995,11 +5128,14 @@ class DeploymentState:
                     "unhealthy or missing member. Forcefully stopping it "
                     "because RESTART_GANG runtime failure policy is enabled."
                 )
-                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+                self._stop_replica_mark_unhealthy_if_target_version(
+                    replica, False, count_failure=False
+                )
             else:
                 remaining_healthy.append(replica)
 
         remaining_unhealthy: List[DeploymentReplica] = []
+        counted_gang_ids: Set[str] = set()
         for replica in unhealthy_replicas:
             if (
                 replica.gang_context is not None
@@ -5010,7 +5146,13 @@ class DeploymentState:
                     "forcefully stopping it as part of gang restart "
                     f"(gang_id={replica.gang_context.gang_id})."
                 )
-                self._stop_replica_mark_unhealthy_if_target_version(replica, False)
+                # Match startup failures: count once per failed gang, not once
+                # per member. Healthy siblings stopped above do not count.
+                gang_id = replica.gang_context.gang_id
+                self._stop_replica_mark_unhealthy_if_target_version(
+                    replica, False, count_failure=gang_id not in counted_gang_ids
+                )
+                counted_gang_ids.add(gang_id)
             else:
                 remaining_unhealthy.append(replica)
 
@@ -6668,7 +6810,6 @@ class DeploymentStateManager:
         any_recovering = False
         upscales: Dict[DeploymentID, List[ReplicaSchedulingRequest]] = {}
         downscales: Dict[DeploymentID, DeploymentDownscaleRequest] = {}
-        target_state_changed = False
 
         # STEP 1: Update current state
         for deployment_state in self._deployment_states.values():
@@ -6812,6 +6953,10 @@ class DeploymentStateManager:
 
         if len(deleted_ids):
             self._record_deployment_usage()
+
+        target_state_changed = False
+        for deployment_state in self._deployment_states.values():
+            target_state_changed |= deployment_state.consume_target_state_changed()
 
         if target_state_changed:
             self.save_checkpoint()

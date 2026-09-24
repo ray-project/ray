@@ -834,9 +834,9 @@ py_test(
 )
 
 py_test(
-    name = "test_hash_shuffle_external_runtime",
+    name = "test_hash_shuffle_disk_runtime",
     size = "small",
-    srcs = ["tests/test_hash_shuffle_external_runtime.py"],
+    srcs = ["tests/test_hash_shuffle_disk_runtime.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -848,9 +848,9 @@ py_test(
 )
 
 py_test(
-    name = "test_hash_shuffle_external_smoke",
+    name = "test_hash_shuffle_disk_smoke",
     size = "medium",
-    srcs = ["tests/test_hash_shuffle_external_smoke.py"],
+    srcs = ["tests/test_hash_shuffle_disk_smoke.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -862,9 +862,9 @@ py_test(
 )
 
 py_test(
-    name = "test_hash_shuffle_external_repartition",
+    name = "test_hash_shuffle_disk_repartition",
     size = "medium",
-    srcs = ["tests/test_hash_shuffle_external_repartition.py"],
+    srcs = ["tests/test_hash_shuffle_disk_repartition.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2238,6 +2238,20 @@ py_test(
     name = "test_actor_autoscaler",
     size = "small",
     srcs = ["tests/test_actor_autoscaler.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_backlog_aware_actor_autoscaler",
+    size = "small",
+    srcs = ["tests/test_backlog_aware_actor_autoscaler.py"],
     tags = [
         "exclusive",
         "team:data",
