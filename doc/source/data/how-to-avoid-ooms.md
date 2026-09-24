@@ -191,7 +191,7 @@ The default is usually fine unless you use small nodes, such as an m5.xlarge.
 
 Ray Data uses PyArrow to implement APIs such as `read_parquet`. PyArrow can allocate large amounts of memory that isn't reclaimed when the read tasks finish. Because Ray reuses workers across operators, a downstream operator can schedule tasks onto a worker that still holds that allocation. As a result, downstream operators can appear to use far more memory than they do.
 
-If you see this behavior, set ``DataContext.get_current().isolate_read_workers = True``. This flag stops Ray Data from scheduling downstream operators on the same workers as reads, which can improve memory safety at the cost of some performance.
+If you see this behavior, try setting ``DataContext.get_current().isolate_read_workers = True``. This flag stops Ray Data from scheduling downstream operators on the same workers as reads, which can improve memory safety at the cost of some performance.
 
 :::{versionadded} 2.56
 ``DataContext.isolate_read_workers``

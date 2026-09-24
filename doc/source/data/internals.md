@@ -175,7 +175,7 @@ The following sections describe operators, plans, the planner, plan optimization
 
 #### What are operators?
 
-Ray Data has two types of operators, *logical operators* and *physical operators*. Logical operators are stateless objects that describe "what" to do. Physical operators are stateful objects that describe "how" to do it. For example, `ReadOp` is a logical operator, and `TaskPoolMapOperator` is a physical operator.
+Ray Data has two types of operators, *logical operators* and *physical operators*. Logical operators are stateless objects that describe "what" to do. Physical operators are stateful objects that describe "how" to do it. For example, `Read` is a logical operator, and `TaskPoolMapOperator` is a physical operator.
 
 #### What are plans?
 
@@ -183,13 +183,13 @@ A *logical plan* is a series of logical operators, and a *physical plan* is a se
 
 #### What does the planner do?
 
-The Ray Data planner translates logical operators to one or more physical operators. For example, the planner translates the `ReadOp` logical operator into two physical operators, an `InputDataBuffer` and a `TaskPoolMapOperator`. The `ReadOp` logical operator only describes the input data, while the `TaskPoolMapOperator` physical operator launches tasks to read the data.
+The Ray Data planner translates logical operators to one or more physical operators. For example, the planner translates the `Read` logical operator into two physical operators, an `InputDataBuffer` and a `TaskPoolMapOperator`. The `Read` logical operator only describes the input data, while the `TaskPoolMapOperator` physical operator launches tasks to read the data.
 
 (plan-optimization)=
 
 #### How does Ray Data optimize plans?
 
-Ray Data applies optimizations to both logical and physical plans. For example, the `OperatorFusionRule` combines a chain of physical map operators into a single map operator, which prevents unnecessary serialization between map operators.
+Ray Data applies optimizations to both logical and physical plans. For example, the `FuseOperators` rule combines a chain of physical map operators into a single map operator, which prevents unnecessary serialization between map operators.
 
 To add custom optimization rules, implement a class that extends `Rule` and add it to the logical or physical rule set.
 

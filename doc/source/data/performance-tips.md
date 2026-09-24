@@ -62,7 +62,7 @@ Ray Data chooses the default number of output blocks by applying the following h
 1. Apply the maximum block size, which defaults to 128 MiB. If the number of blocks would make blocks larger than this threshold, increase the number of blocks to avoid out-of-memory errors during processing. To override the threshold, set {class}`DataContext.target_max_block_size <ray.data.context.DataContext>` in bytes.
 1. Account for available CPUs. Increase the number of blocks to use all available CPUs in the cluster. Ray Data sets the number of read tasks to at least 2x the number of available CPUs.
 
-In some cases, tune the number of blocks manually to optimize your application. For example, the following code batches multiple files into the same read task to avoid creating blocks that are too large.
+In some cases, tuning the number of blocks manually helps optimize your application. For example, the following code batches multiple files into the same read task to avoid creating blocks that are too large.
 
 ```{testcode}
 :hide:
@@ -253,7 +253,7 @@ Spilling is expected in some cases, in particular when the Dataset's total size 
 - You use an {ref}`all-to-all shuffle operation <optimizing_shuffles>`.
 - You call {meth}`ds.materialize() <ray.data.Dataset.materialize>`.
 
-Otherwise, tune your application to avoid spilling. Manually increase the {ref}`read output blocks <read_output_blocks>`, or change your application code so that each task reads less data.
+Otherwise, tune your application to avoid spilling. The recommended strategy is to manually increase the {ref}`read output blocks <read_output_blocks>` or to change your application code so that each task reads less data.
 
 :::{note}
 This is an active area of development. If your Dataset causes spilling and you don't know why, [file a Ray Data issue on GitHub](https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+).
