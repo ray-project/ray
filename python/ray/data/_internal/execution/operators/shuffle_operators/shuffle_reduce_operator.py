@@ -47,6 +47,15 @@ logger = logging.getLogger(__name__)
 _SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_REDUCE_WORKER": "1"}}
 
 
+def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
+    merged = {**_SHUFFLE_REDUCE_RUNTIME_ENV, **user_runtime_env}
+    merged["env_vars"] = {
+        **_SHUFFLE_REDUCE_RUNTIME_ENV["env_vars"],
+        **user_runtime_env.get("env_vars", {}),
+    }
+    return merged
+
+
 class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
     """Reduce phase of a shuffle.
 
@@ -160,7 +169,11 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        remote_args.update(self._reduce_ray_remote_args)
+        user_args = dict(self._reduce_ray_remote_args)
+        user_runtime_env = user_args.pop("runtime_env", None)
+        remote_args.update(user_args)
+        if user_runtime_env is not None:
+            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         return remote_args

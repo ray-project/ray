@@ -33,10 +33,6 @@
 - name: "read_parquet_fixed_size"
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
@@ -84,10 +80,6 @@
 - name: read_tfrecords
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 3600
@@ -865,10 +857,6 @@
 - name: to_tf
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
   run:
     timeout: 2400
@@ -880,10 +868,6 @@
 - name: iter_torch_batches
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
@@ -1070,8 +1054,6 @@
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
@@ -1332,19 +1314,3 @@
   run:
     timeout: 5400
     script: python tpch/tpch_{{query}}.py --sf 1000
-
-###################
-# Autoscaling tests
-###################
-
-- name: autoscaler_scales_up_when_compute_bound
-  python: "3.10"
-  group: data-autoscaling
-
-  cluster:
-    anyscale_sdk_2026: true
-    cluster_compute: autoscaling/autoscaler_scales_up_when_compute_bound_cluster_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python autoscaling/autoscaler_scales_up_when_compute_bound.py
