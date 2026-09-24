@@ -735,7 +735,7 @@ doctest(
         ],
         exclude = [
             # CI does not have Horovod installed.
-            "source/train/horovod.rst",
+            "source/train/horovod.md",
             # These tests run on GPU (see below).
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-accelerators.rst",
