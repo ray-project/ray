@@ -36,7 +36,6 @@ from ray.data._internal.datasource_v2.parquet_utils import (
     _resolve_read_columns,
     check_for_legacy_tensor_type,
 )
-from ray.data._internal.datasource_v2.readers.file_reader import _compute_row_hashes
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
@@ -1186,6 +1185,13 @@ def _read_batches_from(
     """
 
     import pyarrow as pa
+
+    # Imported here rather than at module level: the V2 reader modules import
+    # ``pyarrow.dataset`` at load time, which would otherwise make every
+    # ``import ray.data`` load PyArrow's dataset extensions.
+    from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+        _compute_row_hashes,
+    )
 
     # Copy to avoid modifying passed in arg
     to_batches_kwargs = dict(to_batches_kwargs or {})
