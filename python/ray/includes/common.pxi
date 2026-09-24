@@ -19,6 +19,7 @@ from ray.includes.common cimport (
     kNodeRegionEnv,
     kNodeZoneEnv,
     kLabelKeyNodeAcceleratorType,
+    kLabelKeyGpuMemoryPerDevice,
     kLabelKeyNodeMarketType,
     kLabelKeyNodeRegion,
     kLabelKeyNodeZone,
@@ -162,6 +163,7 @@ NODE_REGION_ENV = kNodeRegionEnv.decode()
 NODE_ZONE_ENV = kNodeZoneEnv.decode()
 
 RAY_NODE_ACCELERATOR_TYPE_KEY = kLabelKeyNodeAcceleratorType.decode()
+RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY = kLabelKeyGpuMemoryPerDevice.decode()
 RAY_NODE_MARKET_TYPE_KEY = kLabelKeyNodeMarketType.decode()
 RAY_NODE_REGION_KEY = kLabelKeyNodeRegion.decode()
 RAY_NODE_ZONE_KEY = kLabelKeyNodeZone.decode()

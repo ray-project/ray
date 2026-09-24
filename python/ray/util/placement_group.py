@@ -2,7 +2,11 @@ import warnings
 from typing import Dict, List, Optional, Union
 
 import ray
-from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME, hex_to_binary
+from ray._common.utils import (
+    GPU_MEMORY_RESOURCE_NAME,
+    PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME,
+    hex_to_binary,
+)
 from ray._private.auto_init_hook import auto_init_ray
 from ray._private.client_mode_hook import client_mode_should_convert, client_mode_wrap
 from ray._private.label_utils import validate_label_selector
@@ -502,6 +506,11 @@ def _validate_bundles(bundles: List[Dict[str, float]]):
                 f"resources with only 0 values. Bundles: {bundles}"
             )
 
+        if GPU_MEMORY_RESOURCE_NAME in bundle:
+            raise ValueError(
+                "Placement group bundles don't support gpu_memory. Use GPU instead."
+            )
+
         if "object_store_memory" in bundle.keys():
             warnings.warn(
                 "Setting 'object_store_memory' for"
@@ -678,6 +687,11 @@ def _configure_placement_group_based_on_context(
 
     # Validate the shape.
     if not placement_group.is_empty:
+        if GPU_MEMORY_RESOURCE_NAME in resources:
+            raise ValueError(
+                f"{task_or_actor_repr} requests gpu_memory, which isn't supported "
+                "inside a placement group. Use num_gpus instead."
+            )
         _validate_resource_shape(
             placement_group, resources, placement_resources, task_or_actor_repr
         )

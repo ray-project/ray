@@ -4,6 +4,7 @@ import errno
 import importlib
 import inspect
 import logging
+import math
 import os
 import random
 import string
@@ -189,6 +190,7 @@ def run_background_task(coroutine: Coroutine) -> asyncio.Task:
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
+GPU_MEMORY_RESOURCE_NAME = "gpu_memory"
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -206,10 +208,14 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "The resources dictionary must not contain the key 'CPU' or 'GPU'"
         )
-    elif "memory" in resources or "object_store_memory" in resources:
+    elif (
+        "memory" in resources
+        or "object_store_memory" in resources
+        or GPU_MEMORY_RESOURCE_NAME in resources
+    ):
         raise ValueError(
-            "The resources dictionary must not "
-            "contain the key 'memory' or 'object_store_memory'"
+            "The resources dictionary must not contain the key 'memory', "
+            "'object_store_memory' or 'gpu_memory'"
         )
     elif PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
         raise ValueError(
@@ -222,6 +228,10 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
     memory = options_dict.get("memory")
     object_store_memory = options_dict.get("object_store_memory")
     accelerator_type = options_dict.get("accelerator_type")
+    gpu_memory = options_dict.get("gpu_memory")
+
+    if gpu_memory and num_gpus:
+        raise ValueError("Specify only one of 'num_gpus' and 'gpu_memory'.")
 
     if num_cpus is not None:
         resources["CPU"] = num_cpus
@@ -229,12 +239,42 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         resources["GPU"] = num_gpus
     if memory is not None:
         resources["memory"] = int(memory)
+    if gpu_memory:
+        resources[GPU_MEMORY_RESOURCE_NAME] = math.ceil(gpu_memory)
     if object_store_memory is not None:
         resources["object_store_memory"] = object_store_memory
     if accelerator_type is not None:
         resources[f"{RESOURCE_CONSTRAINT_PREFIX}{accelerator_type}"] = 0.001
 
     return resources
+
+
+def resolve_gpu_memory(
+    resources: Dict[str, float], node_labels: Dict[str, str]
+) -> Optional[Dict[str, float]]:
+    """Replace gpu_memory with the GPU fraction it takes on one device of a node.
+
+    Mirrors ResolveGpuMemory in Ray Core. Returns None when no single GPU of a node
+    with these labels can hold the request.
+    """
+    gpu_memory = resources.get(GPU_MEMORY_RESOURCE_NAME)
+    if not gpu_memory:
+        return resources
+    try:
+        per_device = int(
+            node_labels.get(ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY, "")
+        )
+    except ValueError:
+        return None
+    gpu_memory = math.ceil(gpu_memory)
+    if per_device <= 0 or gpu_memory > per_device:
+        return None
+    scaling = ray._raylet.RESOURCE_UNIT_SCALING
+    resolved = {k: v for k, v in resources.items() if k != GPU_MEMORY_RESOURCE_NAME}
+    resolved["GPU"] = (
+        resolved.get("GPU", 0) + -(-gpu_memory * scaling // per_device) / scaling
+    )
+    return resolved
 
 
 # Match the standard alphabet used for UUIDs.
