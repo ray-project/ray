@@ -1,0 +1,60 @@
+[
+  {
+    "name": "worker_append_and_prefixes",
+    "files": [
+      {
+        "path": "worker-6df6d5dd-01000000-47660.out",
+        "contents": "first\n"
+      }
+    ],
+    "operations": [
+      { "kind": "scan" },
+      { "kind": "open" },
+      { "kind": "drain" },
+      {
+        "kind": "append",
+        "path": "worker-6df6d5dd-01000000-47660.out",
+        "contents": ":actor_name:ActorA\n:task_name:TaskA\n:job_id:02000000\nsecond\n"
+      },
+      { "kind": "open" },
+      { "kind": "drain" }
+    ]
+  },
+  {
+    "name": "replacement_and_truncation",
+    "files": [
+      {
+        "path": "worker-6df6d5dd-01000000-47660.err",
+        "contents": "alpha\nbeta\n"
+      }
+    ],
+    "operations": [
+      { "kind": "scan" },
+      { "kind": "open" },
+      { "kind": "drain" },
+      {
+        "kind": "replace",
+        "path": "worker-6df6d5dd-01000000-47660.err",
+        "contents": "gamma\n"
+      },
+      { "kind": "drain" },
+      {
+        "kind": "append",
+        "path": "worker-6df6d5dd-01000000-47660.err",
+        "contents": "delta\n"
+      },
+      { "kind": "drain" },
+      {
+        "kind": "truncate",
+        "path": "worker-6df6d5dd-01000000-47660.err",
+        "size": 0
+      },
+      {
+        "kind": "append",
+        "path": "worker-6df6d5dd-01000000-47660.err",
+        "contents": "epsilon\n"
+      },
+      { "kind": "drain" }
+    ]
+  }
+]

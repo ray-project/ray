@@ -16,3 +16,5 @@ filegroup(
     ),
     visibility = ["//:__pkg__"],
 )
+
+exports_files(["log_monitor.py"])

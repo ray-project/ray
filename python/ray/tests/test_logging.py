@@ -1293,6 +1293,116 @@ def test_agent_log_auto_increment(ray_start_cluster):
     wait_for_condition(verify_logs_present, timeout=15)
 
 
+def test_start_log_monitor_uses_go_command_when_enabled(monkeypatch):
+    """Test that start_log_monitor uses the Go command when the switch is on."""
+    launched = {}
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        launched["command"] = command
+        return object()
+
+    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(
+        ray._private.services, "start_ray_process", fake_start_ray_process
+    )
+
+    ray._private.services.start_log_monitor(
+        session_dir="/tmp/ray/session",
+        logs_dir="/tmp/ray/session/logs",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex="0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+        stdout_filepath="/tmp/out",
+        stderr_filepath="/tmp/err",
+    )
+
+    assert launched["command"][0].endswith("raygo")
+    assert launched["command"][1] == "log-monitor"
+
+
+def test_start_log_monitor_uses_go_command_over_python(monkeypatch):
+    """Test that the Go log monitor is launched instead of the Python one."""
+    launched = {}
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        launched["command"] = command
+        return object()
+
+    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(
+        ray._private.services, "start_ray_process", fake_start_ray_process
+    )
+
+    ray._private.services.start_log_monitor(
+        session_dir="/tmp/ray/session",
+        logs_dir="/tmp/ray/session/logs",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex="0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+    )
+
+    command = launched["command"]
+    assert command[0].endswith("raygo")
+    assert command[1] == "log-monitor"
+    assert sys.executable not in command
+    assert not any(arg.endswith("log_monitor.py") for arg in command)
+
+
+def test_start_log_monitor_passes_cluster_id_to_go_command(monkeypatch):
+    launched = {}
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        launched["command"] = command
+        return object()
+
+    cluster_id_hex = "0123456789abcdef0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(
+        ray._private.services, "start_ray_process", fake_start_ray_process
+    )
+
+    ray._private.services.start_log_monitor(
+        session_dir="/tmp/ray/session",
+        logs_dir="/tmp/ray/session/logs",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex=cluster_id_hex,
+    )
+
+    assert f"--cluster-id-hex={cluster_id_hex}" in launched["command"]
+
+
+def test_start_log_monitor_passes_node_ip_to_go_command(monkeypatch):
+    launched = {}
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        launched["command"] = command
+        return object()
+
+    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+    monkeypatch.setattr(
+        ray._private.services, "start_ray_process", fake_start_ray_process
+    )
+
+    ray._private.services.start_log_monitor(
+        session_dir="/tmp/ray/session",
+        logs_dir="/tmp/ray/session/logs",
+        gcs_address="127.0.0.1:6379",
+        cluster_id_hex="0123456789abcdef0123456789abcdef0123456789abcdef01234567",
+        node_ip_address="10.0.0.8",
+    )
+
+    assert "--node-ip-address=10.0.0.8" in launched["command"]
+
+
+def test_start_log_monitor_requires_cluster_id_for_go(monkeypatch):
+    monkeypatch.setattr(ray._private.services, "ENABLE_GO_LOG_MONITOR", True)
+
+    with pytest.raises(ValueError, match="cluster_id_hex is required"):
+        ray._private.services.start_log_monitor(
+            session_dir="/tmp/ray/session",
+            logs_dir="/tmp/ray/session/logs",
+            gcs_address="127.0.0.1:6379",
+        )
+
+
 if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

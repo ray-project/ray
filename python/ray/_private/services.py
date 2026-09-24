@@ -29,6 +29,7 @@ from ray._common.network_utils import (
     node_ip_address_from_perspective,
     parse_address,
 )
+from ray._private.ray_constants import ENABLE_GO_LOG_MONITOR
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._raylet import GcsClient, GcsClientOptions, NodeID
@@ -1178,7 +1179,8 @@ def start_log_monitor(
     session_dir: str,
     logs_dir: str,
     gcs_address: str,
-    node_ip_address: str,
+    cluster_id_hex: Optional[str] = None,
+    node_ip_address: Optional[str] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1191,6 +1193,7 @@ def start_log_monitor(
         session_dir: The session directory.
         logs_dir: The directory of logging files.
         gcs_address: GCS address for pubsub.
+        cluster_id_hex: Cluster ID in hex, required for the Go log monitor path.
         node_ip_address: The IP address of the node we are connected to.
         fate_share: Whether to share fate between log_monitor
             and this process.
@@ -1206,19 +1209,37 @@ def start_log_monitor(
     Returns:
         ProcessInfo for the process that was started.
     """
-    log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "log_monitor.py")
+    if ENABLE_GO_LOG_MONITOR:
+        if not cluster_id_hex:
+            raise ValueError(
+                "cluster_id_hex is required when Go log monitor is enabled"
+            )
+        command = [
+            RAYGO_EXECUTABLE,
+            "log-monitor",
+            f"--session-dir={session_dir}",
+            f"--logs-dir={logs_dir}",
+            f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id_hex}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
+        if node_ip_address:
+            command.append(f"--node-ip-address={node_ip_address}")
+    else:
+        log_monitor_filepath = os.path.join(RAY_PATH, RAY_PRIVATE_DIR, "log_monitor.py")
 
-    command = [
-        sys.executable,
-        "-u",
-        log_monitor_filepath,
-        f"--session-dir={session_dir}",
-        f"--logs-dir={logs_dir}",
-        f"--gcs-address={gcs_address}",
-        f"--node-ip-address={node_ip_address}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-    ]
+        command = [
+            sys.executable,
+            "-u",
+            log_monitor_filepath,
+            f"--session-dir={session_dir}",
+            f"--logs-dir={logs_dir}",
+            f"--gcs-address={gcs_address}",
+            f"--node-ip-address={node_ip_address}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+        ]
 
     if stdout_filepath:
         command.append(f"--stdout-filepath={stdout_filepath}")

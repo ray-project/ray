@@ -450,6 +450,8 @@ RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 # drivers can register and Go workers can be spawned.
 ENABLE_GO_SETUP_WORKER = env_bool("RAY_ENABLE_GO_SETUP_WORKER", False)
 
+ENABLE_GO_LOG_MONITOR = env_bool("RAY_ENABLE_GO_LOG_MONITOR", False)
+
 # Subcommands supported by the Go raygo executable.
 RAYGO_AVAILABLE_COMMAND_SETUP_WORKER = "setup_worker"
 RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER = "defaultworker"

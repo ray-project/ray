@@ -21,6 +21,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//go/cmd/raygo/default_worker",
+        "//go/cmd/raygo/log_monitor",
         "//go/cmd/raygo/setup_worker",
         "//go/pkg/log",
         "//go/pkg/log/zap",
