@@ -2108,6 +2108,44 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
         )
 
 
+def test_surge_rolling_update_stops_after_health_check_failures(serve_instance):
+    """Replacements that start and then fail health checks end the update; rollback
+    reuses the surviving old replicas."""
+    client = serve_instance
+    healthy = {**SURGE_DEPLOYMENT, "health_check_period_s": 0.1}
+    client.deploy_apps(_rolling_update_config(healthy))
+    wait_for_condition(check_running, timeout=60)
+    initial_pids = _running_replica_pids(client)
+
+    client.deploy_apps(
+        _rolling_update_config(_env_override(healthy, FAIL_HEALTH_CHECK="1"))
+    )
+    wait_for_condition(_check_terminal_rolling_update, client=client, timeout=60)
+
+    # Flapping replacements pass their first health check, so each one running at
+    # once lets an old replica stop before the failure budget is spent. Once the
+    # update is terminal, no replacement is running or started again.
+    def check_settled():
+        assert set(_replica_states()) <= {"RUNNING"}, _replica_states()
+        assert set(_running_replica_pids(client)) <= set(initial_pids)
+        return True
+
+    wait_for_condition(check_settled, timeout=60)
+    survivors = _running_replica_pids(client)
+    deadline = time.monotonic() + 5
+    wait_for_condition(
+        lambda: _check_terminal_rolling_update(client, running=len(survivors))
+        and time.monotonic() >= deadline,
+        raise_exceptions=True,
+        timeout=15,
+    )
+
+    client.deploy_apps(_rolling_update_config(healthy))
+    wait_for_condition(check_running, timeout=60)
+    wait_for_condition(lambda: len(_running_replica_pids(client)) == 3, timeout=60)
+    assert set(survivors) <= set(_running_replica_pids(client))
+
+
 def test_surge_replacements_wait_for_capacity(serve_instance):
     """Unplaceable replacements leave the old replicas serving until rollback."""
     client = serve_instance

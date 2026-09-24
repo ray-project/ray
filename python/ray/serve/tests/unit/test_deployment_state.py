@@ -1,4 +1,5 @@
 import sys
+from collections import defaultdict
 from copy import deepcopy
 from types import SimpleNamespace
 from typing import Any, List, Optional, Tuple
@@ -12046,6 +12047,127 @@ class TestMaxSurge:
             ],
         )
         assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 4
+
+    def _deploy_gang_partly_running(
+        self, mock_deployment_state_manager, num_replicas, ready_by_gang, **config
+    ):
+        """Deploy a gang deployment and mark `ready_by_gang[i]` members of gang i ready.
+
+        Returns (dsm, ds, gangs), where gangs lists each gang's replicas in
+        creation order.
+        """
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=lambda *args, **kwargs: MockPlacementGroup(
+                *args, **kwargs
+            ),
+        )
+        info, _ = deployment_info(
+            version="v1",
+            num_replicas=num_replicas,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+            **config,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        by_gang = defaultdict(list)
+        for replica in ds._replicas.get():
+            by_gang[replica.gang_context.gang_id].append(replica)
+        gangs = list(by_gang.values())
+        assert len(gangs) == num_replicas // 2
+        for gang, ready in zip(gangs, ready_by_gang):
+            for replica in gang[:ready]:
+                replica._actor.set_ready()
+        dsm.update()
+        return dsm, ds, gangs
+
+    @pytest.mark.parametrize("starting_gang_first", [True, False])
+    def test_gang_surge_stops_the_all_starting_gang_first(
+        self, mock_deployment_state_manager, starting_gang_first
+    ):
+        """With no running surplus, only a gang without running members may stop,
+        whichever gang the container lists first."""
+        gang = TestGangRollingUpdate()
+        ready = [0, 2, 1] if starting_gang_first else [2, 1, 0]
+        dsm, ds, gangs = self._deploy_gang_partly_running(
+            mock_deployment_state_manager, 6, ready, max_surge_percent=34
+        )
+        all_starting = gangs[ready.index(0)]
+        check_counts(ds, by_state=[(ReplicaState.RUNNING, 3, ds.target_version)])
+
+        v2 = gang._deploy_new_version(dsm, 2, 6, "v2", max_surge_percent=34)
+        # ceil(34% of 6) = 3 rounds up to two gangs.
+        assert ds._num_replicas_to_start() == 4
+        gang._mock_gang_pgs(dsm, 2, 4)
+        dsm.update()
+        check_counts(ds, by_state=[(ReplicaState.STARTING, 4, v2)])
+        new_gang = ds._replicas.get(states=[ReplicaState.STARTING])[-1].gang_context
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            if replica.gang_context.gang_id == new_gang.gang_id:
+                replica._actor.set_ready()
+
+        # Five replicas run against a target of six: the partly running gang
+        # cannot stop, the all-starting gang can.
+        dsm.update()
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert {r.replica_id for r in stopping} == {r.replica_id for r in all_starting}
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 5
+
+    def test_gang_surge_stops_a_partly_started_gang_within_the_surplus(
+        self, mock_deployment_state_manager
+    ):
+        """A gang with one running member costs one replica of surplus, so the
+        rollout keeps moving instead of waiting for its starting member."""
+        gang = TestGangRollingUpdate()
+        dsm, ds, gangs = self._deploy_gang_partly_running(
+            mock_deployment_state_manager, 4, [2, 1], max_surge_percent=50
+        )
+        v1 = ds.target_version
+        check_counts(
+            ds,
+            by_state=[(ReplicaState.RUNNING, 3, v1), (ReplicaState.STARTING, 1, v1)],
+        )
+
+        v2 = gang._deploy_new_version(dsm, 2, 4, "v2", max_surge_percent=50)
+        gang._mock_gang_pgs(dsm, 2, 2)
+        dsm.update()
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            if replica.version == v2:
+                replica._actor.set_ready()
+        # Five replicas run against a target of four: the gang with one running
+        # member fits the surplus of one.
+        dsm.update()
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        assert {r.replica_id for r in stopping} == {r.replica_id for r in gangs[1]}
+        check_counts(
+            ds,
+            by_state=[(ReplicaState.RUNNING, 2, v1), (ReplicaState.RUNNING, 2, v2)],
+        )
+
+        for _ in range(4):
+            gang._finish_stopping(ds)
+            gang._mock_gang_pgs(dsm, 2, 2)
+            dsm.update()
+            assert ds._replicas.count(states=[ReplicaState.RUNNING]) >= 4
+            gang._finish_starting(ds)
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v2)])
+
+    def test_surge_allowance_uses_an_integer_ceiling(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(
+            dsm, TEST_DEPLOYMENT_ID, num_replicas=25, version="1", max_surge_percent=28
+        )
+        info_2, v2 = deployment_info(num_replicas=25, version="2", max_surge_percent=28)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        # 28% of 25 is exactly 7; float math would allow an eighth replica.
+        check_counts(ds, total=32, by_state=[(ReplicaState.STARTING, 7, v2)])
 
     def test_rollback_stops_pending_replacements(self, mock_deployment_state_manager):
         create_dsm, _, _, _ = mock_deployment_state_manager
