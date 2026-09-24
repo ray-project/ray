@@ -465,6 +465,22 @@ def run_release_test_anyscale(
     # non critical for some tests. So separate it from the general one.
     fetch_result_exception = None
     try:
+        # TEMPORARY -- DO NOT MERGE. Fails the named test before anything
+        # reaches anyscale, so that the observability agent path can be
+        # exercised on a PR build without starting a cluster or a job. The
+        # reporter stands in a fake job id; see FAKE_JOB_ID_ENV.
+        #
+        # runtime is set above BUILDKITE_TIME_LIMIT_FOR_RETRY first, because
+        # _is_transient_error would otherwise rewrite a zero-runtime failure to
+        # TRANSIENT_INFRA_ERROR on every attempt but the last, and that is not
+        # a status the agent triggers on.
+        forced = os.environ.get("RELEASE_TEST_FORCE_FAILURE")
+        if forced and test.get_name() == forced:
+            result.runtime = 10**9
+            raise TestCommandError(
+                f"DO NOT MERGE: forced failure for {forced}, before any "
+                f"anyscale job was created"
+            )
 
         buildkite_group(":spiral_note_pad: Loading test configuration")
         cluster_manager, runner, artifact_path = _load_test_configuration(
