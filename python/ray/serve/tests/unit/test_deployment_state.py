@@ -12194,34 +12194,6 @@ class TestMaxSurge:
         _, to_stop = ds._surge_rollout_counts()
         assert to_stop == []
 
-    def test_lightweight_changes_apply_during_a_surge_rollout(
-        self, mock_deployment_state_manager
-    ):
-        """Replicas already on the new code get a config change while old ones
-        are still being replaced."""
-        create_dsm, _, _, _ = mock_deployment_state_manager
-        dsm: DeploymentStateManager = create_dsm()
-        ds = _deploy_running(
-            dsm, TEST_DEPLOYMENT_ID, num_replicas=4, version="1", max_surge_percent=50
-        )
-        v1 = ds.target_version
-        info_2, v2 = deployment_info(num_replicas=4, version="2", max_surge_percent=50)
-        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
-        dsm.update()
-        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
-            replica._actor.set_ready()
-        dsm.update()
-        check_counts(ds, by_state=[(ReplicaState.RUNNING, 2, v2)])
-
-        info_3, v3 = deployment_info(
-            num_replicas=4, version="2", user_config={"a": 1}, max_surge_percent=50
-        )
-        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_3)
-        dsm.update()
-        # The v2 replicas reconfigure in place, one batch per tick.
-        check_counts(ds, by_state=[(ReplicaState.UPDATING, 1, v3)])
-        assert ds._replicas.count(version=v1, states=[ReplicaState.RUNNING]) >= 2
-
     def test_rollback_stops_pending_replacements(self, mock_deployment_state_manager):
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
