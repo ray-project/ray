@@ -7,9 +7,9 @@ import ray.serve._private.logging_utils as logging_utils_mod
 from ray.serve._private.common import gRPCRequest
 from ray.serve._private.logging_utils import access_log_msg, format_client_address
 from ray.serve._private.proxy_request_response import (
+    ROOT_PATH_PREFIXED_SCOPE_KEY,
     ASGIProxyRequest,
     ProxyRequest,
-    ROOT_PATH_PREFIXED_SCOPE_KEY,
     gRPCProxyRequest,
 )
 from ray.serve._private.test_utils import FakeGrpcContext
