@@ -1737,6 +1737,23 @@ def _get_buffer_address(arr: np.ndarray) -> int:
     return arr.__array_interface__["data"][0]
 
 
+def tensor_array_to_numpy(array: "pa.Array") -> np.ndarray:
+    """``array.to_numpy()``, but dense and copy-free where that is possible.
+
+    A variable-shaped tensor array returns one ndarray view per row, and
+    ``TensorArray`` then stacks those into a dense array, copying the whole
+    payload. When every row has the same shape the views are already adjacent in
+    one buffer, so a single view over all of them says the same thing with no
+    copy.
+    """
+    if isinstance(array, ArrowVariableShapedTensorArray):
+        dense = array._to_dense_numpy_or_none()
+        if dense is not None:
+            return dense
+
+    return array.to_numpy(zero_copy_only=False)
+
+
 def _to_dense_ndarray_or_none(
     shapes_array: pa.Array,
     data_array: pa.Array,
@@ -1758,10 +1775,7 @@ def _to_dense_ndarray_or_none(
     if num_rows == 0 or shapes_array.null_count > 0 or data_array.null_count > 0:
         return None
 
-    # `offsets` is absolute into the child array, which slicing leaves whole, so
-    # a sliced column indexes into the same buffers as an unsliced one.
-    shape_offsets = np.asarray(shapes_array.offsets)
-    flat_shapes = np.asarray(shapes_array.values)[shape_offsets[0] : shape_offsets[-1]]
+    flat_shapes = np.asarray(shapes_array.flatten())
     if flat_shapes.size != num_rows * ndim:
         return None
 
@@ -1770,11 +1784,13 @@ def _to_dense_ndarray_or_none(
         return None
 
     shape = tuple(int(extent) for extent in shapes[0])
-    num_items_per_row = int(np.prod(shape)) if shape else 1
+    num_items_per_row = int(np.prod(shape))
     if num_items_per_row == 0:
         # Nothing to point at, and an empty column is not worth a second path.
         return None
 
+    # `offsets` is absolute into the child array, which slicing leaves whole, so
+    # a sliced column indexes into the same buffers as an unsliced one.
     data_offsets = np.asarray(data_array.offsets)
     if data_offsets.size != num_rows + 1:
         return None

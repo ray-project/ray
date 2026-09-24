@@ -1557,6 +1557,19 @@ def test_to_dense_numpy_or_none_declines_rows_differing_in_one_extent():
     assert arr._to_dense_numpy_or_none() is None
 
 
+def test_to_dense_numpy_or_none_declines_rows_of_equal_size_but_different_shape():
+    """Rows can hold the same number of items and still not share a shape.
+
+    ``(2, 3)`` and ``(3, 2)`` are six items either way, so the rows sit adjacent
+    in the buffer at a fixed stride and every check but the shapes themselves
+    passes. A view over them would report the second row's shape as the first's.
+    """
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        [np.arange(6).reshape(2, 3), np.arange(6).reshape(3, 2)]
+    )
+    assert arr._to_dense_numpy_or_none() is None
+
+
 def test_to_dense_numpy_or_none_declines_ragged_rows():
     """The fast path reports that it cannot describe ragged rows."""
     ragged = ArrowVariableShapedTensorArray.from_numpy(
@@ -1571,6 +1584,92 @@ def test_to_dense_numpy_or_none_declines_ragged_rows():
     assert dense is not None
     assert dense.shape == (3, 4)
     assert dense.dtype == np.float32
+
+
+def test_variable_shaped_columns_with_nothing_to_view_still_convert():
+    """A column with no rows, or rows of no items, has no payload to share.
+
+    Both decline: an empty column is not worth a second path, and a zero-size
+    row leaves nothing for a view to point at. Converting them has to keep
+    working either way, since an empty block and a zero-width tensor are both
+    ordinary. See https://github.com/ray-project/ray/issues/64766.
+    """
+    empty = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(20, dtype=np.float32).reshape(5, 4)
+    ).slice(0, 0)
+    assert empty._to_dense_numpy_or_none() is None
+    assert len(_to_pandas(empty)) == 0
+
+    for shape in [(3, 0), (3, 2, 0)]:
+        zero_sized = ArrowVariableShapedTensorArray.from_numpy(
+            np.zeros(shape, dtype=np.float32)
+        )
+        assert zero_sized._to_dense_numpy_or_none() is None
+        assert _to_pandas(zero_sized).to_numpy().shape == shape
+
+
+def _with_null_row(
+    arr: ArrowVariableShapedTensorArray, level: str
+) -> ArrowVariableShapedTensorArray:
+    """``arr`` with row 1 marked null at ``level``.
+
+    ``from_numpy`` never makes a null row, and ``take`` with a null index marks
+    one at all three levels at once, which hides what each is doing. The storage
+    is ``struct<data: large_list, shape: list>``, and validity on the struct is
+    independent of validity on either child.
+    """
+    mask = pa.array([False, True, False])
+    data, shape = arr.storage.field("data"), arr.storage.field("shape")
+    struct_mask = None
+    if level == "struct":
+        struct_mask = mask
+    elif level == "data":
+        data = pa.LargeListArray.from_arrays(data.offsets, data.values, mask=mask)
+    elif level == "shape":
+        shape = pa.ListArray.from_arrays(shape.offsets, shape.values, mask=mask)
+    else:
+        raise ValueError(level)
+
+    storage = pa.StructArray.from_arrays(
+        [data, shape], names=["data", "shape"], mask=struct_mask
+    )
+    return pa.ExtensionArray.from_storage(arr.type, storage)
+
+
+@pytest.mark.parametrize("level", ["struct", "data", "shape"])
+def test_to_dense_numpy_or_none_declines_null_rows(level):
+    """A null row has no shape, so no single view can describe the column.
+
+    Each level has to be checked on its own. A null marked only on the struct,
+    or only on the ``data`` child, leaves uniform shapes and adjacent offsets
+    behind it, so every other check passes and the view that comes back presents
+    the null row's untouched buffer contents as data.
+    """
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    )
+    assert arr._to_dense_numpy_or_none() is not None
+
+    assert _with_null_row(arr, level)._to_dense_numpy_or_none() is None
+
+
+def test_variable_shaped_null_rows_to_pandas_unchanged():
+    """Declining leaves a null-bearing column converting exactly as it did.
+
+    Pandas has no null tensor to convert one into, so what the old path made of
+    a null row is what this one has to keep making of it.
+    """
+    arr = ArrowVariableShapedTensorArray.from_numpy(
+        np.arange(12, dtype=np.float32).reshape(3, 4)
+    ).take(pa.array([0, None, 2], type=pa.int64()))
+    assert arr.null_count > 0
+
+    expected = arr.to_numpy(zero_copy_only=False)
+    actual = _to_pandas(arr).to_numpy()
+
+    assert len(actual) == len(expected)
+    for actual_row, expected_row in zip(actual, expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
 
 
 if __name__ == "__main__":
