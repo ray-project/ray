@@ -91,6 +91,38 @@ def test_dynamic_remote_args_no_label_when_unset(
     assert "label_selector" not in args
 
 
+@pytest.mark.parametrize(
+    "user_labels",
+    [
+        None,
+        {"team": "ingest"},
+        {TaskPoolMapOperator._OPERATOR_ID_LABEL_KEY: "not-this-op"},
+    ],
+)
+def test_dynamic_remote_args_keep_operator_id_label(
+    ray_start_regular_shared, restore_data_context, user_labels
+):
+    """`.options()` replaces `_labels`, so the operator id must be merged back in."""
+    data_context = ray.data.DataContext.get_current()
+    ray_remote_args = {"num_cpus": 1}
+    if user_labels is not None:
+        ray_remote_args["_labels"] = user_labels
+
+    op = TaskPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        ray_remote_args=ray_remote_args,
+    )
+    labels = op._get_dynamic_ray_remote_args()["_labels"]
+
+    # User labels survive; the operator id is always present and always wins.
+    assert labels == {
+        **(user_labels or {}),
+        TaskPoolMapOperator._OPERATOR_ID_LABEL_KEY: op.id,
+    }
+
+
 def _lineage_reconstruction_task(operator_id: str):
     task = common_pb2.LineageReconstructionTask()
     task.labels[TaskPoolMapOperator._OPERATOR_ID_LABEL_KEY] = operator_id

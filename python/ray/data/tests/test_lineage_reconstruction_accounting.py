@@ -28,8 +28,13 @@ def test_task_pool_map_operator_counts_lineage_reconstruction_tasks(
     # Big enough to land in plasma, which is what makes the map output
     # reconstructable. `from_blocks` keeps the input off the worker node.
     block = pa.Table.from_pylist([{"data": "x" * 4 * 1024 * 1024}])
+    # User labels go through `.options()`, which replaces `_labels` wholesale;
+    # the operator id must survive that or reconstruction tasks go uncounted.
     ds = ray.data.from_blocks([block]).map_batches(
-        lambda batch: batch, num_cpus=1, resources={"worker": 1}
+        lambda batch: batch,
+        num_cpus=1,
+        resources={"worker": 1},
+        _labels={"team": "ingest"},
     )
 
     physical_plan, _ = get_execution_plan(ds._logical_plan)

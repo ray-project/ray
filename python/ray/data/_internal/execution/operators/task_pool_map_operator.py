@@ -166,6 +166,19 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @override
+    def _get_dynamic_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = super()._get_dynamic_ray_remote_args(input_bundle)
+        # `.options()` replaces `_labels` wholesale, so user labels would erase the
+        # operator id that lineage reconstruction accounting keys on. Merge instead.
+        ray_remote_args["_labels"] = {
+            **(ray_remote_args.pop("_labels", None) or {}),
+            self._OPERATOR_ID_LABEL_KEY: self.id,
+        }
+        return ray_remote_args
+
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
