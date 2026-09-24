@@ -794,7 +794,7 @@ class ReplicaHealthPushRegistry:
         checked_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
-    ):
+    ) -> None:
         self._arrivals += 1
         prev = self._state.get(replica_unique_id)
         if prev is not None and checked_at <= prev.checked_at:

@@ -422,7 +422,11 @@ class ServeController:
         if replica_unique_id is None or healthy is None:
             return
         self.record_replica_health(
-            replica_unique_id, checked_at or fallback_ts, healthy, failures
+            replica_unique_id,
+            # `or` would take the fallback for a legitimate 0.0.
+            checked_at if checked_at is not None else fallback_ts,
+            healthy,
+            failures,
         )
 
     def record_replica_health(
@@ -431,7 +435,7 @@ class ServeController:
         checked_at: float,
         healthy: bool,
         consecutive_failures: Optional[int] = None,
-    ):
+    ) -> None:
         """Self-health heartbeat from a replica, standing in for a pull probe."""
         self._replica_health_push_registry.record(
             replica_unique_id, checked_at, healthy, consecutive_failures
