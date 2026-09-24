@@ -85,8 +85,8 @@ async def test_ingress_router_fallback(
     """
     # Set before starting Ray so the proxy actors inherit these settings.
     monkeypatch.setenv("RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", "1")
-    monkeypatch.setenv("RAY_SERVE_HAPROXY_METRICS_ENABLED", "0")
     monkeypatch.setenv("RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED", "1")
+    monkeypatch.setenv("RAY_SERVE_HAPROXY_METRICS_ENABLED", "0")
     monkeypatch.setenv("RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S", "0.01")
     metrics_port = find_free_port()
     ray.init(
@@ -136,9 +136,6 @@ async def test_ingress_router_fallback(
     )
     app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
     assert app._ingress_request_router is not None
-    assert (
-        app._bound_deployment._deployment_config.request_router_config.ingress_router_fallback
-    )
     app_name = "llm-fallback-lifecycle"
     num_requests = 0
     try:

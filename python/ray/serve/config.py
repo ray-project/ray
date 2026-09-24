@@ -243,15 +243,6 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
-    ingress_router_fallback: bool = Field(
-        default=False,
-        description=(
-            "Allow HAProxy to select a serving replica when the HTTP ingress "
-            "request router is unavailable or fails to select a replica. Applies "
-            "to HTTP direct ingress with an attached ingress request router."
-        ),
-    )
-
     request_routing_stats_period_s: PositiveFloat = Field(
         default=DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
         description=(

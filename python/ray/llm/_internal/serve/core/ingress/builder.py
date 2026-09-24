@@ -45,9 +45,7 @@ def _get_direct_streaming_serve_options(
         router_config = RequestRouterConfig(request_router_class=RoundRobinRouter)
     elif isinstance(router_config, dict):
         router_config = RequestRouterConfig(**router_config)
-    override_serve_options["request_router_config"] = router_config.model_copy(
-        update={"ingress_router_fallback": True}
-    )
+    override_serve_options["request_router_config"] = router_config
     return override_serve_options
 
 

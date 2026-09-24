@@ -412,7 +412,6 @@ class TestBuildOpenaiApp:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.ingress_router_fallback
         assert request_router_config.request_router_class == (
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
@@ -437,7 +436,6 @@ class TestBuildOpenaiApp:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.ingress_router_fallback
         assert request_router_config.request_router_class == (
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
@@ -533,7 +531,6 @@ class TestDirectStreamingDP:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.ingress_router_fallback
         assert request_router_config.request_router_class == (
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
@@ -554,7 +551,6 @@ class TestDirectStreamingDP:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.ingress_router_fallback
         assert request_router_config.request_router_class == (
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
@@ -652,7 +648,6 @@ class TestDirectStreamingPD:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.ingress_router_fallback
         assert request_router_config.request_router_class == (
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
@@ -674,7 +669,6 @@ class TestDirectStreamingPD:
         request_router_config = (
             app._bound_deployment._deployment_config.request_router_config
         )
-        assert request_router_config.ingress_router_fallback
         assert request_router_config.request_router_class == (
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )

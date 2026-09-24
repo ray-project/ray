@@ -158,9 +158,8 @@ frontend http_frontend
     # below; %ST/%Ta/%ts render unquoted (HAProxy does not quote those aliases).
     # term_state (%ts) is HAProxy's 2-char session termination state; a leading "C"
     # means the client aborted, which the collector maps to status 499 to match the
-    # Python proxy's client-disconnect convention. When ingress-request-router
-    # metrics are also enabled, the router-specific fields are appended to the same
-    # line.
+    # Python proxy's client-disconnect convention. Router fields are included
+    # when ingress-router metrics are enabled.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
     log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)] router_status=%[var(txn.ingress_request_router_status)] fallback=%[var(txn.ingress_request_router_fallback)]{% endif %}]"
     {%- endif %}

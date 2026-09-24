@@ -1668,8 +1668,8 @@ class TargetGroup(BaseModel):
     ingress_router_fallback: bool = Field(
         False,
         description=(
-            "Allow HAProxy to select a serving replica when the HTTP ingress "
-            "request router is unavailable or fails to select a replica."
+            "Whether an HTTP ingress router is configured. HAProxy uses this to "
+            "enable fallback even when no router replicas are running."
         ),
     )
     # Name of the application's ingress deployment (the deployment that serves

@@ -190,9 +190,9 @@ Ray Serve LLM keeps the KV cache and token load views synchronized across ingres
 
 ## Ingress router failure fallback
 
-Ray Serve LLM enables ingress router fault tolerance for all direct-streaming applications, regardless of the routing policy. If the ingress router is unavailable or returns an error, HAProxy selects an available serving replica using `random(1)`: one random draw, without relying on connection counts from the routed backend. If the router selects a replica missing from HAProxy's server list, HAProxy uses the head Serve proxy when available; otherwise it selects a known replica using `random(1)`. Router failure fallback doesn't preserve KV-cache affinity and requires available serving capacity.
+Ray Serve enables ingress router fallback whenever an HTTP ingress router is configured, regardless of the routing policy. If the ingress router is unavailable or returns an error, HAProxy selects an available serving replica using `random(1)`: one random draw, without relying on connection counts from the routed backend. If the router selects a replica missing from HAProxy's server list, HAProxy uses the head Serve proxy when available; otherwise it selects a known replica using `random(1)`. Router failure fallback doesn't preserve KV-cache affinity and requires available serving capacity.
 
-Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to enable fallback metrics and warnings. The `ray_serve_haproxy_ingress_router_fallbacks_total` counter tracks fallback attempts by `application` and `reason`.
+Ingress router fallback is enabled automatically. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to enable router metrics and rate-limited fallback warnings. The `ray_serve_haproxy_ingress_router_fallbacks_total` counter tracks fallback attempts by `application` and `reason`; non-200 router responses are grouped by status class.
 
 ## Limitations
 

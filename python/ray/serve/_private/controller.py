@@ -1681,15 +1681,7 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
-        ingress_router_fallback = False
-        if ingress_request_router_deployment_name is not None:
-            deployment_info = self.deployment_state_manager.get_deployment(
-                DeploymentID(name=ingress_deployment_name, app_name=app_name)
-            )
-            if deployment_info is not None:
-                ingress_router_fallback = (
-                    deployment_info.deployment_config.request_router_config.ingress_router_fallback
-                )
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
 
         target_groups = []
 

@@ -784,11 +784,9 @@ def test_get_target_groups_only_includes_ingress_deployments(
     )
 
 
-@pytest.mark.parametrize("ingress_router_fallback", [False, True])
 @pytest.mark.parametrize("has_running_router_replicas", [False, True])
 def test_get_target_groups_populates_ingress_request_router_targets(
     direct_ingress_controller: FakeDirectIngressController,
-    ingress_router_fallback,
     has_running_router_replicas,
 ):
     app_name = "app1"
@@ -833,14 +831,6 @@ def test_get_target_groups_populates_ingress_request_router_targets(
         },
     )
 
-    deployment_info = mock.Mock()
-    deployment_info.deployment_config.request_router_config.ingress_router_fallback = (
-        ingress_router_fallback
-    )
-    direct_ingress_controller.deployment_state_manager.get_deployment = mock.Mock(
-        return_value=deployment_info
-    )
-
     ingress_http_port = direct_ingress_controller.allocate_replica_port(
         "node1", ingress_replica_id.unique_id, RequestProtocol.HTTP
     )
@@ -862,7 +852,7 @@ def test_get_target_groups_populates_ingress_request_router_targets(
                 )
             ],
             ingress_deployment_name=ingress_deployment_id.name,
-            ingress_router_fallback=ingress_router_fallback,
+            ingress_router_fallback=True,
             ingress_request_router_targets=[
                 Target(
                     ip="10.0.0.2",

@@ -16,6 +16,7 @@ from typing import Optional
 
 import pytest
 
+from ray.serve._private import haproxy_metrics
 from ray.serve._private.haproxy_metrics import (
     HAProxyMetricsCollector,
     ParsedMetrics,
@@ -273,6 +274,7 @@ def collector() -> HAProxyMetricsCollector:
     c.latency_histogram = _RecordingMetric()
     c.replica_mismatches_counter = _RecordingMetric()
     c.failures_counter = _RecordingMetric()
+    c.fallback_counter = _RecordingMetric()
     c.requests_counter = _RecordingMetric()
     c.request_ingress_metrics = _RecordingIngressMetrics()
     return c
@@ -361,8 +363,9 @@ def test_record_failure_increments_failures_counter_with_reason(
         ingress_request_failed=reason,
     )
     collector.record(parsed)
+    metric_reason = "router_non_200_unknown" if reason == "router_non_200" else reason
     assert collector.failures_counter.calls == [
-        ("inc", {"application": "llm", "reason": reason}, 1.0)
+        ("inc", {"application": "llm", "reason": metric_reason}, 1.0)
     ]
     # router_latency_us=None means the Lua timer wasn't set (e.g. metrics
     # disabled in the rendered Lua, or earliest-stage failure). The
@@ -398,14 +401,49 @@ def test_record_failure_with_latency_observes_outcome_failure(
         ingress_request_failed=reason,
     )
     collector.record(parsed)
+    metric_reason = "router_non_200_unknown" if reason == "router_non_200" else reason
     assert collector.latency_histogram.calls == [
         ("observe", {"application": "llm", "outcome": "failure"}, 4.2)
     ]
     # Failure path still bumps the failure + requests counters.
     assert collector.failures_counter.calls == [
-        ("inc", {"application": "llm", "reason": reason}, 1.0)
+        ("inc", {"application": "llm", "reason": metric_reason}, 1.0)
     ]
     assert collector.requests_counter.calls == [("inc", {"application": "llm"}, 1.0)]
+
+
+def test_fallback_warning_repeats_after_interval_and_separates_status_classes(
+    collector, monkeypatch
+) -> None:
+    now = [0.0]
+    monkeypatch.setattr(haproxy_metrics.time, "monotonic", lambda: now[0])
+    warnings = []
+    monkeypatch.setattr(
+        haproxy_metrics.logger,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+    parsed = ParsedMetrics(
+        app="llm",
+        ingress_request_failed="router_non_200",
+        ingress_request_router_status=400,
+        ingress_request_fallback=True,
+    )
+
+    collector.record(parsed)
+    now[0] = 30.0
+    collector.record(parsed)
+    now[0] = 61.0
+    collector.record(parsed)
+    parsed.ingress_request_router_status = 503
+    collector.record(parsed)
+
+    assert collector.fallback_counter.calls == [
+        ("inc", {"application": "llm", "reason": "router_non_200_4xx"}, 1.0)
+    ] * 3 + [("inc", {"application": "llm", "reason": "router_non_200_5xx"}, 1.0)]
+    assert len(warnings) == 3
+    assert sum("reason=router_non_200_4xx" in warning for warning in warnings) == 2
+    assert any("reason=router_non_200_5xx" in warning for warning in warnings)
 
 
 def test_record_skips_when_not_via_router_and_not_failed(collector) -> None:
@@ -862,7 +900,7 @@ async def test_start_polls_and_binds_dgram_reader(tmp_path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _render_with_metrics(enabled: bool) -> str:
+def _render_with_metrics(enabled: bool, router_metrics_enabled: bool = False) -> str:
     """Render the HAProxy config with metrics on or off; return the text.
 
     Imports inside the function so the module-level test discovery doesn't
@@ -881,12 +919,8 @@ def _render_with_metrics(enabled: bool) -> str:
         cfg = HAProxyConfig(
             http_options=HTTPOptions(host="127.0.0.1", port=8000),
             socket_path=os.path.join(td, "admin.sock"),
-            # `metrics_enabled` gates the per-request SD log line + socket;
-            # `ingress_request_router_metrics_enabled` gates the router-specific
-            # fields appended to it. These tests toggle both together (all
-            # metrics on vs all off).
             metrics_enabled=enabled,
-            ingress_request_router_metrics_enabled=enabled,
+            ingress_request_router_metrics_enabled=router_metrics_enabled,
             metrics_socket_path=os.path.join(td, "metrics.sock"),
             has_received_routes=True,
             has_received_servers=True,
@@ -901,7 +935,7 @@ def _render_with_metrics(enabled: bool) -> str:
                 ),
             ],
             ingress_request_router_servers=[
-                ServerConfig(name="router", host="127.0.0.1", port=9100),
+                ServerConfig(name="router", host="127.0.0.1", port=9100)
             ],
         )
         api = HAProxyApi(
@@ -915,7 +949,7 @@ def _render_with_metrics(enabled: bool) -> str:
 
 
 def test_rendered_config_contains_metrics_directives_when_enabled() -> None:
-    rendered = _render_with_metrics(enabled=True)
+    rendered = _render_with_metrics(enabled=True, router_metrics_enabled=True)
     assert "log-format-sd" in rendered
     assert "[serve@1" in rendered
     assert "format rfc5424" in rendered
@@ -932,7 +966,14 @@ def test_rendered_config_omits_metrics_directives_when_disabled() -> None:
     assert "format rfc5424" not in rendered
 
 
-def _render_lua_with_metrics(enabled: bool) -> str:
+def test_rendered_config_omits_router_metrics_when_router_flag_disabled() -> None:
+    rendered = _render_with_metrics(enabled=True)
+    assert "log-format-sd" in rendered
+    assert "router_latency_us" not in rendered
+    assert "fallback=%" not in rendered
+
+
+def _render_lua_with_router(enabled: bool) -> str:
     """Render the ingress-request-router Lua and return its text."""
 
     from ray.serve._private.haproxy import (
@@ -976,18 +1017,15 @@ def _render_lua_with_metrics(enabled: bool) -> str:
             return f.read()
 
 
-def test_rendered_lua_has_timing_calls_when_metrics_enabled() -> None:
-    lua = _render_lua_with_metrics(enabled=True)
+def test_rendered_lua_has_router_timing_calls_when_enabled() -> None:
+    lua = _render_lua_with_router(enabled=True)
     assert "core.now()" in lua
     assert "ingress_request_router_latency_us" in lua
     assert "ingress_request_router_truncated_full_length" in lua
 
 
-def test_rendered_lua_has_no_timing_calls_when_metrics_disabled() -> None:
-    lua = _render_lua_with_metrics(enabled=False)
-    # When metrics are off, the substitutions become empty strings -- the
-    # Lua should have no `core.now()` calls and no metric-only set_var
-    # references at all.
+def test_rendered_lua_omits_router_timing_calls_when_disabled() -> None:
+    lua = _render_lua_with_router(enabled=False)
     assert "core.now()" not in lua
     assert "ingress_request_router_latency_us" not in lua
     assert "ingress_request_router_truncated_full_length" not in lua

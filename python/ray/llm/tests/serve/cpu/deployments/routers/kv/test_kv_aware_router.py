@@ -99,10 +99,7 @@ def test_build_openai_app_configures_kv_routing():
     """A KVAwareRouter LLMConfig enables the engine's KV-cache events at build
     time, so the tracker the LLMRouter ingress builds has events to index."""
     llm_config = build_test_llm_config()
-    app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
-    assert (
-        app._bound_deployment._deployment_config.request_router_config.ingress_router_fallback
-    )
+    build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
 
     kv_events_config = llm_config.engine_kwargs.get("kv_events_config")
     assert kv_events_config is not None

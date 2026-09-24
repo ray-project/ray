@@ -3178,8 +3178,8 @@ def metrics_port():
 @pytest.mark.parametrize(
     "failure,reason,router_status",
     [
-        ("4xx", "router_non_200", 400),
-        ("5xx", "router_non_200", 503),
+        ("4xx", "router_non_200_4xx", 400),
+        ("5xx", "router_non_200_5xx", 503),
         ("timeout", "router_unreachable", None),
         ("unreachable", "router_unreachable", None),
         ("no_routers", "router_unavailable", None),
@@ -3262,6 +3262,8 @@ async def test_ingress_router_fallback(
         http_options=HTTPOptions(host="127.0.0.1", port=http_port),
         stats_port=stats_port,
         socket_path=str(tmp_path / "admin.sock"),
+        server_state_base=str(tmp_path),
+        server_state_file=str(tmp_path / "server-state"),
         metrics_socket_path=str(tmp_path / "metrics.sock"),
         metrics_enabled=True,
         ingress_request_router_metrics_enabled=True,
@@ -3281,6 +3283,12 @@ async def test_ingress_router_fallback(
     try:
         await api.start()
         await async_wait_for_condition(lambda: check_haproxy_ready(stats_port))
+        await async_wait_for_condition(
+            lambda: requests.get(
+                f"http://127.0.0.1:{http_port}/-/healthz", timeout=2
+            ).status_code
+            == 200
+        )
         async with httpx.AsyncClient(
             base_url=f"http://127.0.0.1:{http_port}", timeout=10
         ) as client:
@@ -3372,18 +3380,13 @@ async def test_ingress_router_fallback(
         _shutdown_fake_servers(tuple(servers), tuple(threads))
 
 
-@pytest.mark.parametrize("enabled", [False, True])
-def test_ingress_router_fallback_yaml(ray_shutdown, enabled):
+def test_ingress_router_fallback_yaml(ray_shutdown):
     ray.init(num_cpus=1, include_dashboard=False)
     config_path = os.path.join(
         os.path.dirname(__file__), "test_config_files", "ingress_router_fallback.yaml"
     )
     with open(config_path) as f:
         config = yaml.safe_load(f)
-    if not enabled:
-        config["applications"][0]["deployments"][0]["request_router_config"][
-            "ingress_router_fallback"
-        ] = False
     config = ServeDeploySchema.model_validate(config)
     serve.start()
     _get_global_client().deploy_apps(config, _blocking=True)
@@ -3395,17 +3398,13 @@ def test_ingress_router_fallback_yaml(ray_shutdown, enabled):
         return router.get_num_requests.remote().result(timeout_s=10) > 0
 
     wait_for_condition(router_ready)
-    # The actual ingress router returns 503. Only the YAML option permits
-    # HAProxy to send the request to the healthy serving replica instead.
+    # The router returns 503, so HAProxy falls back to a healthy serving replica.
     for i in range(8):
         response = requests.post(
             "http://127.0.0.1:8000/", json={"request": i}, timeout=10
         )
-        assert response.status_code == (200 if enabled else 503)
-        if enabled:
-            assert response.json() == {"request": i}
-        else:
-            assert response.headers["x-serve-reason"] == "router_non_200"
+        assert response.status_code == 200
+        assert response.json() == {"request": i}
 
 
 if __name__ == "__main__":
