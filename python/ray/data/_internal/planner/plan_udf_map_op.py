@@ -489,10 +489,8 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
         raise UserCodeException("UDF failed to process a data block.") from e
 
 
-# Thread pool used to execute synchronous UDFs off of an event-loop thread.
-# Threads in this pool never run asyncio, so user code may safely call
-# asyncio.run() even when the surrounding worker hosts an event loop.
-# See https://github.com/ray-project/ray/issues/57729
+# Thread pool for sync UDFs, so user code may call asyncio.run() even when the
+# calling thread hosts an event loop. See ray-project/ray#57729.
 _SYNC_UDF_THREAD_PREFIX = "ray-data-sync-udf"
 _sync_udf_executor: Optional[ThreadPoolExecutor] = None
 _sync_udf_executor_lock = Lock()
@@ -511,13 +509,8 @@ def _get_sync_udf_executor() -> ThreadPoolExecutor:
 
 
 def _call_udf_off_event_loop_thread(udf_call):
-    """Run a sync UDF call, dispatching to a loop-free thread if the current
-    thread already runs an event loop (e.g. in a fused worker that also hosts
-    an async UDF). Otherwise call it directly on the current thread.
-    """
-    # Re-entrancy guard: user code executing on the pool thread (e.g. inside
-    # its own asyncio.run loop) must call directly instead of re-submitting,
-    # otherwise the single worker thread would wait on itself forever.
+    """Run a sync UDF call on a loop-free thread if the current thread runs a loop."""
+    # Pool threads must call directly: re-submitting would deadlock the single worker.
     if current_thread().name.startswith(_SYNC_UDF_THREAD_PREFIX):
         return udf_call()
     try:
@@ -525,21 +518,14 @@ def _call_udf_off_event_loop_thread(udf_call):
     except RuntimeError:
         return udf_call()
     result = _get_sync_udf_executor().submit(udf_call).result()
-    # A sync UDF may return a generator, in which case the call above only
-    # created it: the UDF body runs when the generator is iterated. Drive the
-    # returned generator off of the event-loop thread as well.
-    # See https://github.com/ray-project/ray/issues/57729
+    # A generator UDF's body runs on iteration, so dispatch that off-loop too.
     if isinstance(result, GeneratorType):
         return _iterate_off_event_loop_thread(result)
     return result
 
 
 def _iterate_off_event_loop_thread(gen: GeneratorType) -> Iterator[Any]:
-    """Yield from ``gen``, running every resumption on a loop-free thread.
-
-    Only used when the UDF call was dispatched off of an event-loop thread, so
-    that generator UDFs behave the same as plain function UDFs.
-    """
+    """Resume ``gen`` on a loop-free thread for every item it yields."""
     while True:
         try:
             item = _call_udf_off_event_loop_thread(lambda: next(gen))

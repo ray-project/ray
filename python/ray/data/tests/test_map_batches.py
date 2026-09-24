@@ -838,27 +838,28 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
 
 
+@pytest.mark.parametrize("is_generator", [False, True])
 def test_map_batches_sync_udf_with_asyncio_run_chained_with_async_actor(
-    shutdown_only,
+    shutdown_only, is_generator
 ):
-    """Regression test for https://github.com/ray-project/ray/issues/57729
+    """Regression test for https://github.com/ray-project/ray/issues/57729"""
 
-    A sync ``map_batches`` UDF that internally calls ``asyncio.run()`` must keep
-    working when chained with an async callable-class transform. Operator fusion
-    moves the sync UDF into the fused worker's event-loop thread, but
-    ``asyncio.run()`` requires a thread without a running event loop.
-    """
-
-    def sync_udf_with_asyncio_run(batch):
-        async def _load_all():
-            return await asyncio.gather(
+    def _load_batch(batch):
+        batch["data"] = asyncio.run(
+            asyncio.gather(
                 *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
             )
-
-        batch["data"] = asyncio.run(_load_all())
+        )
         return batch
 
+    def sync_udf(batch):
+        return _load_batch(batch)
+
+    def sync_generator_udf(batch):
+        yield _load_batch(batch)
+
     class AsyncActor:
+        # Stays async on purpose: it is what makes the fused worker host a loop.
         async def __call__(self, batch):
             await asyncio.sleep(0.001)
             return batch
@@ -866,45 +867,7 @@ def test_map_batches_sync_udf_with_asyncio_run_chained_with_async_actor(
     n = 4
     ds = (
         ray.data.range(n, override_num_blocks=n)
-        .map_batches(sync_udf_with_asyncio_run)
-        .map_batches(AsyncActor, concurrency=1)
-    )
-
-    result = ds.take_all()
-    assert len(result) == n
-    assert sorted(row["data"] for row in result) == list(range(n))
-
-
-def test_map_batches_sync_generator_udf_with_asyncio_run_chained_with_async_actor(
-    shutdown_only,
-):
-    """Regression test for the generator variant of
-    https://github.com/ray-project/ray/issues/57729
-
-    A sync generator UDF is only *constructed* when it is called; its body runs
-    when the returned generator is iterated, which the fused worker does on its
-    event-loop thread. The dispatch that keeps ``asyncio.run()`` working for
-    plain function UDFs must therefore cover the iteration as well.
-    """
-
-    def sync_generator_udf_with_asyncio_run(batch):
-        async def _load_all():
-            return await asyncio.gather(
-                *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
-            )
-
-        batch["data"] = asyncio.run(_load_all())
-        yield batch
-
-    class AsyncActor:
-        async def __call__(self, batch):
-            await asyncio.sleep(0.001)
-            return batch
-
-    n = 4
-    ds = (
-        ray.data.range(n, override_num_blocks=n)
-        .map_batches(sync_generator_udf_with_asyncio_run)
+        .map_batches(sync_generator_udf if is_generator else sync_udf)
         .map_batches(AsyncActor, concurrency=1)
     )
 
