@@ -15,6 +15,7 @@ from ray.data._internal.iterator.push_based_split_iterator import (
     _EndOfEpoch,
     _ExecutorError,
     _PushReceiver,
+    streaming_split_push_based,
 )
 
 # ---------------------------------------------------------------------------
@@ -172,7 +173,7 @@ def _run_epochs(consumers, kwargs_list=None, timeout_s: float = 120.0):
 
 def test_push_split_equal_across_epochs(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=20)
-    iterators = ds.streaming_split_push_based(2, equal=True)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
     consumers = [_Consumer.remote(it) for it in iterators]
 
     for _ in range(2):
@@ -182,7 +183,7 @@ def test_push_split_equal_across_epochs(ray_start_regular_shared):
 
 def test_push_split_early_exit_then_full_epoch(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=20)
-    iterators = ds.streaming_split_push_based(2, equal=True)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
     consumers = [_Consumer.remote(it) for it in iterators]
 
     results = _run_epochs(consumers, [{"max_rows": 200}, {}])
@@ -199,7 +200,7 @@ def test_push_split_error_propagation(ray_start_regular_shared):
         raise ValueError("boom")
 
     ds = ray.data.range(100).map(_boom)
-    iterators = ds.streaming_split_push_based(2)
+    iterators = streaming_split_push_based(ds, 2)
     consumers = [_Consumer.remote(it) for it in iterators]
 
     ray.get([c.start_epoch.remote(batch_size=10) for c in consumers])
@@ -222,7 +223,7 @@ def test_push_split_flow_control_bounds_buffering(ray_start_regular_shared):
     num_rows, num_blocks = 2000, 40
     block_rows = num_rows // num_blocks
     ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
-    iterators = ds.streaming_split_push_based(2, equal=True)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
     consumers = [_Consumer.remote(it) for it in iterators]
 
     ray.get([c.start_epoch.remote(delay_s=0.2) for c in consumers])
@@ -247,7 +248,7 @@ def test_push_split_flow_control_bounds_buffering(ray_start_regular_shared):
 
 def test_push_split_requires_actor_host(ray_start_regular_shared):
     ds = ray.data.range(100)
-    iterators = ds.streaming_split_push_based(1)
+    iterators = streaming_split_push_based(ds, 1)
     with pytest.raises(RuntimeError, match="PushSplitReceiverMixin"):
         next(iter(iterators[0].iter_batches(batch_size=10)))
 
@@ -262,7 +263,7 @@ class _TaskThreadConsumer(PushSplitReceiverMixin):
 
 def test_push_split_rejects_actor_task_thread(ray_start_regular_shared):
     ds = ray.data.range(100)
-    iterators = ds.streaming_split_push_based(1)
+    iterators = streaming_split_push_based(ds, 1)
     consumer = _TaskThreadConsumer.remote()
     with pytest.raises(Exception, match="background thread"):
         ray.get(consumer.iterate.remote(iterators[0]), timeout=60)
