@@ -118,6 +118,12 @@ def test_start_epoch_rejects_out_of_range_split(ray_start_regular_shared, split_
         ray.get(coordinator.start_epoch.remote(split_idx))
 
 
+def test_register_rejects_out_of_range_split(ray_start_regular_shared):
+    coordinator = _make_coordinator()
+    with pytest.raises(ValueError, match="split_idx must be between"):
+        ray.get(coordinator.register.remote(2, _Receiver.remote(), key="test:2"))
+
+
 def test_request_rows_only_updates_current_epoch(ray_start_regular_shared):
     coordinator = _make_coordinator()
     ray.get([coordinator.start_epoch.remote(i) for i in range(2)])

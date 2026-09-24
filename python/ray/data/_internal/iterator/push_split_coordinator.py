@@ -201,6 +201,7 @@ class PushSplitCoordinator:
         """Register the consumer actor for a split (called once per epoch;
         re-registering is fine). The actor class must mix in
         ``PushSplitReceiverMixin``."""
+        self._check_split_idx(split_idx)
         if not hasattr(consumer, "_push_split_deliver"):
             raise ValueError(
                 f"The consumer actor for split {split_idx} does not expose "
