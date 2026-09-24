@@ -1,5 +1,5 @@
 import functools
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -20,9 +20,6 @@ class InputData(LogicalOperator, SourceOperator):
     """
 
     input_data: List[RefBundle]
-    _input_dependencies: list[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data

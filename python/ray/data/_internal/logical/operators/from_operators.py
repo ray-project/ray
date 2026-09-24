@@ -1,6 +1,6 @@
 import abc
 import functools
-from dataclasses import InitVar, dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
@@ -32,35 +32,30 @@ __all__ = [
 class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     """Abstract logical operator for `from_*`."""
 
-    input_blocks: InitVar[List[ObjectRef[Block]]]
-    input_metadata: InitVar[List[BlockMetadataWithSchema]]
-    input_data: List[RefBundle] = field(init=False)
-    _input_dependencies: list[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
+    input_data: List[RefBundle]
 
-    def __post_init__(
-        self,
+    @classmethod
+    def from_blocks(
+        cls,
         input_blocks: List[ObjectRef[Block]],
         input_metadata: List[BlockMetadataWithSchema],
-    ):
+    ) -> "AbstractFrom":
+        """Create the operator with one ``RefBundle`` per input block."""
         assert len(input_blocks) == len(input_metadata), (
             len(input_blocks),
             len(input_metadata),
         )
 
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        object.__setattr__(
-            self,
-            "input_data",
-            [
+        return cls(
+            input_data=[
                 RefBundle(
-                    [BlockEntry(input_blocks[i], input_metadata[i])],
+                    [BlockEntry(block, metadata)],
                     owns_blocks=False,
-                    schema=input_metadata[i].schema,
+                    schema=metadata.schema,
                 )
-                for i in range(len(input_blocks))
-            ],
+                for block, metadata in zip(input_blocks, input_metadata)
+            ]
         )
 
     def output_data(self) -> Optional[List[RefBundle]]:
