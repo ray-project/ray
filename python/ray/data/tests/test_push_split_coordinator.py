@@ -2,6 +2,7 @@
 
 import threading
 import time
+from typing import Any
 
 import pytest
 
@@ -69,8 +70,15 @@ def test_flow_wait_for_room_wakes_on_report():
 # ---------------------------------------------------------------------------
 
 
+def _get(ref: Any) -> Any:
+    # Actor method results are untyped; keep type checkers from assuming the
+    # list overload of ray.get.
+    return ray.get(ref)
+
+
 def _make_coordinator(num_rows: int = 100, n: int = 2):
     split_dataset = _create_split_dataset(ray.data.range(num_rows), n, equal=True)
+    # pyrefly: ignore[missing-attribute]  # @ray.remote hides ActorClass.options
     return PushSplitCoordinator.options(max_concurrency=n + 2).remote(split_dataset, n)
 
 
@@ -96,26 +104,46 @@ def test_barrier_waits_for_every_split(ray_start_regular_shared):
 def test_start_epoch_rejects_out_of_range_split(ray_start_regular_shared, split_idx):
     coordinator = _make_coordinator()
     with pytest.raises(ValueError, match="split_idx must be between"):
-        ray.get(coordinator.start_epoch.remote(split_idx))
+        _get(coordinator.start_epoch.remote(split_idx))
+
+
+def test_barrier_releases_when_teardown_fails(ray_start_regular_shared):
+    coordinator = _make_coordinator()
+    assert ray.get([coordinator.start_epoch.remote(i) for i in range(2)]) == [0, 0]
+
+    def _failing_teardown(self):
+        raise RuntimeError("teardown failed")
+
+    # Make the previous epoch's teardown fail for the next barrier.
+    ray.get(
+        coordinator.__ray_call__.remote(
+            lambda self: setattr(
+                self, "_teardown_epoch", _failing_teardown.__get__(self)
+            )
+        )
+    )
+    # Every split still gets the next epoch instead of hanging.
+    refs = [coordinator.start_epoch.remote(i) for i in range(2)]
+    assert ray.get(refs, timeout=60) == [1, 1]
 
 
 def test_request_rows_only_updates_current_epoch(ray_start_regular_shared):
     coordinator = _make_coordinator()
     ray.get([coordinator.start_epoch.remote(i) for i in range(2)])
 
-    ray.get(coordinator.request_rows.remote(0, 0, 400, 50, 500))
+    _get(coordinator.request_rows.remote(0, 0, 400, 50, 500))
     # Stale (and future) epochs are ignored.
-    ray.get(coordinator.request_rows.remote(1, -1, 999, 999, 999))
-    ray.get(coordinator.request_rows.remote(1, 5, 999, 999, 999))
+    _get(coordinator.request_rows.remote(1, -1, 999, 999, 999))
+    _get(coordinator.request_rows.remote(1, 5, 999, 999, 999))
 
-    state = ray.get(coordinator.debug_state.remote())
+    state = _get(coordinator.debug_state.remote())
     assert state["target_rows"] == {0: 400, 1: 0}
     assert state["rows_consumed"] == {0: 50, 1: 0}
     assert state["bytes_consumed"] == {0: 500, 1: 0}
 
     # A new epoch starts with fresh flow state.
     ray.get([coordinator.start_epoch.remote(i) for i in range(2)])
-    state = ray.get(coordinator.debug_state.remote())
+    state = _get(coordinator.debug_state.remote())
     assert state["target_rows"] == {0: 0, 1: 0}
     assert state["rows_consumed"] == {0: 0, 1: 0}
 
@@ -124,20 +152,20 @@ def test_executor_shuts_down_after_all_splits_finish(ray_start_regular_shared):
     coordinator = _make_coordinator()
     ray.get([coordinator.start_epoch.remote(i) for i in range(2)])
 
-    ray.get(coordinator.notify_split_finished.remote(0, 0))
+    _get(coordinator.notify_split_finished.remote(0, 0))
     # A stale-epoch notification doesn't count.
-    ray.get(coordinator.notify_split_finished.remote(-1, 1))
-    assert not ray.get(coordinator._is_executor_shutdown.remote())
+    _get(coordinator.notify_split_finished.remote(-1, 1))
+    assert not _get(coordinator._is_executor_shutdown.remote())
 
-    ray.get(coordinator.notify_split_finished.remote(0, 1))
-    wait_for_condition(lambda: ray.get(coordinator._is_executor_shutdown.remote()))
+    _get(coordinator.notify_split_finished.remote(0, 1))
+    wait_for_condition(lambda: _get(coordinator._is_executor_shutdown.remote()))
 
 
 def test_dataset_metadata(ray_start_regular_shared):
     coordinator = _make_coordinator()
 
-    assert ray.get(coordinator.get_dataset_schema.remote()).names == ["id"]
-    assert ray.get(coordinator.get_dataset_tag.remote(1))["split_index"] == "1"
+    assert _get(coordinator.get_dataset_schema.remote()).names == ["id"]
+    assert _get(coordinator.get_dataset_tag.remote(1))["split_index"] == "1"
 
 
 if __name__ == "__main__":
