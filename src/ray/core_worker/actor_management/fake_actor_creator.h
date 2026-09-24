@@ -62,6 +62,8 @@ class FakeActorCreator : public ActorCreatorInterface {
     return actor_pending;
   }
 
+  void MarkActorAsRegistering(const ActorID &actor_id) override {}
+
   std::list<rpc::StatusCallback> callbacks;
   bool actor_pending = false;
 };

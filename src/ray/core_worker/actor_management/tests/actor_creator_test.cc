@@ -176,5 +176,34 @@ TEST_F(ActorCreatorTest, AsyncRegisterActorBatchFailure) {
   ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id1));
 }
 
+TEST_F(ActorCreatorTest, MarkActorAsRegisteringBeforeBatch) {
+  auto actor_id1 = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  auto task_spec1 = GetTaskSpec(actor_id1);
+
+  actor_creator->MarkActorAsRegistering(actor_id1);
+  ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id1));
+
+  int waiter_cb_count = 0;
+  actor_creator->AsyncWaitForActorRegisterFinish(actor_id1,
+                                                 [&waiter_cb_count](Status status) {
+                                                   ASSERT_TRUE(status.ok());
+                                                   waiter_cb_count++;
+                                                 });
+
+  int batch_cb_count = 0;
+  actor_creator->AsyncRegisterActorBatch({task_spec1}, [&batch_cb_count](Status status) {
+    ASSERT_TRUE(status.ok());
+    batch_cb_count++;
+  });
+
+  ASSERT_TRUE(gcs_client->mock_actor_accessor->async_register_actor_batch_callback_ !=
+              nullptr);
+  gcs_client->mock_actor_accessor->async_register_actor_batch_callback_(Status::OK());
+
+  ASSERT_EQ(1, waiter_cb_count);
+  ASSERT_EQ(1, batch_cb_count);
+  ASSERT_FALSE(actor_creator->IsActorInRegistering(actor_id1));
+}
+
 }  // namespace core
 }  // namespace ray

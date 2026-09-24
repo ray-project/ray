@@ -160,6 +160,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             CActorID *actor_id)
         void EnterActorBatch()
         void ExitActorBatch()
+        c_bool IsInActorBatch() const
         CRayStatus CreatePlacementGroup(
             const CPlacementGroupCreationOptions &options,
             CPlacementGroupID *placement_group_id)

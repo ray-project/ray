@@ -4142,6 +4142,9 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().ExitActorBatch()
 
+    def is_in_actor_batch(self):
+        return CCoreWorkerProcess.GetCoreWorker().IsInActorBatch()
+
     def create_placement_group(
                             self,
                             c_string name,

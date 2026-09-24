@@ -2841,7 +2841,6 @@ TEST_F(GcsActorManagerTest, TestInitializeRestoresLocalRayletAddressForAliveActo
   ASSERT_EQ(local_raylet_address->port(), 9999);
 }
 
-<<<<<<< HEAD
 TEST_F(GcsActorManagerTest, TestInitializeIsolatesActorWithMissingTaskSpec) {
   // find() guard: a non-DEAD actor whose task spec is missing must not abort
   // Initialize (map_find_or_die used to crash the whole GCS).
@@ -2982,7 +2981,6 @@ TEST_F(GcsActorManagerTest, TestInitializeMarksDeadWhenOwnerJobDeadAndReloads) {
   const auto *reloaded_info = GetActorInfo(*reloaded_manager, actor_id);
   ASSERT_NE(reloaded_info, nullptr);
   ASSERT_EQ(reloaded_info->state(), rpc::ActorTableData::DEAD);
-=======
 }
 
 TEST_F(GcsActorManagerTest, TestHandleRegisterActorBatch) {
@@ -3064,8 +3062,8 @@ TEST_F(GcsActorManagerTest, TestHandleRegisterActorBatch) {
     ASSERT_TRUE(dup_status.ok());
     ASSERT_EQ(dup_batch_reply.status().code(),
               static_cast<int>(StatusCode::AlreadyExists));
+    ASSERT_EQ(RegisteredActorCount(*gcs_actor_manager_), 2u);
   }
->>>>>>> 4557d90cf3 ([Core] Implement ray.batch() API for batched actor scheduling)
 }
 
 }  // namespace gcs

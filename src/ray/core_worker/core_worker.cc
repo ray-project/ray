@@ -1580,6 +1580,7 @@ Status CoreWorker::GetExperimentalMutableObjects(
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
                               std::vector<std::shared_ptr<RayObject>> &results) {
+  FlushActorBatch();
   // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
@@ -1712,6 +1713,7 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
                         int64_t timeout_ms,
                         std::vector<bool> *results,
                         bool fetch_local) {
+  FlushActorBatch();
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
     // We track the state change only from workers.
@@ -2484,6 +2486,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       /*max_retries=*/0);
 
   if (actor_batch_depth > 0) {
+    io_service_.post(
+        [this, actor_id]() { actor_creator_->MarkActorAsRegistering(actor_id); },
+        "ActorCreator.MarkActorAsRegistering");
     actor_batch_buffer.push_back(std::move(task_spec));
     return Status::OK();
   }
@@ -2528,6 +2533,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
 void CoreWorker::EnterActorBatch() { ++actor_batch_depth; }
 
+bool CoreWorker::IsInActorBatch() const { return actor_batch_depth > 0; }
+
 void CoreWorker::ExitActorBatch() {
   if (actor_batch_depth > 0) {
     --actor_batch_depth;
@@ -2535,6 +2542,10 @@ void CoreWorker::ExitActorBatch() {
   if (actor_batch_depth > 0) {
     return;
   }
+  FlushActorBatch();
+}
+
+void CoreWorker::FlushActorBatch() {
   if (actor_batch_buffer.empty()) {
     return;
   }
@@ -2545,10 +2556,25 @@ void CoreWorker::ExitActorBatch() {
         actor_creator_->AsyncRegisterActorBatch(batch, [this, batch](Status status) {
           for (const auto &task_spec : batch) {
             if (!status.ok()) {
-              RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
+              const auto actor_id = task_spec.ActorCreationId();
+              RAY_LOG(ERROR).WithField(actor_id)
                   << "Failed to register actor in batch. Error message: " << status;
               task_manager_->FailPendingTask(
                   task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, &status);
+              rpc::ActorDeathCause death_cause;
+              death_cause.mutable_actor_died_error_context()->set_error_message(
+                  status.message());
+              death_cause.mutable_actor_died_error_context()->set_actor_id(
+                  actor_id.Binary());
+              actor_manager_->OnActorKilled(actor_id);
+              actor_task_submitter_->DisconnectActor(actor_id,
+                                                     /*num_restarts=*/0,
+                                                     /*dead=*/true,
+                                                     death_cause,
+                                                     /*is_restartable=*/false);
+              if (!task_spec.IsDetachedActor()) {
+                RemoveActorHandleReference(actor_id);
+              }
             } else {
               actor_task_submitter_->SubmitActorCreationTask(task_spec);
             }
@@ -2922,6 +2948,7 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
 }
 
 Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) {
+  FlushActorBatch();
   std::promise<Status> p;
   auto f = p.get_future();
   io_service_.post(
@@ -2991,6 +3018,8 @@ std::shared_ptr<const ActorHandle> CoreWorker::GetActorHandle(
 std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorHandle(
     const std::string &name, const std::string &ray_namespace) {
   RAY_CHECK(!name.empty());
+  FlushActorBatch();
+  RAY_UNUSED(WaitForActorRegistered(actor_manager_->GetActorHandleIDsFromHandles()));
   return actor_manager_->GetNamedActorHandle(
       name,
       ray_namespace.empty() ? worker_context_->GetCurrentJobConfig().ray_namespace()
@@ -3001,6 +3030,8 @@ std::pair<std::shared_ptr<const ActorHandle>, Status> CoreWorker::GetNamedActorH
 
 std::pair<std::vector<std::pair<std::string, std::string>>, Status>
 CoreWorker::ListNamedActors(bool all_namespaces) {
+  FlushActorBatch();
+  RAY_UNUSED(WaitForActorRegistered(actor_manager_->GetActorHandleIDsFromHandles()));
   std::vector<std::pair<std::string, std::string>> actors;
 
   // This call needs to be blocking because we can't return until we get the
@@ -5014,6 +5045,7 @@ bool CoreWorker::IsIdle() const {
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
+  FlushActorBatch();
   std::vector<ActorID> actor_ids;
   for (const auto &id : ids) {
     if (ObjectID::IsActorID(id)) {

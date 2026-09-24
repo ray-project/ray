@@ -277,6 +277,111 @@ def test_batch_auto_init(shutdown_only):
     assert ray.get(a.ping.remote()) == "pong"
 
 
+def test_batch_actor_handle_passed_to_task(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class TargetActor:
+        def __init__(self, val):
+            self.val = val
+
+        def get_val(self):
+            return self.val
+
+    @ray.remote
+    def call_actor(actor_handle):
+        return ray.get(actor_handle.get_val.remote())
+
+    @ray.remote
+    class CallerActor:
+        def __init__(self, target):
+            self.target = target
+
+        def call_target(self):
+            return ray.get(self.target.get_val.remote())
+
+    with ray.batch():
+        t1 = TargetActor.remote(42)
+        task_ref = call_actor.remote(t1)
+        caller = CallerActor.remote(t1)
+
+    assert ray.get(task_ref) == 42
+    assert ray.get(caller.call_target.remote()) == 42
+
+
+def test_batch_immediate_get_actor_and_list_named_actors(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class NamedActor:
+        def ping(self):
+            return "pong"
+
+    with ray.batch():
+        _a1 = NamedActor.options(name="immediate_one").remote()
+        _a2 = NamedActor.options(name="immediate_two").remote()
+
+    # Without calling ray.get on the created handles first, get_actor and
+    # list_named_actors should immediately find the batch-registered actors.
+    names = ray.util.list_named_actors()
+    assert "immediate_one" in names
+    assert "immediate_two" in names
+
+    h1 = ray.get_actor("immediate_one")
+    h2 = ray.get_actor("immediate_two")
+    assert ray.get([h1.ping.remote(), h2.ping.remote()]) == ["pong", "pong"]
+    del _a1, _a2
+
+
+def test_batch_duplicate_named_actors_error(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class DupActor:
+        def ping(self):
+            return "pong"
+
+    with ray.batch():
+        a1 = DupActor.options(name="dup_name").remote()
+        a2 = DupActor.options(name="dup_name").remote()
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a1.ping.remote())
+
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a2.ping.remote())
+
+    # Atomic rejection: neither actor should remain registered under "dup_name"
+    assert "dup_name" not in ray.util.list_named_actors()
+
+
+def test_batch_blocking_ops_inside_context(shutdown_only):
+    ray.init(num_cpus=4)
+
+    @ray.remote
+    class Worker:
+        def ping(self):
+            return "pong"
+
+    with ray.batch():
+        a1 = Worker.remote()
+        # ray.get inside batch should flush buffered actors and succeed
+        assert ray.get(a1.ping.remote()) == "pong"
+
+        a2 = Worker.remote()
+        # ray.put(actor_handle) inside batch should flush and succeed
+        handle_ref = ray.put(a2)
+
+        a3 = Worker.remote()
+        # ray.kill(actor_handle) inside batch should flush and kill the actor
+        ray.kill(a3)
+
+    unpacked_a2 = ray.get(handle_ref)
+    assert ray.get(unpacked_a2.ping.remote()) == "pong"
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a3.ping.remote())
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "run_all":
         for test_fn in [
@@ -292,6 +397,10 @@ if __name__ == "__main__":
             test_batch_placement_group,
             test_batch_performance_comparison,
             test_batch_auto_init,
+            test_batch_actor_handle_passed_to_task,
+            test_batch_immediate_get_actor_and_list_named_actors,
+            test_batch_duplicate_named_actors_error,
+            test_batch_blocking_ops_inside_context,
         ]:
             print(f"Running {test_fn.__name__}...")
             if ray.is_initialized():

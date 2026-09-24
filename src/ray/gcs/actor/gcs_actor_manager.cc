@@ -369,6 +369,30 @@ void GcsActorManager::HandleRegisterActorBatch(
     return;
   }
 
+  // Pre-validate actor names across the batch and existing registry so batch
+  // registration is atomic and does not partially register actors on name conflict.
+  absl::flat_hash_set<std::pair<std::string, std::string>> batch_named_actors;
+  for (int i = 0; i < total_tasks; ++i) {
+    const auto &task_spec = request.task_specs(i);
+    RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
+    const auto &actor_creation_spec = task_spec.actor_creation_task_spec();
+    const auto &name = actor_creation_spec.name();
+    if (!name.empty()) {
+      const auto &ray_namespace = actor_creation_spec.ray_namespace();
+      auto actor_id = ActorID::FromBinary(actor_creation_spec.actor_id());
+      auto existing_id = GetActorIDByName(name, ray_namespace);
+      if ((!existing_id.IsNil() && existing_id != actor_id) ||
+          !batch_named_actors.emplace(ray_namespace, name).second) {
+        std::stringstream stream;
+        stream << "Actor with name '" << name << "' already exists in the namespace "
+               << ray_namespace;
+        GCS_RPC_SEND_REPLY(
+            send_reply_callback, reply, Status::AlreadyExists(stream.str()));
+        return;
+      }
+    }
+  }
+
   auto pending_count = std::make_shared<size_t>(total_tasks);
   auto first_error = std::make_shared<Status>(Status::OK());
 

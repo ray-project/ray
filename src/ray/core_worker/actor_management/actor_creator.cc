@@ -35,7 +35,7 @@ Status ActorCreator::RegisterActor(const TaskSpecification &task_spec) const {
 void ActorCreator::AsyncRegisterActor(const TaskSpecification &task_spec,
                                       rpc::StatusCallback callback) {
   auto actor_id = task_spec.ActorCreationId();
-  (*registering_actors_)[actor_id] = {};
+  registering_actors_->try_emplace(actor_id);
   if (callback != nullptr) {
     (*registering_actors_)[actor_id].emplace_back(std::move(callback));
   }
@@ -59,7 +59,7 @@ void ActorCreator::AsyncRegisterActorBatch(
   }
   for (const auto &task_spec : task_specs) {
     auto actor_id = task_spec.ActorCreationId();
-    (*registering_actors_)[actor_id] = {};
+    registering_actors_->try_emplace(actor_id);
   }
   actor_client_.AsyncRegisterActorBatch(
       task_specs, [task_specs, callback = std::move(callback), this](Status status) {
@@ -99,6 +99,10 @@ void ActorCreator::AsyncReportActorOutOfScope(
 
 bool ActorCreator::IsActorInRegistering(const ActorID &actor_id) const {
   return registering_actors_->find(actor_id) != registering_actors_->end();
+}
+
+void ActorCreator::MarkActorAsRegistering(const ActorID &actor_id) {
+  registering_actors_->try_emplace(actor_id);
 }
 
 void ActorCreator::AsyncWaitForActorRegisterFinish(const ActorID &actor_id,
