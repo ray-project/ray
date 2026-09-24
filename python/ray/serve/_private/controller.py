@@ -26,7 +26,6 @@ from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     HandleMetricReport,
     NodeId,
@@ -491,17 +490,6 @@ class ServeController:
             (time.monotonic() - ingest_start) * 1000
         )
 
-    def record_autoscaling_metrics_from_async_inference_task_queue(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics pushed from QueueMonitor."""
-        self._record_metrics_delay(
-            report.timestamp_s,
-            report.deployment_id,
-            self.async_inference_task_queue_metrics_delay_gauge.set,
-        )
-        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
-
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
     ):
@@ -511,6 +499,11 @@ class ServeController:
 
     def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
+
+    def _should_autoscale_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> bool:
+        return self.autoscaling_state_manager.should_autoscale_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._dump_replica_states_for_testing(
@@ -881,14 +874,6 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "application"),
-        )
-        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
-            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
-            description=(
-                "Time taken for the async inference task queue metrics to be reported "
-                "to the controller. High values may indicate a busy controller."
-            ),
             tag_keys=("deployment", "application"),
         )
 
@@ -1501,6 +1486,8 @@ class ServeController:
             applications=applications,
             target_groups=self.get_target_groups(),
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
+            # Set this explicitly so exclude_unset includes it in the response.
+            restores_unset_config_options=True,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:

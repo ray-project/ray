@@ -23,6 +23,13 @@ Two row counts appear in these types and mean different things.
 row counts, so it comes from the footer). ``rows_before`` is a post-filter
 cursor (it counts rows that survived a pushed-down filter, in the order they
 came out). ``row_hash`` adds the two to place a row within its file.
+
+A checkpoint that records the ids of the units it finished can hand them back
+through ``TaskContext.kwargs[EXCLUDED_READ_UNIT_IDS_KWARG_NAME]`` on the
+``ListFiles`` operator; the listing task passes them to
+``FileIndexer.list_files(excluded_read_unit_ids=...)`` so those units never
+reach the partitioner or a read task. Nothing in this module performs
+checkpointing.
 """
 
 from dataclasses import dataclass
@@ -31,6 +38,11 @@ from typing import Optional
 import pyarrow.dataset as pds
 
 from ray.util.annotations import DeveloperAPI
+
+# ``TaskContext.kwargs`` key for the set of :attr:`ReadUnit.id` strings a
+# resumed job must not read again. Set with ``MapOperator.create(
+# map_task_kwargs=...)`` on the ``ListFiles`` operator.
+EXCLUDED_READ_UNIT_IDS_KWARG_NAME = "excluded_read_unit_ids"
 
 
 @DeveloperAPI

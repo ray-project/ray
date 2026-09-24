@@ -24,8 +24,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_reduce_operator import (  # noqa: E501
-    ExternalHashShuffleReduceOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+    DiskHashShuffleReduceOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
     ShuffleReduceOp,
@@ -106,7 +106,7 @@ class FuseOperators(Rule):
     ) -> PhysicalOperator:
         """Starting at the given operator, traverses up the DAG of operators
         and fuses compatible ShuffleReduceOp -> TaskPoolMapOperator pairs
-        (object-store and external variants share the same fusion policy).
+        (object-store and disk-based variants share the same fusion policy).
         Returns the current (root) operator after completing upstream fusions.
         """
         if self._can_fuse_map_into_shuffle_reduce(dag, has_downstream_limit):
@@ -156,11 +156,11 @@ class FuseOperators(Rule):
         ):
             return False
 
-        # The sole upstream must be a hash-shuffle reduce (object-store or external)
+        # The sole upstream must be a hash-shuffle reduce (object-store or disk-based)
         # that hasn't already fused with a map.
         upstream_ops = dag.input_dependencies
         if len(upstream_ops) != 1 or not isinstance(
-            upstream_ops[0], (ShuffleReduceOp, ExternalHashShuffleReduceOp)
+            upstream_ops[0], (ShuffleReduceOp, DiskHashShuffleReduceOp)
         ):
             return False
         reduce_op = upstream_ops[0]
@@ -394,15 +394,15 @@ class FuseOperators(Rule):
     def _get_fused_map_into_shuffle_reduce_operator(
         self,
         down_op: TaskPoolMapOperator,
-        up_op: Union[ShuffleReduceOp, ExternalHashShuffleReduceOp],
-    ) -> Union[ShuffleReduceOp, ExternalHashShuffleReduceOp]:
+        up_op: Union[ShuffleReduceOp, DiskHashShuffleReduceOp],
+    ) -> Union[ShuffleReduceOp, DiskHashShuffleReduceOp]:
         name = up_op.name + "->" + down_op.name
 
         up_logical_op = self._op_map.pop(up_op)
         self._op_map.pop(down_op)
 
-        if isinstance(up_op, ExternalHashShuffleReduceOp):
-            fused_op = ExternalHashShuffleReduceOp(
+        if isinstance(up_op, DiskHashShuffleReduceOp):
+            fused_op = DiskHashShuffleReduceOp(
                 up_op.input_dependencies,
                 up_op.data_context,
                 num_partitions=up_op._num_partitions,

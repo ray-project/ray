@@ -307,7 +307,7 @@ def recorded_preserve_order_flags(monkeypatch):
         def options(**_kwargs):
             class _Builder:
                 @staticmethod
-                def remote(*_args):
+                def remote(*_args, **_kwargs):
                     return _RecordingFooterActor(calls)
 
             return _Builder
