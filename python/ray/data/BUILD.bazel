@@ -1856,6 +1856,20 @@ py_test(
 )
 
 py_test(
+    name = "test_push_based_split_iterator",
+    size = "medium",
+    srcs = ["tests/test_push_based_split_iterator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_shuffle_diagnostics",
     size = "large",
     srcs = ["tests/test_shuffle_diagnostics.py"],
