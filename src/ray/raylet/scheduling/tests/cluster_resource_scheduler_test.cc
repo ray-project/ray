@@ -589,6 +589,60 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   ASSERT_EQ(node_id_4, remote_node_id);
 }
 
+TEST_F(ClusterResourceSchedulerTest, GpuMemorySchedulingUsesPerNodeVram) {
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(PeriodicalRunner::Create(io_context),
+                                              local_node_id,
+                                              {{"CPU", 8}},
+                                              is_node_available_fn_,
+                                              fake_gauge_,
+                                              clock_);
+  auto &cluster_resource_manager = resource_scheduler.GetClusterResourceManager();
+  auto small_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  auto big_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  absl::flat_hash_map<std::string, double> gpu_node({{"CPU", 8}, {"GPU", 1}});
+  cluster_resource_manager.AddOrUpdateNode(small_node_id, gpu_node, gpu_node);
+  cluster_resource_manager.AddOrUpdateNode(big_node_id, gpu_node, gpu_node);
+  cluster_resource_manager.SetNodeLabels(small_node_id,
+                                         {{kLabelKeyGpuMemoryPerDevice, "24000000000"}});
+  cluster_resource_manager.SetNodeLabels(big_node_id,
+                                         {{kLabelKeyGpuMemoryPerDevice, "80000000000"}});
+
+  absl::flat_hash_map<std::string, double> resource_request(
+      {{"CPU", 1}, {kGPUMemory_ResourceLabel, 4e10}});
+  rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
+  int64_t violations;
+  bool is_infeasible;
+  auto schedule = [&]() {
+    return resource_scheduler.GetBestSchedulableNode(resource_request,
+                                                     LabelSelector(),
+                                                     scheduling_strategy,
+                                                     false,
+                                                     false,
+                                                     false,
+                                                     std::string(),
+                                                     &violations,
+                                                     &is_infeasible);
+  };
+
+  for (int i = 0; i < 2; i++) {
+    ASSERT_EQ(schedule(), big_node_id);
+    ASSERT_TRUE(
+        resource_scheduler.AllocateRemoteTaskResources(big_node_id, resource_request));
+  }
+  ASSERT_EQ(cluster_resource_manager.GetNodeResources(big_node_id)
+                .GetAvailableSum(ResourceID::GPU()),
+            FixedPoint(0));
+  ASSERT_EQ(schedule(), big_node_id);
+  ASSERT_FALSE(is_infeasible);
+
+  resource_request[kGPUMemory_ResourceLabel] = 9e10;
+  ASSERT_TRUE(schedule().IsNil());
+  ASSERT_TRUE(is_infeasible);
+}
+
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   // Create cluster resources.
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 10},
