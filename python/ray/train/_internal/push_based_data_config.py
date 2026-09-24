@@ -8,12 +8,12 @@ Drop-in replacement for :class:`ray.train.DataConfig`::
         dataset_config=PushBasedDataConfig(),
     )
 
-Instead of ``Dataset.streaming_split`` (pull model), split datasets are
-served by a ``PushSplitCoordinator`` that pushes block refs to each train
-worker (see ``ray/data/_internal/iterator/push_based_split_iterator.py``).
-No Ray Train core changes are needed: the returned ``PushBasedDataIterator``
-self-registers the hosting train worker actor with the coordinator on first
-iteration, and delivery goes through the actor's built-in ``__ray_call__``.
+Split datasets are served by a ``PushSplitCoordinator`` that pushes blocks
+to each train worker (see
+``ray/data/_internal/iterator/push_based_split_iterator.py``). Each returned
+``PushBasedDataIterator`` registers its train worker with the coordinator on
+first iteration; deliveries arrive through the ``PushSplitReceiverMixin``
+methods that ``RayTrainWorker`` mixes in.
 """
 
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
@@ -57,8 +57,12 @@ class PushBasedDataConfig(DataConfig):
         worker_node_ids: Optional[List["NodeIdStr"]],
         **kwargs,
     ) -> List[Dict[str, "DataIterator"]]:
-        # Mirrors DataConfig.configure, swapping streaming_split for
-        # streaming_split_push_based.
+        from ray.data._internal.iterator.push_based_split_iterator import (
+            streaming_split_push_based,
+        )
+
+        # Mirrors DataConfig.configure, swapping Dataset.streaming_split for
+        # the push-based split.
         output = [{} for _ in range(world_size)]
 
         for dataset_name, dataset in datasets.items():
@@ -77,7 +81,8 @@ class PushBasedDataConfig(DataConfig):
 
             if name in datasets_to_split:
                 for i, split in enumerate(
-                    ds.streaming_split_push_based(
+                    streaming_split_push_based(
+                        ds,
                         world_size,
                         equal=True,
                         locality_hints=locality_hints,
