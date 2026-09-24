@@ -3252,9 +3252,9 @@ lightgbm==4.6.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
-lightning==2.6.1 \
-    --hash=sha256:30e1adac23004c713663928541bd72ecb1371b7abc9aff9f46b7fd2644988d30 \
-    --hash=sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9
+lightning==2.6.6 \
+    --hash=sha256:1c6329e241f8a85f29fedead89c1ee138b36caa08de60c260c6a7eaee81c8295 \
+    --hash=sha256:2bcbd6ee840071cd076c7dc9953d7ac1040df92f1c5fa76583aae644f037ab85
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
