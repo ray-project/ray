@@ -38,6 +38,15 @@ redirects:
 - from: /ray-observability/monitoring-debugging/monitoring-debugging.html
   to: /ray-observability/index.html
   type: page
+- from: /data/data.html
+  to: /data/index.html
+  type: page
+- from: /data/batch_inference.html
+  to: /data/batch-inference.html
+  type: page
+- from: /data/data-internals.html
+  to: /data/internals.html
+  type: page
 - from: /data/dataset.html
   to: /data/api/dataset.html
   type: page

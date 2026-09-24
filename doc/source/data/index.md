@@ -18,7 +18,7 @@ examples
 contributing/contributing
 comparisons
 benchmark
-data-internals
+internals
 ```
 
 Ray Data is a scalable data processing library for AI workloads built on Ray. Ray Data provides flexible and performant APIs for common operations such as {ref}`batch inference <batch_inference_home>`, data preprocessing, and data loading for ML training. Unlike other distributed data systems, Ray Data features a {ref}`streaming execution engine <streaming-execution>` to efficiently process large datasets and maintain high utilization across both CPU and GPU workloads.
