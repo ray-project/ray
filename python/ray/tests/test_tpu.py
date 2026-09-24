@@ -1341,6 +1341,7 @@ def test_slice_placement_group_worker_id_and_jax_env_vars(ray_tpu_cluster):
     ] == ["0"] * 4 + ["1"] * 4
 
     ray.get(spg.placement_group.ready(), timeout=10)
+    assert len(spg.get_worker_addrs()) == 2
 
     env0 = spg.get_jax_env_vars(worker_id=0)
     assert env0["TPU_WORKER_ID"] == "0"
@@ -2970,37 +2971,42 @@ def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
         )
         == 1
     )
-    with patch("ray.util.tpu.placement_group", return_value=MagicMock(id="mock_pg")):
-        sg_whole = ray.util.tpu._build_subslice_pg(
-            ["1", "0"],
-            0,
-            "v7x-slice",
-            "2x2x2",
-            "2x2x4",
-            4,
-            None,
-            "STRICT_SPREAD",
-            "",
-            None,
-        )
+    monkeypatch.setitem(
+        ray.util.tpu._tpu_subslice_cache,
+        "v7x-slice",
+        {
+            "1": {"ray.io/tpu-subslice-2x2x2": "0", "physical_worker_id": "0"},
+            "0": {"ray.io/tpu-subslice-2x2x2": "0", "physical_worker_id": "1"},
+            "2": {"ray.io/tpu-subslice-2x2x2": "1", "physical_worker_id": "2"},
+            "3": {"ray.io/tpu-subslice-2x2x2": "1", "physical_worker_id": "3"},
+        },
+    )
+    with (
+        patch("ray.nodes", return_value=_slice_nodes("v7x-slice", "2x2x4")),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value={f"v7x-slice-w{i}": {"TPU": 8} for i in range(4)},
+        ),
+        patch(
+            "ray.util.tpu.placement_group", return_value=MagicMock(id="mock_pg")
+        ) as mock_pg,
+    ):
+        sg_whole = ray.util.tpu.subslice_placement_group("2x2x2", "v7x")
+        assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
         assert sg_whole.tpu_resource_per_chip == 2
         assert sg_whole.devices_per_host == 8
         assert sg_whole.bundle_resources == {"CPU": 1, "TPU": 8}
+        assert sg_whole.num_hosts == 2
+        assert sg_whole.num_bundles == 2
         assert len(sg_whole.bundle_label_selector) == 2
 
-        sg_per_device = ray.util.tpu._build_subslice_pg(
-            ["1", "0"],
-            0,
-            "v7x-slice",
-            "2x2x2",
-            "2x2x4",
-            4,
-            {"TPU": 1},
-            "SPREAD",
-            "",
-            None,
+        sg_per_device = ray.util.tpu.subslice_placement_group(
+            "2x2x2", "v7x", resources_per_bundle={"TPU": 1}
         )
+        assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
         assert sg_per_device.bundle_resources == {"CPU": 1, "TPU": 1}
+        assert sg_per_device.num_hosts == 2
+        assert sg_per_device.num_bundles == 16
         assert len(sg_per_device.bundle_label_selector) == 16
         assert [
             s["ray.io/tpu-worker-id"] for s in sg_per_device.bundle_label_selector
@@ -3125,14 +3131,19 @@ def test_subslice_placement_group_jax_env_vars(monkeypatch):
 
 def test_build_slice_worker_to_node_ignores_dead_nodes():
     """Verify _build_slice_worker_to_node ignores dead node entries (Alive=False)."""
-    labels = {
+    labels_0 = {
         ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-1",
         ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
         ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
     }
-    alive_node = {"NodeID": "alive_0", "Alive": True, "Labels": labels}
-    dead_node = {"NodeID": "dead_0", "Alive": False, "Labels": labels}
-    sw = ray.util.tpu._build_slice_worker_to_node([alive_node, dead_node])
+    labels_1 = {**labels_0, ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "1"}
+    alive_node = {"NodeID": "alive_0", "Alive": True, "Labels": labels_0}
+    dead_node_0 = {"NodeID": "dead_0", "Alive": False, "Labels": labels_0}
+    dead_node_1 = {"NodeID": "dead_1", "Alive": False, "Labels": labels_1}
+    sw = ray.util.tpu._build_slice_worker_to_node(
+        [alive_node, dead_node_0, dead_node_1]
+    )
+    assert len(sw) == 1
     assert sw[("slice-1", "0")]["NodeID"] == "alive_0"
 
 

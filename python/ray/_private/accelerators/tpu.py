@@ -63,7 +63,6 @@ TPU_PROCESS_ADDRESSES_ENV_VAR = "TPU_PROCESS_ADDRESSES"
 TPU_PROCESS_PORT_ENV_VAR = "TPU_PROCESS_PORT"
 TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
 TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
-CLOUD_TPU_TASK_ID_ENV_VAR = "CLOUD_TPU_TASK_ID"
 
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
@@ -393,7 +392,9 @@ def _get_physical_worker_id_from_coords(
 
     Each worker owns a block of chips sized by the parent topology's chip
     grid divided by its worker grid; the worker's mesh position is the
-    minimum 2D (x, y) or 3D (x, y, z) chip coordinate divided by that block size.
+    minimum 2D (x, y) or 3D (x, y, z) chip coordinate divided by that block size,
+    linearized in Z-major, Y-intermediate, X-minor order (``Hz * (By * Bx) + Hy * Bx + Hx``)
+    matching JAX ``mesh_utils`` coordinate ordering.
     *coords_list* entries are [x, y] (2D) or [x, y, z] (3D). Raises
     ``ValueError`` if the coordinates don't match the topology.
     """
