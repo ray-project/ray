@@ -799,6 +799,29 @@
           --num-workers=4 --prefetch-batches=4
           --limit-batches-per-worker=100 --pin-memory --num-runs=3
 
+    # Pull-vs-push streaming split comparisons: each runs the variant with
+    # the pull-based split, then the push-based one. The memory variant
+    # fails if push's peak object store usage exceeds pull's by >10%; the
+    # throughput variant fails if push's steady throughput drops below 90%
+    # of pull's.
+    - __suffix__: peak_object_store_memory.pull_vs_push
+      run:
+        timeout: 3600
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=50 --step-sleep-s=2.0
+          --num-runs=3 --compare-pull-push --max-peak-object-store-ratio=1.1
+
+    - __suffix__: throughput.pull_vs_push
+      run:
+        timeout: 3600
+        script: >
+          python training_ingest_regression_test/main.py
+          --num-workers=4 --prefetch-batches=4
+          --limit-batches-per-worker=100 --num-runs=3
+          --compare-pull-push --min-throughput-ratio=0.9
+
 #################
 # Iteration tests
 #################

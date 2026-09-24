@@ -8,6 +8,9 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray.data._internal.iterator.push_based_split_iterator import (
+    PushSplitReceiverMixin,
+)
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
     _create_split_dataset,
@@ -70,6 +73,13 @@ def test_flow_wait_for_room_wakes_on_report():
 # ---------------------------------------------------------------------------
 
 
+@ray.remote(num_cpus=0)
+class _Receiver(PushSplitReceiverMixin):
+    # No iterator creates receive state for these keys, so any deliveries
+    # are dropped.
+    pass
+
+
 def _get(ref: Any) -> Any:
     # Actor method results are untyped; keep type checkers from assuming the
     # list overload of ray.get.
@@ -79,7 +89,17 @@ def _get(ref: Any) -> Any:
 def _make_coordinator(num_rows: int = 100, n: int = 2):
     split_dataset = _create_split_dataset(ray.data.range(num_rows), n, equal=True)
     # pyrefly: ignore[missing-attribute]  # @ray.remote hides ActorClass.options
-    return PushSplitCoordinator.options(max_concurrency=n + 2).remote(split_dataset, n)
+    coordinator = PushSplitCoordinator.options(max_concurrency=n + 2).remote(
+        split_dataset, n
+    )
+    ray.get(
+        [
+            # pyrefly: ignore[missing-attribute]  # @ray.remote hides .remote
+            coordinator.register.remote(i, _Receiver.remote(), key=f"test:{i}")
+            for i in range(n)
+        ]
+    )
+    return coordinator
 
 
 def test_barrier_starts_one_epoch_for_all_splits(ray_start_regular_shared):
@@ -125,6 +145,13 @@ def test_barrier_releases_when_teardown_fails(ray_start_regular_shared):
     # Every split still gets the next epoch instead of hanging.
     refs = [coordinator.start_epoch.remote(i) for i in range(2)]
     assert ray.get(refs, timeout=60) == [1, 1]
+
+
+def test_register_rejects_out_of_range_split(ray_start_regular_shared):
+    coordinator = _make_coordinator()
+    receiver = _Receiver.remote()  # pyrefly: ignore[missing-attribute]
+    with pytest.raises(ValueError, match="split_idx must be between"):
+        _get(coordinator.register.remote(2, receiver, key="test:2"))
 
 
 def test_request_rows_only_updates_current_epoch(ray_start_regular_shared):

@@ -15,6 +15,10 @@ Release-test configurations:
 - ``throughput``: same config without the sleep. Pipeline is the
   rate-limiter so a pipeline-rate regression shows up. Cannot see the
   object store usage signal (consumer-side queues stay empty when consumer is fast).
+
+With ``--compare-pull-push``, each configuration runs first with the default
+pull-based streaming split, then with the push-based one, and the two are
+compared against ``--min-throughput-ratio`` / ``--max-peak-object-store-ratio``.
 """
 
 import argparse
@@ -347,11 +351,18 @@ def run_once(args: argparse.Namespace) -> Dict[str, float]:
         )
         datasets = {"train": ds}
 
+    dataset_config = None
+    if args.push_based_split:
+        from ray.train._internal.push_based_data_config import PushBasedDataConfig
+
+        dataset_config = PushBasedDataConfig()
+
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
         train_loop_config=train_loop_config,
         scaling_config=ScalingConfig(num_workers=args.num_workers, use_gpu=True),
         datasets=datasets,
+        dataset_config=dataset_config,
     )
 
     # Sample object-store usage continuously during the run so we catch
@@ -479,7 +490,35 @@ def main() -> None:
             "throughput numbers."
         ),
     )
+    p.add_argument(
+        "--push-based-split",
+        action="store_true",
+        help="Shard the dataset with the push-based streaming split.",
+    )
+    p.add_argument(
+        "--compare-pull-push",
+        action="store_true",
+        help=(
+            "Run with the pull-based split, then the push-based one, and "
+            "record both. Gated by --min-throughput-ratio and "
+            "--max-peak-object-store-ratio."
+        ),
+    )
+    p.add_argument(
+        "--min-throughput-ratio",
+        type=float,
+        default=None,
+        help="Fail if push steady throughput < this fraction of pull's.",
+    )
+    p.add_argument(
+        "--max-peak-object-store-ratio",
+        type=float,
+        default=None,
+        help="Fail if push peak object store usage > this multiple of pull's.",
+    )
     args = p.parse_args()
+    if args.compare_pull_push and args.push_based_split:
+        p.error("--compare-pull-push already runs the push-based split.")
 
     print(
         f"config: batch_size={BATCH_SIZE}  "
@@ -495,19 +534,70 @@ def main() -> None:
     # used for regression detection. Per-run inner samplers still record
     # their own peak_object_store_gib (different key) so we can compute
     # cross-run stdev for it.
-    def _run_all() -> Dict[str, float]:
+    def _run_all(run_args: argparse.Namespace) -> Dict[str, float]:
         runs: List[Dict[str, float]] = []
-        for i in range(args.num_runs):
-            m = run_once(args)
-            _print_run(f"Run {i + 1}/{args.num_runs}", m)
+        for i in range(run_args.num_runs):
+            m = run_once(run_args)
+            _print_run(f"Run {i + 1}/{run_args.num_runs}", m)
             runs.append(m)
-        if args.num_runs > 1:
+        if run_args.num_runs > 1:
             _print_summary(runs)
         return _aggregate(runs)
 
     benchmark = Benchmark()
-    benchmark.run_fn("training_ingest_regression_test", _run_all)
-    benchmark.write_result()
+    if not args.compare_pull_push:
+        benchmark.run_fn("training_ingest_regression_test", _run_all, args)
+        benchmark.write_result()
+        return
+
+    name = "training_ingest_regression_test"
+    pull_args = argparse.Namespace(**{**vars(args), "push_based_split": False})
+    push_args = argparse.Namespace(**{**vars(args), "push_based_split": True})
+    try:
+        benchmark.run_fn(f"{name}.pull", _run_all, pull_args)
+        benchmark.run_fn(f"{name}.push", _run_all, push_args)
+        _compare_pull_push(benchmark.result, name, args)
+    finally:
+        benchmark.write_result()
+    _check_pull_push(benchmark.result[f"{name}.comparison"], args)
+
+
+def _compare_pull_push(
+    result: Dict[str, Dict[str, float]], name: str, args: argparse.Namespace
+) -> None:
+    """Add a ``<name>.comparison`` case with push/pull ratios."""
+    pull, push = result[f"{name}.pull"], result[f"{name}.push"]
+    throughput_key = "steady_throughput_rows_s_mean"
+    memory_key = "peak_object_store_gib_mean"
+    comparison = {
+        "throughput_ratio": push[throughput_key] / pull[throughput_key],
+        "peak_object_store_ratio": push[memory_key] / max(pull[memory_key], 1e-9),
+    }
+    result[f"{name}.comparison"] = comparison
+    print(f"\n=== pull vs push ===\n  {comparison}")
+
+
+def _check_pull_push(comparison: Dict[str, float], args: argparse.Namespace) -> None:
+    failures = []
+    if (
+        args.min_throughput_ratio is not None
+        and comparison["throughput_ratio"] < args.min_throughput_ratio
+    ):
+        failures.append(
+            f"push steady throughput is {comparison['throughput_ratio']:.3f}x "
+            f"pull's (required >= {args.min_throughput_ratio})"
+        )
+    if (
+        args.max_peak_object_store_ratio is not None
+        and comparison["peak_object_store_ratio"] > args.max_peak_object_store_ratio
+    ):
+        failures.append(
+            f"push peak object store usage is "
+            f"{comparison['peak_object_store_ratio']:.3f}x pull's "
+            f"(required <= {args.max_peak_object_store_ratio})"
+        )
+    if failures:
+        raise SystemExit("Pull-vs-push check failed: " + "; ".join(failures))
 
 
 if __name__ == "__main__":

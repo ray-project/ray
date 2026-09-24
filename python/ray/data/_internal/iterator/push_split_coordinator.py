@@ -7,12 +7,17 @@ tracks a row-based prefetch window per split: each consumer declares a
 computes how many more rows the split may be sent. Bytes that are sent but
 not yet consumed feed the executor's external-consumer backpressure, so a
 fast producer can't run far ahead of slow consumers.
+
+One pusher thread per split sends that split's blocks, by value and
+sequence-numbered, to the registered consumer actor while its row window
+has room (see ``push_based_split_iterator.py`` for the consumer side).
 """
 
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.data.context import DataContext
@@ -25,6 +30,29 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
+
+
+@dataclass
+class _BlockPush:
+    """Wire header for one pushed block; the block itself travels by value
+    as a resolved top-level task arg."""
+
+    size_bytes: int
+    num_rows: int
+
+
+@dataclass
+class _EndOfEpoch:
+    epoch_id: int
+
+
+@dataclass
+class _ExecutorError:
+    error: Exception
+
+
+# Sequenced deliveries; errors arrive unsequenced (fail fast).
+_SequencedItem = Union[_BlockPush, _EndOfEpoch]
 
 
 def _create_split_dataset(
@@ -67,6 +95,12 @@ class _SplitFlow:
         self.rows_consumed = 0
         self.bytes_pushed = 0
         self.bytes_consumed = 0
+        # Observability (written by the split's pusher): time idle because
+        # the window was full (consumer-bound) vs. blocked on the executor's
+        # output (producer-bound).
+        self.blocks_pushed = 0
+        self.wait_demand_s = 0.0
+        self.wait_output_s = 0.0
 
     def report(self, target_rows: int, consumed_rows: int, consumed_bytes: int):
         with self.cond:
@@ -91,6 +125,7 @@ class _SplitFlow:
         with self.cond:
             self.rows_pushed += num_rows
             self.bytes_pushed += size_bytes
+            self.blocks_pushed += 1
 
     def finish(self) -> None:
         """Drop this split's contribution to flow and pacing state."""
@@ -108,9 +143,13 @@ class _SplitFlow:
 class PushSplitCoordinator:
     """Coordinator actor for a push-based streaming split.
 
-    Runs the streaming executor (one per epoch) and tracks each split's row
-    window, which gates how much may be sent to that split's consumer.
+    Runs the streaming executor (one per epoch) plus one pusher thread per
+    split, gated by that split's row window.
     """
+
+    # How often a pusher waiting for room re-checks its stop event; reports
+    # wake it immediately.
+    DEMAND_WAIT_TIMEOUT_S = 0.5
 
     def __init__(self, dataset: "Dataset", n: int):
         self._data_context = dataset.context.copy()
@@ -135,6 +174,11 @@ class PushSplitCoordinator:
         self._finished_splits: Set[int] = set()
         self._gen_epoch_error: Optional[Exception] = None
 
+        # split_idx -> (handle, key); see register().
+        self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, str]] = {}
+        self._pusher_threads: List[threading.Thread] = []
+        self._pusher_stop_events: Dict[int, threading.Event] = {}
+
         # Recreated every epoch, so a stale report can only land on the
         # previous epoch's discarded state.
         self._flows: Dict[int, _SplitFlow] = {i: _SplitFlow() for i in range(n)}
@@ -147,6 +191,26 @@ class PushSplitCoordinator:
     # ------------------------------------------------------------------
     # Control plane (actor tasks).
     # ------------------------------------------------------------------
+
+    def register(
+        self,
+        split_idx: int,
+        consumer: ray.actor.ActorHandle,
+        key: str,
+    ) -> None:
+        """Register the consumer actor for a split (called once per epoch;
+        re-registering is fine). The actor class must mix in
+        ``PushSplitReceiverMixin``."""
+        self._check_split_idx(split_idx)
+        if not hasattr(consumer, "_push_split_deliver"):
+            raise ValueError(
+                f"The consumer actor for split {split_idx} does not expose "
+                "the push receiver methods. Mix PushSplitReceiverMixin into "
+                "the actor class that hosts the PushBasedDataIterator."
+            )
+        with self._lock:
+            self._consumers[split_idx] = (consumer, key)
+        logger.debug(f"Registered consumer for split {split_idx}.")
 
     def start_epoch(self, split_idx: int) -> int:
         """Barrier: blocks until all n splits arrive, then starts the epoch."""
@@ -179,9 +243,15 @@ class PushSplitCoordinator:
 
     def notify_split_finished(self, epoch_id: int, split_idx: int) -> None:
         """Consumer stopped iterating ``epoch_id``; stale epochs are ignored."""
+        with self._lock:
+            if epoch_id != self._cur_epoch:
+                return
+            stop_event = self._pusher_stop_events.get(split_idx)
+        if stop_event is not None:
+            stop_event.set()
         self._finish_split(epoch_id, split_idx)
 
-    def debug_state(self) -> Dict[str, Dict[int, int]]:
+    def debug_state(self) -> Dict[str, Dict[int, Any]]:
         """Snapshot of per-split flow-control state, for debugging/tests."""
         flows = self._flows
         return {
@@ -190,6 +260,9 @@ class PushSplitCoordinator:
             "rows_consumed": {i: f.rows_consumed for i, f in flows.items()},
             "bytes_pushed": {i: f.bytes_pushed for i, f in flows.items()},
             "bytes_consumed": {i: f.bytes_consumed for i, f in flows.items()},
+            "blocks_pushed": {i: f.blocks_pushed for i, f in flows.items()},
+            "wait_demand_s": {i: f.wait_demand_s for i, f in flows.items()},
+            "wait_output_s": {i: f.wait_output_s for i, f in flows.items()},
         }
 
     def get_dataset_schema(self):
@@ -251,7 +324,8 @@ class PushSplitCoordinator:
 
         if is_last_arrival:
             # The last arrival tears down the previous epoch before the
-            # barrier releases. The barrier is released even if teardown
+            # barrier releases; done outside self._lock so exiting pushers
+            # can still take it. The barrier is released even if teardown
             # fails: otherwise the other splits would wait forever, and a
             # retry would push the arrival count below zero.
             try:
@@ -301,9 +375,21 @@ class PushSplitCoordinator:
         return self._cur_epoch
 
     def _teardown_epoch(self) -> None:
-        """Force-shutdown the previous epoch's executor."""
+        """Stop pushers, force-shutdown the executor, join pusher threads.
+
+        Shutdown must precede join: it is what unblocks a pusher waiting in
+        get_next.
+        """
+        for event in self._pusher_stop_events.values():
+            event.set()
         if self._current_executor is not None:
             self._current_executor.shutdown(force=True)
+        for thread in self._pusher_threads:
+            thread.join(timeout=10)
+            if thread.is_alive():
+                logger.warning(f"Pusher thread {thread.name} did not exit in 10s.")
+        self._pusher_threads = []
+        self._pusher_stop_events = {}
 
     def _try_start_new_epoch(self, starting_epoch: int) -> None:
         with self._lock:
@@ -313,6 +399,11 @@ class PushSplitCoordinator:
                 self._cur_epoch += 1
                 self._reset_state()
                 try:
+                    if len(self._consumers) != self._n:
+                        raise RuntimeError(
+                            f"Expected {self._n} registered consumers, got "
+                            f"{len(self._consumers)}."
+                        )
                     ds = self._base_dataset
                     self._current_executor = ds._create_executor()
                     self._output_iterator = ds._build_bundle_iterator(
@@ -321,6 +412,7 @@ class PushSplitCoordinator:
                     # Register the external consumers with the resource
                     # manager.
                     self._current_executor.set_external_consumer_bytes(0)
+                    self._spawn_pushers()
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} "
                         "clients synced)."
@@ -339,6 +431,107 @@ class PushSplitCoordinator:
         self._finished_splits.clear()
         self._gen_epoch_error = None
         self._flows = {i: _SplitFlow() for i in range(self._n)}
+
+    # ------------------------------------------------------------------
+    # Pushers (plain threads, one per split per epoch).
+    # ------------------------------------------------------------------
+
+    def _spawn_pushers(self) -> None:
+        self._pusher_stop_events = {i: threading.Event() for i in range(self._n)}
+        self._pusher_threads = []
+        for i in range(self._n):
+            thread = threading.Thread(
+                target=self._pusher_loop,
+                args=(self._cur_epoch, i, self._pusher_stop_events[i]),
+                name=f"push_split_pusher_{i}",
+                daemon=True,
+            )
+            thread.start()
+            self._pusher_threads.append(thread)
+
+    def _make_consumer_ops(self, epoch_id: int, split_idx: int):
+        """Build (push_block, push_eof, push_error) targeting the consumer's
+        PushSplitReceiverMixin methods."""
+        consumer, key = self._consumers[split_idx]
+
+        def push_block(seq, entry, size_bytes, num_rows):
+            # entry.ref is a top-level arg, so Ray resolves it and the
+            # consumer receives the Block by value — no ObjectRef crosses
+            # the wire, and the executor can free the block once delivered.
+            consumer._push_split_deliver.remote(
+                key, epoch_id, seq, _BlockPush(size_bytes, num_rows), entry.ref
+            )
+
+        def push_eof(seq):
+            consumer._push_split_deliver.remote(
+                key, epoch_id, seq, _EndOfEpoch(epoch_id)
+            )
+
+        def push_error(error):
+            consumer._push_split_deliver_error.remote(key, epoch_id, error)
+
+        return push_block, push_eof, push_error
+
+    def _pusher_loop(
+        self, epoch_id: int, split_idx: int, stop: threading.Event
+    ) -> None:
+        push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
+        output_iterator = self._output_iterator
+        assert output_iterator is not None
+        flow = self._flows[split_idx]
+        # Deliveries carry a sequence number; the receiver reorders them.
+        seq = 0
+        try:
+            while not stop.is_set():
+                # Wait for room in the window; a report wakes this
+                # immediately. A dead consumer stops reporting, which parks
+                # this thread with the split's remaining data kept in the
+                # executor.
+                # TODO(push-split): let a replacement worker resume a parked
+                # split mid-epoch.
+                t0 = time.monotonic()
+                has_room = flow.wait_for_room(self.DEMAND_WAIT_TIMEOUT_S)
+                if not has_room:
+                    flow.wait_demand_s += time.monotonic() - t0
+                    continue
+
+                # Blocks in the executor's output queue, registering this
+                # thread as a waiting consumer (preserving the executor's
+                # backpressure signals); raises StopIteration at end of
+                # stream. A multi-block bundle is sent whole.
+                t0 = time.monotonic()
+                bundle = output_iterator.get_next(split_idx)
+                flow.wait_output_s += time.monotonic() - t0
+                for entry in bundle.blocks:
+                    size_bytes = entry.metadata.size_bytes or 0
+                    num_rows = entry.metadata.num_rows
+                    if num_rows is None:
+                        # Unknown size: charge a full window so flow control
+                        # still sends one block at a time. The consumer
+                        # reports back this same count.
+                        num_rows = max(1, flow.target_rows)
+                    push_block(seq, entry, size_bytes, num_rows)
+                    seq += 1
+                    flow.record_push(num_rows, size_bytes)
+                self._update_external_consumer_bytes()
+        except StopIteration:
+            if not stop.is_set():
+                logger.debug(
+                    f"Split {split_idx} epoch {epoch_id} exhausted; sending EOF."
+                )
+                # EOF is sequenced too, so it cannot overtake blocks that
+                # are still fetching their args.
+                push_eof(seq)
+            return
+        except Exception as e:
+            if not stop.is_set():
+                logger.warning(f"Split {split_idx} epoch {epoch_id} pusher failed: {e}")
+                try:
+                    push_error(_ExecutorError(e))
+                except Exception:
+                    # e.g. unpicklable exception.
+                    push_error(_ExecutorError(RuntimeError(repr(e))))
+            return
 
     def _finish_split(self, epoch_id: int, split_idx: int) -> None:
         executor_to_shutdown = None

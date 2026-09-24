@@ -237,6 +237,33 @@ async def test_dataset_manager_shutdown_multiple_datasets(ray_start_4_cpus):
         remote_mock.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_push_based_split_coordinators_are_cleaned_up(ray_start_4_cpus):
+    """Push-based split coordinators are tracked for executor shutdown, the
+    same as pull-based ones."""
+    from ray.data._internal.iterator.push_based_split_iterator import (
+        PushBasedDataIterator,
+    )
+    from ray.train._internal.push_based_data_config import PushBasedDataConfig
+
+    NUM_TRAIN_WORKERS = 2
+    dataset_manager = DatasetManager(
+        datasets={"train": ray.data.range(100)},
+        data_config=PushBasedDataConfig(),
+        data_context=DataContext.get_current(),
+        world_size=NUM_TRAIN_WORKERS,
+        worker_node_ids=None,
+    )
+
+    shards = await get_dataset_shard_for_all_workers(
+        dataset_manager, "train", NUM_TRAIN_WORKERS
+    )
+    assert all(isinstance(shard, PushBasedDataIterator) for shard in shards)
+    assert dataset_manager._coordinator_actors == [shards[0]._coord_actor]
+
+    dataset_manager.shutdown_data_executors()
+
+
 if __name__ == "__main__":
     import sys
 
