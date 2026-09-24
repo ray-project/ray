@@ -72,7 +72,8 @@ def test_sort_sampling_starts_with_upstream_and_forwards_original_inputs(
     op.start(ExecutionOptions(), noop_counter())
 
     assert not op.supports_fusion()
-    assert not op.throttling_disabled()
+    # Opted out of resource allocation while sampling (see the method's comment).
+    assert op.throttling_disabled()
     op.add_input(bundles[0], 0)
     assert len(op.get_active_tasks()) == 1
     assert op.boundaries is None
@@ -97,6 +98,7 @@ def test_sort_sampling_starts_with_upstream_and_forwards_original_inputs(
     run_op_tasks_sync(op)
 
     assert op.boundaries is not None
+    assert not op.throttling_disabled()
     assert len(op.boundaries) == 1
     assert op.internal_input_queue_num_blocks() == 0
     assert op.internal_input_queue_num_bytes() == 0
@@ -169,11 +171,15 @@ def test_sort_sampling_samples_more_than_twenty_blocks(
     for bundle in bundles:
         op.add_input(bundle, 0)
 
-    assert op._next_sample_task_idx == len(bundles)
-    assert len(op.get_active_tasks()) == len(bundles)
+    # Submission is capped at the available parallelism; the rest wait in-op.
+    assert op._max_sample_tasks_in_flight is not None
+    assert len(op.get_active_tasks()) == op._max_sample_tasks_in_flight
+    assert op._next_sample_task_idx == op._max_sample_tasks_in_flight
+    assert op.progress_str() == f"sample: 0/{len(bundles)}"
     op.all_inputs_done()
     run_op_tasks_sync(op)
 
+    assert op._next_sample_task_idx == len(bundles)
     assert op.progress_str() == f"sample: {len(bundles)}/{len(bundles)}"
     while op.has_next():
         op.get_next().destroy_if_owned()
@@ -230,8 +236,11 @@ def test_sort_sampling_handles_all_empty_blocks(
 
 def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     ray_start_regular_shared_2_cpus,
+    restore_data_context,
 ):
     ctx = DataContext.get_current()
+    # One map task per input bundle so the task is visible right after add_input.
+    ctx.shuffle_input_batch_bytes = 0
     bundle = make_ref_bundles([[3, 1, 2]])[0]
     op = SortShuffleMapOp(
         InputDataBuffer(ctx, []),
@@ -287,10 +296,11 @@ def test_shuffle_reduce_preserves_partition_order(
 
 def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     ctx = DataContext.get_current()
-    ds = ray.data.range(10, override_num_blocks=2).sort("id")
-
+    # The dataset captures the context, so configure it first.
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.default_hash_shuffle_parallelism = 4
+    ds = ray.data.range(10, override_num_blocks=2).sort("id")
+
     dag = get_execution_plan(ds._logical_plan)[0].dag
     assert isinstance(dag, ShuffleReduceOp)
     assert dag._preserve_partition_order
@@ -308,9 +318,18 @@ def test_sort_planner_routes_to_shuffle_v2(restore_data_context):
     read_op_cls = type(ds._logical_plan.dag.input_dependencies[0])
     with mock.patch.object(read_op_cls, "estimated_num_outputs", return_value=None):
         dag = get_execution_plan(ds._logical_plan)[0].dag
-    assert dag.input_dependencies[0]._num_partitions == (
-        ctx.default_hash_shuffle_parallelism
-    )
+    fallback_map_op = dag.input_dependencies[0]
+    assert isinstance(fallback_map_op, SortShuffleMapOp)
+    assert fallback_map_op._num_partitions == ctx.default_hash_shuffle_parallelism
+
+    # A single partition needs no boundaries, so the sampling op is skipped.
+    ds_single = ray.data.range(10, override_num_blocks=1).sort("id")
+    dag = get_execution_plan(ds_single._logical_plan)[0].dag
+    single_map_op = dag.input_dependencies[0]
+    assert isinstance(single_map_op, SortShuffleMapOp)
+    assert single_map_op._num_partitions == 1
+    assert single_map_op.boundaries == []
+    assert not isinstance(single_map_op.input_dependencies[0], SortSamplingOp)
 
     ds_with_boundaries = ray.data.range(10, override_num_blocks=2).sort(
         "id", boundaries=[5]
@@ -395,7 +414,7 @@ def test_sort_shuffle_v2_promotes_compatible_block_schemas(
     # Keep both blocks in one range partition so the shuffle map task must
     # concatenate their null and int64 column types.
     result = (
-        ray.data.from_arrow_refs([ray.put(null_block), ray.put(int_block)])
+        ray.data.from_arrow([null_block, int_block])
         .sort("A", boundaries=[100])
         .take_all()
     )
@@ -431,7 +450,25 @@ def test_sort_shuffle_v2_samples_all_blocks_to_avoid_skew(
     assert [row["id"] for row in result.iter_rows()] == list(range(num_rows))
     assert result.num_blocks() == num_output_partitions
     block_num_rows = result._block_num_rows()
-    assert max(block_num_rows) - min(block_num_rows) <= 1
+    # Every row is sampled, so boundaries are exact deciles; a boundary value
+    # itself may land on either side, hence one row of slack per side.
+    assert max(block_num_rows) - min(block_num_rows) <= 2
+
+
+def test_sort_shuffle_v2_splits_output_to_target_block_size(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    # ~80 KB of int64 rows over 2 partitions; force ~8 KB output blocks.
+    ctx.target_max_block_size = 8 * 1024
+
+    result = ray.data.range(10_000, override_num_blocks=2).sort("id").materialize()
+
+    assert [row["id"] for row in result.iter_rows()] == list(range(10_000))
+    assert result.num_blocks() > 2
+    assert max(result._block_num_rows()) <= 2 * ctx.target_max_block_size // 8
 
 
 def test_sort_shuffle_v2_with_user_boundaries(
