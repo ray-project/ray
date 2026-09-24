@@ -241,13 +241,17 @@ steps:
       # token is fetched only inside the branch that applies.
       #
       # The stale-checkout guard compares against FETCH_HEAD, the same pattern the
-      # validate step uses. A failed fetch fails the step. A failed diff returns
-      # non-zero like a real difference, so the step skips rather than apply an
-      # unverified file.
+      # validate step uses. The fetch runs only on master builds, since other
+      # branches skip before it. A failed fetch skips the step with its own
+      # message rather than failing it: commands in an `elif` condition are
+      # exempt from `set -e`, and because `apply` converges, the next run picks
+      # up whatever this one missed. A failed diff returns non-zero like a real
+      # difference, so the step skips rather than apply an unverified file.
       - |
-        git fetch -q origin master
         if [ "$${BUILDKITE_BRANCH}" != "master" ]; then
           echo "skipping redirect apply: branch is $${BUILDKITE_BRANCH}, not master"
+        elif ! git fetch -q origin master; then
+          echo "skipping redirect apply: couldn't fetch origin/master to check this commit's doc/redirects/ against it"
         elif ! git diff --quiet HEAD FETCH_HEAD -- doc/redirects/; then
           echo "skipping redirect apply: doc/redirects/ at this commit differs from origin/master, so applying it could roll back newer redirects"
         else
