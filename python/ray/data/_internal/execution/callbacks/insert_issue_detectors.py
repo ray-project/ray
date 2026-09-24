@@ -20,14 +20,14 @@ class IssueDetectionExecutionCallback(ExecutionCallback):
 
     def on_execution_step(self, executor: "StreamingExecutor"):
         # Invoke all issue detectors
-        executor._issue_detector_manager.invoke_detectors()
+        executor._issue_detector_manager.invoke_periodic_detection()
 
     def after_execution_succeeds(self, executor: "StreamingExecutor"):
         # Invoke detectors that require final execution metrics.
-        executor._issue_detector_manager.invoke_detectors_on_execution_end()
+        executor._issue_detector_manager.invoke_final_detection()
 
     def after_execution_fails(
         self, executor: "StreamingExecutor", error: Exception
     ) -> None:
         # Invoke detectors that require final execution metrics.
-        executor._issue_detector_manager.invoke_detectors_on_execution_end()
+        executor._issue_detector_manager.invoke_final_detection()

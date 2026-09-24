@@ -21,12 +21,12 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 HIGH_MEMORY_PERIODIC_WARNING = """
-Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray
-only requests {initial_memory_request} per task at the start of the pipeline.
+Operator '{op_name}' uses {memory_per_task} of memory per worker on average, but Ray
+only requests {initial_memory_request} per worker at the start of the pipeline.
 
 To avoid out-of-memory errors, consider setting `memory={recommended_memory_bytes}`
 ({recommended_memory}) in the appropriate function or method call. (This might be
-unnecessary if the number of concurrent tasks is low.)
+unnecessary if the number of concurrent workers is low.)
 
 To change the frequency of this warning, set
 `DataContext.get_current().issue_detectors_config.high_memory_detector_config.detection_time_interval_s`,
@@ -35,11 +35,11 @@ or disable the warning by setting value to -1. (current value:
 """  # noqa: E501
 
 HIGH_MEMORY_FINAL_WARNING = """
-Operator '{op_name}' used up to {max_memory} of memory per worker.
-The configured logical memory was {memory_configuration}. To avoid out-of-memory errors, set
+Operator '{op_name}' used up to {max_memory} of memory per worker. The configured
+logical memory was {memory_configuration}. To avoid out-of-memory errors, set
 `memory={recommended_memory_bytes}` ({recommended_memory}) in the appropriate
 function or method call.
-"""  # noqa: E501
+"""
 
 
 @dataclass
@@ -88,14 +88,6 @@ class HighMemoryIssueDetector(IssueDetector):
         issues = []
         for op in self._operators:
             if not isinstance(op, MapOperator):
-                continue
-
-            if op.has_completed():
-                issue = self._detect_issue_from_final_metrics(
-                    op, self._initial_memory_requests[op]
-                )
-                if issue is not None:
-                    issues.append(issue)
                 continue
 
             max_uss_bytes = op.metrics.max_uss_bytes

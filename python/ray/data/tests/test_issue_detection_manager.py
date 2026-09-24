@@ -118,7 +118,7 @@ def test_report_issues():
     assert detector.get_detected_issues() == expected_issues
 
 
-def test_invoke_detectors_on_execution_end():
+def test_invoke_final_detection():
     ctx = DataContext.get_current()
     executor = StreamingExecutor(ctx)
     executor._topology = {}
@@ -132,10 +132,10 @@ def test_invoke_detectors_on_execution_end():
         issue_detector: float("inf"),
     }
 
-    detector.invoke_detectors()
+    detector.invoke_periodic_detection()
     issue_detector.detect.assert_not_called()
 
-    detector.invoke_detectors_on_execution_end()
+    detector.invoke_final_detection()
     issue_detector.detect_on_execution_end.assert_called_once_with()
 
 
@@ -148,7 +148,7 @@ def test_execution_end_detection_skips_disabled_detectors():
     issue_detector.detection_time_interval_s.return_value = -1
     detector._issue_detectors = [issue_detector]
 
-    detector.invoke_detectors_on_execution_end()
+    detector.invoke_final_detection()
 
     issue_detector.detect_on_execution_end.assert_not_called()
 
@@ -168,9 +168,7 @@ def test_issue_detection_callback_invokes_execution_end_detection(
 
     getattr(callback, callback_name)(executor, *callback_args)
 
-    (
-        executor._issue_detector_manager.invoke_detectors_on_execution_end.assert_called_once_with()
-    )
+    executor._issue_detector_manager.invoke_final_detection.assert_called_once_with()
 
 
 def test_issue_detection_callback_precedes_usage_callback():
