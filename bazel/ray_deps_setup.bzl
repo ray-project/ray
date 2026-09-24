@@ -114,16 +114,18 @@ def ray_deps_setup():
     # https://github.com/ray-project/ray/issues/14117
     # This is copied from grpc's bazel/grpc_deps.bzl
     #
-    # Pinned grpc version: v23.4
+    # Pinned protobuf version: v29.6. This is the first major whose Bazel rules
+    # (//bazel:*.bzl) rules_java 8.x loads from, and rules_java 8.x is what
+    # Bazel 8 needs. It is newer than what grpc 1.58.0 declares, so grpc's own
+    # third_party/protobuf.patch no longer applies and is not used.
+    #
+    # Note: this is only the C++ runtime / build-time protobuf. The protoc that
+    # generates Ray's Python and Java bindings is com_google_protobuf_rules_proto_grpc
+    # below, and is what sets the runtime protobuf floor for users.
     auto_http_archive(
         name = "com_google_protobuf",
-        sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
-        url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
-        patches = [
-            "@com_github_grpc_grpc//third_party:protobuf.patch",
-            "//thirdparty/patches:protobuf-bazel7.patch",
-        ],
-        patch_args = ["-p1"],
+        sha256 = "2af2352d9e89992ae634257a16cff4c5143c8504db972307e49e61ed1047334e",
+        url = "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v29.6.tar.gz",
     )
 
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
@@ -206,13 +208,6 @@ def ray_deps_setup():
         name = "bazel_common",
         url = "https://github.com/google/bazel-common/archive/084aadd3b854cad5d5e754a7e7d958ac531e6801.tar.gz",
         sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
-    )
-
-    auto_http_archive(
-        name = "bazel_skylib",
-        sha256 = "9f38886a40548c6e96c106b752f242130ee11aaa068a56ba7e56f4511f33e4f2",
-        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.6.1/bazel-skylib-1.6.1.tar.gz",
-        strip_prefix = None
     )
 
     # Declare org_lzma_lzma before com_github_nelhage_rules_boost so that
@@ -322,11 +317,11 @@ def ray_deps_setup():
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
     #
-    # TODO(owner): Upgrade abseil to latest version after protobuf updated, which requires to upgrade `rules_cc` first.
+    # Matches what grpc 1.69.0 declares.
     auto_http_archive(
         name = "com_google_absl",
-        sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
+        sha256 = "f50e5ac311a81382da7fa75b97310e4b9006474f9560ac46f54a9967f07d4ae3",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20240722.0.tar.gz",
         patches = [
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@io_ray//thirdparty/patches:abseil-cpp-shadow.patch",
@@ -350,16 +345,13 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.58.0.tar.gz",
-        sha256 = "ec64fdab22726d50fc056474dd29401d914cc616f53ab8f2fe4866772881d581",
+        # 1.69.0 is the first release whose grpc_deps.bzl pins protobuf 29
+        # (and abseil 20240722.0). Older gRPC builds a standalone @upb that
+        # does not compile against protobuf 29's descriptor.proto.
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.69.0.tar.gz",
+        sha256 = "cd256d91781911d46a57506978b3979bfee45d5086a1b6668a3ae19c5e77f8dc",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
-            # Work around bazelbuild/bazel#21592: with layering_check and
-            # non-sandbox/local spawn, clang can record transitive *.cppmap files
-            # in .d files, which Bazel then reports as undeclared direct deps.
-            # Fixed in Bazel 7.3.0. LLVM used the same workaround by disabling
-            # layering_check in Bazel overlays (llvm/llvm-project@5bba176).
-            "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
             "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
@@ -404,8 +396,8 @@ def ray_deps_setup():
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "b21994a857a7aa6d5256ffe355c735ad4c286de44c6c81dfc04edc41a8feaeef",
-        url = "https://github.com/google/boringssl/archive/2ff4b968a7e0cfee66d9f151cb95635b43dc1d5b.tar.gz",
+        sha256 = "c70d519e4ee709b7a74410a5e3a937428b8198d793a3d771be3dd2086ae167c8",
+        url = "https://github.com/google/boringssl/archive/b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6.tar.gz",
     )
 
     # The protobuf version we use to auto generate python and java code.
@@ -414,6 +406,16 @@ def ray_deps_setup():
     # code generated by protoc of version X can be used with protobuf library of version >= X.
     # So the version here effectively determines the lower bound of python/java
     # protobuf library that Ray supports.
+    # Declared before protobuf_deps() so its maybe() skips rules_pkg 1.0.1.
+    # 0.9.1 is the ceiling: the v3.20.3 protobuf below loads the root
+    # @rules_pkg//:providers.bzl stub, which rules_pkg 0.10.0 deleted.
+    # Protobuf 29 only uses the //pkg: paths, which 0.9.1 also has.
+    auto_http_archive(
+        name = "rules_pkg",
+        url = "https://github.com/bazelbuild/rules_pkg/releases/download/0.9.1/rules_pkg-0.9.1.tar.gz",
+        sha256 = "8f9ee2dc10c1ae514ee599a8b42ed99fa262b757058f65ad3c384289ff70c4b8",
+        strip_prefix = None,
+    )
     auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
         url = "https://github.com/protocolbuffers/protobuf/archive/v3.20.3.tar.gz",

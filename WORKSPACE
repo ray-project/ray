@@ -10,11 +10,35 @@ http_archive(
     ],
 )
 
+# bazel_skylib, rules_cc and rules_java are declared up front, before anything
+# loads from them. The first declaration of a repo wins: the maybe() calls in
+# py_repositories(), protobuf_deps() and rules_java_dependencies() skip theirs,
+# and a later plain http_archive is ignored once the repo has been loaded.
+# Without this, rules_python 0.40.0 pulls bazel_skylib 1.3.0 and rules_cc
+# 0.0.13, both too old for protobuf 29 (it needs paths.is_normalized() from
+# skylib 1.7.0).
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "bc283cdfcd526a52c3201279cda4bc298652efa898b10b4db0837dc51652756f",
+    urls = [
+        "https://github.com/bazelbuild/bazel-skylib/releases/download/1.7.1/bazel-skylib-1.7.1.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "rules_cc",
+    sha256 = "bbf1ae2f83305b7053b11e4467d317a7ba3517a12cef608543c1b1c5bf48a4df",
+    strip_prefix = "rules_cc-0.0.16",
+    urls = [
+        "https://github.com/bazelbuild/rules_cc/releases/download/0.0.16/rules_cc-0.0.16.tar.gz",
+    ],
+)
+
 http_archive(
     name = "rules_java",
-    sha256 = "302bcd9592377bf9befc8e41aa97ec02df12813d47af9979e4764f3ffdcc5da8",
+    sha256 = "bbe7d94360cc9ed4607ec5fd94995fd1ec41e84257020b6f09e64055281ecb12",
     urls = [
-        "https://github.com/bazelbuild/rules_java/releases/download/7.12.4/rules_java-7.12.4.tar.gz",
+        "https://github.com/bazelbuild/rules_java/releases/download/8.14.0/rules_java-8.14.0.tar.gz",
     ],
 )
 
@@ -38,15 +62,28 @@ load("@rules_python//python:repositories.bzl", "py_repositories")
 
 py_repositories()
 
-load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
-
-rules_java_dependencies()
-
-rules_java_toolchains()
-
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
+
+# Must run after ray_deps_setup(): rules_java_dependencies() declares its own
+# com_google_protobuf (29.0-rc2) through maybe(), and would otherwise replace
+# Ray's pin.
+load("@rules_java//java:rules_java_deps.bzl", "rules_java_dependencies")
+
+rules_java_dependencies()
+
+load("@bazel_features//:deps.bzl", "bazel_features_deps")
+
+bazel_features_deps()
+
+load("@com_google_protobuf//bazel/private:proto_bazel_features.bzl", "proto_bazel_features")  # buildifier: disable=bzl-visibility
+
+proto_bazel_features(name = "proto_bazel_features")
+
+load("@rules_java//java:repositories.bzl", "rules_java_toolchains")
+
+rules_java_toolchains()
 
 load("//bazel:ray_deps_build_all.bzl", "ray_deps_build_all")
 
