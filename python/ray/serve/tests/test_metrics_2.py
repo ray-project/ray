@@ -15,7 +15,11 @@ from ray._common.test_utils import (
     fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    SERVE_NAMESPACE,
+    SERVE_PROXY_NAME,
+)
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
@@ -24,6 +28,7 @@ from ray.serve._private.test_utils import (
     ping_grpc_call_method,
     skip_if_haproxy,
 )
+from ray.serve._private.utils import format_actor_name
 from ray.serve.handle import DeploymentHandle
 from ray.serve.metrics import Counter, Gauge, Histogram
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
@@ -1024,7 +1029,8 @@ class TestProxyStateMetrics:
         )
 
     def test_proxy_shutdown_duration_metric(self, metrics_start_shutdown):
-        """Test that proxy shutdown duration metric is recorded when proxy shuts down."""
+        """Test that the shutdown duration is recorded when a proxy is stopped and
+        replaced, which is the path where the controller outlives the proxy."""
 
         @serve.deployment
         def f():
@@ -1043,8 +1049,14 @@ class TestProxyStateMetrics:
             expected_tags={},
         )
 
-        # Shutdown serve, which will trigger proxy shutdown
-        serve.shutdown()
+        # Kill the proxy so the controller stops it and starts a replacement. Going
+        # through serve.shutdown() races the controller against its own exit: it
+        # records the duration in the tick that kills itself, too late to export.
+        node_id = ray.get_runtime_context().get_node_id()
+        proxy = ray.get_actor(
+            format_actor_name(SERVE_PROXY_NAME, node_id), namespace=SERVE_NAMESPACE
+        )
+        ray.kill(proxy, no_restart=True)
 
         # Wait for the shutdown duration metric to be recorded
         # The histogram metric will have _sum and _count suffixes

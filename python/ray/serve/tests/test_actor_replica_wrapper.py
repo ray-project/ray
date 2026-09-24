@@ -77,17 +77,19 @@ class SlotReservationActor:
 
 @ray.remote(num_cpus=0)
 class BlockingReserveActor:
-    """Actor whose reserve_slot blocks on a SignalActor.
+    """Actor whose reserve_slot signals entry, then blocks on a SignalActor.
 
     Records every release_slot token it receives so a test can verify the
     cancellation cleanup path in RunningReplica.reserve_slot.
     """
 
-    def __init__(self, signal_actor):
+    def __init__(self, signal_actor, executing_signal_actor):
         self._signal = signal_actor
+        self._executing_signal = executing_signal_actor
         self._released_tokens = []
 
     async def reserve_slot(self, request_metadata, slot_token: str):
+        await self._executing_signal.send.remote()
         await self._signal.wait.remote()
         return True, 1
 
@@ -403,17 +405,19 @@ async def test_reserve_slot_cancellation_releases_slot_on_actor(ray_instance):
     follow-up release_slot.remote(token) so the actor doesn't leak the slot.
     """
     signal = SignalActor.remote()
+    executing_signal = SignalActor.remote()
     replica, actor = _spawn_running_replica(
-        BlockingReserveActor, "blocking-replica", signal
+        BlockingReserveActor, "blocking-replica", signal, executing_signal
     )
 
     task = get_or_create_event_loop().create_task(
         replica.reserve_slot(_dummy_request_metadata())
     )
 
-    # Let the actor enter reserve_slot and start awaiting the signal.
-    _, pending = await asyncio.wait([task], timeout=0.5)
-    assert len(pending) == 1
+    # Wait for the actor to actually enter reserve_slot. A fixed deadline does
+    # not cover actor startup, which reaches tens of seconds on a loaded host.
+    await executing_signal.wait.remote()
+    assert not task.done()
 
     task.cancel()
     with pytest.raises(asyncio.CancelledError):

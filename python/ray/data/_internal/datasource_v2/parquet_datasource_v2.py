@@ -17,28 +17,26 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    ParquetDatasource,
-    check_for_legacy_tensor_type,
-)
 from ray.data._internal.datasource_v2.datasource_v2 import (
     DatasourceCategory,
-    DataSourceV2,
+    FileDataSourceV2,
 )
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.readers.file_reader import (
-    INCLUDE_PATHS_COLUMN_NAME,
+from ray.data._internal.datasource_v2.parquet_utils import (
+    PARQUET_FILE_EXTENSIONS,
+    check_for_legacy_tensor_type,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     ParquetInMemorySizeEstimator,
 )
+from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+    PathColumn,
+    RowHashColumn,
+    SynthesizedColumn,
+)
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.util import _is_local_scheme
-from ray.data.checkpoint.generated_id import (
-    GENERATED_ID_COLUMN_TYPE,
-    get_generated_id_column_name,
-)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -58,7 +56,7 @@ logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
-class ParquetDatasourceV2(DataSourceV2[FileManifest]):
+class ParquetDatasourceV2(FileDataSourceV2):
     """V2 Parquet datasource.
 
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the
@@ -98,7 +96,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._paths: List[str] = resolved_paths
         self._filesystem = resolved_filesystem
         self._partitioning = partitioning
-        self._file_extensions = file_extensions or ParquetDatasource._FILE_EXTENSIONS
+        self._file_extensions = file_extensions or PARQUET_FILE_EXTENSIONS
         self._ignore_missing_paths = ignore_missing_paths
         # Resolve "skip_paths" through the same path normalization as the
         # input paths so exact-match comparison against the resolved paths the
@@ -123,8 +121,15 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             self._skip_paths = frozenset(resolved_skip_paths)
         else:
             self._skip_paths = frozenset()
-        self._include_paths = include_paths
-        self._include_row_hash = include_row_hash
+        # ``include_paths`` / ``include_row_hash`` become the columns the
+        # reader appends to every batch; the scanner and reader only ever see
+        # this tuple.
+        synthesized_columns: List[SynthesizedColumn] = []
+        if include_paths:
+            synthesized_columns.append(PathColumn())
+        if include_row_hash:
+            synthesized_columns.append(RowHashColumn())
+        self._synthesized_columns = tuple(synthesized_columns)
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
         # ``pds.ParquetFileFormat`` kwargs forwarded from the deprecated
@@ -142,7 +147,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._paths
 
     @property
-    def filesystem(self) -> Optional["FileSystem"]:
+    def filesystem(self) -> "FileSystem":
         return self._filesystem
 
     @property
@@ -160,10 +165,6 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
     @property
     def skip_paths(self) -> "frozenset[str]":
         return self._skip_paths
-
-    @property
-    def include_paths(self) -> bool:
-        return self._include_paths
 
     @property
     def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
@@ -339,27 +340,16 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))
 
-        if (
-            self._include_paths
-            and schema.get_field_index(INCLUDE_PATHS_COLUMN_NAME) == -1
-        ):
-            schema = schema.append(pa.field(INCLUDE_PATHS_COLUMN_NAME, pa.string()))
-
-        if self._include_row_hash:
-            # ``row_hash`` is synthesized post-read as ``uint64``. Replace
-            # the field type when the file already has a ``row_hash``
-            # column (matches V1 ``_derive_schema``); otherwise append.
-            idx = schema.get_field_index("row_hash")
+        for column in self._synthesized_columns:
+            # Synthesized columns (``path``, ``row_hash``) are appended
+            # post-read with the column's own type. Replace the field type
+            # when the file already has a column of that name (matches V1
+            # ``_derive_schema`` for ``row_hash``); otherwise append.
+            idx = schema.get_field_index(column.name)
             if idx == -1:
-                schema = schema.append(pa.field("row_hash", pa.uint64()))
-            elif schema.field(idx).type != pa.uint64():
-                schema = schema.set(idx, pa.field("row_hash", pa.uint64()))
-
-        generated_id = get_generated_id_column_name()
-        if generated_id and schema.get_field_index(generated_id) == -1:
-            # Synthesized post-read for generated-ID checkpointing; a
-            # colliding on-disk column is rejected at read time.
-            schema = schema.append(pa.field(generated_id, GENERATED_ID_COLUMN_TYPE))
+                schema = schema.append(pa.field(column.name, column.type))
+            elif schema.field(idx).type != column.type:
+                schema = schema.set(idx, pa.field(column.name, column.type))
 
         check_for_legacy_tensor_type(schema)
         return schema
@@ -379,8 +369,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             schema=schema,
             filesystem=filesystem or self._filesystem,
             partitioning=partitioning,
-            include_paths=self._include_paths,
-            include_row_hash=self._include_row_hash,
+            synthesized_columns=self._synthesized_columns,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
             target_block_size=DataContext.get_current().target_max_block_size,

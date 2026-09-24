@@ -238,6 +238,15 @@ class MultiplexMixin:
         self._pending_requests_by_model_id.pop(model_id, None)
         return None
 
+    def _discard_multiplexed_replica_ids_on_replica_actor_died(
+        self, replica_id: ReplicaID
+    ):
+        """Remove the replica ID from the multiplexed model ID mapping.
+        This is called when a replica actor dies.
+        """
+        for id_set in self._multiplexed_model_id_to_replica_ids.values():
+            id_set.discard(replica_id)
+
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
@@ -797,6 +806,8 @@ class RequestRouter(ABC):
         self._queue_len_gauge_last_update.pop(replica_id, None)
         if hasattr(self, "_discard_colocated_replica_ids_on_replica_actor_died"):
             self._discard_colocated_replica_ids_on_replica_actor_died(replica_id)
+        if hasattr(self, "_discard_multiplexed_replica_ids_on_replica_actor_died"):
+            self._discard_multiplexed_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         """Invalidate cache entry so active probing is required for the next request."""
