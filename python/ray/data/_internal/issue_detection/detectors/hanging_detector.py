@@ -194,7 +194,7 @@ class HangingExecutionIssueDetector(IssueDetector):
             start_time_hanging=task_info.last_updated,
         )
 
-    def detect(self) -> List[Issue]:
+    def detect_periodic(self) -> List[Issue]:
 
         issues: List[Issue] = []
         # Build fresh maps each cycle so that tasks which finished or

@@ -26,6 +26,7 @@ from ray._common.test_utils import (
 )
 from ray._common.utils import TimerBase
 from ray.actor import ActorHandle
+from ray.exceptions import TaskCancelledError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
     CreatePlacementGroupRequest,
@@ -67,6 +68,8 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+# Created by serve_instance_with_signal in ray/serve/tests/conftest.py.
+SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
 
 
@@ -493,6 +496,11 @@ class MockDeploymentActorWrapper:
         self.killed = True
 
 
+# Gang PG names passed to `MockReplicaActorWrapper.remove_gang_placement_group`.
+# The call is a staticmethod, so there is no instance to record it on.
+REMOVED_GANG_PG_NAMES: List[str] = []
+
+
 class MockReplicaActorWrapper:
     def __init__(
         self,
@@ -783,6 +791,10 @@ class MockReplicaActorWrapper:
     def check_stopped(self) -> bool:
         return self.done_stopping
 
+    @staticmethod
+    def remove_gang_placement_group(pg_name: str):
+        REMOVED_GANG_PG_NAMES.append(pg_name)
+
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
@@ -827,7 +839,14 @@ def check_ray_stopped():
 
 
 def check_ray_started():
-    return requests.get("http://localhost:8265/api/ray/version").status_code == 200
+    from ray._private.test_utils import request_with_auth_token
+
+    return (
+        request_with_auth_token(
+            "GET", "http://localhost:8265/api/ray/version"
+        ).status_code
+        == 200
+    )
 
 
 def check_deployment_status(
@@ -1170,7 +1189,9 @@ async def send_signal_on_cancellation(signal_actor: ActorHandle):
     try:
         yield
         await asyncio.sleep(100)
-    except asyncio.CancelledError:
+    except (asyncio.CancelledError, TaskCancelledError):
+        # A cancelled task surfaces as TaskCancelledError on an in-flight
+        # `.remote()` await, which is not an asyncio.CancelledError.
         cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]

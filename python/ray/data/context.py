@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
+from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI, RayDeprecationWarning
@@ -118,7 +119,7 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
 )
 
 DEFAULT_SHUFFLE_STRATEGY = os.environ.get(
-    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.HASH_SHUFFLE
+    "RAY_DATA_DEFAULT_SHUFFLE_STRATEGY", ShuffleStrategy.SHUFFLE_V2
 )
 
 DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = env_integer(
@@ -185,6 +186,10 @@ DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
+
+DEFAULT_ACCURATE_MAP_PHASE_TIMING = False
+
+DEFAULT_PER_STAGE_MAP_TIMING = False
 
 DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS", "0")))
 
@@ -308,7 +313,7 @@ DEFAULT_MAX_CONSECUTIVE_ACTOR_INIT_DEATHS = env_integer(
 
 DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
 
-DEFAULT_MAX_MAP_RETRIES = 3
+DEFAULT_MAX_MAP_RETRIES = 0
 
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
@@ -316,6 +321,18 @@ DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
 
 DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
+)
+
+DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
+    "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
+)
+
+DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO = env_float(
+    "RAY_DATA_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO", None
+)
+
+DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION = env_float(
+    "RAY_DATA_OBJECT_STORE_MEMORY_PRESSURE_FRACTION", None
 )
 
 DEFAULT_MAX_ERRORED_BLOCKS = 0
@@ -355,6 +372,12 @@ DEFAULT_ENABLE_PER_NODE_METRICS = bool(
     int(os.environ.get("RAY_DATA_PER_NODE_METRICS", "0"))
 )
 
+# Retain the stats summary of each finished execution so it can be read back with
+# `ray.data.list_stats_summaries()`, disabled by default.
+DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION = env_bool(
+    "RAY_DATA_ENABLE_STATS_SUMMARY_COLLECTION", False
+)
+
 DEFAULT_USE_LEGACY_DATASET_IDS = env_bool("RAY_DATA_USE_LEGACY_DATASET_IDS", False)
 
 DEFAULT_ISOLATE_READ_WORKERS = env_bool("RAY_DATA_ISOLATE_READ_WORKERS", False)
@@ -387,7 +410,7 @@ DEFAULT_ACTOR_POOL_UTIL_DOWNSCALING_THRESHOLD: float = env_float(
 
 DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA: Optional[int] = env_integer(
     "RAY_DATA_DEFAULT_ACTOR_POOL_MAX_UPSCALING_DELTA",
-    1,
+    None,
 )
 
 
@@ -524,7 +547,8 @@ class AutoscalingConfig:
         actor_pool_util_downscaling_threshold: Actor Pool utilization threshold for downscaling.
         actor_pool_max_upscaling_delta: Maximum number of actors to scale up in a single scaling decision.
             This limits how many actors can be added at once to prevent resource contention
-            and scheduling pressure. Defaults to 1 for conservative scaling.
+            and scheduling pressure. Defaults to ``None``, leaving the delta bounded only by
+            the operator's resource budget and the pool's ``max_size``.
     """
 
     actor_pool_util_upscaling_threshold: float = (
@@ -576,6 +600,31 @@ def _default_fixed_shape_tensor_format():
     from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
     return FixedShapeTensorFormat.V2
+
+
+def _resolve_enable_ray_data_reconstruction() -> Optional[bool]:
+    """Read this job's core-level lineage reconstruction setting.
+
+    Reads ``disable_job_level_lineage_reconstruction`` off the core worker to
+    determine whether Ray Data's application-level fault tolerance mechanism
+    should be enabled.
+    """
+    if not global_worker.connected:
+        return None
+
+    try:
+        return bool(
+            global_worker.core_worker.get_disable_job_level_lineage_reconstruction()
+        )
+    except Exception:
+        logger.warning(
+            "Couldn't read `disable_job_level_lineage_reconstruction` from the "
+            "core worker. Ray Data may be running without fault tolerance "
+            "mechanism. Is the job level lineage reconstruction config correctly "
+            "propagated to the core worker?",
+            exc_info=True,
+        )
+        return False
 
 
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
@@ -652,6 +701,26 @@ class DataContext:
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
             such as `extra_metrics` in the stats output, which are excluded by default.
+        accurate_map_phase_timing: Whether to break "Block transform time" down
+            into input prep, function body, and output block build for row-based
+            transforms such as :meth:`~ray.data.Dataset.map` and
+            :meth:`~ray.data.Dataset.filter`. Those
+            run once per row, and measuring each phase separately costs enough per row
+            to slow the transform down, so by default Ray Data reports only their
+            total. Batch-based transforms such as
+            :meth:`~ray.data.Dataset.map_batches` are always broken down, since one
+            measurement there covers a whole batch. Enable this when you need the
+            breakdown for a row-based transform and can afford the overhead.
+        per_stage_map_timing: Whether to also split "Block transform time" per
+            fused stage, so you can tell which of several fused functions the
+            time went to. Ray Data fuses adjacent operators, so one operator's
+            figure can cover several of your functions, and the phase breakdown
+            says what kind of work was slow rather than which function. This
+            puts one extra number per stage on every output block's metadata,
+            so it is off by default. Each stage's figure covers its own input
+            prep, body and output block build. It is independent of
+            ``accurate_map_phase_timing``: a row-based transform can have the
+            per-stage split without the per-phase one.
         trace_allocations: Whether to trace allocations / eager free. This adds
             significant performance overheads and should only be used for debugging.
         execution_options: The
@@ -709,18 +778,45 @@ class DataContext:
             matches one of them (checked as substring first, then as regex).
             Bounded by ``max_map_retries``.
         max_map_retries: Maximum number of retry attempts per map task for user
-            exceptions. Default is 3. Ignored if ``retried_map_errors`` is
-            empty.
+            exceptions. Default is 0 (no retries). Retries also require
+            ``retried_map_errors`` to be ``True`` or a non-empty pattern list.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        object_store_reservation_overshoot_ratio: An operator loses its share of the
+            shared object-store memory pool once its object-store usage exceeds this
+            multiple of its total reservation. The headroom above 1x absorbs the
+            ordinary fluctuation of an operator's own output buffer under steady
+            load. Only object-store memory is withheld: the operator keeps its full
+            CPU/GPU share so it can still drain what it already holds. Has no effect
+            unless ``object_store_memory_pressure_fraction`` is also set. Defaults to
+            None, which disables the overshoot throttle.
+        object_store_memory_pressure_fraction: Once this execution's object-store
+            usage exceeds this fraction of its memory limit, an idle operator with
+            queued input may run one task despite an exhausted object-store budget
+            for task outputs. This keeps the pipeline moving without releasing more
+            upstream output. Only one such task runs at a time per operator, since
+            the allowance requires the operator to have no task in flight; CPU/GPU
+            limits are always enforced. Leaving this unset disables the allowance
+            entirely, which keeps object-store backpressure strict on the default
+            path. Set together with ``object_store_reservation_overshoot_ratio`` it
+            additionally enables the overshoot throttle. Defaults to None.
         execution_no_progress_timeout_s: Maximum time in seconds that an execution may
             go without any operator producing or consuming an output before it fails
             with `ExecutionTimeoutError`. Doesn't apply to Datasets with an
             all-to-all operation.
             Raise this if your workload can wait a long time for cluster capacity.
             Set to -1 to disable.
+        output_backpressure_guard_release_interval_s: Per-operator minimum interval
+            in seconds between successive ``OutputBackpressureGuard`` releases. The
+            guard exists as a liveness escape hatch: when the resource allocator
+            clamps an op's output budget to 0, it flips the budget to 1 byte so the
+            executor emits one more block. On workloads with very large blocks this
+            per-iteration release can outpace downstream drain, so object store usage
+            grows even under "backpressure". A positive interval throttles releases
+            per op; only releases that actually yield output start the interval.
+            Defaults to None (no throttling, legacy behavior).
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
@@ -806,6 +902,9 @@ class DataContext:
         use_legacy_dataset_ids: Whether to use legacy counter-based Dataset IDs.
         enable_per_node_metrics: Enable per node metrics reporting for Ray Data,
             disabled by default.
+        enable_stats_summary_collection: Retain the stats summary of each finished
+            execution so it can be read back with `ray.data.list_stats_summaries()`,
+            disabled by default.
         override_object_store_memory_limit_fraction: Override the fraction of object
             store memory limit. If `None`, uses Ray's default.
         memory_usage_poll_interval_s: The interval to poll the USS of map tasks. If `None`,
@@ -850,6 +949,11 @@ class DataContext:
             otherwise, the system launches map tasks and actors with no logical
             ``memory``. Enabling this flag can avoid OOMs when you specify ``memory``
             for some APIs but not others. Defaults to ``False``.
+        enable_ray_data_reconstruction: Whether Ray Data reconstructs lost objects
+            itself rather than relying on Ray Core lineage reconstruction.
+            This parameter should only be set using the job config. Explicitly setting
+            data reconstruction for context will not propagate the configuration to the
+            ray cluster.
     """
 
     # `None` means the block size is infinite.
@@ -968,6 +1072,8 @@ class DataContext:
     enable_fallback_to_arrow_object_ext_type: Optional[bool] = None
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
+    accurate_map_phase_timing: bool = DEFAULT_ACCURATE_MAP_PHASE_TIMING
+    per_stage_map_timing: bool = DEFAULT_PER_STAGE_MAP_TIMING
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
     execution_options: "ExecutionOptions" = field(
         default_factory=_execution_options_factory
@@ -995,6 +1101,9 @@ class DataContext:
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    output_backpressure_guard_release_interval_s: Optional[
+        float
+    ] = DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
     execution_no_progress_timeout_s: float = DEFAULT_EXECUTION_NO_PROGRESS_TIMEOUT_S
     log_internal_stack_trace: bool = DEFAULT_LOG_INTERNAL_STACK_TRACE
@@ -1017,6 +1126,7 @@ class DataContext:
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     delta_config: DeltaConfig = field(default_factory=DeltaConfig)
     enable_per_node_metrics: bool = DEFAULT_ENABLE_PER_NODE_METRICS
+    enable_stats_summary_collection: bool = DEFAULT_ENABLE_STATS_SUMMARY_COLLECTION
     override_object_store_memory_limit_fraction: float = None
     memory_usage_poll_interval_s: Optional[float] = 1
     dataset_logger_id: Optional[str] = None
@@ -1054,6 +1164,15 @@ class DataContext:
     default_map_logical_memory_enabled: bool = (
         DEFAULT_DEFAULT_MAP_LOGICAL_MEMORY_ENABLED
     )
+
+    _enable_ray_data_reconstruction: Optional[bool] = None
+
+    object_store_reservation_overshoot_ratio: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_RESERVATION_OVERSHOOT_RATIO
+    object_store_memory_pressure_fraction: Optional[
+        float
+    ] = DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -1439,6 +1558,28 @@ class DataContext:
             raise TypeError(
                 "checkpoint_config must be a CheckpointConfig instance, a dict, or None."
             )
+
+    @property
+    def enable_ray_data_reconstruction(self) -> bool:
+        """Whether Ray Data reconstructs lost objects itself."""
+        resolved = _resolve_enable_ray_data_reconstruction()
+        if self._enable_ray_data_reconstruction is not None:
+            if (
+                resolved is not None
+                and resolved != self._enable_ray_data_reconstruction
+            ):
+                raise ValueError(
+                    "The enable_ray_data_reconstruction value does not match "
+                    "the disable_job_level_lineage_reconstruction value in the "
+                    "cluster. When job level lineage reconstruction is disabled, "
+                    "data reconstruction must be enabled. When job level lineage "
+                    "reconstruction is enabled, data reconstruction must be "
+                    "disabled as core is configured to handle reconstruction in "
+                    "that configuration."
+                )
+            return self._enable_ray_data_reconstruction
+
+        return False if resolved is None else resolved
 
 
 # Backwards compatibility alias.
