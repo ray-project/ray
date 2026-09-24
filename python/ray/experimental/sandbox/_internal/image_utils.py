@@ -707,12 +707,20 @@ def _drop_stale_rootfs_tree(image_dir: str) -> None:
 
 def _dir_size_bytes(path: str) -> int:
     total = 0
+    counted = set()
     for dirpath, _, filenames in os.walk(path):
         for name in filenames:
             try:
-                total += os.lstat(os.path.join(dirpath, name)).st_size
+                st = os.lstat(os.path.join(dirpath, name))
             except OSError:
-                pass
+                continue
+            # Hard links share one file, so each file counts once. Most files
+            # have a single link, so only the others need remembering.
+            if st.st_nlink <= 1:
+                total += st.st_size
+            elif (st.st_dev, st.st_ino) not in counted:
+                counted.add((st.st_dev, st.st_ino))
+                total += st.st_size
     return total
 
 
