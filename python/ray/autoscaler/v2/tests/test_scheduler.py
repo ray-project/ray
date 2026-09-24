@@ -2563,6 +2563,43 @@ def test_scale_up_node_to_satisfy_labels():
     assert to_launch == {"gpu_node": 1}
 
 
+def test_scale_up_node_with_enough_gpu_memory():
+    scheduler = ResourceDemandScheduler(event_logger)
+    vram_key = ray._raylet.RAY_NODE_GPU_MEMORY_PER_DEVICE_KEY
+
+    node_type_configs = {
+        "l4_node": NodeTypeConfig(
+            name="l4_node",
+            resources={"CPU": 8, "GPU": 1},
+            labels={vram_key: str(24 * 10**9)},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "a100_node": NodeTypeConfig(
+            name="a100_node",
+            resources={"CPU": 8, "GPU": 1},
+            labels={vram_key: str(80 * 10**9)},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[
+            ResourceRequestUtil.make({"CPU": 1, "gpu_memory": 4 * 10**10})
+            for _ in range(3)
+        ],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    # Two 40GB requests share one 80GB GPU; none fits a 24GB GPU.
+    assert to_launch == {"a100_node": 2}
+    assert not reply.infeasible_resource_requests
+
+
 def test_label_selector_fallback_priority():
     """
     Test that a resource request with multiple label selectors scales up
