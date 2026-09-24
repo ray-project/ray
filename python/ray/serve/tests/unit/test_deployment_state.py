@@ -11989,12 +11989,12 @@ class TestMaxSurge:
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=4, version="1")
-        assert ds._surge_rollout_counts() is None
+        assert ds._plan_surge_rollout() is None
         info_2, v2 = deployment_info(
             num_replicas=4, version="1", user_config={"a": 1}, max_surge_percent=50
         )
         assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
-        assert ds._surge_rollout_counts() is None
+        assert ds._plan_surge_rollout() is None
         dsm.update()
         check_counts(ds, total=4)
         assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
@@ -12191,7 +12191,7 @@ class TestMaxSurge:
 
         # Two RUNNING old plus two new leaves no surplus, so nothing stops: the
         # migrating replica is not a free stop even though it is not RUNNING.
-        _, to_stop = ds._surge_rollout_counts()
+        _, to_stop = ds._plan_surge_rollout()
         assert to_stop == []
 
     def test_rollback_stops_pending_replacements(self, mock_deployment_state_manager):
