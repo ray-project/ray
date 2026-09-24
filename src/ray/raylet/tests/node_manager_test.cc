@@ -199,6 +199,39 @@ LeaseSpecification DetachedActorCreationLeaseSpec(const rpc::Address &owner_addr
   return LeaseSpecification(std::move(task_spec_builder).ConsumeAndBuild().GetMessage());
 }
 
+// A normal (non-detached) task lease whose caller is the given worker. This
+// matches the shape of `RequestWorkerLease` sent by a worker that has been
+// asked to run a task.
+LeaseSpecification WorkerCallerLeaseSpec(const WorkerID &worker_id) {
+  TaskSpecBuilder builder;
+  rpc::JobConfig config;
+  FunctionDescriptor function_descriptor =
+      FunctionDescriptorBuilder::BuildPython("x", "", "", "");
+  rpc::Address caller_address;
+  caller_address.set_worker_id(worker_id.Binary());
+  builder.SetCommonTaskSpec(TaskID::FromRandom(JobID::Nil()),
+                            "dummy_task",
+                            Language::PYTHON,
+                            function_descriptor,
+                            JobID::Nil(),
+                            config,
+                            TaskID::Nil(),
+                            0,
+                            TaskID::Nil(),
+                            caller_address,
+                            1,
+                            false,
+                            false,
+                            -1,
+                            {{"CPU", 1}},
+                            {{"CPU", 1}},
+                            "",
+                            0,
+                            TaskID::Nil(),
+                            "");
+  return LeaseSpecification(std::move(builder).ConsumeAndBuild().GetMessage());
+}
+
 }  // namespace
 
 TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
@@ -673,6 +706,122 @@ TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedWorker) {
   // The worker should still be alive because it should not be killed by
   // publish_worker_failure_callback.
   EXPECT_FALSE(worker->IsKilled());
+}
+
+TEST_F(NodeManagerTest, TestReRegisteredWorkerClearsFailedWorkersCache) {
+  // A worker/driver that reuses the same worker_id across independent runs on a
+  // persistent cluster is reported to GCS on the previous run's exit, which
+  // notifies the raylet's failure subscription and poisons the id in
+  // failed_workers_cache_. The id must be cleared again when the same
+  // worker/driver successfully (re-)registers; otherwise every lease request
+  // from that id is rejected forever as "caller is dead".
+
+  // Capture the worker-failure subscription so the test can poison the cache
+  // exactly like a GCS-reported worker exit would.
+  rpc::ItemCallback<rpc::WorkerDeltaData> publish_worker_failure_callback;
+  EXPECT_CALL(*mock_gcs_client_->mock_worker_accessor,
+              AsyncSubscribeToWorkerFailures(_, _))
+      .WillOnce([&](const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+                    const rpc::StatusCallback &done) {
+        publish_worker_failure_callback = subscribe;
+        return Status::OK();
+      });
+  EXPECT_CALL(*mock_gcs_client_->mock_job_accessor, AsyncSubscribeAll(_, _));
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredWorkers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, GetAllRegisteredDrivers(_, _))
+      .WillRepeatedly(Return(std::vector<std::shared_ptr<WorkerInterface>>{}));
+  EXPECT_CALL(mock_worker_pool_, AllAliveWorkersAreActors())
+      .WillRepeatedly(Return(false));
+  node_manager_->RegisterGcs();
+  while (!publish_worker_failure_callback) {
+    io_service_.run_one();
+  }
+
+  // The id that a worker reuses across independent runs.
+  const WorkerID worker_id = WorkerID::FromRandom();
+
+  // The previous run exits and is reported to GCS, which notifies the raylet
+  // failure subscription and poisons failed_workers_cache_.
+  rpc::WorkerDeltaData exit_delta;
+  exit_delta.set_worker_id(worker_id.Binary());
+  publish_worker_failure_callback(std::move(exit_delta));
+
+  // A lease from that (now "dead") caller must be rejected.
+  {
+    rpc::RequestWorkerLeaseReply reply;
+    rpc::RequestWorkerLeaseRequest request;
+    request.mutable_lease_spec()->CopyFrom(WorkerCallerLeaseSpec(worker_id).GetMessage());
+    node_manager_->HandleRequestWorkerLease(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+    ASSERT_TRUE(reply.canceled());
+    ASSERT_EQ(reply.failure_type(),
+              rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
+  }
+
+  // The worker re-registers under the same id. This must clear the id from
+  // failed_workers_cache_.
+  {
+    // A client connection for the re-registering worker.
+    auto noop_message_handler = [](std::shared_ptr<ClientConnection> client,
+                                   int64_t message_type,
+                                   const std::vector<uint8_t> &message) {};
+    auto connection_error_handler = [](std::shared_ptr<ClientConnection> client,
+                                       const boost::system::error_code &error) {
+      RAY_CHECK(false) << "Unexpected connection error: " << error.message();
+    };
+    local_stream_socket socket(io_service_);
+    auto client = ClientConnection::Create(std::move(noop_message_handler),
+                                           std::move(connection_error_handler),
+                                           std::move(socket),
+                                           "worker",
+                                           {});
+
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message =
+        protocol::CreateRegisterClientRequest(fbb,
+                                              static_cast<int>(rpc::WorkerType::WORKER),
+                                              flatbuf::to_flatbuf(fbb, worker_id),
+                                              getpid(),
+                                              flatbuf::to_flatbuf(fbb, JobID::FromInt(1)),
+                                              /*runtime_env_hash=*/0,
+                                              Language::PYTHON,
+                                              fbb.CreateString("127.0.0.1"),
+                                              /*port=*/0,
+                                              fbb.CreateString(""));
+    fbb.Finish(message);
+    // The re-registration must reach the worker pool.
+    EXPECT_CALL(mock_worker_pool_, RegisterWorker(_, _, _)).Times(1);
+    node_manager_->ProcessRegisterClientRequestMessage(client, fbb.GetBufferPointer());
+  }
+
+  // A lease from the same caller is no longer rejected as "caller is dead": it
+  // reaches the scheduling stage (PrestartWorkers) and is granted.
+  {
+    rpc::RequestWorkerLeaseReply reply;
+    rpc::RequestWorkerLeaseRequest request;
+    request.mutable_lease_spec()->CopyFrom(WorkerCallerLeaseSpec(worker_id).GetMessage());
+
+    PopWorkerCallback pop_worker_callback;
+    EXPECT_CALL(mock_worker_pool_, PrestartWorkers(_, _)).Times(1);
+    EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
+        .WillOnce(
+            [&](const LeaseSpecification &lease_spec, const PopWorkerCallback &callback) {
+              pop_worker_callback = callback;
+            });
+
+    std::promise<Status> promise;
+    node_manager_->HandleRequestWorkerLease(
+        request,
+        &reply,
+        [&](Status status, std::function<void()> success, std::function<void()> failure) {
+          promise.set_value(status);
+        });
+    const auto worker = std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
+    pop_worker_callback(worker, PopWorkerStatus::OK, "");
+    EXPECT_TRUE(promise.get_future().get().ok());
+    ASSERT_FALSE(reply.canceled());
+  }
 }
 
 TEST_F(NodeManagerTest, TestDetachedWorkerIsKilledByFailedNode) {

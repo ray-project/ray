@@ -1,0 +1,12 @@
+diff --git internal/common.bzl internal/common.bzl
+--- internal/common.bzl
++++ internal/common.bzl
+@@ -21,7 +21,7 @@ def env_execute(ctx, arguments, environment = {}, **kwargs):
+     """
+     if ctx.os.name.startswith("windows"):
+         return ctx.execute(arguments, environment = environment, **kwargs)
+-    env_args = ["env", "-i"]
++    env_args = ["/usr/bin/env", "-i"]
+     environment = dict(environment)
+     for var in ["TMP", "TMPDIR"]:
+         if var in ctx.os.environ and not var in environment:
