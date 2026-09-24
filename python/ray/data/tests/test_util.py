@@ -258,7 +258,7 @@ def get_parquet_read_logical_op(
     read_op = Read(
         datasource=datasource,
         datasource_or_legacy_reader=datasource,
-        ray_remote_args=ray_remote_args,
+        ray_remote_args=ray_remote_args or {},
         **read_kwargs,
     )
     return read_op

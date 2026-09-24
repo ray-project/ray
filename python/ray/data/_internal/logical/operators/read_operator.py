@@ -3,7 +3,7 @@ import math
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
-from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePushdown,
@@ -54,23 +54,16 @@ class Read(
     parallelism: int
     num_outputs: Optional[int] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
-    compute: Optional[ComputeStrategy] = None
+    compute: ComputeStrategy = field(default_factory=TaskPoolStrategy)
     detected_parallelism: Optional[int] = None
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _input_dependencies: list = field(init=False, repr=False, default_factory=list)
 
-    def __post_init__(self):
-        if self.compute is None:
-            from ray.data._internal.compute import TaskPoolStrategy
-
-            object.__setattr__(self, "compute", TaskPoolStrategy())
-        if self.ray_remote_args is None:
-            object.__setattr__(self, "ray_remote_args", {})
-        object.__setattr__(self, "_name", f"Read{self.datasource.get_name()}")
-        object.__setattr__(self, "_input_dependencies", [])
+    @property
+    def name(self) -> str:
+        return f"Read{self.datasource.get_name()}"
 
     def output_data(self):
         return None
@@ -262,7 +255,7 @@ class ReadFiles(
     schema: "pa.Schema"
     parallelism: int
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
-    compute: Optional[ComputeStrategy] = None
+    compute: ComputeStrategy = field(default_factory=TaskPoolStrategy)
     # Optional post-read block transform. Used by ``read_parquet``'s
     # ``_block_udf`` and ``tensor_column_schema`` (the latter is folded
     # into a ``_block_udf`` by ``_resolve_parquet_args`` before it gets
@@ -278,20 +271,16 @@ class ReadFiles(
     # ``LimitPushdownRule._apply_per_block_limit_if_supported``), not this field.
     per_block_limit: Optional[int] = field(init=False, default=None)
     num_outputs: Optional[int] = None
-    _name: str = field(init=False, repr=False)
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(
             self.input_dependencies[0], LogicalOperator
         ), self.input_dependencies[0]
-        if self.compute is None:
-            from ray.data._internal.compute import TaskPoolStrategy
 
-            object.__setattr__(self, "compute", TaskPoolStrategy())
-        if self.ray_remote_args is None:
-            object.__setattr__(self, "ray_remote_args", {})
-        object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
+    @property
+    def name(self) -> str:
+        return f"ReadFiles{self.datasource_name}"
 
     def infer_schema(self) -> "pa.Schema":
         # Scanner schema reflects any applied projection pushdown
@@ -476,13 +465,6 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Drops whole files by path. Unlike ``predicate`` above (row-group stats,
     # blind to partition columns), this is what makes ``limit`` safe here.
     partition_pruner: Optional["FilePruner"] = None
-    _name: str = field(init=False, repr=False)
-    _input_dependencies: List[LogicalOperator] = field(
-        init=False, repr=False, default_factory=list
-    )
-
-    def __post_init__(self):
-        object.__setattr__(self, "_name", self.__class__.__name__)
 
     def output_data(self) -> Optional[list]:
         return None
