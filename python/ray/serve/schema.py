@@ -686,6 +686,20 @@ class DeploymentSchema(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_gpu_memory_and_gang_scheduling_config(self):
+        if (
+            self.gang_scheduling_config not in [DEFAULT.VALUE, None]
+            and self.ray_actor_options not in [DEFAULT.VALUE, None]
+            and self.ray_actor_options.gpu_memory
+        ):
+            raise ValueError(
+                "Setting gpu_memory in ray_actor_options is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_placement_group_strategy_and_gang_scheduling_config(self):
         placement_group_strategy = self.placement_group_strategy
         gang_scheduling_config = self.gang_scheduling_config
