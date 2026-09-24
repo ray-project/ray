@@ -24,7 +24,6 @@ from ray.serve._private.autoscaling_metrics_codec import FlatHandleReport
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentHandleSource,
     DeploymentID,
     HandleMetricReport,
@@ -302,9 +301,6 @@ class DeploymentAutoscalingState:
         # Bumped only when the running set actually changes, so a handle that has to
         # mask out stopped replicas does it once per change, not once per tick.
         self._running_gen: int = 0
-        # Async inference task queue length (from QueueMonitor).
-        # QueueMonitor is a singleton per deployment i.e. we run a single QueueMonitor actor per task consumer (deployment).
-        self._total_pending_async_requests: int = 0
 
         # Total-request aggregate from the most recent autoscaling decision, reused by
         # the scale up/down log so it isn't recomputed within the same tick.
@@ -614,12 +610,6 @@ class DeploymentAutoscalingState:
             )
         )
 
-    def record_async_inference_task_queue_metrics(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ) -> None:
-        """Records task queue length from QueueMonitor for async inference."""
-        self._total_pending_async_requests = report.queue_length
-
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         """Drops handle metrics that are no longer valid.
 
@@ -738,7 +728,6 @@ class DeploymentAutoscalingState:
             raw_metrics=self._get_raw_custom_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
-            total_pending_async_requests=self._total_pending_async_requests,
         )
 
     def _collect_replica_running_requests(self) -> List[TimeSeries]:
@@ -1321,15 +1310,6 @@ class ApplicationAutoscalingState:
                 dep_id
             ].record_columnar_metrics_for_handle(payload)
 
-    def record_async_inference_task_queue_metrics(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics for a deployment."""
-        if report.deployment_id in self._deployment_autoscaling_states:
-            self._deployment_autoscaling_states[
-                report.deployment_id
-            ].record_async_inference_task_queue_metrics(report)
-
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]):
         """Drops handle metrics that are no longer valid.
 
@@ -1526,15 +1506,6 @@ class AutoscalingStateManager:
         app_state = self._app_autoscaling_states.get(payload["deployment_id"].app_name)
         if app_state:
             app_state.record_columnar_metrics_for_handle(payload)
-
-    def record_async_inference_task_queue_metrics(
-        self,
-        report: AsyncInferenceTaskQueueMetricReport,
-    ) -> None:
-        """Record async inference task queue metrics from QueueMonitor."""
-        app_state = self._app_autoscaling_states.get(report.deployment_id.app_name)
-        if app_state:
-            app_state.record_async_inference_task_queue_metrics(report)
 
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
