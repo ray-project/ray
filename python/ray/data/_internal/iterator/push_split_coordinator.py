@@ -325,11 +325,21 @@ class PushSplitCoordinator:
         if is_last_arrival:
             # The last arrival tears down the previous epoch before the
             # barrier releases; done outside self._lock so exiting pushers
-            # can still take it.
-            self._teardown_epoch()
-            with self._barrier_cond:
-                self._teardown_complete_for = starting_epoch
-                self._barrier_cond.notify_all()
+            # can still take it. The barrier is released even if teardown
+            # fails: otherwise the other splits would wait forever, and a
+            # retry would push the arrival count below zero.
+            try:
+                self._teardown_epoch()
+            except Exception:
+                logger.warning(
+                    f"Failed to tear down epoch {starting_epoch}; starting the "
+                    "next epoch anyway.",
+                    exc_info=True,
+                )
+            finally:
+                with self._barrier_cond:
+                    self._teardown_complete_for = starting_epoch
+                    self._barrier_cond.notify_all()
 
         start_time = time.time()
         with self._barrier_cond:
