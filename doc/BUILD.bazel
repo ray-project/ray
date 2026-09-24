@@ -618,7 +618,7 @@ doctest(
             "source/ray-contribute/testing-tips.md",
             "source/ray-contribute/writing-code-snippets.md",
             "source/ray-observability/user-guides/ray-tracing.rst",
-            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/ray-observability/user-guides/cli-sdk.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
             "source/ray-core/**/*.md",
             "source/ray-core/**/*.rst",
