@@ -32,31 +32,26 @@ __all__ = [
 class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     """Abstract logical operator for `from_*`."""
 
-    input_data: List[RefBundle]
+    input_blocks: List[ObjectRef[Block]]
+    input_metadata: List[BlockMetadataWithSchema]
 
-    @classmethod
-    def from_blocks(
-        cls,
-        input_blocks: List[ObjectRef[Block]],
-        input_metadata: List[BlockMetadataWithSchema],
-    ) -> "AbstractFrom":
-        """Create the operator with one ``RefBundle`` per input block."""
-        assert len(input_blocks) == len(input_metadata), (
-            len(input_blocks),
-            len(input_metadata),
+    def __post_init__(self):
+        assert len(self.input_blocks) == len(self.input_metadata), (
+            len(self.input_blocks),
+            len(self.input_metadata),
         )
 
+    @functools.cached_property
+    def input_data(self) -> List[RefBundle]:
         # `owns_blocks` is False because this op may be shared by multiple Datasets.
-        return cls(
-            input_data=[
-                RefBundle(
-                    [BlockEntry(block, metadata)],
-                    owns_blocks=False,
-                    schema=metadata.schema,
-                )
-                for block, metadata in zip(input_blocks, input_metadata)
-            ]
-        )
+        return [
+            RefBundle(
+                [BlockEntry(block, metadata)],
+                owns_blocks=False,
+                schema=metadata.schema,
+            )
+            for block, metadata in zip(self.input_blocks, self.input_metadata)
+        ]
 
     def output_data(self) -> Optional[List[RefBundle]]:
         return self.input_data

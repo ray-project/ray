@@ -202,7 +202,7 @@ def from_blocks(blocks: List[Block]):
     block_refs = [ray.put(block) for block in blocks]
     meta_with_schema = [BlockMetadataWithSchema.from_block(block) for block in blocks]
 
-    from_blocks_op = FromBlocks.from_blocks(block_refs, meta_with_schema)
+    from_blocks_op = FromBlocks(block_refs, meta_with_schema)
     stats = DatasetStats(metadata={"FromBlocks": meta_with_schema}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(from_blocks_op, context)
@@ -294,7 +294,7 @@ def from_items(
             BlockMetadataWithSchema.from_block(block, block_exec_stats=stats.build())
         )
 
-    from_items_op = FromItems.from_blocks(blocks, meta_with_schema)
+    from_items_op = FromItems(blocks, meta_with_schema)
     stats = DatasetStats(metadata={"FromItems": meta_with_schema}, parent=None)
     context = DataContext.get_current().copy()
     logical_plan = LogicalPlan(from_items_op, context)
@@ -4706,7 +4706,7 @@ def from_pandas_refs(
         metadata_schema = ray.get([get_metadata_schema.remote(df) for df in dfs])
         stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
         ctx = DataContext.get_current().copy()
-        logical_plan = LogicalPlan(FromPandas.from_blocks(dfs, metadata_schema), ctx)
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata_schema), ctx)
         return MaterializedDataset(logical_plan, ctx, stats)
 
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
@@ -4718,7 +4718,7 @@ def from_pandas_refs(
     metadata_schema = ray.get(metadata_schema)
     stats = DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None)
     ctx = DataContext.get_current().copy()
-    logical_plan = LogicalPlan(FromPandas.from_blocks(blocks, metadata_schema), ctx)
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata_schema), ctx)
     return MaterializedDataset(logical_plan, ctx, stats)
 
 
@@ -4842,7 +4842,7 @@ def from_numpy_refs(
 
     stats = DatasetStats(metadata={"FromNumpy": metadata_schema}, parent=None)
     context = DataContext.get_current().copy()
-    logical_plan = LogicalPlan(FromNumpy.from_blocks(blocks, metadata_schema), context)
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata_schema), context)
     return MaterializedDataset(logical_plan, context, stats)
 
 
@@ -4991,7 +4991,7 @@ def from_arrow_refs(
     metadata_schema = ray.get([get_metadata_schema.remote(t) for t in tables])
     stats = DatasetStats(metadata={"FromArrow": metadata_schema}, parent=None)
     context = DataContext.get_current().copy()
-    logical_plan = LogicalPlan(FromArrow.from_blocks(tables, metadata_schema), context)
+    logical_plan = LogicalPlan(FromArrow(tables, metadata_schema), context)
     return MaterializedDataset(logical_plan, context, stats)
 
 
