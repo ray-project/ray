@@ -787,56 +787,82 @@ def test_strip_endpoint_port(input_endpoint, expected_host):
 
 
 def test_query_local_tpu_chip_coordinates(monkeypatch):
-    """Test _query_local_tpu_chip_coordinates libtpu query, v7x skip, and JAX fallback."""
-    mock_sdk = mock.MagicMock()
-    mock_chip = mock.MagicMock()
-    mock_chip.coordinates.return_value = (2, 0)
-    mock_sdk.slice.get_chip_coordinates.return_value = [mock_chip]
-    mock_libtpu = mock.MagicMock(sdk=mock_sdk)
-    monkeypatch.setitem(sys.modules, "libtpu", mock_libtpu)
+    """Test _query_local_tpu_chip_coordinates JAX PJRT discovery,
+    environment configuration/restoration, and multi-host hostname guard.
+    """
+    # 1. Multi-host slice with missing worker hostnames returns None immediately.
+    monkeypatch.delenv("TPU_WORKER_HOSTNAMES", raising=False)
+    assert (
+        tpu._query_local_tpu_chip_coordinates(
+            parent_topology="4x4",
+            worker_hostnames="h0,h1",
+            num_hosts=4,
+            worker_id=1,
+        )
+        is None
+    )
 
-    # 1. v6e queries libtpu when all worker hostnames are provided.
-    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "v6e-16")
-    assert tpu._query_local_tpu_chip_coordinates(
-        parent_topology="4x4",
-        worker_hostnames="h0,h1,h2,h3",
-        num_hosts=4,
-        worker_id=1,
-    ) == [[2, 0]]
+    # 2. Queries jax.local_devices(backend="tpu") with sanitized slice env
+    #    and restores os.environ afterwards.
+    monkeypatch.setenv("TPU_VISIBLE_CHIPS", "0")
+    monkeypatch.setenv("TPU_PROCESS_BOUNDS", "1,1,1")
+    monkeypatch.setenv("WORLD_SIZE", "4")
+    monkeypatch.setenv("TPU_PROCESS_ADDRESSES", "stale:8471")
+    monkeypatch.setenv("TPU_PROCESS_PORT", "8471")
 
-    # 2. v7x skips libtpu and falls back to jax.local_devices().
-    mock_sdk.slice.get_chip_coordinates.reset_mock()
-    monkeypatch.setenv("TPU_ACCELERATOR_TYPE", "tpu7x-32")
-    mock_dev = mock.MagicMock(coords=(0, 0, 2))
-    mock_jax = mock.MagicMock()
-    mock_jax.distributed.is_initialized.return_value = False
-    mock_jax.local_devices.return_value = [mock_dev]
+    captured_env = {}
+
+    def _fake_local_devices(backend=None):
+        assert backend == "tpu"
+        captured_env.update(os.environ)
+        return [mock.MagicMock(coords=(2, 0, 0)), mock.MagicMock(coords=(3, 0, 0))]
+
+    mock_jax = mock.MagicMock(local_devices=_fake_local_devices)
     monkeypatch.setitem(sys.modules, "jax", mock_jax)
 
     assert tpu._query_local_tpu_chip_coordinates(
-        parent_topology="2x2x4",
-        worker_hostnames="h0,h1,h2,h3",
-        coordinator_address="h0:8476",
+        parent_topology="4x4",
+        worker_hostnames="[::1]:8471,10.0.0.2:8471,10.0.0.3,10.0.0.4",
         num_hosts=4,
         worker_id=2,
-    ) == [[0, 0, 2]]
-    mock_sdk.slice.get_chip_coordinates.assert_not_called()
-    mock_jax.distributed.initialize.assert_called_once_with(
-        coordinator_address="h0:8476", num_processes=4, process_id=2
-    )
+    ) == [[2, 0, 0], [3, 0, 0]]
 
-    # 3. GCE v7x (where TPU_ACCELERATOR_TYPE is unset and type is in metadata) also skips libtpu.
-    mock_sdk.slice.get_chip_coordinates.reset_mock()
-    monkeypatch.delenv("TPU_ACCELERATOR_TYPE", raising=False)
-    monkeypatch.setattr(tpu, "_get_tpu_metadata", lambda key: "tpu7x-16")
-    assert tpu._query_local_tpu_chip_coordinates(
-        parent_topology="2x2x4",
-        worker_hostnames="h0,h1,h2,h3",
-        coordinator_address="h0:8476",
-        num_hosts=4,
-        worker_id=1,
-    ) == [[0, 0, 2]]
-    mock_sdk.slice.get_chip_coordinates.assert_not_called()
+    assert "TPU_VISIBLE_CHIPS" not in captured_env
+    assert "TPU_PROCESS_BOUNDS" not in captured_env
+    assert "WORLD_SIZE" not in captured_env
+    assert captured_env["TPU_WORKER_ID"] == "2"
+    assert captured_env["CLOUD_TPU_TASK_ID"] == "2"
+    assert captured_env["TPU_HOST_BOUNDS"] == "2,2,1"
+    assert (
+        captured_env["TPU_PROCESS_ADDRESSES"]
+        == "[::1]:8471,10.0.0.2:8471,10.0.0.3:8471,10.0.0.4:8471"
+    )
+    # Verify parent environment was restored.
+    assert os.environ["TPU_VISIBLE_CHIPS"] == "0"
+    assert os.environ["TPU_PROCESS_BOUNDS"] == "1,1,1"
+    assert os.environ["WORLD_SIZE"] == "4"
+    assert os.environ["TPU_PROCESS_ADDRESSES"] == "stale:8471"
+
+    # 3. Single-host 8-chip 2x4 (num_hosts=1) sets TPU_HOST_BOUNDS="1,1,1" rather than "1,2,1".
+    captured_env.clear()
+    tpu._query_local_tpu_chip_coordinates(
+        parent_topology="2x4",
+        num_hosts=1,
+        worker_id=0,
+    )
+    assert captured_env["TPU_HOST_BOUNDS"] == "1,1,1"
+
+    # 4. Returns None cleanly when JAX is unavailable or raises an exception.
+    monkeypatch.setitem(sys.modules, "jax", None)
+    assert (
+        tpu._query_local_tpu_chip_coordinates(
+            parent_topology="4x4",
+            worker_hostnames="h0,h1,h2,h3",
+            num_hosts=4,
+            worker_id=2,
+        )
+        is None
+    )
 
 
 if __name__ == "__main__":

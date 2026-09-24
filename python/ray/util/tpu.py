@@ -12,6 +12,13 @@ from ray._common.network_utils import build_address
 from ray._private.accelerators import TPUAcceleratorManager
 from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
+    GKE_TPU_TOPOLOGY_ENV_VAR,
+    TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR,
+    TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR,
+    TPU_HOST_BOUNDS_ENV_VAR,
+    TPU_PROCESS_ADDRESSES_ENV_VAR,
+    TPU_PROCESS_BOUNDS_ENV_VAR,
+    TPU_PROCESS_PORT_ENV_VAR,
     TPU_SUBSLICE_LABEL_PREFIX,
     TPU_WORKER_HOSTNAMES_ENV_VAR,
     TPU_WORKER_ID_ENV_VAR,
@@ -21,6 +28,7 @@ from ray._private.accelerators.tpu import (
     _get_physical_worker_id_from_coords,
     _get_worker_dims_for_topology,
     _parse_topology_dims,
+    _query_local_tpu_chip_coordinates,
     _strip_endpoint_port,
     get_chips_per_host,
     get_num_chips_from_topology,
@@ -360,15 +368,6 @@ def get_jax_env_vars(
     Returns:
         A dictionary mapping JAX / libtpu environment variables to their values.
     """
-    from ray._private.accelerators.tpu import (
-        TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR,
-        TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR,
-        TPU_HOST_BOUNDS_ENV_VAR,
-        TPU_PROCESS_ADDRESSES_ENV_VAR,
-        TPU_PROCESS_BOUNDS_ENV_VAR,
-        TPU_PROCESS_PORT_ENV_VAR,
-    )
-
     raw_items = (
         worker_hostnames.split(",")
         if isinstance(worker_hostnames, str)
@@ -1617,15 +1616,14 @@ def _discover_tpu_node_coords(
     mock_coords: Optional[List[Tuple[str, int, List[int]]]] = None,
     parent_topology: Optional[str] = None,
     worker_hostnames: Optional[str] = None,
-    coordinator_address: Optional[str] = None,
     num_hosts: int = 1,
     worker_id: int = 0,
     raise_on_error: bool = True,
 ) -> Dict[str, Any]:
     """Remote function: discover this TPU worker's physical chip coordinates.
 
-    Queries the 2D (x, y) or 3D (x, y, z) coordinate of every chip on this worker
-    via libtpu.sdk or JAX PJRT fallback. Returns
+    Queries the 2D (x, y) or 3D (x, y, z) coordinate of the local chips on this
+    worker via JAX PJRT (`jax.local_devices(backend="tpu")`). Returns
     ``{"node_id": str, "coords": [(hostname, chip_index, [x, y, ...]), ...]}``.
     *mock_coords* overrides hardware queries for testing.
     """
@@ -1634,20 +1632,17 @@ def _discover_tpu_node_coords(
     if mock_coords is not None:
         return {"node_id": node_id, "coords": mock_coords}
 
-    from ray._private.accelerators.tpu import _query_local_tpu_chip_coordinates
-
     coords_list = _query_local_tpu_chip_coordinates(
         parent_topology=parent_topology,
         worker_hostnames=worker_hostnames,
-        coordinator_address=coordinator_address,
         num_hosts=num_hosts,
         worker_id=worker_id,
     )
     if not coords_list:
         if raise_on_error:
             raise RuntimeError(
-                "Failed to discover TPU chip coordinates on this worker via libtpu or JAX. "
-                "Ensure libtpu or jax[tpu] is installed on all TPU worker nodes."
+                "Failed to discover TPU chip coordinates on this worker via JAX. "
+                "Ensure jax[tpu] is installed on all TPU worker nodes."
             )
         return {"node_id": node_id, "coords": None}
 
@@ -1660,6 +1655,38 @@ def _discover_tpu_node_coords(
 DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S: float = float(
     os.environ.get("RAY_TPU_SLICE_DISCOVERY_TIMEOUT_S", "180.0")
 )
+
+
+def _compute_subslice_labels_from_discovery(
+    discovery_results: List[Optional[Dict[str, Any]]],
+    node_id_to_wid: Dict[str, Optional[str]],
+    parent_topology: str,
+) -> Dict[str, Dict[str, str]]:
+    """Parse coordinate discovery results into a worker_id -> labels mapping."""
+    discovered: Dict[str, Dict[str, str]] = {}
+    for result in discovery_results:
+        if not result or not result.get("coords"):
+            continue
+
+        node_id = result.get("node_id")
+        wid = node_id_to_wid.get(node_id)
+        if wid is None:
+            logger.warning(
+                "Node %s missing tpu-worker-id label; "
+                "skipping subslice label assignment.",
+                node_id,
+            )
+            continue
+
+        coords_list = [c[2] for c in result["coords"]]
+        physical_worker = _get_physical_worker_id_from_coords(
+            coords_list, parent_topology
+        )
+        labels = _build_subslice_labels(physical_worker, parent_topology)
+        labels["physical_worker_id"] = str(physical_worker)
+        discovered[wid] = labels
+
+    return discovered
 
 
 def _get_physical_to_label_worker_map(
@@ -1686,7 +1713,6 @@ def _get_physical_to_label_worker_map(
                 host_addrs = [n.get("NodeManagerAddress", "") for n in slice_nodes]
                 if all(host_addrs) and len(set(host_addrs)) == expected_workers:
                     worker_hostnames = ",".join(host_addrs)
-                    coordinator_addr = build_address(host_addrs[0], 8476)
                     discover_remote = ray.remote(num_cpus=0, max_calls=1)(
                         _discover_tpu_node_coords
                     )
@@ -1700,7 +1726,6 @@ def _get_physical_to_label_worker_map(
                             ).remote(
                                 parent_topology=parent_topology,
                                 worker_hostnames=worker_hostnames,
-                                coordinator_address=coordinator_addr,
                                 num_hosts=expected_workers,
                                 worker_id=i,
                                 raise_on_error=False,
@@ -1715,16 +1740,9 @@ def _get_physical_to_label_worker_map(
                         )
                         for n in slice_nodes
                     }
-                    discovered: Dict[str, Dict[str, str]] = {}
-                    for r in results:
-                        wid = node_id_to_wid.get(r.get("node_id")) if r else None
-                        if wid is not None and r.get("coords"):
-                            phys = _get_physical_worker_id_from_coords(
-                                [c[2] for c in r["coords"]], parent_topology
-                            )
-                            lbls = _build_subslice_labels(phys, parent_topology)
-                            lbls["physical_worker_id"] = str(phys)
-                            discovered[wid] = lbls
+                    discovered = _compute_subslice_labels_from_discovery(
+                        results, node_id_to_wid, parent_topology
+                    )
                     if len(discovered) == expected_workers:
                         w_labels = discovered
                         with _tpu_subslice_cache_lock:
@@ -1750,7 +1768,7 @@ def _discover_and_persist_subslices(
     head_reservation_timeout_s: Optional[float],
     target_slice_name: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Dict[str, str]]]:
-    """Reserve a full slice, run libtpu discovery, persist subslice labels to
+    """Reserve a full slice, run coordinate discovery, persist subslice labels to
     internal KV, then release the slice.
 
     The head PG reservation serializes concurrent discovery of the same slice:
@@ -1785,7 +1803,7 @@ def _discover_and_persist_subslices(
     try:
         # A concurrent caller may have discovered this slice while we were
         # blocked on the head; persist precedes head release, so any KV entry is
-        # complete. Reuse it and skip the libtpu fan-out.
+        # complete. Reuse it and skip coordinate discovery.
         try:
             existing = ray.experimental.internal_kv._internal_kv_get(
                 _get_subslice_kv_key(slice_name),
@@ -1797,7 +1815,7 @@ def _discover_and_persist_subslices(
                     _tpu_subslice_cache[slice_name] = worker_labels
                 logger.info(
                     "Subslice labels for '%s' found in KV after slice "
-                    "reservation; skipping libtpu discovery.",
+                    "reservation; skipping coordinate discovery.",
                     slice_name,
                 )
                 return slice_name, worker_labels
@@ -1841,12 +1859,9 @@ def _discover_and_persist_subslices(
         # Fan out coordinate discovery to every worker in the slice.
         host_addrs = full_slice._get_placed_host_addrs(0)
         worker_hostnames = ",".join(host_addrs) if host_addrs else None
-        master_addr = host_addrs[0] if host_addrs else full_slice.get_master_addr(0)
-        coordinator_addr = build_address(master_addr, 8476) if master_addr else None
         discover_remote = ray.remote(max_calls=1)(_discover_tpu_node_coords)
-        futures = []
-        for i in range(full_slice.num_bundles):
-            futures.append(
+        results = ray.get(
+            [
                 discover_remote.options(
                     scheduling_strategy=PlacementGroupSchedulingStrategy(
                         placement_group=full_slice.placement_group,
@@ -1855,54 +1870,24 @@ def _discover_and_persist_subslices(
                 ).remote(
                     parent_topology=parent_topology,
                     worker_hostnames=worker_hostnames,
-                    coordinator_address=coordinator_addr,
                     num_hosts=full_slice.num_bundles,
                     worker_id=i,
                 )
-            )
-        results = ray.get(
-            futures,
+                for i in range(full_slice.num_bundles)
+            ],
             timeout=DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S,
         )
 
         # Compute physical positions → subslice labels.
         # The node's tpu-worker-id label is the key (what the scheduler sees).
-        # The physical position from libtpu determines subslice membership.
-        nodes = ray.nodes()
-        node_id_to_info = {n["NodeID"]: n for n in nodes}
-
-        subslice_labels_by_worker_id: Dict[str, Dict[str, str]] = {}
-
-        for result in results:
-            if not result or not result.get("coords"):
-                continue
-
-            node_id = result["node_id"]
-            node_info = node_id_to_info.get(node_id, {})
-            worker_id_label = node_info.get("Labels", {}).get(
-                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY
-            )
-
-            if worker_id_label is None:
-                logger.warning(
-                    "Node %s missing tpu-worker-id label; "
-                    "skipping subslice label assignment.",
-                    node_id,
-                )
-                continue
-
-            # Compute physical position from chip coordinates.
-            # result["coords"] is [(hostname, chip_index, [x, y, ...]), ...]
-            # Extract just the coordinate lists.
-            coords_list = [c[2] for c in result["coords"]]
-            physical_worker = _get_physical_worker_id_from_coords(
-                coords_list, parent_topology
-            )
-
-            # Build subslice labels based on physical position.
-            labels = _build_subslice_labels(physical_worker, parent_topology)
-            labels["physical_worker_id"] = str(physical_worker)
-            subslice_labels_by_worker_id[worker_id_label] = labels
+        # The physical position determines subslice membership.
+        node_id_to_wid = {
+            n["NodeID"]: n.get("Labels", {}).get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+            for n in ray.nodes()
+        }
+        subslice_labels_by_worker_id = _compute_subslice_labels_from_discovery(
+            results, node_id_to_wid, parent_topology
+        )
 
         # Validate that every expected worker was labeled. If any worker
         # lacked a tpu-worker-id label or returned no chip coordinates, the
@@ -2153,9 +2138,7 @@ def _find_available_subslice(
                 break
 
         if all_idle:
-            # Sort by physical mesh rank (falling back to integer worker-id) so
-            # bundle index 0..K-1 always maps to workers in row-major physical
-            # coordinate order.
+            # Sort by physical mesh rank so bundle 0..K-1 follows row-major coordinate order.
             return (
                 sorted(
                     worker_ids,
@@ -2320,16 +2303,10 @@ class SubslicePlacementGroup:
         ``TPU_CHIPS_PER_PROCESS_BOUNDS`` for subslice execution if not
         explicitly provided.
         """
-        from ray._private.accelerators.tpu import (
-            GKE_TPU_TOPOLOGY_ENV_VAR,
-            TPU_PROCESS_PORT_ENV_VAR,
-        )
-
         worker_id = _validate_worker_id(worker_id, self._num_hosts)
 
         if worker_hostnames is None:
-            # Resolve strictly from placed subslice bundle IPs rather than
-            # os.environ[TPU_WORKER_HOSTNAMES], which lists all parent slice hosts.
+            # Resolve from placed subslice bundle IPs rather than parent slice env vars.
             addrs = self.get_worker_addrs()
             if addrs and all(addr is not None for addr in addrs):
                 worker_hostnames = addrs
@@ -2346,9 +2323,7 @@ class SubslicePlacementGroup:
             process_bounds = ",".join(str(d) for d in bounds_3d)
 
         if chips_per_process_bounds is None:
-            # Derive the per-host chip count of the subslice itself (e.g. 4 for a
-            # 2x2 subslice on an 8-chip v6e-8 host) rather than the parent VM's
-            # total chip count (self._chips_per_host).
+            # Use the subslice's per-host chip count rather than the parent host's total chips.
             subslice_chips_per_host = max(
                 1,
                 get_num_chips_from_topology(self._subslice_topology)
@@ -2362,9 +2337,7 @@ class SubslicePlacementGroup:
             }.get(subslice_chips_per_host, f"{subslice_chips_per_host},1,1")
 
         if process_port is None:
-            # Offset base port by subslice_index so multiple subslices colocated on a
-            # single 8-chip host (e.g. two 2x2 subslices on one v5e-8/v6e-8 VM) do not
-            # collide on localhost:8471 even when TPU_PROCESS_PORT=8471 is set in env.
+            # Offset port by subslice_index so colocated subslices on one host do not collide.
             try:
                 base_port = int(os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471"))
             except ValueError:

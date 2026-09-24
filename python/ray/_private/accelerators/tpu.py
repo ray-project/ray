@@ -1,3 +1,4 @@
+import contextlib
 import glob
 import logging
 import os
@@ -8,7 +9,7 @@ from typing import Dict, List, Optional, Set, Tuple
 import requests
 
 import ray
-from ray._common.network_utils import parse_address
+from ray._common.network_utils import build_address, parse_address
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
 from ray.util.placement_group import (
@@ -63,6 +64,7 @@ TPU_PROCESS_ADDRESSES_ENV_VAR = "TPU_PROCESS_ADDRESSES"
 TPU_PROCESS_PORT_ENV_VAR = "TPU_PROCESS_PORT"
 TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
 TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
+CLOUD_TPU_TASK_ID_ENV_VAR = "CLOUD_TPU_TASK_ID"
 
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
@@ -388,7 +390,7 @@ def _get_physical_worker_id_from_coords(
     parent_topology: str,
 ) -> int:
     """Compute the physical worker position (0-based linear mesh index) from a
-    worker's libtpu chip coordinates.
+    worker's TPU chip coordinates.
 
     Each worker owns a block of chips sized by the parent topology's chip
     grid divided by its worker grid; the worker's mesh position is the
@@ -401,93 +403,54 @@ def _get_physical_worker_id_from_coords(
     worker_dims = _get_worker_dims_for_topology(parent_topology)
     chip_dims = _parse_topology_dims(parent_topology)
 
-    if len(worker_dims) == 2:
-        # 2D: each coordinate is [x, y].
-        # worker_dims is (worker_dim_x, worker_dim_y).
-        # chip_dims is (topo_x, topo_y).
-        worker_dim_x, worker_dim_y = worker_dims
-        topo_x, topo_y = chip_dims
+    min_coords = [
+        min((c[i] if len(c) > i else 0) for c in coords_list)
+        for i in range(len(worker_dims))
+    ]
+    worker_pos = tuple(
+        m // max(1, t_dim // w_dim)
+        for m, t_dim, w_dim in zip(min_coords, chip_dims, worker_dims)
+    )
+    if any(p >= w_dim for p, w_dim in zip(worker_pos, worker_dims)):
+        raise ValueError(
+            f"Computed worker position {worker_pos} is out of bounds "
+            f"for parent topology '{parent_topology}' with worker dims "
+            f"{worker_dims}."
+        )
 
-        block_x = max(1, topo_x // worker_dim_x)
-        block_y = max(1, topo_y // worker_dim_y)
-
-        min_x = min(c[0] for c in coords_list)
-        min_y = min(c[1] for c in coords_list)
-
-        wx = min_x // block_x
-        wy = min_y // block_y
-
-        if wx >= worker_dim_x or wy >= worker_dim_y:
-            raise ValueError(
-                f"Computed worker position ({wx}, {wy}) is out of bounds "
-                f"for parent topology '{parent_topology}' with worker dims "
-                f"({worker_dim_x}, {worker_dim_y})."
-            )
-
-        return wy * worker_dim_x + wx
-    else:
-        # 3D: each coordinate is [x, y] or [x, y, z].
-        # worker_dims is (worker_dim_x, worker_dim_y, worker_dim_z).
-        # chip_dims is (topo_x, topo_y, topo_z).
-        worker_dim_x, worker_dim_y, worker_dim_z = worker_dims
-        topo_x, topo_y, topo_z = chip_dims
-
-        block_x = max(1, topo_x // worker_dim_x)
-        block_y = max(1, topo_y // worker_dim_y)
-        block_z = max(1, topo_z // worker_dim_z)
-
-        min_x = min(c[0] for c in coords_list)
-        min_y = min(c[1] for c in coords_list)
-
-        # Check if z coordinates are present.
-        has_z = any(len(c) >= 3 for c in coords_list)
-        if not has_z:
-            wz = 0
-        else:
-            min_z = min(c[2] if len(c) >= 3 else 0 for c in coords_list)
-            wz = min_z // block_z
-
-        wx = min_x // block_x
-        wy = min_y // block_y
-
-        if wx >= worker_dim_x or wy >= worker_dim_y or wz >= worker_dim_z:
-            raise ValueError(
-                f"Computed worker position ({wx}, {wy}, {wz}) is out of bounds "
-                f"for parent topology '{parent_topology}' with worker dims "
-                f"({worker_dim_x}, {worker_dim_y}, {worker_dim_z})."
-            )
-
-        return wz * (worker_dim_y * worker_dim_x) + wy * worker_dim_x + wx
+    linear_id = 0
+    stride = 1
+    for pos, dim in zip(worker_pos, worker_dims):
+        linear_id += pos * stride
+        stride *= dim
+    return linear_id
 
 
-def _query_local_tpu_chip_coordinates(
-    parent_topology: Optional[str] = None,
-    worker_hostnames: Optional[str] = None,
-    coordinator_address: Optional[str] = None,
-    num_hosts: int = 1,
-    worker_id: int = 0,
-) -> Optional[List[List[int]]]:
-    """Query physical 2D (x, y) or 3D (x, y, z) coordinates of local TPU chips on this host.
+@contextlib.contextmanager
+def _pjrt_slice_env(
+    parent_topology: Optional[str],
+    worker_hostnames: Optional[str],
+    num_hosts: int,
+    worker_id: int,
+):
+    """Temporarily set slice topology and host membership env vars for PJRT discovery.
 
-    Tries libtpu.sdk.slice.get_chip_coordinates() first, falling back to
-    jax.local_devices(backend="tpu") when num_hosts == 1 or coordinator_address is set.
+    `jax.local_devices(backend="tpu")` reads slice hostnames (`TPU_WORKER_HOSTNAMES`,
+    `TPU_PROCESS_ADDRESSES`), worker index (`TPU_WORKER_ID`, `CLOUD_TPU_TASK_ID`), and
+    topology bounds (`TPU_TOPOLOGY`, `TPU_HOST_BOUNDS`) from `os.environ`. Clears
+    process-level chip masks (`TPU_VISIBLE_CHIPS`, `TPU_PROCESS_BOUNDS`) so the runtime
+    discovers all local chips.
     """
-    effective_hostnames = worker_hostnames or os.environ.get(
-        TPU_WORKER_HOSTNAMES_ENV_VAR, ""
-    )
-    has_all_hostnames = (
-        num_hosts <= 1
-        or len([h.strip() for h in effective_hostnames.split(",") if h.strip()])
-        >= num_hosts
-    )
-    if not has_all_hostnames and coordinator_address is None:
-        return None
-
-    env_overrides: Dict[str, str] = {}
+    env_overrides: Dict[str, Optional[str]] = {
+        TPU_VISIBLE_CHIPS_ENV_VAR: None,
+        TPU_PROCESS_BOUNDS_ENV_VAR: None,
+        TPU_CHIPS_PER_PROCESS_BOUNDS_ENV_VAR: None,
+        "WORLD_SIZE": None,
+    }
     if worker_hostnames:
         env_overrides[TPU_WORKER_HOSTNAMES_ENV_VAR] = worker_hostnames
         env_overrides[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
-        # Override webhook-injected TPU_PROCESS_ADDRESSES so SliceBuilder rank ordering matches worker_id.
+        env_overrides[CLOUD_TPU_TASK_ID_ENV_VAR] = str(worker_id)
         if TPU_PROCESS_ADDRESSES_ENV_VAR in os.environ:
             port = os.environ.get(TPU_PROCESS_PORT_ENV_VAR, "8471")
             clean_hosts = [
@@ -496,67 +459,67 @@ def _query_local_tpu_chip_coordinates(
                 if (host := _strip_endpoint_port(h))
             ]
             env_overrides[TPU_PROCESS_ADDRESSES_ENV_VAR] = ",".join(
-                ray._common.network_utils.build_address(h, port) for h in clean_hosts
+                build_address(h, port) for h in clean_hosts
             )
     if parent_topology:
         env_overrides[GKE_TPU_TOPOLOGY_ENV_VAR] = parent_topology
         try:
-            w_dims = _get_worker_dims_for_topology(parent_topology)
-            bounds_3d = w_dims if len(w_dims) == 3 else (*w_dims, 1)
+            if num_hosts <= 1:
+                bounds_3d: Tuple[int, ...] = (1, 1, 1)
+            else:
+                w_dims = _get_worker_dims_for_topology(parent_topology)
+                bounds_3d = w_dims if len(w_dims) == 3 else (*w_dims, 1)
             env_overrides[TPU_HOST_BOUNDS_ENV_VAR] = ",".join(str(d) for d in bounds_3d)
         except Exception:
             pass
 
     saved_env = {k: os.environ.get(k) for k in env_overrides}
-    for k, v in env_overrides.items():
-        os.environ[k] = v
-
-    coords = None
     try:
-        # libtpu's tpunetd does not support v7x: worker 0 raises Invalid accelerator
-        # type immediately while workers 1..N-1 hang waiting for the session master.
-        raw_accel = normalize_tpu_accelerator_type(
-            os.getenv(GKE_TPU_ACCELERATOR_TYPE_ENV_VAR)
-            or _get_tpu_metadata(key=GCE_TPU_ACCELERATOR_KEY)
-        )
-        is_v7x = raw_accel.startswith("v7x")
-        if has_all_hostnames and not is_v7x:
-            try:
-                from libtpu import sdk  # type: ignore[import-untyped]
-
-                coords = sdk.slice.get_chip_coordinates()
-            except Exception as e:
-                logger.debug("Could not query TPU chip coordinates via libtpu: %s", e)
-
-        if coords:
-            try:
-                return [list(c.coordinates()) for c in coords]
-            except Exception as e:
-                logger.debug("Failed to parse coordinates from libtpu response: %s", e)
-
-        if num_hosts == 1 or coordinator_address is not None:
-            try:
-                import jax  # type: ignore[import-untyped]
-
-                if num_hosts > 1 and not jax.distributed.is_initialized():
-                    jax.distributed.initialize(
-                        coordinator_address=coordinator_address,
-                        num_processes=num_hosts,
-                        process_id=worker_id,
-                    )
-                # Specify backend="tpu" to avoid silent fallback to CPU devices.
-                devices = jax.local_devices(backend="tpu")
-                jax_coords = [list(d.coords) for d in devices]
-                if jax_coords:
-                    return jax_coords
-            except Exception as e:
-                logger.debug("Could not query TPU chip coordinates via JAX: %s", e)
+        for k, v in env_overrides.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        yield
     finally:
         for k, prev_val in saved_env.items():
             if prev_val is None:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = prev_val
+
+
+def _query_local_tpu_chip_coordinates(
+    parent_topology: Optional[str] = None,
+    worker_hostnames: Optional[str] = None,
+    num_hosts: int = 1,
+    worker_id: int = 0,
+) -> Optional[List[List[int]]]:
+    """Query physical 2D (x, y) or 3D (x, y, z) coordinates of local TPU chips via JAX."""
+    effective_hostnames = worker_hostnames or os.environ.get(
+        TPU_WORKER_HOSTNAMES_ENV_VAR, ""
+    )
+    resolved_hosts = [h.strip() for h in effective_hostnames.split(",") if h.strip()]
+    if num_hosts > 1 and len(resolved_hosts) < num_hosts:
+        logger.debug(
+            "Skipping TPU chip coordinate discovery: multi-host slice "
+            "(num_hosts=%d) requires all worker hostnames in %s, got %d (%r).",
+            num_hosts,
+            TPU_WORKER_HOSTNAMES_ENV_VAR,
+            len(resolved_hosts),
+            effective_hostnames,
+        )
+        return None
+
+    with _pjrt_slice_env(parent_topology, worker_hostnames, num_hosts, worker_id):
+        try:
+            import jax  # type: ignore[import-untyped]
+
+            devices = jax.local_devices(backend="tpu")
+            if devices:
+                return [list(d.coords) for d in devices]
+        except Exception as e:
+            logger.debug("Could not query TPU chip coordinates via JAX: %s", e)
 
     return None
 
