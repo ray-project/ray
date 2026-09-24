@@ -189,6 +189,28 @@ def test_a_communicator_that_recovers_resets_its_streak():
     assert evaluator.evaluate(_state_with(_FROZEN)) == []
 
 
+def test_the_reason_does_not_claim_a_check_that_never_ran():
+    """"Checked and clean" and "nothing checked" point a reader opposite ways.
+
+    Caught on a real GPU run: with no diagnostics configured, the decision
+    still said "diagnostics found no hardware fault".
+    """
+    clock = _Clock()
+    no_diags = NcclHangEvaluator(confirm_duration_s=0, clock=clock)
+    reason = no_diags.evaluate(_state_with(_FROZEN))[0].reason
+    assert "no diagnostics are configured" in reason
+    assert "found no hardware fault" not in reason
+
+    # With diagnostics configured but not yet returned, say that instead.
+    clock2 = _Clock()
+    pending = NcclHangEvaluator(
+        confirm_duration_s=0, diagnostics=[object()], clock=clock2
+    )
+    pending.evaluate(_state_with(_FROZEN))  # first pass asks for a Diagnose
+    reason = pending.evaluate(_state_with(_FROZEN))[0].reason
+    assert "have not reported back yet" in reason
+
+
 def test_an_unattributed_hang_is_a_reattempt_not_an_eviction():
     """A hang alone says nothing about whose fault it is.
 

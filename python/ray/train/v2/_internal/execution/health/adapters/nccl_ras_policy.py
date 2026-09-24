@@ -291,15 +291,21 @@ class NcclHangEvaluator(Evaluator):
                     target_nodes=sorted(faulty),
                 )
             ]
-        return [
-            Reattempt(
-                cause=Cause.NO_PROGRESS,
-                reason=(
-                    f"{reason}; diagnostics found no hardware fault, so this is "
-                    "software or data"
-                ),
+        # Nothing was attributed. Say *why* nothing was attributed, because
+        # "the hardware was checked and is fine" and "nothing checked the
+        # hardware" lead a reader to opposite conclusions.
+        if not self._diagnostics:
+            unexplained = (
+                "no diagnostics are configured, so nothing has examined the "
+                "hardware under these ranks"
             )
-        ]
+        elif not state.on_demand_probes:
+            unexplained = "diagnostics were requested but have not reported back yet"
+        else:
+            unexplained = (
+                "diagnostics found no hardware fault, so this is software or data"
+            )
+        return [Reattempt(cause=Cause.NO_PROGRESS, reason=f"{reason}; {unexplained}")]
 
     @staticmethod
     def _stalled_ranks(comms, confirmed) -> List[int]:
