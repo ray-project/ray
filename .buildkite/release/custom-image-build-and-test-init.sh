@@ -48,6 +48,12 @@ UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
 
 echo "--- Generate custom build steps"
 
+# TEMPORARY -- DO NOT MERGE. The real export below only fires for AUTOMATIC
+# runs on master, so a PR build gets no reporter at all: no analysis, no log
+# group, no annotation and no comment. Exported unconditionally here so this
+# PR's release pipeline exercises the whole path. Revert before merging.
+export TRIGGER_OBSERVABILITY_AGENT=1
+
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
   export REPORT_TO_RAY_TEST_DB=1
 
