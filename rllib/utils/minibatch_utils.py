@@ -117,9 +117,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # A minibatch takes `minibatch_size` rows from every module, so a module
             # with none makes the whole batch unusable -- `__iter__` refuses to cycle
             # it, and this raises the same way because the count is worked out before
-            # the loop starts. A Learner only gets here with `never_skip_update`,
-            # which asks for this error instead of a skip; otherwise it drops such a
-            # module (single Learner) or skips the update (a group). This also guards
+            # the loop starts. A Learner does not get here: it drops such a module
+            # (single Learner), skips the update (a group), or, with
+            # `never_skip_update`, raises with a pointer to that setting. This guards
             # direct users of the iterator.
             raise ValueError(
                 "One of the module batches is empty! Minibatches need "

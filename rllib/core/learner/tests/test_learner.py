@@ -508,23 +508,29 @@ class TestLearner(unittest.TestCase):
         self.assertEqual(2 * 129, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
 
     def test_never_skip_update(self):
-        """`never_skip_update=True` opts out of the skip logic entirely: no
-        `_should_skip_update` call (and thus no cross-Learner agreement collective),
-        and an empty batch is a hard error instead of a skipped update."""
+        """`never_skip_update=True` turns the skip into an error: `_should_skip_update`
+        is not consulted and an empty batch raises. The Learners still settle on the
+        number of minibatches -- that is what keeps unequal shards from desyncing a
+        group, skip or no skip."""
         from unittest import mock
 
         config = BaseTestingAlgorithmConfig().learners(never_skip_update=True)
         learner = config.build_learner(env=self.ENV)
         with mock.patch.object(
             type(learner), "_should_skip_update", autospec=True
-        ) as hook:
+        ) as hook, mock.patch.object(
+            learner, "_sync_update_plan", wraps=learner._sync_update_plan
+        ) as sync:
             with self.assertRaisesRegex(ValueError, "never_skip_update"):
                 learner.update(batch=MultiAgentBatch(policy_batches={}, env_steps=0))
-            # A real batch trains as usual, still without consulting the hook.
+            # A real batch trains as usual, still without consulting the hook, ...
             reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = learner._convert_batch_type(reader.next().as_multi_agent())
-            learner.update(batch=batch)
+            batch = learner._convert_batch_type(reader.next()[:512].as_multi_agent())
+            learner.update(batch=batch, minibatch_size=128)
             hook.assert_not_called()
+            # ... but not without proposing its minibatch count to the group:
+            # ceil(512 / 128) = 4.
+            sync.assert_called_once_with(UpdatePlan(skip=False, num_minibatches=4))
 
 
 if __name__ == "__main__":

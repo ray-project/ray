@@ -2370,15 +2370,16 @@ class AlgorithmConfig(_Config):
                 sampled episodes were lost to EnvRunner or node failures), and with
                 `num_learners > 1` all Learners first agree on that via one small
                 collective per `update()`, so that they skip together and stay in
-                sync. The same collective also makes all Learners step through the
-                same number of minibatches when `minibatch_size` is set, even if
-                their shards differ in size. Set to True to turn this off: no skip
-                logic, no per-update collective, and an empty train batch raises an
-                error instead. Only for setups that guarantee non-empty and equally
-                sized batches on every Learner and want to save the (small)
-                per-update overhead. Applies to `Learner`; a `DifferentiableLearner`
-                computes its inner updates without a collective and always skips an
-                empty one.
+                sync. Set to True to turn the skip into an error: `_should_skip_update`
+                is not consulted, and a train batch without timesteps for a module
+                raises instead. For setups that guarantee every Learner always
+                receives data and want to be told loudly when that guarantee breaks.
+                Independent of this setting, the Learners of a group agree on the
+                number of minibatches to step through when `minibatch_size` is set
+                (the same collective), so that shards of different sizes cannot make
+                them step a different number of times. Applies to `Learner`; a
+                `DifferentiableLearner` computes its inner updates without a
+                collective and always skips an empty one.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule.
             learner_connector: A callable taking an env observation space and an env

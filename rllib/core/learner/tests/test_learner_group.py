@@ -395,6 +395,33 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
         finally:
             learner_group.shutdown()
 
+    def test_never_skip_update_keeps_the_minibatch_count_agreement(self):
+        """`never_skip_update` turns a skip into an error; the Learners must still
+        settle on one number of minibatches. On their own, shards of 256 and 64 rows
+        would step 8 and 2 times over 32-row minibatches, and the group would hang
+        -- as this test then does, rather than fail.
+        """
+        config = (
+            BaseTestingAlgorithmConfig()
+            .update_from_dict(REMOTE_CONFIGS["multi-cpu-ddp"])
+            .learners(never_skip_update=True)
+        )
+        learner_group = config.build_learner_group(env=gym.make("CartPole-v1"))
+        try:
+            results = MetricsLogger.peek_results(
+                learner_group.update(
+                    batches=[fake_batch(256), fake_batch(64)],
+                    minibatch_size=32,
+                    num_epochs=1,
+                )
+            )
+            self.assertEqual(
+                [5 * 32, 5 * 32],
+                [result[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] for result in results],
+            )
+        finally:
+            learner_group.shutdown()
+
 
 class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     @classmethod
