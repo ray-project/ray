@@ -8,7 +8,6 @@ from typing import (
     Callable,
     Dict,
     Iterable,
-    List,
     Literal,
     Optional,
     Union,
@@ -53,63 +52,25 @@ logger = logging.getLogger(__name__)
 CSE_TEMP_COLUMN_PREFIX = "__ray_data_cse_"
 
 
-@dataclass(frozen=True, repr=False, eq=False, init=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class AbstractMap(AbstractOneToOne):
     """Abstract class for logical operators that should be converted to physical
     MapOperator.
+
+    Subclasses declare these fields:
+
+    * ``can_modify_num_rows``: Whether the operator can change the row count.
+    * ``min_rows_per_bundled_input``: Minimum number of rows a single bundle of
+      blocks passed on to the task must possess.
+    * ``ray_remote_args``: Args to provide to :func:`ray.remote`.
+    * ``ray_remote_args_fn``: A function that returns a dictionary of remote args
+      passed to each map worker. It's called each time prior to initializing
+      the worker, and the args it returns override ``ray_remote_args``.
+    * ``compute``: The compute strategy, either ``TaskPoolStrategy`` to use Ray
+      tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
+    * ``per_block_limit``: Maximum number of rows to process per block, set by
+      limit pushdown for early termination.
     """
-
-    def __init__(
-        self,
-        name: Optional[str] = None,
-        input_dependencies: Optional[List[LogicalOperator]] = None,
-        *,
-        can_modify_num_rows: bool,
-        min_rows_per_bundled_input: Optional[int] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        compute: Optional[ComputeStrategy] = None,
-    ):
-        """Initialize an ``AbstractMap`` logical operator that will later
-        be converted into a physical ``MapOperator``.
-
-        Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
-            input_dependencies: The operators preceding this operator in the plan
-                DAG. The outputs of these operators will be the inputs to this
-                operator.
-            can_modify_num_rows: Whether the operator can change the row count. False if
-                # of input rows = # of output rows. True otherwise.
-            min_rows_per_bundled_input: Minimum number of rows a single bundle of
-                blocks passed on to the task must possess.
-            ray_remote_args: Args to provide to :func:`ray.remote`.
-            ray_remote_args_fn: A function that returns a dictionary of remote
-                args passed to each map worker. The purpose of this argument is
-                to generate dynamic arguments for each actor/task, and it will
-                be called each time prior to initializing the worker. Args
-                returned from this dict always override the args in
-                ``ray_remote_args``. Note: this is an advanced, experimental
-                feature.
-            compute: The compute strategy, either ``TaskPoolStrategy`` (default)
-                to use Ray tasks, or ``ActorPoolStrategy`` to use an
-                autoscaling actor pool.
-        """
-        super().__init__(
-            input_dependencies=input_dependencies,
-            can_modify_num_rows=can_modify_num_rows,
-            name=name,
-        )
-        object.__setattr__(
-            self, "min_rows_per_bundled_input", min_rows_per_bundled_input
-        )
-        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
-        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
-        object.__setattr__(self, "compute", compute or TaskPoolStrategy())
-        object.__setattr__(self, "per_block_limit", None)
-
-    def set_per_block_limit(self, per_block_limit: int):
-        object.__setattr__(self, "per_block_limit", per_block_limit)
 
     def _get_args(self) -> Dict[str, Any]:
         args = super()._get_args()
@@ -125,7 +86,7 @@ class AbstractMap(AbstractOneToOne):
         return args
 
 
-@dataclass(frozen=True, repr=False, eq=False, init=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
     to physical MapOperator.
@@ -137,66 +98,6 @@ class AbstractUDFMap(AbstractMap):
     fn_constructor_args: Optional[Iterable[Any]] = None
     fn_constructor_kwargs: Optional[Dict[str, Any]] = None
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
-
-    def __init__(
-        self,
-        name: str,
-        input_dependencies: List[LogicalOperator],
-        fn: UserDefinedFunction,
-        *,
-        can_modify_num_rows: bool,
-        fn_args: Optional[Iterable[Any]] = None,
-        fn_kwargs: Optional[Dict[str, Any]] = None,
-        fn_constructor_args: Optional[Iterable[Any]] = None,
-        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
-        min_rows_per_bundled_input: Optional[int] = None,
-        compute: Optional[ComputeStrategy] = None,
-        ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-    ):
-        """Initialize AbstractUDFMap.
-
-        Args:
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
-            input_dependencies: The operators preceding this operator in the plan DAG.
-                The outputs of these operators will be the inputs to this operator.
-            fn: User-defined function to be called.
-            can_modify_num_rows: Whether the UDF can change the row count. False if
-                # of input rows = # of output rows. True otherwise.
-            fn_args: Arguments to `fn`.
-            fn_kwargs: Keyword arguments to `fn`.
-            fn_constructor_args: Arguments to provide to the initializor of `fn` if
-                `fn` is a callable class.
-            fn_constructor_kwargs: Keyword Arguments to provide to the initializor of
-                `fn` if `fn` is a callable class.
-            min_rows_per_bundled_input: The target number of rows to pass to
-                ``MapOperator._add_bundled_input()``.
-            compute: The compute strategy, either ``TaskPoolStrategy`` (default) to use
-                Ray tasks, or ``ActorPoolStrategy`` to use an autoscaling actor pool.
-            ray_remote_args_fn: A function that returns a dictionary of remote args
-                passed to each map worker. The purpose of this argument is to generate
-                dynamic arguments for each actor/task, and will be called each time
-                prior to initializing the worker. Args returned from this dict will
-                always override the args in ``ray_remote_args``. Note: this is an
-                advanced, experimental feature.
-            ray_remote_args: Args to provide to :func:`ray.remote`.
-        """
-        name = self._get_operator_name(name, fn)
-        super().__init__(
-            name,
-            input_dependencies,
-            can_modify_num_rows=can_modify_num_rows,
-            min_rows_per_bundled_input=min_rows_per_bundled_input,
-            ray_remote_args=ray_remote_args,
-            compute=compute,
-        )
-        object.__setattr__(self, "fn", fn)
-        object.__setattr__(self, "fn_args", fn_args)
-        object.__setattr__(self, "fn_kwargs", fn_kwargs)
-        object.__setattr__(self, "fn_constructor_args", fn_constructor_args)
-        object.__setattr__(self, "fn_constructor_kwargs", fn_constructor_kwargs)
-        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""

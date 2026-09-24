@@ -10,7 +10,6 @@ from ray.data._internal.logical.operators import (
     Download,
     Limit,
     Project,
-    Read,
     ReadFiles,
     Union,
 )
@@ -231,36 +230,21 @@ class LimitPushdownRule(Rule):
         self, op: LogicalOperator, limit: int
     ) -> LogicalOperator:
         """Apply per-block limit to operators that support it."""
-        if isinstance(op, AbstractMap):
-            if is_dataclass(op):
-                if isinstance(op, Read):
-                    return replace(
-                        op,
-                        per_block_limit=limit,
-                        num_outputs=op.num_outputs,
-                    )
-                if isinstance(op, ReadFiles):
-                    from ray.data._internal.datasource_v2.logical_optimizers import (
-                        SupportsLimitPushdown,
-                    )
+        if isinstance(op, ReadFiles):
+            from ray.data._internal.datasource_v2.logical_optimizers import (
+                SupportsLimitPushdown,
+            )
 
-                    if isinstance(op.scanner, SupportsLimitPushdown):
-                        # The pushed limit reaches the upstream ``ListFiles`` --
-                        # letting a footer-based indexer stop listing early once
-                        # enough exact-survivor rows are found -- via
-                        # ``DeriveListFilesPushdown``, which reads it off the
-                        # scanner once the plan is final.
-                        return replace(op, scanner=op.scanner.push_limit(limit))
-                    return op
-                assert len(op.input_dependencies) == 1, len(op.input_dependencies)
-                return replace(
-                    op,
-                    input_dependencies=[op.input_dependencies[0]],
-                    per_block_limit=limit,
-                )
-            new_op = copy.copy(op)
-            new_op.set_per_block_limit(limit)
-            return new_op
+            if isinstance(op.scanner, SupportsLimitPushdown):
+                # The pushed limit reaches the upstream ``ListFiles`` --
+                # letting a footer-based indexer stop listing early once
+                # enough exact-survivor rows are found -- via
+                # ``DeriveListFilesPushdown``, which reads it off the
+                # scanner once the plan is final.
+                return replace(op, scanner=op.scanner.push_limit(limit))
+            return op
+        if isinstance(op, AbstractMap):
+            return replace(op, per_block_limit=limit)
         return op
 
     def _recreate_operator_with_new_input(

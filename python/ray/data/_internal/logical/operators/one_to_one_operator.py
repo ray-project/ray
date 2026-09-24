@@ -19,33 +19,14 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, repr=False, eq=False, init=False)
+@dataclass(frozen=True, repr=False, eq=False)
 class AbstractOneToOne(LogicalOperator):
     """Abstract class for one-to-one logical operators, which
     have one input and one output dependency.
+
+    Subclasses declare a ``can_modify_num_rows`` field, which is False if the
+    number of input rows equals the number of output rows, and True otherwise.
     """
-
-    def __init__(
-        self,
-        input_dependencies: Optional[List[LogicalOperator]],
-        can_modify_num_rows: bool,
-        *,
-        name: Optional[str] = None,
-    ):
-        """Initialize an AbstractOneToOne operator.
-
-        Args:
-            input_dependencies: The operators preceding this operator in the plan DAG.
-                The outputs of these operators will be the inputs to this operator.
-            can_modify_num_rows: Whether the UDF can change the row count. False if
-                # of input rows = # of output rows. True otherwise.
-            name: Name for this operator. This is the name that will appear when
-                inspecting the logical plan of a Dataset.
-        """
-        object.__setattr__(self, "_input_dependencies", list(input_dependencies or []))
-        if name is not None:
-            object.__setattr__(self, "_name", name)
-        object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
 
     def infer_metadata(self) -> BlockMetadata:
         """Best-effort output metadata derived from the single input dependency.

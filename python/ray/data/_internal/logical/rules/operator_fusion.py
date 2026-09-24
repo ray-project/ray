@@ -1,6 +1,7 @@
 import itertools
 import logging
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
     ActorPoolStrategy,
@@ -33,7 +34,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import LogicalOperator, PhysicalPlan, Rule
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
@@ -58,6 +59,45 @@ INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, repr=False, eq=False, kw_only=True)
+class _FusedMap(AbstractMap):
+    """Logical stand-in for a fused map operator.
+
+    Later fusion steps read the stand-in's fields to decide whether the fused
+    operator can fuse again.
+    """
+
+    fused_name: str
+    input_dependencies: List[LogicalOperator] = field(repr=False)
+    can_modify_num_rows: bool
+    min_rows_per_bundled_input: Optional[int]
+    ray_remote_args: Dict[str, Any]
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]]
+    compute: ComputeStrategy = field(default_factory=TaskPoolStrategy)
+    per_block_limit: Optional[int] = None
+
+    @property
+    def name(self) -> str:
+        return self.fused_name
+
+
+@dataclass(frozen=True, repr=False, eq=False, kw_only=True)
+class _FusedUDFMap(AbstractUDFMap):
+    """Like ``_FusedMap``, for a fused map operator whose last UDF is ``fn``."""
+
+    fused_name: str
+    input_dependencies: List[LogicalOperator] = field(repr=False)
+    can_modify_num_rows: bool
+    min_rows_per_bundled_input: Optional[int]
+    ray_remote_args: Dict[str, Any]
+    compute: ComputeStrategy
+    per_block_limit: Optional[int] = None
+
+    @property
+    def name(self) -> str:
+        return self.fused_name
 
 
 class FuseOperators(Rule):
@@ -518,10 +558,10 @@ class FuseOperators(Rule):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         input_op = up_logical_op.input_dependencies[0]
-        logical_op = AbstractUDFMap(
-            name,
-            [input_op],
-            up_logical_op.fn,
+        logical_op = _FusedUDFMap(
+            fused_name=name,
+            input_dependencies=[input_op],
+            fn=up_logical_op.fn,
             can_modify_num_rows=up_logical_op.can_modify_num_rows,
             fn_args=up_logical_op.fn_args,
             fn_kwargs=up_logical_op.fn_kwargs,
@@ -697,10 +737,10 @@ class FuseOperators(Rule):
             up_logical_op.can_modify_num_rows or down_logical_op.can_modify_num_rows
         )
         if isinstance(down_logical_op, AbstractUDFMap):
-            logical_op = AbstractUDFMap(
-                name,
-                [input_op],
-                down_logical_op.fn,
+            logical_op = _FusedUDFMap(
+                fused_name=name,
+                input_dependencies=[input_op],
+                fn=down_logical_op.fn,
                 fn_args=down_logical_op.fn_args,
                 fn_kwargs=down_logical_op.fn_kwargs,
                 fn_constructor_args=down_logical_op.fn_constructor_args,
@@ -713,9 +753,9 @@ class FuseOperators(Rule):
             )
         else:
             # The downstream op is AbstractMap instead of AbstractUDFMap.
-            logical_op = AbstractMap(
-                name,
-                [input_op],
+            logical_op = _FusedMap(
+                fused_name=name,
+                input_dependencies=[input_op],
                 can_modify_num_rows=can_modify_num_rows,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
                 ray_remote_args_fn=ray_remote_args_fn,
