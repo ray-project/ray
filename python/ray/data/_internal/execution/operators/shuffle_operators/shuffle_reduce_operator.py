@@ -29,13 +29,11 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +54,7 @@ def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, An
     return merged
 
 
-class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
+class ShuffleReduceOp(PhysicalOperator):
     """Reduce phase of a shuffle.
 
     Supports one or more co-partitioned upstream `ShuffleMapOp`s.  With a single
@@ -157,9 +155,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
 
         # -- Stats -----------------------------------------------------------
         self._output_blocks_stats: List[BlockStats] = []
-
-        # -- Sub-progress bars -----------------------------------------------
-        self._reduce_bar: Optional["BaseProgressBar"] = None
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
@@ -356,8 +351,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(increment=0, total=self.num_output_rows_total())
 
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
@@ -383,11 +376,6 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         )
         self._estimated_num_output_bundles = num_outputs
         self._estimated_output_num_rows = num_rows
-        if self._reduce_bar is not None:
-            self._reduce_bar.update(
-                increment=bundle.num_rows() or 0,
-                total=self.num_output_rows_total(),
-            )
 
     def _handle_reduce_done(
         self,
@@ -479,10 +467,3 @@ class ShuffleReduceOp(PhysicalOperator, SubProgressBarMixin):
         submitted = self._num_reduce_tasks_submitted
         done = submitted - len(self._shuffle_reduce_tasks)
         return f"reduce: {done}/{submitted}"
-
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Reduce"]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Reduce":
-            self._reduce_bar = pg
