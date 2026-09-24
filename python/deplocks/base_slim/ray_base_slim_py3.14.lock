@@ -1106,6 +1106,13 @@ grpcio==1.76.0 \
     --hash=sha256:ff8a59ea85a1f2191a0ffcc61298c571bc566332f82e5f5be1b83c9d8e668a62
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
+    #   grpcio-reflection
+    #   ray
+grpcio-reflection==1.76.0 \
+    --hash=sha256:d7c43f2047a2a9c9320a5905aa7133c677977436b5f63e6a868e507864a11c73 \
+    --hash=sha256:e0e7e49921c2ee951e5ddff0bdbacbd1ac1a70888beb61d567f3d01b799decb1
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
     #   ray
 gymnasium==1.2.2 \
     --hash=sha256:46d927328f8518bb5a689dbe270d228c1da2b08bcb71ae0152c10aa66f48d530 \
@@ -2477,6 +2484,7 @@ protobuf==6.33.6 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
     #   google-api-core
     #   googleapis-common-protos
+    #   grpcio-reflection
     #   opentelemetry-proto
     #   proto-plus
     #   ray

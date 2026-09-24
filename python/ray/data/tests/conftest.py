@@ -19,6 +19,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.cache import _disable_timed_cache_for_tests
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
@@ -526,7 +527,7 @@ def op_two_block():
         "size_bytes": [100, 50],
         "wall_time": [5, 10],
         "cpu_time": [1.2, 3.4],
-        "udf_time": [1.1, 1.7],
+        "block_transform_time": [1.1, 1.7],
         "node_id": ["a1", "b2"],
         "task_idx": [0, 1],
     }
@@ -541,7 +542,7 @@ def op_two_block():
             end_time_s=start_time_s + block_params["wall_time"][i],
             wall_time_s=block_params["wall_time"][i],
             cpu_time_s=block_params["cpu_time"][i],
-            udf_time_s=block_params["udf_time"][i],
+            block_transform_time_s=block_params["block_transform_time"][i],
             node_id=block_params["node_id"][i],
             task_idx=block_params["task_idx"][i],
         )
@@ -844,3 +845,9 @@ def assert_blocks_expected_in_plasma(
 @pytest.fixture(autouse=True, scope="function")
 def log_internal_stack_trace(restore_data_context):
     ray.data.context.DataContext.get_current().log_internal_stack_trace = True
+
+
+@pytest.fixture
+def disable_timed_cache_fixture():
+    with _disable_timed_cache_for_tests():
+        yield
