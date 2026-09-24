@@ -176,6 +176,12 @@ def _load_aliyun_defaults_config():
     return os.path.join(os.path.dirname(ray_aliyun.__file__), "defaults.yaml")
 
 
+def _load_spark_defaults_config():
+    import ray.autoscaler.spark as ray_spark
+
+    return os.path.join(os.path.dirname(ray_spark.__file__), "defaults.yaml")
+
+
 def _import_external(provider_config):
     provider_cls = load_function_or_class(path=provider_config["module"])
     return provider_cls
@@ -221,6 +227,7 @@ _DEFAULT_CONFIGS = {
     "aliyun": _load_aliyun_defaults_config,
     "vsphere": _load_vsphere_defaults_config,
     "readonly": _load_read_only_defaults_config,
+    "spark": _load_spark_defaults_config,
 }
 
 

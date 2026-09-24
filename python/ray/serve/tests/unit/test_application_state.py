@@ -2725,13 +2725,6 @@ class TestAutoscale:
                 actor_id="actor_id",
                 handle_source=DeploymentHandleSource.UNKNOWN,
                 queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-                aggregated_queued_requests=0,
-                aggregated_metrics={
-                    RUNNING_REQUESTS_KEY: {
-                        r1.to_full_id_str(): 3,
-                        r2.to_full_id_str(): 3,
-                    }
-                },
                 metrics={
                     RUNNING_REQUESTS_KEY: {
                         r1.to_full_id_str(): [TimeStampedValue(timestamp_offset, 3)],
@@ -2745,7 +2738,6 @@ class TestAutoscale:
             for i in [1, 2]:
                 replica_report = ReplicaMetricReport(
                     replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]
                     },
@@ -2872,7 +2864,6 @@ class TestAutoscale:
         for replica_id in app1_d1_replicas + app1_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -2882,7 +2873,6 @@ class TestAutoscale:
         for replica_id in app2_d1_replicas + app2_d2_replicas:
             replica_report = ReplicaMetricReport(
                 replica_id=replica_id,
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 0},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 0)]},
                 timestamp=time.time(),
             )
@@ -2946,7 +2936,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 3},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 3)]},
                 timestamp=time.time(),
             )
@@ -3027,7 +3016,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 4},
                 metrics={RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 4)]},
                 timestamp=time.time(),
             )
@@ -3156,7 +3144,6 @@ class TestAutoscale:
             for replica in replicas:
                 replica_report = ReplicaMetricReport(
                     replica_id=replica,
-                    aggregated_metrics={RUNNING_REQUESTS_KEY: load},
                     metrics={
                         RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, load)]
                     },
@@ -3231,7 +3218,6 @@ class TestAutoscale:
         for i in range(3):
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: 10},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, 10)]
                 },
@@ -3368,13 +3354,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d1_r1.to_full_id_str(): d1_load,
-                    d1_r2.to_full_id_str(): d1_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d1_r1.to_full_id_str(): [
@@ -3398,13 +3377,6 @@ class TestAutoscale:
             actor_id="actor_id",
             handle_source=DeploymentHandleSource.UNKNOWN,
             queued_requests=[TimeStampedValue(timestamp_offset, 0)],
-            aggregated_queued_requests=0,
-            aggregated_metrics={
-                RUNNING_REQUESTS_KEY: {
-                    d2_r3.to_full_id_str(): d2_load,
-                    d2_r4.to_full_id_str(): d2_load,
-                }
-            },
             metrics={
                 RUNNING_REQUESTS_KEY: {
                     d2_r3.to_full_id_str(): [
@@ -3427,7 +3399,6 @@ class TestAutoscale:
         for i in [1, 2]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d1_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d1_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d1_load)]
                 },
@@ -3439,7 +3410,6 @@ class TestAutoscale:
         for i in [3, 4]:
             replica_report = ReplicaMetricReport(
                 replica_id=ReplicaID(unique_id=f"replica_{i}", deployment_id=d2_id),
-                aggregated_metrics={RUNNING_REQUESTS_KEY: d2_load},
                 metrics={
                     RUNNING_REQUESTS_KEY: [TimeStampedValue(timestamp_offset, d2_load)]
                 },
@@ -3588,6 +3558,7 @@ class TestApplicationLevelAutoscaling:
                 deployment_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
+                None,
             )
             app_state.update()
 
@@ -3645,6 +3616,7 @@ class TestApplicationLevelAutoscaling:
                     deployment_infos,
                     BuildAppStatus.SUCCEEDED,
                     "",
+                    None,
                 )
                 app_state.update()
 
@@ -3803,6 +3775,71 @@ class TestApplicationLevelAutoscaling:
         new_app_state_manager.update()
 
         assert new_deployment_state_manager._scaling_decisions[d1_id] == 3
+
+    @patch("ray.serve._private.application_state.build_serve_application", Mock())
+    @patch(
+        "ray.serve._private.application_state.check_obj_ref_ready_nowait",
+        Mock(return_value=True),
+    )
+    def test_app_level_autoscaling_policy_bytes_survive_recovery_and_update(
+        self, mocked_application_state_manager
+    ):
+        """The serialized policy must be carried through every target state.
+
+        A policy that lives only in the app's runtime_env can be imported by
+        the build task but not by the controller, so the controller relies on
+        the bytes the build task returned. Dropping them from the target state
+        on recovery or on a same-code-version update lets the next checkpoint
+        persist None, and the recovery after that imports the policy by path in
+        the controller and crashes it.
+        """
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        serialized_policy = cloudpickle.dumps(simple_app_level_policy)
+
+        def config(max_ongoing_requests):
+            return ServeApplicationSchema(
+                name="test_app",
+                import_path="fa.ke",
+                route_prefix="/",
+                # Not importable in this process, like a runtime_env-only module.
+                autoscaling_policy={"policy_function": "hidden_app:app_policy"},
+                deployments=[
+                    {"name": "a", "max_ongoing_requests": max_ongoing_requests}
+                ],
+            )
+
+        def recover():
+            return ApplicationStateManager(
+                MockDeploymentStateManager(kv_store),
+                AutoscalingStateManager(),
+                MockEndpointState(),
+                kv_store,
+                LoggingConfig(),
+            )
+
+        def policy_bytes(manager):
+            return manager._application_states[
+                "test_app"
+            ]._target_state.serialized_application_autoscaling_policy_def
+
+        with patch(
+            "ray.get",
+            Mock(return_value=(serialized_policy, [deployment_params("a", "/")], None)),
+        ):
+            app_state_manager.apply_app_configs([config(5)])
+            app_state_manager.update()
+        assert policy_bytes(app_state_manager) == serialized_policy
+
+        app_state_manager.save_checkpoint()
+        recovered = recover()
+        assert policy_bytes(recovered) == serialized_policy
+
+        # Same import_path and runtime_env: applied in place without a rebuild.
+        recovered.apply_app_configs([config(11)])
+        assert policy_bytes(recovered) == serialized_policy
+
+        recovered.save_checkpoint()
+        assert recover()._autoscaling_state_manager._application_has_policy("test_app")
 
     def test_app_level_autoscaling_policy_deregistration_on_deletion(
         self, mocked_application_state_manager
@@ -5040,6 +5077,113 @@ class TestDeploymentDAG:
         # Verify leaf nodes have no dependencies
         assert len(topology.nodes["database"].outbound_deployments) == 0
         assert len(topology.nodes["cache"].outbound_deployments) == 0
+
+
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+class TestConfigOverridesFromBuild:
+    """Removing config overrides restores code defaults, including after recovery."""
+
+    SPARSE = ServeApplicationSchema(
+        name="test_app", import_path="fa.ke", route_prefix="/"
+    )
+
+    @staticmethod
+    def _build(app_state_manager, check_obj_ref_ready_nowait):
+        app_state_manager.apply_app_configs([TestConfigOverridesFromBuild.SPARSE])
+        app_state = app_state_manager._application_states["test_app"]
+        check_obj_ref_ready_nowait.return_value = True
+        app_state.update()
+        assert app_state._target_state.build is not None
+        return app_state
+
+    @staticmethod
+    def _with_overrides(**deployment_overrides):
+        return ServeApplicationSchema(
+            name="test_app",
+            import_path="fa.ke",
+            route_prefix="/",
+            deployments=[{"name": "a", **deployment_overrides}],
+        )
+
+    @staticmethod
+    def _num_replicas(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].deployment_config.num_replicas
+
+    @staticmethod
+    def _actor_options(app_state):
+        return app_state._target_state.deployment_infos[
+            "a"
+        ].replica_config.ray_actor_options
+
+    @staticmethod
+    def _recover(kv_store):
+        new_app_state_manager = ApplicationStateManager(
+            MockDeploymentStateManager(kv_store),
+            AutoscalingStateManager(),
+            MockEndpointState(),
+            kv_store,
+            LoggingConfig(),
+        )
+        return new_app_state_manager._application_states["test_app"]
+
+    def test_removed_override_returns_to_code_defined_value(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+        app_state.apply_app_config(
+            self._with_overrides(
+                num_replicas=5,
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}},
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert app_state._target_state.build is not None
+        assert self._num_replicas(app_state) == 5
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        app_state.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert self._num_replicas(app_state) == 1
+        assert "runtime_env" not in self._actor_options(app_state)
+
+    def test_sparse_rollback_after_controller_restart(
+        self, check_obj_ref_ready_nowait, mocked_application_state_manager
+    ):
+        app_state_manager, _, kv_store = mocked_application_state_manager
+        app_state = self._build(app_state_manager, check_obj_ref_ready_nowait)
+        app_state.apply_app_config(
+            self._with_overrides(
+                ray_actor_options={"runtime_env": {"env_vars": {"FAIL": "1"}}}
+            ),
+            None,
+            None,
+            deployment_time=1.0,
+        )
+        assert self._actor_options(app_state)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+        app_state_manager.save_checkpoint()
+
+        recovered = self._recover(kv_store)
+        assert recovered._target_state.build is not None
+        assert self._actor_options(recovered)["runtime_env"]["env_vars"] == {
+            "FAIL": "1"
+        }
+
+        recovered.apply_app_config(self.SPARSE, None, None, deployment_time=2.0)
+        assert "runtime_env" not in self._actor_options(recovered)
+        assert self._num_replicas(recovered) == 1
 
 
 if __name__ == "__main__":

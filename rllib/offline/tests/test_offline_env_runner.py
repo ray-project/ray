@@ -1,5 +1,6 @@
 import pathlib
 import shutil
+import tempfile
 import unittest
 
 import msgpack
@@ -15,8 +16,18 @@ from ray.rllib.offline.offline_env_runner import OfflineSingleAgentEnvRunner
 
 
 class TestOfflineEnvRunner(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        # Start a single Ray instance for the whole suite.
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def setUp(self) -> None:
-        self.base_path = pathlib.Path("/tmp/")
+        # Use a unique directory per test.
+        self.base_path = pathlib.Path(tempfile.mkdtemp())
         self.config = (
             PPOConfig()
             .env_runners(
@@ -40,10 +51,9 @@ class TestOfflineEnvRunner(unittest.TestCase):
                 )
             )
         )
-        ray.init()
 
     def tearDown(self) -> None:
-        ray.shutdown()
+        shutil.rmtree(self.base_path, ignore_errors=True)
 
     def test_offline_env_runner_record_episodes(self):
         """Tests recording of episodes.
@@ -92,8 +102,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
         episodes = offline_data.data.take_batch(100)["item"]
         # The batch should contain 100 episodes (not 100 env steps).
         self.assertEqual(len(episodes), 100)
-        # Remove all data.
-        shutil.rmtree(data_dir)
 
     def test_offline_env_runner_record_column_data(self):
         """Tests recording of single time steps in column format.
@@ -135,8 +143,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
         batch = offline_data.data.take_batch(100)
         # The batch should contain 100 episodes (not 100 env steps).
         self.assertTrue(len(batch[Columns.OBS]) == 100)
-        # Remove all data.
-        shutil.rmtree(data_dir)
 
     def test_offline_env_runner_compress_columns(self):
         """Tests recording of timesteps with compressed columns.
@@ -200,8 +206,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
         batch = offline_data.data.take_batch(100)
         # The batch should contain 100 episodes (not 100 env steps).
         self.assertTrue(len(batch[Columns.OBS]) == 100)
-        # Remove all data.
-        shutil.rmtree(data_dir)
 
     @staticmethod
     def _get_dir_name(offline_env_runner):
