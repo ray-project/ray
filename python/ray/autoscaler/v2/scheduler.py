@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
+from ray._common.utils import GPU_MEMORY_RESOURCE_NAME, resolve_gpu_memory
 from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import IMPLICIT_RESOURCE_PREFIX
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
@@ -722,7 +723,11 @@ class SchedulingNode:
             # TODO: we should also generalize this optimization for accelerators.
             # https://github.com/ray-project/ray/issues/43079
             is_gpu_node = self.total_resources.get("GPU", 0) > 0
-            any_gpu_requests = any("GPU" in r.resources_bundle for r in sched_requests)
+            any_gpu_requests = any(
+                "GPU" in r.resources_bundle
+                or GPU_MEMORY_RESOURCE_NAME in r.resources_bundle
+                for r in sched_requests
+            )
             if is_gpu_node and not any_gpu_requests:
                 gpu_ok = False
 
@@ -813,13 +818,18 @@ class SchedulingNode:
             pass
 
         available_resources_dict = self.get_available_resources(resource_request_source)
+        resources_bundle = resolve_gpu_memory(
+            dict(request.resources_bundle), self.labels
+        )
+        if resources_bundle is None:
+            return False
 
         # Check if there's enough resources to schedule the request.
-        if not _fits(available_resources_dict, dict(request.resources_bundle)):
+        if not _fits(available_resources_dict, resources_bundle):
             return False
 
         # Schedule the request, update resources
-        _inplace_subtract(available_resources_dict, dict(request.resources_bundle))
+        _inplace_subtract(available_resources_dict, resources_bundle)
 
         # Add the request to the node.
         self.add_sched_request(request, resource_request_source)
