@@ -29,7 +29,6 @@ from ray.serve._private.test_utils import (
     check_running,
     check_target_groups_ready,
     get_application_url,
-    skip_if_haproxy,
 )
 from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import DeploymentUnavailableError
@@ -2040,10 +2039,6 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
         ray.kill(failures)
 
 
-@skip_if_haproxy(
-    "the reload lags behind old replicas stopping on consecutive ticks, so a "
-    "request can reach a replica that already exited"
-)
 def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signal):
     """Surge bounds a code change that also scales the deployment up or down.
 
@@ -2051,7 +2046,15 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
     all replaced.
     """
     client, signal = serve_instance_with_signal
-    v1 = {**SURGE_DEPLOYMENT, "max_surge_percent": 50}
+    # Old replicas stop on consecutive ticks here. Under HAProxy the CI drain
+    # window is 0.01s, shorter than a reload, so keep replicas reachable long
+    # enough to be deregistered first.
+    drain = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "5"}
+    v1 = {
+        **SURGE_DEPLOYMENT,
+        "max_surge_percent": 50,
+        "ray_actor_options": {"runtime_env": {"env_vars": drain}},
+    }
     client.deploy_apps(_rolling_update_config(v1))
     wait_for_condition(check_running, timeout=60)
     v1_pids = _running_replica_pids(client)
@@ -2068,7 +2071,7 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
 
     with _background_traffic():
         # Scale 3 -> 5 with new code: five replacements fit within 5 + ceil(2.5).
-        v2 = _env_override(v1, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
+        v2 = _env_override(v1, **drain, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
         client.deploy_apps(_rolling_update_config({**v2, "num_replicas": 5}))
         wait_for_condition(
             _check_surged,
@@ -2090,7 +2093,7 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
         # Scale 5 -> 2 with new code: extra old replicas stop first, then one
         # replacement at a time fits within 2 + ceil(1).
         ray.get(signal.send.remote(clear=True))
-        v3 = _env_override(v1, BLOCK_INIT_ON_SIGNAL="1", MARKER="v3")
+        v3 = _env_override(v1, **drain, BLOCK_INIT_ON_SIGNAL="1", MARKER="v3")
         client.deploy_apps(_rolling_update_config({**v3, "num_replicas": 2}))
 
         def check_scaled_down_then_surged():
