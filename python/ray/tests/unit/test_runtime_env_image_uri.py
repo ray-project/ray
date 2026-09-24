@@ -47,11 +47,15 @@ def test_mounts_default_token_file(auth_env, tmp_path):
     assert TOKEN not in command
 
 
-def test_mounts_token_path_from_env(auth_env, tmp_path):
+@pytest.mark.parametrize("relative", [False, True])
+def test_mounts_token_path_from_env(auth_env, tmp_path, relative):
     token_path = tmp_path / "custom_token"
     token_path.write_text(TOKEN)
+    auth_env.chdir(tmp_path)
     auth_env.setenv("RAY_AUTH_MODE", "token")
-    auth_env.setenv("RAY_AUTH_TOKEN_PATH", str(token_path))
+    auth_env.setenv(
+        "RAY_AUTH_TOKEN_PATH", token_path.name if relative else str(token_path)
+    )
     reset_auth_token_state()
 
     command = _container_command()

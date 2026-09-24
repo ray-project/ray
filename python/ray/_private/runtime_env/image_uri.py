@@ -114,8 +114,8 @@ def _modify_context_impl(
     # Mount the token file rather than passing the token via --env, which is
     # logged and visible in `ps`.
     if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in env_vars:
-        token_path = env_vars.get("RAY_AUTH_TOKEN_PATH") or str(
-            _get_default_token_path()
+        token_path = os.path.abspath(
+            env_vars.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
         )
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
