@@ -517,9 +517,9 @@ py_test_module_list(
 # Post-wheel-build tests.
 py_test_module_list(
     size = "large",
-    # Shorten ingress draining because these tests expect Serve controllers to
-    # shut down promptly.
-    env = {"RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01"},
+    # Release HAProxy listeners promptly because these tests restart Serve on
+    # the same ports.
+    env = {"RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S": "0.01"},
     files = [
         "test_runtime_env.py",
         "test_runtime_env_2.py",

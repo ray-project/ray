@@ -319,7 +319,21 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
         "source/serve/doc_code/capacity_queue_request_router_app.py",
+        # Custom ingress request routers require the Python proxy.
+        "source/serve/doc_code/custom_request_router_app.py",
     ],
+    extra_srcs = [],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = ["source/serve/doc_code/custom_request_router_app.py"],
+    env = {"RAY_SERVE_ENABLE_HA_PROXY": "0"},
+    exclude = [],
     extra_srcs = [],
     tags = [
         "exclusive",
