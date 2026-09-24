@@ -296,17 +296,19 @@ class FooterReader:
             if metadata.num_row_groups
             else None
         )
-        all_rg_indices = [
+        unprocessed_rg_ids = [
             i
             for i in range(metadata.num_row_groups)
             if _row_group_unit_id(path, i) not in self.excluded_read_unit_ids
         ]
-        if len(all_rg_indices) < metadata.num_row_groups:
-            # Row groups a checkpoint already finished. Dropping them here,
-            # before the predicate split and before ``_read_footers`` counts
-            # rows toward a pushed-down limit, means a resumed job neither
-            # re-reads them nor stops listing early on their account.
-            fragment = fragment.subset(row_group_ids=all_rg_indices)
+        if len(unprocessed_rg_ids) < metadata.num_row_groups:
+            # Some row groups of this file are already checkpointed. Narrow the
+            # fragment to the rest now, so that (1) the predicate split below
+            # never emits a chunk for a finished row group, so the resumed job
+            # does not read it again, and (2) the finished row groups' rows are
+            # not summed toward a pushed-down limit, which would otherwise make
+            # the listing stop early and the resumed job return too few rows.
+            fragment = fragment.subset(row_group_ids=unprocessed_rg_ids)
 
         if self.filter is not None and filter_leaves.all_filter_columns_found:
             # Predicate pushdown: drop row groups whose Parquet statistics
@@ -318,7 +320,7 @@ class FooterReader:
                 fragment, self.filter, path
             )
             rg_indices: Iterable[int] = (
-                all_rg_indices if surviving is None else surviving
+                unprocessed_rg_ids if surviving is None else surviving
             )
             # Classify surviving groups as fully- vs partially-matching via
             # predicate negation: a group is fully matched iff
@@ -346,10 +348,10 @@ class FooterReader:
             # in that case, which would abort the whole read_footers batch.
             # Skip pruning: keep every row group and let the reader apply the
             # filter after null-fill. None can be an exact survivor.
-            rg_indices = all_rg_indices
+            rg_indices = unprocessed_rg_ids
             fully_by_idx = dict.fromkeys(rg_indices, False)
         else:
-            rg_indices = all_rg_indices
+            rg_indices = unprocessed_rg_ids
             # No predicate -> nothing to disqualify a group, so the lookup below
             # falls through to its fully-matched default for every group.
             fully_by_idx = {}

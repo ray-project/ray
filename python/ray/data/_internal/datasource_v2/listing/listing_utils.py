@@ -101,6 +101,11 @@ def list_files_for_each_block(
     remaining work.
     """
     pruners = _build_pruners(file_extensions, partition_filter, partition_pruner)
+    # The excluded ids arrive through ``TaskContext.kwargs`` rather than as an
+    # argument of this function because they do not exist at plan time: every
+    # write task checkpoints, so the checkpoint is many files that are only
+    # loaded once execution starts, after the plan is built. A map-task kwarg
+    # is resolved when each listing task launches, so it can carry them.
     # ``TaskContext.kwargs`` is untyped, so normalize here once: every lookup
     # downstream (per file, per row group) then stays O(1) whatever was passed.
     excluded_ids = ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME)
