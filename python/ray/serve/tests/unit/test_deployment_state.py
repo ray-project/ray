@@ -11690,8 +11690,6 @@ class TestRollingUpdateTerminalFailure:
 
 
 class TestMaxSurge:
-    """Surge updates start replacements before stopping old replicas."""
-
     def _tick(self, dsm, ds, target: int):
         dsm.update()
         assert ds._replicas.count(states=[ReplicaState.RUNNING]) >= target
@@ -11974,7 +11972,6 @@ class TestMaxSurge:
                 (ReplicaState.RUNNING, 2, v2),
             ],
         )
-        # Continue replacing old replicas while keeping the target count running.
         for _ in range(20):
             self._tick(new_dsm, new_ds, target=4)
             for replica in new_ds._replicas.get(states=[ReplicaState.STARTING]):
@@ -12002,8 +11999,7 @@ class TestMaxSurge:
         assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
 
     def test_old_starting_replica_stops_first(self, mock_deployment_state_manager):
-        """An old replica that never ran stops for free; running ones stop only
-        while the running count stays at target."""
+        """Stop starting replicas first, preserving the target running count."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         info_1, v1 = deployment_info(
@@ -12052,7 +12048,6 @@ class TestMaxSurge:
         assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 4
 
     def test_rollback_stops_pending_replacements(self, mock_deployment_state_manager):
-        """Replacements that never started are stopped although nothing exceeds target."""
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()
         ds = _deploy_running(

@@ -138,7 +138,7 @@ def _rolling_update_config(
 
 
 def _env_override(deployment: dict, **env: str) -> dict:
-    """Copy of the deployment whose replicas restart because their env changes."""
+    """Return a deployment config with new environment variables."""
     ray_actor_options = {
         **deployment.get("ray_actor_options", {}),
         "runtime_env": {"env_vars": env},
@@ -1148,9 +1148,6 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
     assert "v3" not in responses
 
 
-# A surge allowance of two replicas on a target of three.
-
-
 def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
     """Health check failures stop a rolling update before it replaces all old replicas."""
     client = serve_instance
@@ -1669,11 +1666,7 @@ def test_multi_deployment_overrides_revert_independently(serve_instance):
 def test_surge_rolling_update_keeps_capacity_and_replaces(
     serve_instance_with_signal, restart_controller
 ):
-    """A failing update leaves the old replicas untouched and rolls back in place;
-    a working one starts its replacements before stopping anything.
-
-    Traffic runs throughout and must never see a non-200 response.
-    """
+    """Keep capacity and serve traffic through failure, rollback, and replacement."""
     client, signal = serve_instance_with_signal
     client.deploy_apps(_rolling_update_config(SURGE_DEPLOYMENT))
     wait_for_condition(check_running, timeout=60)
@@ -1682,7 +1675,6 @@ def test_surge_rolling_update_keeps_capacity_and_replaces(
     surged = {"RUNNING": 3, "STARTING": 2}
 
     with _background_traffic():
-        # The failing replacements start on the extra capacity, not in place.
         client.deploy_apps(
             _rolling_update_config(
                 _env_override(
@@ -1696,7 +1688,6 @@ def test_surge_rolling_update_keeps_capacity_and_replaces(
         ray.get(signal.send.remote())
 
         def check_failed_keeping_capacity():
-            # Invariants hold on every poll: old replicas are never touched.
             assert _running_replica_pids(client) == initial_pids
             states = _replica_states()
             assert states["RUNNING"] == 3 and states.get("STARTING", 0) <= 2, states
@@ -1965,7 +1956,6 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
     deployment_id = DeploymentID(name="FailOnFlag", app_name=SERVE_DEFAULT_APP_NAME)
 
     def running_gang_sizes() -> Dict[str, int]:
-        """How many members of each gang are RUNNING."""
         replicas = ray.get(
             client._controller._dump_replica_states_for_testing.remote(deployment_id)
         )

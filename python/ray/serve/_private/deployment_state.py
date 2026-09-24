@@ -4183,7 +4183,7 @@ class DeploymentState:
         return replicas_changed
 
     def _rollout_size(self) -> int:
-        """Return the update batch size, at least one replica or one whole gang."""
+        """Return the update batch size, rounded up for gangs."""
         rolling_update_percentage = (
             self._deployed_info.deployment_config.rolling_update_percentage
         )
@@ -4203,9 +4203,8 @@ class DeploymentState:
     def _surge_rollout_counts(self) -> Optional[Tuple[int, int]]:
         """Return (replicas to start, old replicas to stop), or None without surge.
 
-        Keep active and recovering replicas within the target plus surge allowance.
-        Stop old replicas in batches, never taking the running count below target.
-        Recovering replicas count toward the limit but are never stopped here.
+        Count recovering replicas toward the limit, but do not stop them.
+        Stop old replicas in batches without reducing running capacity below target.
         """
         target = self._target_state.target_num_replicas
         surge_percent = self._deployed_info.deployment_config.max_surge_percent
@@ -4226,8 +4225,7 @@ class DeploymentState:
         if not old_active:
             if self._replicas.count(states=[ReplicaState.RECOVERING]) == 0:
                 return None
-            # Recovering replicas report the target version until they are
-            # known, so wait for them before stopping or downscaling anything.
+            # A recovering replica's actual version is not known yet.
         elif not any(
             replica.version.requires_actor_restart(target_version)
             for replica in old_active
@@ -4256,12 +4254,9 @@ class DeploymentState:
             to_start = to_start // gang_size * gang_size
         if self._terminally_failed():
             return to_start, 0
-        # Only RUNNING replicas count as capacity, so a RUNNING old replica stops
-        # only once the running count exceeds the target. Old replicas that are
-        # still starting hold no capacity and stop first (see the state order in
-        # ReplicaStateContainer.pop), except members of a gang that is partly
-        # RUNNING: that gang cannot stop yet and must not lend its budget to a
-        # healthy one.
+        # STARTING replicas stop first and do not reduce running capacity.
+        # Exclude members of partly running gangs: their stop budget could
+        # otherwise be used to stop a healthy gang.
         old_starting = [
             replica
             for replica in old_active
@@ -4287,7 +4282,7 @@ class DeploymentState:
         return to_start, to_stop_old
 
     def _num_replicas_to_start(self) -> int:
-        """Return how many replicas to start, including those needing gang reservations."""
+        """Return how many replicas to start, including surge replicas."""
         surge_counts = self._surge_rollout_counts()
         if surge_counts is not None:
             return surge_counts[0]

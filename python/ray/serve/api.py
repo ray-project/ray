@@ -643,11 +643,10 @@ def deployment(
             time during a rolling update. Must be in ``(0.0, 1.0]``.
             Defaults to ``0.2`` (20%).
         max_surge_percent: Extra replicas allowed during a rolling restart,
-            as a percentage of the target count, rounded up to whole replicas
-            or gangs. Must be in ``[0, 100]``. When positive, replacements start
-            before old replicas stop. If capacity is unavailable, old replicas
-            keep serving while replacements wait. Defaults to ``0``, which
-            stops old replicas before starting replacements.
+            as a percentage of the target count. Must be in ``[0, 100]``;
+            rounds up to whole replicas or gangs. With a positive value, old
+            replicas keep serving until replacements are ready. Defaults to
+            ``0``, which stops old replicas before starting replacements.
 
     Returns:
         `Deployment`
