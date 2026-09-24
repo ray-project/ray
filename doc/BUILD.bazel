@@ -651,7 +651,7 @@ doctest(
         exclude = [
             "source/ray-core/handling-dependencies.rst",
             # The `doc_code/` snippet for `nested-tasks.rst` is tested.
-            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-core/tasks/nested-tasks.md",
         ],
     ),
     tags = ["team:core"],
