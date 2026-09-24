@@ -778,6 +778,25 @@ Mobilint MBLT doesn't support fractional resources.
 
 **Note:** It is the user's responsibility to make sure that the individual tasks don't use more than their share of the accelerator memory. Pytorch and TensorFlow can be configured to limit its memory usage.
 
+(gpu-memory-scheduling)=
+
+### Requesting GPU memory
+
+A fraction such as `num_gpus=0.25` means a different amount of memory on an 80 GB GPU than on a 24 GB GPU. To size a task or actor by memory instead, request `gpu_memory` in bytes. Ray converts the request into a GPU fraction for each node it considers, based on that node's GPU memory, and rounds the fraction up. The task or actor always runs on a single GPU.
+
+```python
+@ray.remote(gpu_memory=20 * 1024**3)
+class Model:
+    ...
+```
+
+- Ray detects the memory of each NVIDIA GPU at node startup and publishes it as the `ray.io/gpu-memory-per-device` node label, in bytes. For nodes Ray doesn't detect, set the label yourself with `ray start --labels`.
+- A node without the label, or with less memory per GPU than the request, can't run the task or actor.
+- `gpu_memory` can't be combined with `num_gpus`, and isn't supported inside placement groups.
+- For the autoscaler to launch nodes for `gpu_memory` requests, set the label under `labels` for each GPU node type.
+
+`gpu_memory` only reserves memory in the scheduler. To also cap the memory a process can allocate, run the [NVIDIA Multi-Process Service (MPS)](https://docs.nvidia.com/deploy/mps/index.html) on the node and set `RAY_ENABLE_MPS_GPU_MEMORY_LIMIT=1` in the environment of the Ray node. Ray then sets `CUDA_MPS_PINNED_DEVICE_MEM_LIMIT` for each task or actor that requests `gpu_memory`, before user code runs. An allocation past the limit fails with an out of memory error. Ray starts a new worker process for each `gpu_memory` task by default, so the limit applies before CUDA initializes.
+
 When Ray assigns accelerators of a node to tasks or actors with fractional resource requirements, it packs one accelerator before moving on to the next one to avoid fragmentation.
 
 ```{testcode}

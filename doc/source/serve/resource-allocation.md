@@ -55,6 +55,14 @@ def func_2(*args):
 
 In this example, each replica of each deployment will be allocated 0.5 GPUs.  The same can be done to multiplex over CPUs, using `"num_cpus"`.
 
+To size replicas by GPU memory instead of a fraction, for example when a cluster mixes GPU types, set `gpu_memory` in bytes. Ray converts it into a GPU fraction on each node based on that node's GPU memory. See {ref}`gpu-memory-scheduling` for the requirements and for capping replica memory with MPS.
+
+```python
+@serve.deployment(ray_actor_options={"gpu_memory": 20 * 1024**3})
+def func_3(*args):
+    return do_something_with_my_gpu()
+```
+
 ### Custom resources, accelerator types, and more
 
 You can also specify {ref}`custom resources <cluster-resources>` in `ray_actor_options`, for example to ensure that a deployment is scheduled on a specific node. For example, if you have a deployment that requires 2 units of the `"custom_resource"` resource, you can specify it like this:
