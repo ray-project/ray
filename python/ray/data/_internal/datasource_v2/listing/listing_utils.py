@@ -101,6 +101,10 @@ def list_files_for_each_block(
     remaining work.
     """
     pruners = _build_pruners(file_extensions, partition_filter, partition_pruner)
+    # ``TaskContext.kwargs`` is untyped, so normalize here once: every lookup
+    # downstream (per file, per row group) then stays O(1) whatever was passed.
+    excluded_ids = ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME)
+    excluded_read_unit_ids = frozenset(excluded_ids) if excluded_ids else None
     for block in blocks:
         for manifest in indexer.list_files(
             block[PATH_COLUMN_NAME],
@@ -112,7 +116,7 @@ def list_files_for_each_block(
             projected_columns=projected_columns,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
-            excluded_read_unit_ids=ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME),
+            excluded_read_unit_ids=excluded_read_unit_ids,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()
