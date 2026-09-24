@@ -33,10 +33,6 @@
 - name: "read_parquet_fixed_size"
   python: "3.10"
   cluster:
-    byod:
-      runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "67108864"
     anyscale_sdk_2026: true
     cluster_compute: fixed_size_cpu_compute.yaml
 
