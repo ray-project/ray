@@ -12001,6 +12001,108 @@ class TestMaxSurge:
         check_counts(ds, total=4)
         assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
 
+    def test_old_starting_replica_stops_first(self, mock_deployment_state_manager):
+        """An old replica that never ran stops for free; running ones stop only
+        while the running count stays at target."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info_1, v1 = deployment_info(
+            num_replicas=4,
+            version="1",
+            max_surge_percent=50,
+            rolling_update_percentage=1.0,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING])[:3]:
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=4,
+            by_state=[(ReplicaState.RUNNING, 3, v1), (ReplicaState.STARTING, 1, v1)],
+        )
+
+        info_2, v2 = deployment_info(
+            num_replicas=4,
+            version="2",
+            max_surge_percent=50,
+            rolling_update_percentage=1.0,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        check_counts(ds, total=6, by_state=[(ReplicaState.STARTING, 2, v2)])
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            if replica.version == v2:
+                replica._actor.set_ready()
+        # Five replicas run against a target of four: the idle old replica and
+        # one running old replica stop, and the freed room starts a replacement.
+        dsm.update()
+        check_counts(
+            ds,
+            total=7,
+            by_state=[
+                (ReplicaState.RUNNING, 2, v1),
+                (ReplicaState.STOPPING, 2, v1),
+                (ReplicaState.RUNNING, 2, v2),
+                (ReplicaState.STARTING, 1, v2),
+            ],
+        )
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 4
+
+    def test_rollback_stops_pending_replacements(self, mock_deployment_state_manager):
+        """Replacements that never started are stopped although nothing exceeds target."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(
+            dsm, TEST_DEPLOYMENT_ID, num_replicas=4, version="1", max_surge_percent=50
+        )
+        v1 = ds.target_version
+        info_2, v2 = deployment_info(num_replicas=4, version="2", max_surge_percent=50)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        check_counts(
+            ds,
+            total=6,
+            by_state=[(ReplicaState.RUNNING, 4, v1), (ReplicaState.STARTING, 2, v2)],
+        )
+
+        info_1, _ = deployment_info(num_replicas=4, version="1", max_surge_percent=50)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        for _ in range(6):
+            self._tick(dsm, ds, target=4)
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v1)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_scale_up_with_code_change_stays_within_surge(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(
+            dsm, TEST_DEPLOYMENT_ID, num_replicas=3, version="1", max_surge_percent=50
+        )
+        v1 = ds.target_version
+        # Target 5 plus a surge of ceil(2.5) = 3 allows eight replicas in total.
+        info_2, v2 = deployment_info(num_replicas=5, version="2", max_surge_percent=50)
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        check_counts(
+            ds,
+            total=8,
+            by_state=[(ReplicaState.RUNNING, 3, v1), (ReplicaState.STARTING, 5, v2)],
+        )
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        for _ in range(20):
+            self._tick(dsm, ds, target=5)
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+        check_counts(ds, total=5, by_state=[(ReplicaState.RUNNING, 5, v2)])
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
