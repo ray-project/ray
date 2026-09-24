@@ -5,7 +5,9 @@ import logging
 import math
 import os
 import threading
+import sys
 import time
+import uuid
 from enum import Enum
 from typing import Any, Callable, Dict, List, Union
 import dataclasses
@@ -316,6 +318,44 @@ class Benchmark:
         # in `run_fn`.
         DataContext.get_current().enable_stats_summary_collection = True
 
+        self._profiling = None
+        self._profiling_s3_prefix = None
+
+        # Auto-start profiling when profiling env vars are set and no
+        # Profiling instance is already active (e.g. image_embedding_from_jsonl
+        # manages its own).
+        try:
+            from profiling.coordinator import Profiling
+        except ImportError:
+            return
+
+        if Profiling._instance_active:
+            return
+
+        try:
+            job_id = os.environ.get("ANYSCALE_JOB_ID", f"local-{uuid.uuid4().hex[:8]}")
+            script_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+            outdir = f"/mnt/shared_storage/profiling/{script_name}/{job_id}"
+
+            num_gpu_nodes = sum(
+                1
+                for node in ray.nodes()
+                if node.get("Alive") and node.get("Resources", {}).get("GPU", 0) > 0
+            )
+
+            profiling = Profiling(outdir=outdir, num_gpu_nodes=num_gpu_nodes)
+            if profiling.is_enabled():
+                profiling.start()
+                self._profiling = profiling
+                self._profiling_s3_prefix = f"{script_name}/{job_id}"
+        except Exception:
+            logger.warning(
+                "Failed to auto-start profiling; continuing without it.",
+                exc_info=True,
+            )
+            self._profiling = None
+            self._profiling_s3_prefix = None
+
     def run_fn(
         self,
         name: str,
@@ -434,3 +474,20 @@ class Benchmark:
 
         print(f"Benchmark metrics exported to '{test_output_json}':")
         print(json.dumps(self.result, indent=4))
+
+        # Auto-stop profiling and upload artifacts to S3. Protected so a
+        # teardown failure doesn't mask a successful benchmark run.
+        if self._profiling is not None:
+            try:
+                import shutil
+
+                if os.path.exists(test_output_json):
+                    os.makedirs(self._profiling.outdir, exist_ok=True)
+                    shutil.copy2(test_output_json, self._profiling.outdir)
+                self._profiling.stop(s3_prefix=self._profiling_s3_prefix)
+            except Exception:
+                logger.warning(
+                    "Failed to stop/upload profiling artifacts.", exc_info=True
+                )
+            finally:
+                self._profiling = None
