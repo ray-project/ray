@@ -14,6 +14,16 @@ from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragme
 R = TypeVar("R")
 
 
+def _row_group_unit_id(path: str, row_group_id: int) -> str:
+    """Stable :attr:`ReadUnit.id` of one physical row group of a Parquet file.
+
+    The reader reports it for each row group it scans on its own, and the
+    footer reader accepts the same id in ``excluded_read_unit_ids`` to leave
+    that row group out of a listing. Nothing parses it.
+    """
+    return f"{path}#rg{row_group_id}"
+
+
 def _with_io_retry(f: Callable[[], R], description: str) -> R:
     """Run ``f``, retrying the transient IO errors configured on the context.
 
@@ -79,10 +89,7 @@ def _fragments_from_row_group_ids(
         ReadUnitFragment(
             _subset([rg_id]),
             ReadUnit(
-                # Stable name for one physical row group: the reader reports
-                # it for each group it scans on its own, so a group keeps one
-                # name however listing grouped files into tasks.
-                id=f"{path}#rg{rg_id}",
+                id=_row_group_unit_id(path, rg_id),
                 source=path,
                 index=rg_id,
                 count=metadata.num_row_groups,
