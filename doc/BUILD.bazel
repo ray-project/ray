@@ -737,7 +737,7 @@ doctest(
             # CI does not have Horovod installed.
             "source/train/horovod.md",
             # These tests run on GPU (see below).
-            "source/train/user-guides/data-loading-preprocessing.rst",
+            "source/train/user-guides/data-loading-preprocessing.md",
             "source/train/user-guides/using-accelerators.rst",
         ],
     ),
@@ -748,7 +748,7 @@ doctest(
     name = "doctest[train-gpu]",
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = [
-        "source/train/user-guides/data-loading-preprocessing.rst",
+        "source/train/user-guides/data-loading-preprocessing.md",
         "source/train/user-guides/using-accelerators.rst",
     ],
     gpu = True,
