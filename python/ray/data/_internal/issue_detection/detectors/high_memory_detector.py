@@ -1,7 +1,7 @@
 import math
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -57,7 +57,6 @@ class HighMemoryIssueDetector(IssueDetector):
         self._dataset_id = dataset_id
         self._detector_cfg = config
         self._operators = operators
-        self._completion_checked_operators: Set[MapOperator] = set()
 
         self._initial_memory_requests: Dict[MapOperator, Optional[int]] = {}
         for op in operators:
@@ -134,9 +133,6 @@ class HighMemoryIssueDetector(IssueDetector):
     def _detect_issue_from_final_metrics(
         self, op: MapOperator, memory_request: Optional[int]
     ) -> Optional[Issue]:
-        if op in self._completion_checked_operators:
-            return None
-        self._completion_checked_operators.add(op)
         if memory_request is None:
             return None
 

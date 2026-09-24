@@ -294,8 +294,6 @@ def test_high_memory_detection_on_execution_end(
         assert map_operator.name in normalized_message
         assert expected_memory_configuration in normalized_message
         assert f"`memory={expected_memory}`" in normalized_message
-    # Execution-end checks are one-shot to avoid duplicate warnings.
-    assert detector.detect_final() == []
 
 
 if __name__ == "__main__":
