@@ -466,6 +466,13 @@ class DifferentiableLearner(Checkpointable):
             for module_id in list(batch.policy_batches.keys()):
                 if not self.should_module_be_updated(module_id, batch):
                     del batch.policy_batches[module_id]
+            # A module with no rows cannot produce minibatches, and there is nobody to
+            # stay in step with here, so drop it and train on whatever is left -- what
+            # `Learner` does when it has no peers. Without this, such a module reaches
+            # `MiniBatchCyclicIterator` and raises.
+            for module_id in list(batch.policy_batches.keys()):
+                if len(batch.policy_batches[module_id]) == 0:
+                    del batch.policy_batches[module_id]
             # Deliberately NOT `Learner`'s `_should_skip_update` + group sync: this runs
             # inside the meta-learner's inner loop on every rank and computes gradients
             # with `torch.autograd.grad`, which never engages DDP's all-reduce, so a

@@ -2518,6 +2518,18 @@ py_test(
 
 # Learner
 py_test(
+    name = "test_differentiable_learner",
+    size = "small",
+    srcs = ["core/learner/tests/test_differentiable_learner.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_learner",
     size = "medium",
     srcs = ["core/learner/tests/test_learner.py"],

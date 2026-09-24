@@ -2376,7 +2376,9 @@ class AlgorithmConfig(_Config):
                 logic, no per-update collective, and an empty train batch raises an
                 error instead. Only for setups that guarantee non-empty and equally
                 sized batches on every Learner and want to save the (small)
-                per-update overhead.
+                per-update overhead. Applies to `Learner`; a `DifferentiableLearner`
+                computes its inner updates without a collective and always skips an
+                empty one.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule.
             learner_connector: A callable taking an env observation space and an env
