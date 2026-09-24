@@ -845,11 +845,12 @@ def test_map_batches_sync_udf_with_asyncio_run_chained_with_async_actor(
     """Regression test for https://github.com/ray-project/ray/issues/57729"""
 
     def _load_batch(batch):
-        batch["data"] = asyncio.run(
-            asyncio.gather(
+        async def _load_all():
+            return await asyncio.gather(
                 *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
             )
-        )
+
+        batch["data"] = asyncio.run(_load_all())
         return batch
 
     def sync_udf(batch):
