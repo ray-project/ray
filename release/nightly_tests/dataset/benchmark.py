@@ -305,8 +305,12 @@ class Benchmark:
         self,
         *,
         max_head_node_memory_bytes: int | None = None,
+        # `WAIT_FOR_TASK_COMPLETION_TIMEOUT_S` is the lower bound on the max scheduling
+        # loop duration. 4 is a constant multiplier chosen by practical judgement.
+        #
+        # TODO: Ratchet this down as we improve scheduling loop overhead.
         max_sched_loop_duration_s: float
-        | None = 2 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+        | None = 4 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     ):
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
