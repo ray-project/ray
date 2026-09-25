@@ -61,6 +61,28 @@ describe("normalizeAccelerators", () => {
     });
   });
 
+  it("preserves null memory metrics for gpus", () => {
+    // Devices with no separate GPU memory pool (e.g. unified-memory parts such
+    // as GB10) report null. The GPU must survive normalization so the rest of
+    // its stats are still shown.
+    const gpus: GPUStats[] = [
+      {
+        uuid: "gpu-1",
+        name: "GB10",
+        index: 0,
+        utilizationGpu: 30,
+        memoryUsed: null,
+        memoryTotal: null,
+      },
+    ];
+
+    const result = normalizeAccelerators(gpus, undefined);
+    expect(result).toHaveLength(1);
+    expect(result[0].utilization).toEqual(30);
+    expect(result[0].memoryUsed).toBeNull();
+    expect(result[0].memoryTotal).toBeNull();
+  });
+
   it("does not filter out tpus with <= 0 memoryTotal", () => {
     const tpus: TPUStats[] = [
       {

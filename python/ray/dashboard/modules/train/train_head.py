@@ -200,6 +200,11 @@ class TrainHead(SubprocessModule):
                     for gpu in actor["gpus"]
                     if train_worker.pid
                     in [process["pid"] for process in gpu["processesPids"]]
+                    # Some devices (e.g. unified-memory parts) report no separate
+                    # GPU memory pool, so these are None. `GPUStats` requires them,
+                    # and a ValidationError here fails the whole endpoint.
+                    and gpu.get("memoryUsed") is not None
+                    and gpu.get("memoryTotal") is not None
                 ]
                 # Need to convert processesPids into a proper list.
                 # It's some weird ImmutableList structure
@@ -373,6 +378,11 @@ class TrainHead(SubprocessModule):
                         for gpu in actor["gpus"]
                         if worker_info.pid
                         in [process["pid"] for process in gpu["processesPids"]]
+                        # Some devices (e.g. unified-memory parts) report no separate
+                        # GPU memory pool, so these are None. `GPUStats` requires them,
+                        # and a ValidationError here fails the whole endpoint.
+                        and gpu.get("memoryUsed") is not None
+                        and gpu.get("memoryTotal") is not None
                     ]
                     # Need to convert processesPids into a proper list.
                     # It's some weird ImmutableList structureo
