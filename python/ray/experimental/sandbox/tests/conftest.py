@@ -2,7 +2,9 @@ import os
 import platform
 import shutil
 import tempfile
+import textwrap
 import urllib.request
+import uuid
 
 import pytest
 
@@ -49,6 +51,60 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
     mkfs_erofs_path.cache_clear()
     yield bin_dir
     mkfs_erofs_path.cache_clear()
+
+
+@pytest.fixture
+def fake_fsck_erofs(fake_mkfs_erofs, monkeypatch):
+    """A stand-in ``fsck.erofs`` next to ``fake_mkfs_erofs``'s.
+
+    It unpacks the fake image (a tar) into the ``--extract`` directory with
+    its modes. It keeps owners only for ``--preserve-owner`` when run as
+    root. It appends each argv to ``fsck.args`` beside the script. Yields the
+    directory holding it.
+
+    The fake image has no EROFS superblock, so its UUID is a random one kept
+    in a ``rootfs.erofs.uuid`` file beside it, made on first read. A re-pull
+    builds the image in a new directory, so it gets a new UUID.
+    """
+    from ray.experimental.sandbox._internal import image_utils
+
+    def fake_erofs_image_uuid(erofs_image):
+        # A missing image raises FileNotFoundError, like the real one.
+        os.stat(erofs_image)
+        uuid_file = f"{erofs_image}.uuid"
+        if not os.path.exists(uuid_file):
+            with open(uuid_file, "w", encoding="utf-8") as f:
+                f.write(str(uuid.uuid4()))
+        with open(uuid_file, encoding="utf-8") as f:
+            return f.read()
+
+    monkeypatch.setattr(image_utils, "_erofs_image_uuid", fake_erofs_image_uuid)
+
+    script = fake_mkfs_erofs / "fsck.erofs"
+    script.write_text(
+        textwrap.dedent(
+            """\
+            #!/bin/sh
+            if [ "$1" = "--help" ]; then echo "  --extract[=X]  extract"; exit 0; fi
+            echo "$@" >> "$(dirname "$0")/fsck.args"
+            owner=--no-same-owner
+            for a in "$@"; do
+              case "$a" in
+                --extract=*) dir="${a#--extract=}" ;;
+                --preserve-owner) owner=--same-owner ;;
+              esac
+              # The last argument is the image.
+              image="$a"
+            done
+            [ "$(id -u)" = 0 ] || owner=--no-same-owner
+            mkdir -p "$dir" && tar -xpf "$image" -C "$dir" "$owner"
+            """
+        )
+    )
+    script.chmod(0o755)
+    image_utils.fsck_erofs_path.cache_clear()
+    yield fake_mkfs_erofs
+    image_utils.fsck_erofs_path.cache_clear()
 
 
 def _install_on_path(name: str, url: str) -> None:
@@ -106,6 +162,20 @@ def _public_netns_supported() -> bool:
         return False
     backend.delete_sandbox(sandbox_id)
     return True
+
+
+@pytest.fixture(scope="session")
+def ensure_overlayfs_mount(ensure_runsc):
+    """A host that can mount an overlayfs sandbox's kernel overlay (see
+    ``overlayfs.mount_mode``). Requested rather than autouse, so
+    only the overlayfs tests skip when the host can't."""
+    from ray.experimental.sandbox._internal import overlayfs
+    from ray.experimental.sandbox.exceptions import SandboxCreationError
+
+    try:
+        overlayfs.mount_mode()
+    except SandboxCreationError as err:
+        pytest.skip(str(err))
 
 
 @pytest.fixture(scope="session")

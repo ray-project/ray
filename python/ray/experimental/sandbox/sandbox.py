@@ -59,6 +59,11 @@ class Sandbox:
         readonly: bool = True,
         **kwargs,
     ):
+        if "_rootfs_type" in kwargs:
+            raise TypeError(
+                "Sandbox does not accept '_rootfs_type', which Ray chooses "
+                "internally."
+            )
         env = env or {}
 
         # Extract CPU and memory from Ray assigned resources if not explicitly provided

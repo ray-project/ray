@@ -105,6 +105,14 @@ def test_ray_remote_sandbox_runtime():
     ray.kill(rt_actor)
 
 
+def test_sandbox_actor_rejects_rootfs_type():
+    """Callers can't choose the rootfs type. Ray chooses it internally."""
+    with pytest.raises(TypeError, match="_rootfs_type"):
+        Sandbox.__ray_actor_class__(
+            image="busybox:latest", shell="/bin/sh", _rootfs_type="overlayfs"
+        )
+
+
 def test_sandbox_actor_resource_translation():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)

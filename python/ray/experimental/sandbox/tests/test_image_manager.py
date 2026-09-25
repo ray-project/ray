@@ -7,12 +7,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ray.experimental.sandbox._internal import image_utils
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import VALID_ROOTFS_TYPES, SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
     BaseImageManager,
@@ -655,13 +656,18 @@ def test_image_cache_eviction(tmp_path):
     assert partial.exists()  # mid-pull (no marker): protected
 
 
-def test_create_oci_spec_requires_cached_image(tmp_path):
+@pytest.mark.parametrize("rootfs_type", VALID_ROOTFS_TYPES)
+def test_create_oci_spec_requires_cached_image(tmp_path, rootfs_type):
     """Spec construction refuses a cache entry with no image rather than
     handing runsc a root it cannot mount."""
     mgr = _StubImageManager(tmp_path)
     os.remove(tmp_path / ROOTFS_IMAGE)
     with pytest.raises(SandboxCreationError, match=ROOTFS_IMAGE):
-        mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+        mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            _rootfs_type=rootfs_type,
+        )
 
 
 def test_create_oci_spec_erofs_image(tmp_path):
@@ -684,6 +690,99 @@ def test_create_oci_spec_erofs_image(tmp_path):
     assert spec["root"] == {"path": str(root_path), "readonly": False}
     assert root_path.is_dir()
     assert not (tmp_path / "rootfs").exists()
+
+
+@pytest.mark.parametrize("readonly", [True, False])
+def test_create_oci_spec_overlayfs(tmp_path, readonly):
+    """An overlayfs sandbox gets no gVisor rootfs annotations. Its root.path
+    is where the backend mounts the sandbox's overlay, and readonly holds as
+    requested, even with an explicit workdir, since runsc creates the
+    workdir's mount point in the overlay."""
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=readonly,
+        workdir_path=str(tmp_path / "work"),
+        root_path=str(root_path),
+        _rootfs_type="overlayfs",
+    )
+    assert spec.get("annotations", {}) == {}
+    assert spec["root"] == {"path": str(root_path), "readonly": readonly}
+
+
+def test_create_oci_spec_rejects_unknown_rootfs_type(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    with pytest.raises(ValueError, match="Invalid rootfs type"):
+        mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            _rootfs_type="squashfs",
+        )
+
+
+def _write_one_file_tar(path, name):
+    with tarfile.open(str(path), "w") as tar:
+        ti = tarfile.TarInfo(name)
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+
+
+def test_get_unpacked_rootfs_reapplies_the_cache_cap(
+    tmp_path, monkeypatch, fake_fsck_erofs
+):
+    """A new unpacked copy grows the cache, so unpacking evicts older images
+    down to the cap, keeping its own. A copy that already exists doesn't
+    rescan the cache."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    old_tar, new_tar = tmp_path / "old.tar", tmp_path / "new.tar"
+    _write_one_file_tar(old_tar, "old.txt")
+    _write_one_file_tar(new_tar, "new.txt")
+    old_dir = mgr.pull_image(str(old_tar))
+    new_dir = mgr.pull_image(str(new_tar))
+    both = sum(image_utils._dir_size_bytes(d) for d in (old_dir, new_dir))
+    # Both images fit, but not an unpacked copy on top.
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", str(both + 1))
+
+    tree = mgr._get_unpacked_rootfs(str(new_tar), preserve_owners=False)
+    assert os.path.isfile(os.path.join(tree, "new.txt"))
+    assert not os.path.exists(old_dir)
+    assert os.path.isdir(new_dir)
+
+    evictions = []
+    monkeypatch.setattr(
+        image_utils,
+        "evict_least_recently_used_images",
+        lambda *a, **k: evictions.append(a),
+    )
+    assert mgr._get_unpacked_rootfs(str(new_tar), preserve_owners=False) == tree
+    assert evictions == []
+
+
+def test_image_manager_requires_fsck_erofs_for_overlayfs(
+    tmp_path, monkeypatch, fake_fsck_erofs
+):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "one.tar"
+    _write_one_file_tar(local_tar, "one.txt")
+    mgr.pull_image(str(local_tar))
+
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    image_utils.fsck_erofs_path.cache_clear()
+    with pytest.raises(SandboxCreationError, match="fsck.erofs is not in PATH"):
+        mgr._get_unpacked_rootfs(str(local_tar), preserve_owners=False)
+    image_utils.fsck_erofs_path.cache_clear()
+
+
+def test_base_image_manager_rejects_overlayfs_sandboxes():
+    class _NoOverlayfsManager(BaseImageManager):
+        # Never called; they only make the class concrete.
+        pull_image = get_image_dir = get_image_config = None
+        get_workdir = get_envs = create_oci_spec = prepare_oci_bundle = None
+
+    with pytest.raises(SandboxCreationError, match="doesn't support overlayfs"):
+        _NoOverlayfsManager()._get_unpacked_rootfs("fake:latest", preserve_owners=False)
 
 
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):

@@ -18,6 +18,7 @@ from collections import deque
 from functools import lru_cache
 from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal import fs_utils
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,24 @@ ROOTFS_IMAGE = "rootfs.erofs"
 _EXTRACT_FORMAT = 3
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
+
+# Name prefix of every copy of an image's rootfs.erofs unpacked next to it
+# (see get_unpacked_rootfs).
+_UNPACKED_PREFIX = f"{ROOTFS_IMAGE}.unpacked."
+
+# Name prefix of a copy in the process of being unpacked.
+_UNPACKED_TMP_PREFIX = f".{_UNPACKED_PREFIX}tmp."
+
+# The directory inside an unpacked copy that holds the image's files.
+_UNPACKED_ROOT_DIR = "root"
+
+# Where an EROFS image's superblock starts, the magic number it opens with,
+# and where its filesystem UUID sits within it.
+_EROFS_SUPERBLOCK_OFFSET = 1024
+_EROFS_MAGIC = 0xE0F5E1E2
+_EROFS_MAGIC_SIZE = 4
+_EROFS_UUID_OFFSET = 48
+_EROFS_UUID_SIZE = 16
 
 
 def _registry_request(
@@ -367,7 +386,7 @@ def extract_tar_layer(
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
                         if os.path.isdir(item_path) and not os.path.islink(item_path):
-                            shutil.rmtree(item_path, ignore_errors=True)
+                            fs_utils.rmtree(item_path, ignore_errors=True)
                         else:
                             try:
                                 os.remove(item_path)
@@ -386,7 +405,7 @@ def extract_tar_layer(
                         ownership, os.path.normpath(os.path.join(parent_rel, del_name))
                     )
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
-                    shutil.rmtree(del_path, ignore_errors=True)
+                    fs_utils.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
                     try:
                         os.remove(del_path)
@@ -401,7 +420,7 @@ def extract_tar_layer(
                         if os.path.isdir(target_path) and not os.path.islink(
                             target_path
                         ):
-                            shutil.rmtree(target_path, ignore_errors=True)
+                            fs_utils.rmtree(target_path, ignore_errors=True)
                         else:
                             os.remove(target_path)
                     except OSError:
@@ -632,6 +651,83 @@ def build_erofs_image(
         )
 
 
+@lru_cache(maxsize=1)
+def fsck_erofs_path() -> Optional[str]:
+    """Path of a ``fsck.erofs`` that can unpack images into directory trees, or None.
+
+    Unpacking with ``--extract`` (erofs-utils 1.5+) is what gives an overlayfs
+    sandbox the directory tree its kernel overlay sits on.
+    """
+    path = shutil.which("fsck.erofs")
+    if path is None:
+        return None
+    try:
+        res = subprocess.run(
+            [path, "--help"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if "--extract" not in res.stdout + res.stderr:
+        return None
+    return path
+
+
+def require_fsck_erofs() -> str:
+    """``fsck_erofs_path()``, or a ``SandboxCreationError`` naming what to install."""
+    path = fsck_erofs_path()
+    if path is not None:
+        return path
+    found = shutil.which("fsck.erofs")
+    if found is None:
+        problem = "fsck.erofs is not in PATH"
+    else:
+        problem = f"{found} doesn't support --extract"
+    raise SandboxCreationError(
+        "Ray Sandbox unpacks cached images with fsck.erofs (erofs-utils) on "
+        f"the worker node, but {problem}. Install erofs-utils on the node "
+        "image."
+    )
+
+
+def unpack_erofs_image(erofs_image: str, dest: str, *, preserve_owners: bool) -> None:
+    """Unpack an EROFS image into a new directory tree with ``fsck.erofs``.
+
+    The tree keeps the image's file modes, and the root of ``dest`` takes the
+    mode of the image's root directory. A failed unpack may leave a partial
+    ``dest`` behind for the caller to delete.
+
+    Args:
+        erofs_image: The EROFS image.
+        dest: Directory to unpack into. It must not exist yet.
+        preserve_owners: Whether the tree keeps the image's file owners.
+            Otherwise every file belongs to this process's user. Keeping
+            them takes root in the initial user namespace, since
+            ``fsck.erofs`` chowns each file to the image's uid and gid, and
+            root in a nested user namespace (e.g. a rootless container) can
+            only chown to the ids mapped into it.
+
+    Raises:
+        SandboxCreationError: If ``fsck.erofs`` is missing or fails.
+    """
+    fsck = require_fsck_erofs()
+    res = subprocess.run(
+        [
+            fsck,
+            f"--extract={dest}",
+            "--preserve-perms",
+            "--preserve-owner" if preserve_owners else "--no-preserve-owner",
+            erofs_image,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        raise SandboxCreationError(
+            f"fsck.erofs failed to unpack {erofs_image}: "
+            f"{(res.stderr or res.stdout).strip()[-500:]}"
+        )
+
+
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
 _USERS_SUBDIR = ".users"
@@ -702,17 +798,121 @@ def _drop_stale_rootfs_tree(image_dir: str) -> None:
     """
     stale = os.path.join(image_dir, "rootfs")
     if os.path.isdir(stale) and not _has_users(image_dir):
-        shutil.rmtree(stale, ignore_errors=True)
+        fs_utils.rmtree(stale, ignore_errors=True)
+
+
+def _is_unpacked(name: str) -> bool:
+    """Whether an entry of an image's cache directory is an unpacked copy."""
+    return name.startswith(_UNPACKED_PREFIX)
+
+
+def _erofs_image_uuid(erofs_image: str) -> str:
+    """The filesystem UUID in an EROFS image's superblock. ``mkfs.erofs``
+    generates a random one for every image it builds.
+
+    Args:
+        erofs_image: The EROFS image.
+
+    Returns:
+        The UUID, in its canonical string form.
+
+    Raises:
+        FileNotFoundError: If ``erofs_image`` doesn't exist.
+        SandboxCreationError: If it isn't an EROFS image.
+    """
+    # Read the superblock up to the end of its UUID.
+    end = _EROFS_UUID_OFFSET + _EROFS_UUID_SIZE
+    with open(erofs_image, "rb") as f:
+        f.seek(_EROFS_SUPERBLOCK_OFFSET)
+        superblock = f.read(end)
+
+    # A real EROFS superblock opens with the EROFS magic number.
+    if len(superblock) < end or (
+        int.from_bytes(superblock[:_EROFS_MAGIC_SIZE], "little") != _EROFS_MAGIC
+    ):
+        raise SandboxCreationError(f"{erofs_image} is not an EROFS image.")
+
+    return str(uuid.UUID(bytes=superblock[_EROFS_UUID_OFFSET:end]))
+
+
+def _current_unpacked_prefix(image_dir: str) -> str:
+    """Name prefix of the copies of the image's current ``rootfs.erofs``.
+
+    Args:
+        image_dir: The cached image's directory.
+
+    Returns:
+        The prefix, ending in a dot.
+
+    Raises:
+        FileNotFoundError: If the image has no ``rootfs.erofs``.
+        SandboxCreationError: If its ``rootfs.erofs`` isn't an EROFS image.
+    """
+    image_uuid = _erofs_image_uuid(os.path.join(image_dir, ROOTFS_IMAGE))
+    return f"{_UNPACKED_PREFIX}{image_uuid}."
+
+
+def _unpacked_dir(image_dir: str, *, preserve_owners: bool) -> str:
+    """Path of this process's copy of the image's current ``rootfs.erofs``.
+
+    Args:
+        image_dir: The cached image's directory.
+        preserve_owners: Whether the copy keeps the image's file owners.
+
+    Returns:
+        The copy's absolute path, whether or not it exists yet.
+
+    Raises:
+        FileNotFoundError: If the image has no ``rootfs.erofs``.
+        SandboxCreationError: If its ``rootfs.erofs`` isn't an EROFS image.
+    """
+    if preserve_owners:
+        owners = "owners-preserved"
+    else:
+        owners = f"uid.{os.getuid()}.gid.{os.getgid()}"
+    return os.path.join(image_dir, _current_unpacked_prefix(image_dir) + owners)
+
+
+def _drop_stale_unpacked_copies(image_dir: str) -> None:
+    """Delete copies unpacked from an earlier ``rootfs.erofs`` once no sandbox
+    uses the image (see ``get_unpacked_rootfs``). With no image file, that's every
+    copy."""
+    # A running sandbox's overlay may sit on any of the copies.
+    if _has_users(image_dir):
+        return
+
+    # Most images have no copies, so there's nothing to read the image for.
+    copies = [name for name in os.listdir(image_dir) if _is_unpacked(name)]
+    if not copies:
+        return
+
+    # Every user's copy of the current image file stays.
+    try:
+        current = _current_unpacked_prefix(image_dir)
+    except (FileNotFoundError, SandboxCreationError):
+        # No usable image file, so no copy is current.
+        current = None
+    for name in copies:
+        if not (current and name.startswith(current)):
+            fs_utils.rmtree(os.path.join(image_dir, name), ignore_errors=True)
 
 
 def _dir_size_bytes(path: str) -> int:
     total = 0
+    counted = set()
     for dirpath, _, filenames in os.walk(path):
         for name in filenames:
             try:
-                total += os.lstat(os.path.join(dirpath, name)).st_size
+                st = os.lstat(os.path.join(dirpath, name))
             except OSError:
-                pass
+                continue
+            # Hard links share one file, so each file counts once. Most files
+            # have a single link, so only the others need remembering.
+            if st.st_nlink <= 1:
+                total += st.st_size
+            elif (st.st_dev, st.st_ino) not in counted:
+                counted.add((st.st_dev, st.st_ino))
+                total += st.st_size
     return total
 
 
@@ -721,6 +921,28 @@ def _file_size_bytes(path: str) -> int:
         return os.path.getsize(path)
     except OSError:
         return 0
+
+
+def _rename_for_deletion(image_dir: str) -> str:
+    """Atomically rename a cached image's directory to
+    ``.<name>.deleting.<random>``, and return the new path to delete.
+
+    A crash midway through deleting it then never leaves a partly deleted
+    image under the image's own name, and the next pull sweeps up what such a
+    crash leaves behind (see ``_remove_stale_deletions``).
+    """
+    images_dir, name = os.path.split(image_dir)
+    renamed = os.path.join(images_dir, f".{name}.deleting.{uuid.uuid4().hex}")
+    os.replace(image_dir, renamed)
+    return renamed
+
+
+def _remove_stale_deletions(images_dir: str) -> None:
+    """Finish deleting image directories whose deletion was interrupted (see
+    ``_rename_for_deletion``)."""
+    for name in os.listdir(images_dir):
+        if name.startswith(".") and ".deleting." in name:
+            fs_utils.rmtree(os.path.join(images_dir, name), ignore_errors=True)
 
 
 def evict_least_recently_used_images(
@@ -765,6 +987,10 @@ def evict_least_recently_used_images(
                 except OSError:
                     pass
             continue
+        # Only a sanitized image name is a cached image, which omits e.g.
+        # image directories renamed for deletion (see _rename_for_deletion).
+        if sanitize_image_name(name) != name:
+            continue
         marker = os.path.join(path, ".extracted")
         try:
             if not (os.path.isdir(path) and os.path.exists(marker)):
@@ -789,8 +1015,9 @@ def evict_least_recently_used_images(
                 # A pull may have registered a user since the scan.
                 if img_dir is not None and _has_users(img_dir):
                     continue
-                if img_dir is not None:
-                    shutil.rmtree(img_dir, ignore_errors=True)
+                # Another pull may have evicted it since the scan.
+                if img_dir is not None and os.path.isdir(img_dir):
+                    fs_utils.rmtree(_rename_for_deletion(img_dir), ignore_errors=True)
                 try:
                     os.remove(tar_path)
                 except OSError:
@@ -799,6 +1026,103 @@ def evict_least_recently_used_images(
             continue  # Locked by an in-progress pull; try the next one.
         total -= size
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
+
+
+def get_unpacked_rootfs(image_dir: str, *, preserve_owners: bool) -> str:
+    """Path of a directory tree holding a cached image's files, unpacked from
+    its ``rootfs.erofs`` the first time it's needed.
+
+    An overlayfs sandbox (see ``config.ROOTFS_OVERLAYFS``) boots from this
+    tree rather than from ``rootfs.erofs``. The copy lives next to the image,
+    so the image's pins and eviction cover it, and a new copy may evict other
+    images to make room. Its name records the image's UUID (from its
+    superblock) and who owns its files. That's either each file's owner from
+    the image, or else the uid and gid of the process that unpacked it, so a
+    re-pulled image, the two ownership modes, and workers running as
+    different users each get a copy of their own. The copy is private to that user (0700), so the image's
+    setuid and setgid files are out of reach of other users on the host,
+    while its ``root/`` keeps the mode and owner of the image's root
+    directory::
+
+        rootfs.erofs                                   the EROFS image
+        rootfs.erofs.unpacked.<uuid>.owners-preserved/ an unpacked copy,
+            root/                                      with the image's owners
+        rootfs.erofs.unpacked.<uuid>.uid.<n>.gid.<n>/  an unpacked copy,
+            root/                                      owned by uid:gid
+        .rootfs.erofs.unpacked.tmp.<random>/           an unpack in progress
+
+    Unpacking holds the image's lock, so pulls of the same image wait for it.
+
+    Args:
+        image_dir: The cached image's directory.
+        preserve_owners: Whether the tree keeps the image's file owners
+            (see ``unpack_erofs_image``).
+
+    Returns:
+        The tree's absolute path.
+
+    Raises:
+        SandboxCreationError: If the image is missing, or ``fsck.erofs`` is
+            missing or fails.
+    """
+    # Fast path without the lock, for a copy that already exists. The locked
+    # re-check below handles a racing re-pull.
+    try:
+        tree = os.path.join(
+            _unpacked_dir(image_dir, preserve_owners=preserve_owners),
+            _UNPACKED_ROOT_DIR,
+        )
+        if os.path.isdir(tree):
+            return tree
+    except FileNotFoundError:
+        pass  # Reported under the lock.
+
+    # The same lock pull_and_extract_container_image takes for this image.
+    with open(f"{image_dir}.lock", "w", encoding="utf-8") as f_lock:
+        fcntl.flock(f_lock, fcntl.LOCK_EX)
+
+        # Re-check under the lock, since another worker may have unpacked it.
+        try:
+            target_dir = _unpacked_dir(image_dir, preserve_owners=preserve_owners)
+        except FileNotFoundError:
+            # The caller checked the image, so it went away since (e.g.
+            # evicted or re-pulled).
+            raise SandboxCreationError(
+                f"Cached image at {image_dir} has no {ROOTFS_IMAGE}; the cache "
+                "entry is incomplete. Delete it to pull again."
+            ) from None
+        tree = os.path.join(target_dir, _UNPACKED_ROOT_DIR)
+        if os.path.isdir(tree):
+            return tree
+
+        # Remove temporary copies left by unpacks that crashed.
+        for name in os.listdir(image_dir):
+            if name.startswith(_UNPACKED_TMP_PREFIX):
+                fs_utils.rmtree(os.path.join(image_dir, name), ignore_errors=True)
+
+        # Unpack into a temporary copy, and rename it into place only once
+        # it's complete, so the copy's name always means a whole tree.
+        tmp_dir = os.path.join(image_dir, _UNPACKED_TMP_PREFIX + uuid.uuid4().hex)
+        os.mkdir(tmp_dir, 0o700)
+        try:
+            unpack_erofs_image(
+                os.path.join(image_dir, ROOTFS_IMAGE),
+                os.path.join(tmp_dir, _UNPACKED_ROOT_DIR),
+                preserve_owners=preserve_owners,
+            )
+        except Exception:
+            fs_utils.rmtree(tmp_dir, ignore_errors=True)
+            raise
+        os.replace(tmp_dir, target_dir)
+
+    # A new copy grows the cache.
+    images_dir = os.path.dirname(image_dir)
+    max_cache = image_cache_max_bytes(images_dir)
+    if max_cache > 0:
+        evict_least_recently_used_images(
+            images_dir, max_cache, keep=os.path.basename(image_dir)
+        )
+    return tree
 
 
 def pull_and_extract_container_image(
@@ -832,6 +1156,7 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
+    _remove_stale_deletions(images_dir)
     max_cache = image_cache_max_bytes(images_dir)
     if max_cache > 0:
         evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
@@ -859,6 +1184,7 @@ def pull_and_extract_container_image(
                     or os.path.getmtime(marker_path) >= os.path.getmtime(image)
                 ):
                     _drop_stale_rootfs_tree(target_dir)
+                    _drop_stale_unpacked_copies(target_dir)
                     return _finish()
 
             # Checked before any download: without it the pull cannot finish.
@@ -882,11 +1208,14 @@ def pull_and_extract_container_image(
                     os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
                 )
             except Exception:
-                shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                fs_utils.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
             # The image replaces the tree; nothing reads the tree once the
             # Sentry mounts the image.
-            shutil.rmtree(tmp_rootfs_dir, ignore_errors=True)
+            #
+            # An overlayfs sandbox unpacks its own copy from the image instead
+            # (see get_unpacked_rootfs).
+            fs_utils.rmtree(tmp_rootfs_dir, ignore_errors=True)
 
             with open(
                 os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
@@ -902,11 +1231,21 @@ def pull_and_extract_container_image(
                 users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
             except OSError:
                 users = []
-            old_tree = os.path.join(target_dir, "rootfs")
-            if users and os.path.isdir(old_tree):
-                os.replace(old_tree, tmp_rootfs_dir)
+
+            # The image's old directory is deleted below, so first move over
+            # the directory tree an older version of Ray cached the image as
+            # and any unpacked copies, since a running sandbox may still use
+            # them. Each is cleaned up once no sandbox uses it.
+            if users:
+                for name in os.listdir(target_dir):
+                    if name == "rootfs" or _is_unpacked(name):
+                        os.replace(
+                            os.path.join(target_dir, name),
+                            os.path.join(tmp_extract_dir, name),
+                        )
+
             if os.path.exists(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
+                fs_utils.rmtree(_rename_for_deletion(target_dir), ignore_errors=True)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
