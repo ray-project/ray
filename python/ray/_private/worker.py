@@ -1159,7 +1159,7 @@ class Worker:
             if all(i < len(original_ids) for i in assigned_ids):
                 assigned_ids = {str(original_ids[i]) for i in assigned_ids}
             else:
-                assigned_ids = {str(x) for x in original_ids[: len(assigned_ids)]}
+                assigned_ids = {str(x) for x in original_ids}
         return list(assigned_ids)
 
     def shutdown_rdt_manager(self):
