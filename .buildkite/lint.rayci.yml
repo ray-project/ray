@@ -31,6 +31,11 @@ steps:
       # its lint.sh entry are left in place, so re-enabling is a one-line revert
       # that restores this matrix value.
       - doc_no_new_rst
+      # A rename, move, or .rst-to-.md conversion of a doc page can leave a
+      # BUILD exclude, CODEOWNERS entry, or rules entry naming a path that no
+      # longer exists, and each of those fails silently. A prose-only diff can
+      # fail this, so it belongs in this matrix.
+      - doc_literal_paths
 
   # `doc_readme` runs `setup.py check --restructuredtext --strict --metadata`,
   # which guards how Ray's PyPI long description renders. Its inputs are the
