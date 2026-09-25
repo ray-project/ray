@@ -595,6 +595,43 @@ def test_create_sandbox_requires_slirp4netns(monkeypatch):
     assert "slirp4netns" in str(err.value)
 
 
+@pytest.mark.parametrize("fail_at", ["pull", "bundle"])
+def test_failed_create_removes_bundle_dir(tmp_path, monkeypatch, fail_at):
+    """A create that fails after the sandbox's bundle directory exists, while
+    pulling the image or preparing the OCI bundle, releases the image and
+    removes the directory."""
+
+    class _FailingImageManager:
+        def __init__(self):
+            self.released = []
+
+        def pull_image(self, image, **kwargs):
+            if fail_at == "pull":
+                raise RuntimeError("pull failed")
+
+        def get_workdir(self, image):
+            return None
+
+        def prepare_oci_bundle(self, root_dir, **kwargs):
+            with open(os.path.join(root_dir, "config.json"), "w") as f:
+                f.write("{}")
+            raise RuntimeError("bundle failed")
+
+        def release_image(self, image, instance_id):
+            self.released.append(image)
+
+    sandboxes_dir = tmp_path / "sandboxes"
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor._RAY_SANDBOX_DIR", str(sandboxes_dir)
+    )
+    manager = _FailingImageManager()
+    backend = GVisorSandboxBackend(image_manager=manager)
+    with pytest.raises(Exception, match=f"{fail_at} failed"):
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    assert manager.released == ["busybox:latest"]
+    assert not any(sandboxes_dir.glob("ray-sandbox-*"))
+
+
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
     hostfwd contract): each reaches its own listener, the bind never surfaces in
