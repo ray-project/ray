@@ -14,10 +14,12 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
 )
-from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
 
@@ -308,7 +310,7 @@ def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_c
     no longer drives a partitioner bucket count for Parquet. The global
     ``DataContext`` must still not be mutated.
     """
-    from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
         OnlineBinPacker,
     )
 
@@ -465,7 +467,7 @@ def test_footer_indexer_feeds_online_bin_packer(tmp_path, case: _IndexerPackerCa
     """
     from pyarrow.fs import LocalFileSystem
 
-    from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+    from ray.data._internal.datasource_v2.common.online_bin_packer import (
         OnlineBinPacker,
     )
 
@@ -555,7 +557,7 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     IO this rule exists to defer into the parallel count pass -- and emits one
     manifest row per row-group run, which would count each file once per run.
     """
-    from ray.data._internal.datasource_v2.listing.file_indexer import (
+    from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
         NonSamplingFileIndexer,
     )
     from ray.data._internal.logical.operators.map_operator import MapBatches

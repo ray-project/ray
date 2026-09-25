@@ -7,7 +7,7 @@ has to remember to keep the two operators in sync.
 
 from dataclasses import replace
 
-from ray.data._internal.datasource_v2.logical_optimizers import (
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule

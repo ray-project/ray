@@ -4,11 +4,11 @@ import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.file_pruners import FileExtensionPruner
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
-from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
@@ -337,7 +337,7 @@ class TestAsWholeFileIndexer:
     """
 
     def test_returns_base_type_from_metadata_aware_subclass(self):
-        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
             FooterFileIndexer,
         )
 
@@ -470,7 +470,7 @@ class TestFooterIndexerFileShuffle:
     """Footer indexer shuffles files before footer-read batches."""
 
     def test_shuffled_file_infos_drive_footer_batches(self, tmp_path):
-        from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
+        from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
             FooterFileIndexer,
         )
 

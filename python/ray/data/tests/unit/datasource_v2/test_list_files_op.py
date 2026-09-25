@@ -9,10 +9,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )

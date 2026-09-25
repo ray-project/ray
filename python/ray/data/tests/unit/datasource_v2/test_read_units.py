@@ -15,41 +15,41 @@ import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ParquetRowGroupChunkMetadata,
-    create_chunk_metadata,
-)
-from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _row_group_unit_id,
-)
-from ray.data._internal.datasource_v2.listing import footer_file_indexer
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    NonSamplingFileIndexer,
-)
-from ray.data._internal.datasource_v2.listing.file_manifest import (
-    PATH_COLUMN_NAME,
-    FileManifest,
-)
-from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
-    FooterFileIndexer,
-    _file_chunks_to_manifest,
-)
-from ray.data._internal.datasource_v2.listing.footer_reader import FooterReader
-from ray.data._internal.datasource_v2.listing.listing_utils import (
+from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     partition_files,
 )
-from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
-    OnlineBinPacker,
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+    NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.read_units import (
+from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinPacker
+from ray.data._internal.datasource_v2.formats.parquet import footer_file_indexer
+from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+    FooterFileIndexer,
+    _file_chunks_to_manifest,
+)
+from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
+    _row_group_unit_id,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
+    ParquetRowGroupChunkMetadata,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    PATH_COLUMN_NAME,
+    FileManifest,
+    create_chunk_metadata,
+)
+from ray.data._internal.datasource_v2.interfaces.read_units import (
     EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
 )
-from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.datasource_v2.scanners.parquet_scanner import ParquetScanner
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.expressions import col
 

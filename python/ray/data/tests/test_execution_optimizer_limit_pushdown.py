@@ -96,7 +96,7 @@ def test_limit_pushdown_into_adjacent_read_files():
     There are no num-rows-preserving ops to push through, so the rule used to
     bail out and leave the read unbounded.
     """
-    from ray.data._internal.datasource_v2.logical_optimizers import (
+    from ray.data._internal.datasource_v2.interfaces.pushdown import (
         SupportsLimitPushdown,
     )
     from ray.data._internal.logical.operators.read_operator import ReadFiles

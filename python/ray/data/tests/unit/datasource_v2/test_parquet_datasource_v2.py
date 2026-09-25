@@ -11,35 +11,33 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ParquetRowGroupChunkMetadata,
-    create_chunk_metadata,
-)
-from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
-    FileChunks,
-    RowGroupInfo,
-)
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
-    FooterFileIndexer,
-)
-from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
-    ParquetDatasourceV2,
-)
-from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
-    PartitionHints,
-)
-from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+from ray.data._internal.datasource_v2.common.online_bin_packer import (
     OnlineBinPacker,
 )
-from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
+from ray.data._internal.datasource_v2.common.synthesized_columns import RowHashColumn
+from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
+    FooterFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    ParquetDatasourceV2,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
-from ray.data._internal.datasource_v2.readers.synthesized_columns import (
-    RowHashColumn,
+from ray.data._internal.datasource_v2.formats.parquet.parquet_footer_types import (
+    FileChunks,
+    ParquetRowGroupChunkMetadata,
+    RowGroupInfo,
 )
-from ray.data._internal.datasource_v2.scanners.parquet_scanner import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileManifest,
+    create_chunk_metadata,
+)
+from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+    PartitionHints,
 )
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
@@ -174,8 +172,8 @@ def test_nested_fallback_handles_schema_evolution(tmp_path, monkeypatch):
     """
     import pyarrow.dataset as pds
 
-    from ray.data._internal.datasource_v2.readers import parquet_file_reader
-    from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
+    from ray.data._internal.datasource_v2.formats.parquet import parquet_file_reader
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
         ParquetFileReader,
     )
     from ray.data.expressions import col
@@ -303,7 +301,7 @@ class _RecordingFooterActor:
 def recorded_preserve_order_flags(monkeypatch):
     """Yield the ``preserve_order`` flags ``read_footers`` was invoked with."""
     import ray
-    from ray.data._internal.datasource_v2.listing import footer_file_indexer
+    from ray.data._internal.datasource_v2.formats.parquet import footer_file_indexer
 
     calls = []
 
