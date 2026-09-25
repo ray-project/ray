@@ -1,4 +1,4 @@
-"""Unit tests for :meth:`ArrowFileScanner.prune_input_split`."""
+"""Unit tests for :meth:`FileScanner.prune_input_split`."""
 import pyarrow as pa
 import pytest
 

@@ -63,7 +63,7 @@ class Scanner(ABC, Generic[InputSplit]):
 
         Called per split by ``plan_read_files_op.do_read`` before
         ``create_reader().read()``. Default: return it unchanged.
-        ``ArrowFileScanner`` overrides it to drop files whose partition values
+        ``FileScanner`` overrides it to drop files whose partition values
         fail a pushed-down predicate.
         """
         return input_split
