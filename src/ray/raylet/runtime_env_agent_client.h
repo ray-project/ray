@@ -27,6 +27,7 @@
 #include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/public/runtime_environment.pb.h"
+#include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace ray {
 namespace raylet {
@@ -73,6 +74,15 @@ class RuntimeEnvAgentClient {
                                      const std::string &serialized_runtime_env,
                                      const rpc::RuntimeEnvConfig &runtime_env_config,
                                      GetOrCreateRuntimeEnvCallback callback) = 0;
+
+  /// Request a runtime env context with per-worker resource limits. The limits are
+  /// applied to the returned context and are not part of the cached base runtime env.
+  virtual void GetOrCreateRuntimeEnv(
+      const JobID &job_id,
+      const std::string &serialized_runtime_env,
+      const rpc::RuntimeEnvConfig &runtime_env_config,
+      const rpc::WorkerResourceLimits &worker_resource_limits,
+      GetOrCreateRuntimeEnvCallback callback) = 0;
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent. The
   /// client automatically retries on network errors.
