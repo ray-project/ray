@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields
 import ray
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.constants import (
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
     RAY_SERVE_USE_GRPC_BY_DEFAULT,
 )
@@ -19,6 +20,7 @@ class InitHandleOptionsBase(ABC):
     """
 
     _prefer_local_routing: bool = False
+    _prefer_local_az_routing: bool = RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
     _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
     _run_router_in_separate_loop: bool = RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP
 
