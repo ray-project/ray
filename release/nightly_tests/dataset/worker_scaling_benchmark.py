@@ -205,7 +205,11 @@ def main(args: argparse.Namespace):
     if args.num_operators > 1:
         _disable_operator_fusion()
 
-    benchmark = Benchmark()
+    # In the 5000 worker, 15 operator, actor case, the p90 scheduling duration was 30s+
+    # on Ray 2.59.
+    #
+    # TODO: Re-enable this and ratchet it down.
+    benchmark = Benchmark(max_sched_loop_duration_s=None)
 
     num_blocks = args.blocks_per_worker * args.num_workers
     rows_per_block = _rows_per_block(
