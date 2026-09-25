@@ -76,5 +76,14 @@ def test_get_spec_result_selects_devices_by_resolved_kind(monkeypatch):
     assert [d["name"] for d in devices] == ["0", "1"]
 
 
+def test_nvidia_gpu_manager_wired_up_for_cdi():
+    """Sanity check that the real NvidiaGPUAcceleratorManager (not a mock)
+    implements the CDI interface cdi.py depends on."""
+    from ray._private.accelerators import NvidiaGPUAcceleratorManager
+
+    assert NvidiaGPUAcceleratorManager.get_cdi_kind() == "nvidia.com/gpu"
+    assert callable(NvidiaGPUAcceleratorManager.generate_cdi_spec)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
