@@ -2710,6 +2710,12 @@ def test_find_undiscovered_idle_slice():
     # Undiscovered but one worker busy → None.
     assert check([parent_topo], nodes, one_busy) is None
 
+    # Fully allocated worker has "TPU" omitted from Ray's sparse resource map → None.
+    assert check([parent_topo], nodes, {"n0": {"CPU": 8}, "n1": {"TPU": 4}}) is None
+
+    # Worker not yet reported in available resources defaults to idle.
+    assert check([parent_topo], nodes, {"n1": {"TPU": 4}}) == (parent_topo, "slice-a")
+
     # Slice present in cache → treated as already discovered → None.
     ray.util.tpu._tpu_subslice_cache["slice-a"] = {}
     assert check([parent_topo], nodes, all_free) is None

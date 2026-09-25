@@ -1910,24 +1910,29 @@ def _get_physical_to_label_worker_map(
                 )
                 # Configure slice peer addresses and rank via runtime_env so
                 # libtpu/PJRT can form the multi-host slice and report global coordinates.
-                results = ray.get(
-                    [
-                        discover_remote.options(
-                            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                                node_id=node["NodeID"],
-                                soft=False,
-                            ),
-                            runtime_env={
-                                "env_vars": get_jax_env_vars(
-                                    worker_hostnames=host_addrs,
-                                    worker_id=i,
-                                )
-                            },
-                        ).remote(num_hosts=expected_workers)
-                        for i, node in enumerate(slice_nodes)
-                    ],
-                    timeout=timeout,
-                )
+                refs = [
+                    discover_remote.options(
+                        scheduling_strategy=NodeAffinitySchedulingStrategy(
+                            node_id=node["NodeID"],
+                            soft=False,
+                        ),
+                        runtime_env={
+                            "env_vars": get_jax_env_vars(
+                                worker_hostnames=host_addrs,
+                                worker_id=i,
+                            )
+                        },
+                    ).remote(num_hosts=expected_workers)
+                    for i, node in enumerate(slice_nodes)
+                ]
+                try:
+                    results = ray.get(refs, timeout=timeout)
+                except ray.exceptions.GetTimeoutError:
+                    # These tasks hold no TPU resources, so a worker stuck in
+                    # multi-host PJRT init would otherwise keep /dev/accel* open.
+                    for ref in refs:
+                        ray.cancel(ref, force=True)
+                    raise
                 discovered = _compute_subslice_labels_from_discovery(
                     results, slice_nodes, parent_topology
                 )
@@ -2784,7 +2789,10 @@ def _find_undiscovered_idle_slice(
             idle = True
             for node in sns:
                 total = node.get("Resources", {}).get("TPU", 0)
-                if avail.get(node["NodeID"], {}).get("TPU", total) < total:
+                node_id = node["NodeID"]
+                # An omitted "TPU" key in Ray's sparse resource map means 0 available.
+                avail_tpus = avail[node_id].get("TPU", 0) if node_id in avail else total
+                if avail_tpus < total:
                     idle = False
                     break
             if idle and _slice_head_available(
