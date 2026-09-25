@@ -78,6 +78,11 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["serve/**/*.yaml"]),
+    # Shorten direct-ingress draining because these tests repeatedly shut down
+    # or replace Serve applications within their target timeouts.
+    env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+    },
     # *_direct_streaming.py files run only in the dedicated target below,
     # which sets the direct-streaming + HAProxy env they require.
     files = glob(

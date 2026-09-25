@@ -118,8 +118,8 @@ response = stub.ListApplications(request=request)
 print(f"Applications: {response.application_names}")  # ["app1"]
 
 request = HealthzRequest()
-response = stub.Healthz(request=request)
-print(f"Health: {response.message}")  # "success"
+_, call = stub.Healthz.with_call(request=request)
+print(f"Health status: {call.code()}")  # StatusCode.OK
 # __end_health_check__
 
 

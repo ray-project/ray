@@ -2980,8 +2980,7 @@ async def test_is_drained_false_before_min_period():
 
 @pytest.mark.asyncio
 async def test_failed_spawn_retires_log_files(monkeypatch):
-    """A spawn that fails startup must not orphan its std-stream log files —
-    they should be retired into the bounded ring like an exited worker's."""
+    """A failed spawn retires its logs and fate-shares with its manager on Linux."""
 
     class _FakeProc:
         def __init__(self):
@@ -2994,7 +2993,10 @@ async def test_failed_spawn_retires_log_files(monkeypatch):
         async def wait(self):
             return self.returncode
 
+    spawn_kwargs = {}
+
     async def _fake_exec(*args, **kwargs):
+        spawn_kwargs.update(kwargs)
         return _FakeProc()
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -3005,6 +3007,15 @@ async def test_failed_spawn_retires_log_files(monkeypatch):
 
         monkeypatch.setattr(
             "ray.serve._private.haproxy.get_haproxy_binary", lambda: "haproxy"
+        )
+        kill_on_parent_death = mock.Mock()
+        monkeypatch.setattr(
+            "ray.serve._private.haproxy.detect_fate_sharing_support_linux",
+            lambda: True,
+        )
+        monkeypatch.setattr(
+            "ray.serve._private.haproxy.set_kill_on_parent_death_linux",
+            kill_on_parent_death,
         )
         monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
 
@@ -3022,6 +3033,9 @@ async def test_failed_spawn_retires_log_files(monkeypatch):
         stdout_path, stderr_path = api._retired_logs[0]
         assert stdout_path.endswith(".stdout.log")
         assert stderr_path.endswith(".stderr.log")
+        assert spawn_kwargs["preexec_fn"] is (
+            kill_on_parent_death if sys.platform.startswith("linux") else None
+        )
 
 
 if __name__ == "__main__":

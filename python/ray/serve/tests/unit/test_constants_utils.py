@@ -1,4 +1,5 @@
 import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +17,28 @@ from ray.serve._private.constants_utils import (
     parse_latency_buckets,
     str_to_list,
 )
+
+
+@pytest.mark.parametrize(
+    ("platform", "override", "expected"),
+    [
+        ("linux", None, True),
+        ("darwin", None, False),
+        ("win32", None, False),
+        ("darwin", "1", True),
+        ("linux", "0", False),
+    ],
+)
+def test_haproxy_platform_default(monkeypatch, platform, override, expected):
+    from ray.serve._private.constants import _get_haproxy_enabled
+
+    monkeypatch.setattr(sys, "platform", platform)
+    if override is None:
+        monkeypatch.delenv("RAY_SERVE_ENABLE_HA_PROXY", raising=False)
+    else:
+        monkeypatch.setenv("RAY_SERVE_ENABLE_HA_PROXY", override)
+
+    assert _get_haproxy_enabled() is expected
 
 
 class TestStrToList:

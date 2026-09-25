@@ -69,6 +69,9 @@ py_test(
     srcs = test_srcs,
     env = {
         "RAY_UNIT_TEST": "1",
+        # Shorten direct-ingress draining because these tests repeatedly shut
+        # down or replace Serve applications within their target timeouts.
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
     },
     main = "serve_failure.py",
     tags = [
