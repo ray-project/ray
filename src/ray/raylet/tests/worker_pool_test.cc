@@ -18,11 +18,14 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cerrno>
+#include <csignal>
 #include <iostream>
 #include <list>
 #include <memory>
 #include <random>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -40,6 +43,7 @@
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
+#include "ray/raylet/shutdown.h"
 #include "ray/raylet/worker.h"
 #include "ray/util/clock.h"
 #include "ray/util/fake_process.h"
@@ -48,6 +52,11 @@
 #include "ray/util/process_interface.h"
 #include "ray/util/raii.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
+
+#if defined(__linux__)
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 using json = nlohmann::json;
 
@@ -2741,5 +2750,217 @@ TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
         << "Port " << port << " was assigned to two workers.";
   }
 }
+
+#if defined(__linux__)
+class CountingProfilerProcess : public FakeProcess {
+ public:
+  using FakeProcess::FakeProcess;
+  bool IsAlive() const override {
+    ++probes;
+    return FakeProcess::IsAlive();
+  }
+  pid_t GetId() const override {
+    ++pid_reads;
+    return FakeProcess::GetId();
+  }
+  void Kill() override {
+    ++kills;
+    FakeProcess::Kill();
+  }
+  mutable int probes = 0;
+  mutable int pid_reads = 0;
+  int kills = 0;
+};
+
+class WorkerPoolProfilerTest : public WorkerPoolTest {
+ public:
+  void SetUp() override {
+    WorkerPoolTest::SetUp();
+    io_service_.stop();
+    thread_io_service_->join();
+    io_service_.restart();
+    RayConfig::instance().initialize(
+        R"({"process_group_cleanup_enabled":true,
+            "kill_worker_timeout_milliseconds":100,
+            "worker_profiler_flush_timeout_ms":100})");
+  }
+  void TearDown() override {
+    for (auto &[_, profiler] : worker_pool_->profiler_processes_) {
+      worker_pool_->TryFinishProfiler(profiler, true);
+    }
+    worker_pool_->DrainProfilerProcesses();
+    worker_pool_.reset();
+    io_service_.stop();
+    runtime_env_reference.clear();
+    if (child_pid_ > 0) {
+      kill(child_pid_, SIGKILL);
+      while (waitpid(child_pid_, nullptr, 0) < 0 && errno == EINTR) {
+      }
+    }
+  }
+
+  struct Tracked {
+    std::shared_ptr<WorkerInterface> worker;
+    CountingProfilerProcess *process;
+    std::shared_ptr<CountingProfilerProcess> launcher;
+  };
+
+  Tracked Track(bool alive = false, pid_t pid = -1) {
+    const pid_t pgid = Process::PID_MAX_LIMIT + 100 + next_pid_++;
+    auto process =
+        std::make_unique<CountingProfilerProcess>(pid > 0 ? pid : pgid + 1000);
+    auto *ptr = process.get();
+    ptr->SetAlive(alive);
+    auto worker = worker_pool_->CreateWorker(WorkerID::FromRandom(), std::move(process));
+    auto launcher = std::make_shared<CountingProfilerProcess>(pgid);
+    worker->SetSavedProcessGroupId(pgid);
+    auto &state = worker_pool_->states_by_lang_[Language::PYTHON];
+    state.registered_workers.insert(worker);
+    auto &record = state.worker_processes[worker->WorkerId()];
+    record.worker_type = rpc::WorkerType::WORKER;
+    record.is_pending_registration = false;
+    record.proc = launcher;
+    record.profiler_cleanup_owned = true;
+    worker_pool_->profiler_processes_.emplace(
+        worker->WorkerId(), WorkerPool::ProfilerProcess{launcher, worker, pgid});
+    return {worker, ptr, launcher};
+  }
+
+  void Poll() { worker_pool_->PollProfilerProcesses(); }
+  auto &Entry(const Tracked &t) {
+    return worker_pool_->profiler_processes_.at(t.worker->WorkerId());
+  }
+  bool Owns(const Tracked &t) {
+    return worker_pool_->profiler_processes_.contains(t.worker->WorkerId());
+  }
+  bool FinishAgain(const Tracked &t) {
+    return worker_pool_->TryFinishProfiler(Entry(t), true);
+  }
+
+ protected:
+  pid_t child_pid_ = -1;
+
+ private:
+  int next_pid_ = 0;
+};
+
+TEST_F(WorkerPoolProfilerTest, ExitIsIrreversibleAndShutdownPreservesDeadline) {
+  auto t = Track();
+  EXPECT_TRUE(worker_pool_->DeferProfilerCleanup(t.worker->WorkerId(), true));
+  Poll();
+  auto deadline = Entry(t).flush_deadline;
+  ASSERT_TRUE(deadline.has_value());
+  const int probes = t.process->probes;
+  const int reads = t.process->pid_reads;
+  t.process->SetAlive(true);  // The old numeric W PID has been reused.
+  fake_clock_.AdvanceTime(absl::Milliseconds(90));
+  bool done = false;
+  worker_pool_->PrepareProfilerShutdown([&] { done = true; });
+  EXPECT_EQ(Entry(t).flush_deadline, deadline);
+  EXPECT_FALSE(done);
+  fake_clock_.AdvanceTime(absl::Milliseconds(10));
+  Poll();
+  EXPECT_TRUE(done);
+  EXPECT_FALSE(Owns(t));
+  EXPECT_EQ(t.process->probes, probes);
+  EXPECT_EQ(t.process->pid_reads, reads);
+  EXPECT_EQ(t.launcher->kills, 1);
+  worker_pool_->DrainProfilerProcesses();
+  EXPECT_EQ(t.launcher->kills, 1);
+}
+
+TEST_F(WorkerPoolProfilerTest, ConsumedGroupSurvivesLateDisconnect) {
+  auto t = Track();
+  EXPECT_TRUE(worker_pool_->DeferProfilerCleanup(t.worker->WorkerId(), true));
+  Poll();
+  EXPECT_TRUE(FinishAgain(t));
+  EXPECT_EQ(Entry(t).pgid, -1);
+  t.launcher->SetAlive(true);  // Simulate reuse after releasing the group.
+  EXPECT_TRUE(FinishAgain(t));
+  Poll();
+  EXPECT_FALSE(Owns(t));
+  EXPECT_TRUE(t.worker->IsDead());
+  EXPECT_TRUE(worker_pool_->GetAllRegisteredWorkers(true, false).empty());
+  ASSERT_EQ(worker_pool_->GetRegisteredWorker(t.worker->Connection()), t.worker);
+  // DisconnectClient queries this before removing the still-registered worker.
+  // Both EOF and graceful disconnect must skip its ordinary group cleanup.
+  EXPECT_TRUE(worker_pool_->DeferProfilerCleanup(t.worker->WorkerId(), false));
+  EXPECT_TRUE(worker_pool_->DeferProfilerCleanup(t.worker->WorkerId(), true));
+  worker_pool_->DisconnectWorker(t.worker, rpc::WorkerExitType::SYSTEM_ERROR);
+  EXPECT_EQ(worker_pool_->GetRegisteredWorker(t.worker->Connection()), nullptr);
+  worker_pool_->DrainProfilerProcesses();
+  EXPECT_EQ(t.launcher->kills, 1);
+}
+
+TEST_F(WorkerPoolProfilerTest, AgentShutdownYieldsAndForceKillsEscapedWorker) {
+  int ready[2];
+  ASSERT_EQ(pipe(ready), 0);
+  child_pid_ = fork();
+  if (child_pid_ == 0) {
+    close(ready[0]);
+    if (setsid() < 0) {
+      _exit(1);
+    }
+    signal(SIGTERM, SIG_IGN);
+    alarm(10);  // A missing force kill fails by SIGALRM instead of hanging the test.
+    const char ok = 1;
+    if (write(ready[1], &ok, 1) != 1) {
+      _exit(2);
+    }
+    close(ready[1]);
+    for (;;) {
+      pause();
+    }
+  }
+  close(ready[1]);
+  char ok = 0;
+  const auto bytes = child_pid_ > 0 ? read(ready[0], &ok, 1) : -1;
+  close(ready[0]);
+  ASSERT_GT(child_pid_, 0);
+  ASSERT_EQ(bytes, 1);
+  auto t = Track(true, child_pid_);
+  ASSERT_EQ(getpgid(child_pid_), child_pid_);
+  ASSERT_NE(getpgid(child_pid_), *t.worker->GetSavedProcessGroupId());
+
+  bool prepared = false, done = false, replied = false;
+  auto shutdown = MakeRayletShutdownCallback(
+      io_service_, [&](const rpc::NodeDeathInfo &info) {
+        EXPECT_TRUE(io_service_.get_executor().running_in_this_thread());
+        EXPECT_EQ(info.reason_message(), "agent failed");
+        prepared = true;
+        worker_pool_->PrepareProfilerShutdown([&] { done = true; });
+      });
+  std::thread agent([&] {
+    rpc::NodeDeathInfo info;
+    info.set_reason_message("agent failed");
+    shutdown(info);
+    info.set_reason_message("caller reused its message");
+  });
+  agent.join();
+  EXPECT_FALSE(prepared);
+  io_service_.post([&] { replied = true; }, "test.disconnect_reply");
+  io_service_.poll();
+  EXPECT_TRUE(prepared);
+  EXPECT_TRUE(replied);
+  EXPECT_FALSE(done);
+  EXPECT_EQ(kill(child_pid_, 0), 0);
+
+  // DestroyWorker disconnects first, then calls KillAsync, which MarkDead suppresses.
+  EXPECT_TRUE(worker_pool_->DeferProfilerCleanup(t.worker->WorkerId(), false));
+  t.worker->KillAsync(io_service_, true);
+  int status = 0;
+  pid_t reaped;
+  do {
+    reaped = waitpid(child_pid_, &status, 0);
+  } while (reaped < 0 && errno == EINTR);
+  ASSERT_EQ(reaped, child_pid_);
+  child_pid_ = -1;
+  ASSERT_TRUE(WIFSIGNALED(status));
+  EXPECT_EQ(WTERMSIG(status), SIGKILL);
+  Poll();
+  EXPECT_TRUE(done);
+  EXPECT_EQ(t.launcher->kills, 1);
+}
+#endif
 
 }  // namespace ray::raylet

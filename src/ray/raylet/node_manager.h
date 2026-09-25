@@ -251,6 +251,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// or object ids can be freed up across the cluster.
   void SetShouldGlobalGC();
 
+  /// Complete profiled worker shutdown while the executor serves disconnect replies.
+  void PrepareForShutdown(std::function<void()> done);
+
   /// Stop this node manager.
   void Stop();
 
