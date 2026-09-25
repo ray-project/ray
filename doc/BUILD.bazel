@@ -321,8 +321,6 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/vllm_example.py",
         "source/serve/doc_code/cross_node_parallelism_example.py",
-        "source/serve/doc_code/llm/llm_yaml_config_example.py",
-        "source/serve/doc_code/llm/qwen_example.py",
         "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
@@ -622,8 +620,8 @@ doctest(
             "source/ray-contribute/getting-involved.md",
             "source/ray-contribute/testing-tips.md",
             "source/ray-contribute/writing-code-snippets.md",
-            "source/ray-observability/user-guides/ray-tracing.rst",
-            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/ray-observability/user-guides/ray-tracing.md",
+            "source/ray-observability/user-guides/cli-sdk.md",
             "source/templates/04_finetuning_llms_with_deepspeed/README.md",
             "source/ray-core/**/*.md",
             "source/ray-core/**/*.rst",
@@ -654,9 +652,9 @@ doctest(
             "source/ray-core/**/*.rst",
         ],
         exclude = [
-            "source/ray-core/handling-dependencies.rst",
-            # The `doc_code/` snippet for `nested-tasks.rst` is tested.
-            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-core/handling-dependencies.md",
+            # The `doc_code/` snippet for `nested-tasks.md` is tested.
+            "source/ray-core/tasks/nested-tasks.md",
         ],
     ),
     tags = ["team:core"],
@@ -672,8 +670,8 @@ doctest_each(
         ],
         exclude = [
             # These tests run on GPU (see below).
-            "source/data/batch-inference.rst",
-            "source/data/transforming-data.rst",
+            "source/data/batch-inference.md",
+            "source/data/transforming-data.md",
             # These don't contain code snippets.
             "source/data/api/**/*.rst",
         ],
@@ -685,8 +683,8 @@ doctest_each(
 doctest(
     name = "doctest[data-gpu]",
     files = [
-        "source/data/batch-inference.rst",
-        "source/data/transforming-data.rst",
+        "source/data/batch-inference.md",
+        "source/data/transforming-data.md",
     ],
     gpu = True,
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
@@ -703,21 +701,10 @@ doctest(
             "source/rllib/**/*.rst",
         ],
         exclude = [
-            "source/rllib/getting-started.rst",
+            "source/rllib/getting-started.md",
         ],
     ),
     tags = ["team:rllib"],
-)
-
-doctest(
-    name = "doctest[rllib2]",
-    size = "enormous",
-    files = ["source/rllib/getting-started.rst"],
-    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
-    tags = [
-        "manual",
-        "team:rllib",
-    ],
 )
 
 doctest(
@@ -729,8 +716,6 @@ doctest(
         ],
         exclude = [
             "source/serve/advanced-guides/inplace-updates.md",
-            "source/serve/deploy-many-models/multi-app.md",
-            "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
         ],
     ),
@@ -751,10 +736,10 @@ doctest(
         ],
         exclude = [
             # CI does not have Horovod installed.
-            "source/train/horovod.rst",
+            "source/train/horovod.md",
             # These tests run on GPU (see below).
-            "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-accelerators.rst",
+            "source/train/user-guides/data-loading-preprocessing.md",
+            "source/train/user-guides/using-accelerators.md",
         ],
     ),
     tags = ["team:ml"],
@@ -764,8 +749,8 @@ doctest(
     name = "doctest[train-gpu]",
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     files = [
-        "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-accelerators.rst",
+        "source/train/user-guides/data-loading-preprocessing.md",
+        "source/train/user-guides/using-accelerators.md",
     ],
     gpu = True,
     tags = ["team:ml"],
