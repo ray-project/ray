@@ -6,8 +6,8 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.shuffle_operators.external_shuffle_map_operator import (  # noqa: E501
-    ExternalHashShuffleMapOp,
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
+    DiskHashShuffleMapOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -257,7 +257,7 @@ def test_get_shard_batch_warns_then_raises_on_stall(
     ray.cancel(ref, force=True)
 
 
-@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, ExternalHashShuffleMapOp])
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp, DiskHashShuffleMapOp])
 @pytest.mark.parametrize("batch_bytes,expected_num_tasks", [(0, 2), (10**9, 1)])
 def test_shuffle_input_batch_bytes_controls_map_task_batching(
     ray_start_regular_shared_2_cpus,
@@ -433,6 +433,27 @@ def test_reduce_op_runs_when_an_input_is_missing(ray_start_regular_shared_2_cpus
     out = pa.concat_tables(_drain_reduce_op(op, feed))
     assert out.column("src").to_pylist() == ["L"]
     assert op.has_completed()
+
+
+def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
+    """With block splitting disallowed (target_max_block_size=None), the reduce
+    task must emit reduce_fn's blocks as-is instead of coalescing them into a
+    single block."""
+
+    def _one_row_blocks_reduce(partition_id, tables_by_input):
+        tables = [t for shards in tables_by_input for t in shards]
+        combined = pa.concat_tables(tables)
+        for i in range(combined.num_rows):
+            yield combined.slice(i, 1)
+
+    op = _make_multi_input_reduce_op(_one_row_blocks_reduce, num_inputs=2)
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"v": [1, 2]})), 0),
+        (_ipc_shard_bundle(0, pa.table({"v": [3, 4]})), 1),
+    ]
+    tables = _drain_reduce_op(op, feed)
+    assert [t.num_rows for t in tables] == [1, 1, 1, 1]
+    assert sorted(v for t in tables for v in t.column("v").to_pylist()) == [1, 2, 3, 4]
 
 
 if __name__ == "__main__":

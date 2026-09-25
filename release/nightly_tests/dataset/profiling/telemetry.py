@@ -19,6 +19,8 @@ DEFAULT_UPLOAD_PATTERNS = [
     "pyspy_*",
     "perf_*",
     "result*.json",
+    # Benchmark result written by the release job runner (TEST_OUTPUT_JSON).
+    "release_test_out*.json",
     "object_store_state*",
     "actor_placement*",
     "plasma_stats*",

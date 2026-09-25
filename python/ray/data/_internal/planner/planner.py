@@ -20,6 +20,7 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 from ray.data._internal.execution.operators.join import (
     JoinOperator,
     _make_join_reduce_fn,
+    _with_polars_thread_cap,
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
@@ -139,7 +140,7 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
-_EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
+_DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _plan_join_shuffle_v2(
@@ -187,17 +188,19 @@ def _plan_join_shuffle_v2(
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
     reduce_kwargs = {}
-    if data_context.use_external_hash_shuffle:
+    if data_context.use_disk_based_hash_shuffle:
         reduce_kwargs[
             "peak_memory_multiplier"
-        ] = _EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
     return reduce_cls(
         [left_map, right_map],
         data_context,
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
-        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
+        reduce_ray_remote_args=_with_polars_thread_cap(
+            logical_op.aggregator_ray_remote_args
+        ),
         name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
         **reduce_kwargs,
     )
