@@ -3,20 +3,23 @@ import json
 import os
 import sys
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray.experimental.sandbox._internal import cdi, cdi_lib, image_utils
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import VALID_ROOTFS_TYPES, SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
+    NO_GPU_CDI_SPEC_MESSAGE,
     BaseImageManager,
     ImageManager,
+    _build_gpu_cdi_devices_transform_fn,
     get_default_oci_spec,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
@@ -26,6 +29,20 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 def _build_images_with_fake_mkfs(fake_mkfs_erofs):
     """Every pull here builds its image through the fake mkfs.erofs."""
     yield
+
+
+def _resolve_gpu_cdi_devices(gpu_ids):
+    """Test-only mirror of the resolve step `prepare_oci_bundle` does
+    inline, so the tests below don't repeat it three times."""
+    cdi_spec = cdi.get_spec("GPU")
+    if cdi_spec is None:
+        raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+    try:
+        return cdi_spec, cdi_spec.select_devices(gpu_ids)
+    except cdi_lib.CDIError as err:
+        raise SandboxCreationError(
+            f"Failed to configure GPU access via CDI: {err}"
+        ) from err
 
 
 def test_image_manager_init(tmp_path):
@@ -179,6 +196,102 @@ def test_image_manager_create_oci_spec(tmp_path):
 
     # Verify custom transform
     assert spec.get("customField") == "customValue"
+
+
+def test_create_oci_spec_raises_when_no_cdi_spec_found(tmp_path):
+    """gpu_ids with no generatable CDI spec for this node must fail loudly
+    with actionable guidance, not proceed silently."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "gate_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=None,
+    ):
+        with pytest.raises(SandboxCreationError, match="nvidia-ctk"):
+            cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+            mgr.create_oci_spec(
+                image=str(local_tar),
+                _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                    cdi_spec, cdi_devices
+                ),
+            )
+
+
+def test_create_oci_spec_injects_cdi_devices_for_any_kind(tmp_path):
+    """create_oci_spec's CDI injection is generic across vendors — whether a
+    given kind is one a specific backend (e.g. gVisor/runsc) actually
+    supports is that backend's own concern (see
+    GVisorSandboxBackend._resolve_gpu_run_args), not this
+    backend-agnostic OCI-spec builder's."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "cdi_inject_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "devices": [{"name": "0", "containerEdits": {}}],
+        },
+    )
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+        spec = mgr.create_oci_spec(
+            image=str(local_tar),
+            _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            ),
+        )
+        assert spec is not None
+
+
+def test_create_oci_spec_translates_cdi_error(tmp_path):
+    """cdi_lib.CDIError (e.g. a requested gpu_ids entry with no matching
+    CDI device) must surface as SandboxCreationError, not leak the
+    sandbox-agnostic CDIError past this module's translation boundary."""
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "cdi_error_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+    mgr.pull_image(str(local_tar))
+
+    # A spec with no devices at all: selecting id "0" has no match.
+    cdi_spec = cdi_lib.CDISpec("acme.com/widget", {"devices": []})
+    with patch(
+        "ray.experimental.sandbox.image_manager.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        with pytest.raises(
+            SandboxCreationError, match="Failed to configure GPU access via CDI"
+        ):
+            cdi_spec, cdi_devices = _resolve_gpu_cdi_devices(["0"])
+            mgr.create_oci_spec(
+                image=str(local_tar),
+                _oci_spec_transform_fn=_build_gpu_cdi_devices_transform_fn(
+                    cdi_spec, cdi_devices
+                ),
+            )
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):
@@ -655,13 +768,18 @@ def test_image_cache_eviction(tmp_path):
     assert partial.exists()  # mid-pull (no marker): protected
 
 
-def test_create_oci_spec_requires_cached_image(tmp_path):
+@pytest.mark.parametrize("rootfs_type", VALID_ROOTFS_TYPES)
+def test_create_oci_spec_requires_cached_image(tmp_path, rootfs_type):
     """Spec construction refuses a cache entry with no image rather than
     handing runsc a root it cannot mount."""
     mgr = _StubImageManager(tmp_path)
     os.remove(tmp_path / ROOTFS_IMAGE)
     with pytest.raises(SandboxCreationError, match=ROOTFS_IMAGE):
-        mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+        mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            _rootfs_type=rootfs_type,
+        )
 
 
 def test_create_oci_spec_erofs_image(tmp_path):
@@ -684,6 +802,99 @@ def test_create_oci_spec_erofs_image(tmp_path):
     assert spec["root"] == {"path": str(root_path), "readonly": False}
     assert root_path.is_dir()
     assert not (tmp_path / "rootfs").exists()
+
+
+@pytest.mark.parametrize("readonly", [True, False])
+def test_create_oci_spec_overlayfs(tmp_path, readonly):
+    """An overlayfs sandbox gets no gVisor rootfs annotations. Its root.path
+    is where the backend mounts the sandbox's overlay, and readonly holds as
+    requested, even with an explicit workdir, since runsc creates the
+    workdir's mount point in the overlay."""
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=readonly,
+        workdir_path=str(tmp_path / "work"),
+        root_path=str(root_path),
+        _rootfs_type="overlayfs",
+    )
+    assert spec.get("annotations", {}) == {}
+    assert spec["root"] == {"path": str(root_path), "readonly": readonly}
+
+
+def test_create_oci_spec_rejects_unknown_rootfs_type(tmp_path):
+    mgr = _StubImageManager(tmp_path)
+    with pytest.raises(ValueError, match="Invalid rootfs type"):
+        mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            _rootfs_type="squashfs",
+        )
+
+
+def _write_one_file_tar(path, name):
+    with tarfile.open(str(path), "w") as tar:
+        ti = tarfile.TarInfo(name)
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+
+
+def test_get_unpacked_rootfs_reapplies_the_cache_cap(
+    tmp_path, monkeypatch, fake_fsck_erofs
+):
+    """A new unpacked copy grows the cache, so unpacking evicts older images
+    down to the cap, keeping its own. A copy that already exists doesn't
+    rescan the cache."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    old_tar, new_tar = tmp_path / "old.tar", tmp_path / "new.tar"
+    _write_one_file_tar(old_tar, "old.txt")
+    _write_one_file_tar(new_tar, "new.txt")
+    old_dir = mgr.pull_image(str(old_tar))
+    new_dir = mgr.pull_image(str(new_tar))
+    both = sum(image_utils._dir_size_bytes(d) for d in (old_dir, new_dir))
+    # Both images fit, but not an unpacked copy on top.
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", str(both + 1))
+
+    tree = mgr._get_unpacked_rootfs(str(new_tar), preserve_owners=False)
+    assert os.path.isfile(os.path.join(tree, "new.txt"))
+    assert not os.path.exists(old_dir)
+    assert os.path.isdir(new_dir)
+
+    evictions = []
+    monkeypatch.setattr(
+        image_utils,
+        "evict_least_recently_used_images",
+        lambda *a, **k: evictions.append(a),
+    )
+    assert mgr._get_unpacked_rootfs(str(new_tar), preserve_owners=False) == tree
+    assert evictions == []
+
+
+def test_image_manager_requires_fsck_erofs_for_overlayfs(
+    tmp_path, monkeypatch, fake_fsck_erofs
+):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "one.tar"
+    _write_one_file_tar(local_tar, "one.txt")
+    mgr.pull_image(str(local_tar))
+
+    monkeypatch.setenv("PATH", str(tmp_path / "empty"))
+    image_utils.fsck_erofs_path.cache_clear()
+    with pytest.raises(SandboxCreationError, match="fsck.erofs is not in PATH"):
+        mgr._get_unpacked_rootfs(str(local_tar), preserve_owners=False)
+    image_utils.fsck_erofs_path.cache_clear()
+
+
+def test_base_image_manager_rejects_overlayfs_sandboxes():
+    class _NoOverlayfsManager(BaseImageManager):
+        # Never called; they only make the class concrete.
+        pull_image = get_image_dir = get_image_config = None
+        get_workdir = get_envs = create_oci_spec = prepare_oci_bundle = None
+
+    with pytest.raises(SandboxCreationError, match="doesn't support overlayfs"):
+        _NoOverlayfsManager()._get_unpacked_rootfs("fake:latest", preserve_owners=False)
 
 
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):

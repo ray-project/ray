@@ -1,8 +1,10 @@
+import subprocess
 import sys
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray._private.accelerators import NvidiaGPUAcceleratorManager
+from ray._private.accelerators import NvidiaGPUAcceleratorManager, nvidia_gpu
 from ray.tests.accelerators.mock_pynvml import (
     DeviceHandleMock,
     PyNVMLMock,
@@ -99,6 +101,278 @@ def test_gpu_info_parsing(patch_mock_pynvml):
 )
 def test_gpu_name_to_accelerator_type(name, expected):
     assert NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(name) == expected
+
+
+@pytest.fixture(autouse=True)
+def reset_cdi_spec_cache():
+    """generate_cdi_spec caches its result for the process lifetime; each
+    test needs a fresh nvidia-ctk call rather than a prior test's cache."""
+    NvidiaGPUAcceleratorManager.generate_cdi_spec.cache_clear()
+    yield
+    NvidiaGPUAcceleratorManager.generate_cdi_spec.cache_clear()
+
+
+_FAKE_VERSION_RESULT = MagicMock(
+    returncode=0, stdout="NVIDIA Container Toolkit CLI version 1.20.1\n", stderr=""
+)
+
+
+def _run_side_effect(generate_result_or_side_effect):
+    """A `subprocess.run` side_effect that answers the `--version` call
+    generate_cdi_spec makes before the `cdi generate` call, then returns
+    (or raises) `generate_result_or_side_effect` for the latter."""
+
+    def _run(args, **kwargs):
+        if "--version" in args:
+            return _FAKE_VERSION_RESULT
+        if isinstance(generate_result_or_side_effect, BaseException):
+            raise generate_result_or_side_effect
+        return generate_result_or_side_effect
+
+    return _run
+
+
+def test_generate_cdi_spec_no_nvidia_ctk_binary():
+    with patch("shutil.which", return_value=None):
+        with pytest.raises(RuntimeError, match="nvidia-ctk not found"):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+
+
+def test_generate_cdi_spec_rejects_too_old_nvidia_ctk():
+    version_result = MagicMock(
+        returncode=0, stdout="NVIDIA Container Toolkit CLI version 1.18.0\n", stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=version_result
+    ) as mock_run:
+        with pytest.raises(RuntimeError, match="1.18.0"):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        # Only the version check ran; "cdi generate" was never attempted.
+        assert mock_run.call_count == 1
+
+
+def test_generate_cdi_spec_rechecks_version_after_upgrade():
+    """A too-old nvidia-ctk upgraded in place is picked up on the next
+    attempt, without restarting the process."""
+    old_version_result = MagicMock(
+        returncode=0, stdout="NVIDIA Container Toolkit CLI version 1.18.0\n", stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=old_version_result
+    ):
+        with pytest.raises(RuntimeError, match="1.18.0"):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run_side_effect(fake_result)
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
+
+
+def test_generate_cdi_spec_rejects_unparseable_version():
+    version_result = MagicMock(returncode=0, stdout="not a version string", stderr="")
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", return_value=version_result
+    ) as mock_run:
+        with pytest.raises(RuntimeError, match="unknown"):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        assert mock_run.call_count == 1
+
+
+def test_generate_cdi_spec_accepts_minimum_version():
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    min_version_str = ".".join(str(v) for v in nvidia_gpu._MIN_NVIDIA_CTK_VERSION)
+    version_result = MagicMock(
+        returncode=0,
+        stdout=f"NVIDIA Container Toolkit CLI version {min_version_str}\n",
+        stderr="",
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run",
+        side_effect=lambda args, **kwargs: (
+            version_result if "--version" in args else fake_result
+        ),
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
+
+
+def test_generate_cdi_spec_success():
+    """generate_cdi_spec never writes to disk: nvidia-ctk writes to stdout
+    (no --output flag), which is parsed directly."""
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run_side_effect(fake_result)
+    ) as mock_run:
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
+        # call_args is the most recent call: the "cdi generate" one, made
+        # after the version check.
+        args = mock_run.call_args.args[0]
+        assert args[0] == "/usr/bin/nvidia-ctk"
+        assert "cdi" in args and "generate" in args
+        assert not any(a.startswith("--output=") for a in args)
+
+        # A hung/misbehaving nvidia-ctk must not stall the caller, and
+        # output/errors must actually be captured rather than inherited.
+        kwargs = mock_run.call_args.kwargs
+        assert kwargs["timeout"] == nvidia_gpu._NVIDIA_CTK_TIMEOUT_SECONDS
+        assert kwargs["check"] is True
+        assert kwargs["capture_output"] is True
+        assert "NVIDIA_CTK_CDI_OUTPUT_FILE_PATH" not in kwargs["env"]
+
+
+def test_generate_cdi_spec_decodes_only_first_of_multiple_documents():
+    """If nvidia-ctk ever writes multiple JSON documents to stdout back to
+    back with no separator (see the comment on the raw_decode call this
+    exercises), only the first (full) document must be decoded, not
+    concatenated with or replaced by the trailing ones."""
+    fake_result = MagicMock(
+        returncode=0,
+        stdout=(
+            '{"kind": "nvidia.com/gpu", "devices": [{"name": "0"}]}'
+            '{"kind": "nvidia.com/gpu", "devices": [{"name": "0"}], "class": "coherent"}'
+        ),
+        stderr="",
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run_side_effect(fake_result)
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [{"name": "0"}],
+        }
+
+
+def test_generate_cdi_spec_caches_success():
+    """A second call reuses the first's result instead of shelling out to
+    nvidia-ctk again."""
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run_side_effect(fake_result)
+    ) as mock_run:
+        first = NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        second = NvidiaGPUAcceleratorManager.generate_cdi_spec()
+        assert first == second == {"kind": "nvidia.com/gpu", "devices": []}
+        # One version check + one "cdi generate" for the first call; the
+        # second call hits the cache and makes no calls at all.
+        assert mock_run.call_count == 2
+
+
+def test_generate_cdi_spec_does_not_cache_failure():
+    """A failed generation isn't cached (lru_cache never caches a raised
+    exception), so the next call retries rather than getting stuck failing
+    for the rest of the process."""
+    with patch("shutil.which", return_value=None):
+        with pytest.raises(RuntimeError):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+
+    fake_result = MagicMock(
+        returncode=0, stdout='{"kind": "nvidia.com/gpu", "devices": []}', stderr=""
+    )
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run_side_effect(fake_result)
+    ):
+        assert NvidiaGPUAcceleratorManager.generate_cdi_spec() == {
+            "kind": "nvidia.com/gpu",
+            "devices": [],
+        }
+
+
+def test_generate_cdi_spec_unparseable_output():
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run",
+        side_effect=_run_side_effect(
+            MagicMock(returncode=0, stdout="not json", stderr="")
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="unparseable"):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+
+
+@pytest.mark.parametrize(
+    "side_effect",
+    [
+        subprocess.CalledProcessError(1, ["nvidia-ctk"], stderr="boom"),
+        subprocess.TimeoutExpired(["nvidia-ctk"], 30),
+    ],
+)
+def test_generate_cdi_spec_subprocess_error(side_effect):
+    with patch("shutil.which", return_value="/usr/bin/nvidia-ctk"), patch(
+        "subprocess.run", side_effect=_run_side_effect(side_effect)
+    ):
+        with pytest.raises(RuntimeError, match="Failed to generate CDI spec"):
+            NvidiaGPUAcceleratorManager.generate_cdi_spec()
+
+
+def test_build_nvidia_ctk_env_parses_comments_and_quotes(tmp_path):
+    """Comments, blank lines, and quoted values, matching the systemd
+    EnvironmentFile format nvidia-cdi-refresh.env ships in -- bare
+    KEY=VALUE, no `export` keyword."""
+    env_file = tmp_path / "test.env"
+    env_file.write_text(
+        "# a comment\n"
+        "; also a comment\n"
+        "\n"
+        "NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia\n"
+        '  NVIDIA_CTK_DEV_ROOT = "/quoted/path" \n'
+        "SINGLE_QUOTED='/other/path'\n"
+    )
+    with patch.dict("os.environ", {"NVIDIA_CTK_ENV_PATH": str(env_file)}, clear=True):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert env["NVIDIA_CTK_DRIVER_ROOT"] == "/usr/local/nvidia"
+    assert env["NVIDIA_CTK_DEV_ROOT"] == "/quoted/path"
+    assert env["SINGLE_QUOTED"] == "/other/path"
+
+
+def test_build_nvidia_ctk_env_no_file():
+    """No env file at the default or overridden path: nvidia-ctk just gets
+    this process's own environment, minus NVIDIA_CTK_CDI_OUTPUT_FILE_PATH."""
+    with patch.dict(
+        "os.environ", {"SOME_VAR": "1", "NVIDIA_CTK_ENV_PATH": "/no/such/file"}
+    ):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert env["SOME_VAR"] == "1"
+    assert "NVIDIA_CTK_CDI_OUTPUT_FILE_PATH" not in env
+
+
+def test_build_nvidia_ctk_env_overlays_file(tmp_path):
+    env_file = tmp_path / "test.env"
+    env_file.write_text("NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia\n")
+    with patch.dict(
+        "os.environ", {"NVIDIA_CTK_ENV_PATH": str(env_file), "SOME_VAR": "1"}
+    ):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert env["NVIDIA_CTK_DRIVER_ROOT"] == "/usr/local/nvidia"
+    assert env["SOME_VAR"] == "1"
+
+
+def test_build_nvidia_ctk_env_drops_cdi_output_file_path(tmp_path):
+    """nvidia-cdi-refresh.env documents NVIDIA_CTK_CDI_OUTPUT_FILE_PATH as
+    an option, which nvidia-ctk cdi generate treats as --output, but
+    generate_cdi_spec always parses nvidia-ctk's stdout. If a sourced env
+    file sets this, it must not survive into nvidia-ctk's environment."""
+    env_file = tmp_path / "test.env"
+    env_file.write_text("NVIDIA_CTK_CDI_OUTPUT_FILE_PATH=/var/run/cdi/nvidia.yaml\n")
+    with patch.dict("os.environ", {"NVIDIA_CTK_ENV_PATH": str(env_file)}):
+        env = NvidiaGPUAcceleratorManager._build_nvidia_ctk_env()
+    assert "NVIDIA_CTK_CDI_OUTPUT_FILE_PATH" not in env
 
 
 if __name__ == "__main__":

@@ -2,12 +2,26 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Union
 
+import ray
+
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
 # network namespace bridged by slirp4netns (internet egress only; ports and
 # loopback are private to the sandbox) plus a generated, host-independent
 # resolv.conf.
 VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
+
+# How a sandbox's root filesystem is served. The image cache stores every image
+# as an EROFS image. An EROFS sandbox, the default, boots from it directly, and
+# files keep the image's real owners. An overlayfs sandbox is for a rootfs that
+# needs host-side preparation (e.g. OCI createContainer hooks). It boots from a
+# copy of the cached image unpacked into a directory tree (see
+# image_utils.get_unpacked_rootfs), under a kernel overlay private to the
+# sandbox, so that preparation never modifies the cached image. Without mount
+# privilege, every file in an overlayfs sandbox belongs to the worker's user.
+ROOTFS_EROFS = "erofs"
+ROOTFS_OVERLAYFS = "overlayfs"
+VALID_ROOTFS_TYPES = (ROOTFS_EROFS, ROOTFS_OVERLAYFS)
 
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
@@ -129,6 +143,15 @@ class SandboxConfig:
             writable through the per-sandbox copy-on-write overlay: image
             content stays visible, sandboxes don't interfere with each
             other, and the base image is never modified.
+        gpu_ids: GPU device ids/UUIDs (same format as ``ray.get_gpu_ids()``)
+            to expose inside the sandbox via CDI (see
+            :mod:`ray.experimental.sandbox._internal.cdi`, generic across
+            accelerator vendors). None (default) gives no GPU
+            access. Requires ``ray.get_gpu_ids()`` to be non-empty for the
+            calling actor/task (request GPUs via ``num_gpus=...`` so Ray
+            assigns some) — that's the only way to confirm a requested id
+            is actually this actor/task's to use; validated as a subset of
+            it, with no fallback if it's empty.
     """
 
     image: str
@@ -144,10 +167,12 @@ class SandboxConfig:
     capabilities: Optional[List[str]] = None
     shell: str = "/bin/bash"
     readonly: bool = True
+    gpu_ids: Optional[List[str]] = None
     _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = field(
         default=None, repr=False, compare=False
     )
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
+    _rootfs_type: str = field(default=ROOTFS_EROFS, repr=False, compare=False)
 
     def __post_init__(self):
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
@@ -156,6 +181,11 @@ class SandboxConfig:
             raise ValueError(
                 f"Invalid network mode '{self.network}'. "
                 f"Expected one of {VALID_NETWORK_MODES}."
+            )
+        if self._rootfs_type not in VALID_ROOTFS_TYPES:
+            raise ValueError(
+                f"Invalid rootfs type '{self._rootfs_type}'. "
+                f"Expected one of {VALID_ROOTFS_TYPES}."
             )
         if self.network == "sandbox" and self.rootless:
             # runsc only rejects this at container start, after the pull.
@@ -169,6 +199,50 @@ class SandboxConfig:
             raise ValueError(
                 "dns is only valid with network='public' or network='host'; "
                 f"network={self.network!r} does not mount a resolv.conf."
+            )
+        self._validate_gpu_ids()
+        # A GPU sandbox runs on an overlayfs rootfs, so the GPU's CDI
+        # createContainer hooks and runsc's device mount points write into
+        # the sandbox's own upper layer rather than the cached image.
+        if self.gpu_ids:
+            self._rootfs_type = ROOTFS_OVERLAYFS
+
+    def _validate_gpu_ids(self):
+        if self.gpu_ids is None:
+            return
+        if not isinstance(self.gpu_ids, list) or not self.gpu_ids:
+            raise ValueError(
+                "gpu_ids must be a non-empty list of device ids/UUIDs, "
+                f"got {self.gpu_ids!r}."
+            )
+        if not all(isinstance(g, str) and g for g in self.gpu_ids):
+            raise ValueError(
+                f"gpu_ids must contain only non-empty strings, got {self.gpu_ids!r}."
+            )
+        if len(set(self.gpu_ids)) != len(self.gpu_ids):
+            raise ValueError(
+                f"gpu_ids must not contain duplicates, got {self.gpu_ids!r}."
+            )
+
+        assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
+        if not assigned_gpu_ids:
+            # ray.get_gpu_ids() is Ray's own scheduler bookkeeping of what
+            # this actor/task was actually granted -- the only way to
+            # confirm a requested id is genuinely this actor/task's to
+            # use. No fallback: an empty result means Ray didn't assign
+            # this actor/task any GPUs (e.g. num_gpus wasn't requested).
+            raise ValueError(
+                "gpu_ids was requested, but ray.get_gpu_ids() returned no "
+                "GPUs for this actor or task. Request GPUs via "
+                "num_gpus=...; sandboxes can't be given GPU access "
+                "otherwise."
+            )
+        unassigned = [g for g in self.gpu_ids if g not in assigned_gpu_ids]
+        if unassigned:
+            raise ValueError(
+                f"gpu_ids {unassigned} are not among the GPUs Ray assigned "
+                f"to this actor/task ({assigned_gpu_ids}). A sandbox can "
+                "only access GPUs Ray scheduled to its owning actor or task."
             )
 
 

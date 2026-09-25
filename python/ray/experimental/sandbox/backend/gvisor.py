@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import os
@@ -7,14 +8,19 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Sequence, Set, Union
 
+from ray.experimental.sandbox._internal import cdi, fs_utils, overlayfs
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import (
+    ROOTFS_EROFS,
+    ROOTFS_OVERLAYFS,
+    SandboxConfig,
+)
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -22,7 +28,10 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
     SandboxTimeoutError,
 )
-from ray.experimental.sandbox.image_manager import BaseImageManager
+from ray.experimental.sandbox.image_manager import (
+    NO_GPU_CDI_SPEC_MESSAGE,
+    BaseImageManager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +54,10 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # leaves through slirp4netns's tap. Mount and pid namespaces stay shared, so
 # the bundle and runsc's control sockets under _RUNSC_ROOT keep working for
 # pod-side state/exec/kill/delete.
+# An overlayfs sandbox runs all of this inside its kernel overlay's
+# namespaces (see RootfsOverlay.wrap), so the holder only creates the network
+# namespace. The overlay's mount namespace starts as a copy of the pod's and
+# gains only the kernel overlay, so those paths still resolve.
 #
 # slirp4netns NATs every flow through a fresh, kernel-assigned host port, so
 # flows from different sandboxes can never share a host socket (pasta, which
@@ -77,6 +90,12 @@ _SLIRP4NETNS_FLAGS = [
     "--disable-dns",
     "--enable-seccomp",
 ]
+
+# The bundle directory where gVisor's --overlay2 layer keeps a writable
+# overlayfs sandbox's own writes. runsc keeps them under root.path by default,
+# but an overlayfs sandbox's root.path is its kernel overlay, whose upper layer
+# is a small tmpfs.
+_OVERLAY2_DIRNAME = "runsc-overlay2"
 
 
 def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
@@ -113,6 +132,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "build from github.com/rootless-containers/slirp4netns) "
                     "and util-linux on the node image."
                 )
+
+        # Only `run` needs the CDI-resolved runsc args (e.g. --nvproxy);
+        # exec/kill/delete/state talk to the already-booted sentry over a
+        # control socket and never reference them.
+        # Resolved here rather than inside _build_run_command so a bad CDI
+        # spec fails before pull_image does any work, and so
+        # _build_run_command stays pure argv construction.
+        gpu_run_args = []
+        if config.gpu_ids:
+            gpu_run_args = self._resolve_gpu_run_args()
 
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
@@ -152,6 +181,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            fs_utils.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
@@ -159,7 +189,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         # Prepare OCI bundle config for long-running container process
         try:
-            self._image_manager.prepare_oci_bundle(
+            config_json_path = self._image_manager.prepare_oci_bundle(
                 root_dir=root_dir,
                 workdir_path=workdir_path,
                 container_cwd=container_cwd,
@@ -171,12 +201,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 capabilities=config.capabilities,
                 network=config.network,
                 dns=config.dns,
+                gpu_ids=config.gpu_ids,
+                _rootfs_type=config._rootfs_type,
                 _oci_spec_transform_fn=config._oci_spec_transform_fn,
             )
+            rootfs_overlay = None
+            if config._rootfs_type == ROOTFS_OVERLAYFS:
+                # Unpacks the image on first use (see
+                # image_utils.get_unpacked_rootfs).
+                rootfs_overlay = self._prepare_rootfs_overlay(
+                    config, root_dir, config_json_path
+                )
         except Exception:
+            fs_utils.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
             raise
-        run_args = self._build_run_command(config, root_dir, sandbox_id)
+        run_args = self._build_run_command(
+            config, root_dir, sandbox_id, gpu_run_args, rootfs_overlay=rootfs_overlay
+        )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -236,7 +278,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
+            fs_utils.rmtree(root_dir, ignore_errors=True)
             # The sandbox never registered, so delete_sandbox will not run
             # for it: release the image here to keep it evictable.
             self._image_manager.release_image(config.image, sandbox_id)
@@ -285,7 +327,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            shutil.rmtree(root_dir, ignore_errors=True)
+            fs_utils.rmtree(root_dir, ignore_errors=True)
             # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
 
@@ -508,21 +550,83 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except subprocess.TimeoutExpired:
             pass
 
+    def _prepare_rootfs_overlay(
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        config_json_path: str,
+    ) -> overlayfs.RootfsOverlay:
+        """Check that this host can mount an overlayfs sandbox's kernel
+        overlay, unpack its image, and set up the bundle directories for the
+        kernel overlay and gVisor's writable layer.
+
+        It runs after the bundle is written, since the kernel overlay mounts
+        on root.path as written there.
+        """
+        # How this host can mount the kernel overlay, or an error naming
+        # what's missing.
+        mount_mode = overlayfs.mount_mode()
+
+        # The lower layer keeps the image's file owners only when the overlay
+        # is mounted with mount privilege.
+        preserve_owners = mount_mode is overlayfs.MountMode.PRIVILEGED
+        lower = self._image_manager._get_unpacked_rootfs(
+            config.image, preserve_owners=preserve_owners
+        )
+
+        # Read root.path back from config.json so it reflects any
+        # _oci_spec_transform_fn. A relative root.path resolves against the
+        # bundle.
+        with open(config_json_path, encoding="utf-8") as f:
+            mountpoint = os.path.join(root_dir, json.load(f)["root"]["path"])
+
+        # gVisor's --overlay2 layer keeps a writable sandbox's own writes here.
+        if not config.readonly:
+            os.makedirs(os.path.join(root_dir, _OVERLAY2_DIRNAME), exist_ok=True)
+
+        return overlayfs.prepare(
+            bundle_dir=root_dir,
+            lower=lower,
+            mountpoint=mountpoint,
+            mount_mode=mount_mode,
+        )
+
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        sandbox_id: str,
+        gpu_run_args: Sequence[str] = (),
+        rootfs_overlay: Optional[overlayfs.RootfsOverlay] = None,
     ) -> List[str]:
-        """Build the full `runsc run` argv, namespace-wrapped for network="public".
+        """Build the full `runsc run` argv, namespace-wrapped for network="public"
+        and for an overlayfs sandbox's kernel overlay.
 
         Pure argv construction (no filesystem side effects) so tests can
-        assert the exact command without runsc or slirp4netns installed. The
-        rootfs and its writable overlay come from the bundle's gVisor
-        annotations (see ``ImageManager.create_oci_spec``), so runsc gets no
-        ``--overlay2`` flag.
+        assert the exact command without runsc or slirp4netns installed. An
+        EROFS sandbox's rootfs and its writable overlay come from the bundle's
+        gVisor annotations (see ``ImageManager.create_oci_spec``), so runsc
+        gets no ``--overlay2`` flag for it. An overlayfs sandbox with a
+        writable rootfs gets one pointing into the bundle.
         """
         args = self._runsc_base_args(config)
-        use_netns = config.network == "public"
-        if use_netns and "--rootless" in args:
-            # runsc runs as mapped root inside the holder's user namespace;
+        args.extend(gpu_run_args)
+
+        # An overlayfs sandbox's user namespace, if it needs one, comes from the
+        # wrap at the end. For an EROFS sandbox, the network="public" script
+        # creates it itself.
+        create_userns_with_overlay = (
+            rootfs_overlay is not None and rootfs_overlay.in_userns
+        )
+        create_userns_with_netns = config.network == "public" and rootfs_overlay is None
+
+        # runsc runs in a network namespace of its own for network="public", and
+        # in a user namespace when either of the above creates one.
+        with_netns = config.network == "public"
+        with_userns = create_userns_with_overlay or create_userns_with_netns
+
+        if with_userns and "--rootless" in args:
+            # runsc runs as mapped root inside the user namespace that wraps it;
             # --rootless would nest a second user namespace whose
             # /proc/<pid>/root magic links the gofer cannot dereference.
             # Rootless mode also tolerates cgroup permission failures, so
@@ -536,16 +640,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
+        if rootfs_overlay is not None and not config.readonly:
+            overlay2_dir = os.path.join(root_dir, _OVERLAY2_DIRNAME)
+            args.extend(["--overlay2", f"root:dir={overlay2_dir}"])
         args.extend(["run", "--bundle", root_dir, sandbox_id])
-        if use_netns:
+        if with_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
             ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
+            unshare_userns_args = slirp_userns_args = nsenter_userns_args = ""
+            if create_userns_with_netns:
+                unshare_userns_args = "--user --map-root-user"
+                slirp_userns_args = "--userns-path /proc/$NSPID/ns/user"
+                nsenter_userns_args = "-U"
             script = (
                 # The holder pins the namespaces for the sandbox's lifetime;
                 # --kill-child ties it to this script's process group.
-                "unshare --user --map-root-user --net --fork --kill-child "
+                f"unshare --net --fork --kill-child {unshare_userns_args} "
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
                 # Stop waiting as soon as the holder dies, and refuse an
@@ -558,16 +670,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # foreground, so it lives and dies with this process group.
                 # It writes "1" to --ready-fd once the tap is configured:
                 # that is the go signal.
-                f"{slirp} --ready-fd=3 --netns-type=path "
-                "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
-                f"3>{ready_file} & "
+                f"{slirp} --ready-fd=3 --netns-type=path /proc/$NSPID/ns/net tap0 "
+                f"{slirp_userns_args} 3>{ready_file} & "
                 "SLIRP=$!; "
                 f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
                 "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
-                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+                "exec nsenter --preserve-credentials -n -t $NSPID "
+                f"{nsenter_userns_args} -- {runsc}"
             )
-            return ["bash", "-c", script]
+            args = ["bash", "-c", script]
+        if rootfs_overlay is not None:
+            return rootfs_overlay.wrap(args)
         return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
@@ -586,6 +700,101 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             proc.communicate(timeout=2)
         except (subprocess.TimeoutExpired, ValueError):
             pass
+
+    def _validate_gpu_environment(self) -> None:
+        """Raise if this node's GPU environment can't back gVisor GPU
+        passthrough for its resolved CDI kind (e.g. an unsupported NVIDIA
+        driver version). Raises if no CDI spec exists, or the kind isn't
+        one runsc's GPU passthrough has actually been verified against --
+        today, only NVIDIA.
+        """
+        try:
+            spec = cdi.get_spec("GPU")
+        except RuntimeError as err:
+            raise SandboxCreationError(str(err)) from err
+        if spec is None:
+            raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+        if spec.kind == "nvidia.com/gpu":
+            self._check_nvidia_driver_supported()
+            return
+        raise SandboxCreationError(
+            f"This node's GPU CDI spec is for kind '{spec.kind}', which "
+            f"gVisor sandbox GPU passthrough doesn't support yet (only "
+            f"'nvidia.com/gpu' has been validated)."
+        )
+
+    def _resolve_gpu_run_args(self) -> List[str]:
+        """The runsc flag(s) this node's resolved GPU CDI kind needs (e.g.
+        --nvproxy for NVIDIA). Calls _validate_gpu_environment first, since
+        the two are always called together and share the same CDI spec
+        lookup and unsupported-kind error -- today, only NVIDIA is
+        supported, so this always returns ["--nvproxy"] or raises.
+        """
+        self._validate_gpu_environment()
+        return ["--nvproxy"]
+
+    @functools.lru_cache(maxsize=None)  # noqa: B019
+    def _list_nvproxy_supported_drivers(self) -> Set[str]:
+        """The driver versions gVisor's --nvproxy recognizes, via `runsc
+        nvproxy list-supported-drivers`: a pure, stateless subcommand that
+        just prints runsc's compiled-in list, so it's safe to call outside
+        the context of any container. Cached so it only shells out once
+        per instance's lifetime; a failed call isn't cached (lru_cache
+        never caches an exception), so the next call retries. Raises if
+        the subcommand isn't available or fails (e.g. an old runsc
+        without it).
+
+        lru_cache on a method holds a reference to self, which can leak
+        memory for short-lived instances. GVisorSandboxBackend is a
+        long-lived, roughly-singleton backend per process, so that's not
+        a concern here.
+        """
+        try:
+            result = subprocess.run(
+                ["runsc", "nvproxy", "list-supported-drivers"],
+                capture_output=True,
+                timeout=10,
+                text=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+            stderr = getattr(e, "stderr", None)
+            raise SandboxCreationError(
+                f"Could not determine which NVIDIA driver versions this "
+                f"node's gVisor (runsc) supports: {e}. Run `runsc nvproxy "
+                f"list-supported-drivers` on this node directly to see why "
+                f"it failed. {stderr}"
+            ) from e
+
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+    def _check_nvidia_driver_supported(self) -> None:
+        """Raise if this node's NVIDIA driver is one gVisor's --nvproxy
+        doesn't recognize. Only called once GPU passthrough was actually
+        requested, so a failure to even determine the driver or the
+        supported-driver list (see _list_nvproxy_supported_drivers and
+        NvidiaGPUAcceleratorManager.get_current_node_driver_version)
+        raises too, rather than being swallowed here. An NVML failure
+        reading the driver version is re-raised as a SandboxCreationError,
+        like every other GPU setup failure.
+        """
+        import ray._private.thirdparty.pynvml as pynvml
+        from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
+
+        supported = self._list_nvproxy_supported_drivers()
+        try:
+            version = NvidiaGPUAcceleratorManager.get_current_node_driver_version()
+        except pynvml.NVMLError as err:
+            raise SandboxCreationError(
+                f"Could not read this node's NVIDIA driver version via NVML: {err}"
+            ) from err
+        if version not in supported:
+            raise SandboxCreationError(
+                f"This node's NVIDIA driver ({version}) isn't one "
+                f"gVisor's GPU passthrough (--nvproxy) recognizes. Update "
+                f"the driver to one of the supported versions: "
+                f"{', '.join(sorted(supported))}."
+            )
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")
@@ -613,6 +822,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
+        _rootfs_type: str = ROOTFS_EROFS,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
@@ -627,5 +838,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=capabilities,
             network=network,
             dns=dns,
+            gpu_ids=gpu_ids,
+            _rootfs_type=_rootfs_type,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
