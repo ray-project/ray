@@ -534,39 +534,35 @@ class ObservabilityAgentReporter(Reporter):
         summary: Optional[str],
         slack_thread: Optional[str],
     ) -> str:
-        """The comment body: the summary, and where to go for the rest.
+        """The comment body, laid out like the buildkite annotation.
 
-        With no summary the slack thread is the whole of what the agent has to
-        say, so it is pasted as the body rather than buried under a line
-        announcing that there is nothing to read. _comment_on_github_issue does
-        not get this far when there is neither.
+        The run first, because it is what a reader of the issue needs in order
+        to go and look; then the analysis; then where to send feedback on it.
+        The test is not named -- the comment is on that test's own issue.
+
+        Each part is dropped rather than left empty when the agent did not
+        supply it. _comment_on_github_issue does not get this far when there is
+        neither a summary nor a thread, which is the only case where dropping
+        them all would leave nothing worth posting.
         """
-        # The failing build named up front rather than below the analysis: it
-        # is the first thing a reader of the issue needs in order to go look,
-        # and with no summary it would otherwise trail the slack link.
-        failure = f"`{test.get_name()}`"
+        lines = []
         if result.buildkite_url:
-            failure += f" at {result.buildkite_url}"
-        lines = [f"The observability agent looked at the latest failure of {failure}."]
+            lines.append(f"Latest run: {result.buildkite_url}")
+
         summary_index = None
         if summary:
+            if lines:
+                lines.append("")
+            lines.append("Observability Agent RCA:")
             summary_index = len(lines) + 1
             lines += ["", self._sanitize_summary(summary)]
-        else:
+
+        if slack_thread:
             lines += [
                 "",
-                slack_thread
-                if self._is_plain_url(slack_thread)
-                else f"`{slack_thread.replace('`', '')}`",
-            ]
-        if summary and slack_thread:
-            lines += [
-                "",
-                f"The full report, with the evidence and next steps behind the "
-                f"summary, is in "
-                f"{self._markdown_link('this slack thread', slack_thread)}. The "
-                "agent is under active development; please rate the report there "
-                "with the 'All good' or 'Needs correction' buttons.",
+                f"{self._markdown_link('Full report and feedback', slack_thread)} "
+                "— rate it with the 'All good' or 'Needs correction' buttons in "
+                "the thread.",
             ]
 
         body = "\n".join(lines)

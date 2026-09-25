@@ -758,9 +758,10 @@ def test_comments_on_an_open_issue():
     body = issue.comments[0]
     assert SUMMARY in body
     assert SLACK_THREAD in body
-    assert "test_name" in body
-    # The failing build is named in the opening line, not below the analysis.
-    assert result.buildkite_url in body.splitlines()[0]
+    # Laid out like the annotation: the run first, then the analysis, then
+    # where to send feedback. The test is not named -- this is its own issue.
+    assert body.splitlines()[0] == f"Latest run: {result.buildkite_url}"
+    assert "Observability Agent RCA:" in body
 
 
 def test_does_not_comment_on_a_closed_issue():
@@ -893,8 +894,8 @@ def test_the_slack_link_target_cannot_escape_the_link():
 
     body = issue.comments[0]
     # A url that cannot be a link destination is shown as code, not linked.
-    assert "[this slack thread](" not in body
-    assert "this slack thread: `https://slack/p1) [x](evil)`" in body
+    assert "[Full report and feedback](" not in body
+    assert "Full report and feedback: `https://slack/p1) [x](evil)`" in body
 
 
 def test_the_slack_link_uses_a_bounded_destination():
@@ -902,7 +903,7 @@ def test_the_slack_link_uses_a_bounded_destination():
 
     body = _comment_on(FakeRepo(issue=issue))
 
-    assert f"[this slack thread](<{SLACK_THREAD}>)" in body
+    assert f"[Full report and feedback](<{SLACK_THREAD}>)" in body
 
 
 class FakeAgent:
@@ -1150,8 +1151,8 @@ def test_no_claim_is_taken_outside_buildkite():
     assert agent.commands == []
 
 
-def test_the_comment_pastes_the_slack_thread_when_there_is_no_summary():
-    """The thread is the whole of what the agent has to say; paste it."""
+def test_the_comment_points_at_the_thread_when_there_is_no_summary():
+    """The thread is the whole of what the agent has to say."""
     issue = FakeIssue(state="open")
 
     _report_on_buildkite(FakeRepo(issue=issue), FakeAgent(), summary=None)
@@ -1162,7 +1163,7 @@ def test_the_comment_pastes_the_slack_thread_when_there_is_no_summary():
 
 
 def test_the_comment_names_the_build_even_with_nothing_else_to_say():
-    """With no summary the build url must not end up trailing the slack link."""
+    """With no summary, the run and the thread are still both reachable."""
     issue = FakeIssue(state="open")
     result = _result(ResultStatus.ERROR.value)
     result.buildkite_url = "https://buildkite.com/ray-project/release/builds/1"
@@ -1171,9 +1172,11 @@ def test_the_comment_names_the_build_even_with_nothing_else_to_say():
         FakeRepo(issue=issue), FakeAgent(), summary=None, result=result
     )
 
-    first, _, thread = issue.comments[0].splitlines()
-    assert result.buildkite_url in first
-    assert thread == SLACK_THREAD
+    lines = issue.comments[0].splitlines()
+    assert lines[0] == f"Latest run: {result.buildkite_url}"
+    assert SLACK_THREAD in lines[-1]
+    # No heading left standing over an analysis that never arrived.
+    assert "Observability Agent RCA:" not in issue.comments[0]
 
 
 def test_no_comment_when_the_agent_returned_nothing():
