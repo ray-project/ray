@@ -18,6 +18,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -1436,6 +1438,68 @@ TEST_F(GcsAutoscalerStateManagerTest,
   ASSERT_EQ(req.bundle_selectors_size(), 1);
   // Does not use a topology strategy, so locality_requirement should not be set.
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
+}
+
+namespace {
+
+// Counts error publications so tests can observe what the report-state success
+// callback did after the handler returned.
+class CountingErrorPublisher : public pubsub::FakePublisher {
+ public:
+  explicit CountingErrorPublisher(std::atomic<int> *count) : count_(count) {}
+  void Publish(rpc::PubMessage pub_message) override { ++(*count_); }
+
+ private:
+  std::atomic<int> *count_;
+};
+
+}  // namespace
+
+TEST_F(GcsAutoscalerStateManagerTest, ReportStateSuccessCallbackSurvivesHandlerReturn) {
+  RayConfig::instance().initialize(R"({"enable_infeasible_task_early_exit": false})");
+  std::atomic<int> publish_count{0};
+  pubsub::ObservabilityPublisher observability_publisher(
+      std::make_unique<CountingErrorPublisher>(&publish_count));
+  GcsAutoscalerStateManager manager("fake_cluster",
+                                    *gcs_node_manager_,
+                                    *gcs_actor_manager_,
+                                    *gcs_placement_group_manager_,
+                                    *client_pool_,
+                                    kv_manager_->GetInstance(),
+                                    io_service_,
+                                    /*gcs_publisher=*/nullptr,
+                                    &observability_publisher,
+                                    clock_);
+
+  // The success callback is invoked from ServerCall::OnReplySent, after the
+  // handler's stack frame is gone; it must not reference stack locals.
+  std::function<void()> success_callback;
+  auto send_reply_callback = [&success_callback](ray::Status status,
+                                                 std::function<void()> f1,
+                                                 std::function<void()> f2) {
+    success_callback = std::move(f1);
+  };
+
+  rpc::autoscaler::ReportAutoscalingStateRequest request;
+  request.mutable_autoscaling_state()->set_autoscaler_state_version(1);
+  rpc::autoscaler::ReportAutoscalingStateReply reply;
+  manager.HandleReportAutoscalingState(request, &reply, send_reply_callback);
+
+  ASSERT_TRUE(static_cast<bool>(success_callback));
+  // No infeasible requests reported: nothing may be published.
+  success_callback();
+  ASSERT_EQ(publish_count.load(), 0);
+
+  // A later report that newly carries infeasible requests must publish once.
+  rpc::autoscaler::ReportAutoscalingStateRequest request_with_infeasible;
+  auto *state = request_with_infeasible.mutable_autoscaling_state();
+  state->set_autoscaler_state_version(2);
+  state->add_infeasible_resource_requests();
+  manager.HandleReportAutoscalingState(
+      request_with_infeasible, &reply, send_reply_callback);
+  ASSERT_TRUE(static_cast<bool>(success_callback));
+  success_callback();
+  ASSERT_EQ(publish_count.load(), 1);
 }
 
 }  // namespace gcs
