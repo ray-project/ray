@@ -8,6 +8,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    Union,
 )
 
 import numpy as np
@@ -272,7 +273,7 @@ class NonSamplingFileIndexer(FileIndexer):
         def process_fn(
             item: _TraversalWorkItem,
             add_work: Callable[[_TraversalWorkItem], None],
-            add_result: Callable[[OrderedFileResult], None],
+            add_result: Callable[[Union[OrderedFileResult, FileInfo]], None],
         ) -> None:
             """Process a single item, adding discovered subdirs as work and
             files as results."""
@@ -299,13 +300,17 @@ class NonSamplingFileIndexer(FileIndexer):
                 root_path=root_path,
             )
             for file_path, file_size in contents.files:
-                add_result(
-                    OrderedFileResult(
-                        input_path_index=input_path_index,
-                        file_path=file_path,
-                        file_info=FileInfo(path=file_path, size=file_size),
+                file_info = FileInfo(path=file_path, size=file_size)
+                if preserve_order:
+                    add_result(
+                        OrderedFileResult(
+                            input_path_index=input_path_index,
+                            file_path=file_path,
+                            file_info=file_info,
+                        )
                     )
-                )
+                else:
+                    add_result(file_info)
             for subdir_path in contents.subdirs:
                 add_work(
                     _TraversalWorkItem(
@@ -316,7 +321,11 @@ class NonSamplingFileIndexer(FileIndexer):
                     )
                 )
 
-        def _ordered_result_key(result: OrderedFileResult) -> Tuple[int, str]:
+        def _ordered_result_key(
+            result: Union[OrderedFileResult, FileInfo]
+        ) -> Tuple[int, str]:
+            # Only called when preserve_order is True, where every result is wrapped.
+            assert isinstance(result, OrderedFileResult)
             return (result.input_path_index, result.file_path)
 
         results = parallel_process_work_stealing(
@@ -327,7 +336,7 @@ class NonSamplingFileIndexer(FileIndexer):
             order_key=_ordered_result_key if preserve_order else None,
         )
         for result in results:
-            yield result.file_info
+            yield result.file_info if isinstance(result, OrderedFileResult) else result
 
     def list_file_infos(
         self,
