@@ -1,7 +1,10 @@
+import fnmatch
+import io
 import os
 import platform
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import urllib.request
 
@@ -15,6 +18,10 @@ _RUNSC_URL = (
 _SLIRP4NETNS_URL = (
     "https://github.com/rootless-containers/slirp4netns/releases/download/"
     "v1.3.5/slirp4netns-{arch}"
+)
+_NVIDIA_CTK_URL = (
+    "https://github.com/NVIDIA/nvidia-container-toolkit/releases/download/"
+    "v1.20.1/nvidia-container-toolkit_1.20.1_deb_{arch}.tar.gz"
 )
 
 
@@ -222,3 +229,101 @@ def ensure_slirp4netns(ensure_runsc):
             'network="public" needs a per-sandbox user+network namespace this '
             "environment forbids (nested user namespace denied at sandbox boot)"
         )
+
+
+def _gpus_required() -> bool:
+    """Whether a GPU CI job runs these tests, so a missing GPU or nvidia-ctk
+    fails them instead of skipping them."""
+    return os.environ.get("TEST_SANDBOX_GPU") == "1"
+
+
+def _gpus_available() -> bool:
+    """Whether this host has an NVIDIA GPU that NVML can see."""
+    from ray._private.accelerators import NvidiaGPUAcceleratorManager
+
+    try:
+        return NvidiaGPUAcceleratorManager.get_current_node_num_accelerators() > 0
+    except Exception:
+        return False
+
+
+def _extract_data_tar(deb_path: str) -> tuple:
+    """Return (name, bytes) for the data.tar.* member of a .deb package.
+    Hand-rolled instead of shelling out to `ar`, which isn't guaranteed
+    to be on PATH. Format: https://man.freebsd.org/cgi/man.cgi?query=ar&sektion=5
+    """
+    with open(deb_path, "rb") as f:
+        if f.read(8) != b"!<arch>\n":
+            raise ValueError(f"{deb_path} is not a valid .deb package")
+        while True:
+            header = f.read(60)
+            if len(header) < 60:
+                raise ValueError(f"no data.tar.* member found in {deb_path}")
+            name = header[0:16].decode("ascii").strip().rstrip("/")
+            size = int(header[48:58].decode("ascii").strip())
+            data = f.read(size)
+            if size % 2:
+                f.read(1)  # ar pads each member to an even offset
+            if name.startswith("data.tar"):
+                return name, data
+
+
+def _install_nvidia_ctk(arch: str) -> None:
+    """Extract nvidia-ctk and nvidia-cdi-hook from the pinned upstream
+    release's .deb into a temp dir on PATH. Skips if that fails, or fails on
+    a GPU CI job. Both binaries have to land in the same directory, since
+    nvidia-ctk resolves nvidia-cdi-hook's path (baked into the CDI spec
+    it generates) relative to its own location."""
+    if shutil.which("nvidia-ctk"):
+        return
+    try:
+        with tempfile.TemporaryDirectory() as work_dir:
+            tarball = os.path.join(work_dir, "release.tar.gz")
+            urllib.request.urlretrieve(_NVIDIA_CTK_URL.format(arch=arch), tarball)
+            with tarfile.open(tarball) as tf:
+                deb_member = next(
+                    m
+                    for m in tf.getmembers()
+                    if fnmatch.fnmatch(
+                        os.path.basename(m.name),
+                        f"nvidia-container-toolkit-base_*_{arch}.deb",
+                    )
+                )
+                tf.extract(deb_member, work_dir)
+
+            tar_name, tar_bytes = _extract_data_tar(
+                os.path.join(work_dir, deb_member.name)
+            )
+
+            bin_dir = tempfile.mkdtemp()
+            os.chmod(bin_dir, 0o755)
+            with tarfile.open(
+                fileobj=io.BytesIO(tar_bytes), mode="r:*", name=tar_name
+            ) as dtf:
+                for name in ("nvidia-ctk", "nvidia-cdi-hook"):
+                    bin_member = dtf.getmember(f"./usr/bin/{name}")
+                    bin_member.name = name
+                    dtf.extract(bin_member, bin_dir)
+                    os.chmod(os.path.join(bin_dir, name), 0o755)
+            os.environ["PATH"] = f"{bin_dir}:{os.environ.get('PATH', '')}"
+    except Exception as e:
+        message = f"Failed to install nvidia-ctk: {e}"
+        if _gpus_required():
+            pytest.fail(message)
+        pytest.skip(message)
+
+
+@pytest.fixture(scope="session")
+def ensure_nvidia_ctk():
+    """nvidia-ctk plus a host with a GPU to use it on.
+
+    Requested rather than autouse, so only the two real-GPU sandbox test
+    files need it. Skips on a host without a GPU, and fails instead on the
+    GPU CI jobs, which set TEST_SANDBOX_GPU=1.
+    """
+    if not _gpus_available():
+        if _gpus_required():
+            pytest.fail("No NVIDIA GPU on this host, but TEST_SANDBOX_GPU=1 is set")
+        pytest.skip("No NVIDIA GPU on this host")
+    arch = "arm64" if platform.machine().lower() in ("aarch64", "arm64") else "amd64"
+    _install_nvidia_ctk(arch)
