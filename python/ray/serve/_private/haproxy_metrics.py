@@ -15,8 +15,8 @@ import time
 from dataclasses import dataclass
 from typing import Optional, cast
 
-from ray.serve._private import haproxy
 from ray.serve._private.common import RequestProtocol
+from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
 from ray.util import metrics
 
@@ -59,8 +59,8 @@ class ParsedMetrics:
     The first group is the general per-request ingress data present on every
     HTTP request through the frontend; it feeds the `serve_num_http_*` /
     `serve_http_request_latency_ms` families. The `ingress_request_*` fields
-    are populated when an HTTP ingress router is configured and its metrics
-    are enabled.
+    are router-specific and only populated when ingress-request-router metrics
+    are enabled and the request went through (or attempted) the router.
     """
 
     app: Optional[str] = None
@@ -96,8 +96,8 @@ class HAProxyMetricsCollector:
       target mismatch), sampled from an `HAProxyApi` on a periodic loop started
       by `start_node_metrics_polling`.
 
-    The node-level gauges are emitted when the collector is started. The
-    datagram reader observes HAProxy requests and router decisions.
+    The node-level gauges are always emitted; the datagram reader is only
+    bound when ingress-request-router metrics are enabled.
     """
 
     # Sub-millisecond to 1s, biased toward the expected sub-10ms range for
@@ -119,7 +119,7 @@ class HAProxyMetricsCollector:
 
     def __init__(
         self,
-        haproxy_api: "haproxy.HAProxyApi",
+        haproxy_api: HAProxyApi,
         node_id: str,
         node_ip_address: str = "",
     ) -> None:
@@ -187,17 +187,14 @@ class HAProxyMetricsCollector:
                 "did not contain a string replica_id), "
                 "'unknown_replica_id' (router returned a replica_id not "
                 "present in the current replica map), or 'router_unavailable' "
-                "(no router replicas). Applications opting into router-failure "
-                "fallback can continue serving requests after these failures."
+                "(no router replicas). Applications with an ingress router "
+                "can continue serving requests after these failures."
             ),
             tag_keys=("application", "reason"),
         )
         self.fallback_counter = metrics.Counter(
             "serve_haproxy_ingress_router_fallbacks",
-            description=(
-                "Requests routed after an ingress router failure using backend "
-                "balancing or a fallback Serve proxy."
-            ),
+            description="Fallback attempts after an ingress router failure.",
             tag_keys=("application", "reason"),
         )
         self.requests_counter = metrics.Counter(

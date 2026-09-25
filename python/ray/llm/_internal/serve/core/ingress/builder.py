@@ -37,15 +37,13 @@ def _get_direct_streaming_serve_options(
     override_serve_options: Optional[dict] = None,
 ) -> dict:
     override_serve_options = dict(override_serve_options or {})
-    router_config = override_serve_options.get(
-        "request_router_config",
-        llm_config.deployment_config.get("request_router_config"),
-    )
-    if router_config is None:
-        router_config = RequestRouterConfig(request_router_class=RoundRobinRouter)
-    elif isinstance(router_config, dict):
-        router_config = RequestRouterConfig(**router_config)
-    override_serve_options["request_router_config"] = router_config
+    if (
+        "request_router_config" not in llm_config.deployment_config
+        and "request_router_config" not in override_serve_options
+    ):
+        override_serve_options["request_router_config"] = RequestRouterConfig(
+            request_router_class=RoundRobinRouter,
+        )
     return override_serve_options
 
 
@@ -67,7 +65,7 @@ def _build_direct_streaming_llm_deployment(
 
     Replica selection is driven by the deployment's ``request_router_config``.
     Default to ``RoundRobinRouter`` when the user hasn't set one, and otherwise
-    preserve their routing policy. Enable ingress router fallback for all policies.
+    leave their configured value untouched.
     """
     server_cls = deployment_cls or llm_config.server_cls or LLMServer
     return build_llm_deployment(

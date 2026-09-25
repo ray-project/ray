@@ -714,7 +714,7 @@ These node-level gauges observe the health of Serve's HAProxy proxy process on e
 
 These metrics observe the **ingress request router** data path used by Serve's HAProxy proxy when a deployment opts in (e.g. the LLM ingress with `LLMRouter`). For each request that reaches a router-bearing app, HAProxy calls the router's `/internal/route` endpoint to pick a replica before forwarding traffic to it. The metrics below cover that consultation.
 
-When an HTTP ingress router is configured, HAProxy enables fallback automatically. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to enable router metrics and rate-limited fallback warnings. This flag defaults to `0` and, as on master, forces HAProxy metrics on even if `RAY_SERVE_HAPROXY_METRICS_ENABLED=0`. Fallback routing does not depend on either metrics flag. The socket path defaults to `/tmp/haproxy-serve/<node_id>/metrics.sock` and can be overridden with `RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH`.
+To enable the feature, set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`. The socket path defaults to `/tmp/haproxy-serve/<node_id>/metrics.sock` and can be overridden with `RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH`.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
@@ -722,8 +722,7 @@ When an HTTP ingress router is configured, HAProxy enables fallback automaticall
 | `serve_haproxy_ingress_router_requests_total` | Counter | `application` | Total number of requests processed by the ingress request router, including both successes and failures. |
 | `serve_haproxy_ingress_router_truncations_total` | Counter | `application` | Number of requests whose body was clipped by HAProxy's `tune.bufsize` before being forwarded to the router. The router still gets a prefix plus an `X-Body-Truncated: <have>/<full>` header. Non-zero values indicate a body-aware policy may be missing context; consider raising `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE`. |
 | `serve_haproxy_ingress_router_server_mismatch_total` | Counter | `application` | Number of requests where HAProxy ultimately routed to a different replica than the router returned. This happens when the named replica is `DOWN` and `option redispatch` falls through to load balancing. Non-zero values indicate the router's view of replica health is stale, or replicas are flapping. |
-| `serve_haproxy_ingress_router_failures_total` | Counter | `application`, `reason` | Router consultations that failed to pin a replica. HAProxy attempts fallback for configured HTTP ingress routers. Reasons include `router_unavailable` (no router replicas), `router_unreachable` (socket failure), `router_non_200_4xx` or `router_non_200_5xx` (router response class), `unparseable_replica_id`, and `unknown_replica_id` (selected replica absent from HAProxy's map). |
-| `serve_haproxy_ingress_router_fallbacks_total` | Counter | `application`, `reason` | Fallback attempts after a router failure, including use of the head Serve proxy. Uses the same reasons as the failures counter. |
+| `serve_haproxy_ingress_router_failures_total` | Counter | `application`, `reason` | Number of router consultations that failed to pin a replica. Each failure causes HAProxy to return `503` to the client. The `reason` tag is one of `router_unreachable` (socket connect/send/recv failed), `router_non_200` (router returned a non-200 status), `unparseable_replica_id` (router 200 but body didn't contain a string `replica_id`), or `unknown_replica_id` (router returned a `replica_id` not in HAProxy's current replica map). |
 
 ### HAProxy config reload metrics
 

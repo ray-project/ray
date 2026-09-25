@@ -39,16 +39,13 @@ def consistent_hash_deployment_config() -> dict:
 
 
 def run_app_through_haproxy(app, timeout_s: int = 60) -> str:
-    """Run ``app`` and wait for HAProxy and the ingress router to converge."""
+    """Run ``app`` and wait for requests to reach multiple replicas."""
     serve.run(app)
     wait_for_condition(check_running, timeout=timeout_s)
     base_url = get_application_url(use_localhost=True)
 
     def ingress_routing_ready():
-        # Deployment readiness precedes the asynchronous updates that populate
-        # HAProxy's server map and the ingress router's hash ring. Wait for both
-        # to observe multiple replicas so affinity tests do not accidentally
-        # exercise the temporary single-replica topology.
+        # Wait for HAProxy and the router to learn about multiple replicas.
         replicas = {
             session_chat_response(base_url, f"readiness-session-{i}").headers[
                 "x-replica-id"

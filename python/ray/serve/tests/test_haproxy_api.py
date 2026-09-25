@@ -23,7 +23,7 @@ from starlette.responses import StreamingResponse
 
 import ray
 from ray import serve
-from ray._common.network_utils import find_free_port, get_localhost_ip
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import (
     async_wait_for_condition,
     fetch_prometheus_metrics,
@@ -663,6 +663,8 @@ def test_routers_and_targets_prefers_colocated_router():
 
 def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cleanup):
     """Multiple co-located routers render as a pool in the app's ROUTERS entry."""
+    from ray._common.network_utils import get_localhost_ip
+
     local = get_localhost_ip()
     with tempfile.TemporaryDirectory() as temp_dir:
         backend = BackendConfig(
@@ -1507,8 +1509,8 @@ async def test_pin_miss_falls_back_to_fallback_server(
     (the brief membership gap right after an app becomes RUNNING, where the
     router's in-process view runs ahead of HAProxy's config reload), HAProxy
     must hand the request to the fallback Serve proxy instead of returning 503.
-    The request must reach the fallback server even with a healthy primary
-    replica, since balancing onto that replica would break session affinity."""
+    The primary backend must not be load-balanced into, since that would break
+    session affinity."""
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -1589,8 +1591,9 @@ async def test_pin_miss_falls_back_to_fallback_server(
                 _pin_miss_consistently_reaches_fallback, timeout=10
             )
 
-            # Both configurations route a pin-miss through the router backend
-            # to the head Serve proxy, even with a healthy primary replica.
+            # A pin-miss must route via the router backend, never through the
+            # plain primary backend (a silent router bypass). The router backend
+            # carries the fallback-served sessions; the plain backend stays 0.
             stats_csv = requests.get(
                 f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
             ).text

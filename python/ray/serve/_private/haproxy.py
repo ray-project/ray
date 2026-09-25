@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import ray
 from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private import haproxy_metrics
 from ray.serve._private.common import (
     NodeId,
     ReplicaID,
@@ -704,7 +703,11 @@ class HAProxyConfig:
 
     log_target: str = RAY_SERVE_HAPROXY_LOG_TARGET
 
-    # Router-specific metrics are opt-in, independent of fallback routing.
+    # Per-request metrics for the ingress request router data path.
+    # When metrics are disabled, there is no additional overhead:
+    #  1) no metric log target / log-format-sd is rendered,
+    #  2) the Lua template skips the timing+truncation set_vars, and
+    #  3) HAProxyManager does not bind the dgram socket.
     ingress_request_router_metrics_enabled: bool = (
         RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED
     )
@@ -719,6 +722,7 @@ class HAProxyConfig:
     metrics_socket_path: str = RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
+
     # Global retry policy for the defaults block (inherited by every backend).
     retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
     retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
@@ -1251,6 +1255,9 @@ class HAProxyApi(ProxyApi):
         if not routers:
             return None
 
+        # When metrics are enabled, render the two timing hooks and the
+        # truncation set_var; when disabled, all three substitute to empty
+        # strings to avoid any additional overhead.
         if self.cfg.ingress_request_router_metrics_enabled:
             metrics_pre = "local _metrics_t0 = core.now()"
             metrics_post = (
@@ -1813,7 +1820,14 @@ class HAProxyManager(ProxyActorInterface):
         self._metrics_collector = None
         self._metrics_attach_task: Optional[asyncio.Task] = None
         if RAY_SERVE_HAPROXY_METRICS_ENABLED:
-            self._metrics_collector = haproxy_metrics.HAProxyMetricsCollector(
+            from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
+
+            # The metrics collector owns all serve_haproxy_* metrics for this proxy.
+            # It is constructed if haproxy metrics are enabled. start() always begins
+            # node-level polling and binds the per-request dgram reader (where
+            # HAProxy writes one line per request). It returns its bind task (which
+            # ready() awaits to surface bind failures).
+            self._metrics_collector = HAProxyMetricsCollector(
                 haproxy_api=self._haproxy,
                 node_id=self._node_id,
                 node_ip_address=self._node_ip_address,

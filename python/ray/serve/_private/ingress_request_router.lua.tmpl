@@ -222,15 +222,8 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     txn:set_var("txn.via_ingress_request_router", true)
 end
 
--- Failure semantics: every path that reaches a router decision but cannot pin
--- a replica must arm txn.ingress_request_router_failed. The frontend returns
--- 503 unless the app explicitly enables load-balanced fallback to the primary
--- backend. Record the router request failure separately from the client response status.
--- Exception: `unknown_replica_id` is recovered via the fallback proxy when the
--- app has one and has not enabled primary-backend fallback. The proxy re-pins
--- via its own router so the policy is not bypassed. While the fallback is DOWN
--- the request load-balances onto a primary replica in the router backend;
--- affinity lapses for that window. Still counted as a failure.
+-- Failed router decisions set txn.ingress_request_router_failed. The frontend
+-- applies fallback or returns 503. Pin-misses use the fallback proxy when available.
 -- Two silent returns are correct: (1) the request didn't target a
 -- router-bearing app (no txn var set, no app entry in our maps), and
 -- (2) the controller hasn't pushed router/replica state for this app yet.

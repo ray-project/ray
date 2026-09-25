@@ -135,7 +135,6 @@ message RequestRouterConfig {
 
   // Maximum backoff time (in seconds) between retries.
   double max_backoff_s = 8;
-
 }
 //[End] ROUTING CONFIG
 
