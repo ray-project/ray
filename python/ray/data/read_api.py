@@ -5685,6 +5685,7 @@ def read_clickhouse(
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     order_by: Optional[Tuple[List[str], bool]] = None,
+    auto_discover_order_by: bool = False,
     client_settings: Optional[Dict[str, Any]] = None,
     client_kwargs: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
@@ -5733,6 +5734,15 @@ def read_clickhouse(
             should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
             parallelism. If not provided, the data will be read in a single task. This is to ensure
             that the data is read in a consistent order across all tasks.
+        auto_discover_order_by: If ``True`` and ``order_by`` isn't provided,
+            query ``system.tables`` for a simple MergeTree sorting key and use
+            it for parallel reads. Discovery is skipped for filtered reads and
+            falls back to a single read task for views, Distributed tables,
+            empty keys, and keys containing expressions. An explicit
+            ``order_by`` always takes precedence. Ray doesn't verify that the
+            discovered key is unique. Only enable this for tables that remain
+            stable for the duration of the read and whose sorting key provides
+            deterministic pagination.
         client_settings: Optional ClickHouse server settings to be used with the session/every request.
             For more information, see `ClickHouse Client Settings
             <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
@@ -5772,6 +5782,7 @@ def read_clickhouse(
         columns=columns,
         filter=filter,
         order_by=order_by,
+        auto_discover_order_by=auto_discover_order_by,
         client_settings=client_settings,
         client_kwargs=client_kwargs,
     )

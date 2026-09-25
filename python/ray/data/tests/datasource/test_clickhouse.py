@@ -15,6 +15,7 @@ from ray.data._internal.datasource.clickhouse_datasink import (
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
+from ray.data.read_api import read_clickhouse
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +55,312 @@ class TestClickHouseDatasource:
             "SELECT column1, column2 FROM default.table_name ORDER BY column1"
         )
         assert datasource._query == expected_query
+
+    def test_constructor_preserves_positional_client_arguments(self):
+        datasource = ClickHouseDatasource(
+            "default.events",
+            "clickhouse://user:password@localhost:8123/default",
+            None,
+            None,
+            (["id"], False),
+            {"max_threads": 4},
+            {"client_name": "reader"},
+        )
+
+        assert datasource._auto_discover_order_by is False
+        assert datasource._client_settings == {"max_threads": 4}
+        assert datasource._client_kwargs == {"client_name": "reader"}
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovers_simple_mergetree_sorting_key(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = "analytics"
+        mock_client.query.return_value.result_rows = [
+            ["ReplicatedMergeTree", "prov_id, user_id"]
+        ]
+        mock_init_client.return_value = mock_client
+
+        datasource = ClickHouseDatasource(
+            table="events",
+            dsn="clickhouse://user:password@localhost:8123/analytics",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by == (["prov_id", "user_id"], False)
+        assert datasource._query == "SELECT * FROM events ORDER BY (prov_id, user_id)"
+        mock_client.query.assert_called_once_with(
+            "SELECT engine, sorting_key FROM system.tables "
+            "WHERE database = currentDatabase() "
+            "AND name = {table:String} LIMIT 1",
+            parameters={"table": "events"},
+        )
+        mock_client.close.assert_called_once_with()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_uses_server_default_database(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = None
+        mock_client.query.return_value.result_rows = [["MergeTree", "id"]]
+        mock_init_client.return_value = mock_client
+
+        datasource = ClickHouseDatasource(
+            table="events",
+            dsn="clickhouse://user:password@localhost:8123",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by == (["id"], False)
+        mock_client.query.assert_called_once_with(
+            "SELECT engine, sorting_key FROM system.tables "
+            "WHERE database = currentDatabase() "
+            "AND name = {table:String} LIMIT 1",
+            parameters={"table": "events"},
+        )
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_uses_qualified_table_name(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = "wrong_database"
+        mock_client.query.return_value.result_rows = [["MergeTree", "tuple(`id`)"]]
+        mock_init_client.return_value = mock_client
+
+        datasource = ClickHouseDatasource(
+            table="`analytics`.`events`",
+            dsn="clickhouse://user:password@localhost:8123/default",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by == (["`id`"], False)
+        assert mock_client.query.call_args.kwargs["parameters"] == {
+            "database": "analytics",
+            "table": "events",
+        }
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_explicit_order_by_takes_precedence_over_discovery(self, mock_init_client):
+        datasource = ClickHouseDatasource(
+            table="default.events",
+            dsn="clickhouse://user:password@localhost:8123/default",
+            order_by=(["explicit_id"], True),
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by == (["explicit_id"], True)
+        assert datasource._query.endswith("ORDER BY explicit_id DESC")
+        mock_init_client.assert_not_called()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_order_by_discovery_is_opt_in(self, mock_init_client):
+        datasource = ClickHouseDatasource(
+            table="default.events",
+            dsn="clickhouse://user:password@localhost:8123/default",
+        )
+
+        assert datasource._order_by is None
+        assert "ORDER BY" not in datasource._query
+        mock_init_client.assert_not_called()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    @pytest.mark.parametrize(
+        ("engine", "sorting_key"),
+        [
+            ("Distributed", "prov_id, user_id"),
+            ("View", "prov_id"),
+            ("MergeTree", ""),
+            ("MergeTree", "tuple()"),
+            ("MergeTree", "toDate(event_time), user_id"),
+            ("MergeTree", "user_id DESC"),
+        ],
+    )
+    def test_auto_discovery_falls_back_for_unsupported_metadata(
+        self, mock_init_client, engine, sorting_key
+    ):
+        mock_client = MagicMock()
+        mock_client.database = "analytics"
+        mock_client.query.return_value.result_rows = [[engine, sorting_key]]
+        mock_init_client.return_value = mock_client
+
+        with mock.patch(
+            "ray.data._internal.datasource.clickhouse_datasource.logger.warning"
+        ) as mock_warning:
+            datasource = ClickHouseDatasource(
+                table="events",
+                dsn="clickhouse://user:password@localhost:8123/analytics",
+                auto_discover_order_by=True,
+            )
+
+        assert datasource._order_by is None
+        assert "ORDER BY" not in datasource._query
+        assert "falling back to a single read task" in " ".join(
+            str(arg) for arg in mock_warning.call_args.args
+        )
+        mock_client.close.assert_called_once_with()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_missing_table_falls_back(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = "analytics"
+        mock_client.query.return_value.result_rows = []
+        mock_init_client.return_value = mock_client
+
+        datasource = ClickHouseDatasource(
+            table="events",
+            dsn="clickhouse://user:password@localhost:8123/analytics",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by is None
+        assert "ORDER BY" not in datasource._query
+        mock_client.close.assert_called_once_with()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    @pytest.mark.parametrize(
+        "table",
+        ["events AS e", "analytics.events.extra", "events; DROP TABLE events"],
+    )
+    def test_auto_discovery_skips_non_identifier_tables(self, mock_init_client, table):
+        datasource = ClickHouseDatasource(
+            table=table,
+            dsn="clickhouse://user:password@localhost:8123/analytics",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by is None
+        mock_init_client.assert_not_called()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_query_failure_falls_back(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = "analytics"
+        mock_client.query.side_effect = RuntimeError("metadata unavailable")
+        mock_init_client.return_value = mock_client
+
+        with mock.patch(
+            "ray.data._internal.datasource.clickhouse_datasource.logger.warning"
+        ) as mock_warning:
+            datasource = ClickHouseDatasource(
+                table="events",
+                dsn="clickhouse://user:password@localhost:8123/analytics",
+                auto_discover_order_by=True,
+            )
+
+        assert datasource._order_by is None
+        assert "metadata unavailable" in " ".join(
+            str(arg) for arg in mock_warning.call_args.args
+        )
+        mock_client.close.assert_called_once_with()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_client_initialization_failure_falls_back(
+        self, mock_init_client
+    ):
+        mock_init_client.side_effect = RuntimeError("connection unavailable")
+
+        with mock.patch(
+            "ray.data._internal.datasource.clickhouse_datasource.logger.warning"
+        ) as mock_warning:
+            datasource = ClickHouseDatasource(
+                table="events",
+                dsn="clickhouse://user:password@localhost:8123/analytics",
+                auto_discover_order_by=True,
+            )
+
+        assert datasource._order_by is None
+        assert "ORDER BY" not in datasource._query
+        assert "connection unavailable" in " ".join(
+            str(arg) for arg in mock_warning.call_args.args
+        )
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_is_skipped_for_filtered_reads(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_init_client.return_value = mock_client
+
+        datasource = ClickHouseDatasource(
+            table="default.events",
+            dsn="clickhouse://user:password@localhost:8123/default",
+            filter="active = 1",
+            auto_discover_order_by=True,
+        )
+
+        assert datasource._order_by is None
+        assert datasource._query == "SELECT * FROM default.events WHERE active = 1"
+        # The only connection validates the filter. No system.tables lookup is made.
+        mock_client.query.assert_called_once_with(
+            "EXPLAIN SELECT 1 FROM default.events WHERE active = 1"
+        )
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_empty_filter_preserves_single_task_semantics(self, mock_init_client):
+        datasource = ClickHouseDatasource(
+            table="default.events",
+            dsn="clickhouse://user:password@localhost:8123/default",
+            filter="",
+            auto_discover_order_by=True,
+        )
+        datasource.MIN_ROWS_PER_READ_TASK = 1
+        datasource._get_estimate_count = MagicMock(return_value=100)
+        datasource._get_sampled_estimates = MagicMock(
+            return_value=(8, pa.schema([("id", pa.int64())]))
+        )
+
+        assert datasource._order_by is None
+        assert len(datasource.get_read_tasks(parallelism=4)) == 1
+        mock_init_client.assert_not_called()
+
+    @mock.patch.object(ClickHouseDatasource, "_init_client")
+    def test_auto_discovery_enables_native_parallel_read_tasks(self, mock_init_client):
+        mock_client = MagicMock()
+        mock_client.database = "analytics"
+        mock_client.query.return_value.result_rows = [["MergeTree", "prov_id, user_id"]]
+        mock_init_client.return_value = mock_client
+        datasource = ClickHouseDatasource(
+            table="events",
+            dsn="clickhouse://user:password@localhost:8123/analytics",
+            auto_discover_order_by=True,
+        )
+        datasource.MIN_ROWS_PER_READ_TASK = 1
+        datasource._get_estimate_count = MagicMock(return_value=8)
+        datasource._get_sampled_estimates = MagicMock(
+            return_value=(8, pa.schema([("prov_id", pa.int64())]))
+        )
+        datasource._execute_block_query = MagicMock(
+            return_value=pa.table({"prov_id": []})
+        )
+
+        read_tasks = datasource.get_read_tasks(parallelism=4)
+        assert len(read_tasks) == 4
+        for read_task in read_tasks:
+            list(read_task())
+
+        queries = [
+            re.sub(r"\s+", " ", call.args[0]).strip()
+            for call in datasource._execute_block_query.call_args_list
+        ]
+        assert queries == [
+            "SELECT * FROM events ORDER BY (prov_id, user_id) "
+            "FETCH FIRST 2 ROWS ONLY",
+            "SELECT * FROM events ORDER BY (prov_id, user_id) "
+            "OFFSET 2 ROWS FETCH NEXT 2 ROWS ONLY",
+            "SELECT * FROM events ORDER BY (prov_id, user_id) "
+            "OFFSET 4 ROWS FETCH NEXT 2 ROWS ONLY",
+            "SELECT * FROM events ORDER BY (prov_id, user_id) "
+            "OFFSET 6 ROWS FETCH NEXT 2 ROWS ONLY",
+        ]
+
+    @mock.patch("ray.data.read_api.read_datasource")
+    @mock.patch("ray.data.read_api.ClickHouseDatasource")
+    def test_read_clickhouse_forwards_auto_discovery(
+        self, mock_datasource_cls, mock_read_datasource
+    ):
+        read_clickhouse(
+            table="default.events",
+            dsn="clickhouse://user:password@localhost:8123/default",
+            auto_discover_order_by=True,
+        )
+
+        assert mock_datasource_cls.call_args.kwargs["auto_discover_order_by"] is True
+        mock_read_datasource.assert_called_once()
 
     @mock.patch.object(ClickHouseDatasource, "_init_client")
     def test_init_with_filter(self, mock_init_client):
