@@ -286,10 +286,11 @@ def test_shuffle_reduce_preserves_partition_order(
 
     reduce_op._record_partition_output(0, partition_zero, partition_complete=True)
     outputs = [reduce_op.get_next(), reduce_op.get_next()]
-    assert [ray.get(bundle.block_refs[0])["id"].iloc[0] for bundle in outputs] == [
-        0,
-        1,
-    ]
+    first_ids = []
+    for bundle in outputs:
+        block = ray.get(bundle.block_refs[0])
+        first_ids.append(block["id"].iloc[0])
+    assert first_ids == [0, 1]
     for bundle in outputs:
         bundle.destroy_if_owned()
 
