@@ -8,6 +8,12 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 
 if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.anthropic_api_models import (
+        AnthropicCountTokensRequest,
+        AnthropicCountTokensResponse,
+        AnthropicMessagesRequest,
+        AnthropicMessagesResponse,
+    )
     from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
         ChatCompletionResponse,
@@ -172,6 +178,64 @@ class LLMEngine(abc.ABC):
             None when the generator is done.
         """
         pass
+
+    async def messages(
+        self,
+        request: "AnthropicMessagesRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, "AnthropicMessagesResponse", "ErrorResponse"], None]:
+        """Run an Anthropic Messages request with the engine.
+
+        Optional. Engines that do not support the Anthropic Messages API can
+        leave the default implementation.
+
+        This method is an async generator. We have the following convention:
+
+        * In case of streaming, yield a string representing an SSE event for
+          each chunk. This should already be Anthropic compatible, so the
+          higher level can yield it directly to the client.
+        * In case of non-streaming, yield a single object of type
+          AnthropicMessagesResponse.
+        * In case of error, yield a single object of type ErrorResponse.
+
+        Args:
+            request: The Anthropic Messages request.
+            raw_request_info: Optional RawRequestInfo containing data from the
+                original HTTP request.
+
+        Yields:
+            Union[str, AnthropicMessagesResponse, ErrorResponse]: A string
+            representing a chunk of the response, an AnthropicMessagesResponse
+            object, or an ErrorResponse object.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support the Anthropic Messages API."
+        )
+        yield  # Make this an async generator.
+
+    async def count_tokens(
+        self,
+        request: "AnthropicCountTokensRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["AnthropicCountTokensResponse", "ErrorResponse"], None]:
+        """Count tokens for an Anthropic Messages request.
+
+        Optional. Engines that do not support Anthropic token counting can
+        leave the default implementation.
+
+        Args:
+            request: The Anthropic count_tokens request.
+            raw_request_info: Optional RawRequestInfo containing data from the
+                original HTTP request.
+
+        Yields:
+            Union[AnthropicCountTokensResponse, ErrorResponse]: An
+            AnthropicCountTokensResponse object, or an ErrorResponse object.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support Anthropic token counting."
+        )
+        yield  # Make this an async generator.
 
     async def tokenize(
         self,
