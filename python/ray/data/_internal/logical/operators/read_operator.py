@@ -426,19 +426,17 @@ class ReadFiles(
         residual_unpushed = split.residual_predicate
         if split.partition_predicate is not None:
             new_scanner = new_scanner.prune_partitions(split.partition_predicate)
-        if split.data_predicate is not None and pushes_filters:
-            # ``push_filters`` may decline part of what it was offered; that
-            # leftover is a conjunct of the same chain, so ``&`` rebuilds it.
-            new_scanner, residual_declined = new_scanner.push_filters(
-                split.data_predicate
-            )
-            residual_unpushed = combine_predicates(residual_unpushed, residual_declined)
-        elif split.data_predicate is not None:
-            # No filter pushdown: the data-column conjuncts stay in a
-            # ``Filter`` above the read, and only the partition ones move.
-            residual_unpushed = combine_predicates(
-                residual_unpushed, split.data_predicate
-            )
+        if split.data_predicate is not None:
+            if pushes_filters:
+                # ``push_filters`` may decline part of what it was offered; that
+                # leftover is another conjunct of the same chain, so it goes back
+                # into the residual.
+                new_scanner, declined = new_scanner.push_filters(split.data_predicate)
+            else:
+                # No filter pushdown: the data-column conjuncts stay in a ``Filter``
+                # above the read, and only the partition ones move.
+                declined = split.data_predicate
+            residual_unpushed = combine_predicates(residual_unpushed, declined)
 
         if new_scanner is self.scanner:
             # Nothing was pushed (e.g. a data-only predicate on a scanner that
