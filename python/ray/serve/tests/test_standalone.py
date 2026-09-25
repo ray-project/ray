@@ -13,6 +13,7 @@ import time
 
 import httpx
 import pytest
+from fastapi import FastAPI, Request
 from opentelemetry import trace
 
 import ray
@@ -317,9 +318,7 @@ def test_http_root_path(ray_shutdown):
     RAY_SERVE_ENABLE_HA_PROXY,
     reason="HAProxy direct ingress strips root_path before forwarding requests.",
 )
-def test_http_root_path_fastapi(ray_shutdown):
-    from fastapi import FastAPI, Request
-
+def test_http_root_path_overlapping_route_prefix(ray_shutdown):
     app = FastAPI()
 
     @app.get("/")
@@ -348,6 +347,9 @@ def test_http_root_path_fastapi(ray_shutdown):
         resp = httpx.get(f"{base_url}{prefix}/items/2")
         assert resp.status_code == 200
         assert resp.json() == 2
+
+    # A path that never arrived with root_path should not use the fallback route.
+    assert httpx.get(f"{base_url}/v1/items/2").status_code == 404
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
