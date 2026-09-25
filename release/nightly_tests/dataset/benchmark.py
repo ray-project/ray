@@ -337,14 +337,19 @@ class Benchmark:
             script_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
             outdir = f"/mnt/shared_storage/profiling/{script_name}/{job_id}"
 
-            num_gpu_nodes = sum(
-                1
-                for node in ray.nodes()
-                if node.get("Alive") and node.get("Resources", {}).get("GPU", 0) > 0
-            )
-
-            profiling = Profiling(outdir=outdir, num_gpu_nodes=num_gpu_nodes)
+            profiling = Profiling(outdir=outdir)
             if profiling.is_enabled():
+                # ray.nodes() is a state API call and raises if the driver has not
+                # connected yet. Benchmarks that construct Benchmark() before touching
+                # Ray would otherwise lose profiling entirely, with only a warning to
+                # show for it.
+                if not ray.is_initialized():
+                    ray.init(ignore_reinit_error=True)
+                profiling.num_gpu_nodes = sum(
+                    1
+                    for node in ray.nodes()
+                    if node.get("Alive") and node.get("Resources", {}).get("GPU", 0) > 0
+                )
                 profiling.start()
                 self._profiling = profiling
                 self._profiling_s3_prefix = f"{script_name}/{job_id}"
@@ -478,12 +483,20 @@ class Benchmark:
         # Auto-stop profiling and upload artifacts to S3. Protected so a
         # teardown failure doesn't mask a successful benchmark run.
         if self._profiling is not None:
+            # The copy has its own guard so a failure still stops the profilers,
+            # which is what flushes their output.
             try:
                 import shutil
 
                 if os.path.exists(test_output_json):
                     os.makedirs(self._profiling.outdir, exist_ok=True)
                     shutil.copy2(test_output_json, self._profiling.outdir)
+            except Exception:
+                logger.warning(
+                    "Failed to copy the benchmark result into the profiling outdir.",
+                    exc_info=True,
+                )
+            try:
                 self._profiling.stop(s3_prefix=self._profiling_s3_prefix)
             except Exception:
                 logger.warning(
