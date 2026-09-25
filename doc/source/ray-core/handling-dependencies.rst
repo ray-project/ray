@@ -974,6 +974,42 @@ Remote URIs support ``.zip``, ``.tar.gz``, ``.tgz``, and ``.tar.xz`` archive for
 Note that the ``smart_open``, ``boto3``, ``google-cloud-storage``, ``azure-storage-blob``, and ``azure-identity`` packages are not installed by default, and it is not sufficient to specify them in the ``pip`` section of your ``runtime_env``.
 The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 
+Kerberos-authenticated HTTPS packages
+-------------------------------------
+
+To download ``working_dir`` or ``py_modules`` through an HTTPS HttpFS gateway,
+preinstall ``smart_open[http]`` and ``requests-kerberos`` on every node. Before
+starting Ray, provide an existing Kerberos credential cache (for example through
+``KRB5CCNAME``), configure the gateway hosts, and set any enterprise CA bundle:
+
+.. code-block:: bash
+
+   export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=httpfs1.example.org,httpfs2.example.org
+   export REQUESTS_CA_BUNDLE=/etc/company-ca/ca.pem
+
+.. code-block:: python
+
+   runtime_env = {
+       "working_dir": "https://httpfs1.example.org/webhdfs/v1/artifacts/code.zip?op=OPEN"
+   }
+
+Kerberos is disabled by default. The host list enables it for matching initial
+HTTPS URLs; use exact, comma-separated DNS names, without ports or wildcards.
+IP addresses and embedded URL credentials are not supported. Combining Kerberos
+with ``RAY_RUNTIME_ENV_BEARER_TOKEN`` for the same download is an error.
+
+Use certificates with matching DNS SANs. Standard CA, hostname, and Kerberos
+mutual authentication checks remain enabled. Redirects retain the libraries'
+default behavior; the host list is not a redirect allowlist. Use a direct HttpFS
+download endpoint. Native WebHDFS delegation-token handling is outside this feature.
+
+Each package uses one URL; the host list does not provide failover. A load-balanced
+endpoint can replace the individual gateway names, with its DNS name configured
+in the certificate SAN and HTTP Kerberos service principal. HttpFS/Hadoop and the
+load balancer handle availability. Ray does not acquire or renew tickets.
+Dependencies, credentials, and configuration must be available before package
+download; setting them in ``runtime_env["pip"]`` or ``runtime_env["env_vars"]`` is too late.
+
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
 

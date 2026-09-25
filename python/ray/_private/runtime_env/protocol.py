@@ -1,10 +1,13 @@
 import os
+import re
+from ipaddress import ip_address
 from urllib.parse import urlparse
 
 from ray._common.runtime_env_uri import Protocol
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
 RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
+RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS"
 _DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
 
 
@@ -222,6 +225,37 @@ class ProtocolsProvider:
         return headers
 
     @classmethod
+    def _http_kerberos_hosts(cls, hostname):
+        hosts = {
+            host.strip().lower()
+            for host in os.environ.get(
+                RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR, ""
+            ).split(",")
+            if host.strip()
+        }
+        if hostname not in hosts:
+            return set()
+        if any(
+            not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", host)
+            for host in hosts
+        ):
+            raise ValueError(
+                f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR} must contain "
+                "comma-separated hostnames, without schemes, ports or wildcards."
+            )
+        for host in hosts:
+            try:
+                ip_address(host)
+            except ValueError:
+                continue
+            raise ValueError(
+                f"{RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR} requires DNS "
+                "hostnames, not IP addresses. Use the server's DNS name in "
+                "both the HTTPS URL and the host list."
+            )
+        return hosts
+
+    @classmethod
     def _handle_http_protocol(cls):
         """Set up HTTP/HTTPS protocol handling with curl-like headers."""
 
@@ -240,6 +274,33 @@ class ProtocolsProvider:
             }
             if transport_params:
                 params.update(transport_params)
+            parsed = urlparse(uri)
+            hosts = (
+                cls._http_kerberos_hosts(parsed.hostname)
+                if parsed.scheme == "https"
+                else set()
+            )
+            if hosts:
+                if os.environ.get(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR):
+                    raise ValueError(
+                        "Kerberos and Bearer Token authentication cannot be used "
+                        "together for the same download. Unset "
+                        f"{RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR} or remove the host "
+                        f"from {RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS_ENV_VAR}."
+                    )
+                if parsed.username is not None or parsed.password is not None:
+                    raise ValueError(
+                        "Kerberos downloads require URLs without embedded credentials."
+                    )
+                try:
+                    import requests_kerberos  # noqa: F401
+                except ImportError as exc:
+                    raise ImportError(
+                        "You must `pip install requests-kerberos` to fetch "
+                        "Kerberos-protected HTTPS URIs. "
+                        + cls._MISSING_DEPENDENCIES_WARNING
+                    ) from exc
+                params["kerberos"] = True
             return smart_open_open(uri, mode, transport_params=params)
 
         return open_file, None
