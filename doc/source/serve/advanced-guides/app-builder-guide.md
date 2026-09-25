@@ -125,10 +125,24 @@ applications:
 
 ### Configuring multiple composed deployments
 
-You can use the arguments passed to an application builder to configure multiple deployments in a single application. For example a model composition application might take weights to two different models as follows:
+Pass arguments from one builder to multiple deployments in the same application. This example configures an adder and a multiplier independently. The ingress adds `increment` to the request's value, then multiplies the result by `multiplier`:
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_composed_builder__
 :end-before: __end_composed_builder__
 :language: python
 ```
+
+Save the example in `hello.py` and pass both arguments to the builder:
+
+```bash
+serve run hello:composed_app_builder increment=1 multiplier=2
+```
+
+Send a request from another terminal:
+
+```bash
+curl 'http://localhost:8000/?value=5'
+```
+
+The response is `12`, calculated as `(5 + 1) * 2`. Changing the builder arguments to `increment=3 multiplier=4` produces `32` for the same request without modifying the deployment code.
