@@ -60,7 +60,7 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
   if (!already_pending_recovery) {
     RAY_LOG(DEBUG).WithField(object_id) << "Starting recovery for object";
     in_memory_store_.GetAsync(
-        object_id, [this, object_id](const std::shared_ptr<RayObject> &obj) {
+        object_id, [this, object_id](const RayObject &) {
           {
             absl::MutexLock lock(&objects_pending_recovery_mu_);
             RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;

@@ -16,7 +16,9 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -59,6 +61,14 @@
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray::core {
+
+/**
+ * @brief In-flight WaitAsync table.
+ *
+ * Defined in core_worker.cc. Posted GetAsync callbacks hold a shared_ptr to
+ * this so they can outlive ``CoreWorker``.
+ */
+struct WaitAsyncRegistry;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -791,6 +801,54 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /**
+   * Asynchronously wait for one object to become ready without blocking the
+   * calling thread. Invokes ``callback`` once when it is ready.
+   *
+   * An object is ready when it is in the in-process memory store or a plasma
+   * marker is present. This does not pull plasma objects locally.
+   *
+   * The callback is invoked at most once. Completions from the memory store
+   * run on ``io_service_`` (same as ``GetAsync``), even when the object is
+   * already present. Cancel and shutdown invoke the callback on the caller.
+   * ``Status::OK`` means the object is ready.
+   *
+   * WaitAsync does not hold a reference. The caller should keep ``object_id``
+   * in scope until the callback (the Python ``ObjectRef`` already does).
+   * If the object has no owner, the callback is invoked immediately with
+   * ``ObjectUnknownOwner``.
+   *
+   * \param[in] object_id ID of the object to wait for.
+   * \param[in] callback Invoked with status and ``callback_arg``.
+   * \param[in] callback_arg Opaque pointer passed through to ``callback``.
+   * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
+   * already invoked synchronously on the calling thread (unknown owner, or the
+   * worker is shutting down).
+   */
+  uint64_t WaitAsync(const ObjectID &object_id,
+                     void (*callback)(Status status, void *callback_arg),
+                     void *callback_arg);
+
+  /**
+   * Cancel an in-flight ``WaitAsync`` identified by its handle.
+   *
+   * Completes a pending request (callback once with a cancelled status).
+   * No-op if ``handle`` is 0 or the request already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   */
+  void CancelWaitAsync(uint64_t handle);
+
+  /**
+   * Complete every in-flight ``WaitAsync`` with a shutdown error.
+   *
+   * Invokes each pending callback once. Safe to call more than once. Also
+   * latches the shutdown, so any later ``WaitAsync`` fails fast rather than
+   * registering a wait that the stopped ``io_service_`` can never complete.
+   * The embedding runtime must still be alive — see ``~CoreWorker``.
+   */
+  void CancelAllWaitAsync();
 
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
@@ -1644,7 +1702,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Helper method to fill in object status reply given an object.
   void PopulateObjectStatus(const ObjectID &object_id,
-                            const std::shared_ptr<RayObject> &obj,
+                            const RayObject &obj,
                             rpc::GetObjectStatusReply *reply);
 
   ///
@@ -1908,6 +1966,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                       ObjectID object_id,
                       void *py_future);
 
+  /**
+   * Complete a ``WaitAsync`` request and invoke its callback at most once.
+   *
+   * Looks the handle up in ``wait_async_``. Unregisters it, cancels the
+   * memory-store wait, then runs the callback. No-op if the handle is
+   * unknown or already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   * \param[in] status Status passed to the user callback.
+   */
+  void FinishWaitAsync(uint64_t handle, Status status);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -2125,6 +2195,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
+
+  // In-flight WaitAsync table. Shared so a posted GetAsync can look up a
+  // handle after this worker is destroyed (the lookup misses and returns).
+  std::shared_ptr<WaitAsyncRegistry> wait_async_;
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.

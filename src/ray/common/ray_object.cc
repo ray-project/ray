@@ -14,6 +14,8 @@
 
 #include "ray/common/ray_object.h"
 
+#include <memory>
+
 #include "msgpack.hpp"
 
 namespace {
@@ -140,6 +142,21 @@ bool RayObject::IsInPlasmaError() const {
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
   return metadata == kObjectInPlasmaStr;
+}
+
+std::unique_ptr<RayObject> RayObject::Copy() const {
+  std::unique_ptr<RayObject> copy;
+  if (data_factory_ != nullptr) {
+    copy = std::make_unique<RayObject>(
+        metadata_, nested_refs_, data_factory_, /*copy_data=*/false);
+  } else {
+    copy = std::make_unique<RayObject>(
+        data_, metadata_, nested_refs_, /*copy_data=*/false, tensor_transport_);
+  }
+  if (direct_transport_metadata_.has_value()) {
+    copy->SetDirectTransportMetadata(*direct_transport_metadata_);
+  }
+  return copy;
 }
 
 }  // namespace ray

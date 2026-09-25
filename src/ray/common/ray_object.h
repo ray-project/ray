@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "absl/time/clock.h"
 #include "absl/types/optional.h"
 #include "ray/common/buffer.h"
@@ -130,6 +132,11 @@ class RayObject {
   const std::optional<std::string> &GetTensorTransport() const {
     return tensor_transport_;
   }
+
+  /// Independently owned wrapper. Shares the same buffers, or the same data
+  /// factory if this object allocates on GetData() (do not materialize here:
+  /// factory buffers such as JNI views are thread-affine).
+  std::unique_ptr<RayObject> Copy() const;
 
   void SetDirectTransportMetadata(std::string direct_transport_metadata) {
     direct_transport_metadata_.emplace(std::move(direct_transport_metadata));

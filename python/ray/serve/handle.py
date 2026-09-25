@@ -644,17 +644,8 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
                 "loop. Use `await response._to_object_ref()` instead."
             )
 
-        # First, fetch the result of the future
-        start_time_s = time.time()
         replica_result = self._fetch_future_result_sync(_timeout_s)
-
-        # Then, if necessary, resolve generator to ref
-        remaining_timeout_s = calculate_remaining_timeout(
-            timeout_s=_timeout_s,
-            start_time_s=start_time_s,
-            curr_time_s=time.time(),
-        )
-        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
+        return replica_result.to_object_ref()
 
 
 @PublicAPI(stability="stable")
