@@ -295,6 +295,7 @@ class SandboxRuntime:
                 If None, a default directory inside the sandbox storage root is used.
             leave_running: If True, keep the sandbox running after checkpointing.
             timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Backend-specific arguments.
 
         Returns:
             Absolute path to the checkpoint directory.
@@ -303,6 +304,7 @@ class SandboxRuntime:
             sandbox_id=instance_id,
             checkpoint_path=checkpoint_path,
             leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
             **kwargs,
         )
         if isinstance(res, dict) and "checkpoint_path" in res:
@@ -338,6 +340,7 @@ class SandboxRuntime:
             dns: DNS nameservers override.
             capabilities: Linux capabilities override.
             readonly: Readonly flag override.
+            **kwargs: Backend-specific arguments.
 
         Returns:
             A unique string identifier for the restored sandbox.
@@ -406,4 +409,3 @@ class SandboxRuntime:
             instance_id: Unique identifier of the sandbox instance.
         """
         await asyncio.to_thread(self.delete, instance_id)
-
