@@ -2334,6 +2334,14 @@ class Dataset:
             ..
                 https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
+        .. tip::
+
+            Repartitioning with ``keys`` hash-shuffles the whole dataset. If the
+            dataset is much larger than the cluster's aggregate object-store
+            memory, enable :ref:`disk-based shuffle <disk-based-shuffle>` by
+            setting ``DataContext.use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100).repartition(10).materialize()
@@ -3613,6 +3621,14 @@ class Dataset:
 
         Joins require the ``polars`` package.
 
+        .. tip::
+
+            Joins hash-shuffle both input datasets by key. If the inputs are
+            much larger than the cluster's aggregate object-store memory,
+            enable :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``DataContext.use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
@@ -3789,6 +3805,14 @@ class Dataset:
 
         Use this method to transform data based on a
         categorical variable.
+
+        .. tip::
+
+            Grouping hash-shuffles the dataset by key. If the dataset is much
+            larger than the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``DataContext.use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Examples:
 
