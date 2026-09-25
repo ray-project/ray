@@ -91,6 +91,7 @@ def deployment_info(
     user_config: Optional[Any] = None,
     replica_config: Optional[ReplicaConfig] = None,
     ingress_request_router: bool = False,
+    direct_http: bool = False,
     **config_opts,
 ) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
@@ -103,6 +104,7 @@ def deployment_info(
         replica_config=replica_config or ReplicaConfig.create(lambda x: x),
         deployer_job_id="",
         ingress_request_router=ingress_request_router,
+        direct_http=direct_http,
     )
 
     if version is not None:
@@ -4542,6 +4544,59 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+def test_direct_http_owns_direct_ingress_ports(mock_deployment_state_manager):
+    """A `_direct_http` deployment owns ports despite not being the app ingress."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(direct_http=True)[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    assert ds.is_direct_http()
+    # Not the app's front door -- only the socket-owning half is true.
+    assert not ds.is_ingress()
+    assert not ds.is_ingress_request_router()
+    assert ds.owns_direct_ingress_ports()
+
+
+def test_plain_deployment_does_not_own_direct_ingress_ports(
+    mock_deployment_state_manager,
+):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info()[0])
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    assert not ds.is_direct_http()
+    assert not ds.owns_direct_ingress_ports()
+
+
+def test_get_ingress_replicas_info_includes_direct_http(
+    mock_deployment_state_manager,
+):
+    """The controller's port reconcile must see `_direct_http` replicas.
+
+    `get_ingress_replicas_info` feeds NodePortManager.update_ports; if a
+    `_direct_http` replica is missing here its port is never tracked.
+    """
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    node_id = NodeID.from_random().hex()
+    cluster_node_info_cache.add_node(node_id)
+
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(direct_http=True)[0])
+    dsm.update()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    replica = ds._replicas.get()[0]
+    replica._actor.set_node_id(node_id)
+    replica._actor.set_http_port(8123)
+
+    assert dsm.get_ingress_replicas_info() == [
+        (node_id, replica.replica_id.unique_id, 8123, None)
+    ]
 
 
 def test_get_active_node_ids_excludes_ingress_request_router(
@@ -10194,6 +10249,38 @@ def test_ingress_membership_version_bumps_on_add_and_removal(
     dsm.update()
     check_counts(ds, total=0)
     assert dsm.get_ingress_membership_version() > v_stopping
+
+
+def test_ingress_membership_version_bumps_after_disabling_direct_http(
+    mock_deployment_state_manager,
+):
+    """A removed replica's ports are reclaimed after `_direct_http` is disabled."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    dsm.deploy(TEST_DEPLOYMENT_ID, deployment_info(direct_http=True)[0])
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+
+    replica = ds._replicas.get()[0]
+    replica._actor.set_http_port(8123)
+    replica._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Simulate applying the new target before the old replica finishes stopping.
+    # Port ownership belongs to the replica, so cleanup cannot rely solely on this
+    # target config, which now says the deployment does not own direct-ingress ports.
+    disabled_info, _ = deployment_info(direct_http=False)
+    ds._set_target_state(disabled_info, target_num_replicas=1)
+    ds._stop_one_running_replica_for_testing()
+    dsm.update()
+    version_before_removal = dsm.get_ingress_membership_version()
+
+    replica._actor.set_done_stopping()
+    dsm.update()
+
+    assert dsm.get_ingress_membership_version() > version_before_removal
 
 
 def test_ingress_membership_version_ignores_non_ingress_deployment(
