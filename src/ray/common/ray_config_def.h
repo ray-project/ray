@@ -482,6 +482,7 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
 RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
+/// Must be greater than zero.
 /// ActorTableData entry ≈ 200-400B serialized (~600B-1.5KB deserialized),
 /// plus `previous_incarnations` for actors that have restarted: up to ~600B
 /// serialized (~2KB deserialized) at the default
@@ -504,6 +505,7 @@ RAY_CONFIG(uint32_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// cache — see the footprint note there before raising this.
 RAY_CONFIG(uint32_t, maximum_actor_previous_incarnations, 10)
 /// Maximum number of dead nodes in GCS server memory cache.
+/// Must be greater than zero.
 /// GcsNodeInfo entry ≈ ~150-250 bytes serialized (~500B-1KB deserialized).
 /// Worst-case footprint: 1,000 x ~500B-1KB =~ 0.5-1MB
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
