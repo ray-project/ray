@@ -78,9 +78,7 @@ class ObjectRef(BaseID, Awaitable[_T]):
 
         Unlike ``_on_completed``, this does not fetch or deserialize the value.
         The callback is ``callback(exc)``: ``exc`` is None when the object is
-        ready. If this ``ObjectRef`` is dropped before the object exists
-        and no other reference remains, ``exc`` is a ``ValueError``, not a
-        ``RaySystemError``.
+        ready. Dropping this ``ObjectRef`` does not run the callback.
 
         Returns a function that cancels the wait. It is a no-op if the
         callback already ran synchronously.

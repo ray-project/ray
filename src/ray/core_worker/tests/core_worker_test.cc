@@ -1869,10 +1869,8 @@ TEST_F(CoreWorkerTest, WaitAsyncBorrowedObjectReady) {
   ASSERT_TRUE(result.status.ok());
 }
 
-TEST_F(CoreWorkerTest, WaitAsyncLastRefDroppedInvokesCallback) {
-  // WaitAsync does not pin. The last local ref going out of scope must
-  // invoke the callback (ObjectNotFound), not hang. Uses the ref-counter
-  // deleted list, not AddObjectOutOfScopeOrFreedCallback.
+TEST_F(CoreWorkerTest, WaitAsyncLastRefDroppedLeavesCallbackPending) {
+  // Same as GetAsync: dropping the last ref does not complete the wait.
   ObjectID object_id = ObjectID::FromRandom();
   AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, object_id);
 
@@ -1880,23 +1878,18 @@ TEST_F(CoreWorkerTest, WaitAsyncLastRefDroppedInvokesCallback) {
   uint64_t handle = core_worker_->WaitAsync(object_id, OnWaitAsyncDone, &result);
   ASSERT_NE(handle, 0u);
   ASSERT_EQ(result.calls, 0);
+
+  core_worker_->RemoveLocalReference(object_id);
+  ASSERT_EQ(result.calls, 0);
   {
     absl::MutexLock lock(&memory_store_->mu_);
     ASSERT_EQ(memory_store_->object_async_get_requests_.at(object_id).size(), 1u);
   }
 
-  core_worker_->RemoveLocalReference(object_id);
+  memory_store_->Put(*MakeRayObject("data", "meta"), object_id, /*has_reference=*/false);
+  DrainIoUntilWaitAsyncDone(io_service_, result);
   ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsObjectNotFound());
-  ASSERT_EQ(result.status.message(), "Object ref went out of scope.");
-  {
-    absl::MutexLock lock(&memory_store_->mu_);
-    EXPECT_FALSE(memory_store_->object_async_get_requests_.contains(object_id));
-  }
-
-  // A second drop is a no-op (already completed; no remaining ref).
-  core_worker_->RemoveLocalReference(object_id);
-  ASSERT_EQ(result.calls, 1);
+  ASSERT_TRUE(result.status.ok());
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncRemainingRefKeepsWait) {
@@ -1918,71 +1911,6 @@ TEST_F(CoreWorkerTest, WaitAsyncRemainingRefKeepsWait) {
   DrainIoUntilWaitAsyncDone(io_service_, result);
   ASSERT_EQ(result.calls, 1);
   ASSERT_TRUE(result.status.ok());
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncPeekedGeneratorRefDroppedOnStreamTeardown) {
-  // Peek owns an owner-side local ref. The language frontend adds another
-  // for the peeked ObjectRef. Dropping that ObjectRef is not the last ref;
-  // stream teardown's TryReleaseLocalRefs is. WaitAsync must complete there.
-  auto spec = CreateStreamingGeneratorTaskSpec();
-  const ObjectID generator_id = spec.ReturnId(0);
-  task_manager_->AddPendingTask(rpc_address_, spec, "call_site");
-
-  const std::pair<rpc::ObjectReference, bool> peek =
-      core_worker_->PeekObjectRefStream(generator_id);
-  const ObjectID peeked_id = ObjectID::FromBinary(peek.first.object_id());
-  ASSERT_TRUE(reference_counter_->HasReference(peeked_id));
-  core_worker_->AddLocalReference(peeked_id);
-
-  WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync(peeked_id, OnWaitAsyncDone, &result);
-  ASSERT_NE(handle, 0u);
-  ASSERT_EQ(result.calls, 0);
-
-  core_worker_->RemoveLocalReference(peeked_id);
-  ASSERT_EQ(result.calls, 0);
-  ASSERT_TRUE(reference_counter_->HasReference(peeked_id));
-
-  core_worker_->AsyncDelObjectRefStream(generator_id);
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsObjectNotFound());
-  ASSERT_EQ(result.status.message(), "Object ref went out of scope.");
-  {
-    absl::MutexLock lock(&memory_store_->mu_);
-    EXPECT_FALSE(memory_store_->object_async_get_requests_.contains(peeked_id));
-  }
-}
-
-TEST_F(CoreWorkerTest, WaitAsyncFinishedTaskArgLastRef) {
-  // After the caller drops its ObjectRef, a task argument can stay alive only
-  // via submitted_task_ref_count. Completing the task must finish WaitAsync.
-  ObjectID arg_id = ObjectID::FromRandom();
-  AddOwnedObjectForWaitAsync(core_worker_, reference_counter_, arg_id);
-
-  TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
-  task.GetMutableMessage().set_num_returns(1);
-  task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
-      arg_id.Binary());
-  task_manager_->AddPendingTask(rpc_address_, task, "call_site");
-
-  core_worker_->RemoveLocalReference(arg_id);
-  ASSERT_TRUE(reference_counter_->HasReference(arg_id));
-
-  WaitAsyncCallbackResult result;
-  uint64_t handle = core_worker_->WaitAsync(arg_id, OnWaitAsyncDone, &result);
-  ASSERT_NE(handle, 0u);
-  ASSERT_EQ(result.calls, 0);
-
-  rpc::PushTaskReply reply;
-  rpc::ReturnObject *return_object = reply.add_return_objects();
-  return_object->set_object_id(task.ReturnId(0).Binary());
-  return_object->set_data("ok", 2);
-  task_manager_->CompletePendingTask(task.TaskId(), reply, rpc::Address(), false);
-
-  ASSERT_EQ(result.calls, 1);
-  ASSERT_TRUE(result.status.IsObjectNotFound());
-  ASSERT_EQ(result.status.message(), "Object ref went out of scope.");
 }
 
 TEST_F(CoreWorkerTest, WaitAsyncCancel) {

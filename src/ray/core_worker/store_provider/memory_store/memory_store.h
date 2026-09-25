@@ -196,8 +196,7 @@ class CoreWorkerMemoryStore {
   FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
   FRIEND_TEST(TestMemoryStore, CancelAsyncGetRemovesCallback);
   FRIEND_TEST(CoreWorkerTest, WaitAsyncCancelRemovesMemoryCallback);
-  FRIEND_TEST(CoreWorkerTest, WaitAsyncLastRefDroppedInvokesCallback);
-  FRIEND_TEST(CoreWorkerTest, WaitAsyncPeekedGeneratorRefDroppedOnStreamTeardown);
+  FRIEND_TEST(CoreWorkerTest, WaitAsyncLastRefDroppedLeavesCallbackPending);
 
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
