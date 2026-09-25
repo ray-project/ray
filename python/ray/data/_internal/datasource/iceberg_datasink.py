@@ -142,7 +142,9 @@ def _rewrite_iceberg_file(
 
     # Derive a deterministic write_uuid from the source file path so that
     # task retries overwrite the same object rather than leaking orphan files.
-    preserved_write_uuid = _uuid.UUID(hashlib.md5(file_path.encode()).hexdigest())
+    preserved_write_uuid = _uuid.UUID(
+        hashlib.md5(file_path.encode(), usedforsecurity=False).hexdigest()
+    )
     preserved_files = list(
         _dataframe_to_data_files(
             table_metadata=table_metadata,
