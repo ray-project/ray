@@ -906,6 +906,14 @@ class OrderedResponseCache:
             self.cache[req_id] = None
         return None
 
+    def has_entry(self, req_id: int) -> bool:
+        """
+        Returns True if `req_id` has a cache entry, including a placeholder
+        for a response that is still being computed.
+        """
+        with self.cv:
+            return req_id in self.cache
+
     def update_cache(self, req_id: int, resp: Any) -> None:
         """
         Inserts `response` into the cache for `request_id`.
