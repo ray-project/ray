@@ -108,7 +108,7 @@ Shuffle v2 doesn't yet support {meth}`Dataset.sort <ray.data.Dataset.sort>` or {
 
 ##### Disk-based shuffle
 
-Shuffle v2 can optionally transport intermediate shuffle data through node-local disk files instead of the Ray object store. In this *disk-based shuffle* mode, shuffle bytes never enter the object store; only small file-handle metadata travels through it.
+Shuffle v2 can optionally transport intermediate shuffle data through node-local disk files instead of the Ray object store. In this disk-based shuffle mode, shuffle bytes never enter the object store; only small file-handle metadata travels through it.
 
 Disk-based shuffle works as follows:
 
