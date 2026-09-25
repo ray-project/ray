@@ -1,8 +1,10 @@
 import unittest
+from unittest import mock
 
 import gymnasium as gym
 import numpy as np
 
+from ray.rllib.algorithms.algorithm_config import DifferentiableAlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.differentiable_learner_config import (
     DifferentiableLearnerConfig,
@@ -10,6 +12,7 @@ from ray.rllib.core.learner.differentiable_learner_config import (
 from ray.rllib.core.learner.torch.torch_differentiable_learner import (
     TorchDifferentiableLearner,
 )
+from ray.rllib.core.learner.torch.torch_meta_learner import TorchMetaLearner
 from ray.rllib.core.learner.training_data import TrainingData
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
@@ -23,16 +26,28 @@ from ray.rllib.utils.metrics import (
 torch, _ = try_import_torch()
 
 
+def _bc_loss(module, batch, fwd_out):
+    """A behavior-cloning loss on the module's logits: small, and it has gradients."""
+    action_dist = module.get_train_action_dist_cls().from_logits(
+        fwd_out[Columns.ACTION_DIST_INPUTS]
+    )
+    return -torch.mean(action_dist.logp(batch[Columns.ACTIONS]))
+
+
 class _TestingDifferentiableLearner(TorchDifferentiableLearner):
-    """The smallest concrete learner: a behavior-cloning loss on the module's logits."""
+    """The smallest concrete inner learner."""
 
     def compute_loss_for_module(self, *, module_id, config, batch, fwd_out):
-        action_dist = (
-            self.module[module_id]
-            .get_train_action_dist_cls()
-            .from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
-        )
-        return -torch.mean(action_dist.logp(batch[Columns.ACTIONS]))
+        return _bc_loss(self.module[module_id], batch, fwd_out)
+
+
+class _TestingMetaLearner(TorchMetaLearner):
+    """The smallest concrete meta learner: the same loss on the inner learners' output."""
+
+    def compute_loss_for_module(
+        self, *, module_id, config, batch, fwd_out, others_loss_per_module=None
+    ):
+        return _bc_loss(self.module[module_id], batch, fwd_out)
 
 
 def _batch(rows_per_module, *, env_steps=0):
@@ -181,6 +196,51 @@ class TestDifferentiableLearnerSkip(unittest.TestCase):
                 (ALL_MODULES, LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME)
             ),
         )
+
+
+class TestTorchMetaLearnerSkip(unittest.TestCase):
+    """A skipped meta update runs neither of the gradient-based update's hooks.
+
+    As in `Learner.update`: the hooks bracket the minibatch loop, and anything
+    they step (target networks, schedules) or read back (this update's metrics)
+    has nothing behind it when there is no loop.
+    """
+
+    ENV = gym.make("CartPole-v1")
+
+    def _build_meta_learner(self):
+        """A meta learner over one inner learner, both holding two real modules."""
+        config = DifferentiableAlgorithmConfig().learners(
+            differentiable_learner_configs=[
+                DifferentiableLearnerConfig(
+                    learner_class=_TestingDifferentiableLearner, lr=1.0
+                )
+            ]
+        )
+        module_spec = BaseTestingAlgorithmConfig().get_rl_module_spec(env=self.ENV)
+        learner = _TestingMetaLearner(
+            config=config,
+            module=MultiRLModuleSpec(
+                rl_module_specs={"m1": module_spec, "m2": module_spec}
+            ).build(),
+        )
+        learner.build()
+        return learner
+
+    def test_hooks_do_not_run_for_a_skipped_update(self):
+        learner = self._build_meta_learner()
+
+        with mock.patch.object(
+            learner, "before_gradient_based_update"
+        ) as before, mock.patch.object(learner, "after_gradient_based_update") as after:
+            learner.update(batch=MultiAgentBatch(policy_batches={}, env_steps=0))
+            self.assertEqual(0, before.call_count)
+            self.assertEqual(0, after.call_count)
+
+            # A real update runs them as a pair, inner learners and all.
+            learner.update(batch=_batch({"m1": 64, "m2": 64}, env_steps=64))
+            self.assertEqual(1, before.call_count)
+            self.assertEqual(1, after.call_count)
 
 
 if __name__ == "__main__":

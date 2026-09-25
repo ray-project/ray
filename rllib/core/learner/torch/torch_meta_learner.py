@@ -127,10 +127,6 @@ class TorchMetaLearner(TorchLearner):
         """
         self._check_is_built()
 
-        # Call `before_gradient_based_update` to allow for non-gradient based
-        # preparations-, logging-, and update logic to happen.
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
         if training_data is None:
             training_data = TrainingData(
                 batch=batch,
@@ -162,11 +158,15 @@ class TorchMetaLearner(TorchLearner):
         )
 
         # `None` means: skip this update. No gradient-based update takes place, so
-        # `after_gradient_based_update` does not run either.
+        # neither of its hooks runs (see `Learner.update`).
         if batch_iter is None:
             if not _no_metrics_reduce:
                 return self.metrics.reduce()
             return
+
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
 
         # If no training data for `DifferentiableLearner`s have been passed in, cycle
         # over the main training_data for each `DifferentiableLearner`.
