@@ -430,6 +430,8 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
+        from ray.data._internal.tensor_extensions.arrow import tensor_array_to_numpy
+
         if isinstance(array, pa.ChunkedArray):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
@@ -447,9 +449,9 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 )
             else:
                 # chunk(0) returns pa.Array with zero_copy_only=True by default
-                values = array.chunk(0).to_numpy(zero_copy_only=False)
+                values = tensor_array_to_numpy(array.chunk(0))
         else:
-            values = array.to_numpy(zero_copy_only=False)
+            values = tensor_array_to_numpy(array)
 
         # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
         # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata

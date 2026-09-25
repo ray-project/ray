@@ -15,6 +15,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    SortShuffleMapOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -35,7 +41,7 @@ from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -185,20 +191,35 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
 
 def test_sort_operator(
     ray_start_regular_shared_2_cpus,
+    restore_data_context,
 ):
     ctx = DataContext.get_current()
 
-    planner = create_planner()
-    read_op = get_parquet_read_logical_op()
-    op = Sort(
-        sort_key=SortKey("col1"),
-        input_dependencies=[read_op],
-    )
-    plan = LogicalPlan(op, ctx)
-    physical_plan, _ = planner.plan(plan)
-    physical_op = physical_plan.dag
+    def plan_sort():
+        planner = create_planner()
+        read_op = get_parquet_read_logical_op()
+        op = Sort(
+            sort_key=SortKey("col1"),
+            input_dependencies=[read_op],
+        )
+        plan = LogicalPlan(op, ctx)
+        physical_plan, _ = planner.plan(plan)
+        assert op.name == "Sort"
+        return physical_plan.dag
 
-    assert op.name == "Sort"
+    # Default (shuffle v2): reduce <- map <- read. The single-file read yields
+    # one partition, so no sampling op is planned.
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    physical_op = plan_sort()
+    assert isinstance(physical_op, ShuffleReduceOp)
+    assert len(physical_op.input_dependencies) == 1
+    map_op = physical_op.input_dependencies[0]
+    assert isinstance(map_op, SortShuffleMapOp)
+    assert isinstance(map_op.input_dependencies[0], MapOperator)
+
+    # Legacy sort shuffle: a single all-to-all op.
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+    physical_op = plan_sort()
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
