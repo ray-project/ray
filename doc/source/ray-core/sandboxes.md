@@ -205,7 +205,8 @@ base_sb = sandbox.create(
 ray.get(base_sb.exec.remote("python3 -c 'import math; print(\"Environment warmed!\")'"))
 
 # 3. Take a snapshot checkpoint of the sandbox state to local disk or SSD
-checkpoint_path = ray.get(base_sb.checkpoint.remote("/tmp/ray/checkpoints/base_snap"))
+# (checkpoint_path is optional; defaults to /tmp/ray/sandbox/checkpoints/<sandbox_id>-<uuid>)
+checkpoint_path = ray.get(base_sb.checkpoint.remote())
 
 # 4. Instantaneously restore multiple branching child sandboxes from the checkpoint
 branch_1 = sandbox.restore(checkpoint_path)

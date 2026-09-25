@@ -488,22 +488,30 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             return meta.get("status", SandboxStatus.RUNNING)
         return SandboxStatus.TERMINATED
 
-    def pause_sandbox(self, sandbox_id: str) -> None:
+    def pause_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
         """Pause all processes inside the sandbox without disk serialization."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
         pause_args = self._runsc_base_args(config) + ["pause", sandbox_id]
-        res = subprocess.run(pause_args, capture_output=True, text=True)
+        res = subprocess.run(
+            pause_args, capture_output=True, text=True, timeout=timeout_seconds
+        )
         if res.returncode != 0:
             raise SandboxError(f"Failed to pause sandbox '{sandbox_id}': {res.stderr}")
         meta["status"] = SandboxStatus.PAUSED
 
-    def resume_sandbox(self, sandbox_id: str) -> None:
+    def resume_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
         """Resume execution of a paused sandbox."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
         resume_args = self._runsc_base_args(config) + ["resume", sandbox_id]
-        res = subprocess.run(resume_args, capture_output=True, text=True)
+        res = subprocess.run(
+            resume_args, capture_output=True, text=True, timeout=timeout_seconds
+        )
         if res.returncode != 0:
             raise SandboxError(f"Failed to resume sandbox '{sandbox_id}': {res.stderr}")
         meta["status"] = SandboxStatus.RUNNING
@@ -516,6 +524,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         compression: str = "none",
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
+        timeout_seconds: float = 30.0,
         **kwargs,
     ) -> Dict[str, Any]:
         """Save the sandbox state to a checkpoint bundle directory.
@@ -523,11 +532,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         Args:
             sandbox_id: Unique string identifier of the sandbox.
             checkpoint_path: Directory path where the checkpoint bundle will be saved.
-                If None, defaults to /tmp/ray/sandbox/checkpoints/<checkpoint_id>.
+                If None, defaults to /tmp/ray/sandbox/checkpoints/<sandbox_id>-<checkpoint_uuid>.
             leave_running: If True, keep the sandbox running after checkpointing.
             compression: Compression level ('none' or 'flate-best-speed').
             exclude_committed_zero_pages: If True, exclude committed zero-filled pages.
             direct: If True, use O_DIRECT for writing checkpoint pages.
+            timeout_seconds: Timeout for the checkpoint operation.
             **kwargs: Backend-specific arguments.
 
         Returns:
@@ -544,8 +554,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
 
         if not checkpoint_path:
-            chk_uuid = uuid.uuid4().hex[:12]
-            checkpoint_path = os.path.join(_RAY_SANDBOX_DIR, "checkpoints", f"checkpoint-{chk_uuid}")
+            chk_uuid = uuid.uuid4().hex[:8]
+            checkpoint_path = os.path.join(
+                _RAY_SANDBOX_DIR, "checkpoints", f"{sandbox_id}-{chk_uuid}"
+            )
 
         checkpoint_path = os.path.abspath(checkpoint_path)
         state_dir = os.path.join(checkpoint_path, "state")
@@ -567,31 +579,71 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         checkpoint_args.append(sandbox_id)
 
         start_time = time.time()
-        res = subprocess.run(checkpoint_args, capture_output=True, text=True)
+        res = subprocess.run(
+            checkpoint_args, capture_output=True, text=True, timeout=timeout_seconds
+        )
         duration = time.time() - start_time
 
         if res.returncode != 0:
-            raise SandboxError(f"Failed to checkpoint sandbox '{sandbox_id}': {res.stderr}")
+            raise SandboxError(
+                f"Failed to checkpoint sandbox '{sandbox_id}': {res.stderr}"
+            )
 
         # Snapshot overlay filesystem state and writable workdir
         saved_rootfs = os.path.join(root_dir, "rootfs")
         if os.path.isdir(saved_rootfs):
+            dest_rootfs = os.path.join(fs_dir, "rootfs")
             try:
                 shutil.copytree(
                     saved_rootfs,
-                    os.path.join(fs_dir, "rootfs"),
+                    dest_rootfs,
                     dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns(".gvisor.filestore*"),
                 )
-            except shutil.Error:
+            except (PermissionError, shutil.Error):
+                if not config.rootless and os.geteuid() != 0:
+                    try:
+                        os.makedirs(dest_rootfs, exist_ok=True)
+                        subprocess.run(
+                            [
+                                "sudo",
+                                "cp",
+                                "-a",
+                                os.path.join(saved_rootfs, "."),
+                                dest_rootfs,
+                            ],
+                            check=True,
+                        )
+                        subprocess.run(
+                            [
+                                "sudo",
+                                "find",
+                                dest_rootfs,
+                                "-name",
+                                ".gvisor.filestore*",
+                                "-delete",
+                            ],
+                            check=False,
+                        )
+                    except Exception as e:
+                        raise SandboxError(
+                            f"Failed to copy rootfs overlay via sudo: {e}"
+                        ) from e
+                else:
+                    raise
+            except Exception:
                 pass
 
         if meta.get("workdir") and os.path.isdir(meta["workdir"]):
-            shutil.copytree(meta["workdir"], os.path.join(fs_dir, "workdir"), dirs_exist_ok=True)
+            shutil.copytree(
+                meta["workdir"], os.path.join(fs_dir, "workdir"), dirs_exist_ok=True
+            )
 
         bundle_config_path = os.path.join(root_dir, "config.json")
         if os.path.isfile(bundle_config_path):
-            shutil.copy2(bundle_config_path, os.path.join(checkpoint_path, "config.json"))
+            shutil.copy2(
+                bundle_config_path, os.path.join(checkpoint_path, "config.json")
+            )
 
         manifest = {
             "version": "1.0",
@@ -618,7 +670,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "fs_dir": "fs",
             "leave_running": leave_running,
         }
-        with open(os.path.join(checkpoint_path, "manifest.json"), "w", encoding="utf-8") as f:
+        with open(
+            os.path.join(checkpoint_path, "manifest.json"), "w", encoding="utf-8"
+        ) as f:
             json.dump(manifest, f, indent=2)
 
         if not leave_running:
@@ -627,9 +681,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if proc:
                 self._terminate_tree(proc)
 
-        # Ensure all saved state files and memory dumps created by root are readable/writable by ray user
+        # Ensure all saved state files and memory dumps created by root are accessible
+        # to the current process owner without exposing write permissions to all local users.
         if not config.rootless and os.geteuid() != 0:
-            subprocess.run(["sudo", "chmod", "-R", "a+rw", checkpoint_path], capture_output=True)
+            uid = os.getuid()
+            gid = os.getgid()
+            subprocess.run(
+                ["sudo", "chown", "-R", f"{uid}:{gid}", checkpoint_path],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["sudo", "chmod", "-R", "u+rwX,go+rX", checkpoint_path],
+                capture_output=True,
+            )
 
         return {
             "checkpoint_path": checkpoint_path,
@@ -670,19 +734,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         state_dir = os.path.join(checkpoint_path, "state")
 
         if not os.path.isfile(manifest_file):
-            raise SandboxError(f"Missing manifest.json in checkpoint directory '{checkpoint_path}'.")
+            raise SandboxError(
+                f"Missing manifest.json in checkpoint directory '{checkpoint_path}'."
+            )
         if not os.path.isdir(state_dir):
-            raise SandboxError(f"Missing state directory in checkpoint directory '{checkpoint_path}'.")
-
+            raise SandboxError(
+                f"Missing state directory in checkpoint directory '{checkpoint_path}'."
+            )
 
         with open(manifest_file, "r", encoding="utf-8") as f:
             manifest = json.load(f)
 
-        cfg_dict = manifest.get("config", {})
+        cfg_dict = dict(manifest.get("config", {}))
         if cpu is not None:
             cfg_dict["cpu"] = cpu
         if memory is not None:
             cfg_dict["memory"] = memory
+        for key in ["env", "workdir", "network", "dns", "capabilities", "readonly"]:
+            if kwargs.get(key) is not None:
+                cfg_dict[key] = kwargs[key]
 
         config = SandboxConfig(**cfg_dict)
 
@@ -733,7 +803,37 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns(".gvisor.filestore*"),
                         )
-                    except shutil.Error:
+                    except (PermissionError, shutil.Error):
+                        if not config.rootless and os.geteuid() != 0:
+                            try:
+                                subprocess.run(
+                                    [
+                                        "sudo",
+                                        "cp",
+                                        "-a",
+                                        os.path.join(saved_rootfs, "."),
+                                        rootfs_dir,
+                                    ],
+                                    check=True,
+                                )
+                                subprocess.run(
+                                    [
+                                        "sudo",
+                                        "find",
+                                        rootfs_dir,
+                                        "-name",
+                                        ".gvisor.filestore*",
+                                        "-delete",
+                                    ],
+                                    check=False,
+                                )
+                            except Exception as e:
+                                raise SandboxCreationError(
+                                    f"Failed to restore rootfs overlay via sudo: {e}"
+                                ) from e
+                        else:
+                            raise
+                    except Exception:
                         pass
                     break
 
@@ -760,7 +860,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ) from err
 
         restore_args = self._build_restore_command(
-            config, root_dir, state_dir, sandbox_id, background=background, direct=direct
+            config,
+            root_dir,
+            state_dir,
+            sandbox_id,
+            background=background,
+            direct=direct,
         )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
@@ -829,7 +934,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "status": SandboxStatus.RUNNING,
         }
         return sandbox_id
-
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
@@ -971,7 +1075,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
             return ["bash", "-c", script]
         return args
-
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
         """SIGKILL the sandbox process group and reap the Popen.

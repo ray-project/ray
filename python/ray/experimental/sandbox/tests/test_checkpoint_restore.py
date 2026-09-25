@@ -1,18 +1,19 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+import ray.experimental.sandbox as sandbox_api
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxError
 from ray.experimental.sandbox.runtime import SandboxRuntime
-import ray.experimental.sandbox as sandbox_api
 
 
 class TestCheckpointRestore(unittest.TestCase):
@@ -78,7 +79,9 @@ class TestCheckpointRestore(unittest.TestCase):
 
     def test_checkpoint_rootless_disallowed(self):
         sandbox_id, _ = self._create_mock_sandbox(rootless=True)
-        with pytest.raises(SandboxError, match="does not support checkpoint/restore in rootless mode"):
+        with pytest.raises(
+            SandboxError, match="does not support checkpoint/restore in rootless mode"
+        ):
             self.backend.checkpoint_sandbox(sandbox_id)
 
     def test_checkpoint_bundle_creation(self):
@@ -124,8 +127,15 @@ class TestCheckpointRestore(unittest.TestCase):
             )
 
             # Check runsc checkpoint command flags
-            args, _ = mock_run.call_args
-            cmd = args[0]
+            checkpoint_calls = [
+                call[0][0]
+                for call in mock_run.call_args_list
+                if len(call[0]) > 0
+                and isinstance(call[0][0], list)
+                and "checkpoint" in call[0][0]
+            ]
+            assert len(checkpoint_calls) == 1
+            cmd = checkpoint_calls[0]
             assert "checkpoint" in cmd
             assert "--leave-running" in cmd
             assert "--compression=none" in cmd
@@ -150,7 +160,9 @@ class TestCheckpointRestore(unittest.TestCase):
             self.backend.restore_sandbox(invalid_ckpt)
 
     def test_build_restore_command(self):
-        config_none = SandboxConfig(image="busybox:latest", network="none", rootless=False)
+        config_none = SandboxConfig(
+            image="busybox:latest", network="none", rootless=False
+        )
         cmd = self.backend._build_restore_command(
             config=config_none,
             root_dir="/path/to/bundle",
@@ -159,7 +171,8 @@ class TestCheckpointRestore(unittest.TestCase):
             background=True,
             direct=False,
         )
-        assert cmd[0] == "runsc"
+        assert cmd[0] in ("runsc", "sudo")
+        assert "runsc" in cmd
         assert "restore" in cmd
         assert "--background" in cmd
         assert "--bundle" in cmd
@@ -169,7 +182,9 @@ class TestCheckpointRestore(unittest.TestCase):
         assert cmd[-1] == "sb-test"
 
         # Public network with slirp4netns
-        config_public = SandboxConfig(image="busybox:latest", network="public", rootless=False)
+        config_public = SandboxConfig(
+            image="busybox:latest", network="public", rootless=False
+        )
         cmd_public = self.backend._build_restore_command(
             config=config_public,
             root_dir="/path/to/bundle",
@@ -226,13 +241,12 @@ class TestCheckpointRestore(unittest.TestCase):
         mock_proc.poll.return_value = 0
         mock_proc.returncode = 0
 
-        with patch("subprocess.Popen", return_value=mock_proc), \
-             patch("subprocess.run") as mock_run, \
-             patch("time.sleep"):
+        with patch("subprocess.Popen", return_value=mock_proc), patch(
+            "subprocess.run"
+        ) as mock_run, patch("time.sleep"):
             # runsc state query returns running
             mock_run.return_value = MagicMock(
-                returncode=0,
-                stdout=json.dumps({"status": "running"})
+                returncode=0, stdout=json.dumps({"status": "running"})
             )
             restored_id = self.backend.restore_sandbox(ckpt_dir)
 
@@ -248,16 +262,79 @@ class TestCheckpointRestore(unittest.TestCase):
             with open(os.path.join(restored_root, "rootfs", "saved.txt")) as f:
                 assert f.read() == "restored upper data"
 
+    def test_restore_config_overrides(self):
+        ckpt_dir = os.path.join(self.temp_dir, "override_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        fs_upper = os.path.join(ckpt_dir, "fs", "rootfs")
+        os.makedirs(state_dir, exist_ok=True)
+        os.makedirs(fs_upper, exist_ok=True)
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-orig",
+            "config": {
+                "image": "busybox:latest",
+                "cpu": 1.0,
+                "memory": "512Mi",
+                "env": {"ORIG": "VAL"},
+                "workdir": "/orig",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        with patch("subprocess.Popen", return_value=mock_proc), patch(
+            "subprocess.run"
+        ) as mock_run, patch("time.sleep"):
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            restored_id = self.backend.restore_sandbox(
+                ckpt_dir,
+                cpu=4.0,
+                memory="2Gi",
+                env={"NEW": "VAL2"},
+                workdir="/new_workdir",
+                network="public",
+                readonly=False,
+            )
+            meta = self.backend._sandbox_metadata[restored_id]
+            assert meta["config"].cpu == 4.0
+            assert meta["config"].memory == "2Gi"
+            assert meta["config"].env == {"NEW": "VAL2"}
+            assert meta["config"].workdir == "/new_workdir"
+            assert meta["config"].network == "public"
+            assert meta["config"].readonly is False
+
+    def test_default_checkpoint_path_format(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = self.backend.checkpoint_sandbox(sandbox_id)
+            ckpt_path = result["checkpoint_path"]
+            assert sandbox_id in ckpt_path
+            assert "/checkpoints/" in ckpt_path
+
     def test_runtime_delegation(self):
         runtime = SandboxRuntime()
         runtime._backend = MagicMock()
-        runtime._backend.checkpoint_sandbox.return_value = {"checkpoint_path": "/ckpt/dir"}
+        runtime._backend.checkpoint_sandbox.return_value = {
+            "checkpoint_path": "/ckpt/dir"
+        }
         runtime._backend.restore_sandbox.return_value = "restored-id"
 
         ckpt = runtime.checkpoint("id-123", checkpoint_path="/custom")
-        assert ckpt == {"checkpoint_path": "/ckpt/dir"}
+        assert ckpt == "/ckpt/dir"
         runtime._backend.checkpoint_sandbox.assert_called_once_with(
-            instance_id="id-123",
+            sandbox_id="id-123",
             checkpoint_path="/custom",
             leave_running=True,
             timeout_seconds=30.0,
@@ -268,12 +345,20 @@ class TestCheckpointRestore(unittest.TestCase):
         runtime._backend.restore_sandbox.assert_called_once()
 
         runtime.pause("id-123")
-        runtime._backend.pause_sandbox.assert_called_once_with("id-123", timeout_seconds=10.0)
+        runtime._backend.pause_sandbox.assert_called_once_with(
+            "id-123", timeout_seconds=10.0
+        )
 
         runtime.resume("id-123")
-        runtime._backend.resume_sandbox.assert_called_once_with("id-123", timeout_seconds=10.0)
+        runtime._backend.resume_sandbox.assert_called_once_with(
+            "id-123", timeout_seconds=10.0
+        )
 
     def test_api_exports(self):
         assert hasattr(sandbox_api, "restore")
         assert callable(sandbox_api.restore)
         assert "restore" in sandbox_api.__all__
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

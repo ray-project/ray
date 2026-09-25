@@ -123,7 +123,7 @@ def restore(
     workdir: Optional[str] = None,
     ttl_seconds: Optional[int] = None,
     timeout_seconds: float = 30.0,
-    network: str = "none",
+    network: Optional[str] = None,
     dns: Optional[List[str]] = None,
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
@@ -172,7 +172,7 @@ def restore(
         network=network,
         dns=dns,
         capabilities=capabilities,
-        readonly=readonly if readonly is not None else True,
+        readonly=readonly,
         **kwargs,
     )
 
