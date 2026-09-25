@@ -73,6 +73,11 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
 
+# TorchTPU (PyTorch/XLA) environment variables and defaults.
+TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
+TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
+DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
+
 # Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
 TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 
@@ -266,6 +271,39 @@ def _accelerator_type_check(accelerator_type: str):
         raise ValueError(
             f"Invalid accelerator type: {accelerator_type}. Must start with one of: {VALID_TPU_TYPES}"
         )
+
+
+def normalize_torchtpu_topology(
+    topology: str,
+    tpu_resource_per_chip: int = 1,
+    accelerator_type: Optional[str] = None,
+) -> str:
+    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
+    if type(tpu_resource_per_chip) is not int:
+        raise TypeError(
+            f"tpu_resource_per_chip must be an integer, got {type(tpu_resource_per_chip)}."
+        )
+    if tpu_resource_per_chip <= 0:
+        raise ValueError("tpu_resource_per_chip must be positive")
+
+    if not isinstance(topology, str):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+
+    dims = [d.strip() for d in topology.lower().replace("x", ",").split(",")]
+    if len(dims) not in (2, 3, 4) or not all(d.isdigit() and int(d) > 0 for d in dims):
+        raise ValueError(f"Invalid topology string: {topology!r}")
+    dims = [str(int(d)) for d in dims]
+
+    # 2D topologies (e.g. "2x4") are padded with 1 for the Z dimension ("2,4,1").
+    if len(dims) == 2:
+        dims.append("1")
+    # For dual-device TPUs (or when tpu_resource_per_chip > 1), expand 3D to 4D ("2,4,1,2").
+    if len(dims) == 3:
+        if tpu_resource_per_chip > 1:
+            dims.append(str(tpu_resource_per_chip))
+        elif accelerator_type and "v7x" in accelerator_type.lower():
+            dims.append("2")
+    return ",".join(dims)
 
 
 def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
