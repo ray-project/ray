@@ -1,5 +1,6 @@
 import io
 import json
+import mmap
 import os
 import sys
 import tarfile
@@ -569,7 +570,7 @@ def test_pull_builds_erofs_image_with_recorded_owners(tmp_path, fake_mkfs_erofs)
 
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
     args = (bin_dir / "mkfs.args").read_text().split()
-    assert args[:3] == ["--tar=f", "-b4096", "-E^inline_data"]
+    assert args[:3] == ["--tar=f", f"-b{mmap.PAGESIZE}", "-E^inline_data"]
     marker = open(os.path.join(image_dir, ".extracted"), encoding="utf-8").read()
     assert marker == expected_extract_marker()
     # The fake image *is* the flattened tar: check the owners it carries.

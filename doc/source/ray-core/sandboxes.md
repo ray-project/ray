@@ -40,7 +40,99 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. Ubuntu 24.04 and Debian 13 package a new enough `erofs-utils`; Ubuntu 22.04's is too old, so build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) there (`./autogen.sh && ./configure --disable-fuse && make && make install`, after installing `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`).
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
+
+For example, the following Dockerfile adds all three tools to a Ray image for nodes with 4 KiB pages. Ray's images are based on Ubuntu 22.04, whose `erofs-utils` is too old, so it builds erofs-utils from source. It does so in a separate stage, so the build tools stay out of the final image. On an Ubuntu 24.04 or Debian 13 base image, `apt-get install erofs-utils` instead:
+
+```dockerfile
+ARG GVISOR_VERSION=20260921.0
+ARG SLIRP4NETNS_VERSION=1.3.5
+ARG EROFS_UTILS_VERSION=1.9.4
+
+FROM rayproject/ray:latest AS build
+ARG GVISOR_VERSION
+ARG SLIRP4NETNS_VERSION
+ARG EROFS_UTILS_VERSION
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends autoconf automake bzip2 \
+        ca-certificates curl gcc libtool liblz4-dev make pkg-config uuid-dev
+
+# gVisor, with the gvisor-bin/ helpers that must stay next to runsc
+RUN mkdir -p /out/bin \
+    && curl -fsSL "https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}/$(uname -m)/gvisor.tar.bz2" \
+        | tar -xj -C /out/bin
+
+# slirp4netns, for network="public"
+RUN curl -fsSL -o /out/bin/slirp4netns \
+        "https://github.com/rootless-containers/slirp4netns/releases/download/v${SLIRP4NETNS_VERSION}/slirp4netns-$(uname -m)" \
+    && chmod a+rx /out/bin/slirp4netns
+
+# erofs-utils
+RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_UTILS_VERSION}.tar.gz" \
+        | tar -xz -C /tmp \
+    && cd "/tmp/erofs-utils-${EROFS_UTILS_VERSION}" \
+    && ./autogen.sh \
+    && ./configure --disable-fuse --prefix=/out \
+    && make -j"$(nproc)" \
+    && make install
+
+FROM rayproject/ray:latest
+COPY --from=build /out/bin/ /usr/local/bin/
+```
+
+For nodes with 64 KiB pages, the following Dockerfile builds both `runsc` and erofs-utils from source. As before, it builds them in a separate stage, so the build tools stay out of the final image. `PAGE_SIZE` is the page size of the nodes the image runs on, and defaults to 65536. To set it explicitly, pass it as a build argument, for example `--build-arg PAGE_SIZE=4096`:
+
+```dockerfile
+ARG GVISOR_VERSION=20260921.0
+ARG SLIRP4NETNS_VERSION=1.3.5
+ARG EROFS_UTILS_VERSION=1.9.4
+ARG PAGE_SIZE=65536
+
+FROM rayproject/ray:latest AS build
+ARG GVISOR_VERSION
+ARG SLIRP4NETNS_VERSION
+ARG EROFS_UTILS_VERSION
+ARG PAGE_SIZE
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends autoconf automake \
+        build-essential bzip2 ca-certificates clang curl git \
+        g++-aarch64-linux-gnu g++-x86-64-linux-gnu gcc-aarch64-linux-gnu \
+        gcc-x86-64-linux-gnu libbpf-dev liblz4-dev libtool pkg-config python3 \
+        uuid-dev
+
+# gVisor, with the gvisor-bin/ helpers that must stay next to runsc
+RUN curl -fsSL -o /usr/local/bin/bazelisk \
+        "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-$(dpkg --print-architecture)" \
+    && chmod +x /usr/local/bin/bazelisk \
+    && git clone --depth 1 --branch "release-${GVISOR_VERSION}" \
+        https://github.com/google/gvisor.git /tmp/gvisor \
+    && cd /tmp/gvisor \
+    && bazelisk build -c opt --define=pagesize="$((PAGE_SIZE / 1024))k" \
+        //debian:gvisor-release-tar-bz2 \
+    && mkdir -p /out/bin \
+    && tar -xjf bazel-bin/debian/gvisor.tar.bz2 -C /out/bin
+
+# slirp4netns, for network="public"
+RUN curl -fsSL -o /out/bin/slirp4netns \
+        "https://github.com/rootless-containers/slirp4netns/releases/download/v${SLIRP4NETNS_VERSION}/slirp4netns-$(uname -m)" \
+    && chmod a+rx /out/bin/slirp4netns
+
+# erofs-utils
+RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_UTILS_VERSION}.tar.gz" \
+        | tar -xz -C /tmp \
+    && cd "/tmp/erofs-utils-${EROFS_UTILS_VERSION}" \
+    && ./autogen.sh \
+    && ./configure --disable-fuse --prefix=/out MAX_BLOCK_SIZE="$PAGE_SIZE" \
+    && make -j"$(nproc)" \
+    && make install
+
+FROM rayproject/ray:latest
+COPY --from=build /out/bin/ /usr/local/bin/
+```
 
 ## Usage patterns and examples
 
@@ -466,7 +558,9 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 ## Troubleshooting
 
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
+* **`gVisor container failed to start: WARNING: host page size mismatch - running on non-4K host`**: The node's kernel uses 64 KiB pages, and gVisor's prebuilt `runsc` only supports 4 KiB pages. Build `runsc` from source with `--define=pagesize=64k` (see [Requirements](#requirements)).
 * **`mkfs.erofs` not found or too old**: Sandbox creation fails with an error naming erofs-utils 1.7. Install erofs-utils 1.7 or later on every worker node; Ubuntu 22.04's packaged 1.4 predates the `--tar` option Ray relies on.
+* **`mkfs.erofs failed: ... invalid block size 65536`**: The node's kernel uses 64 KiB pages, and its erofs-utils package can only build 4 KiB blocks. Build erofs-utils from source with `./configure MAX_BLOCK_SIZE=65536` (see [Requirements](#requirements)).
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
 * **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
