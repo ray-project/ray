@@ -309,17 +309,20 @@ def _shuffle_reduce_task(
 
     def _flush(tables_by_input: List[List[pa.Table]]):
         nonlocal output_buffer
-        if output_buffer is None:
+        if output_buffer is None and target_max_block_size is not None:
             output_buffer = BlockOutputBuffer(
                 OutputBlockSizeOption.of(
                     target_max_block_size=target_max_block_size,
                 )
             )
         for block in reduce_fn(partition_id, tables_by_input):
-            output_buffer.add_block(block)
             # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
             # downstream of ``_reduce_output_blocks``.
-            yield from output_buffer.iter_ready_blocks()
+            if output_buffer is None:
+                yield block
+            else:
+                output_buffer.add_block(block)
+                yield from output_buffer.iter_ready_blocks()
 
     def _reduce_output_blocks():
         # Gather every input's full shard list, then call reduce_fn exactly once
