@@ -203,8 +203,9 @@ class HAProxyMetricsCollector:
             description=(
                 "Number of HAProxy processes running on the node for this proxy, "
                 "spanning the live worker, draining workers from prior reloads, "
-                "and any leaked/orphaned workers. A value persistently above 1 "
-                "indicates HAProxy processes are not being reaped."
+                "and any leaked/orphaned workers (the master is not counted in "
+                "master-worker mode). A value persistently above 1 indicates "
+                "HAProxy processes are not being reaped."
             ),
             tag_keys=("node_id",),
         )
