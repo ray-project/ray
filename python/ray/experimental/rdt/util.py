@@ -84,7 +84,7 @@ def register_tensor_transport(
         has_custom_transports = True
 
 
-DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC"]
+DEFAULT_TRANSPORTS = ["NIXL", "GLOO", "NCCL", "CUDA_IPC", "TPU_SYNC"]
 
 _default_transports_registered = False
 
@@ -110,6 +110,16 @@ def _ensure_default_transports_registered():
             register_tensor_transport(
                 "CUDA_IPC", ["cuda"], CudaIpcTransport, torch.Tensor
             )
+            try:
+                from ray.experimental.rdt.tpu_sync_tensor_transport import (
+                    TpuSyncTensorTransport,
+                )
+
+                register_tensor_transport(
+                    "TPU_SYNC", ["tpu", "xla", "cpu"], TpuSyncTensorTransport, torch.Tensor
+                )
+            except ImportError:
+                pass
         except ImportError:
             pass
 

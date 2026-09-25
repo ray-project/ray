@@ -28,6 +28,7 @@ def __ray_send__(
     backend: str,
 ):
     """Helper function that runs on the src actor to send tensors to the dst actor."""
+    print(f"[RDT DEBUG] ENTERING __ray_send__ for obj_id={obj_id}")
     from ray._private.worker import global_worker
 
     rdt_store = global_worker.rdt_manager._rdt_store
@@ -75,8 +76,10 @@ def __ray_recv__(
     tensor_transport_meta: TensorTransportMetadata,
     communicator_meta: CommunicatorMetadata,
     backend: str,
+    *deps,
 ):
     """Helper function that runs on the dst actor to receive tensors from the src actor."""
+    print(f"[RDT DEBUG] ENTERING __ray_recv__ for obj_id={obj_id}, deps={deps}")
     from ray._private.worker import global_worker
 
     rdt_store = global_worker.rdt_manager.rdt_store
