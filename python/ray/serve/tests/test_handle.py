@@ -1,5 +1,7 @@
 import logging
+import os
 import re
+import threading
 
 import pytest
 
@@ -10,6 +12,7 @@ from ray.serve._private.common import (
     OBJ_REF_NOT_SUPPORTED_ERROR,
     DeploymentID,
     RequestMetadata,
+    RunningReplicaInfo,
 )
 from ray.serve._private.replica_result import (
     ActorReplicaResult,
@@ -20,6 +23,45 @@ from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.conftest import _shared_serve_instance  # noqa
+
+
+def test_scale_up_actor_lookup_does_not_block_requests(serve_instance, monkeypatch):
+    @serve.deployment(num_replicas=1)
+    class Deployment:
+        async def __call__(self):
+            return os.getpid()
+
+    # Keep the original replica alive when updating num_replicas via serve._run.
+    Deployment = Deployment.options(_internal=True, version="v1")
+    handle = serve.run(Deployment.bind())
+    original_pid = handle.remote().result(timeout_s=10)
+    lookup_started = threading.Event()
+    release_lookup = threading.Event()
+    get_actor_handle = RunningReplicaInfo.get_actor_handle
+
+    def blocking_get_actor_handle(replica_info):
+        lookup_started.set()
+        assert release_lookup.wait(60), "Replica lookup was never released"
+        return get_actor_handle(replica_info)
+
+    # Stall only this process's lookups; controller updates and replica RPCs are real.
+    monkeypatch.setattr(
+        RunningReplicaInfo, "get_actor_handle", blocking_get_actor_handle
+    )
+    try:
+        serve._run(Deployment.options(num_replicas=2).bind(), _blocking=False)
+        assert lookup_started.wait(30), "Router never received the new replica"
+
+        responses = [handle.remote() for _ in range(3)]
+        assert [response.result(timeout_s=10) for response in responses] == [
+            original_pid
+        ] * 3
+    finally:
+        release_lookup.set()
+
+    pids = handle.broadcast("__call__").results(timeout_s=10)
+    assert len(pids) == len(set(pids)) == 2
+    assert original_pid in pids
 
 
 @pytest.mark.parametrize(

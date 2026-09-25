@@ -572,6 +572,11 @@ RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S = get_env_float(
     "RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S", 0.5
 )
 
+# Maximum concurrent actor-handle lookups across all deployment routers in a process.
+RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS = get_env_int_positive(
+    "RAY_SERVE_REPLICA_HANDLE_RESOLVER_THREADS", 16
+)
+
 # The default autoscaling policy to use if none is specified.
 DEFAULT_AUTOSCALING_POLICY_NAME = (
     "ray.serve.autoscaling_policy:default_autoscaling_policy"

@@ -1,10 +1,16 @@
 import asyncio
 import importlib
+import logging
 import os
 import random
 import sys
+import threading
 import time
+from collections import Counter, defaultdict
+from dataclasses import replace
+from types import SimpleNamespace, coroutine
 from typing import Optional, Set
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -24,6 +30,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.request_router import (
     PendingRequest,
@@ -2099,18 +2106,8 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
             model_ids=set(replica_info.multiplexed_model_ids),
         )
 
-    router = PowerOfTwoChoicesRequestRouter(
-        deployment_id=deploy_id,
-        handle_source=DeploymentHandleSource.REPLICA,
-        prefer_local_node_routing=False,
-        prefer_local_az_routing=False,
-        self_node_id=ROUTER_NODE_ID,
-        self_actor_id="fake-actor-id",
-        self_actor_handle=None,
-        use_replica_queue_len_cache=False,
-        get_curr_time_s=TIMER.time,
-        create_replica_wrapper_func=create_fake_replica,
-    )
+    router = pow_2_router
+    router._resolve_replica = AsyncMock(side_effect=create_fake_replica)
     router.initialize_state()
 
     # First update: replica r1 has model m1 only
@@ -2124,6 +2121,7 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
         multiplexed_model_ids=["m1"],
     )
     router._update_running_replicas([info_v1])
+    await async_wait_for_condition(lambda: replica_id in router.curr_replicas)
     assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
     assert "m2" not in router._multiplexed_model_id_to_replica_ids
 
@@ -2140,6 +2138,377 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
     router._update_running_replicas([info_v2])
     assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
     assert router._multiplexed_model_id_to_replica_ids.get("m2") == {replica_id}
+
+
+def replica_info(name):
+    return RunningReplicaInfo(
+        replica_id=ReplicaID(
+            unique_id=name, deployment_id=DeploymentID(name="TEST_DEPLOYMENT")
+        ),
+        node_id="node",
+        node_ip="127.0.0.1",
+        availability_zone="az",
+        actor_name=name,
+        max_ongoing_requests=10,
+    )
+
+
+@pytest.fixture
+async def actor_lookup(pow_2_router, monkeypatch):
+    """Control blocking lookups without timing-dependent GCS delays."""
+    started = defaultdict(threading.Event)
+    release = defaultdict(threading.Event)
+    finished = defaultdict(threading.Event)
+    calls = Counter()
+    handles = defaultdict(Mock)
+    errors = {}
+    loop_thread = threading.get_ident()
+
+    def lookup(info):
+        assert threading.get_ident() != loop_thread
+        name = info.actor_name
+        calls[name] += 1
+        release_event = release[name]
+        started[name].set()
+        try:
+            assert release_event.wait(timeout=10), "Lookup was never released"
+            if name in errors:
+                raise errors[name]
+            return handles[name]
+        finally:
+            finished[name].set()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", lookup)
+    monkeypatch.setattr(
+        pow_2_router,
+        "_probe_queue_lens",
+        AsyncMock(side_effect=lambda replicas, _: [(r, 0) for r in replicas]),
+    )
+    yield SimpleNamespace(
+        started=started,
+        release=release,
+        finished=finished,
+        calls=calls,
+        handles=handles,
+        errors=errors,
+    )
+    for event in release.values():
+        event.set()
+
+    await pow_2_router._shutdown_replica_resolution()
+
+
+async def test_replica_lookup_does_not_block_requests(pow_2_router, actor_lookup):
+    router = pow_2_router
+    old, new = replica_info("old"), replica_info("new")
+    retained = FakeRunningReplica("old")
+    retained.set_queue_len_response(0)
+    router.update_replicas([retained])
+
+    router._update_running_replicas([old, new])
+    await async_wait_for_condition(actor_lookup.started["new"].is_set)
+    # Selection must progress while the new actor's blocking lookup is in flight.
+    selected = await asyncio.wait_for(
+        router._choose_replica_for_request(fake_pending_request()), timeout=1
+    )
+    assert selected is retained
+    assert set(router.curr_replicas) == {old.replica_id}
+    assert actor_lookup.calls["old"] == 0
+
+    actor_lookup.release["new"].set()
+    await async_wait_for_condition(lambda: new.replica_id in router.curr_replicas)
+    assert (
+        router.curr_replicas[new.replica_id]._actor_handle
+        is actor_lookup.handles["new"]
+    )
+    assert actor_lookup.calls["new"] == 1
+
+
+async def test_replica_lookup_uses_latest_snapshot(pow_2_router, actor_lookup):
+    router = pow_2_router
+    slow, fast = replica_info("slow"), replica_info("fast")
+    router._update_running_replicas([slow])
+    await async_wait_for_condition(actor_lookup.started["slow"].is_set)
+
+    # Repeated snapshots share the lookup and refresh metadata on completion.
+    updated = replace(slow, multiplexed_model_ids=["model"], max_ongoing_requests=42)
+    for _ in range(3):
+        router._update_running_replicas([updated, fast])
+    await async_wait_for_condition(actor_lookup.started["fast"].is_set)
+    actor_lookup.release["fast"].set()
+    await async_wait_for_condition(lambda: fast.replica_id in router.curr_replicas)
+    assert slow.replica_id not in router.curr_replicas
+
+    actor_lookup.release["slow"].set()
+    await async_wait_for_condition(lambda: slow.replica_id in router.curr_replicas)
+    assert actor_lookup.calls == {"slow": 1, "fast": 1}
+    assert router.curr_replicas[slow.replica_id].max_ongoing_requests == 42
+    assert router._multiplexed_model_id_to_replica_ids["model"] == {slow.replica_id}
+
+
+@pytest.mark.parametrize("remove", ["snapshot", "death", "shutdown"])
+async def test_removed_replica_lookup_cannot_commit(pow_2_router, actor_lookup, remove):
+    router = pow_2_router
+    info = replica_info("removed")
+    router._update_running_replicas([info])
+    await async_wait_for_condition(actor_lookup.started["removed"].is_set)
+    if remove == "snapshot":
+        router._update_running_replicas([])
+    elif remove == "death":
+        router.on_replica_actor_died(info.replica_id)
+    else:
+        await asyncio.wait_for(router._shutdown_replica_resolution(), timeout=1)
+        router._update_running_replicas([info])
+    actor_lookup.release["removed"].set()
+    await async_wait_for_condition(actor_lookup.finished["removed"].is_set)
+    await asyncio.sleep(0)
+    assert not router.curr_replicas
+    assert not router._replica_lookup_tasks
+    assert actor_lookup.calls["removed"] == 1
+    assert router._replica_update_handle is None
+
+
+async def test_dead_replica_not_restored_by_other_lookup(pow_2_router, actor_lookup):
+    router = pow_2_router
+    first, second = replica_info("first"), replica_info("second")
+    router._update_running_replicas([first])
+    await async_wait_for_condition(actor_lookup.started["first"].is_set)
+    router._update_running_replicas([first, second])
+    actor_lookup.release["first"].set()
+    await async_wait_for_condition(lambda: first.replica_id in router.curr_replicas)
+    router.on_replica_actor_died(first.replica_id)
+    actor_lookup.release["second"].set()
+    await async_wait_for_condition(lambda: second.replica_id in router.curr_replicas)
+    assert set(router.curr_replicas) == {second.replica_id}
+
+
+async def test_snapshot_removes_retained_replica_immediately(
+    pow_2_router, actor_lookup
+):
+    router = pow_2_router
+    old, new = replica_info("old"), replica_info("new")
+    router.update_replicas([FakeRunningReplica("old")])
+    router._update_running_replicas([new])
+    assert old.replica_id not in router.curr_replicas
+    await async_wait_for_condition(actor_lookup.started["new"].is_set)
+    actor_lookup.release["new"].set()
+    await async_wait_for_condition(lambda: new.replica_id in router.curr_replicas)
+
+
+async def test_removed_then_readded_replica_uses_new_lookup(pow_2_router):
+    router = pow_2_router
+    info = replica_info("replica")
+    first = FakeRunningReplica("replica")
+    second = FakeRunningReplica("replica")
+    router._resolve_replica = AsyncMock(side_effect=[first, second])
+    router._update_running_replicas([info])
+    await asyncio.sleep(0)
+    # Invalidate a ready result, then start a replacement lookup with the same ID
+    # before the old task's done callback runs.
+    router._update_running_replicas([])
+    router._update_running_replicas([info])
+    await async_wait_for_condition(lambda: info.replica_id in router.curr_replicas)
+    assert router.curr_replicas[info.replica_id] is second
+    await router._shutdown_replica_resolution()
+
+
+@pytest.mark.parametrize(
+    "error", [ValueError("missing actor"), RuntimeError("GCS error")]
+)
+async def test_replica_lookup_failure_isolated_and_retried_on_update(
+    pow_2_router, actor_lookup, error, caplog, monkeypatch
+):
+    monkeypatch.setattr(
+        logging.getLogger(SERVE_LOGGER_NAME), "handlers", [caplog.handler]
+    )
+    router = pow_2_router
+    good, bad = replica_info("good"), replica_info("bad")
+    actor_lookup.errors["bad"] = error
+    actor_lookup.release["good"].set()
+    actor_lookup.release["bad"].set()
+    router._update_running_replicas([good, bad])
+    await async_wait_for_condition(lambda: not router._replica_lookup_tasks)
+    assert set(router.curr_replicas) == {good.replica_id}
+    assert "Failed to" in caplog.text
+    if isinstance(error, RuntimeError):
+        assert "GCS error" in caplog.text
+
+    del actor_lookup.errors["bad"]
+    router._update_running_replicas([good, bad])
+    await async_wait_for_condition(lambda: bad.replica_id in router.curr_replicas)
+    assert actor_lookup.calls == {"good": 1, "bad": 2}
+
+
+@pytest.mark.parametrize("cancel_waiter", [False, True])
+async def test_wait_for_replica_resolution(pow_2_router, actor_lookup, cancel_waiter):
+    router = pow_2_router
+    info = replica_info("pending")
+    router._update_running_replicas([info])
+    await async_wait_for_condition(actor_lookup.started["pending"].is_set)
+    waiter = asyncio.create_task(router._wait_for_replica_resolution())
+    await asyncio.sleep(0)
+    assert not waiter.done()
+    if cancel_waiter:
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+
+    actor_lookup.release["pending"].set()
+    if not cancel_waiter:
+        await waiter
+        # Waiting also applies the results, without an extra loop turn.
+        assert info.replica_id in router.curr_replicas
+    await async_wait_for_condition(lambda: info.replica_id in router.curr_replicas)
+
+
+async def test_resolution_wait_follows_replacement_snapshot(pow_2_router, actor_lookup):
+    router = pow_2_router
+    old, new = replica_info("old"), replica_info("new")
+    router._update_running_replicas([old])
+    await async_wait_for_condition(actor_lookup.started["old"].is_set)
+    waiter = asyncio.create_task(router._wait_for_replica_resolution())
+    try:
+        await asyncio.sleep(0)
+        router._update_running_replicas([new])
+        await async_wait_for_condition(actor_lookup.started["new"].is_set)
+        assert not waiter.done()
+        actor_lookup.release["new"].set()
+        await asyncio.wait_for(waiter, 1)
+        assert set(router.curr_replicas) == {new.replica_id}
+    finally:
+        waiter.cancel()
+        await asyncio.gather(waiter, return_exceptions=True)
+
+
+@pytest.mark.parametrize("remove", ["snapshot", "death", "shutdown"])
+async def test_completed_lookup_invalidated_before_commit(pow_2_router, remove):
+    router = pow_2_router
+    info = replica_info("ready")
+    replica = FakeRunningReplica("ready")
+    router._resolve_replica = AsyncMock(return_value=replica)
+    router._update_running_replicas([info])
+    # Resolve the replica, but invalidate it before the completion callback.
+    await asyncio.sleep(0)
+    assert router._replica_lookup_tasks[info.replica_id].done()
+    if remove == "snapshot":
+        router._update_running_replicas([])
+    elif remove == "death":
+        router.on_replica_actor_died(info.replica_id)
+    else:
+        await router._shutdown_replica_resolution()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    assert not router.curr_replicas
+    await router._shutdown_replica_resolution()
+
+
+@pytest.mark.parametrize("override", [False, True])
+@pytest.mark.parametrize("factory_kind", ["sync", "async", "generator"])
+async def test_custom_replica_factory_runs_on_router_loop(override, factory_kind):
+    loop = asyncio.get_running_loop()
+    replica = FakeRunningReplica("custom")
+    replica.set_queue_len_response(0)
+
+    def sync_factory(info):
+        assert asyncio.get_running_loop() is loop
+        return replica
+
+    async def async_factory(info):
+        await asyncio.sleep(0)
+        return sync_factory(info)
+
+    @coroutine
+    def generator_factory(info):
+        yield from asyncio.sleep(0).__await__()
+        return sync_factory(info)
+
+    factory = Mock(
+        side_effect={
+            "sync": sync_factory,
+            "async": async_factory,
+            "generator": generator_factory,
+        }[factory_kind]
+    )
+
+    class CustomRouter(PowerOfTwoChoicesRequestRouter):
+        def create_replica_wrapper(self, info):
+            return factory(info)
+
+    router_cls = CustomRouter if override else PowerOfTwoChoicesRequestRouter
+    router = router_cls(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        **({} if override else {"create_replica_wrapper_func": factory}),
+    )
+    info = replica_info("custom")
+    try:
+        router._update_running_replicas([info])
+        await async_wait_for_condition(lambda: bool(router.curr_replicas))
+        assert router.curr_replicas[replica.replica_id] is replica
+        router._update_running_replicas([info])
+        factory.assert_called_once_with(info)
+    finally:
+        await router._shutdown_replica_resolution()
+
+
+async def test_completed_replica_lookups_are_batched(
+    pow_2_router, actor_lookup, monkeypatch
+):
+    router = pow_2_router
+    update = Mock(wraps=router.update_replicas)
+    monkeypatch.setattr(router, "update_replicas", update)
+    call_later = router._event_loop.call_later
+    scheduled = []
+
+    def hold_replica_update(delay, callback, *args, **kwargs):
+        if callback == router._apply_resolved_replicas:
+            assert delay == 0.01
+            scheduled.append(callback)
+            return Mock(spec=asyncio.TimerHandle)
+        return call_later(delay, callback, *args, **kwargs)
+
+    # Control timer expiry while real executor completions span separate loop turns.
+    monkeypatch.setattr(router._event_loop, "call_later", hold_replica_update)
+    infos = [replica_info(str(i)) for i in range(8)]
+    router._update_running_replicas(infos)
+    for info in infos[:-1]:
+        actor_lookup.release[info.actor_name].set()
+        await async_wait_for_condition(
+            router._replica_lookup_tasks[info.replica_id].done
+        )
+        await asyncio.sleep(0)
+        assert update.call_count == 1
+        assert len(scheduled) == 1
+
+    # The window expires even though the last lookup is still blocked.
+    scheduled.pop()()
+    assert update.call_count == 2
+    assert set(router.curr_replicas) == {info.replica_id for info in infos[:-1]}
+    actor_lookup.release[infos[-1].actor_name].set()
+    await async_wait_for_condition(lambda: len(scheduled) == 1)
+    scheduled.pop()()
+    assert update.call_count == 3
+    assert len(router.curr_replicas) == len(infos)
+
+
+@pytest.mark.parametrize(
+    "pow_2_router", [{"handle_source": DeploymentHandleSource.PROXY}], indirect=True
+)
+async def test_resolved_replicas_receive_proxy_handle(pow_2_router, actor_lookup):
+    router = pow_2_router
+    proxy = Mock()
+    router._self_actor_handle = proxy
+    info = replica_info("new")
+    push = actor_lookup.handles["new"].push_proxy_handle.remote
+
+    router._update_running_replicas([info])
+    await async_wait_for_condition(actor_lookup.started["new"].is_set)
+    push.assert_not_called()
+    actor_lookup.release["new"].set()
+    await async_wait_for_condition(lambda: info.replica_id in router.curr_replicas)
+    push.assert_called_once_with(proxy)
+    router._update_running_replicas([info])
+    push.assert_called_once_with(proxy)
 
 
 @pytest.mark.asyncio

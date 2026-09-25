@@ -7,7 +7,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import grpc
 import pytest
@@ -25,6 +25,7 @@ from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
+    DeploymentTargetInfo,
     ReplicaID,
     ReplicaQueueLengthInfo,
     RequestMetadata,
@@ -39,6 +40,7 @@ from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
 from ray.serve._private.request_router import (
     PendingRequest,
+    PowerOfTwoChoicesRequestRouter,
     RequestRouter,
     RunningReplica,
 )
@@ -268,6 +270,12 @@ class FakeRequestRouter(RequestRouter):
     def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
         return FakeReplica(replica_info)
 
+    async def _shutdown_replica_resolution(self):
+        pass
+
+    async def _wait_for_replica_resolution(self):
+        pass
+
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
@@ -397,6 +405,103 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
         internal_request_id="test-internal-request-1",
         is_streaming=is_streaming,
     )
+
+
+@pytest.mark.parametrize("targets_first", [False, True])
+async def test_initial_replica_lookup_does_not_hold_up_target_updates(
+    setup_router, monkeypatch, targets_first
+):
+    router, _ = setup_router
+    router._request_router = None
+    router._request_router_initialized.clear()
+    deployment_config = DeploymentConfig()
+    monkeypatch.setattr(
+        RequestRouterConfig,
+        "get_request_router_class",
+        lambda _: PowerOfTwoChoicesRequestRouter,
+    )
+    started = threading.Event()
+    release = threading.Event()
+    loop_thread = threading.get_ident()
+
+    def lookup(info):
+        assert threading.get_ident() != loop_thread
+        if info.replica_id.unique_id == "old":
+            started.set()
+            assert release.wait(10)
+        return Mock()
+
+    monkeypatch.setattr(RunningReplicaInfo, "get_actor_handle", lookup)
+    monkeypatch.setattr(
+        PowerOfTwoChoicesRequestRouter,
+        "_probe_queue_lens",
+        AsyncMock(return_value=[]),
+    )
+    context = Mock()
+    context.get_actor_id.return_value = None
+    monkeypatch.setattr(ray, "get_runtime_context", lambda: context)
+    old = running_replica_info(
+        ReplicaID(unique_id="old", deployment_id=router.deployment_id)
+    )
+    new = running_replica_info(
+        ReplicaID(unique_id="new", deployment_id=router.deployment_id)
+    )
+    try:
+        if not targets_first:
+            router.update_deployment_config(deployment_config)
+        router.update_deployment_targets(
+            DeploymentTargetInfo(is_available=True, running_replicas=[old])
+        )
+        if targets_first:
+            router.update_deployment_config(deployment_config)
+        await async_wait_for_condition(started.is_set)
+        assert router._request_router_initialized.is_set()
+
+        # A newer snapshot must become usable before the old GCS call finishes.
+        router.update_deployment_targets(
+            DeploymentTargetInfo(is_available=True, running_replicas=[new])
+        )
+        await async_wait_for_condition(
+            lambda: new.replica_id in router.request_router.curr_replicas
+        )
+        assert old.replica_id not in router.request_router.curr_replicas
+    finally:
+        release.set()
+
+
+async def test_broadcast_waits_for_replica_resolution(setup_router):
+    router, request_router = setup_router
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def resolve():
+        started.set()
+        await release.wait()
+        request_router.set_replica_to_return(
+            FakeReplica(ReplicaID(unique_id="new", deployment_id=router.deployment_id))
+        )
+
+    request_router._wait_for_replica_resolution = resolve
+    broadcast = asyncio.create_task(router.broadcast(dummy_request_metadata()))
+    try:
+        await asyncio.wait_for(started.wait(), 1)
+        assert not broadcast.done()
+        release.set()
+        assert len(await broadcast) == 1
+    finally:
+        broadcast.cancel()
+        await asyncio.gather(broadcast, return_exceptions=True)
+
+
+async def test_shutdown_before_initialization_ignores_updates(setup_router):
+    router, _ = setup_router
+    router._request_router = None
+    await router.shutdown()
+    router.update_deployment_targets(
+        DeploymentTargetInfo(is_available=True, running_replicas=[])
+    )
+    router.update_deployment_config(DeploymentConfig())
+    assert router._request_router is None
+    assert not router.long_poll_client.is_running
 
 
 class FakeReplicaMetricsManager:
