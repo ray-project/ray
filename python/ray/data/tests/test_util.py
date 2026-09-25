@@ -473,6 +473,15 @@ def test_iterate_with_retry_matches_class_name():
         ("[unclosed", "some error message", False),
         # No match at all.
         ("rate limit", "connection refused", False),
+        # PyArrow's S3FileSystem spelling of a transient credential-lookup
+        # failure; retried by default via DEFAULT_RETRIED_IO_ERRORS (DATA-3602).
+        (
+            "AWS Error ACCESS_DENIED",
+            "OSError: When testing for existence of bucket "
+            "'ray-data-write-benchmark': AWS Error ACCESS_DENIED during "
+            "HeadBucket operation: No response body",
+            True,
+        ),
     ],
 )
 def test_matches_error(pattern, error_message, expected):

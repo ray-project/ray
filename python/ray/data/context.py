@@ -256,6 +256,10 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
     "AWS Error SERVICE_UNAVAILABLE",
+    # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
+    # (e.g. an empty IMDS response under load) as ACCESS_DENIED, e.g.
+    # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
+    "AWS Error ACCESS_DENIED",
 )
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
