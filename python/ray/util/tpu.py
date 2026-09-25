@@ -1924,9 +1924,10 @@ def _get_physical_to_label_worker_map(
                 ]
                 try:
                     results = ray.get(refs, timeout=timeout)
-                except ray.exceptions.GetTimeoutError:
-                    # These tasks hold no TPU resources, so a worker stuck in
-                    # multi-host PJRT init would otherwise keep /dev/accel* open.
+                except Exception:
+                    # A failed or hung peer leaves the others blocked in multi-host
+                    # PJRT init; these tasks hold no TPU resources, so force-cancel
+                    # them to release /dev/accel*.
                     for ref in refs:
                         ray.cancel(ref, force=True)
                     raise
