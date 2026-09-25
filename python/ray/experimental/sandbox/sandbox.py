@@ -59,6 +59,12 @@ class Sandbox:
         readonly: bool = True,
         **kwargs,
     ):
+        if "gpu_ids" in kwargs:
+            raise TypeError(
+                "Sandbox does not accept 'gpu_ids' -- GPU access always "
+                "mirrors this actor's Ray-assigned GPUs (ray.get_gpu_ids()) "
+                "with no override."
+            )
         if "_rootfs_type" in kwargs:
             raise TypeError(
                 "Sandbox does not accept '_rootfs_type', which Ray chooses "
@@ -77,6 +83,14 @@ class Sandbox:
         except Exception:
             pass
 
+        # GPU access always mirrors exactly what Ray assigned this actor --
+        # unlike cpu/memory, there is no separate use for a GPU Ray gave
+        # this actor other than exposing it in the sandbox, so there is
+        # nothing to override. There's no fallback either, so a failure to
+        # resolve this actor's GPUs propagates rather than silently booting
+        # the sandbox without them.
+        gpu_ids = [str(i) for i in ray.get_gpu_ids()] or None
+
         self.runtime = SandboxRuntime()
         self.instance_id = self.runtime.create(
             image=image,
@@ -91,6 +105,7 @@ class Sandbox:
             dns=dns,
             capabilities=capabilities,
             readonly=readonly,
+            gpu_ids=gpu_ids,
             **kwargs,
         )
 

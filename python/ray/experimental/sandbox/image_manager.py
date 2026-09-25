@@ -7,6 +7,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import cdi, cdi_lib
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
@@ -35,6 +36,19 @@ _OCI_CAPABILITY_SETS = ("bounding", "effective", "permitted")
 _RESOLV_CONF = "/etc/resolv.conf"
 _ETC_HOSTS = "/etc/hosts"
 
+# Shared with GVisorSandboxBackend._validate_gpu_environment, which raises this
+# same message *before* pulling/extracting the container image if no CDI
+# spec exists at all -- there's no point paying that cost for a sandbox
+# creation that's certain to fail here anyway.
+NO_GPU_CDI_SPEC_MESSAGE = (
+    "gpu_ids was requested but no CDI spec for this node's GPU "
+    "accelerator could be generated. Ensure this node's "
+    "accelerator vendor has CDI support configured (today, "
+    "only NVIDIA GPUs are supported: ensure "
+    "nvidia-container-toolkit-base, providing nvidia-ctk, is "
+    "installed on this node)."
+)
+
 
 def get_default_oci_spec() -> Dict[str, Any]:
     """Derive default OCI runtime specification by executing `runsc spec` in a temporary directory.
@@ -47,6 +61,44 @@ def get_default_oci_spec() -> Dict[str, Any]:
         config_path = os.path.join(temp_dir, "config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def _chain_transform_fns(
+    *fns: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that applies `fns` (skipping any
+    that are None) in order, each to the previous one's result.
+    """
+    active_fns = [fn for fn in fns if fn is not None]
+
+    def _chained(spec: Dict[str, Any]) -> Dict[str, Any]:
+        for fn in active_fns:
+            result = fn(spec)
+            if result is not None:
+                spec = result
+        return spec
+
+    return _chained
+
+
+def _build_gpu_cdi_devices_transform_fn(
+    cdi_spec: cdi_lib.CDISpec,
+    cdi_devices: List[Dict[str, Any]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that merges `cdi_devices`' CDI
+    edits into whatever spec `create_oci_spec` passes it.
+    """
+
+    def _transform(spec: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            cdi_spec.apply_edits(spec, cdi_devices)
+        except cdi_lib.CDIError as err:
+            raise SandboxCreationError(
+                f"Failed to configure GPU access via CDI: {err}"
+            ) from err
+        return spec
+
+    return _transform
 
 
 class BaseImageManager(ABC):
@@ -232,6 +284,7 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _rootfs_type: str = ROOTFS_EROFS,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
@@ -251,6 +304,7 @@ class BaseImageManager(ABC):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _rootfs_type: How the sandbox's rootfs is served (see
                 ``create_oci_spec``).
             _oci_spec_transform_fn: Optional OCI spec transform function.
@@ -657,6 +711,7 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _rootfs_type: str = ROOTFS_EROFS,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
@@ -676,6 +731,7 @@ class ImageManager(BaseImageManager):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _rootfs_type: How the sandbox's rootfs is served (see
                 ``create_oci_spec``).
             _oci_spec_transform_fn: Optional OCI spec transform function.
@@ -716,6 +772,26 @@ class ImageManager(BaseImageManager):
             f.write("::1\tlocalhost ip6-localhost ip6-loopback\n")
             if host_entries:
                 f.write(host_entries)
+
+        if gpu_ids:
+            try:
+                cdi_spec = cdi.get_spec("GPU")
+            except RuntimeError as err:
+                raise SandboxCreationError(str(err)) from err
+            if cdi_spec is None:
+                raise SandboxCreationError(NO_GPU_CDI_SPEC_MESSAGE)
+            try:
+                cdi_devices = cdi_spec.select_devices(gpu_ids)
+            except cdi_lib.CDIError as err:
+                raise SandboxCreationError(
+                    f"Failed to configure GPU access via CDI: {err}"
+                ) from err
+            gpu_cdi_devices_fn = _build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            )
+            _oci_spec_transform_fn = _chain_transform_fns(
+                gpu_cdi_devices_fn, _oci_spec_transform_fn
+            )
 
         spec = self.create_oci_spec(
             image=image,
