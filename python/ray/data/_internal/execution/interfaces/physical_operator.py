@@ -195,7 +195,7 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
-            data_task_id: Logical (lineage) id of this task, stable across
+            data_task_id: Logical Ray Data ID of this task, stable across lineage
                 reconstruction attempts.
             plan_id: The reconstruction plan this attempt serves; ``None`` for a
                 fresh attempt. Carried here because the output and completion
@@ -357,16 +357,14 @@ class DataOpTask(OpTask):
                     try:
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
-                    except ObjectLostError as ex:
-                        # Propagate the original loss so the executor
-                        # can attempt lineage reconstruction, which needs the
-                        # task still live to abort it deliberately.
-                        #  `_data_task_id` is None whenever there is no lineage tracker.
-                        if self._data_task_id is not None:
-                            raise
-                        self.mark_aborted(ex)
-                        raise ex from None
                     except Exception as ex:
+                        # Propagate a tracked task's loss so the executor can
+                        # attempt lineage reconstruction, which needs the task
+                        # still live to abort it deliberately. Any other error,
+                        # including an untracked task's loss, drains the task so
+                        # its outputs already in flight still land.
+                        if isinstance(ex, ObjectLostError) and self.is_lineage_tracked:
+                            raise
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
                         break
@@ -424,8 +422,22 @@ class DataOpTask(OpTask):
 
     @property
     def data_task_id(self) -> Optional[str]:
-        """Logical lineage id, stable across reconstruction attempts. None if untracked."""
+        """Logical lineage id, stable across reconstruction attempts.
+
+        None if untracked. Branch on ``is_lineage_tracked`` rather than on this.
+        """
         return self._data_task_id
+
+    @property
+    def is_lineage_tracked(self) -> bool:
+        """Whether the operator that owns this task registered this task with the lineage tracker.
+
+        Only then can a lost output be reconstructed from lineage. An operator
+        mints a ``data_task_id`` exactly when it registers the task, so this is
+        derived from the id rather than stored separately.
+        TODO(ayushkum): Rename data task ID to lineage_task_ID to prevent premature generalizing
+        """
+        return self._data_task_id is not None
 
     @property
     def plan_id(self) -> Optional[str]:

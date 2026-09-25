@@ -354,6 +354,53 @@ def test_a_drained_task_aborted_before_its_done_callback_fires_it_once():
     assert task not in fetcher._drained_tasks
 
 
+@pytest.mark.parametrize("data_task_id", [None, "seed:0"], ids=["untracked", "tracked"])
+def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
+    monkeypatch, data_task_id
+):
+    """A task's stream failing with ``ObjectLostError`` drains the task like any other
+    task error when it is not lineage tracked, so pairs already in flight in the metadata
+    fetcher still emit. Only a lineage tracked task re-raises it for reconstruction.
+    """
+    error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+    block_ref = MagicMock()
+    block_ref.is_nil.return_value = False
+    streaming_gen = MagicMock()
+    # The block ref arrives, then the stream stops where its metadata should be.
+    streaming_gen._next_sync.side_effect = [block_ref, StopIteration()]
+
+    def raise_lost(ref):
+        raise error
+
+    monkeypatch.setattr(ray, "get", raise_lost)
+    calls = []
+    task = DataOpTask(
+        0,
+        streaming_gen,
+        MagicMock(),  # block_ref_counter
+        "test_op",
+        task_done_callback=lambda exc, worker_stats, driver_stats: calls.append(exc),
+        data_task_id=data_task_id,
+    )
+    assert task.is_lineage_tracked is (data_task_id is not None)
+    metadata_fetcher = MagicMock()
+
+    if task.is_lineage_tracked:
+        with pytest.raises(ObjectLostError):
+            task.on_data_ready(None, metadata_fetcher)
+        metadata_fetcher.in_data_ready_done.assert_not_called()
+    else:
+        task.on_data_ready(None, metadata_fetcher)
+        assert task.task_error is error
+        assert task.is_drained()
+        metadata_fetcher.in_data_ready_done.assert_called_once_with(task)
+
+    # Not finished either way. The fetcher's `has_finished` skip must not drop
+    # in-flight pairs, and the done-callback has not fired.
+    assert not task.has_finished
+    assert calls == []
+
+
 @reconstruction_enabled
 def test_failed_reconstruction_aborts_the_lost_task_once(
     ray_start_regular_shared, restore_data_context, monkeypatch  # noqa: F405

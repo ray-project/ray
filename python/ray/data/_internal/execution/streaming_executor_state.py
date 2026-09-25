@@ -701,7 +701,7 @@ def _reconstruct_lost_object(
             executor thread, so the caller catches it and falls back to the error
             path rather than tearing down the whole dataset.
     """
-    if not isinstance(task, DataOpTask) or task.data_task_id is None:
+    if not isinstance(task, DataOpTask) or not task.is_lineage_tracked:
         raise LineageReconstructionError(
             lost_error,
             f"task {task.task_index()} on operator {state.op.name!r} is not tracked "
@@ -947,16 +947,15 @@ def process_completed_tasks(
                             # the lost output back to a tracked seed input,
                             # resubmit that seed input's chain instead of
                             # counting an error.
+                            if lineage_tracker is None:
+                                _record_errored_block(e, state.op.name)
+                                continue
                             logger.info(
                                 "[lineage-reconstruction] Detected lost object while "
                                 f"reading output of task {task.task_index()} on "
                                 f'operator "{state.op.name}"; attempting lineage '
-                                "reconstruction (lineage_tracker="
-                                f"{'on' if lineage_tracker else 'off'})."
+                                "reconstruction."
                             )
-                            if lineage_tracker is None:
-                                _record_errored_block(e, state.op.name)
-                                continue
                             try:
                                 _reconstruct_lost_object(
                                     topology, lineage_tracker, state, task, e

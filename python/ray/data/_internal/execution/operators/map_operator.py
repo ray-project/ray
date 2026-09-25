@@ -715,21 +715,21 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             )
 
     def _lineage_for_submission(
-        self, task_index: int, inputs: RefBundle
-    ) -> Tuple[Optional[str], Optional[str], List[ParentBlockOutput]]:
-        """Work out what this attempt should register with the lineage graph.
+        self,
+        lineage_tracker: "LineageTracker",
+        task_index: int,
+        inputs: RefBundle,
+    ) -> Tuple[DataTaskId, Optional[PlanId], List[ParentBlockOutput]]:
+        """Work out what this attempt should register with ``lineage_tracker``.
 
-        Returns ``(data_task_id, plan_id, dependencies)``, where ``plan_id`` is the
-        plan this attempt serves -- ``None`` for a fresh attempt -- or
-        ``(None, None, [])`` when lineage reconstruction is off for this DAG.
+        Only called for a lineage-tracked operator. Returns
+        ``(data_task_id, plan_id, dependencies)``, where ``plan_id`` is the plan
+        this attempt serves -- ``None`` for a fresh attempt.
 
         A fresh attempt is named ``f"{self.id}:{task_index}"``. A *reconstruction*
         must re-use the original logical id instead, or the plan never resolves and
         the graph grows a duplicate node.
         """
-        if self._lineage_tracker is None:
-            return None, None, []
-
         # A re-injected seed is the one identity that cannot be looked up: its input
         # came from the source rather than from a task, so no producer ever recorded
         # it. `_reconstruct_lost_object` carries the id across instead. Check first --
@@ -757,7 +757,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # Pass every ref rather than just ``block_refs[0]``. `RebundleQueue` parks
         # zero-row bundles and prepends them on the next merge, so the block of
         # interest is not necessarily first.
-        dependencies = self._lineage_tracker.resolve_dependencies(
+        dependencies = lineage_tracker.resolve_dependencies(
             block_ref.hex() for block_ref in inputs.block_refs
         )
 
@@ -872,12 +872,17 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self._next_data_task_idx += 1
 
         # Resolve this attempt's lineage identity up front so the callbacks below
-        # can close over it. (None, None, []) when reconstruction is disabled.
-        data_task_id, plan_id, dependencies = self._lineage_for_submission(
-            task_index, inputs
-        )
-        if data_task_id is not None:
-            self._lineage_tracker.register_task_submission(
+        # can close over it. Both stay None when this operator has no lineage
+        # tracker. The callbacks branch on the tracker, which is set exactly when
+        # the identity is.
+        lineage_tracker = self._lineage_tracker
+        data_task_id: Optional[DataTaskId] = None
+        plan_id: Optional[PlanId] = None
+        if lineage_tracker is not None:
+            data_task_id, plan_id, dependencies = self._lineage_for_submission(
+                lineage_tracker, task_index, inputs
+            )
+            lineage_tracker.register_task_submission(
                 data_task_id, dependencies, plan_id
             )
             if self._is_seed_operator():
@@ -901,14 +906,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             num_outputs_emitted += 1
             self._metrics.on_task_output_generated(task_index, output)
 
-            if data_task_id is not None:
+            if lineage_tracker is not None:
                 # Attribute the block to (this task, output_index) so whichever
                 # downstream task consumes it can name its own dependencies.
-                self._lineage_tracker.register_block_output(
+                lineage_tracker.register_block_output(
                     data_task_id, output.block_refs[0].hex(), output_index
                 )
                 if plan_id is not None:
-                    status = self._lineage_tracker.get_object_reuse_status(
+                    status = lineage_tracker.get_object_reuse_status(
                         data_task_id, output_index, plan_id
                     )
                     # REUSED: withhold until the child's whole input set is
@@ -961,14 +966,14 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 
-            if data_task_id is not None and exception is None:
+            if lineage_tracker is not None and exception is None:
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
                 if plan_id is not None:
                     self._release_reconstruction_children(
                         data_task_id, plan_id, task_index
                     )
-                self._lineage_tracker.register_task_complete(data_task_id, plan_id)
+                lineage_tracker.register_task_complete(data_task_id, plan_id)
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
