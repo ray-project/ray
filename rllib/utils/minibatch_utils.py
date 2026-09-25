@@ -305,6 +305,10 @@ class ShardBatchIterator:
             #  Thus, in case the algorithm requires agent-synchronized data (aka.
             #  "lockstep"), the `ShardBatchIterator` cannot be used.
             batch_to_send = {}
+            # The shard's env steps below are those of whichever module was sliced
+            # last (see the TODO there); a batch without any module shards into
+            # empty batches of 0 env steps.
+            start = end = 0
             for pid, sub_batch in self._batch.policy_batches.items():
                 # Try to not leave any shard empty
                 size, remainder = divmod(len(sub_batch), self._num_shards)

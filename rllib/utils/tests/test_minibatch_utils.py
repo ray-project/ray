@@ -145,6 +145,19 @@ def test_shard_batch_iterator_spreads_the_remainder(num_rows, num_shards, expect
     )
 
 
+def test_shard_batch_iterator_shards_a_batch_without_modules():
+    """A batch without any module shards into empty batches rather than raising.
+
+    Such a batch is a valid `LearnerGroup.update()` input: every Learner skips it.
+    """
+    shards = list(ShardBatchIterator(MultiAgentBatch({}, env_steps=0), num_shards=2))
+
+    assert 2 == len(shards)
+    for shard in shards:
+        assert {} == shard.policy_batches
+        assert 0 == shard.env_steps()
+
+
 class TestMinibatchUtils(unittest.TestCase):
     def test_minibatch_cyclic_iterator(self):
 

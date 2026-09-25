@@ -342,6 +342,19 @@ class TestLearnerGroupUpdatePlan(unittest.TestCase):
                 with_data[ALL_MODULES][LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME],
             )
 
+            # An empty batch handed to the group as a whole is sharded into empty
+            # shards, one per Learner, and every Learner skips it as its own.
+            before = weights()
+            results = MetricsLogger.peek_results(learner_group.update(batch=NO_DATA))
+            check(before, weights())
+            self.assertEqual(
+                [1, 1],
+                [
+                    result[ALL_MODULES][LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+                    for result in results
+                ],
+            )
+
             # The same, but with `minibatch_size` set and the starved Learner handed a
             # batch that still carries its ModuleIDs with no rows under them -- what
             # `ShardBatchIterator` produces when there is not enough data to give every
