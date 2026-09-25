@@ -584,7 +584,9 @@ class ReporterAgent(
         )
 
         # Create GPU metric provider instance
-        self._gpu_metric_provider = GpuMetricProvider()
+        self._gpu_metric_provider = GpuMetricProvider(
+            enable_metric_report=dashboard_agent.enable_gpu_metrics
+        )
 
         if raylet_client:
             self._raylet_client = raylet_client
