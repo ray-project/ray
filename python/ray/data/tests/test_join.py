@@ -22,15 +22,15 @@ from ray.tests.conftest import *  # noqa
         (ShuffleStrategy.SHUFFLE_V2, False),
         (ShuffleStrategy.SHUFFLE_V2, True),
     ],
-    ids=["shufflev1", "shufflev2", "shufflev2external"],
+    ids=["shufflev1", "shufflev2", "shufflev2disk"],
 )
 def hash_shuffle_version(request, restore_data_context):
     """Run every join test on v1 (old actor-based), v2 (object-store), and v2
-    external (on-disk, file-transport) shuffle."""
-    strategy, use_external = request.param
+    disk-based (file-transport) shuffle."""
+    strategy, use_disk = request.param
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = strategy
-    ctx.use_external_hash_shuffle = use_external
+    ctx.use_disk_based_hash_shuffle = use_disk
     if strategy == ShuffleStrategy.SHUFFLE_V2:
         # One map task per input bundle, so reducers see multiple shards per
         # partition (the default batching folds small test data into one mapper).
@@ -1540,6 +1540,35 @@ def test_chained_join_with_empty_partitions(ray_start_regular_shared_2_cpus):
     )
 
     assert len(result.take_all()) == 0
+
+
+def test_streaming_join(ray_start_regular_shared_2_cpus):
+    """Join results are streamed out as many blocks for joins whose
+    per-partition output does not fit into memory.
+
+    ``target_max_block_size=None`` disables output reshaping, so the output
+    block count directly exposes the join kernel's streamed batches.
+    """
+    import pyarrow as pa
+
+    DataContext.get_current().target_max_block_size = None
+
+    N = 10000
+    dupes = pa.table({"id": np.ones(N)})
+
+    ds = ray.data.from_arrow(dupes)
+
+    joined_ds = ds.join(ds, join_type="full_outer", num_partitions=1)
+
+    num_blocks = 0
+    total_rows = 0
+
+    for rb in joined_ds.iter_internal_ref_bundles():
+        num_blocks += 1
+        total_rows += rb.num_rows()
+
+    assert total_rows == N**2
+    assert num_blocks >= 1000
 
 
 if __name__ == "__main__":

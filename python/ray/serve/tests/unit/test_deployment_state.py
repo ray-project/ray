@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 import ray.serve._private.deployment_state as ds_mod
+from ray import cloudpickle
 from ray._common.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray._raylet import NodeID
 from ray.serve._private.application_state import ApplicationState
@@ -54,6 +55,7 @@ from ray.serve._private.deployment_state import (
     DeploymentReplica,
     DeploymentState,
     DeploymentStateManager,
+    DeploymentTargetState,
     DeploymentVersion,
     ReplicaStartupStatus,
     ReplicaStateContainer,
@@ -2577,7 +2579,7 @@ def _constructor_failure_loop_two_replica(
         dsm.update()
         check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
 
-        assert ds._replica_constructor_retry_counter == i * 2
+        assert ds._replica_failure_count == i * 2
 
         replica_1 = ds._replicas.get()[0]
         replica_2 = ds._replicas.get()[1]
@@ -2586,7 +2588,7 @@ def _constructor_failure_loop_two_replica(
         replica_2._actor.set_failed_to_start()
         # Now the replica should be marked STOPPING after failure.
         dsm.update()
-        if ds._replica_constructor_retry_counter >= replica_retry_multiplier * 2:
+        if ds._replica_failure_count >= replica_retry_multiplier * 2:
             check_counts(
                 ds,
                 total=2,
@@ -2632,7 +2634,7 @@ def test_deploy_with_consistent_constructor_failure(
         dsm, ds, loop_count, mock_max_per_replica_retry_count
     )
 
-    assert ds._replica_constructor_retry_counter == 2 * mock_max_per_replica_retry_count
+    assert ds._replica_failure_count == 2 * mock_max_per_replica_retry_count
     assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
@@ -2644,7 +2646,7 @@ def test_deploy_with_consistent_constructor_failure(
     # No more replicas should be retried.
     for _ in range(20):
         dsm.update()
-        assert ds._replica_constructor_retry_counter == 4
+        assert ds._replica_failure_count == 4
         check_counts(ds, total=0)
         timer.advance(10)  # simulate time passing between each call to update
 
@@ -2704,7 +2706,7 @@ def test_terminally_failed_rolling_update_keeps_old_replicas_available(
         new_replica._actor.set_done_stopping()
         dsm.update()
 
-    assert ds._replica_constructor_retry_counter == threshold
+    assert ds._replica_failure_count == threshold
     assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
@@ -2761,7 +2763,7 @@ def test_deploy_with_partial_constructor_failure(
 
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.STARTING, 2, None)])
-    assert ds._replica_constructor_retry_counter == 2
+    assert ds._replica_failure_count == 2
     assert ds.curr_status_info.status == DeploymentStatus.UPDATING
     assert (
         ds.curr_status_info.status_trigger
@@ -2888,7 +2890,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     dsm.update()
 
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
-    assert ds1._replica_constructor_retry_counter == 3
+    assert ds1._replica_failure_count == 3
     assert "Retrying 6 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
@@ -2896,7 +2898,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
         replica._actor.set_done_stopping()
 
     check_counts(ds2, total=3, by_state=[(ReplicaState.STARTING, 3, None)])
-    assert ds2._replica_constructor_retry_counter == 0
+    assert ds2._replica_failure_count == 0
 
     # Set all of ds2's replicas to ready.
     for replica in ds2._replicas.get():
@@ -2906,7 +2908,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
-    assert ds1._replica_constructor_retry_counter == 6
+    assert ds1._replica_failure_count == 6
     assert "Retrying 3 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
@@ -2915,13 +2917,13 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     assert ds2.curr_status_info.status == DeploymentStatus.HEALTHY
     check_counts(ds2, total=3, by_state=[(ReplicaState.RUNNING, 3, None)])
-    assert ds2._replica_constructor_retry_counter == 0
+    assert ds2._replica_failure_count == 0
 
     dsm.update()
 
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
-    assert ds1._replica_constructor_retry_counter == 9
+    assert ds1._replica_failure_count == 9
     assert "Retrying 0 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
@@ -2934,7 +2936,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     # stop trying to initialize replicas.
     assert ds1.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     check_counts(ds1, total=0)
-    assert ds1._replica_constructor_retry_counter == 9
+    assert ds1._replica_failure_count == 9
     assert "The deployment failed to start" in ds1.curr_status_info.message
 
 
@@ -3930,7 +3932,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.CONFIG_UPDATE_STARTED
     )
-    assert ds._replica_constructor_retry_counter == 4
+    assert ds._replica_failure_count == 4
 
     # Let both replicas succeed in last try.
     dsm.update()
@@ -3947,7 +3949,7 @@ def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager
     dsm.update()
     check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
 
-    assert ds._replica_constructor_retry_counter == 0
+    assert ds._replica_failure_count == 0
     assert ds._replica_has_started
     assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     assert (
@@ -4120,7 +4122,7 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     # `recover()` is non-blocking: the replica enters RECOVERING and the
     # probe is observed in the reconcile loop.
     check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
-    starting_failures_before = new_ds._replica_constructor_retry_counter
+    starting_failures_before = new_ds._replica_failure_count
 
     # Next update cycle: probe says False -> the replica is force-stopped
     # (STOPPING) and a fresh replica is started in its place (STARTING) in
@@ -4133,7 +4135,7 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     )
     # The drop must not bump the deploy-failure counter -- the underlying
     # cause is a previous controller crash, not user code.
-    assert new_ds._replica_constructor_retry_counter == starting_failures_before
+    assert new_ds._replica_failure_count == starting_failures_before
     # The fresh replica should have a new replica id.
     starting_replicas = new_ds._replicas.get(states=[ReplicaState.STARTING])
     assert len(starting_replicas) == 1
@@ -8268,6 +8270,43 @@ def test_broadcasted_replicas_set_changed_flag_set_on_lightweight_broadcast_conf
         mock_get_infos.assert_not_called()
 
 
+def test_redeploy_onto_deleting_state_republishes(mock_deployment_state_manager):
+    """A redeploy reusing a deleting DeploymentState must republish its snapshots.
+
+    Deleting tombstones DEPLOYMENT_TARGETS, and that tombstone is evicted on
+    redeploy so routers don't inherit it. The reused state must also forget what
+    it last broadcast, or `*_if_changed` compares against the evicted snapshots
+    and never republishes them.
+    """
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info, v1 = deployment_info(version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    dsm.save_checkpoint()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+
+    dsm.update()
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    ds.broadcast_deployment_config_if_changed()
+
+    # Start deleting; the state sticks around while the replica drains.
+    dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+    assert ds.deleting
+
+    # Redeploy the *identical* config onto the still-deleting state.
+    ds._long_poll_host.reset_mock()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info)
+    ds._long_poll_host.remove_keys.assert_called_once()
+
+    # The config is unchanged, so without forgetting the last broadcast this
+    # short-circuits and the evicted key stays missing.
+    ds.broadcast_deployment_config_if_changed()
+    ds._long_poll_host.notify_changed.assert_called()
+
+
 def test_broadcast_deferred_while_replicas_recovering(mock_deployment_state_manager):
     """Regression test: During controller recovery, broadcast_running_replicas_if_changed() must
     be deferred until all RECOVERING replicas have transitioned, then fire once with
@@ -8933,7 +8972,7 @@ class TestScaleDeploymentGangReplicas:
                 run_failure_cycle()
                 assert ds.curr_status_info.status == DeploymentStatus.UPDATING
 
-            assert ds._replica_constructor_retry_counter == num_failure_cycles
+            assert ds._replica_failure_count == num_failure_cycles
 
     def test_terminally_failed_deployment_skips_gang_reservation(
         self, mock_deployment_state_manager
@@ -10370,21 +10409,28 @@ def _dep(name: str, app: str = "app") -> DeploymentID:
     return DeploymentID(name=name, app_name=app)
 
 
-def _deploy_running(dsm, deployment_id, outbound=None):
-    """Deploy a single replica deployment and drive it to RUNNING.
+def _deploy_running(
+    dsm, deployment_id, outbound=None, *, num_replicas=1, version=None, **config_opts
+):
+    """Deploy replicas and drive the deployment to HEALTHY.
 
     outbound is the list of DeploymentIDs the replica reports calling. Pass []
     for a known leaf and None to model a replica that has not reported an
     outbound set yet.
     """
-    info, _ = deployment_info(num_replicas=1)
+    info, _ = deployment_info(num_replicas=num_replicas, version=version, **config_opts)
     assert dsm.deploy(deployment_id, info)
     ds = dsm._get_deployment_state_for_testing(deployment_id)
     dsm.update()
     for r in ds._replicas.get([ReplicaState.STARTING]):
         r._actor.set_ready()
     dsm.update()
-    assert ds._replicas.get([ReplicaState.RUNNING])
+    check_counts(
+        ds,
+        total=num_replicas,
+        by_state=[(ReplicaState.RUNNING, num_replicas, ds.target_version)],
+    )
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
     if outbound is not None:
         for r in ds._replicas.get([ReplicaState.RUNNING]):
             r._actor._outbound_deployments = list(outbound)
@@ -10939,6 +10985,708 @@ def test_aggregation_function_reaches_builtin_metrics(aggregation_function, expe
     )
 
     assert asm.get_total_num_requests_for_deployment(TEST_DEPLOYMENT_ID) == expected
+
+
+def _fail_starting_replica(dsm, ds, version):
+    """Fail the single STARTING replica of `version` and reap it."""
+    starting = ds._replicas.get(states=[ReplicaState.STARTING])
+    assert len(starting) == 1 and starting[0].version == version
+    starting[0]._actor.set_failed_to_start()
+    with patch.object(
+        starting[0]._actor,
+        "check_ready",
+        return_value=(ReplicaStartupStatus.FAILED, "constructor failed"),
+    ):
+        dsm.update()
+    starting[0]._actor.set_done_stopping()
+    dsm.update()
+
+
+def _assert_rollout_frozen(dsm, ds, old_version, num_old: int, ticks: int = 20):
+    """No old replica is stopped and no new replica is started for `ticks`."""
+    num_starting = ds._replicas.count(states=[ReplicaState.STARTING])
+    for _ in range(ticks):
+        dsm.update()
+        assert ds._terminally_failed()
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds._replicas.count(version=old_version, states=[ReplicaState.RUNNING])
+            == num_old
+        )
+        assert ds._replicas.count(states=[ReplicaState.STOPPING]) == 0
+        assert ds._replicas.count(states=[ReplicaState.STARTING]) == num_starting
+
+
+class TestRollingUpdateTerminalFailure:
+    """A failed rolling update stays failed across scaling and controller restarts."""
+
+    def test_constructor_failures_stop_the_rolling_update(
+        self, mock_deployment_state_manager, mock_max_per_replica_retry_count
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=3, version="1")
+        v1 = ds.target_version
+        assert not ds._target_state.rolling_update
+
+        info_2, v2 = deployment_info(num_replicas=3, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        assert ds._target_state.rolling_update
+        assert not ds._target_state.rolling_update_failed
+        dsm.update()
+        check_counts(
+            ds,
+            total=4,
+            by_state=[
+                (ReplicaState.RUNNING, 2, v1),
+                (ReplicaState.STOPPING, 1, v1),
+                (ReplicaState.STARTING, 1, v2),
+            ],
+        )
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+        threshold = 3 * mock_max_per_replica_retry_count
+        for i in range(threshold):
+            assert not ds._terminally_failed()
+            _fail_starting_replica(dsm, ds, v2)
+            assert ds._replica_failure_count == i + 1
+
+        assert ds._target_state.rolling_update_failed
+        assert ds._target_state.rolling_update
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+        )
+        assert "rolling update" in ds.curr_status_info.message
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+        _assert_rollout_frozen(dsm, ds, v1, num_old=2)
+        assert _last_broadcast_target_info(ds).is_available is True
+
+        # The next deploy() clears the failure and the rollout resumes.
+        info_3, v3 = deployment_info(num_replicas=3, version="3")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_3)
+        assert not ds._target_state.rolling_update_failed
+        assert ds._target_state.rolling_update
+        assert not ds._terminally_failed()
+        assert ds._replica_failure_count == 0
+        assert ds._replica_failure_message is None
+        for _ in range(50):
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+                replica._actor.set_ready()
+            dsm.update()
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v3)])
+        assert not ds._target_state.rolling_update
+        assert not ds._target_state.rolling_update_failed
+
+    def test_successful_retry_clears_constructor_error(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=3, version="1")
+
+        info_2, v2 = deployment_info(num_replicas=3, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        _fail_starting_replica(dsm, ds, v2)
+        assert ds._replica_failure_count == 1
+        assert ds._replica_failure_message is not None
+
+        for _ in range(3):
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+                replica._actor.set_ready()
+            dsm.update()
+
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._replica_failure_count == 0
+        assert ds._replica_failure_message is None
+
+    def test_fresh_deploy_failure_is_unchanged(
+        self, mock_deployment_state_manager, mock_max_per_replica_retry_count
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+
+        # Fresh deploy: no older replicas, so no rolling update marker; the
+        # existing nonpersistent threshold applies.
+        info_1, v1 = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert not ds._target_state.rolling_update
+        dsm.update()
+        for _ in range(mock_max_per_replica_retry_count):
+            _fail_starting_replica(dsm, ds, v1)
+        assert ds._terminally_failed()
+        assert not ds._target_state.rolling_update_failed
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert _last_broadcast_target_info(ds).is_available is False
+
+        # A new deploy clears the failure and can reach HEALTHY.
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, version="2")
+        assert not ds._target_state.rolling_update
+        assert not ds._terminally_failed()
+
+    def test_scale_from_zero_failure_is_unchanged(
+        self, mock_deployment_state_manager, mock_max_per_replica_retry_count
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+
+        # Scale from zero: a replica count change on a version with no replicas.
+        info_0, v0 = deployment_info(num_replicas=0, version="0")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_0)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        info_up, _ = deployment_info(num_replicas=1, version="0")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_up)
+        assert not ds._target_state.rolling_update
+        dsm.update()
+        for _ in range(mock_max_per_replica_retry_count):
+            _fail_starting_replica(dsm, ds, v0)
+        assert ds._terminally_failed()
+        assert not ds._target_state.rolling_update_failed
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+        assert _last_broadcast_target_info(ds).is_available is False
+
+        # A changed replica count retries startup and can reach HEALTHY.
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="0")
+        assert not ds._target_state.rolling_update
+        assert not ds._terminally_failed()
+
+    def test_health_check_failures_count_during_rolling_update(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=3, version="1")
+        v1 = ds.target_version
+
+        # Threshold = min(max_constructor_retry_count=2, 3 * 3) = 2.
+        info_2, v2 = deployment_info(
+            num_replicas=3, version="2", max_constructor_retry_count=2
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+
+        # First new replica starts, which lets the rollout consume a second
+        # old replica; then it fails its health check.
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+        dsm.update()
+        check_counts(ds, by_state=[(ReplicaState.RUNNING, 1, v2)])
+        running_v1 = ds._replicas.count(version=v1, states=[ReplicaState.RUNNING])
+        assert running_v1 == 1
+        for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+
+        def fail_health_check_of_running_v2():
+            _advance_until(
+                dsm,
+                lambda: any(
+                    r._actor.health_check_called and r.version == v2
+                    for r in ds._replicas.get(states=[ReplicaState.RUNNING])
+                ),
+            )
+            replica = next(
+                r
+                for r in ds._replicas.get(states=[ReplicaState.RUNNING])
+                if r.version == v2
+            )
+            replica._actor.set_unhealthy()
+            _advance_until(
+                dsm, lambda: replica.actor_details.state == ReplicaState.STOPPING
+            )
+            replica._actor.set_done_stopping()
+            dsm.update()
+
+        fail_health_check_of_running_v2()
+        assert ds._replica_failure_count == 1
+        assert not ds._target_state.rolling_update_failed
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+
+        fail_health_check_of_running_v2()
+        assert ds._replica_failure_count == 2
+        assert ds._target_state.rolling_update_failed
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
+        failure_message = ds.curr_status_info.message
+        assert "The update is stopped" in failure_message
+        assert "until a new deploy" in failure_message
+        assert (
+            "Error:\nA replica of the new version failed its health check."
+            in failure_message
+        )
+        assert "until the replica recovers" not in failure_message
+        _assert_rollout_frozen(dsm, ds, v1, num_old=running_v1)
+        assert ds.curr_status_info.message == failure_message
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.HEALTH_CHECK_FAILED
+        )
+
+    @pytest.mark.parametrize("num_unhealthy_members", [1, 2])
+    def test_gang_health_failure_counts_once_per_restart(
+        self, mock_deployment_state_manager, num_unhealthy_members
+    ):
+        gang = TestGangRollingUpdate()
+        gang_size, num_replicas = 2, 6
+        dsm, ds = gang._deploy_gang(
+            mock_deployment_state_manager, gang_size, num_replicas
+        )
+        v2 = gang._deploy_new_version(
+            dsm, gang_size, num_replicas, "v2", max_constructor_retry_count=2
+        )
+        dsm.update()
+        gang._advance_wave(dsm, ds, gang_size)
+        dsm.update()
+
+        new_gang = [
+            r
+            for r in ds._replicas.get(states=[ReplicaState.RUNNING])
+            if r.version == v2
+        ]
+        assert len(new_gang) == gang_size
+        assert ds._target_state.rolling_update
+        _advance_until(dsm, lambda: all(r._actor.health_check_called for r in new_gang))
+        for replica in new_gang[:num_unhealthy_members]:
+            replica._actor.set_unhealthy()
+        dsm.update()
+
+        assert all(r._actor.force_stopped_counter == 1 for r in new_gang)
+        assert ds._replica_failure_count == 1
+        assert not ds._terminally_failed()
+        assert not ds._target_state.rolling_update_failed
+        assert ds._replicas.count(exclude_version=v2, states=[ReplicaState.RUNNING]) > 0
+
+    def test_terminal_while_some_new_replicas_running(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=3, version="1")
+        v1 = ds.target_version
+
+        info_2, v2 = deployment_info(
+            num_replicas=3, version="2", max_constructor_retry_count=2
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        ds._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
+        dsm.update()
+        dsm.update()
+        for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        dsm.update()
+        check_counts(
+            ds,
+            total=3,
+            by_state=[
+                (ReplicaState.RUNNING, 1, v1),
+                (ReplicaState.RUNNING, 1, v2),
+                (ReplicaState.STARTING, 1, v2),
+            ],
+        )
+        assert ds._replica_has_started
+
+        for _ in range(2):
+            _fail_starting_replica(dsm, ds, v2)
+
+        assert ds._target_state.rolling_update_failed
+        assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        check_counts(
+            ds,
+            total=2,
+            by_state=[(ReplicaState.RUNNING, 1, v1), (ReplicaState.RUNNING, 1, v2)],
+        )
+        _assert_rollout_frozen(dsm, ds, v1, num_old=1)
+
+    def test_autoscale_up_keeps_rolling_update_terminal(
+        self, mock_deployment_state_manager, mock_max_per_replica_retry_count
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        autoscaling_config = {
+            "min_replicas": 1,
+            "max_replicas": 10,
+            "initial_replicas": 3,
+            "upscale_delay_s": 0,
+            "downscale_delay_s": 0,
+        }
+        ds = _deploy_running(
+            dsm,
+            TEST_DEPLOYMENT_ID,
+            num_replicas=3,
+            version="1",
+            autoscaling_config=autoscaling_config,
+        )
+        v1 = ds.target_version
+        info_2, v2 = deployment_info(
+            num_replicas=3, version="2", autoscaling_config=autoscaling_config
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        # Threshold = min(20, 3 * 2) = 6.
+        for _ in range(3 * mock_max_per_replica_retry_count):
+            _fail_starting_replica(dsm, ds, v2)
+        assert ds._target_state.rolling_update_failed
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+
+        # A larger target raises the threshold above the counter, but the
+        # failure is sticky.
+        assert dsm.autoscale(TEST_DEPLOYMENT_ID, 8)
+        assert ds._target_state.target_num_replicas == 8
+        assert ds._target_state.rolling_update_failed
+        assert ds._target_state.rolling_update
+        assert not ds._replica_startup_failing()
+        _assert_rollout_frozen(dsm, ds, v1, num_old=2)
+
+    @pytest.mark.parametrize("first_failure", ["startup", "health"])
+    def test_startup_and_health_failures_share_the_rolling_update_budget(
+        self, mock_deployment_state_manager, first_failure
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=6, version="1")
+        v1 = ds.target_version
+        info, v2 = deployment_info(
+            num_replicas=6, version="2", max_constructor_retry_count=2
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        failure_order = [
+            first_failure,
+            "health" if first_failure == "startup" else "startup",
+        ]
+        for count, failure in enumerate(failure_order, start=1):
+            replica = next(
+                r
+                for r in ds._replicas.get(states=[ReplicaState.STARTING])
+                if r.version == v2
+            )
+            if failure == "startup":
+                replica._actor.set_failed_to_start()
+                with patch.object(
+                    replica._actor,
+                    "check_ready",
+                    return_value=(ReplicaStartupStatus.FAILED, "constructor failed"),
+                ):
+                    dsm.update()
+            else:
+                replica._actor.set_ready()
+                dsm.update()
+                _advance_until(dsm, lambda: replica._actor.health_check_called)
+                replica._actor.set_unhealthy()
+                _advance_until(
+                    dsm, lambda: replica.actor_details.state == ReplicaState.STOPPING
+                )
+            assert ds._replica_failure_count == count
+            assert ds._target_state.rolling_update_failed == (count == 2)
+            for stopping in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                stopping._actor.set_done_stopping()
+            dsm.update()
+
+        # In-flight successes cannot clear the exhausted budget.
+        old_count = ds._replicas.count(version=v1, states=[ReplicaState.RUNNING])
+        assert old_count > 0
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        _assert_rollout_frozen(dsm, ds, v1, num_old=old_count)
+        assert ds._replica_failure_count == 2
+        checkpoint = cloudpickle.loads(dsm._kv_store.get(CHECKPOINT_KEY))
+        assert checkpoint[TEST_DEPLOYMENT_ID].rolling_update_failed
+
+    @pytest.mark.parametrize("num_replicas", [0, 1, 5])
+    def test_count_only_redeploy_preserves_terminal_failure(
+        self, mock_deployment_state_manager, num_replicas
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=3, version="1")
+        v1 = ds.target_version
+        info, v2 = deployment_info(
+            num_replicas=3, version="2", max_constructor_retry_count=1
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        _fail_starting_replica(dsm, ds, v2)
+        assert ds._target_state.rolling_update_failed
+        message = ds.curr_status_info.message
+
+        scaled_info, _ = deployment_info(
+            num_replicas=num_replicas, version="2", max_constructor_retry_count=1
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, scaled_info)
+        assert ds._target_state.rolling_update_failed
+        assert ds._target_state.rolling_update
+        assert ds._replica_failure_count == 1
+        assert ds.curr_status_info.message == message
+        for _ in range(10):
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            dsm.update()
+        _assert_rollout_frozen(dsm, ds, v1, num_old=min(2, num_replicas))
+        assert ds.curr_status_info.message == message
+
+        # Scaling back up, even from zero, cannot retry the same failed rollout.
+        # deploy() stores its input, so pass a fresh info rather than mutating it.
+        scaled_info, _ = deployment_info(
+            num_replicas=6, version="2", max_constructor_retry_count=1
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, scaled_info)
+        _assert_rollout_frozen(dsm, ds, v1, num_old=min(2, num_replicas))
+
+        # Changing the actual version must still allow a complete rollout.
+        info3, v3 = deployment_info(num_replicas=3, version="3")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info3)
+        for _ in range(50):
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+                replica._actor.set_ready()
+            dsm.update()
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v3)])
+        assert not ds._target_state.rolling_update
+        assert not ds._target_state.rolling_update_failed
+        assert ds._replica_failure_count == 0
+        assert ds._replica_failure_message is None
+
+    @pytest.mark.parametrize("gang_size", [2, 3])
+    def test_gang_startup_failures_exhaust_budget_once_per_gang(
+        self, mock_deployment_state_manager, gang_size
+    ):
+        gang = TestGangRollingUpdate()
+        dsm, ds = gang._deploy_gang(
+            mock_deployment_state_manager, gang_size, 3 * gang_size
+        )
+        v1 = ds.target_version
+        v2 = gang._deploy_new_version(
+            dsm, gang_size, 3 * gang_size, "v2", max_constructor_retry_count=3
+        )
+        dsm.update()
+        gang._finish_stopping(ds)
+        dsm.update()
+        for attempt in range(3):
+            starting = ds._replicas.get(states=[ReplicaState.STARTING])
+            assert len(starting) == gang_size
+            assert all(r.version == v2 for r in starting)
+            for replica in starting:
+                replica._actor.set_failed_to_start()
+            dsm.update()
+            assert ds._replica_failure_count == attempt + 1
+            assert ds._target_state.rolling_update_failed == (attempt == 2)
+            gang._finish_stopping(ds)
+            dsm.update()
+        _assert_rollout_frozen(dsm, ds, v1, num_old=2 * gang_size)
+
+    def test_recovery_after_convergence_follows_steady_state_rules(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        dsm.save_checkpoint()
+
+        info_2, v2 = deployment_info(num_replicas=2, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.save_checkpoint()
+        assert ds._target_state.rolling_update
+
+        for _ in range(2):
+            dsm.update()
+            for replica in ds._replicas.get(states=[ReplicaState.STOPPING]):
+                replica._actor.set_done_stopping()
+            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+                replica._actor.set_ready()
+            dsm.update()
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert not ds._target_state.rolling_update
+        # The marker clear was checkpointed by update() itself.
+        checkpoint = cloudpickle.loads(dsm._kv_store.get(CHECKPOINT_KEY))
+        assert checkpoint[TEST_DEPLOYMENT_ID].rolling_update is False
+
+        replica_ids = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        new_dsm = create_dsm(replica_ids)
+        new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert not new_ds._target_state.rolling_update
+        assert not new_ds._target_state.rolling_update_failed
+        for replica in new_ds._replicas.get():
+            replica._actor.set_ready(v2)
+        new_dsm.update()
+        new_dsm.update()
+        check_counts(new_ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v2)])
+        assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        # A steady state health check failure is handled as today: UNHEALTHY,
+        # replaced, no terminal failure, counter untouched.
+        _advance_until(
+            new_dsm,
+            lambda: all(r._actor.health_check_called for r in new_ds._replicas.get()),
+        )
+        new_ds._replicas.get()[0]._actor.set_unhealthy()
+        _advance_until(
+            new_dsm,
+            lambda: new_ds._replicas.count(states=[ReplicaState.STOPPING]) >= 1,
+        )
+        assert new_ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+        assert new_ds._replica_failure_count == 0
+        assert not new_ds._terminally_failed()
+        check_counts(new_ds, by_state=[(ReplicaState.STARTING, 1, v2)])
+
+    def test_recovery_after_terminal_failure_restores_it(
+        self, mock_deployment_state_manager, mock_max_per_replica_retry_count
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        v1 = ds.target_version
+        dsm.save_checkpoint()
+
+        info_2, v2 = deployment_info(num_replicas=2, version="2")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.save_checkpoint()
+        dsm.update()
+        ds._replicas.get(states=[ReplicaState.STOPPING])[0]._actor.set_done_stopping()
+        for _ in range(2 * mock_max_per_replica_retry_count):
+            _fail_starting_replica(dsm, ds, v2)
+        assert ds._target_state.rolling_update_failed
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+        # The flip was checkpointed by update() itself.
+        checkpoint = cloudpickle.loads(dsm._kv_store.get(CHECKPOINT_KEY))
+        assert checkpoint[TEST_DEPLOYMENT_ID].rolling_update_failed is True
+
+        # Restart the controller: the failure is restored although the retry
+        # counter starts from zero.
+        old_replica = ds._replicas.get()[0]
+        new_dsm = create_dsm([old_replica.replica_id.to_full_id_str()])
+        new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert new_ds._target_state.rolling_update_failed
+        assert new_ds._replica_failure_count == 0
+        assert new_ds._terminally_failed()
+        new_dsm.update()
+        assert new_ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+        assert (
+            new_ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
+        )
+        check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v2)])
+
+        # The old replica recovers with its real version and is neither
+        # stopped nor replaced.
+        new_ds._replicas.get()[0]._actor.set_ready(v1)
+        new_dsm.update()
+        new_dsm.update()
+        check_counts(new_ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+        _assert_rollout_frozen(new_dsm, new_ds, v1, num_old=1)
+        assert new_ds._replica_failure_count == 0
+        assert _last_broadcast_target_info(new_ds).is_available is True
+
+    @pytest.mark.parametrize("failure_type", ["actor", "placement_group"])
+    def test_scheduling_failure_is_checkpointed_before_next_update(
+        self, mock_deployment_state_manager, failure_type
+    ):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        create_pg = Mock(side_effect=RuntimeError("placement group creation failed"))
+        dsm = create_dsm(create_placement_group_fn_override=create_pg)
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        v1 = ds.target_version
+
+        info_2, _ = deployment_info(
+            num_replicas=2, version="2", max_constructor_retry_count=1
+        )
+        if failure_type == "placement_group":
+            info_2.replica_config.placement_group_bundles = [{"CPU": 1}]
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.save_checkpoint()
+
+        start = MockReplicaActorWrapper.start
+        actor_def = Mock()
+        actor_def.options.return_value.remote.side_effect = RuntimeError(
+            "actor creation failed"
+        )
+
+        def start_with_failing_actor(*args, **kwargs):
+            request = start(*args, **kwargs)
+            request.actor_def = actor_def
+            return request
+
+        # Exercise the real scheduler's failure handling in STEP 6, after the
+        # status checks. Do not run another update or manually save a checkpoint.
+        with patch.object(MockReplicaActorWrapper, "start", start_with_failing_actor):
+            dsm.update()
+
+        if failure_type == "placement_group":
+            create_pg.assert_called_once()
+            actor_def.options.assert_not_called()
+        else:
+            create_pg.assert_not_called()
+            actor_def.options.return_value.remote.assert_called_once()
+        assert ds._replica_failure_count == 1
+        checkpoint = cloudpickle.loads(dsm._kv_store.get(CHECKPOINT_KEY))
+        assert checkpoint[TEST_DEPLOYMENT_ID].rolling_update_failed
+
+        # Restart immediately after the threshold-reaching tick. The counter
+        # resets, but the persisted failure must prevent any rollout progress.
+        old_replica = ds._replicas.get(states=[ReplicaState.RUNNING])[0]
+        new_dsm = create_dsm([old_replica.replica_id.to_full_id_str()])
+        new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        assert new_ds._replica_failure_count == 0
+        assert new_ds._target_state.rolling_update_failed
+        assert new_ds._terminally_failed()
+        new_ds._replicas.get()[0]._actor.set_ready(v1)
+        new_dsm.update()
+        check_counts(new_ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+        _assert_rollout_frozen(new_dsm, new_ds, v1, num_old=1)
+        assert _last_broadcast_target_info(new_ds).is_available is True
+
+    def test_kill_switch_disables_the_marker(self, mock_deployment_state_manager):
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+        info_2, _ = deployment_info(num_replicas=2, version="2")
+        with patch.object(ds_mod, "RAY_SERVE_STOP_FAILED_ROLLING_UPDATES", False):
+            assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        assert not ds._target_state.rolling_update
+
+    def test_checkpoint_preserves_rolling_update_failure(self):
+        info, _ = deployment_info(num_replicas=1, version="1")
+        target_state = DeploymentTargetState.create(info, 1)
+        target_state.rolling_update = True
+        target_state.rolling_update_failed = True
+        restored = cloudpickle.loads(cloudpickle.dumps(target_state))
+        assert restored.version == target_state.version
+        assert restored.rolling_update is True
+        assert restored.rolling_update_failed is True
 
 
 if __name__ == "__main__":

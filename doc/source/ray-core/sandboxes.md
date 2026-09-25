@@ -37,9 +37,102 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Linux**: x86_64 or arm64.
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
+* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64.
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
+
+For example, the following Dockerfile adds all three tools to a Ray image for nodes with 4 KiB pages. Ray's images are based on Ubuntu 22.04, whose `erofs-utils` is too old, so it builds erofs-utils from source. It does so in a separate stage, so the build tools stay out of the final image. On an Ubuntu 24.04 or Debian 13 base image, `apt-get install erofs-utils` instead:
+
+```dockerfile
+ARG GVISOR_VERSION=20260921.0
+ARG SLIRP4NETNS_VERSION=1.3.5
+ARG EROFS_UTILS_VERSION=1.9.4
+
+FROM rayproject/ray:latest AS build
+ARG GVISOR_VERSION
+ARG SLIRP4NETNS_VERSION
+ARG EROFS_UTILS_VERSION
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends autoconf automake bzip2 \
+        ca-certificates curl gcc libtool liblz4-dev make pkg-config uuid-dev
+
+# gVisor, with the gvisor-bin/ helpers that must stay next to runsc
+RUN mkdir -p /out/bin \
+    && curl -fsSL "https://storage.googleapis.com/gvisor/releases/release/${GVISOR_VERSION}/$(uname -m)/gvisor.tar.bz2" \
+        | tar -xj -C /out/bin
+
+# slirp4netns, for network="public"
+RUN curl -fsSL -o /out/bin/slirp4netns \
+        "https://github.com/rootless-containers/slirp4netns/releases/download/v${SLIRP4NETNS_VERSION}/slirp4netns-$(uname -m)" \
+    && chmod a+rx /out/bin/slirp4netns
+
+# erofs-utils
+RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_UTILS_VERSION}.tar.gz" \
+        | tar -xz -C /tmp \
+    && cd "/tmp/erofs-utils-${EROFS_UTILS_VERSION}" \
+    && ./autogen.sh \
+    && ./configure --disable-fuse --prefix=/out \
+    && make -j"$(nproc)" \
+    && make install
+
+FROM rayproject/ray:latest
+COPY --from=build /out/bin/ /usr/local/bin/
+```
+
+For nodes with 64 KiB pages, the following Dockerfile builds both `runsc` and erofs-utils from source. As before, it builds them in a separate stage, so the build tools stay out of the final image. `PAGE_SIZE` is the page size of the nodes the image runs on, and defaults to 65536. To set it explicitly, pass it as a build argument, for example `--build-arg PAGE_SIZE=4096`:
+
+```dockerfile
+ARG GVISOR_VERSION=20260921.0
+ARG SLIRP4NETNS_VERSION=1.3.5
+ARG EROFS_UTILS_VERSION=1.9.4
+ARG PAGE_SIZE=65536
+
+FROM rayproject/ray:latest AS build
+ARG GVISOR_VERSION
+ARG SLIRP4NETNS_VERSION
+ARG EROFS_UTILS_VERSION
+ARG PAGE_SIZE
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends autoconf automake \
+        build-essential bzip2 ca-certificates clang curl git \
+        g++-aarch64-linux-gnu g++-x86-64-linux-gnu gcc-aarch64-linux-gnu \
+        gcc-x86-64-linux-gnu libbpf-dev liblz4-dev libtool pkg-config python3 \
+        uuid-dev
+
+# gVisor, with the gvisor-bin/ helpers that must stay next to runsc
+RUN curl -fsSL -o /usr/local/bin/bazelisk \
+        "https://github.com/bazelbuild/bazelisk/releases/download/v1.29.0/bazelisk-linux-$(dpkg --print-architecture)" \
+    && chmod +x /usr/local/bin/bazelisk \
+    && git clone --depth 1 --branch "release-${GVISOR_VERSION}" \
+        https://github.com/google/gvisor.git /tmp/gvisor \
+    && cd /tmp/gvisor \
+    && bazelisk build -c opt --define=pagesize="$((PAGE_SIZE / 1024))k" \
+        //debian:gvisor-release-tar-bz2 \
+    && mkdir -p /out/bin \
+    && tar -xjf bazel-bin/debian/gvisor.tar.bz2 -C /out/bin
+
+# slirp4netns, for network="public"
+RUN curl -fsSL -o /out/bin/slirp4netns \
+        "https://github.com/rootless-containers/slirp4netns/releases/download/v${SLIRP4NETNS_VERSION}/slirp4netns-$(uname -m)" \
+    && chmod a+rx /out/bin/slirp4netns
+
+# erofs-utils
+RUN curl -fsSL "https://github.com/erofs/erofs-utils/archive/refs/tags/v${EROFS_UTILS_VERSION}.tar.gz" \
+        | tar -xz -C /tmp \
+    && cd "/tmp/erofs-utils-${EROFS_UTILS_VERSION}" \
+    && ./autogen.sh \
+    && ./configure --disable-fuse --prefix=/out MAX_BLOCK_SIZE="$PAGE_SIZE" \
+    && make -j"$(nproc)" \
+    && make install
+
+FROM rayproject/ray:latest
+COPY --from=build /out/bin/ /usr/local/bin/
+```
 
 ## Usage patterns and examples
 
@@ -240,7 +333,7 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), extracts its root filesystem into `/tmp/ray/sandbox/images` on the node, and caches it for reuse by subsequent sandboxes on that node using the same image. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. One consequence: a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image; its writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
 
 ### Bound the image cache
 
@@ -356,6 +449,108 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
 * **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
 
+## HTTP API service
+
+Ray Sandbox ships an experimental REST API service so you can manage sandboxes from outside the Ray cluster with nothing but an HTTP client and a bearer token. The service is a FastAPI app on Ray Serve (`ray.experimental.sandbox.http`). Each sandbox is held by a named, detached actor, so the service itself is stateless and its replicas can scale or restart without losing sandboxes.
+
+Image pulls and commands can far outlive an HTTP request and the load balancer in front of a deployed service, so creation and execution are asynchronous. `POST` returns immediately and clients poll, optionally long-polling with `wait_seconds` for up to 30 seconds per request.
+
+### Endpoints
+
+All endpoints sit under `/api/v1`. Except for `GET /health`, they require `Authorization: Bearer <token>` when a token is configured.
+
+| Method and path | Description |
+| --- | --- |
+| `GET /health` | Liveness probe. Never requires auth. |
+| `POST /sandboxes` | Create a sandbox. Returns `202` with `status: pending`. Poll until `running` or `error`. Send a `client_token` to make creation idempotent, so a retry returns `200` with the existing sandbox. |
+| `GET /sandboxes?label=k=v` | List sandboxes, optionally filtered by labels. |
+| `GET /sandboxes/{id}?wait_seconds=N` | Sandbox status. Long-polls while it boots. |
+| `DELETE /sandboxes/{id}` | Terminate the sandbox and its actor. Idempotent from any state. Answers `terminating` instead of `terminated` when the actor is still being scheduled or busy tearing down. It finishes and exits on its own. |
+| `POST /sandboxes/{id}/execs` | Start a command. Returns `202` with an `exec_id`, or `409` while the sandbox isn't running. A string command runs under the sandbox's shell, `/bin/bash` by default and configurable per sandbox and per exec via `shell`. A list runs argv-style. |
+| `GET /sandboxes/{id}/execs/{exec_id}?wait_seconds=N` | Exec status and result: `running`, `completed` with `exit_code`, `stdout`, and `stderr`, `timeout`, or `error`. Output is capped per stream by `max_output_bytes` with a loud truncation marker. |
+| `PUT /sandboxes/{id}/files?path=/abs/path` | Write the raw request body to a file in the sandbox. Returns `413` above `max_file_bytes`, and `409 write_failed` when the sandbox can't write the path, such as a directory or a read-only root filesystem. Pass `append=true` to extend the file, which lets clients chunk large uploads under proxy body-size limits. |
+| `GET /sandboxes/{id}/files?path=/abs/path` | Read a file from the sandbox as `application/octet-stream`. |
+
+Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..."}}`. The codes are `401 unauthorized`, `404 sandbox_not_found`, `404 exec_not_found`, `404 file_not_found`, `409 conflict`, `409 unschedulable`, `409 write_failed`, `400 invalid_request`, `413 payload_too_large`, `503 sandbox_unavailable` for an actor that's briefly unreachable, such as during a restart, and FastAPI's native `422` for schema violations. The full OpenAPI schema is served at `/openapi.json`.
+
+Keep this server behavior in mind:
+
+* **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
+* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits.
+* **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
+* **Network modes**: These are the Python API's modes, which Ray validates: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
+
+### Self-hosted quickstart
+
+On a Linux machine or cluster with `runsc` on `PATH`:
+
+```bash
+pip install "ray[serve]"
+export RAY_SANDBOX_API_TOKEN=dev-token   # Optional. Unset disables app-level auth.
+serve run ray.experimental.sandbox.http.app:build_app
+```
+
+```bash
+curl -s -H "Authorization: Bearer dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"image": "busybox:latest", "readonly": false, "shell": "/bin/sh"}' \
+  http://localhost:8000/api/v1/sandboxes
+```
+
+Builder arguments configure the server. See `ray.experimental.sandbox.http.schemas.SandboxAPISettings` for the full list. For example:
+
+```bash
+serve run ray.experimental.sandbox.http.app:build_app max_ttl_seconds=86400 num_replicas=2
+```
+
+### Deploying as an Anyscale service
+
+Build a cluster image whose worker nodes have `runsc`:
+
+```dockerfile
+FROM anyscale/ray:2.58.0-py312
+RUN ARCH=$(uname -m | sed 's/arm64/aarch64/') && \
+    curl -fsSL -o /usr/local/bin/runsc \
+      "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" && \
+    chmod +x /usr/local/bin/runsc
+```
+
+Then deploy the builder as the service's application:
+
+```yaml
+# service.yaml
+name: ray-sandbox-api
+image_uri: <your-registry>/ray-sandbox-api:latest
+applications:
+  - name: sandbox-api
+    import_path: ray.experimental.sandbox.http.app:build_app
+    args:
+      max_ttl_seconds: 86400
+```
+
+```bash
+anyscale service deploy -f service.yaml
+```
+
+Anyscale services require their own bearer token at the platform edge, so leave `RAY_SANDBOX_API_TOKEN` unset and hand clients the service's base URL and token. Consumers such as the [Harbor](https://harborframework.com) `ray-sandbox` environment take exactly that pair as `RAY_SANDBOX_API_URL` and `RAY_SANDBOX_API_KEY`.
+
+### Local development loop on macOS
+
+`runsc` is Linux-only. Develop against the service in a privileged container:
+
+```bash
+docker run --privileged -p 8000:8000 \
+  -v ~/path/to/ray/python/ray/experimental/sandbox:/overlay:ro \
+  rayproject/ray:nightly-py312 bash -lc '
+    pip install "ray[serve]" &&
+    SITE=$(python -c "import ray, os; print(os.path.dirname(ray.__file__))") &&
+    cp -r /overlay/* "$SITE/experimental/sandbox/" &&
+    ARCH=$(uname -m | sed "s/arm64/aarch64/") &&
+    curl -fsSL -o /usr/local/bin/runsc "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" &&
+    chmod +x /usr/local/bin/runsc &&
+    RAY_SANDBOX_API_TOKEN=dev-token serve run --host 0.0.0.0 ray.experimental.sandbox.http.app:build_app'
+```
+
 ## API reference
 
 For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.
@@ -363,6 +558,9 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 ## Troubleshooting
 
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
+* **`gVisor container failed to start: WARNING: host page size mismatch - running on non-4K host`**: The node's kernel uses 64 KiB pages, and gVisor's prebuilt `runsc` only supports 4 KiB pages. Build `runsc` from source with `--define=pagesize=64k` (see [Requirements](#requirements)).
+* **`mkfs.erofs` not found or too old**: Sandbox creation fails with an error naming erofs-utils 1.7. Install erofs-utils 1.7 or later on every worker node; Ubuntu 22.04's packaged 1.4 predates the `--tar` option Ray relies on.
+* **`mkfs.erofs failed: ... invalid block size 65536`**: The node's kernel uses 64 KiB pages, and its erofs-utils package can only build 4 KiB blocks. Build erofs-utils from source with `./configure MAX_BLOCK_SIZE=65536` (see [Requirements](#requirements)).
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
 * **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).

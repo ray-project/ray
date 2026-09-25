@@ -114,6 +114,9 @@ class SortTaskSpec(ExchangeTaskSpec):
     """
 
     SORT_SAMPLE_SUB_PROGRESS_BAR_NAME = "Sort Sample"
+    # Target number of sample rows per output partition. The total sample
+    # budget is divided evenly across input blocks.
+    SORT_SAMPLE_POINTS_PER_PARTITION = 10
 
     def __init__(
         self,
@@ -171,8 +174,9 @@ class SortTaskSpec(ExchangeTaskSpec):
         partition the domain into ranges with approximately equally many elements.
         Each boundary item is a tuple of a form (col1_value, col2_value, ...).
         """
-        columns = sort_key.get_columns()
-        n_samples = int(num_reducers * 10 / len(blocks))
+        n_samples = int(
+            num_reducers * SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION / len(blocks)
+        )
 
         sample_block = cached_remote_fn(_sample_block)
         if label_selector:
@@ -190,7 +194,22 @@ class SortTaskSpec(ExchangeTaskSpec):
         # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
         del sample_results
-        samples: List[Block] = [s for s in samples if len(s) > 0]
+        return SortTaskSpec.get_boundaries_from_samples(samples, sort_key, num_reducers)
+
+    @staticmethod
+    def get_boundaries_from_samples(
+        samples: List[Block],
+        sort_key: SortKey,
+        num_reducers: int,
+    ) -> List[T]:
+        """Compute range boundaries from already-materialized sample blocks.
+
+        This is split from :meth:`sample_boundaries` so streaming shuffle
+        operators can schedule sampling as part of their own task lifecycle and
+        reuse the same boundary calculation as the legacy sort implementation.
+        """
+        columns = sort_key.get_columns()
+        samples = [s for s in samples if len(s) > 0]
         # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)

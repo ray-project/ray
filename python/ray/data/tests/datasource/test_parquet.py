@@ -2213,6 +2213,68 @@ def test_write_max_rows_per_file(
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
+def test_write_min_bytes_per_file_coalesces_small_blocks(
+    tmp_path, ray_start_regular_shared
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    block_sizes = [bundle.size_bytes() for bundle in ds.iter_internal_ref_bundles()]
+    assert len(block_sizes) == 10
+    assert len(set(block_sizes)) == 1
+
+    ds.write_parquet(
+        tmp_path,
+        min_bytes_per_file=2 * block_sizes[0],
+        compression=None,
+        row_group_size=1000,
+    )
+
+    files = list(pathlib.Path(tmp_path).glob("*.parquet"))
+    rows_per_file = sorted(pq.read_table(file).num_rows for file in files)
+    assert rows_per_file == [20, 20, 20, 20, 20]
+
+
+@pytest.mark.parametrize(
+    "row_size_arg",
+    [
+        {"min_rows_per_file": 10},
+        {"max_rows_per_file": 10},
+        {"num_rows_per_file": 10},
+    ],
+)
+def test_write_min_bytes_per_file_rejects_row_limits(
+    tmp_path, ray_start_regular_shared, row_size_arg
+):
+    with pytest.raises(ValueError, match="min_bytes_per_file"):
+        ray.data.range(1).write_parquet(
+            tmp_path,
+            min_bytes_per_file=100,
+            **row_size_arg,
+        )
+
+
+def test_min_bytes_per_file_sets_min_bytes_per_write(tmp_path):
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+
+    datasink = ParquetDatasink(str(tmp_path), min_bytes_per_file=100)
+    assert datasink.min_bytes_per_write == 100
+
+
+@pytest.mark.parametrize("min_bytes_per_file", [0, -1])
+def test_parquet_datasink_min_bytes_per_file_validation(tmp_path, min_bytes_per_file):
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+
+    with pytest.raises(ValueError, match="min_bytes_per_file"):
+        ParquetDatasink(str(tmp_path), min_bytes_per_file=min_bytes_per_file)
+
+
+@pytest.mark.parametrize("min_bytes_per_file", [0, -1])
+def test_write_min_bytes_per_file_validation(
+    tmp_path, ray_start_regular_shared, min_bytes_per_file
+):
+    with pytest.raises(ValueError, match="min_bytes_per_file"):
+        ray.data.range(1).write_parquet(tmp_path, min_bytes_per_file=min_bytes_per_file)
+
+
 @pytest.mark.parametrize(
     "min_rows_per_file,max_rows_per_file", [(5, 10), (10, 20), (15, 30)]
 )
@@ -3211,7 +3273,7 @@ def test_get_safe_batch_size_skips_zero_uncompressed_row_groups(tmp_path):
     size (e.g. all-null nested data) should not cause ZeroDivisionError."""
     import pyarrow.parquet as pq
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.parquet_utils import (
         _get_safe_batch_size_for_nested_types,
     )
 
@@ -3318,7 +3380,7 @@ def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_co
     import pyarrow.dataset as pds
 
     from ray.data import DataContext
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.parquet_utils import (
         _needs_nested_type_fallback,
         _resolve_read_columns,
     )
@@ -3361,7 +3423,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     """
     from unittest.mock import patch
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.parquet_utils import (
         _needs_nested_type_fallback,
     )
 
@@ -3376,11 +3438,15 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
 
     # End-to-end: reading only "id" should use the normal scanner path, not
-    # the fallback.  Patch to detect whether fallback is invoked.
+    # the fallback.  Patch to detect whether fallback is invoked. Each reader
+    # resolves the helper through its own module, so patch both.
     with patch(
         "ray.data._internal.datasource.parquet_datasource"
         "._get_safe_batch_size_for_nested_types"
-    ) as mock_safe:
+    ) as mock_safe_v1, patch(
+        "ray.data._internal.datasource_v2.readers.parquet_file_reader"
+        "._get_safe_batch_size_for_nested_types"
+    ) as mock_safe_v2:
         ds = ray.data.read_parquet(data_dir).select_columns(["id"])
         total_rows = 0
         for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
@@ -3388,7 +3454,8 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
             assert batch.column_names == ["id"]
         assert total_rows == num_rows
         # The fallback batch-size helper should never have been called.
-        mock_safe.assert_not_called()
+        mock_safe_v1.assert_not_called()
+        mock_safe_v2.assert_not_called()
 
 
 def test_parquet_sampling_fails_on_permanent_error(
