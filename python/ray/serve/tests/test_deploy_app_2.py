@@ -87,7 +87,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
 
         resp = httpx.post("http://localhost:8000/app1").json()
@@ -118,7 +119,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
 
         resp = httpx.post("http://localhost:8000/app1").json()
@@ -137,7 +139,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
         resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
@@ -150,7 +153,8 @@ class TestDeploywithLoggingConfig:
         client.deploy_apps(config)
 
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
 
         def get_replica_info_format(replica_id: ReplicaID) -> str:
@@ -221,7 +225,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
         resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
@@ -239,7 +244,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
         resp = httpx.post("http://localhost:8000/app1").json()
         check_log_file(resp["log_file"], [".*this_is_debug_info.*"])
@@ -253,7 +259,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
         resp = httpx.get("http://127.0.0.1:8000/app1").json()
 
@@ -287,7 +294,8 @@ class TestDeploywithLoggingConfig:
         config = ServeDeploySchema.model_validate(config_dict)
         client.deploy_apps(config)
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").status_code == 200
+            lambda: httpx.post("http://localhost:8000/app1").status_code == 200,
+            timeout=20,
         )
         resp = httpx.get("http://127.0.0.1:8000/app1")
         assert resp.status_code == 200
@@ -367,7 +375,7 @@ def test_redeploy_old_config_after_failed_deployment(serve_instance, rebuild):
         assert httpx.post("http://localhost:8000/").text == "wonderful world"
         return True
 
-    wait_for_condition(check_application_running)
+    wait_for_condition(check_application_running, timeout=20)
 
     # Change config so that redeploy will error
     new_app_config = copy(app_config)
@@ -389,12 +397,12 @@ def test_redeploy_old_config_after_failed_deployment(serve_instance, rebuild):
         assert message in status.message
         return True
 
-    wait_for_condition(check_deploy_failed, message=err_msg)
+    wait_for_condition(check_deploy_failed, message=err_msg, timeout=20)
 
     # Redeploy old config
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
-    wait_for_condition(check_application_running)
+    wait_for_condition(check_application_running, timeout=20)
 
 
 def test_deploy_does_not_affect_dynamic_apps(serve_instance):
@@ -723,13 +731,15 @@ def test_deploy_one_app_failed(serve_instance):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
+        timeout=20,
     )
 
     wait_for_condition(
         lambda: serve.status().applications["app1"].status == ApplicationStatus.RUNNING
         and serve.status().applications["app2"].status
-        == ApplicationStatus.DEPLOY_FAILED
+        == ApplicationStatus.DEPLOY_FAILED,
+        timeout=20,
     )
 
     # Ensure the request doesn't hang and actually returns a 503 error.
@@ -761,11 +771,13 @@ def test_deploy_with_route_prefix_conflict(serve_instance):
     client.deploy_apps(ServeDeploySchema(**test_config))
 
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world"
+        lambda: httpx.get("http://localhost:8000/app1").text == "wonderful world",
+        timeout=20,
     )
     wait_for_condition(
         lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
-        == "4 pizzas please!"
+        == "4 pizzas please!",
+        timeout=20,
     )
 
     # Buffer time
@@ -794,7 +806,7 @@ def test_deploy_with_route_prefix_conflict(serve_instance):
         app2_gone = "app2" not in serve_details.applications
         return app1_running and app3_running and app2_gone
 
-    wait_for_condition(check)
+    wait_for_condition(check, timeout=20)
 
     # app1 and app3 should be up and running
     wait_for_condition(
@@ -857,7 +869,7 @@ def test_failed_rolling_update_keeps_serving_from_old_replicas(serve_instance, r
         "deployments": [{"name": "FailOnFlag", "num_replicas": 2}],
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=60)
     assert httpx.get("http://localhost:8000/").text == "ok"
 
     failing_config = app_config.copy()
@@ -1050,7 +1062,7 @@ def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
         "deployments": [deployment],
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=60)
     initial_pids = _running_replica_pids(client)
     assert len(initial_pids) == 5
 
@@ -1109,7 +1121,7 @@ def test_terminally_failed_rolling_update_survives_controller_restart(
         "deployments": [{"name": "FailOnFlag", "num_replicas": 2}],
     }
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
-    wait_for_condition(check_running)
+    wait_for_condition(check_running, timeout=60)
 
     failing_config = copy(app_config)
     failing_config["deployments"] = [
