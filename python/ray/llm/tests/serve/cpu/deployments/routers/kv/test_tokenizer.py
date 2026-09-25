@@ -264,7 +264,12 @@ class TestPreRoutingTokenization:
         )
         runtime_env = _router_ray_actor_options(app)["runtime_env"]
         llm_config = _router_init_kwargs(app)["llm_config"]
-        assert runtime_env == {"env_vars": llm_config.runtime_env["env_vars"]}
+        for name, value in llm_config.runtime_env["env_vars"].items():
+            assert runtime_env["env_vars"][name] == value
+        assert (
+            runtime_env["env_vars"]["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        )
+        assert runtime_env["env_vars"]["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
 
 
 if __name__ == "__main__":

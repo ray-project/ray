@@ -2,7 +2,7 @@ import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call as mock_call, patch
 
 import openai
 import pytest
@@ -506,6 +506,32 @@ class TestOpenAiIngress:
         )
 
         await router.check_health()
+
+    def test_model_handles_use_grpc(self, llm_config: LLMConfig):
+        default_handle = MagicMock()
+        base_handle = MagicMock()
+        lora_handle = MagicMock()
+        default_handle.options.side_effect = [base_handle, lora_handle]
+
+        router = OpenAiIngress(
+            llm_deployments={llm_config.model_id: default_handle},
+            model_cards={
+                llm_config.model_id: to_model_metadata(llm_config.model_id, llm_config)
+            },
+        )
+
+        assert router._get_configured_serve_handle(llm_config.model_id) is base_handle
+
+        lora_model_id = f"{llm_config.model_id}:adapter"
+        assert router._get_configured_serve_handle(lora_model_id) is lora_handle
+        assert default_handle.options.call_args_list == [
+            mock_call(stream=True, _by_reference=False),
+            mock_call(
+                stream=True,
+                multiplexed_model_id=lora_model_id,
+                _by_reference=False,
+            ),
+        ]
 
     @pytest.mark.asyncio
     async def test_raw_request_info_passed_to_deployment_handle(
