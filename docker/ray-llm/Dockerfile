@@ -80,9 +80,7 @@ PY
     git apply "${VLLM_PIXTRAL_TRANSFORMERS_5_17_PATCH}"
 )
 
-# libdw-dev provides elfutils/libdwfl.h, which DeepGEMM's DeepJIT submodule
-# includes (vLLM's own image installs elfutils-devel for the same reason).
-sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake libdw-dev
+sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
 
 # Fetch and run vLLM install scripts at pinned commit
 VLLM_RAW="https://raw.githubusercontent.com/vllm-project/vllm/${VLLM_SCRIPTS_REF}"
@@ -104,9 +102,6 @@ export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
     bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
-
-# Install DeepGEMM
-curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
 
 # DeepEP V2 links against NCCL's GIN API, so a downgrade slipped in by one of the
 # scripts above breaks it at runtime even when the build succeeded. Fail here
