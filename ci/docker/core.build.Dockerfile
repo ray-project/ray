@@ -31,7 +31,9 @@ RUN <<EOF
 set -euo pipefail
 
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends autoconf automake libtool pkg-config uuid-dev
+# nftables: `nft` installs the egress allowlist ruleset of cidr_allowlist
+# sandboxes; the sandbox tests skip those cases without it.
+apt-get install -y -qq --no-install-recommends autoconf automake libtool pkg-config uuid-dev nftables
 git clone -q --depth 1 --branch v1.9.4 https://github.com/erofs/erofs-utils.git /tmp/erofs-utils
 cd /tmp/erofs-utils
 test "$(git rev-parse HEAD)" = f36cadb5c563995ab3aa8572a60ed6b721b9557d

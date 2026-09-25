@@ -32,6 +32,10 @@ class Sandbox:
             is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
+        cidr_allowlist: Optional egress allowlist for network="public": only
+            the listed IPv4/IPv6 networks are reachable (plus DNS to the
+            ``dns`` resolvers); see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none); see
             ``DOCKER_DEFAULT_CAPABILITIES``.
@@ -55,6 +59,7 @@ class Sandbox:
         rootless: bool = True,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         **kwargs,
@@ -84,6 +89,7 @@ class Sandbox:
             rootless=rootless,
             network=network,
             dns=dns,
+            cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
             **kwargs,

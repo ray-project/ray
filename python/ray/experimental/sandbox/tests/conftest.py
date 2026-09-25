@@ -1,6 +1,7 @@
 import os
 import platform
 import shutil
+import subprocess
 import tempfile
 import urllib.request
 
@@ -106,6 +107,50 @@ def _public_netns_supported() -> bool:
         return False
     backend.delete_sandbox(sandbox_id)
     return True
+
+
+def _nft_in_userns_supported() -> bool:
+    """Whether an unprivileged user+network namespace here can load a ruleset.
+
+    That is exactly what the cidr_allowlist path does before runsc starts.
+    It fails where nf_tables is missing from the kernel or the namespace
+    cannot be created.
+    """
+    ruleset = (
+        "table inet probe {\n"
+        "    chain output {\n"
+        "        type filter hook output priority 0; policy accept;\n"
+        "    }\n"
+        "}\n"
+    )
+    try:
+        proc = subprocess.run(
+            ["unshare", "--user", "--map-root-user", "--net", "nft", "-f", "-"],
+            input=ruleset.encode("utf-8"),
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return proc.returncode == 0
+
+
+@pytest.fixture(scope="session")
+def ensure_nft_egress(ensure_slirp4netns):
+    """The network="public" prerequisites plus an nft that works in a netns.
+
+    Only the cidr_allowlist tests request it; they skip where the nftables
+    package is missing or the kernel cannot load a ruleset from an
+    unprivileged namespace.
+    """
+    if not shutil.which("nft"):
+        pytest.skip("cidr_allowlist needs the nft binary (nftables package)")
+    if not _nft_in_userns_supported():
+        pytest.skip(
+            "nft cannot load a ruleset inside an unprivileged user+network "
+            "namespace here (nf_tables missing from the kernel, or namespaces "
+            "restricted)"
+        )
 
 
 @pytest.fixture(scope="session")

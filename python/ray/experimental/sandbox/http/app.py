@@ -195,6 +195,7 @@ def create_app(
             "ttl_seconds": None,
             "expires_at": None,
             "network": "none",
+            "cidr_allowlist": None,
             "labels": {},
             "error": None,
         }
@@ -320,6 +321,7 @@ def create_app(
             "workdir": request.workdir,
             "ttl_seconds": effective_ttl,
             "network": request.network,
+            "cidr_allowlist": request.cidr_allowlist,
             "dns": request.dns,
             "shell": request.shell,
             "rootless": request.rootless,
@@ -361,6 +363,7 @@ def create_app(
             "ttl_seconds": effective_ttl,
             "expires_at": (created_at + timedelta(seconds=effective_ttl)).isoformat(),
             "network": request.network,
+            "cidr_allowlist": request.cidr_allowlist,
             "labels": request.labels,
             "error": None,
         }
