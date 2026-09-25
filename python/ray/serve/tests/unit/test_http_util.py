@@ -1,9 +1,11 @@
 import asyncio
 import pickle
 import sys
+from functools import partial
 from typing import Generator, Tuple
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -14,6 +16,7 @@ from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
+    _apply_root_path,
     configure_http_middlewares,
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
@@ -22,6 +25,8 @@ from ray.serve._private.http_util import (
     send_http_response_on_exception,
 )
 from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.replica import Replica
+from ray.serve.config import ProxyLocation, gRPCOptions
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
 
@@ -429,6 +434,90 @@ class TestBackpressureHTTPResponse:
         exc = pickle.loads(pickle.dumps(BackPressureError(3, 2)))
         assert exc.status_code == 503
         assert exc.retry_after_s is None
+
+
+async def _apply_root_path_to_scope(scope: dict, root_path: str) -> dict:
+    received = []
+
+    async def app(scope, receive, send):
+        received.append(scope)
+
+    wrapped = _apply_root_path(app, root_path)
+    await wrapped(scope, None, None)
+    assert len(received) == 1
+    return received[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "scope_type,root_path,path,expected_path",
+    [
+        ("http", "", "/hello", "/hello"),
+        ("http", "/serve", "/serve/hello", "/serve/hello"),
+        ("http", "/serve", "/hello", "/serve/hello"),
+        ("http", "/serve/", "/serve/hello", "/serve/hello"),
+        ("websocket", "/serve", "/hello", "/serve/hello"),
+    ],
+)
+async def test_apply_root_path(
+    scope_type: str,
+    root_path: str,
+    path: str,
+    expected_path: str,
+):
+    scope = await _apply_root_path_to_scope(
+        {"type": scope_type, "path": path, "raw_path": path.encode(), "root_path": ""},
+        root_path,
+    )
+    assert scope["path"] == expected_path
+    assert scope["raw_path"] == expected_path.encode()
+    assert scope["root_path"] == root_path.rstrip("/")
+
+
+@pytest.mark.asyncio
+async def test_direct_ingress_root_path_health_endpoints():
+    replica = MagicMock()
+    replica._ingress = True
+    replica._event_loop = asyncio.get_running_loop()
+    replica._route_prefix = "/hello"
+    replica._deployment_id = DeploymentID(name="hello", app_name="default")
+    replica._dataplane_health_check = AsyncMock(return_value=(True, "success"))
+    replica._direct_ingress_asgi = partial(Replica._direct_ingress_asgi, replica)
+    replica._controller_handle.allocate_replica_port.remote = AsyncMock(return_value=0)
+    with patch(
+        "ray.serve._private.replica.RAY_SERVE_ENABLE_DIRECT_INGRESS", True
+    ), patch(
+        "ray.serve._private.replica.ray.get",
+        return_value=[
+            HTTPOptions(host="127.0.0.1", root_path="/serve"),
+            gRPCOptions(),
+            ProxyLocation.HeadOnly,
+        ],
+    ):
+        await Replica._maybe_start_direct_ingress_servers(replica)
+    task = replica._direct_ingress_http_server_task
+    server = replica._direct_ingress_http_server
+    try:
+
+        async def wait_started():
+            while not server.started:
+                if task.done():
+                    await task
+                    raise RuntimeError("Server exited before starting")
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_started(), timeout=10)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as client:
+            response = await client.get("/-/healthz")
+            assert response.status_code == 200
+            assert response.text == "success"
+            response = await client.get("/-/routes")
+            assert response.status_code == 200
+            assert response.json() == {"/hello": "default"}
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, timeout=10)
 
 
 if __name__ == "__main__":

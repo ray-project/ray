@@ -55,7 +55,11 @@ from ray.serve._private.constants import (
     SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
-from ray.serve._private.proxy_request_response import ResponseStatus
+from ray.serve._private.proxy_request_response import (
+    ROOT_PATH_PREFIXED_SCOPE_KEY,
+    ResponseStatus,
+    prepend_root_path,
+)
 from ray.serve._private.utils import (
     call_function_from_import_path,
     generate_request_id,
@@ -759,19 +763,49 @@ def _apply_middlewares(app: ASGIApp, middlewares: List[Callable]) -> ASGIApp:
     return app
 
 
+def _apply_root_path(
+    app: ASGIApp, root_path: str, *, is_direct_ingress: bool = False
+) -> ASGIApp:
+    """Apply `root_path` to ASGI scopes independently of the uvicorn version."""
+    root_path = root_path.rstrip("/")
+    if not root_path:
+        return app
+
+    async def root_path_middleware(scope: Scope, receive: Receive, send: Send):
+        if scope["type"] in ("http", "websocket"):
+            scope["root_path"] = root_path
+            # HAProxy already strips root_path before forwarding to replicas.
+            if not is_direct_ingress:
+                path = scope["path"]
+                if path == root_path or path.startswith(root_path + "/"):
+                    scope[ROOT_PATH_PREFIXED_SCOPE_KEY] = True
+                else:
+                    prepend_root_path(scope, root_path)
+
+        await app(scope, receive, send)
+
+    return root_path_middleware
+
+
 async def start_asgi_http_server(
     app: ASGIApp,
     http_options: HTTPOptions,
     *,
     event_loop: asyncio.AbstractEventLoop,
     enable_so_reuseport: bool = False,
+    is_direct_ingress: bool = False,
 ) -> Tuple[asyncio.Task, uvicorn.Server]:
     """Start an HTTP server to run the ASGI app.
 
     Returns a task that blocks until the server exits (e.g., due to error) and
     the server object itself (so callers can shut it down gracefully).
+
+    `is_direct_ingress` preserves incoming paths for replica routing.
     """
     app = _apply_middlewares(app, http_options.middlewares)
+    app = _apply_root_path(
+        app, http_options.root_path, is_direct_ingress=is_direct_ingress
+    )
 
     sock = socket.socket(
         socket.AF_INET6 if is_ipv6(http_options.host) else socket.AF_INET,
@@ -818,7 +852,6 @@ async def start_asgi_http_server(
             factory=True,
             host=http_options.host,
             port=http_options.port,
-            root_path=http_options.root_path,
             timeout_keep_alive=http_options.keep_alive_timeout_s,
             loop=event_loop,
             lifespan="off",

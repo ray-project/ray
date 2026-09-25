@@ -2406,6 +2406,7 @@ class Replica:
                     options,
                     event_loop=self._event_loop,
                     enable_so_reuseport=False,
+                    is_direct_ingress=True,
                 )
 
             (

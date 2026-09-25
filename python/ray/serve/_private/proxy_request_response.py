@@ -21,6 +21,15 @@ from ray.serve.grpc_util import RayServegRPCContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# Set by the root_path middleware on requests that arrived with root_path.
+ROOT_PATH_PREFIXED_SCOPE_KEY = "ray.serve.root_path_prefixed"
+
+
+def prepend_root_path(scope: Scope, root_path: str):
+    scope["path"] = root_path + scope["path"]
+    if scope.get("raw_path") is not None:
+        scope["raw_path"] = root_path.encode("ascii") + scope["raw_path"]
+
 
 class gRPCStreamingType(str, Enum):
     """Enum representing the gRPC streaming type."""
@@ -66,6 +75,10 @@ class ProxyRequest(ABC):
         raise NotImplementedError
 
     @property
+    def unprefixed_route_path(self) -> Optional[str]:
+        return None
+
+    @property
     def client(self) -> str:
         return ""
 
@@ -83,6 +96,7 @@ class ASGIProxyRequest(ProxyRequest):
         self.scope = scope
         self.receive = receive
         self.send = send
+        self._arrived_with_root_path = scope.pop(ROOT_PATH_PREFIXED_SCOPE_KEY, False)
 
     @property
     def request_type(self) -> str:
@@ -126,6 +140,14 @@ class ASGIProxyRequest(ProxyRequest):
 
     def set_root_path(self, root_path: str):
         self.scope["root_path"] = root_path
+
+    @property
+    def unprefixed_route_path(self) -> Optional[str]:
+        return self.path if self._arrived_with_root_path else None
+
+    def treat_as_unprefixed(self):
+        prepend_root_path(self.scope, self.root_path)
+        self._arrived_with_root_path = False
 
     def serialized_replica_arg(self, proxy_actor_name: str) -> bytes:
         # NOTE(edoakes): it's important that the request is sent as raw bytes to
