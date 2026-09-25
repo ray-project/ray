@@ -1,10 +1,15 @@
 import asyncio
 import copy
+import inspect
 import os
+import time
+from collections import OrderedDict
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Awaitable,
+    Callable,
     Dict,
     List,
     Optional,
@@ -47,6 +52,7 @@ from ray.llm._internal.serve.utils.lora_serve_utils import (
 from ray.llm._internal.serve.utils.server_utils import (
     get_serve_request_id,
 )
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
 
 if TYPE_CHECKING:
     from ray.llm._internal.serve.core.configs.openai_api_models import (
@@ -107,6 +113,67 @@ def _merge_replica_actor_and_child_actor_bundles(
     ]
 
 
+class _LoraDiskModelLRUCache:
+    """Per-replica LRU cache for LoRA disk configs without ``@serve.multiplexed``.
+
+    Used under HAProxy, where Serve multiplex sticky routing (controller
+    registration of loaded model IDs) is unsupported. Outside HAProxy, prefer
+    ``@serve.multiplexed`` so OpenAiIngress ``handle.options(multiplexed_model_id=...)``
+    can stick adapters to replicas that already loaded them.
+    """
+
+    def __init__(
+        self,
+        load_fn: Callable[[str], Awaitable[DiskMultiplexConfig]],
+        max_num_models: int,
+    ):
+        self._load_fn = load_fn
+        self._max_num_models = max_num_models
+        self._models: OrderedDict[str, DiskMultiplexConfig] = OrderedDict()
+        self._lock = asyncio.Lock()
+
+    async def _unload_lru(self) -> None:
+        model_id, model = self._models.popitem(last=False)
+        logger.debug("Unloading LoRA disk config for model '%s'.", model_id)
+        if hasattr(model, "__del__"):
+            if not inspect.iscoroutinefunction(model.__del__):
+                await asyncio.get_running_loop().run_in_executor(None, model.__del__)
+            else:
+                await model.__del__()
+            model.__del__ = lambda _: None  # type: ignore[method-assign, assignment]
+
+    async def get(self, model_id: str) -> DiskMultiplexConfig:
+        if not isinstance(model_id, str):
+            raise TypeError("The model ID must be a string.")
+        if not model_id:
+            raise ValueError("The model ID cannot be empty.")
+
+        if model_id in self._models:
+            model = self._models.pop(model_id)
+            self._models[model_id] = model
+            return model
+
+        async with self._lock:
+            if model_id in self._models:
+                model = self._models.pop(model_id)
+                self._models[model_id] = model
+                return model
+            while (
+                self._max_num_models > 0 and len(self._models) >= self._max_num_models
+            ):
+                await self._unload_lru()
+
+            logger.debug("Loading LoRA disk config for model '%s'.", model_id)
+            load_start = time.time()
+            self._models[model_id] = await self._load_fn(model_id)
+            logger.debug(
+                "Successfully loaded LoRA disk config for model '%s' in %.1fms.",
+                model_id,
+                (time.time() - load_start) * 1000.0,
+            )
+            return self._models[model_id]
+
+
 def _add_openai_models_retrieve_route(app, llm_config: LLMConfig) -> None:
     """Mount GET /v1/models/{id} on a native engine ASGI app.
 
@@ -131,7 +198,9 @@ class LLMServer(LLMServerProtocol):
     It has a very similar API as the engine. Almost all of the abstractions are
     implemented by the engine. This class just a little bit more logic on top:
 
-    1. Logic for serve multiplexing (e.g. LoRA loading).
+    1. LoRA disk loading via ``@serve.multiplexed`` (sticky routing), or a
+       per-replica LRU cache under HAProxy where multiplex sticky routing is
+       unsupported.
     2. Request id handing from serve context.
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
@@ -228,7 +297,7 @@ class LLMServer(LLMServerProtocol):
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):
-        """Initialize the multiplex loader."""
+        """Initialize LoRA loading with sticky multiplex routing when available."""
 
         model_downloader_cls = model_downloader_cls or LoraModelLoader
         mx_config = self._llm_config.multiplex_config()
@@ -239,15 +308,27 @@ class LLMServer(LLMServerProtocol):
                 max_tries=mx_config.max_download_tries,
             )
 
-            async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
+            async def _load_raw(lora_model_id: str) -> DiskMultiplexConfig:
                 return await model_downloader.load_model_from_config(
                     lora_model_id=lora_model_id,
                     llm_config=self._llm_config,
                 )
 
-            self._load_model = serve.multiplexed(
-                max_num_models_per_replica=mx_config.max_num_models_per_replica
-            )(_load_model)
+            if RAY_SERVE_ENABLE_HA_PROXY:
+                # HAProxy cannot use controller-based multiplex sticky routing.
+                # Keep per-replica LRU caching so LoRA adapters still load.
+                self._lora_disk_cache = _LoraDiskModelLRUCache(
+                    _load_raw,
+                    max_num_models=mx_config.max_num_models_per_replica,
+                )
+                self._load_model = self._lora_disk_cache.get
+            else:
+                # LLMServer is a downstream replica; @serve.multiplexed registers
+                # loaded LoRA IDs so OpenAiIngress multiplexed_model_id routing
+                # sticks to replicas that already have the adapter.
+                self._load_model = serve.multiplexed(
+                    max_num_models_per_replica=mx_config.max_num_models_per_replica
+                )(_load_raw)
         else:
 
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:

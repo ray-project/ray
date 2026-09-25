@@ -1026,6 +1026,11 @@ def multiplexed(
 ):
     """Wrap a callable or method used to load multiplexed models in a replica.
 
+    Multiplexing is intended for downstream replicas only. Don't use it on the
+    ingress deployment; use it on deployments called via DeploymentHandle from
+    an upstream ingress. The ingress should propagate the model ID with
+    ``handle.options(multiplexed_model_id=...)``.
+
     The function can be standalone function or a method of a class. The
     function must have exactly one argument, the model id of type `str` for the
     model to be loaded.
@@ -1161,7 +1166,7 @@ def multiplexed(
             return await model_multiplex_wrapper.load_model(model_id)
 
         # Mark the wrapper so that multiplexing can be detected statically (e.g. at
-        # replica startup) without invoking user code, since the
+        # replica startup / deploy validation) without invoking user code, since the
         # `__serve_multiplex_wrapper` is only created lazily on the first call.
         setattr(_multiplex_wrapper, MULTIPLEXED_FUNCTION_MARKER_ATTR, True)
 
