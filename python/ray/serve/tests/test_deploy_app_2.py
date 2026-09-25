@@ -910,6 +910,15 @@ def test_failed_rolling_update_keeps_serving_from_old_replicas(serve_instance, r
         time.sleep(0.1)
 
 
+def _get_retrying_dropped_connection(http: httpx.Client, url: str) -> httpx.Response:
+    """GET again if HAProxy dropped the connection before responding: it reloads
+    on every replica change during a rolling update, and httpx does not retry."""
+    try:
+        return http.get(url)
+    except httpx.RemoteProtocolError:
+        return http.get(url)
+
+
 @pytest.mark.parametrize("rebuild", [True, False])
 def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
     """Traffic survives a healthy update, a downstream failure, and rollback."""
@@ -960,7 +969,9 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
         with httpx.Client(timeout=10) as http:
             while not stop.is_set():
                 try:
-                    response = http.get("http://localhost:8000/")
+                    response = _get_retrying_dropped_connection(
+                        http, "http://localhost:8000/"
+                    )
                     assert response.status_code == 200, response.text
                     assert response.text in {"v1", "v2"}, response.text
                     responses.append(response.text)
@@ -1465,7 +1476,11 @@ def test_sparse_config_rollback_restores_code_defined_options(
         with httpx.Client(timeout=10) as http:
             while not stop.is_set():
                 try:
-                    status_codes.append(http.get("http://localhost:8000/").status_code)
+                    status_codes.append(
+                        _get_retrying_dropped_connection(
+                            http, "http://localhost:8000/"
+                        ).status_code
+                    )
                 except Exception as exc:
                     errors.append(repr(exc))
                 finally:
