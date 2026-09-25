@@ -70,6 +70,27 @@ class gRPCGenericServer(Server):
         """
         self._passthrough_service_names.add(service_name)
 
+    def _override_method_handler(self, service_method: str, method_handler):
+        return method_handler._replace(
+            response_serializer=None,
+            unary_unary=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.UNARY_UNARY,
+            ),
+            unary_stream=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.UNARY_STREAM,
+            ),
+            stream_unary=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.STREAM_UNARY,
+            ),
+            stream_stream=self.service_handler_factory(
+                service_method=service_method,
+                streaming_type=gRPCStreamingType.STREAM_STREAM,
+            ),
+        )
+
     def add_generic_rpc_handlers(
         self, generic_rpc_handlers: Sequence[grpc.GenericRpcHandler]
     ):
@@ -92,29 +113,26 @@ class gRPCGenericServer(Server):
         ):
             serve_rpc_handlers = {}
             for service_method, method_handler in rpc_handler._method_handlers.items():
-                serve_method_handler = method_handler._replace(
-                    response_serializer=None,
-                    unary_unary=self.service_handler_factory(
-                        service_method=service_method,
-                        streaming_type=gRPCStreamingType.UNARY_UNARY,
-                    ),
-                    unary_stream=self.service_handler_factory(
-                        service_method=service_method,
-                        streaming_type=gRPCStreamingType.UNARY_STREAM,
-                    ),
-                    stream_unary=self.service_handler_factory(
-                        service_method=service_method,
-                        streaming_type=gRPCStreamingType.STREAM_UNARY,
-                    ),
-                    stream_stream=self.service_handler_factory(
-                        service_method=service_method,
-                        streaming_type=gRPCStreamingType.STREAM_STREAM,
-                    ),
+                serve_rpc_handlers[service_method] = self._override_method_handler(
+                    service_method, method_handler
                 )
-                serve_rpc_handlers[service_method] = serve_method_handler
             rpc_handler._method_handlers = serve_rpc_handlers
         self.generic_rpc_handlers.append(generic_rpc_handlers)
         super().add_generic_rpc_handlers(generic_rpc_handlers)
+
+    def add_registered_method_handlers(self, service_name: str, method_handlers):
+        """Route grpcio's registered-method handlers through Serve as well."""
+        if service_name in self._passthrough_service_names:
+            super().add_registered_method_handlers(service_name, method_handlers)
+            return
+
+        serve_method_handlers = {
+            method_name: self._override_method_handler(
+                f"/{service_name}/{method_name}", method_handler
+            )
+            for method_name, method_handler in method_handlers.items()
+        }
+        super().add_registered_method_handlers(service_name, serve_method_handlers)
 
 
 def get_service_names(
