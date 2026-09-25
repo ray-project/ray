@@ -352,6 +352,11 @@ def ray_deps_setup():
         sha256 = "cd256d91781911d46a57506978b3979bfee45d5086a1b6668a3ae19c5e77f8dc",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            # gRPC turns on layering_check for its own packages, but its BUILD
+            # files do not declare every header they use (e.g. the Apple-only
+            # cf_event_engine includes absl/status/status.h without depending
+            # on it), which fails on macOS where clang enforces it.
+            "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
             "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
@@ -394,10 +399,14 @@ def ray_deps_setup():
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
-        # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
+        #
+        # Deliberately older than what grpc 1.69.0 declares (b8b3e6e1). Every
+        # boringssl after this one requires C11 <stdalign.h> on MSVC, which the
+        # Windows SDK on the CI image (10.0.19041) does not ship; this commit
+        # still falls back to __declspec(align) there.
         name = "boringssl",
-        sha256 = "c70d519e4ee709b7a74410a5e3a937428b8198d793a3d771be3dd2086ae167c8",
-        url = "https://github.com/google/boringssl/archive/b8b3e6e11166719a8ebfa43c0cde9ad7d57a84f6.tar.gz",
+        sha256 = "b21994a857a7aa6d5256ffe355c735ad4c286de44c6c81dfc04edc41a8feaeef",
+        url = "https://github.com/google/boringssl/archive/2ff4b968a7e0cfee66d9f151cb95635b43dc1d5b.tar.gz",
     )
 
     # The protobuf version we use to auto generate python and java code.

@@ -34,11 +34,14 @@ http_archive(
     ],
 )
 
+# 8.12.0 is the ceiling while wheels build on manylinux2014: from 8.13.0 on,
+# the prebuilt java_tools (singlejar, ijar, one_version) need GLIBCXX_3.4.21,
+# newer than CentOS 7's libstdc++.
 http_archive(
     name = "rules_java",
-    sha256 = "bbe7d94360cc9ed4607ec5fd94995fd1ec41e84257020b6f09e64055281ecb12",
+    sha256 = "1558508fc6c348d7f99477bd21681e5746936f15f0436b5f4233e30832a590f9",
     urls = [
-        "https://github.com/bazelbuild/rules_java/releases/download/8.14.0/rules_java-8.14.0.tar.gz",
+        "https://github.com/bazelbuild/rules_java/releases/download/8.12.0/rules_java-8.12.0.tar.gz",
     ],
 )
 
