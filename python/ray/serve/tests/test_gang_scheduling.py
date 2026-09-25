@@ -894,7 +894,8 @@ class TestGangFailureRecovery:
             num_replicas=4,
             ray_actor_options={"num_cpus": 0.1},
             health_check_period_s=1,
-            health_check_timeout_s=1,
+            # check_health below makes a blocking remote call; a 1s timeout marks
+            # healthy siblings unhealthy under load and restarts the wrong gang.
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
         class HealthFailureDeployment:
