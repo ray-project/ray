@@ -132,10 +132,17 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             )
 
         if self._config.failed_task_queue_name:
-            task_failure.connect(self._handle_task_failure)
+            # Celery identifies bound receivers by function, not by instance.
+            task_failure.connect(
+                self._handle_task_failure,
+                dispatch_uid=f"ray_serve_task_failure_{id(self)}",
+            )
 
         if self._config.unprocessable_task_queue_name:
-            task_unknown.connect(self._handle_unknown_task)
+            task_unknown.connect(
+                self._handle_unknown_task,
+                dispatch_uid=f"ray_serve_task_unknown_{id(self)}",
+            )
 
     def register_task_handle(self, func, name=None):
         # Celery does not support async task handlers
@@ -264,7 +271,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         kwargs: Any = None,
         einfo: Any = None,
         **kw,
-    ):
+    ) -> None:
         """Handle task failures and route them to appropriate dead letter queues.
 
         This method is called when a task fails after all retry attempts have been
@@ -278,6 +285,9 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
             einfo: Exception info object containing exception details and traceback
             **kw: Additional keyword arguments passed by Celery
         """
+        if getattr(sender, "app", None) is not self._app:
+            return
+
         logger.info(
             f"Task failure detected for task_id: {task_id}, einfo: {str(einfo)}"
         )
@@ -309,7 +319,7 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         message: Any = None,
         exc: Any = None,
         **kwargs,
-    ):
+    ) -> None:
         """Handle unknown or unregistered tasks received by Celery.
 
         This method is called when Celery receives a task that it doesn't recognize
@@ -317,13 +327,16 @@ class CeleryTaskProcessorAdapter(TaskProcessorAdapter):
         are moved to the unprocessable task queue if configured.
 
         Args:
-            sender: The Celery app or worker that detected the unknown task
+            sender: The Celery consumer that detected the unknown task
             name: Name of the unknown task
             id: Task ID of the unknown task
             message: The raw message received for the unknown task
             exc: The exception raised when trying to process the unknown task
             **kwargs: Additional context information from Celery
         """
+        if getattr(sender, "app", None) is not self._app:
+            return
+
         logger.info(
             f"Unknown task detected by Celery. Name: {name}, ID: {id}, Exc: {str(exc)}"
         )
