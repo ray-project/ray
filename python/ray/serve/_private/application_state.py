@@ -24,6 +24,7 @@ from ray.serve._private.common import (
     DeploymentStatusInfo,
     DeploymentStatusTrigger,
     EndpointInfo,
+    RerouteRoute,
     TargetCapacityDirection,
 )
 from ray.serve._private.config import DeploymentConfig
@@ -364,6 +365,17 @@ class ApplicationState:
     @property
     def ingress_request_router_deployment(self) -> Optional[str]:
         return self._ingress_request_router_deployment_name
+
+    @property
+    def reroute_routes(self) -> List[RerouteRoute]:
+        """Reroute routes declared on the target ingress deployment."""
+        deployment_infos = self._target_state.deployment_infos
+        if not deployment_infos or self._ingress_deployment_name is None:
+            return []
+        ingress_info = deployment_infos.get(self._ingress_deployment_name)
+        if ingress_info is None:
+            return []
+        return list(ingress_info.reroute_routes)
 
     @property
     def api_type(self) -> APIType:
@@ -1502,6 +1514,12 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_request_router_deployment
 
+    def get_reroute_routes(self, name: str) -> List[RerouteRoute]:
+        if name not in self._application_states:
+            return []
+
+        return self._application_states[name].reroute_routes
+
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1806,6 +1824,7 @@ def build_serve_application(
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    reroute_routes=built_app.reroute_routes if is_ingress else None,
                 )
             )
 

@@ -34,6 +34,7 @@ from ray.serve._private.common import (
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
+    RerouteRoute,
     TimeStampedValue,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
@@ -442,6 +443,103 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
         ("LLMServer", False),
         ("IngressRequestRouter", True),
     ]
+
+
+def test_build_serve_application_puts_reroute_routes_on_ingress_args():
+    @serve.deployment
+    class Model:
+        pass
+
+    @serve.deployment
+    class Supervisor:
+        def __init__(self, model):
+            pass
+
+    app = Supervisor.bind(Model.bind())._with_reroute_routes(
+        [("POST", "/v1/chat/completions")]
+    )
+    runtime_context = Mock()
+    runtime_context.runtime_env = {}
+    runtime_context.get_job_id.return_value = "job-id"
+
+    with (
+        patch("ray.serve._private.application_state.import_attr", return_value=app),
+        patch(
+            "ray.serve._private.application_state.ray.get_runtime_context",
+            return_value=runtime_context,
+        ),
+        patch("ray.serve._private.application_state.configure_component_logger"),
+        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
+    ):
+        _, deploy_args, error = build_serve_application._function(
+            "module.app",
+            "code-version",
+            "default",
+            {},
+            LoggingConfig(),
+            None,
+            {},
+            {},
+            {},
+        )
+
+    assert error is None
+    assert {
+        args["deployment_name"]: args["reroute_routes"] for args in deploy_args
+    } == {
+        "Model": [],
+        "Supervisor": [RerouteRoute(method="POST", path="/v1/chat/completions")],
+    }
+
+
+class TestRerouteRoutesState:
+    ROUTES = [RerouteRoute(method="POST", path="/v1/chat/completions")]
+
+    def test_manager_reads_routes_from_ingress_deployment(
+        self, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        ingress_params = deployment_params("supervisor", "/")
+        ingress_params["reroute_routes"] = self.ROUTES
+        app_state_manager.deploy_app(
+            "app1",
+            [ingress_params, deployment_params("other")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert app_state_manager.get_reroute_routes("app1") == self.ROUTES
+        assert app_state_manager.get_reroute_routes("missing") == []
+
+    def test_manager_defaults_to_no_routes(self, mocked_application_state_manager):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state_manager.deploy_app(
+            "app1",
+            [deployment_params("a", "/")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert app_state_manager.get_reroute_routes("app1") == []
+
+    def test_deployment_info_update_keeps_routes(self):
+        params = deployment_params("supervisor", "/")
+        params["reroute_routes"] = self.ROUTES
+        info = deploy_args_to_deployment_info(**params, app_name="app1")
+
+        assert info.update(route_prefix="/new").reroute_routes == self.ROUTES
+        assert cloudpickle.loads(cloudpickle.dumps(info)).reroute_routes == (
+            self.ROUTES
+        )
+
+    def test_deployment_info_checkpoint_without_routes(self):
+        """Checkpoints written before the field existed still load."""
+        info = deployment_info("supervisor", "/")
+        state = info.__getstate__()
+        del state["reroute_routes"]
+
+        restored = DeploymentInfo.__new__(DeploymentInfo)
+        restored.__setstate__(state)
+
+        assert restored.reroute_routes == []
 
 
 @pytest.fixture

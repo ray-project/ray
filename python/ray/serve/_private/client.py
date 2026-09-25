@@ -369,6 +369,7 @@ class ServeControllerClient:
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    reroute_routes=app.reroute_routes if is_ingress else None,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -393,6 +394,10 @@ class ServeControllerClient:
                 deployment_args_proto.uses_multiplexing = deployment_args[
                     "uses_multiplexing"
                 ]
+                for route in deployment_args["reroute_routes"]:
+                    deployment_args_proto.reroute_routes.add(
+                        method=route.method, path=route.path
+                    )
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 

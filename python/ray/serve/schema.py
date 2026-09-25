@@ -26,6 +26,7 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     ReplicaState,
     RequestProtocol,
+    RerouteRoute,
 )
 from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
@@ -1670,6 +1671,16 @@ class TargetGroup(BaseModel):
     ingress_deployment_name: str = Field(
         "",
         description="Name of the application's ingress deployment.",
+    )
+    # Ingress routes whose response is a routing decision rather than the
+    # response to the client. HAProxy calls the ingress for these and forwards
+    # the original request to the replica it names. HTTP target groups only.
+    reroute_routes: List[RerouteRoute] = Field(
+        default_factory=list,
+        description=(
+            "Ingress routes, relative to route_prefix, that HAProxy calls for a "
+            "routing decision. Only populated on HTTP target groups."
+        ),
     )
 
 

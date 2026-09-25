@@ -61,6 +61,9 @@ class Application:
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
         self._ingress_request_router: Optional["Application"] = None
+        # (method, path) pairs on the ingress that HAProxy calls as a routing
+        # decision endpoint instead of serving the request there.
+        self._reroute_routes: List[Tuple[str, str]] = []
 
     def _with_ingress_request_router(
         self, ingress_request_router: "Application"
@@ -68,6 +71,22 @@ class Application:
         # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
         # This is not a stable public Serve API.
         self._ingress_request_router = ingress_request_router
+        return self
+
+    def _with_reroute_routes(self, routes: List[Tuple[str, str]]) -> "Application":
+        """Mark ingress routes whose response is a routing decision for HAProxy.
+
+        Each route is a ``(method, path)`` pair, with ``path`` relative to the
+        application's route prefix. For a matching request HAProxy sends a copy
+        to the ingress, reads ``{"application", "replica_id"}`` from a 200
+        response, and forwards the original request to that replica of that
+        application's ingress deployment. Any other response is returned to the
+        client as is.
+
+        Internal-only, unstable hook for the Serve LLM direct-streaming stack.
+        This is not a stable public Serve API.
+        """
+        self._reroute_routes = list(routes)
         return self
 
 

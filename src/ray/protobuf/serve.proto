@@ -534,6 +534,16 @@ message DeploymentArgs {
   optional string docs_path = 7;
   bool ingress_request_router = 8;
   bool uses_multiplexing = 9;
+  // Ingress routes HAProxy calls for a routing decision. Only set on the
+  // application's ingress deployment.
+  repeated RerouteRoute reroute_routes = 10;
+}
+
+// A (method, path) pair on an application's ingress. Path is relative to the
+// application's route prefix.
+message RerouteRoute {
+  string method = 1;
+  string path = 2;
 }
 
 message ApplicationArgs {

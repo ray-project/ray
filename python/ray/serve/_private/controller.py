@@ -32,6 +32,7 @@ from ray.serve._private.common import (
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
+    RerouteRoute,
     RunningReplicaInfo,
     TargetCapacityDirection,
 )
@@ -1196,6 +1197,10 @@ class ServeController:
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
                         "uses_multiplexing": args.uses_multiplexing,
+                        "reroute_routes": [
+                            RerouteRoute(method=route.method, path=route.path)
+                            for route in args.reroute_routes
+                        ],
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1663,6 +1668,7 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        reroute_routes = self.application_state_manager.get_reroute_routes(app_name)
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1697,6 +1703,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
                     ingress_deployment_name=ingress_deployment_name,
+                    reroute_routes=reroute_routes,
                 )
             )
 
@@ -1732,6 +1739,9 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        # Kept while the ingress is scaled to zero so HAProxy still intercepts
+        # these routes instead of returning a routing decision to the client.
+        reroute_routes = self.application_state_manager.get_reroute_routes(app_name)
 
         if self._ha_proxy_enabled:
             http_targets = []
@@ -1754,6 +1764,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=[],
                     ingress_deployment_name=ingress_deployment_name,
+                    reroute_routes=reroute_routes,
                 )
             )
         if include_grpc:

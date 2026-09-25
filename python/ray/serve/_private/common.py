@@ -767,6 +767,40 @@ class gRPCStreamingRequest:
     proxy_actor_name: str
 
 
+@dataclass(frozen=True)
+class RerouteRoute:
+    """An ingress route that HAProxy calls for a routing decision.
+
+    ``path`` is relative to the application's route prefix and matched
+    exactly. See ``Application._with_reroute_routes``.
+    """
+
+    method: str
+    path: str
+
+    # Methods whose requests carry a body HAProxy can buffer and replay.
+    SUPPORTED_METHODS = ("POST", "PUT", "PATCH")
+
+    def __post_init__(self):
+        if self.method not in self.SUPPORTED_METHODS:
+            raise ValueError(
+                f"Invalid reroute route method '{self.method}', "
+                f"expected one of {list(self.SUPPORTED_METHODS)}."
+            )
+        # The path is rendered into HAProxy ACLs and compared byte for byte, so
+        # reject anything HAProxy or the ACL would interpret.
+        if (
+            not self.path.startswith("/")
+            or (self.path != "/" and self.path.endswith("/"))
+            or any(c in self.path for c in "{}?# \t\"'%")
+        ):
+            raise ValueError(
+                f"Invalid reroute route path '{self.path}'. It must start with "
+                "'/', must not end with '/', and must not contain wildcards, "
+                "whitespace, quotes, '%', '?', or '#'."
+            )
+
+
 class RequestProtocol(str, Enum):
     UNDEFINED = "UNDEFINED"
     HTTP = "HTTP"

@@ -12,6 +12,7 @@ from ray.serve._private.common import (
     ReplicaID,
     ReplicaState,
     RequestProtocol,
+    RerouteRoute,
     RunningReplicaInfo,
 )
 from ray.serve._private.controller import ServeController
@@ -59,6 +60,7 @@ class FakeApplicationStateManager:
         route_prefixes,
         ingress_deployments,
         ingress_request_router_deployments=None,
+        reroute_routes=None,
     ):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
@@ -66,6 +68,7 @@ class FakeApplicationStateManager:
         self.ingress_request_router_deployments = (
             ingress_request_router_deployments or {}
         )
+        self.reroute_routes = reroute_routes or {}
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -78,6 +81,9 @@ class FakeApplicationStateManager:
 
     def get_ingress_request_router_deployment_name(self, app_name):
         return self.ingress_request_router_deployments.get(app_name)
+
+    def get_reroute_routes(self, app_name):
+        return self.reroute_routes.get(app_name, [])
 
 
 class FakeProxyState:
@@ -854,6 +860,96 @@ def test_get_target_groups_populates_ingress_request_router_targets(
             ],
         )
     ]
+
+
+def test_get_target_groups_populates_reroute_routes_on_http_only(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """Reroute routes ride on the HTTP target group; gRPC never reroutes."""
+    app_name = "supervisor"
+    ingress_deployment_id = DeploymentID(name="Supervisor", app_name=app_name)
+    replica_id = ReplicaID(unique_id="r1", deployment_id=ingress_deployment_id)
+    routes = [RerouteRoute(method="POST", path="/v1/chat/completions")]
+
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: "/"},
+        ingress_deployments={app_name: ingress_deployment_id.name},
+        reroute_routes={app_name: routes},
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={
+            ingress_deployment_id: [
+                RunningReplicaInfo(
+                    replica_id=replica_id,
+                    node_id="node1",
+                    node_ip="10.0.0.1",
+                    availability_zone="az1",
+                    actor_name="supervisor_replica",
+                    max_ongoing_requests=100,
+                )
+            ],
+        },
+    )
+    http_port = direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    grpc_port = direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.GRPC
+    )
+
+    target_groups = direct_ingress_controller.get_target_groups(app_name=app_name)
+
+    assert [(tg.protocol, tg.reroute_routes) for tg in target_groups] == [
+        (RequestProtocol.HTTP, routes),
+        (RequestProtocol.GRPC, []),
+    ]
+    assert target_groups[0].targets == [
+        Target(ip="10.0.0.1", port=http_port, instance_id="", name="r1")
+    ]
+    assert target_groups[1].targets[0].port == grpc_port
+
+
+@pytest.mark.parametrize("ha_proxy_enabled", [False, True])
+def test_get_target_groups_keeps_reroute_routes_with_no_running_replicas(
+    direct_ingress_controller: FakeDirectIngressController, ha_proxy_enabled: bool
+):
+    """A scaled-to-zero ingress keeps its reroute routes.
+
+    Otherwise HAProxy would stop intercepting them and forward the client's
+    request to the fallback proxy, which would return the ingress's routing
+    decision to the client as if it were the response.
+    """
+    direct_ingress_controller._ha_proxy_enabled = ha_proxy_enabled
+    app_name = "supervisor"
+    routes = [RerouteRoute(method="POST", path="/v1/chat/completions")]
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: "/"},
+        ingress_deployments={app_name: "Supervisor"},
+        reroute_routes={app_name: routes},
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={},
+    )
+    direct_ingress_controller.proxy_state_manager.add_proxy_details(
+        "node1", "10.0.0.1", "proxy1"
+    )
+
+    target_groups = direct_ingress_controller.get_target_groups(
+        app_name=app_name, from_proxy_manager=True
+    )
+
+    http_target_groups = [
+        tg for tg in target_groups if tg.protocol == RequestProtocol.HTTP
+    ]
+    assert len(http_target_groups) == 1
+    assert http_target_groups[0].reroute_routes == routes
+    assert all(
+        tg.reroute_routes == []
+        for tg in target_groups
+        if tg.protocol == RequestProtocol.GRPC
+    )
 
 
 def test_get_target_groups_app_with_no_running_replicas(

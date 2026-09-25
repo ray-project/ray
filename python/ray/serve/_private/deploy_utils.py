@@ -2,11 +2,11 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 import ray.util.serialization_addons
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, RerouteRoute
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
@@ -33,6 +33,7 @@ def get_deploy_args(
     serialized_request_router_cls: Optional[bytes] = None,
     serialized_deployment_actors: Optional[Dict[str, bytes]] = None,
     uses_multiplexing: bool = False,
+    reroute_routes: Optional[List[RerouteRoute]] = None,
 ) -> Dict:
     """
     Takes a deployment's configuration, and returns the arguments needed
@@ -60,6 +61,7 @@ def get_deploy_args(
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
         "uses_multiplexing": uses_multiplexing,
+        "reroute_routes": list(reroute_routes or []),
     }
 
     return controller_deploy_args
@@ -75,6 +77,7 @@ def deploy_args_to_deployment_info(
     ingress_request_router: bool = False,
     route_prefix: Optional[str] = None,
     uses_multiplexing: bool = False,
+    reroute_routes: Optional[List[RerouteRoute]] = None,
     **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
@@ -152,6 +155,7 @@ def deploy_args_to_deployment_info(
         route_prefix=route_prefix,
         ingress=ingress,
         ingress_request_router=ingress_request_router,
+        reroute_routes=reroute_routes,
     )
 
 

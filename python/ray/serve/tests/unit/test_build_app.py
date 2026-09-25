@@ -1,5 +1,6 @@
 import sys
 from typing import Any, Dict, List, Optional
+from unittest import mock
 
 import pytest
 from fastapi import FastAPI
@@ -7,11 +8,12 @@ from fastapi import FastAPI
 from ray import serve
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    REROUTE_ROUTES_REQUIRE_HAPROXY_ERROR,
     BuiltApplication,
     build_app,
 )
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, RerouteRoute
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
@@ -891,6 +893,166 @@ def test_build_app_haproxy_allows_custom_router_on_non_ingress_deployment(monkey
         "Ingress",
         "Downstream",
     }
+
+
+class TestRerouteRoutes:
+    @pytest.fixture(autouse=True)
+    def _haproxy(self, monkeypatch):
+        monkeypatch.setattr(
+            "ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True
+        )
+
+    @staticmethod
+    def _build(app: Application) -> BuiltApplication:
+        return build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+    def test_defaults_to_no_routes(self):
+        @serve.deployment
+        class Ingress:
+            pass
+
+        assert self._build(Ingress.bind()).reroute_routes == []
+
+    def test_normalizes_method(self):
+        @serve.deployment
+        class Supervisor:
+            pass
+
+        app = Supervisor.bind()._with_reroute_routes(
+            [("post", "/v1/chat/completions"), ("PUT", "/v1/other")]
+        )
+
+        built_app = self._build(app)
+
+        assert built_app.reroute_routes == [
+            RerouteRoute(method="POST", path="/v1/chat/completions"),
+            RerouteRoute(method="PUT", path="/v1/other"),
+        ]
+        # The supervisor ingress is itself the decision target; no router
+        # deployment is created.
+        assert built_app.ingress_request_router_deployment is None
+        assert [d.name for d in built_app.deployments] == ["Supervisor"]
+
+    def test_requires_haproxy(self, monkeypatch):
+        monkeypatch.setattr(
+            "ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False
+        )
+
+        @serve.deployment
+        class Supervisor:
+            pass
+
+        app = Supervisor.bind()._with_reroute_routes([("POST", "/v1/x")])
+        with pytest.raises(RayServeException) as exc_info:
+            self._build(app)
+        assert str(exc_info.value) == REROUTE_ROUTES_REQUIRE_HAPROXY_ERROR
+
+    def test_rejects_ingress_request_router(self):
+        @serve.deployment
+        class Supervisor:
+            pass
+
+        @serve.deployment
+        class Router:
+            pass
+
+        app = (
+            Supervisor.bind()
+            ._with_reroute_routes([("POST", "/v1/x")])
+            ._with_ingress_request_router(Router.bind())
+        )
+        with pytest.raises(RayServeException, match="both reroute routes"):
+            self._build(app)
+
+    @pytest.mark.parametrize(
+        "route, error",
+        [
+            ("POST /v1/x", TypeError),
+            (("POST",), TypeError),
+            (("POST", 1), TypeError),
+            (("GET", "/v1/x"), ValueError),
+            (("POST", "v1/x"), ValueError),
+            (("POST", "/v1/x/"), ValueError),
+            (("POST", "/v1/{x}"), ValueError),
+            (("POST", "/v1/x?y=1"), ValueError),
+            (("POST", "/v1/a%2Fb"), ValueError),
+            (("POST", '/v1/"x"'), ValueError),
+        ],
+    )
+    def test_rejects_invalid_route(self, route, error):
+        @serve.deployment
+        class Supervisor:
+            pass
+
+        app = Supervisor.bind()._with_reroute_routes([route])
+        with pytest.raises(error):
+            self._build(app)
+
+    def test_rejects_duplicates(self):
+        @serve.deployment
+        class Supervisor:
+            pass
+
+        app = Supervisor.bind()._with_reroute_routes(
+            [("POST", "/v1/x"), ("post", "/v1/x")]
+        )
+        with pytest.raises(ValueError, match="Duplicate reroute routes"):
+            self._build(app)
+
+    def test_only_ingress_deploy_args_carry_routes(self):
+        """`deploy_applications` puts the routes on the ingress's args only."""
+
+        @serve.deployment
+        class Model:
+            pass
+
+        @serve.deployment
+        class Supervisor:
+            def __init__(self, model):
+                pass
+
+        app = Supervisor.bind(Model.bind())._with_reroute_routes(
+            [("POST", "/v1/chat/completions")]
+        )
+        built_app = self._build(app)
+
+        client = object.__new__(ServeControllerClient)
+        client._shutdown = False
+        client._controller = mock.Mock()
+
+        with mock.patch("ray.get"), mock.patch.object(
+            client, "get_handle", create=True
+        ), mock.patch.object(
+            client, "wait_for_proxies_serving", create=True
+        ), mock.patch(
+            "ray.serve._private.deploy_utils.ray.get_runtime_context"
+        ) as get_runtime_context:
+            get_runtime_context.return_value.get_job_id.return_value = "job-id"
+            client.deploy_applications(
+                [built_app],
+                wait_for_ingress_deployment_creation=False,
+                wait_for_applications_running=False,
+            )
+
+        from ray.serve.generated.serve_pb2 import DeploymentArgs
+
+        (
+            name_to_deployment_args_list,
+            _,
+        ), _ = client._controller.deploy_applications.remote.call_args
+        captured = name_to_deployment_args_list
+        routes = {
+            args.deployment_name: [(r.method, r.path) for r in args.reroute_routes]
+            for args in map(DeploymentArgs.FromString, captured["default"])
+        }
+        assert routes == {
+            "Model": [],
+            "Supervisor": [("POST", "/v1/chat/completions")],
+        }
 
 
 if __name__ == "__main__":

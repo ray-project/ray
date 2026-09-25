@@ -1,7 +1,7 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
-from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.common import RerouteRoute, TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
@@ -24,6 +24,7 @@ class DeploymentInfo:
         ingress_request_router: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        reroute_routes: Optional[List[RerouteRoute]] = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -41,6 +42,9 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
+        # Application-level metadata carried on the ingress deployment, like
+        # `route_prefix`. See `Application._with_reroute_routes`.
+        self.reroute_routes: List[RerouteRoute] = list(reroute_routes or [])
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -53,6 +57,8 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
+        # Checkpoints written before reroute routes existed lack the field.
+        self.__dict__.setdefault("reroute_routes", [])
 
     def update(
         self,
@@ -74,6 +80,7 @@ class DeploymentInfo:
             ingress_request_router=self.ingress_request_router,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
+            reroute_routes=self.reroute_routes,
         )
 
     def set_target_capacity(

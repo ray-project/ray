@@ -1,10 +1,11 @@
 import inspect
 import logging
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.serve._private.common import RerouteRoute
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
@@ -19,6 +20,11 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 K = TypeVar("K")
 V = TypeVar("V")
+
+REROUTE_ROUTES_REQUIRE_HAPROXY_ERROR = (
+    "Reroute routes require HAProxy. "
+    "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
+)
 
 INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "`ingress_request_router` requires HAProxy. "
@@ -78,6 +84,9 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
+    # Ingress routes HAProxy calls for a routing decision. Carried on the
+    # ingress deployment's args. See `Application._with_reroute_routes`.
+    reroute_routes: List[RerouteRoute] = field(default_factory=list)
 
     def validate_single_fastapi_ingress(self) -> None:
         """Validate that the application has at most one FastAPI ingress."""
@@ -145,6 +154,8 @@ def build_app(
     if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
         raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
 
+    reroute_routes = _validate_reroute_routes(app)
+
     # Under HAProxy, ingress traffic is load-balanced by HAProxy and bypasses
     # the ingress deployment's Serve request router, so a custom router there is
     # silently ignored. Reject it unless an `ingress_request_router` is attached
@@ -211,7 +222,38 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
+        reroute_routes=reroute_routes,
     )
+
+
+def _validate_reroute_routes(app: Application) -> List[RerouteRoute]:
+    """Validate the app's reroute routes and convert them to `RerouteRoute`s."""
+    if not app._reroute_routes:
+        return []
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        raise RayServeException(REROUTE_ROUTES_REQUIRE_HAPROXY_ERROR)
+    # Both mechanisms decide the replica for a request to this app; HAProxy
+    # would consult one and silently ignore the other.
+    if app._ingress_request_router is not None:
+        raise RayServeException(
+            "An application cannot configure both reroute routes and an "
+            "`ingress_request_router`."
+        )
+    routes = []
+    for route in app._reroute_routes:
+        if not isinstance(route, (tuple, list)) or len(route) != 2:
+            raise TypeError(
+                f"Reroute routes must be (method, path) pairs, got {route!r}."
+            )
+        method, path = route
+        if not isinstance(method, str) or not isinstance(path, str):
+            raise TypeError(
+                f"Reroute route method and path must be strings, got {route!r}."
+            )
+        routes.append(RerouteRoute(method=method.upper(), path=path))
+    if len(set(routes)) != len(routes):
+        raise ValueError(f"Duplicate reroute routes: {app._reroute_routes}.")
+    return routes
 
 
 def _build_app_recursive(
