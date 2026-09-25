@@ -288,7 +288,7 @@ def test_shuffle_reduce_preserves_partition_order(
     outputs = [reduce_op.get_next(), reduce_op.get_next()]
     first_ids = []
     for bundle in outputs:
-        block = ray.get(bundle.block_refs[0])
+        block = ray.get(bundle.block_refs[0])  # pyrefly: ignore[no-matching-overload]
         first_ids.append(block["id"].iloc[0])
     assert first_ids == [0, 1]
     for bundle in outputs:
