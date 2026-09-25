@@ -391,6 +391,42 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
   }
 }
 
+// The worker table returns OK with an empty optional for an unknown worker_id
+// (e.g. the row was already evicted after the worker died). The update
+// handlers used to dereference the empty optional there, which is UB.
+TEST_F(GcsWorkerManagerTest, TestUpdateUnknownWorkerDoesNotCrash) {
+  auto worker_manager = GetWorkerManager();
+  auto unknown_worker_id = WorkerID::FromRandom().Binary();
+
+  {
+    rpc::UpdateWorkerDebuggerPortRequest request;
+    request.set_worker_id(unknown_worker_id);
+    request.set_debugger_port(1000);
+    rpc::UpdateWorkerDebuggerPortReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerDebuggerPort(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
+  }
+
+  {
+    rpc::UpdateWorkerNumPausedThreadsRequest request;
+    request.set_worker_id(unknown_worker_id);
+    request.set_num_paused_threads_delta(1);
+    rpc::UpdateWorkerNumPausedThreadsReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerNumPausedThreads(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
+  }
+}
+
 TEST_F(GcsWorkerManagerTest, TestRestoreDeadWorkerIdsQueue) {
   RayConfig::instance().initialize(
       R"(
