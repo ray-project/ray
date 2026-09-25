@@ -2,9 +2,10 @@ import json
 import logging
 import os
 import shlex
+import shutil
 import subprocess
 import sys
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
@@ -25,12 +26,14 @@ class RuntimeEnvContext:
         py_executable: Optional[str] = None,
         override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
+        container: Optional[Dict[str, Any]] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
+        self.container = container or {}
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -40,6 +43,7 @@ class RuntimeEnvContext:
         return RuntimeEnvContext(**json.loads(json_string))
 
     def exec_worker(self, passthrough_args: List[str], language: Language):
+        launcher_path = os.environ.get("PATH")
         update_envs(self.env_vars)
 
         if language == Language.PYTHON and sys.platform == "win32":
@@ -72,6 +76,70 @@ class RuntimeEnvContext:
                 f"{self.override_worker_entrypoint}."
             )
             passthrough_args[0] = self.override_worker_entrypoint
+
+        if self.container:
+            if language != Language.PYTHON:
+                raise ValueError("image_uri only supports Python workers.")
+            container_command = list(self.container["command"])
+            container_env = {
+                key: value
+                for key, value in os.environ.items()
+                if key.startswith("RAY_")
+            }
+            container_env.update(
+                {key: os.environ[key] for key in self.env_vars if key in os.environ}
+            )
+            container_env.update(self.container.get("env_vars", {}))
+            path_prefix = self.container.get("path_prefix")
+            if path_prefix:
+                path = container_env.get("PATH", self.container.get("default_path", ""))
+                container_env["PATH"] = (
+                    path_prefix + os.pathsep + path if path else path_prefix
+                )
+            for key in sorted(container_env):
+                if key == "PATH":
+                    container_command.extend(["--env", f"PATH={container_env[key]}"])
+                else:
+                    container_command.extend(["--env", key])
+            for mount in self.container.get("mounts", []):
+                mount_spec = f"{mount['source']}:{mount['target']}"
+                mount_options = []
+                if mount.get("read_only"):
+                    mount_options.append("ro")
+                if mount.get("options"):
+                    mount_options.extend(mount["options"].split(","))
+                if mount_options:
+                    mount_spec += ":" + ",".join(mount_options)
+                container_command.extend(["-v", mount_spec])
+            container_command.extend(
+                [
+                    "--entrypoint",
+                    self.container["entrypoint"],
+                    self.container["image"],
+                    *passthrough_args,
+                ]
+            )
+            logger.debug("Exec'ing Python worker in image %s.", self.container["image"])
+            executable_path = shutil.which(
+                container_command[0],
+                path=launcher_path if launcher_path is not None else os.defpath,
+            )
+            if not executable_path:
+                raise FileNotFoundError(
+                    f"'{container_command[0]}' was not found in PATH; it is "
+                    "required to start workers with the image_uri runtime "
+                    "environment."
+                )
+            exec_env = os.environ.copy()
+            exec_env.update(
+                {key: value for key, value in container_env.items() if key != "PATH"}
+            )
+            if launcher_path is None:
+                exec_env.pop("PATH", None)
+            else:
+                exec_env["PATH"] = launcher_path
+            os.execve(executable_path, container_command, exec_env)
+            return
 
         if sys.platform == "win32":
 
