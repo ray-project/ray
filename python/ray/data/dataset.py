@@ -2339,7 +2339,7 @@ class Dataset:
             Repartitioning with ``keys`` hash-shuffles the whole dataset. If the
             dataset is much larger than the cluster's aggregate object-store
             memory, enable :ref:`disk-based shuffle <disk-based-shuffle>` by
-            setting ``DataContext.use_disk_based_hash_shuffle = True`` or the
+            setting ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
             environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Examples:
@@ -3626,7 +3626,7 @@ class Dataset:
             Joins hash-shuffle both input datasets by key. If the inputs are
             much larger than the cluster's aggregate object-store memory,
             enable :ref:`disk-based shuffle <disk-based-shuffle>` by setting
-            ``DataContext.use_disk_based_hash_shuffle = True`` or the
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
             environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Args:
@@ -3811,7 +3811,7 @@ class Dataset:
             Grouping hash-shuffles the dataset by key. If the dataset is much
             larger than the cluster's aggregate object-store memory, enable
             :ref:`disk-based shuffle <disk-based-shuffle>` by setting
-            ``DataContext.use_disk_based_hash_shuffle = True`` or the
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
             environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Examples:
