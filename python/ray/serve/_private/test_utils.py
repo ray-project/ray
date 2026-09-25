@@ -803,6 +803,16 @@ class MockReplicaActorWrapper:
         self.health_check_called = True
         return self.healthy
 
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        received_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ) -> None:
+        """Match ActorReplicaWrapper; recorded for assertions."""
+        self.pushed_health = (checked_at, received_at, healthy, consecutive_failures)
+
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
 
