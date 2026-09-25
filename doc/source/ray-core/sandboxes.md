@@ -162,6 +162,30 @@ USER ray
 
 ::::
 
+To give sandboxes GPU access, also install `nvidia-container-toolkit-base` on GPU worker nodes. This package provides `nvidia-ctk`, which Ray uses to generate a [CDI](https://github.com/cncf-tags/container-device-interface) spec. Each worker process runs `nvidia-ctk cdi generate` once, when it creates its first GPU sandbox, and reuses the result.
+
+To install `nvidia-container-toolkit-base`, see the [NVIDIA Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+:::{note}
+* `nvidia-container-toolkit-base` must be version 1.20.1 or later.
+* gVisor is only supported on NVIDIA driver versions it explicitly recognizes; check yours with `runsc nvproxy list-supported-drivers`.
+* MIG isn't supported, since gVisor itself doesn't support it.
+:::
+
+`nvidia-container-toolkit-base` installs a file at `/etc/nvidia-container-toolkit/nvidia-cdi-refresh.env` to customize the environment variables `nvidia-ctk cdi generate` uses to generate its CDI spec. This file uses the [systemd `EnvironmentFile=` format](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#EnvironmentFile=). Each line is a plain `KEY=value` pair, and a line starting with `#` or `;` is a comment. For example, GKE nodes need `NVIDIA_CTK_DRIVER_ROOT` set there because their NVIDIA driver installer DaemonSet places driver libraries under `/usr/local/nvidia` instead of `/`. They also need `NVIDIA_CTK_DEV_ROOT` set to `/`, because `nvidia-ctk cdi generate` otherwise assumes device nodes live under the driver root too. Ray reads this file, if it exists, when it generates the spec. To use a different file, set `NVIDIA_CTK_ENV_PATH` in the worker's environment. Changes to the file, the driver, or the toolkit take effect in new worker processes.
+
+```bash
+# /etc/nvidia-container-toolkit/nvidia-cdi-refresh.env
+NVIDIA_CTK_DRIVER_ROOT=/usr/local/nvidia
+NVIDIA_CTK_DEV_ROOT=/
+```
+
+:::{note}
+Ray always parses `nvidia-ctk cdi generate`'s stdout, so it clears `NVIDIA_CTK_CDI_OUTPUT_FILE_PATH` after reading this file even if you set it there.
+:::
+
+See [GPU access](#gpu-access).
+
 ### Overlayfs root filesystems
 
 By default, a sandbox boots straight from its cached EROFS image, which gVisor mounts inside its own kernel. Nothing on the host can write to that root filesystem before the sandbox starts. If the sandbox is read-only, runsc also can't create the mount points its mounts need but the image lacks, because the EROFS image is immutable and runsc doesn't layer a writable overlay over a read-only root. To compensate for this, Ray may decide to boot the sandbox from an overlayfs root filesystem instead. Ray mounts the cached EROFS image on the host and layers a kernel overlayfs on top of it, which becomes the sandbox's root filesystem. Ray does this in either of two cases, both decided from the sandbox's final OCI spec.
@@ -285,6 +309,62 @@ print(result.stdout)
 ray.get(sandbox_actor.delete.remote())
 ```
 
+### GPU access
+
+Because `Sandbox` is a standard Ray actor, you can request GPUs with `num_gpus` the same way you would for any other actor. Unlike `cpu` and `memory`, however, there is no way to further limit the number of GPUs seen by a sandbox once the actor is scheduled. Sandbox support for GPUs requires `nvidia-container-toolkit-base` on the node (see [Requirements](#requirements)) and a gVisor build with `--nvproxy` support.
+
+Sandbox GPU ids number GPUs in NVML's order, which is PCI bus order. CUDA numbers them fastest first by default, so on nodes with mixed GPU models, set `CUDA_DEVICE_ORDER=PCI_BUS_ID` in the Ray node's environment so that other workloads number GPUs the same way.
+
+```python
+import ray
+from ray.experimental.sandbox import Sandbox
+
+ray.init()
+
+sandbox_actor = Sandbox.options(num_gpus=1).remote(
+    image="nvidia/cuda:12.4.0-base-ubuntu22.04",
+)
+
+result = ray.get(sandbox_actor.exec.remote("nvidia-smi"))
+print(result.stdout)
+
+ray.get(sandbox_actor.delete.remote())
+```
+
+You can also create a GPU enabled sandbox inside a pre-existing actor using `SandboxRuntime.create()`. Instead of passing `num_gpus`, you pass a `gpu_ids` field to specify which of the GPUs that have been granted to the surrounding actor should be isolated inside the sandbox. This allows a single actor with multiple GPUs to manage several sandboxes, each pinned to a different GPU.
+
+```python
+import ray
+from ray.experimental.sandbox.runtime import SandboxRuntime
+
+@ray.remote(num_gpus=2)
+class GpuSandboxPool:
+    def __init__(self, image: str):
+        self.runtime = SandboxRuntime()
+        self.sandboxes = {
+            gpu_id: self.runtime.create(image=image, gpu_ids=[gpu_id])
+            for gpu_id in [str(i) for i in ray.get_gpu_ids()]
+        }
+
+    def gpu_ids(self):
+        return list(self.sandboxes)
+
+    def exec_on(self, gpu_id: str, command: str):
+        return self.runtime.exec(self.sandboxes[gpu_id], command)
+
+    def close(self):
+        for sandbox_id in self.sandboxes.values():
+            self.runtime.delete(sandbox_id)
+
+pool = GpuSandboxPool.remote(image="nvidia/cuda:12.4.0-base-ubuntu22.04")
+gpu_id = ray.get(pool.gpu_ids.remote())[0]
+result = ray.get(pool.exec_on.remote(gpu_id, "nvidia-smi"))
+print(result.stdout)
+ray.get(pool.close.remote())
+```
+
+Ray validates `SandboxRuntime.create()`'s `gpu_ids` the same way as a `Sandbox`'s assigned GPUs. A sandbox can only access GPUs Ray assigned to the calling actor or task, and sandbox creation fails if Ray assigned it none.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
@@ -315,6 +395,8 @@ result = ray.get(pool.run_command.remote(0, "python3 -c 'print(\"Hello from pool
 print(result.stdout)
 ray.get(pool.close.remote())
 ```
+
+See [GPU access](#gpu-access) above for giving each sandbox in a pool like this its own GPU.
 
 ### Pass custom OCI configurations to gVisor
 
