@@ -7,7 +7,7 @@ from ray.data._internal.execution.interfaces import PhysicalOperator
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
-    from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.execution.streaming_executor_state import OpState, Topology
 
 # Protocol for comparable ranking values
 class Comparable(Protocol):
@@ -97,4 +97,42 @@ class DefaultRanker(Ranker[Tuple[int, int]]):
         return (
             throttling_disabled,
             resource_manager.get_op_usage(op).object_store_memory,
+        )
+
+
+class InputAvailabilityRanker(Ranker[Tuple[int, int, int]]):
+    """Ranker that also prefers operators with an input bundle ready to run."""
+
+    def rank_operator(
+        self,
+        op: PhysicalOperator,
+        topology: "Topology",
+        resource_manager: "ResourceManager",
+    ) -> Tuple[int, int, int]:
+        """Computes rank for op. *Lower means better rank*
+
+            1. Whether operator's could be throttled (int)
+            2. Whether the operator has an available input bundle (int)
+            3. Operators' object store utilization
+
+        Args:
+            op: Operator to rank
+            topology: Current execution topology
+            resource_manager: Resource manager for usage information
+
+        Returns:
+            Rank (tuple) for operator
+        """
+        state: "OpState" = topology[op]
+
+        throttling_rank = 0 if op.throttling_disabled() else 1
+        has_available_bundle = any(
+            input_queue.has_next() for input_queue in state.input_queues
+        )
+        available_bundle_rank = 0 if has_available_bundle else 1
+
+        return (
+            throttling_rank,
+            available_bundle_rank,
+            int(resource_manager.get_op_usage(op).object_store_memory),
         )

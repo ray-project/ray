@@ -3,7 +3,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Optional
 
-from .ranker import DefaultRanker, Ranker
+from .ranker import DefaultRanker, InputAvailabilityRanker, Ranker
 
 if TYPE_CHECKING:
     from ... import DataContext
@@ -60,4 +60,8 @@ def create_resource_allocator(
 
 def create_ranker() -> Ranker:
     """Create a ranker instance based on environment and configuration."""
+    from ray._common.utils import env_bool
+
+    if env_bool("RAY_DATA_USE_INPUT_AVAILABILITY_RANKER", True):
+        return InputAvailabilityRanker()
     return DefaultRanker()
