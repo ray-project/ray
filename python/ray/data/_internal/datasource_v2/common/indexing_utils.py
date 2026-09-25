@@ -2,8 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import FrozenSet, Iterable, List, Optional, Tuple
 
-import pyarrow as pa
-from pyarrow.fs import FileSelector, FileType
+from pyarrow.fs import FileSelector, FileSystem, FileType
 
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 
@@ -20,7 +19,7 @@ class PathContents:
 
 def _expand_directory(
     base_path: str,
-    filesystem: pa.fs.FileSystem,
+    filesystem: FileSystem,
     ignore_missing_path: bool,
     skip_paths: FrozenSet[str] = frozenset(),
     *,
@@ -82,7 +81,7 @@ def _expand_directory(
 
 def _get_path_contents(
     path: str,
-    filesystem: pa.fs.FileSystem,
+    filesystem: FileSystem,
     ignore_missing_path: bool,
     skip_paths: FrozenSet[str] = frozenset(),
     *,
@@ -122,7 +121,7 @@ def _get_path_contents(
 
 def _get_file_infos(
     path: str,
-    filesystem: pa.fs.FileSystem,
+    filesystem: FileSystem,
     ignore_missing_path: bool,
     skip_paths: FrozenSet[str] = frozenset(),
     *,

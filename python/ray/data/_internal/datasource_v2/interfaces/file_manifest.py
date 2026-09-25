@@ -3,6 +3,7 @@ from typing import List, Optional, Type, TypedDict, TypeVar, cast, get_type_hint
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
@@ -147,7 +148,8 @@ class FileManifest:
             return self
         block = self._block
         if seed is not None:
-            sort_indices = pa.compute.sort_indices(
+            # pyrefly: ignore[missing-attribute]  # pc functions are runtime-generated.
+            sort_indices = pc.sort_indices(
                 BlockAccessor.for_block(block).to_arrow(),
                 sort_keys=[(PATH_COLUMN_NAME, "ascending")],
             )
