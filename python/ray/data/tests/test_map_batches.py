@@ -838,6 +838,45 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
 
 
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_map_batches_sync_udf_with_asyncio_run_chained_with_async_actor(
+    shutdown_only, is_generator
+):
+    """Regression test for https://github.com/ray-project/ray/issues/57729"""
+
+    def _load_batch(batch):
+        async def _load_all():
+            return await asyncio.gather(
+                *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
+            )
+
+        batch["data"] = asyncio.run(_load_all())
+        return batch
+
+    def sync_udf(batch):
+        return _load_batch(batch)
+
+    def sync_generator_udf(batch):
+        yield _load_batch(batch)
+
+    class AsyncActor:
+        # Stays async on purpose: it is what makes the fused worker host a loop.
+        async def __call__(self, batch):
+            await asyncio.sleep(0.001)
+            return batch
+
+    n = 4
+    ds = (
+        ray.data.range(n, override_num_blocks=n)
+        .map_batches(sync_generator_udf if is_generator else sync_udf)
+        .map_batches(AsyncActor, concurrency=1)
+    )
+
+    result = ds.take_all()
+    assert len(result) == n
+    assert sorted(row["data"] for row in result) == list(range(n))
+
+
 if __name__ == "__main__":
     import sys
 
