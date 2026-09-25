@@ -27,9 +27,6 @@ from ray.data._internal.datasource_v2.parquet_utils import (
     PARQUET_FILE_EXTENSIONS,
     check_for_legacy_tensor_type,
 )
-from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-    ParquetInMemorySizeEstimator,
-)
 from ray.data._internal.datasource_v2.readers.synthesized_columns import (
     PathColumn,
     RowHashColumn,
@@ -211,9 +208,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
             max_shared_open_bins=max_shared_open_bins,
             split_coalesced=split_coalesced,
         )
-
-    def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
-        return ParquetInMemorySizeEstimator()
 
     @override
     def resolve_partitioning(
