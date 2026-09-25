@@ -4,6 +4,7 @@ from typing import List, Optional, Type, TypedDict, TypeVar, cast, get_type_hint
 import numpy as np
 import pyarrow as pa
 
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
 
 
@@ -67,7 +68,9 @@ class FileManifest:
                 `FILE_CHUNK_METADATA_COLUMN_NAME` columns. Any other columns are
                 optional and treated as input data.
         """
-        column_names = BlockAccessor.for_block(block).column_names()
+        accessor = BlockAccessor.for_block(block)
+        assert isinstance(accessor, TableBlockAccessor)
+        column_names = accessor.column_names()
         assert FILE_SIZE_COLUMN_NAME in column_names
         assert PATH_COLUMN_NAME in column_names
         assert FILE_CHUNK_METADATA_COLUMN_NAME in column_names

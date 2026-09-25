@@ -8,7 +8,6 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Union,
 )
 
 import numpy as np
@@ -63,10 +62,11 @@ class _TraversalWorkItem:
 
     # Could be a file path or a directory path.
     path: str
+    # Index of the seed path this item descends from; restores deterministic
+    # ordering when requested.
+    input_path_index: int
     # True for subdirectories discovered during traversal; False for seed input paths.
     is_discovered_subdir: bool = False
-    # Original seed-path index used to restore deterministic ordering when requested.
-    input_path_index: Optional[int] = None
     # Top-level path the traversal started from, used to scope hidden-prefix
     # exclusion to entries whose path relative to the root is hidden.
     root_path: Optional[str] = None
@@ -74,7 +74,7 @@ class _TraversalWorkItem:
 
 @dataclass(frozen=True)
 class OrderedFileResult:
-    """File result with order information for sorting when preserve_order is True."""
+    """File result with its seed-path index, sorted on when preserve_order is True."""
 
     input_path_index: int
     # The leaf file path.
@@ -264,7 +264,7 @@ class NonSamplingFileIndexer(FileIndexer):
             _TraversalWorkItem(
                 path=p,
                 is_discovered_subdir=False,
-                input_path_index=i if preserve_order else None,
+                input_path_index=i,
             )
             for i, p in enumerate(paths_list)
         ]
@@ -272,7 +272,7 @@ class NonSamplingFileIndexer(FileIndexer):
         def process_fn(
             item: _TraversalWorkItem,
             add_work: Callable[[_TraversalWorkItem], None],
-            add_result: Callable[[Union[OrderedFileResult, FileInfo]], None],
+            add_result: Callable[[OrderedFileResult], None],
         ) -> None:
             """Process a single item, adding discovered subdirs as work and
             files as results."""
@@ -299,17 +299,13 @@ class NonSamplingFileIndexer(FileIndexer):
                 root_path=root_path,
             )
             for file_path, file_size in contents.files:
-                file_info_result = FileInfo(path=file_path, size=file_size)
-                if preserve_order:
-                    add_result(
-                        OrderedFileResult(
-                            input_path_index=input_path_index,
-                            file_path=file_path,
-                            file_info=file_info_result,
-                        )
+                add_result(
+                    OrderedFileResult(
+                        input_path_index=input_path_index,
+                        file_path=file_path,
+                        file_info=FileInfo(path=file_path, size=file_size),
                     )
-                else:
-                    add_result(file_info_result)
+                )
             for subdir_path in contents.subdirs:
                 add_work(
                     _TraversalWorkItem(
@@ -323,22 +319,15 @@ class NonSamplingFileIndexer(FileIndexer):
         def _ordered_result_key(result: OrderedFileResult) -> Tuple[int, str]:
             return (result.input_path_index, result.file_path)
 
-        if preserve_order:
-            for result in parallel_process_work_stealing(
-                seed_items=seed_items,
-                process_fn=process_fn,
-                num_workers=num_workers,
-                preserve_order=True,
-                order_key=_ordered_result_key,
-            ):
-                # Ordered mode returns `OrderedFileResult` for sorting, so unwrap.
-                yield result.file_info
-        else:
-            yield from parallel_process_work_stealing(
-                seed_items=seed_items,
-                process_fn=process_fn,
-                num_workers=num_workers,
-            )
+        results = parallel_process_work_stealing(
+            seed_items=seed_items,
+            process_fn=process_fn,
+            num_workers=num_workers,
+            preserve_order=preserve_order,
+            order_key=_ordered_result_key if preserve_order else None,
+        )
+        for result in results:
+            yield result.file_info
 
     def list_file_infos(
         self,

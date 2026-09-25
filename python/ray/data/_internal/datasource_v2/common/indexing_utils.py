@@ -106,6 +106,7 @@ def _get_path_contents(
         file_info = filesystem.get_file_info(path)
     except OSError as e:
         _handle_read_os_error(e, path)
+        raise
 
     if file_info.type == FileType.File:
         return PathContents(files=[(path, file_info.size)], subdirs=[])
