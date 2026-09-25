@@ -82,7 +82,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
-    REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     REPLICA_STARTUP_SHUTDOWN_LATENCY_BUCKETS_MS,
     REQUEST_LATENCY_BUCKETS_MS,
@@ -385,7 +384,7 @@ class DeploymentActorWrapper:
             self._consecutive_health_check_failures += 1
             if (
                 self._consecutive_health_check_failures
-                >= REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD
+                >= DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD
             ):
                 logger.warning(
                     f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
@@ -399,7 +398,7 @@ class DeploymentActorWrapper:
                     f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
                     "is temporarily unavailable "
                     f"({self._consecutive_health_check_failures}/"
-                    f"{REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD}); will retry."
+                    f"{DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
                 )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             logger.warning(
@@ -1842,7 +1841,7 @@ class ActorReplicaWrapper:
             self._consecutive_health_check_failures += 1
             if (
                 self._consecutive_health_check_failures
-                >= REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD
+                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
             ):
                 logger.warning(
                     f"Actor for {self._replica_id} is temporarily unavailable after "
@@ -1854,7 +1853,7 @@ class ActorReplicaWrapper:
                 logger.warning(
                     f"Actor for {self._replica_id} is temporarily unavailable "
                     f"({self._consecutive_health_check_failures}/"
-                    f"{REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD}); will retry."
+                    f"{REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
                 )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.

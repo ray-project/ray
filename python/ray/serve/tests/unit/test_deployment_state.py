@@ -964,7 +964,7 @@ class TestDeploymentActorWrapper:
         """A successful check resets the counter before the threshold is reached."""
         wrapper = self._make_wrapper()
         with patch(
-            "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
+            "ray.serve._private.deployment_state.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
             3,
         ):
             with (
@@ -1022,7 +1022,7 @@ class TestDeploymentActorWrapper:
         wrapper = self._make_wrapper()
         with (
             patch(
-                "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
+                "ray.serve._private.deployment_state.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
                 3,
             ),
             patch(
@@ -4596,7 +4596,7 @@ class TestActorReplicaWrapper:
         """A successful check resets the counter before the threshold is reached."""
         actor_replica = self._make_actor_replica()
         with patch(
-            "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
+            "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
             3,
         ):
             with (
@@ -4653,7 +4653,7 @@ class TestActorReplicaWrapper:
         actor_replica = self._make_actor_replica()
         with (
             patch(
-                "ray.serve._private.deployment_state.REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD",
+                "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
                 3,
             ),
             patch(
@@ -4679,7 +4679,7 @@ class TestActorReplicaWrapper:
             ["app", "unavailable", "unavailable", "unavailable"],
             [True, True, True, False],
         ),
-        (4, ["unavailable", "unavailable", "app"], [True, True, False]),
+        (4, ["unavailable", "unavailable", "app", "app"], [True, True, True, False]),
         (4, ["app", "unavailable", "success", "unavailable"], [True, True, True, True]),
         (4, ["unavailable", "died"], [True, False]),
     ],
@@ -4687,16 +4687,21 @@ class TestActorReplicaWrapper:
 def test_health_check_failure_thresholds(
     deployment_actor, threshold, failures, expected_health, monkeypatch
 ):
-    """Failures share a counter and use the latest failure's threshold."""
+    """Application and unavailable failures use each wrapper's existing threshold."""
     if deployment_actor:
         wrapper = TestDeploymentActorWrapper._make_wrapper()
     else:
         wrapper = TestActorReplicaWrapper._make_actor_replica()
     monkeypatch.setattr(
-        ds_mod, "REPLICA_ACTOR_UNAVAILABLE_UNHEALTHY_THRESHOLD", threshold
+        ds_mod,
+        "REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+        1 if deployment_actor else threshold,
     )
-    monkeypatch.setattr(ds_mod, "REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD", 3)
-    monkeypatch.setattr(ds_mod, "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD", 3)
+    monkeypatch.setattr(
+        ds_mod,
+        "DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
+        threshold if deployment_actor else 1,
+    )
     monkeypatch.setattr(ds_mod, "check_obj_ref_ready_nowait", lambda ref: True)
     errors = {
         "app": RayError("application health check failed"),
