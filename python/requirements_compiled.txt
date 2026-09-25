@@ -1032,7 +1032,7 @@ libclang==18.1.1
     # via tensorflow
 lightgbm==4.6.0
     # via -r python/requirements/ml/core-requirements.txt
-lightning==2.6.1
+lightning==2.6.6
     # via -r python/requirements/ml/tune-test-requirements.txt
 lightning-utilities==0.15.3
     # via
