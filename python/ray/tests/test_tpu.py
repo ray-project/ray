@@ -3177,6 +3177,12 @@ def test_normalize_torchtpu_topology():
     assert tpu.normalize_torchtpu_topology("2x4", accelerator_type="v7x") == "2,4,1,2"
     assert tpu.normalize_torchtpu_topology("2x2x4", accelerator_type="v7x") == "2,2,4,2"
     assert tpu.normalize_torchtpu_topology("2x2x4", accelerator_type="v6e") == "2,2,4"
+    # GKE-style and Ray label spellings of v7x also get the dual-device dimension.
+    for v7x_type in ["tpu7x", "tpu7x-16", "TPU-V7X"]:
+        assert (
+            tpu.normalize_torchtpu_topology("2x2x1", accelerator_type=v7x_type)
+            == "2,2,1,2"
+        )
 
     # Invalid topology strings raise ValueError
     for invalid_topo in ["", "foo", "4x0", "-2x4"]:
@@ -3327,6 +3333,13 @@ def test_placement_group_torchtpu_env_vars(monkeypatch, placement_group_class):
         ),
     }
 
+    # Explicit worker_hostnames determine MASTER_ADDR rather than the placed bundle 0 IP.
+    explicit_env = sg.get_torchtpu_env_vars(
+        worker_id=0, worker_hostnames=["host-a", "host-b"]
+    )
+    assert explicit_env["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+    assert explicit_env["MASTER_ADDR"] == "host-a"
+
 
 def test_ipv6_and_master_addr_handling_in_env_vars():
     """Verify IPv6 bracket formatting and explicit master_addr in get_torchtpu_env_vars."""
@@ -3361,8 +3374,8 @@ def test_ipv6_and_master_addr_handling_in_env_vars():
     )
 
 
-def test_torchtpu_unplaced_and_subslice_scaling(monkeypatch):
-    """Verify unplaced error handling and tpu_resource_per_chip scaling in get_torchtpu_env_vars."""
+def test_torchtpu_unplaced_and_subslice_topology(monkeypatch):
+    """Verify unplaced error handling and that subslice TORCH_TPU_TOPOLOGY depends on the accelerator version, not bundle size."""
     monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2")
     monkeypatch.setenv(
         "TORCH_TPU_SLICEBUILDER_ADDRESSES", "10.0.0.1:8471,10.0.0.2:8471"
@@ -3403,8 +3416,8 @@ def test_torchtpu_unplaced_and_subslice_scaling(monkeypatch):
     )
     assert explicit_env["TORCH_TPU_TOPOLOGY"] == "2,4,1"
 
-    # A 4-chip (2x2) subslice with 2 logical resources per chip (bundle_resources={"TPU": 8})
-    # derives tpu_resource_per_chip=2 from subslice_chips_per_host (4).
+    # A 2x2 subslice whose bundle reserves a whole 8-chip v6e host stays 3D:
+    # bundle size does not imply multiple devices per chip.
     sg_8chip = ray.util.tpu.SubslicePlacementGroup(
         placement_group=None,
         parent_topology="2x4",
@@ -3418,6 +3431,25 @@ def test_torchtpu_unplaced_and_subslice_scaling(monkeypatch):
     )
     assert (
         sg_8chip.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
+            "TORCH_TPU_TOPOLOGY"
+        ]
+        == "2,2,1"
+    )
+
+    # A v7x subslice gets the dual-device dimension from its accelerator version.
+    sg_v7x = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="2x2x2",
+        subslice_topology="2x2x1",
+        subslice_index=0,
+        slice_name="slice-v7x",
+        num_hosts=1,
+        chips_per_host=4,
+        bundle_resources={"TPU": 4},
+        accelerator_version="v7x",
+    )
+    assert (
+        sg_v7x.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
             "TORCH_TPU_TOPOLOGY"
         ]
         == "2,2,1,2"

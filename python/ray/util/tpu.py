@@ -1273,9 +1273,6 @@ class SlicePlacementGroup:
                     "Please ensure the placement group is ready, or pass `worker_hostnames` explicitly."
                 )
 
-        if master_addr is None:
-            master_addr = self.get_master_addr(slice_index)
-
         return get_torchtpu_env_vars(
             topology=self._topology,
             worker_hostnames=worker_hostnames,
@@ -2623,23 +2620,6 @@ class SubslicePlacementGroup:
                     "Ensure the placement group is ready, or pass `worker_hostnames` explicitly."
                 )
 
-        if master_addr is None:
-            master_addr = self.get_master_addr()
-
-        # Use the subslice's per-host chip count to properly scale tpu_resource_per_chip
-        subslice_chips_per_host = max(
-            1,
-            get_num_chips_from_topology(self._subslice_topology)
-            // max(1, self._num_hosts),
-        )
-        tpu_res = int(
-            (self._bundle_resources or {}).get("TPU", subslice_chips_per_host)
-        )
-        tpu_resource_per_chip = max(
-            self._tpu_resource_per_chip,
-            tpu_res // subslice_chips_per_host,
-        )
-
         if slicebuilder_port is None:
             try:
                 base_port = int(
@@ -2659,7 +2639,7 @@ class SubslicePlacementGroup:
             slicebuilder_addresses=slicebuilder_addresses,
             slicebuilder_port=slicebuilder_port,
             master_addr=master_addr,
-            tpu_resource_per_chip=tpu_resource_per_chip,
+            tpu_resource_per_chip=self._tpu_resource_per_chip,
             accelerator_type=self._accelerator_version,
         )
         env_vars[TPU_PROCESS_PORT_ENV_VAR] = str(slicebuilder_port)

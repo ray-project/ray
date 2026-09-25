@@ -73,7 +73,7 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
 
-# TorchTPU (PyTorch/XLA) environment variables and defaults.
+# TorchTPU (torch_tpu) environment variables and defaults.
 TORCH_TPU_TOPOLOGY_ENV_VAR = "TORCH_TPU_TOPOLOGY"
 TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR = "TORCH_TPU_SLICEBUILDER_ADDRESSES"
 DEFAULT_TORCH_TPU_SLICEBUILDER_PORT = 8471
@@ -278,7 +278,7 @@ def normalize_torchtpu_topology(
     tpu_resource_per_chip: int = 1,
     accelerator_type: Optional[str] = None,
 ) -> str:
-    """Normalizes TPU topology strings for PyTorch/XLA (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
+    """Normalizes TPU topology strings for TorchTPU (e.g. '4x4' -> '4,4,1'; '2x2x4' with tpu_resource_per_chip=2 -> '2,2,4,2')."""
     if type(tpu_resource_per_chip) is not int:
         raise TypeError(
             f"tpu_resource_per_chip must be an integer, got {type(tpu_resource_per_chip)}."
@@ -301,7 +301,7 @@ def normalize_torchtpu_topology(
     if len(dims) == 3:
         if tpu_resource_per_chip > 1:
             dims.append(str(tpu_resource_per_chip))
-        elif accelerator_type and "v7x" in accelerator_type.lower():
+        elif normalize_tpu_accelerator_type(accelerator_type).startswith("v7x"):
             dims.append("2")
     return ",".join(dims)
 
