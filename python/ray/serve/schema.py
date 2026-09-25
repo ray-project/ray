@@ -1062,6 +1062,7 @@ class HTTPOptionsSchema(BaseModel):
     )
     ssl_certfile: Optional[str] = Field(
         default=None,
+        validate_default=True,
         description="Path to the SSL certificate file for HTTPS. If provided with "
         "ssl_keyfile, the HTTP server will use HTTPS. Cannot be updated once Serve "
         "has started.",
