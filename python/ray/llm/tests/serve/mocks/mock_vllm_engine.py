@@ -40,6 +40,10 @@ from ray.serve.context import (
     _get_serve_request_context,
 )
 
+MOCK_ANTHROPIC_STREAM_CHUNKS = ("chunk-0", "chunk-1")
+MOCK_ANTHROPIC_STREAM_CHUNK_DELAY_S = 0.5
+MOCK_ANTHROPIC_INPUT_TOKENS = 8
+
 
 class MockVLLMEngine(LLMEngine):
     """Mock vLLM Engine that generates fake text responses.
@@ -235,6 +239,25 @@ class MockVLLMEngine(LLMEngine):
             body = CompletionRequest.model_validate(await request.json())
             check_model(body.model)
             return await to_response(self.completions(body))
+
+        @app.post("/v1/messages")
+        async def messages(request: Request):
+            body = await request.json()
+            check_model(body.get("model"))
+
+            async def stream():
+                for i, chunk in enumerate(MOCK_ANTHROPIC_STREAM_CHUNKS):
+                    if i:
+                        await asyncio.sleep(MOCK_ANTHROPIC_STREAM_CHUNK_DELAY_S)
+                    yield f"data: {chunk}\n\n"
+
+            return StreamingResponse(stream(), media_type="text/event-stream")
+
+        @app.post("/v1/messages/count_tokens")
+        async def count_tokens(request: Request):
+            body = await request.json()
+            check_model(body.get("model"))
+            return JSONResponse(content={"input_tokens": MOCK_ANTHROPIC_INPUT_TOKENS})
 
         return app
 

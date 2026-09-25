@@ -13,6 +13,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 - {doc}`Configuration reference <configuration>`: every `LLMConfig` field, from model loading and engine kwargs to accelerators, placement, and deployment options.
 - {doc}`Deployment initialization <deployment-initialization>`: speed up model loading and replica startup with caching, streaming load formats, and initialization callbacks.
 - {doc}`Multi-LoRA deployment <multi-lora>`: serve many LoRA adapters on a shared base model with runtime switching and an LRU cache.
+- {doc}`Use Ray Serve LLM with Claude Code <claude-code>`: point Claude Code at a Ray Serve LLM application that uses direct streaming.
 
 ## Scale across GPUs and nodes
 
@@ -49,6 +50,7 @@ How-to guides for deploying, scaling, and operating Ray Serve LLM. If you are ne
 Configuration reference <configuration>
 Deployment initialization <deployment-initialization>
 Multi-LoRA deployment <multi-lora>
+Claude Code <claude-code>
 Cross-node parallelism <cross-node-parallelism>
 Data parallel attention <data-parallel-attention>
 Fractional GPU serving <fractional-gpu>
