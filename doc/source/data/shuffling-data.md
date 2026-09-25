@@ -8,19 +8,21 @@ myst:
 
 # Shuffling data
 
-When consuming or iterating over Ray {class}`Datasets <ray.data.dataset.Dataset>`, it can be useful to shuffle or randomize the order of data (for example, randomizing data ingest order during ML training). This guide shows several different methods of shuffling data with Ray Data and their respective trade-offs.
+When you consume or iterate over a Ray Data {class}`Dataset <ray.data.dataset.Dataset>`, shuffling the order of the data can be useful, for example to randomize the ingest order during ML training. This guide describes several methods for shuffling data with Ray Data and the trade-offs of each.
 
-## Types of shuffling
+(types-of-shuffling)=
 
-Ray Data provides several different options for shuffling data, trading off the granularity of shuffle control with memory consumption and runtime. The list below presents options in increasing order of resource consumption and runtime. Choose the most appropriate method for your use case.
+## Choose a shuffling method
+
+Ray Data provides several options for shuffling data. Each option trades off the granularity of shuffle control against memory consumption and runtime. The following sections present the options in increasing order of resource consumption and runtime. Choose the method that fits your use case.
 
 (shuffling_file_order)=
 
 ### Shuffle the ordering of files
 
-To randomly shuffle the ordering of input files before reading, call a {ref}`read function <loading-data-api>` function that supports shuffling, such as {func}`~ray.data.read_images`, and use the `shuffle="files"` parameter. This randomly assigns input files to workers for reading.
+To randomly shuffle the ordering of input files before reading, call a {ref}`read function <loading-data-api>` that supports shuffling, such as {func}`~ray.data.read_images`, and pass the `shuffle="files"` parameter. This randomly assigns input files to workers for reading.
 
-This is the fastest "shuffle" option: it's purely a metadata operation---the system random-shuffles the list of files constituting the dataset before fetching them with reading tasks. This option, however, doesn't shuffle the rows inside files, so the randomness might not be sufficient for your needs in case of files with the large number of rows.
+This is the fastest shuffle option because it's purely a metadata operation. Ray Data randomly shuffles the list of files that make up the dataset before read tasks fetch them. However, this option doesn't shuffle the rows inside each file, so the randomness might not be sufficient for your needs if your files have a large number of rows.
 
 ```{testcode}
 import ray
@@ -32,14 +34,15 @@ ds = ray.data.read_images(
 ```
 
 (local_shuffle_buffer)=
+(local-buffer-shuffle)=
 
-### Local buffer shuffle
+### Shuffle rows with a local buffer
 
-To locally shuffle a subset of rows using iteration methods, such as {meth}`~ray.data.Dataset.iter_batches`, {meth}`~ray.data.Dataset.iter_torch_batches`, and {meth}`~ray.data.Dataset.iter_tf_batches`, specify `local_shuffle_buffer_size`.
+To shuffle a subset of rows locally while you iterate with methods such as {meth}`~ray.data.Dataset.iter_batches`, {meth}`~ray.data.Dataset.iter_torch_batches`, and {meth}`~ray.data.Dataset.iter_tf_batches`, specify `local_shuffle_buffer_size`.
 
-This shuffles up to a `local_shuffle_buffer_size` number of rows buffered during iteration. See more details in {ref}`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+This option shuffles up to `local_shuffle_buffer_size` rows buffered during iteration. For more details, see {ref}`Iterate over batches with shuffling <iterating-over-batches-with-shuffling>`.
 
-This is slower than files shuffling, and shuffles rows locally without network transfer. You can use this local shuffle buffer together with shuffling ordering of files. See {ref}`Shuffle the ordering of files <shuffling_file_order>`.
+This option is slower than file order shuffling, and it shuffles rows locally without network transfer. You can combine the local shuffle buffer with file order shuffling. See {ref}`Shuffle the ordering of files <shuffling_file_order>`.
 
 ```{testcode}
 import ray
@@ -55,23 +58,23 @@ for batch in ds.iter_batches(
 ```
 
 :::{tip}
-If you observe reduced throughput when using `local_shuffle_buffer_size`, check the total time spent in batch creation by examining the `ds.stats()` output (`In batch formatting`, under `Batch iteration time breakdown`). If this time is significantly larger than the time spent in other steps, decrease `local_shuffle_buffer_size` or turn off the local shuffle buffer altogether and only {ref}`shuffle the ordering of files <shuffling_file_order>`.
+If throughput drops when you use `local_shuffle_buffer_size`, check the total time spent in batch creation. In the `ds.stats()` output, find `In batch formatting` under `Batch iteration time breakdown`. If this time is much larger than the time spent in other steps, decrease `local_shuffle_buffer_size`, or turn off the local shuffle buffer and only {ref}`shuffle the ordering of files <shuffling_file_order>`.
 :::
 
 (map_batches_shuffle)=
 
-### `map_batches` shuffle
+### Shuffle rows with `map_batches`
 
-To shuffle data as a separate data stage, use {meth}`~ray.data.Dataset.map_batches` with a shuffle function that randomly permutes rows within each batch. Compared to local buffer shuffle, this approach has several advantages:
+To shuffle data as a separate stage, use {meth}`~ray.data.Dataset.map_batches` with a shuffle function that randomly permutes the rows within each batch. This approach has the following advantages over local buffer shuffle:
 
-- It **decouples shuffling from the iterator**, running as a separate Ray Data operator that doesn't block downstream CPU/GPU processing.
-- Ray Data's resource management automatically schedules shuffle tasks based on available cluster resources (CPU, memory), avoiding resource contention.
-- The shuffle work can happen in parallel across multiple machines, making it more scalable for large datasets.
+- It decouples shuffling from the iterator. The shuffle runs as a separate Ray Data operator that doesn't block downstream CPU or GPU processing.
+- Ray Data's resource management automatically schedules shuffle tasks based on the available CPU and memory in the cluster, which avoids resource contention.
+- The shuffle work can run in parallel across multiple machines, so this approach scales better for large datasets.
 
-The `batch_size` parameter controls the shuffle window---a larger value shuffles more rows together for better randomness but requires more memory.
+The `batch_size` parameter controls the shuffle window. A larger value shuffles more rows together for better randomness, but it requires more memory.
 
 :::{important}
-Always set the `memory` parameter when using large batch sizes to avoid out-of-memory errors. Estimate it as `batch_size * row_bytes`:
+To avoid out-of-memory errors, always set the `memory` parameter when you use large batch sizes. Estimate the value as `batch_size * row_bytes`.
 :::
 
 ```{testcode}
@@ -98,16 +101,17 @@ ds.take(10)
 ```
 
 :::{tip}
-Combine `map_batches` shuffle with {ref}`file order shuffling <shuffling_file_order>` for additional randomness. File order shuffling randomizes which files are read first, while `map_batches` shuffle randomizes rows within each shuffle window.
+Combine `map_batches` shuffle with {ref}`file order shuffling <shuffling_file_order>` for additional randomness. File order shuffling randomizes which files Ray Data reads first, while `map_batches` shuffle randomizes rows within each shuffle window.
 :::
 
 (map_batches_vs_local_shuffle)=
+(comparing-local-buffer-shuffle-and-map_batches-shuffle)=
 
-#### Comparing local buffer shuffle and `map_batches` shuffle
+#### How does local buffer shuffle compare to `map_batches` shuffle?
 
-The following benchmark compares steady-state training throughput between local buffer shuffle and `map_batches` shuffle on a synthetic workload (`ray.data.range_tensor`, ~4 KB/row, 4 GPU workers, batch size 4096, 200 steps with 100 warmup):
+The following benchmark compares steady-state training throughput for local buffer shuffle and `map_batches` shuffle on a synthetic workload. The workload uses `ray.data.range_tensor` with about 4 KB per row, four GPU workers, a batch size of 4096, and 200 steps with 100 warmup steps.
 
-:::{list-table} Local buffer shuffle vs. `map_batches` shuffle
+:::{list-table} Local buffer shuffle versus `map_batches` shuffle
 :header-rows: 1
 :widths: 30 20 15
 
@@ -137,20 +141,21 @@ The following benchmark compares steady-state training throughput between local 
   - 90%
 :::
 
+(randomizing-block-order)=
 
-### Randomizing block order
+### Randomize block order
 
-This option randomizes the order of {ref}`blocks <data_key_concepts>` in a dataset. While applying this operation alone doesn't involve heavy computation and communication, it requires Ray Data to materialize all blocks in memory before actually randomizing their ordering in the queue for subsequent operation.
+This option randomizes the order of {ref}`blocks <data_key_concepts>` in a dataset. The operation alone doesn't involve heavy computation or communication, but Ray Data must materialize all blocks in memory before it randomizes their order in the queue for the subsequent operation.
 
 :::{note}
-Ray Data doesn't guarantee any particular ordering of the blocks when reading blocks from different files in parallel by default, unless you set `DataContext.execution_options.preserve_order` to true. Henceforth, this particular option is primarily relevant in cases when the system yields blocks from relatively small set of very large files.
+By default, Ray Data doesn't guarantee any particular block order when it reads blocks from different files in parallel, unless you set `DataContext.execution_options.preserve_order` to true. As a result, this option is mainly relevant when Ray Data yields blocks from a relatively small set of large files.
 :::
 
 :::{note}
-Only use this option when your dataset is small enough to fit into the object store memory.
+Use this option only when your dataset is small enough to fit in object store memory.
 :::
 
-To perform block order shuffling, use {meth}`randomize_block_order <ray.data.Dataset.randomize_block_order>`.
+To shuffle the block order, use {meth}`randomize_block_order <ray.data.Dataset.randomize_block_order>`.
 
 ```{testcode}
 import ray
@@ -163,16 +168,18 @@ ds = ray.data.read_text(
 ds = ds.randomize_block_order()
 ```
 
-### Global shuffle
+(global-shuffle)=
 
-To shuffle all rows globally, across the whole dataset, multiple options are available
+### Shuffle all rows globally
 
-1\. *Random shuffling*: invoking {meth}`~ray.data.Dataset.random_shuffle` essentially permutes and shuffles individual rows from existing blocks into the new ones using an optionally provided seed.
-2. (**New in 2.46**) *Key-based repartitioning*: invoking {meth}`~ray.data.Dataset.repartition` with `keys` parameter triggers {ref}`hash-shuffle <hash-shuffle>` operation, shuffling the rows based on the hash of the values in the provided key columns, providing deterministic way of co-locating rows based on the hash of the column values.
+Ray Data provides the following options for shuffling all rows globally across the whole dataset:
 
-Note that shuffle is an expensive operation requiring materializing of the whole dataset in memory as well as serving as a synchronization barrier---subsequent operators won't be able to start executing until shuffle completion.
+- **Random shuffling**: Call {meth}`~ray.data.Dataset.random_shuffle` to shuffle individual rows from the existing blocks into new blocks. You can optionally provide a seed.
+- **Key-based repartitioning**: Call {meth}`~ray.data.Dataset.repartition` with the `keys` parameter to trigger a {ref}`hash-shuffle <hash-shuffle>` operation. This operation shuffles the rows based on the hash of the values in the key columns you provide, which co-locates rows deterministically. Ray 2.46 introduced this option.
 
-Example of random shuffling with seed:
+A shuffle is an expensive operation. It requires materializing the whole dataset in memory, and it acts as a synchronization barrier, so subsequent operators can't start executing until the shuffle completes.
+
+The following example shuffles rows randomly with a seed:
 
 ```{testcode}
 import ray
@@ -183,8 +190,7 @@ ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple
 random_shuffled_ds = ds.random_shuffle(seed=123)
 ```
 
-
-Example of hash shuffling based on column `id`:
+The following example hash shuffles rows based on the `id` column:
 
 ```{testcode}
 import ray
@@ -193,9 +199,9 @@ hash_shuffled_ds = ds.repartition(keys="id", num_blocks=200)
 ```
 
 :::{tip}
-Key-based repartitioning uses {ref}`shuffle v2 <shuffle-v2>` (`ShuffleStrategy.SHUFFLE_V2`) by default. See {ref}`Tuning shuffle v2 <tuning-shuffle-v2>` for the available settings.
+By default, key-based repartitioning uses {ref}`shuffle v2 <shuffle-v2>`, which is `ShuffleStrategy.SHUFFLE_V2`. For the available settings, see {ref}`Tuning shuffle v2 <tuning-shuffle-v2>`.
 
-To fall back to the previous {ref}`hash-shuffle <hash-shuffle>` implementation:
+To fall back to the previous {ref}`hash-shuffle <hash-shuffle>` implementation, set `DataContext.shuffle_strategy` to `ShuffleStrategy.HASH_SHUFFLE`:
 
 ```python
 from ray.data.context import DataContext, ShuffleStrategy
@@ -205,40 +211,43 @@ DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 :::
 
 (optimizing_shuffles)=
+(advanced-optimizing-shuffles)=
 
-## Advanced: Optimizing shuffles
+## Advanced: Optimize shuffles
 
 :::{note}
-This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, [file a Ray Data issue on GitHub](https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+).
+Shuffle optimization is an active area of development. If your dataset uses a shuffle operation and you're having trouble configuring the shuffle, [file a Ray Data issue on GitHub](https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+).
 :::
 
 ### When should you use global per-epoch shuffling?
 
-Use global per-epoch shuffling only if your model is sensitive to the randomness of the training data. Based on a [theoretical foundation](https://arxiv.org/abs/1709.10432), all gradient-descent-based model trainers benefit from improved global shuffle quality. In practice, the benefit's particularly pronounced for tabular data/models. However, the more global the shuffle is, the more expensive the shuffling operation. The increase compounds with distributed data-parallel training on a multi-node cluster due to data transfer costs. This cost can be prohibitive when using very large datasets.
+Use global per-epoch shuffling only if your model is sensitive to the randomness of the training data. According to a [theoretical foundation](https://arxiv.org/abs/1709.10432), all gradient-descent-based model trainers benefit from improved global shuffle quality. In practice, the benefit is particularly pronounced for tabular data and models. However, the more global the shuffle, the more expensive the shuffling operation. Data transfer costs compound this increase in distributed data-parallel training on a multi-node cluster. This cost can be prohibitive for large datasets.
 
-The best route for determining the best tradeoff between preprocessing time and cost and per-epoch shuffle quality is to measure the precision gain per training step for your particular model under different shuffling policies such as no shuffling, local shuffling, or global shuffling.
+To find the best tradeoff between preprocessing time and cost and per-epoch shuffle quality, measure the precision gain per training step for your model under different shuffling policies, such as no shuffling, local shuffling, or global shuffling.
 
-As long as your data loading and shuffling throughput is higher than your training throughput, your GPU should saturate. If you have shuffle-sensitive models, push the shuffle quality higher until you reach this threshold.
+As long as your data loading and shuffling throughput is higher than your training throughput, your GPU should saturate. If your model is shuffle-sensitive, push the shuffle quality higher until you reach this threshold.
 
 (shuffle_performance_tips)=
+(enabling-push-based-shuffle)=
 
-### Enabling push-based shuffle
+### Enable push-based shuffle
 
 :::{note}
-`DataContext.use_push_based_shuffle` and the `RAY_DATA_PUSH_BASED_SHUFFLE` environment variable are deprecated. Configure the shuffle strategy through `DataContext.shuffle_strategy` (for example, `ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED`) instead.
+`DataContext.use_push_based_shuffle` and the `RAY_DATA_PUSH_BASED_SHUFFLE` environment variable are deprecated. Instead, set `DataContext.shuffle_strategy` to a strategy such as `ShuffleStrategy.SORT_SHUFFLE_PUSH_BASED`.
 :::
 
-Some Dataset operations require a *shuffle* operation, meaning that the system shuffles data from all of the input partitions to all of the output partitions. These operations include {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, {meth}`Dataset.sort <ray.data.Dataset.sort>` and {meth}`Dataset.groupby <ray.data.Dataset.groupby>`. For example, during a sort operation, the system reorders data between blocks and therefore requires shuffling across partitions. Shuffling can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
+Some Dataset operations require a *shuffle* operation, which shuffles data from all of the input partitions to all of the output partitions. These operations include {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, {meth}`Dataset.sort <ray.data.Dataset.sort>`, and {meth}`Dataset.groupby <ray.data.Dataset.groupby>`. For example, a sort operation reorders data between blocks, so it requires shuffling across partitions. Shuffling can be hard to scale to large data sizes and clusters, especially when the total dataset size doesn't fit in memory.
 
-Ray Data provides an alternative shuffle implementation known as push-based shuffle for improving large-scale performance. Try this out if your dataset has more than 1000 blocks or is larger than 1 TB in size.
+Ray Data provides an alternative shuffle implementation called push-based shuffle to improve large-scale performance. Try it if your dataset has more than 1,000 blocks or is larger than 1 TB.
 
-To try this out locally or on a cluster, you can start with the [nightly release test](https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/random_shuffle_benchmark.py) that Ray runs for {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`. To get an idea of the performance you can expect, here are some run time results for {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1-10 TB of data on 20 machines - m5.4xlarge instances on AWS EC2, each with 16 vCPUs, 64 GB RAM.
+To try it locally or on a cluster, start with the [nightly release test](https://github.com/ray-project/ray/blob/master/release/nightly_tests/dataset/random_shuffle_benchmark.py) that Ray runs for {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`. The following chart shows run time results for {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>` on 1 to 10 TB of data, which gives an idea of the performance you can expect. The benchmark ran on 20 m5.4xlarge AWS EC2 instances, each with 16 vCPUs and 64 GB of RAM.
 
 ```{image} https://docs.google.com/spreadsheets/d/e/2PACX-1vQvBWpdxHsW0-loasJsBpdarAixb7rjoo-lTgikghfCeKPQtjQDDo2fY51Yc1B6k_S4bnYEoChmFrH2/pubchart?oid=598567373&format=image
+:alt: Run time of Dataset.random_shuffle on 1 to 10 TB of data
 :align: center
 ```
 
-To try out push-based shuffle, set the environment variable `RAY_DATA_PUSH_BASED_SHUFFLE=1` when running your application:
+To try push-based shuffle, set the `RAY_DATA_PUSH_BASED_SHUFFLE=1` environment variable when you run your application:
 
 ```bash
 $ wget https://raw.githubusercontent.com/ray-project/ray/master/release/nightly_tests/dataset/random_shuffle_benchmark.py
@@ -251,7 +260,7 @@ $ RAY_DATA_PUSH_BASED_SHUFFLE=1 python random_shuffle_benchmark.py --num-partiti
 # ...
 ```
 
-You can also specify the shuffle implementation during program execution by setting the `DataContext.use_push_based_shuffle` flag:
+You can also set the shuffle implementation while your program runs with the `DataContext.use_push_based_shuffle` flag:
 
 ```{testcode}
 :hide:
@@ -272,7 +281,7 @@ ds = (
 )
 ```
 
-Large-scale shuffles can take a while to finish. For debugging purposes, shuffle operations support executing only part of the shuffle, so that you can collect an execution profile more quickly. Here is an example that shows how to limit a random shuffle operation to two output blocks:
+Large-scale shuffles can take a while to finish. For debugging, you can execute only part of a shuffle, so that you can collect an execution profile more quickly. The following example limits a random shuffle operation to two output blocks:
 
 ```{testcode}
 :hide:

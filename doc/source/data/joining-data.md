@@ -12,7 +12,7 @@ myst:
 Joins are experimental, and some behavior might not work as expected. Joins are available in Ray 2.46 and later.
 :::
 
-Ray Data can join multiple {class}`~ray.data.dataset.Dataset` instances on the provided key columns, using any of the supported join types:
+Ray Data joins multiple {class}`~ray.data.dataset.Dataset` instances on the key columns you provide, using any of the supported join types:
 
 ```{testcode}
 import ray
@@ -33,55 +33,50 @@ doubles_and_squares_ds = doubles_ds.join(
 )
 ```
 
-Ray Data supports the following join types. See {meth}`Dataset.join <ray.data.Dataset.join>` for the current list.
+Ray Data supports the following join types:
 
-**Inner and outer joins:**
+- **Inner and outer joins**: Inner, left outer, right outer, and full outer.
+- **Semi joins**: Left semi and right semi joins return all rows that have at least one matching row in the other table. They return only the columns from the requested side.
+- **Anti joins**: Left anti and right anti joins return rows that have no matching rows in the other table. They return only the columns from the requested side.
 
-- Inner, Left Outer, Right Outer, Full Outer
+See {meth}`Dataset.join <ray.data.Dataset.join>` for the current list.
 
-**Semi joins:**
+Internally, joins use a hash-shuffle backend that joins each hash partition with Polars. By default, joins use {ref}`shuffle v2 <shuffle-v2>`, which is the `ShuffleStrategy.SHUFFLE_V2` strategy. See {ref}`Tuning shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE` before you create a `Dataset`.
 
-- Left Semi, Right Semi return all rows that have at least one matching row in the other table, returning only columns from the requested side.
+(configuring-joins)=
 
-**Anti joins:**
+## Configure joins
 
-- Left Anti, Right Anti return rows that have no matching rows in the other table, returning only columns from the requested side.
+Joins are generally memory-intensive and require accurate memory accounting and projection, so they're sensitive to skew and imbalance in the dataset.
 
-Internally, joins use a hash-shuffle backend, and each hash partition is joined with Polars. Joins use {ref}`shuffle v2 <shuffle-v2>` (`ShuffleStrategy.SHUFFLE_V2`) by default. See {ref}`Tuning shuffle v2 <tuning-shuffle-v2>` for the memory-related settings. To fall back to the previous {ref}`hash-shuffle implementation <hash-shuffle>`, set the shuffle strategy before creating a `Dataset`: `ray.data.DataContext.get_current().shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE`.
+Tune join performance for your workload with the following two parameters:
 
-## Configuring joins
-
-Joins are generally memory-intensive operations that require accurate memory accounting and projection, so they're sensitive to skews and imbalances in the dataset.
-
-Ray Data provides the following levers to allow tuning the performance of joins for your workload:
-
--   `num_partitions`: (required) specifies number of partitions both incoming datasets will be hash-partitioned into. Check out {ref}`configuring number of partitions <joins_configuring_num_partitions>` section for guidance on how to tune this up.
--   `partition_size_hint`: (**deprecated**) Hint to joining operator about the estimated avg expected size of the individual partition (in bytes). Ray Data ignores this parameter and a future release removes it. Passing a value emits a `DeprecationWarning`. The join path sizes reduce-task memory from observed partition sizes instead of from a hint.
+- `num_partitions`: Required. The number of hash partitions to split both incoming datasets into. See {ref}`Configure the number of partitions <joins_configuring_num_partitions>` for tuning guidance.
+- `partition_size_hint`: Deprecated. A hint to the join operator about the estimated average size of an individual partition, in bytes. Ray Data ignores this parameter, and a future release removes it. Passing a value emits a `DeprecationWarning`. Instead of a hint, the join path sizes reduce-task memory from observed partition sizes.
 
 (joins_configuring_num_partitions)=
+(configuring-the-number-of-partitions)=
 
-## Configuring the number of partitions
+## Configure the number of partitions
 
-The number of partitions, also referred to as blocks, sets an important trade-off. It weighs the size of the batch of rows that each task handles against the memory the operation on those rows requires.
+The number of partitions, also called blocks, sets a trade-off between the size of the batch of rows that each task handles and the memory that the operation on those rows requires.
 
-**Rule of thumb**: *keep partitions large, but not so large that they cause out-of-memory (OOM) errors.*
+As a rule of thumb, keep partitions large, but not so large that they cause out-of-memory (OOM) errors. Joined partitions that are too large to fit in memory cause OOM errors. Don't create too many small partitions either, because passing a large number of smaller objects adds overhead.
 
-1.  Don't oversize partitions for joins, because joined partitions that are too large to fit in memory cause OOM errors.
-2.  Don't create too many small partitions either, because passing a large number of smaller objects adds overhead.
+(configuring-the-number-of-aggregators)=
 
-## Configuring the number of aggregators
+## Configure the number of aggregators
 
-*Aggregators* are worker actors that perform the joins, aggregations, and shuffling. They receive individual partition chunks from the incoming blocks and then aggregate them in the way the given operation requires.
+*Aggregators* are worker actors that perform the joins, aggregations, and shuffling. They receive individual partition chunks from the incoming blocks and aggregate them as the operation requires.
 
 Consider the following when you configure the number of aggregators in your pool:
 
-- Defaults to the smallest of `num_partitions`, the number of CPUs in the cluster, and `DataContext.max_hash_shuffle_aggregators`, which is 128 by default.
-- An individual aggregator might handle more than one partition. Ray Data splits partitions evenly among the aggregators, in round-robin fashion.
+- The number of aggregators defaults to the smallest of `num_partitions`, the number of CPUs in the cluster, and `DataContext.max_hash_shuffle_aggregators`, which is 128 by default.
+- An individual aggregator might handle more than one partition. Ray Data splits partitions evenly among the aggregators in round-robin fashion.
 - Aggregators are stateful components that hold the partitions in memory during shuffling.
 
 :::{note}
 As a rule of thumb, avoid setting `num_partitions` far higher than the number of aggregators, because doing so might create bottlenecks.
 :::
 
-1.  Setting `DataContext.max_hash_shuffle_aggregators` caps the number of aggregators.
-2.  Setting it to `max_hash_shuffle_aggregators >= num_partitions` allocates one partition per aggregator.
+To cap the number of aggregators, set `DataContext.max_hash_shuffle_aggregators`. Setting `max_hash_shuffle_aggregators >= num_partitions` allocates one partition per aggregator.

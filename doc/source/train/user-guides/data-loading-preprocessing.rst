@@ -463,7 +463,7 @@ Random shuffling
 ----------------
 Randomly shuffling data for each epoch can be important for model quality depending on what model you are training.
 
-Ray Data provides multiple options for random shuffling, see :ref:`Shuffling Data <shuffling_data>` for more details.
+Ray Data provides multiple options for random shuffling, see :ref:`Shuffling data <shuffling_data>` for more details.
 
 Enabling reproducibility
 ------------------------
@@ -873,5 +873,5 @@ See :ref:`data_performance_tips` for more info on how to tune Ray Data.
 More data ingest guides
 -----------------------
 
-- :ref:`Weighted Dataset Mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
+- :ref:`Weighted dataset mixing <mixing_data>` — combine multiple datasets with target row ratios for training.
 - :ref:`Scaling Collation Functions <scaling_collation_functions>` — scale out expensive collation functions to Ray Data.
