@@ -56,6 +56,8 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     increasing cache locality and reducing overhead for language model inference.
     """
 
+    requires_request_body = True
+
     def initialize_state(
         self,
         imbalanced_threshold: Optional[float] = float("inf"),

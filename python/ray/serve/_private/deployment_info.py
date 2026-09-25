@@ -2,7 +2,11 @@ from typing import Any, Dict, Optional
 
 import ray
 from ray.serve._private.common import TargetCapacityDirection
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    IngressRequestRouterConfig,
+    ReplicaConfig,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentInfo as DeploymentInfoProto,
     TargetCapacityDirection as TargetCapacityDirectionProto,
@@ -22,6 +26,7 @@ class DeploymentInfo:
         route_prefix: Optional[str] = None,
         ingress: bool = False,
         ingress_request_router: bool = False,
+        ingress_request_router_config: Optional[IngressRequestRouterConfig] = None,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
@@ -41,6 +46,7 @@ class DeploymentInfo:
         self.route_prefix = route_prefix
         self.ingress = ingress
         self.ingress_request_router = ingress_request_router
+        self.ingress_request_router_config = ingress_request_router_config
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -53,6 +59,8 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
+        if not hasattr(self, "ingress_request_router_config"):
+            self.ingress_request_router_config = None
 
     def update(
         self,
@@ -72,6 +80,7 @@ class DeploymentInfo:
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
             ingress_request_router=self.ingress_request_router,
+            ingress_request_router_config=self.ingress_request_router_config,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )
@@ -147,6 +156,13 @@ class DeploymentInfo:
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
             "ingress_request_router": proto.ingress_request_router,
+            "ingress_request_router_config": (
+                IngressRequestRouterConfig.from_proto(
+                    proto.ingress_request_router_config
+                )
+                if proto.HasField("ingress_request_router_config")
+                else None
+            ),
         }
 
         return cls(**data)
@@ -171,6 +187,10 @@ class DeploymentInfo:
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
         data["ingress_request_router"] = self.ingress_request_router
+        if self.ingress_request_router_config is not None:
+            data[
+                "ingress_request_router_config"
+            ] = self.ingress_request_router_config.to_proto()
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

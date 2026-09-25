@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
@@ -78,6 +79,7 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
+    ingress_request_router_config: Optional[IngressRequestRouterConfig] = None
 
     def validate_single_fastapi_ingress(self) -> None:
         """Validate that the application has at most one FastAPI ingress."""
@@ -211,6 +213,11 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
+        ingress_request_router_config=(
+            app._ingress_request_router_config
+            if ingress_request_router_deployment is not None
+            else None
+        ),
     )
 
 

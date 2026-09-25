@@ -221,9 +221,11 @@ frontend http_frontend
     # Remove client-supplied values from the router-owned header namespace.
     # Lua then applies trusted metadata returned by /internal/route.
     http-request del-header {{ ingress_request_router_header_prefix }} -m beg if has_ingress_request_router_app
-    {%- if ingress_request_router_forward_body %}
-    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    {%- for backend in backends %}
+    {%- if backend.ingress_request_router_servers and backend.ingress_request_router_forward_body %}
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST { var(txn.ingress_request_router_app) -m str "{{ backend.name or 'unknown' }}" }
     {%- endif %}
+    {%- endfor %}
     http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
     # per app so the 503 below fails loud for apps with none.

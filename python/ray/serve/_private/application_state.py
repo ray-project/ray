@@ -1797,6 +1797,11 @@ def build_serve_application(
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
                     ingress_request_router=is_ingress_request_router,
+                    ingress_request_router_config=(
+                        built_app.ingress_request_router_config
+                        if is_ingress_request_router
+                        else None
+                    ),
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
