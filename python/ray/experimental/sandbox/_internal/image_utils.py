@@ -3,6 +3,7 @@ import fcntl
 import io
 import json
 import logging
+import mmap
 import os
 import platform
 import re
@@ -526,8 +527,10 @@ def require_mkfs_erofs() -> str:
         "Ray Sandbox caches container images as EROFS root filesystems, which "
         f"needs mkfs.erofs {_MKFS_EROFS_MIN_VERSION} or later (erofs-utils) on "
         f"every worker node, but {problem}. Install erofs-utils "
-        f"{_MKFS_EROFS_MIN_VERSION}+ on the node image: Ubuntu 24.04 and "
-        "Debian 13 package it; on Ubuntu 22.04 build it from source."
+        f"{_MKFS_EROFS_MIN_VERSION}+ on the node image: on nodes with 4 KiB "
+        "pages, use the Ubuntu 24.04 or Debian 13 package directly; on older "
+        "distributions or nodes with 64 KiB pages, build it from source (with "
+        "`./configure MAX_BLOCK_SIZE=65536` for 64 KiB pages)."
     )
 
 
@@ -603,8 +606,10 @@ def build_erofs_image(
     The tree is re-packed as a tar whose headers hold the recorded uid/gid
     (the files on disk belong to the worker), and ``mkfs.erofs --tar``
     turns that into the image. gVisor's EROFS reader maps the image and
-    only reads the flat-plain data layout, hence ``-E^inline_data``, and
-    4 KiB blocks match its page-size check.
+    only reads the flat-plain data layout, hence ``-E^inline_data``. It also
+    only mounts an image whose block size is a multiple of the host's page
+    size, so we use the page size itself (4 KiB on most hosts, 64 KiB on
+    64K-page kernels).
 
     Args:
         rootfs_dir: Extracted root filesystem.
@@ -617,7 +622,14 @@ def build_erofs_image(
         with tarfile.open(flat_tar, "w") as tar:
             tar.add(rootfs_dir, arcname=".", filter=_owner_filter(ownership))
         res = subprocess.run(
-            [mkfs, "--tar=f", "-b4096", "-E^inline_data", out_path, flat_tar],
+            [
+                mkfs,
+                "--tar=f",
+                f"-b{mmap.PAGESIZE}",
+                "-E^inline_data",
+                out_path,
+                flat_tar,
+            ],
             capture_output=True,
             text=True,
         )
