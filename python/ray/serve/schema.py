@@ -1671,6 +1671,16 @@ class TargetGroup(BaseModel):
         "",
         description="Name of the application's ingress deployment.",
     )
+    # HTTP targets of non-ingress deployments that opted in with `_direct_http`,
+    # keyed by deployment name.
+    # Only HTTP target groups populate this; gRPC target groups always leave it empty.
+    direct_http_targets: Dict[str, List[Target]] = Field(
+        default_factory=dict,
+        description=(
+            "HTTP targets of `_direct_http` deployments, keyed by deployment name. "
+            "Only populated on HTTP target groups; always empty for gRPC."
+        ),
+    )
 
 
 @PublicAPI(stability="alpha")
