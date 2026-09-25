@@ -105,6 +105,14 @@ bool LeaseSpecification::GetNodeAffinitySchedulingStrategySoft() const {
   return GetSchedulingStrategy().node_affinity_scheduling_strategy().soft();
 }
 
+bool LeaseSpecification::HasHardNodeAffinity() const {
+  if (IsNodeAffinitySchedulingStrategy() && !GetNodeAffinitySchedulingStrategySoft()) {
+    return true;
+  }
+  const auto hard_node_ids = GetHardNodeAffinityValues(GetLabelSelector());
+  return hard_node_ids.has_value() && !hard_node_ids->empty();
+}
+
 std::vector<ObjectID> LeaseSpecification::GetDependencyIds() const {
   std::vector<ObjectID> ids;
   ids.reserve(dependencies_.size());
