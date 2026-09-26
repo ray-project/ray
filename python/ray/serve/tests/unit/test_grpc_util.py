@@ -107,6 +107,16 @@ def test_grpc_server():
     )
 
 
+def test_grpc_server_tolerates_missing_registered_method_api(monkeypatch):
+    monkeypatch.setattr(Server, "add_registered_method_handlers", None, raising=False)
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    grpc_server.add_registered_method_handlers("test.UserService", {})
+
+
+@pytest.mark.skipif(
+    not hasattr(Server, "add_registered_method_handlers"),
+    reason="grpcio version does not support registered method handlers",
+)
 def test_grpc_server_overrides_registered_method_handlers(monkeypatch):
     registered = {}
 
@@ -138,9 +148,15 @@ def test_grpc_server_overrides_registered_method_handlers(monkeypatch):
     assert handler.unary_unary() == f"unary_unary call from {service_method}".encode()
     assert handler.unary_stream() == f"unary_stream call from {service_method}".encode()
     assert handler.stream_unary() == f"stream_unary call from {service_method}".encode()
-    assert handler.stream_stream() == f"stream_stream call from {service_method}".encode()
+    assert (
+        handler.stream_stream() == f"stream_stream call from {service_method}".encode()
+    )
 
 
+@pytest.mark.skipif(
+    not hasattr(Server, "add_registered_method_handlers"),
+    reason="grpcio version does not support registered method handlers",
+)
 def test_grpc_server_registered_passthrough_handlers_are_unchanged(monkeypatch):
     registered = {}
 
