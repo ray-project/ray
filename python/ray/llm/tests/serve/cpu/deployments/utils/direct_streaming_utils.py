@@ -2,6 +2,9 @@
 Shared helpers for direct-streaming session-affinity tests.
 """
 
+import hashlib
+from typing import List, Optional
+
 import httpx
 import pytest
 
@@ -9,11 +12,22 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_SESSION_ID
+from ray.serve._private.request_router.common import PendingRequest
+from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.request_router import (
+    FIFOMixin,
+    RequestRouter,
+)
 from ray.serve._private.test_utils import check_running, get_application_url
 from ray.serve.config import RequestRouterConfig
 
 CONSISTENT_HASH_ROUTER = (
     "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+)
+
+CONTENT_HASH_ROUTER = (
+    "ray.llm.tests.serve.cpu.deployments.utils.direct_streaming_utils:"
+    "ContentHashRouter"
 )
 
 # Skip unless the direct-streaming + HAProxy env is set
@@ -66,3 +80,28 @@ def session_chat_response(base_url: str, session_id: str, model: str = "test-mod
     assert resp.status_code == 200, resp.text
     assert resp.headers["x-serve-session-id"] == session_id
     return resp
+
+
+class ContentHashRouter(FIFOMixin, RequestRouter):
+    """Body-aware test policy: the first message's content picks the replica."""
+
+    def initialize_state(self, **kwargs) -> None:
+        pass
+
+    async def choose_replicas(
+        self,
+        candidate_replicas: List[RunningReplica],
+        pending_request: Optional[PendingRequest] = None,
+    ) -> List[List[RunningReplica]]:
+        payload = (
+            pending_request.args[0]
+            if pending_request is not None and pending_request.args
+            else None
+        )
+        messages = getattr(payload, "messages", None)
+        if not messages or not candidate_replicas:
+            return [candidate_replicas]
+        content = str(messages[0].get("content"))
+        ordered = sorted(candidate_replicas, key=lambda r: r.replica_id.unique_id)
+        index = int(hashlib.sha1(content.encode()).hexdigest(), 16) % len(ordered)
+        return [[ordered[index]]]

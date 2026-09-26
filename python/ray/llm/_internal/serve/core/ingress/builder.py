@@ -1,5 +1,7 @@
+import hashlib
 import os
 import pprint
+import re
 from typing import Any, Dict, List, Optional, Type, Union
 
 from pydantic import Field, field_validator, model_validator
@@ -13,8 +15,15 @@ from ray.llm._internal.common.utils.import_utils import load_class
 from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
+from ray.llm._internal.serve.core.ingress.applications import (
+    ApplicationDescriptor,
+    ControlApplication,
+    ModelApplication,
+    RouterApplication,
+)
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
+    _all_models_scale_to_zero,
     make_fastapi_ingress,
 )
 from ray.llm._internal.serve.core.server.builder import (
@@ -25,6 +34,9 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY
+from ray.serve._private.utils import validate_route_prefix
+from ray.serve.api import RunTarget
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -224,6 +236,16 @@ def _validate_direct_streaming_ingress_config(
         )
 
 
+def _build_direct_streaming_openai_app(llm_config: LLMConfig) -> Application:
+    """LLMServer as the ingress, LLMRouter as its ingress request router."""
+    direct_deployment = _build_direct_streaming_llm_deployment(llm_config)
+    return direct_deployment._with_ingress_request_router(
+        _build_openai_ingress_request_router(
+            server=direct_deployment, llm_config=llm_config
+        )
+    )
+
+
 def build_openai_app(builder_config: dict) -> Application:
     """Build an OpenAI compatible app with the llm deployment setup from
     the given builder configuration.
@@ -254,16 +276,11 @@ def build_openai_app(builder_config: dict) -> Application:
             builder_config.ingress_deployment_config,
             builder_config.ingress_cls_config,
         )
-        direct_deployment = _build_direct_streaming_llm_deployment(llm_configs[0])
         logger.info(
             "Direct streaming enabled: "
             "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
-        return direct_deployment._with_ingress_request_router(
-            _build_openai_ingress_request_router(
-                server=direct_deployment, llm_config=llm_configs[0]
-            )
-        )
+        return _build_direct_streaming_openai_app(llm_configs[0])
 
     llm_deployments = {c.model_id: build_llm_deployment(c) for c in llm_configs}
     model_cards = {c.model_id: to_model_metadata(c.model_id, c) for c in llm_configs}
@@ -293,3 +310,153 @@ def build_openai_app(builder_config: dict) -> Application:
         lora_paths=lora_paths,
         **ingress_cls_config.ingress_extra_kwargs,
     )
+
+
+# Segments under `/v1` the router and control applications own.
+_RESERVED_V1_SEGMENTS = frozenset({"chat", "models", "control"})
+# Characters that pass unchanged through URLs, HAProxy ACLs, and the replica's
+# ASGI server, which decodes percent-escapes before matching the route prefix.
+_MODEL_ROUTE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
+
+
+def _model_route_segment(model_id: str) -> str:
+    """The model's segment under `/v1`, with `/` spelled `--` as in `/v1/models/{model}`."""
+    segment = model_id.replace("/", "--")
+    if not _MODEL_ROUTE_SEGMENT_RE.match(segment):
+        raise ValueError(
+            f'Model ID "{model_id}" cannot be used in a route. Model IDs served '
+            "by build_openai_applications may contain only letters, digits, "
+            "'.', '_', '~', '-', and '/'."
+        )
+    if segment in _RESERVED_V1_SEGMENTS:
+        raise ValueError(
+            f'Model ID "{model_id}" would route at /v1/{segment}, which is '
+            f"reserved. Reserved segments: {sorted(_RESERVED_V1_SEGMENTS)}."
+        )
+    return segment
+
+
+def _model_application_name(name: str, model_id: str) -> str:
+    """Stable, order-independent name; the hash separates IDs that sanitize alike."""
+    digest = hashlib.sha1(model_id.encode("utf-8")).hexdigest()[:8]
+    readable = re.sub(r"[^A-Za-z0-9._-]+", "-", model_id.replace("/", "--"))
+    return f"{name}-model-{readable.strip('-')[:48]}-{digest}"
+
+
+def _join_route(prefix: str, path: str) -> str:
+    return prefix.rstrip("/") + path
+
+
+def _validate_openai_applications_args(builder_config: LLMServingArgs) -> None:
+    if not RAY_SERVE_ENABLE_HA_PROXY:
+        raise ValueError(
+            "build_openai_applications requires HAProxy. Set "
+            "RAY_SERVE_ENABLE_HA_PROXY=1 on the Ray cluster."
+        )
+    if not RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        raise ValueError(
+            "build_openai_applications requires direct streaming. Set "
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1 on the Ray cluster."
+        )
+    _validate_direct_streaming_ingress_config(
+        builder_config.ingress_deployment_config,
+        builder_config.ingress_cls_config,
+    )
+    for llm_config in builder_config.llm_configs:
+        # The router picks replicas locally; KV-aware state and LoRA resolution
+        # are not available there yet.
+        if is_kv_aware(llm_config):
+            raise ValueError(
+                f'Model "{llm_config.model_id}" uses KV-aware routing, which '
+                "build_openai_applications does not support yet."
+            )
+        if llm_config.lora_config is not None:
+            raise ValueError(
+                f'Model "{llm_config.model_id}" configures LoRA, which '
+                "build_openai_applications does not support yet."
+            )
+
+
+def build_openai_applications(
+    llm_serving_args: Union[dict, LLMServingArgs],
+    *,
+    name: str = "llm",
+    route_prefix: str = "/",
+) -> List[RunTarget]:
+    """Build one direct-streaming application per model, plus a router and a
+    control application, for `serve.run_many`.
+
+    Side-effect free: nothing is deployed.
+    """
+    builder_config = LLMServingArgs.model_validate(llm_serving_args)
+    _validate_openai_applications_args(builder_config)
+    validate_route_prefix(route_prefix)
+    llm_configs = builder_config.llm_configs
+
+    control = ApplicationDescriptor(
+        application_name=f"{name}-control",
+        ingress_deployment_name=ControlApplication.__name__,
+    )
+    targets: List[RunTarget] = []
+    model_applications: List[ModelApplication] = []
+    model_cards: Dict[str, Dict[str, Any]] = {}
+    routes: Dict[str, str] = {}
+    for llm_config in llm_configs:
+        model_id = llm_config.model_id
+        model_route = _join_route(route_prefix, f"/v1/{_model_route_segment(model_id)}")
+        if model_route in routes:
+            raise ValueError(
+                f'Model IDs "{routes[model_route]}" and "{model_id}" both route '
+                f"at {model_route}."
+            )
+        routes[model_route] = model_id
+
+        # LLMServer is the ingress; its LLMRouter serves direct model routes.
+        model_app = _build_direct_streaming_openai_app(llm_config)
+        model_application = ModelApplication(
+            application_name=_model_application_name(name, model_id),
+            ingress_deployment_name=model_app._bound_deployment.name,
+            model_id=model_id,
+        )
+        model_applications.append(model_application)
+        model_cards[model_id] = to_model_metadata(model_id, llm_config).model_dump(
+            mode="json"
+        )
+        targets.append(
+            RunTarget(
+                target=model_app,
+                name=model_application.application_name,
+                route_prefix=model_route,
+            )
+        )
+
+    scale_to_zero = _all_models_scale_to_zero(llm_configs)
+    control_app = serve.deployment(
+        ControlApplication,
+        name=control.ingress_deployment_name,
+        **ControlApplication.get_deployment_options(scale_to_zero),
+    ).bind(model_cards=model_cards)
+    targets.append(
+        RunTarget(
+            target=control_app,
+            name=control.application_name,
+            route_prefix=_join_route(route_prefix, "/v1/control"),
+        )
+    )
+    router_app = (
+        serve.deployment(
+            RouterApplication,
+            **RouterApplication.get_deployment_options(scale_to_zero),
+        )
+        .bind(model_applications=model_applications, control_application=control)
+        ._as_router_application()
+    )
+    targets.append(RunTarget(target=router_app, name=name, route_prefix=route_prefix))
+    logger.info(
+        "Built router application %r, control application %r, and model "
+        "applications %s",
+        name,
+        control.application_name,
+        {m.model_id: m.application_name for m in model_applications},
+    )
+    return targets

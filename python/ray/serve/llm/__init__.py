@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional, Type
+from typing import TYPE_CHECKING, List, Optional, Type
 
 from ray.llm._internal.serve.core.configs.llm_config import (
     CloudMirrorConfig as _CloudMirrorConfig,
@@ -13,6 +13,7 @@ from ray.serve.llm.deployment import LLMServer
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    from ray.serve.api import RunTarget
     from ray.serve.deployment import Application
 
 
@@ -250,6 +251,66 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     return build_openai_app(builder_config=llm_serving_args)
 
 
+@PublicAPI(stability="alpha")
+def build_openai_applications(
+    llm_serving_args: dict,
+    *,
+    name: str = "llm",
+    route_prefix: str = "/",
+) -> List["RunTarget"]:
+    """[Experimental] Build direct-streaming applications for one or more models.
+
+    Returns one application per model, a control application, and a router
+    application, to deploy together with ``serve.run_many``. Requires
+    ``RAY_SERVE_ENABLE_HA_PROXY=1`` and ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1``.
+
+    * ``<route_prefix>/v1/chat/completions`` streams directly from a replica of
+      the requested ``model``; ``<route_prefix>/v1/models`` lists the models.
+    * Each model is also served at ``<route_prefix>/v1/<model>`` (``/`` in the
+      model ID spelled ``--``), e.g. ``/v1/qwen-0.5b/v1/chat/completions``.
+
+    KV-aware routing and LoRA are not supported yet.
+
+    Examples:
+        .. code-block:: python
+
+            from ray import serve
+            from ray.serve.llm import LLMConfig, build_openai_applications
+
+            llm_configs = [
+                LLMConfig(
+                    model_loading_config=dict(
+                        model_id=model_id, model_source=model_source
+                    ),
+                    accelerator_type="A10G",
+                )
+                for model_id, model_source in [
+                    ("qwen-0.5b", "Qwen/Qwen2.5-0.5B-Instruct"),
+                    ("qwen-1.5b", "Qwen/Qwen2.5-1.5B-Instruct"),
+                ]
+            ]
+            serve.run_many(build_openai_applications({"llm_configs": llm_configs}))
+
+    Args:
+        llm_serving_args: A dict that conforms to the LLMServingArgs pydantic
+            model. ``ingress_cls_config`` and ``ingress_deployment_config`` are
+            not supported.
+        name: Name of the router application; other names derive from it.
+        route_prefix: Route prefix of the router application; other
+            applications are routed under it.
+
+    Returns:
+        The model, control, and router applications' ``RunTarget``s.
+    """
+    from ray.llm._internal.serve.core.ingress.builder import (
+        build_openai_applications,
+    )
+
+    return build_openai_applications(
+        llm_serving_args, name=name, route_prefix=route_prefix
+    )
+
+
 @PublicAPI(stability="stable")
 def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     """Build a deployable application utilizing P/D disaggregation.
@@ -402,6 +463,7 @@ __all__ = [
     "LoraConfig",
     "build_llm_deployment",
     "build_openai_app",
+    "build_openai_applications",
     "build_pd_openai_app",
     "build_dp_deployment",
     "build_dp_openai_app",
