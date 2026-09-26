@@ -2,7 +2,7 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union, overload
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
@@ -518,6 +518,82 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     return decorator
 
 
+@overload
+def deployment(
+    _func_or_class: Callable,
+    name: Default[str] = DEFAULT.VALUE,
+    version: Default[str] = DEFAULT.VALUE,
+    num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Default[str] = DEFAULT.VALUE,
+    placement_group_bundle_label_selector: Default[
+        List[Dict[str, str]]
+    ] = DEFAULT.VALUE,
+    max_replicas_per_node: Default[int] = DEFAULT.VALUE,
+    user_config: Default[Optional[Any]] = DEFAULT.VALUE,
+    max_ongoing_requests: Default[int] = DEFAULT.VALUE,
+    max_queued_requests: Default[int] = DEFAULT.VALUE,
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_period_s: Default[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+    request_router_config: Default[
+        Union[Dict, RequestRouterConfig, None]
+    ] = DEFAULT.VALUE,
+    max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+    gang_scheduling_config: Default[
+        Union[Dict, GangSchedulingConfig, None]
+    ] = DEFAULT.VALUE,
+    deployment_actors: Default[
+        Optional[List[Union[Dict, DeploymentActorConfig]]]
+    ] = DEFAULT.VALUE,
+    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+) -> Deployment:
+    ...
+
+
+@overload
+def deployment(
+    _func_or_class: None = None,
+    name: Default[str] = DEFAULT.VALUE,
+    version: Default[str] = DEFAULT.VALUE,
+    num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
+    ray_actor_options: Default[Dict] = DEFAULT.VALUE,
+    placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
+    placement_group_strategy: Default[str] = DEFAULT.VALUE,
+    placement_group_bundle_label_selector: Default[
+        List[Dict[str, str]]
+    ] = DEFAULT.VALUE,
+    max_replicas_per_node: Default[int] = DEFAULT.VALUE,
+    user_config: Default[Optional[Any]] = DEFAULT.VALUE,
+    max_ongoing_requests: Default[int] = DEFAULT.VALUE,
+    max_queued_requests: Default[int] = DEFAULT.VALUE,
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
+    graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
+    graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
+    health_check_period_s: Default[float] = DEFAULT.VALUE,
+    health_check_timeout_s: Default[float] = DEFAULT.VALUE,
+    logging_config: Default[Union[Dict, LoggingConfig, None]] = DEFAULT.VALUE,
+    request_router_config: Default[
+        Union[Dict, RequestRouterConfig, None]
+    ] = DEFAULT.VALUE,
+    max_constructor_retry_count: Default[int] = DEFAULT.VALUE,
+    gang_scheduling_config: Default[
+        Union[Dict, GangSchedulingConfig, None]
+    ] = DEFAULT.VALUE,
+    deployment_actors: Default[
+        Optional[List[Union[Dict, DeploymentActorConfig]]]
+    ] = DEFAULT.VALUE,
+    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+) -> Callable[[Callable], Deployment]:
+    ...
+
+
 @PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -552,7 +628,7 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
-) -> Callable[[Callable], Deployment]:
+) -> Union[Deployment, Callable[[Callable], Deployment]]:
     """Decorator that converts a Python class to a `Deployment`.
 
     Example:
