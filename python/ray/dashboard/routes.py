@@ -6,12 +6,18 @@ import json
 import logging
 import os
 import traceback
-from typing import Any
+from typing import Any, Optional
 
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
 from ray.dashboard.utils import CustomEncoder, HTTPStatusCode, to_google_style
 
 logger = logging.getLogger(__name__)
+
+
+def is_response_started(request: Optional[aiohttp.web.Request]) -> bool:
+    """Return whether response bytes have been sent when no response object is held."""
+    writer = getattr(request, "writer", None)
+    return getattr(writer, "output_size", 0) > 0
 
 
 class BaseRouteTable(abc.ABC):
@@ -142,6 +148,8 @@ def method_route_table_factory():
                         req = args[-1]
                         return await handler(bind_info.instance, req)
                     except Exception:
+                        if is_response_started(args[-1] if args else None):
+                            raise
                         logger.exception("Handle %s %s failed.", method, path)
                         return rest_response(
                             status_code=HTTPStatusCode.INTERNAL_ERROR,
