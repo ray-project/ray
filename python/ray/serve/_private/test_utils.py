@@ -799,9 +799,20 @@ class MockReplicaActorWrapper:
     def force_stop(self, log_shutdown_message: bool = False):
         self.force_stopped_counter += 1
 
-    def check_health(self):
+    def check_health(self, ingest_lagging: bool = False):
         self.health_check_called = True
+        self.last_ingest_lagging = ingest_lagging
         return self.healthy
+
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        received_at: float,
+        healthy: bool,
+        consecutive_failures: Optional[int] = None,
+    ) -> None:
+        """Match ActorReplicaWrapper; recorded for assertions."""
+        self.pushed_health = (checked_at, received_at, healthy, consecutive_failures)
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
