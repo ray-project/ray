@@ -105,6 +105,51 @@ def maybe_enable_token_auth_if_token_available() -> bool:
     return True
 
 
+def _cluster_requires_token_auth(gcs_address: str) -> bool:
+    """Return whether the GCS rejects a request that carries no token."""
+    import grpc
+
+    from ray._private.grpc_utils import init_grpc_channel
+    from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+
+    channel = init_grpc_channel(gcs_address)
+    try:
+        gcs_service_pb2_grpc.NodeInfoGcsServiceStub(channel).GetClusterId(
+            gcs_service_pb2.GetClusterIdRequest(), timeout=5
+        )
+        return False
+    except grpc.RpcError as e:
+        return e.code() == grpc.StatusCode.UNAUTHENTICATED
+    finally:
+        channel.close()
+
+
+def maybe_enable_token_auth_for_existing_cluster(gcs_address: str) -> bool:
+    """Enable token auth to connect to a running cluster that requires it.
+
+    Applies only when RAY_AUTH_MODE is unset and a token exists. Enabling auth
+    for a cluster that has it off would make this process reject the cluster's
+    unauthenticated calls, so the GCS is probed first.
+    """
+    auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
+    if auth_mode_env is not None:
+        return auth_mode_env.lower() == "token"
+
+    token_loader = AuthenticationTokenLoader.instance()
+    if not token_loader.has_token(ignore_auth_mode=True):
+        return False
+
+    if not _cluster_requires_token_auth(gcs_address):
+        # has_token() cached the token, and the loader serves a cached token
+        # even in disabled mode, which would make this process require it.
+        token_loader.reset_cache()
+        return False
+
+    _enable_token_auth()
+    _warn_token_auth_enabled()
+    return True
+
+
 def enable_token_auth_by_default() -> bool:
     """Enable token auth by default for a new local ``ray.init()`` cluster."""
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
