@@ -2,7 +2,7 @@ import asyncio
 import json
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -53,6 +53,11 @@ def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
         data = json.loads(body)
     except (ValueError, TypeError):
         return None
+    return _routing_payload_from_dict(data)
+
+
+def _routing_payload_from_dict(data: Any) -> Optional[SimpleNamespace]:
+    """``_parse_routing_payload`` for a body that is already parsed."""
     if not isinstance(data, dict):
         return None
     if not any(data.get(field) for field in _ROUTING_KEY_FIELDS):
