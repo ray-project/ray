@@ -1,9 +1,12 @@
 from copy import deepcopy
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
@@ -11,13 +14,45 @@ from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
+from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve.schema import (
     ControllerHealthMetrics,
     DurationStats,
     HTTPOptionsSchema,
+    LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
 )
+
+
+def test_reconfigure_global_logging_additional_attrs(monkeypatch):
+    initial = LoggingConfig(encoding="JSON", additional_log_standard_attrs=["name"])
+    updated = LoggingConfig(encoding="JSON", additional_log_standard_attrs=["process"])
+    controller = SimpleNamespace(
+        global_logging_config=initial,
+        kv_store=Mock(),
+        long_poll_host=Mock(),
+    )
+    configure_logger = Mock()
+    monkeypatch.setattr(
+        "ray.serve._private.controller.configure_component_logger", configure_logger
+    )
+
+    ServeController.reconfigure_global_logging_config(controller, updated)
+
+    assert controller.global_logging_config is updated
+    controller.kv_store.put.assert_called_once()
+    controller.long_poll_host.notify_changed.assert_called_once_with(
+        {LongPollNamespace.GLOBAL_LOGGING_CONFIG: updated}
+    )
+    configure_logger.assert_called_once()
+    assert configure_logger.call_args.kwargs["logging_config"] is updated
+
+    # Reapplying the same fields must not publish another update.
+    ServeController.reconfigure_global_logging_config(controller, updated)
+    controller.kv_store.put.assert_called_once()
+    controller.long_poll_host.notify_changed.assert_called_once()
+    configure_logger.assert_called_once()
 
 
 def create_app_config(name: str) -> ServeApplicationSchema:
