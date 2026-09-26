@@ -2613,6 +2613,28 @@ py_test(
 )
 
 py_test(
+    name = "test_iceberg_checkpoint_protocol",
+    size = "small",
+    srcs = ["tests/test_iceberg_checkpoint_protocol.py"],
+    tags = ["team:data"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_iceberg_checkpoint_state",
+    size = "small",
+    srcs = ["tests/test_iceberg_checkpoint_state.py"],
+    tags = ["team:data"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_read_datasource",
     size = "small",
     srcs = ["tests/test_read_datasource.py"],
