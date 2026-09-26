@@ -292,6 +292,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `CancelStaleActorLeases` request.
+  /// On GCS restart, GCS asks the raylet to cancel all the actor creation leases that
+  /// are still queued, which were requested by the previous GCS. GCS doesn't send new
+  /// actor creation leases to the raylet until the raylet replies.
+  void HandleCancelStaleActorLeases(rpc::CancelStaleActorLeasesRequest request,
+                                    rpc::CancelStaleActorLeasesReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) override;
+
   /// Get pointers to objects stored in plasma. They will be
   /// released once the returned references go out of scope.
   ///
