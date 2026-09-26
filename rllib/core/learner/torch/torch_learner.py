@@ -17,7 +17,7 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import LR_KEY, Learner
+from ray.rllib.core.learner.learner import LR_KEY, Learner, UpdatePlan
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -530,6 +530,30 @@ class TorchLearner(Learner):
             return self._uncompiled_update(batch)
         else:
             return self._possibly_compiled_update(batch)
+
+    @override(Learner)
+    def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:
+        if (
+            self.config.num_learners <= 1
+            or not torch.distributed.is_available()
+            or not torch.distributed.is_initialized()
+        ):
+            return plan
+        summed = torch.tensor(
+            [int(plan.skip), plan.num_minibatches],
+            dtype=torch.int64,
+            device=self._device,
+        )
+        torch.distributed.all_reduce(summed)
+        num_skipping, total_minibatches = summed.tolist()
+        # Skip if anyone wants to. Steps: the average proposal. Every non-empty
+        # Learner proposes at least 1 when there is minibatching, so the floor is
+        # >= 1 then; a single pass over the batch proposes 0 on every Learner, and 0
+        # ("uncapped") is the right answer -- there is only ever one step to take.
+        return UpdatePlan(
+            skip=num_skipping > 0,
+            num_minibatches=total_minibatches // torch.distributed.get_world_size(),
+        )
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:

@@ -6,13 +6,17 @@ import numpy as np
 
 import ray
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.learner import LR_KEY, Learner, UpdatePlan
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
-from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
+    LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
@@ -330,6 +334,203 @@ class TestLearner(unittest.TestCase):
             self.assertEqual(
                 batch1.count + batch2.count, results[ALL_MODULES][NUM_ENV_STEPS_TRAINED]
             )
+
+    def test_update_empty_batch_is_skipped(self):
+        """Tests that `update()` skips the gradient step for an empty train batch.
+
+        The gradient-based update's hooks are skipped with it: they bracket work
+        that did not happen, and anything they step (target networks, schedules) or
+        read back (this update's metrics) has nothing behind it.
+        """
+        from unittest import mock
+
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        timesteps = {NUM_ENV_STEPS_SAMPLED_LIFETIME: 0}
+
+        def check_skipped(results):
+            all_modules = results[ALL_MODULES]
+            self.assertEqual(
+                1, all_modules[LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME]
+            )
+            self.assertEqual(
+                0, all_modules.get(LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME, 0)
+            )
+            self.assertEqual(
+                0, all_modules[LEARNER_MODULE_STEPS_DROPPED_ON_SKIP_LIFETIME]
+            )
+            # The module carries only what building it logged: no loss, because no
+            # gradient step ran, and no learning rate, because the hook that logs it
+            # did not run either.
+            module_results = results[DEFAULT_MODULE_ID]
+            self.assertNotIn(learner.TOTAL_LOSS_KEY, module_results)
+            self.assertFalse([key for key in module_results if LR_KEY in key])
+
+        with mock.patch.object(learner, "before_gradient_based_update") as before, (
+            mock.patch.object(learner, "after_gradient_based_update")
+        ) as after:
+            # Both ways an empty batch reaches `update()`.
+            check_skipped(
+                learner.update(
+                    batch=MultiAgentBatch(policy_batches={}, env_steps=0),
+                    timesteps=timesteps,
+                )
+            )
+            check_skipped(learner.update(episodes=[], timesteps=timesteps))
+            self.assertEqual(0, before.call_count)
+            self.assertEqual(0, after.call_count)
+
+            # A real batch after the skips must still train, hooks and all.
+            reader = get_cartpole_dataset_reader(batch_size=512)
+            batch = learner._convert_batch_type(reader.next().as_multi_agent())
+            results = learner.update(batch=batch)
+            self.assertEqual(1, before.call_count)
+            self.assertEqual(1, after.call_count)
+        self.assertTrue(learner.TOTAL_LOSS_KEY in results[DEFAULT_MODULE_ID])
+
+    def test_should_skip_update_single_learner(self):
+        """`_should_skip_update` defaults to "no module data"; without DDP
+        (`num_learners <= 1`) the group sync has nobody to agree with and must pass
+        the decision through unchanged, without communicating.
+        """
+        config = BaseTestingAlgorithmConfig().learners(num_learners=0)
+        learner = config.build_learner(env=self.ENV)
+        self.assertTrue(
+            learner._should_skip_update(MultiAgentBatch(policy_batches={}, env_steps=0))
+        )
+        # A shard can carry ModuleIDs and still hold no timesteps: `ShardBatchIterator`
+        # keeps every ModuleID when it splits a batch too small to give each Learner a
+        # row. That is just as empty, and skipping it is what keeps the group in sync.
+        empty_module_batch = MultiAgentBatch(
+            {DEFAULT_MODULE_ID: SampleBatch({"obs": np.zeros((0, 4), np.float32)})},
+            env_steps=0,
+        )
+        self.assertTrue(learner._should_skip_update(empty_module_batch))
+        partly_empty_batch = MultiAgentBatch(
+            {
+                DEFAULT_MODULE_ID: SampleBatch({"obs": np.zeros((64, 4), np.float32)}),
+                "other_module": SampleBatch({"obs": np.zeros((0, 4), np.float32)}),
+            },
+            env_steps=64,
+        )
+        self.assertTrue(learner._should_skip_update(partly_empty_batch))
+        reader = get_cartpole_dataset_reader(batch_size=64)
+        self.assertFalse(learner._should_skip_update(reader.next().as_multi_agent()))
+        for plan in (
+            UpdatePlan(skip=False, num_minibatches=0),
+            UpdatePlan(skip=True, num_minibatches=7),
+        ):
+            self.assertEqual(plan, learner._sync_update_plan(plan))
+
+    def test_single_learner_drops_modules_without_data(self):
+        """With a single Learner, a module without rows is dropped, not skipped over.
+
+        Only a group of Learners has to skip such an update: every module runs its
+        own all-reduce, so the Learners cannot train different sets of modules. A
+        lone Learner has nobody to stay in step with and trains on the rest.
+        """
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        batch = get_cartpole_dataset_reader(batch_size=512).next().as_multi_agent()
+        batch.policy_batches["module_without_data"] = SampleBatch(
+            {"obs": np.zeros((0, 4), dtype=np.float32)}
+        )
+
+        results = learner.update(batch=learner._convert_batch_type(batch))
+
+        self.assertEqual(
+            0, results[ALL_MODULES].get(LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME, 0)
+        )
+        self.assertIn(learner.TOTAL_LOSS_KEY, results[DEFAULT_MODULE_ID])
+        self.assertNotIn("module_without_data", results)
+
+    def _build_two_module_learner(self):
+        """A Learner holding `mod1` and `mod2` in place of the default module."""
+        config = BaseTestingAlgorithmConfig()
+        learner = config.build_learner(env=self.ENV)
+        learner.remove_module(module_id=DEFAULT_MODULE_ID)
+        for module_id in ("mod1", "mod2"):
+            learner.add_module(
+                module_id=module_id, module_spec=config.get_rl_module_spec(env=self.ENV)
+            )
+        return learner
+
+    def test_minibatch_count_is_fixed_without_minibatch_size(self):
+        """`num_epochs` > 1 without `minibatch_size` must pin the number of steps too.
+
+        One minibatch is then the whole batch -- all of every module's rows -- so the
+        widest module governs and the count is `num_epochs` on every Learner, however
+        the shards were cut. The Learners settle on it before the update rather than
+        each deriving it afterwards, which is what keeps the path safe if the
+        minibatch size ever stops being the batch itself.
+        """
+        learner = self._build_two_module_learner()
+        rows = get_cartpole_dataset_reader(batch_size=512).next()
+        # What `ShardBatchIterator` hands a Learner: `mod2` was sliced last, so its
+        # 32 rows -- not the 129 of `mod1` -- became the batch's env step count. The
+        # minibatch size must not be taken from that number.
+        batch = MultiAgentBatch({"mod1": rows[:129], "mod2": rows[:32]}, env_steps=32)
+
+        proposed = []
+
+        def _record(plan):
+            proposed.append(plan)
+            return plan
+
+        learner._sync_update_plan = _record
+        results = learner.update(batch=learner._convert_batch_type(batch), num_epochs=2)
+
+        # 2 minibatches, each taking the 129 rows of the widest module from both
+        # modules (`mod2` cycles): exactly `num_epochs` passes, not the 9 that
+        # `ceil(2 * 129 / 32)` would have made of the env step count.
+        self.assertEqual([UpdatePlan(skip=False, num_minibatches=2)], proposed)
+        self.assertEqual(2 * 129 * 2, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
+
+    def test_epochs_survive_a_dropped_module(self):
+        """Dropping a module must not cost the other modules their epochs.
+
+        A shard takes its env steps from whichever module was sliced last, so
+        dropping that module can leave `batch.count` at 0 while the rest of the batch
+        still holds rows. Read as a minibatch size, that 0 turns `num_epochs` passes
+        into one.
+        """
+        learner = self._build_two_module_learner()
+        rows = get_cartpole_dataset_reader(batch_size=512).next()
+        batch = MultiAgentBatch(
+            {
+                "mod1": rows[:129],
+                "mod2": SampleBatch({"obs": np.zeros((0, 4), dtype=np.float32)}),
+            },
+            # `mod2` was sliced last and came up empty, taking `count` down with it.
+            env_steps=0,
+        )
+
+        results = learner.update(batch=learner._convert_batch_type(batch), num_epochs=2)
+
+        self.assertEqual(2 * 129, results[ALL_MODULES][NUM_MODULE_STEPS_TRAINED])
+
+    def test_never_skip_update(self):
+        """`never_skip_update=True` turns the skip into an error: `_should_skip_update`
+        is not consulted and an empty batch raises. The Learners still settle on the
+        number of minibatches -- that is what keeps unequal shards from desyncing a
+        group, skip or no skip."""
+        from unittest import mock
+
+        config = BaseTestingAlgorithmConfig().learners(never_skip_update=True)
+        learner = config.build_learner(env=self.ENV)
+        with mock.patch.object(
+            type(learner), "_should_skip_update", autospec=True
+        ) as hook, mock.patch.object(
+            learner, "_sync_update_plan", wraps=learner._sync_update_plan
+        ) as sync:
+            with self.assertRaisesRegex(ValueError, "never_skip_update"):
+                learner.update(batch=MultiAgentBatch(policy_batches={}, env_steps=0))
+            # A real batch trains as usual, still without consulting the hook, ...
+            reader = get_cartpole_dataset_reader(batch_size=512)
+            batch = learner._convert_batch_type(reader.next()[:512].as_multi_agent())
+            learner.update(batch=batch, minibatch_size=128)
+            hook.assert_not_called()
+            # ... but not without proposing its minibatch count to the group:
+            # ceil(512 / 128) = 4.
+            sync.assert_called_once_with(UpdatePlan(skip=False, num_minibatches=4))
 
 
 if __name__ == "__main__":

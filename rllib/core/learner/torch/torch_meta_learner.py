@@ -34,7 +34,7 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 
-logger = logging.getLogger("__name__")
+logger = logging.getLogger(__name__)
 
 torch, nn = try_import_torch()
 
@@ -127,10 +127,6 @@ class TorchMetaLearner(TorchLearner):
         """
         self._check_is_built()
 
-        # Call `before_gradient_based_update` to allow for non-gradient based
-        # preparations-, logging-, and update logic to happen.
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
         if training_data is None:
             training_data = TrainingData(
                 batch=batch,
@@ -160,6 +156,17 @@ class TorchMetaLearner(TorchLearner):
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             **kwargs,
         )
+
+        # `None` means: skip this update. No gradient-based update takes place, so
+        # neither of its hooks runs (see `Learner.update`).
+        if batch_iter is None:
+            if not _no_metrics_reduce:
+                return self.metrics.reduce()
+            return
+
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
 
         # If no training data for `DifferentiableLearner`s have been passed in, cycle
         # over the main training_data for each `DifferentiableLearner`.
@@ -442,8 +449,16 @@ class TorchMetaLearner(TorchLearner):
     def _make_functional_call(
         self, params: Dict[ModuleID, NamedParamDict], batch: MultiAgentBatch
     ) -> Dict[ModuleID, NamedParamDict]:
-        """Make a functional forward call to all modules in the `MultiRLModule`."""
-        return self._module.foreach_module(
-            lambda mid, m: torch.func.functional_call(m, params[mid], batch[mid]),
-            return_dict=True,
-        )
+        """Makes a functional forward call for each module that has data in `batch`.
+
+        A module that is not in `batch` -- because it had no rows or is not to be
+        trained, see `_create_iterator_if_necessary` -- takes no part in this update.
+        """
+        return {
+            module_id: torch.func.functional_call(
+                self._module[module_id].unwrapped(),
+                params[module_id],
+                batch[module_id],
+            )
+            for module_id in batch
+        }

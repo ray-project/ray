@@ -1,11 +1,13 @@
 import unittest
 
 import numpy as np
+import pytest
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
+    ShardBatchIterator,
     ShardEpisodesIterator,
 )
 from ray.rllib.utils.test_utils import check
@@ -34,6 +36,126 @@ CONFIGS = [
         "padding": True,
     },
 ]
+
+
+def _multi_agent_batch(rows_per_module):
+    """A batch holding `rows_per_module` rows of dummy observations per ModuleID."""
+    return MultiAgentBatch(
+        {
+            module_id: SampleBatch({"obs": np.zeros((rows, 2), dtype=np.float32)})
+            for module_id, rows in rows_per_module.items()
+        },
+        env_steps=max(rows_per_module.values()),
+    )
+
+
+@pytest.mark.parametrize(
+    "rows_per_module, minibatch_size, num_epochs, expected",
+    [
+        ({"p0": 512}, 128, 1, 4),
+        ({"p0": 96}, 16, 2, 12),
+        ({"p0": 100}, 32, 3, 10),
+        ({"p0": 32}, 128, 1, 1),
+        ({"p0": 128, "p1": 64}, 32, 2, 8),
+    ],
+    ids=[
+        "one-epoch",
+        "cycles-the-batch",
+        "rounds-up",
+        "batch-smaller-than-minibatch",
+        "largest-module-governs",
+    ],
+)
+def test_num_minibatches(rows_per_module, minibatch_size, num_epochs, expected):
+    """The iterator terminates purely by count, and derives that count when it is not
+    given one: ceil(num_epochs * rows / minibatch_size), governed by the largest
+    module.
+    """
+    batch = _multi_agent_batch(rows_per_module)
+    assert expected == MiniBatchCyclicIterator.num_minibatches(
+        batch, minibatch_size=minibatch_size, num_epochs=num_epochs
+    )
+
+    minibatches = list(
+        MiniBatchCyclicIterator(
+            batch,
+            num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=False,
+        )
+    )
+    assert expected == len(minibatches)
+    # Every minibatch is full, ...
+    for minibatch in minibatches:
+        for module_id in rows_per_module:
+            assert minibatch_size == len(minibatch[module_id])
+    # ... and the run covers the largest module at least `num_epochs` times, but not
+    # by a whole extra minibatch.
+    most_rows = max(rows_per_module.values())
+    assert expected * minibatch_size >= num_epochs * most_rows
+    assert (expected - 1) * minibatch_size < num_epochs * most_rows
+
+
+def test_explicit_num_total_minibatches_wins():
+    """A count passed in by the caller overrides the one derived from the data."""
+    minibatches = list(
+        MiniBatchCyclicIterator(
+            _multi_agent_batch({"p0": 512}),
+            num_epochs=1,
+            minibatch_size=128,
+            shuffle_batch_per_epoch=False,
+            num_total_minibatches=3,
+        )
+    )
+    assert 3 == len(minibatches)
+
+
+@pytest.mark.parametrize(
+    "num_rows, num_shards, expected",
+    [
+        (128, 2, [64, 64]),
+        (4, 4, [1, 1, 1, 1]),
+        (5, 4, [2, 1, 1, 1]),
+        (9, 4, [3, 2, 2, 2]),
+        (3, 4, [1, 1, 1, 0]),
+    ],
+    ids=[
+        "divides-evenly",
+        "one-row-each",
+        "remainder-of-one",
+        "remainder-of-one-less",
+        "fewer-rows-than-shards",
+    ],
+)
+def test_shard_batch_iterator_spreads_the_remainder(num_rows, num_shards, expected):
+    """Shards differ by at most one row, so none is starved while another has two.."""
+    batch = MultiAgentBatch(
+        {"p0": SampleBatch({"obs": np.arange(num_rows, dtype=np.float32)})},
+        env_steps=num_rows,
+    )
+    shards = [shard.policy_batches for shard in ShardBatchIterator(batch, num_shards)]
+
+    assert expected == [len(shard["p0"]) for shard in shards]
+    # Every shard keeps every ModuleID, and together the shards are the batch again:
+    # in order, with no row dropped or handed out twice.
+    assert all(["p0"] == list(shard.keys()) for shard in shards)
+    check(
+        np.arange(num_rows, dtype=np.float32),
+        np.concatenate([shard["p0"]["obs"] for shard in shards]),
+    )
+
+
+def test_shard_batch_iterator_shards_a_batch_without_modules():
+    """A batch without any module shards into empty batches rather than raising.
+
+    Such a batch is a valid `LearnerGroup.update()` input: every Learner skips it.
+    """
+    shards = list(ShardBatchIterator(MultiAgentBatch({}, env_steps=0), num_shards=2))
+
+    assert 2 == len(shards)
+    for shard in shards:
+        assert {} == shard.policy_batches
+        assert 0 == shard.env_steps()
 
 
 class TestMinibatchUtils(unittest.TestCase):
