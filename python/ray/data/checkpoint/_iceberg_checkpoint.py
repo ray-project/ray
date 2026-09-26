@@ -55,11 +55,11 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
 
         pending_operations = self._state.list_pending_operations()
         committed_operations = self._marked_operation_ids()
-        for operation_id in pending_operations:
+        for operation_id, checkpoints in pending_operations.items():
             if operation_id in committed_operations:
-                self._state.promote_operation(operation_id)
+                self._state.promote_operation(operation_id, checkpoints)
             else:
-                self._state.discard_operation(operation_id)
+                self._state.discard_operation(operation_id, checkpoints)
 
         self._operation_id = uuid.uuid4().hex
 

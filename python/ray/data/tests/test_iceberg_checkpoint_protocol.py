@@ -216,7 +216,7 @@ def test_enable_checkpointing_rejects_namespace_identity_mismatch(tmp_path):
         second.enable_checkpointing()
 
 
-def test_enable_checkpointing_resolves_all_pending_operations(tmp_path):
+def test_enable_checkpointing_resolves_all_pending_operations(tmp_path, monkeypatch):
     config = _checkpoint_config(tmp_path)
     sink = _FakeIcebergSink()
     _initialize_namespace(config, sink)
@@ -227,8 +227,20 @@ def test_enable_checkpointing_resolves_all_pending_operations(tmp_path):
     )
 
     wrapper = IcebergCheckpointDatasink(sink, config)
+    original_list_pending_operations = wrapper._state.list_pending_operations
+    list_calls = 0
+
+    def list_pending_operations():
+        nonlocal list_calls
+        list_calls += 1
+        return original_list_pending_operations()
+
+    monkeypatch.setattr(
+        wrapper._state, "list_pending_operations", list_pending_operations
+    )
     wrapper.enable_checkpointing()
 
+    assert list_calls == 1
     assert (
         config.filesystem.get_file_info(committed_operation.pending_path).type
         == FileType.NotFound

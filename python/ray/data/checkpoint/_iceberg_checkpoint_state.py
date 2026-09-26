@@ -3,7 +3,7 @@ import posixpath
 import re
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from pyarrow.fs import FileInfo, FileSelector, FileType
 
@@ -179,27 +179,68 @@ class IcebergCheckpointState:
             checkpoints.sort(key=lambda checkpoint: checkpoint.checkpoint_id)
         return dict(sorted(grouped.items()))
 
-    def promote_operation(self, operation_id: str) -> None:
+    def promote_operation(
+        self,
+        operation_id: str,
+        checkpoints: Optional[Sequence[PendingOperationCheckpoint]] = None,
+    ) -> None:
         """Idempotently promote every pending checkpoint for an operation."""
-        validate_operation_id(operation_id)
-        checkpoints = self.list_pending_operations().get(operation_id, [])
-        for checkpoint in checkpoints:
-            self._retry_io(
-                lambda checkpoint=checkpoint: self._promote_checkpoint(checkpoint),
-                f"promote Iceberg row checkpoint {checkpoint.checkpoint_id}",
+        checkpoints = self._checkpoints_for_operation(operation_id, checkpoints)
+        if not checkpoints:
+            return
+
+        paths = [
+            path
+            for checkpoint in checkpoints
+            for path in (checkpoint.pending_path, checkpoint.committed_path)
+        ]
+        infos = self._retry_io(
+            lambda: self._filesystem.get_file_info(paths),
+            f"inspect Iceberg row checkpoints for operation {operation_id}",
+        )
+        for index, checkpoint in enumerate(checkpoints):
+            self._promote_checkpoint_with_retry(
+                checkpoint,
+                infos[2 * index],
+                infos[2 * index + 1],
             )
 
-    def discard_operation(self, operation_id: str) -> None:
+    def discard_operation(
+        self,
+        operation_id: str,
+        checkpoints: Optional[Sequence[PendingOperationCheckpoint]] = None,
+    ) -> None:
         """Delete only pending row checkpoints for an uncommitted operation."""
-        validate_operation_id(operation_id)
-        checkpoints = self.list_pending_operations().get(operation_id, [])
-        for checkpoint in checkpoints:
-            self._retry_io(
-                lambda checkpoint=checkpoint: self._delete_file_if_present(
-                    checkpoint.pending_path
-                ),
+        checkpoints = self._checkpoints_for_operation(operation_id, checkpoints)
+        if not checkpoints:
+            return
+
+        paths = [checkpoint.pending_path for checkpoint in checkpoints]
+        infos = self._retry_io(
+            lambda: self._filesystem.get_file_info(paths),
+            f"inspect Iceberg row checkpoints for operation {operation_id}",
+        )
+        for checkpoint, info in zip(checkpoints, infos):
+            self._delete_file_if_present_with_retry(
+                checkpoint.pending_path,
+                info,
                 f"discard Iceberg row checkpoint {checkpoint.checkpoint_id}",
             )
+
+    def _checkpoints_for_operation(
+        self,
+        operation_id: str,
+        checkpoints: Optional[Sequence[PendingOperationCheckpoint]],
+    ) -> Sequence[PendingOperationCheckpoint]:
+        validate_operation_id(operation_id)
+        if checkpoints is None:
+            return self.list_pending_operations().get(operation_id, [])
+        if any(checkpoint.operation_id != operation_id for checkpoint in checkpoints):
+            raise ValueError(
+                "Pending Iceberg row checkpoints must belong to operation "
+                f"{operation_id!r}."
+            )
+        return checkpoints
 
     def delete(self) -> None:
         """Delete the complete checkpoint namespace if it exists."""
@@ -217,10 +258,44 @@ class IcebergCheckpointState:
 
         self._retry_io(delete_directory, "delete the Iceberg checkpoint namespace")
 
-    def _promote_checkpoint(self, checkpoint: PendingOperationCheckpoint) -> None:
-        pending_info, committed_info = self._filesystem.get_file_info(
-            [checkpoint.pending_path, checkpoint.committed_path]
+    def _promote_checkpoint_with_retry(
+        self,
+        checkpoint: PendingOperationCheckpoint,
+        pending_info: FileInfo,
+        committed_info: FileInfo,
+    ) -> None:
+        prefetched_infos: Optional[Tuple[FileInfo, FileInfo]] = (
+            pending_info,
+            committed_info,
         )
+
+        def promote() -> None:
+            nonlocal prefetched_infos
+            current_infos = prefetched_infos
+            # If the state transition succeeds remotely but reports an error,
+            # a retry must inspect its current state instead of reusing stale
+            # metadata.
+            prefetched_infos = None
+            if current_infos is None:
+                self._promote_checkpoint(checkpoint)
+            else:
+                self._promote_checkpoint(checkpoint, *current_infos)
+
+        self._retry_io(
+            promote,
+            f"promote Iceberg row checkpoint {checkpoint.checkpoint_id}",
+        )
+
+    def _promote_checkpoint(
+        self,
+        checkpoint: PendingOperationCheckpoint,
+        pending_info: Optional[FileInfo] = None,
+        committed_info: Optional[FileInfo] = None,
+    ) -> None:
+        if pending_info is None or committed_info is None:
+            pending_info, committed_info = self._filesystem.get_file_info(
+                [checkpoint.pending_path, checkpoint.committed_path]
+            )
         pending_type = pending_info.type
         committed_type = committed_info.type
         self._validate_checkpoint_file_type(checkpoint.pending_path, pending_type)
@@ -351,8 +426,26 @@ class IcebergCheckpointState:
         if file_type not in (FileType.File, FileType.NotFound):
             raise ValueError(f"Iceberg row checkpoint {path!r} is not a file.")
 
-    def _delete_file_if_present(self, path: str) -> None:
-        info = self._filesystem.get_file_info(path)
+    def _delete_file_if_present_with_retry(
+        self, path: str, info: FileInfo, description: str
+    ) -> None:
+        prefetched_info: Optional[FileInfo] = info
+
+        def delete() -> None:
+            nonlocal prefetched_info
+            current_info = prefetched_info
+            # Refresh metadata if a deletion succeeds remotely but reports an
+            # error and the retry callback runs again.
+            prefetched_info = None
+            self._delete_file_if_present(path, current_info)
+
+        self._retry_io(delete, description)
+
+    def _delete_file_if_present(
+        self, path: str, info: Optional[FileInfo] = None
+    ) -> None:
+        if info is None:
+            info = self._filesystem.get_file_info(path)
         if info.type == FileType.File:
             self._filesystem.delete_file(path)
         elif info.type != FileType.NotFound:

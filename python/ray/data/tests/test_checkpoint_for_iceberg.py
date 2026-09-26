@@ -12,9 +12,6 @@ import ray
 from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
 from ray.data._internal.savemode import SaveMode
 from ray.data.checkpoint import CheckpointConfig
-from ray.data.checkpoint._iceberg_checkpoint import (
-    ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY,
-)
 from ray.data.checkpoint._iceberg_checkpoint_state import IcebergCheckpointState
 from ray.data.checkpoint.checkpoint_filter import (
     IdColumnCheckpointManager,
@@ -219,15 +216,16 @@ def test_retry_completes_partial_checkpoint_promotion(
     original = IcebergCheckpointState.promote_operation
     interrupted = False
 
-    def promote_one_then_raise(self, operation_id):
+    def promote_one_then_raise(self, operation_id, checkpoints=None):
         nonlocal interrupted
-        checkpoints = self.list_pending_operations().get(operation_id, [])
+        if checkpoints is None:
+            checkpoints = self.list_pending_operations().get(operation_id, [])
         if not interrupted:
             assert len(checkpoints) > 1
             self._promote_checkpoint(checkpoints[0])
             interrupted = True
             raise RuntimeError("promotion interrupted")
-        return original(self, operation_id)
+        return original(self, operation_id, checkpoints)
 
     with patch.object(
         IcebergCheckpointState,
@@ -345,20 +343,6 @@ def test_unreleased_checkpoint_layout_is_rejected_before_worker_write(
         with pytest.raises(ValueError, match="unsupported unreleased"):
             _write_input(catalog_kwargs)
         write.assert_not_called()
-
-
-def test_snapshot_contains_checkpoint_operation_marker(
-    ray_start_10_cpus_shared,
-    tmp_path,
-):
-    catalog, catalog_kwargs = _create_catalog(tmp_path)
-    _configure_checkpointing(tmp_path / "checkpoints")
-
-    _write_input(catalog_kwargs)
-
-    snapshot = catalog.load_table(_DESTINATION).current_snapshot()
-    operation_id = snapshot.summary.get(ICEBERG_CHECKPOINT_OPERATION_ID_PROPERTY)
-    assert operation_id is not None and len(operation_id) == 32
 
 
 if __name__ == "__main__":

@@ -19,6 +19,19 @@ _TABLE_IDENTIFIER = "db.table"
 _TABLE_UUID = "table-uuid"
 
 
+class _TrackingFileSystem:
+    def __init__(self, filesystem):
+        self._filesystem = filesystem
+        self.get_file_info_calls = []
+
+    def get_file_info(self, paths):
+        self.get_file_info_calls.append(paths)
+        return self._filesystem.get_file_info(paths)
+
+    def __getattr__(self, name):
+        return getattr(self._filesystem, name)
+
+
 def _write_file(filesystem, path, data=b"checkpoint"):
     filesystem.create_dir(posixpath.dirname(path), recursive=True)
     with filesystem.open_output_stream(path) as stream:
@@ -221,7 +234,21 @@ def test_promote_operation_is_idempotent_and_operation_scoped(tmp_path):
     _write_file(filesystem, duplicate_committed, b"committed")
     _write_file(filesystem, other_pending, b"other")
 
-    state.promote_operation(_OPERATION_1)
+    checkpoints = state.list_pending_operations()[_OPERATION_1]
+    tracking_filesystem = _TrackingFileSystem(filesystem)
+    state._filesystem = tracking_filesystem
+
+    state.promote_operation(_OPERATION_1, checkpoints)
+
+    assert tracking_filesystem.get_file_info_calls == [
+        [
+            first_pending,
+            first_committed,
+            duplicate_pending,
+            duplicate_committed,
+        ]
+    ]
+
     state.promote_operation(_OPERATION_1)
 
     assert filesystem.get_file_info(first_pending).type == FileType.NotFound
@@ -236,15 +263,31 @@ def test_discard_operation_removes_only_its_pending_files(tmp_path):
     checkpoint_path = str(tmp_path / "checkpoints")
     state = IcebergCheckpointState(checkpoint_path, filesystem)
     discarded_pending = _pending_path(checkpoint_path, _OPERATION_1, 0)
+    second_discarded_pending = _pending_path(checkpoint_path, _OPERATION_1, 1)
     retained_pending = _pending_path(checkpoint_path, _OPERATION_2, 0)
-    retained_committed = _committed_path(checkpoint_path, _OPERATION_1, 1)
-    for path in [discarded_pending, retained_pending, retained_committed]:
+    retained_committed = _committed_path(checkpoint_path, _OPERATION_1, 2)
+    for path in [
+        discarded_pending,
+        second_discarded_pending,
+        retained_pending,
+        retained_committed,
+    ]:
         _write_file(filesystem, path)
 
-    state.discard_operation(_OPERATION_1)
+    checkpoints = state.list_pending_operations()[_OPERATION_1]
+    tracking_filesystem = _TrackingFileSystem(filesystem)
+    state._filesystem = tracking_filesystem
+
+    state.discard_operation(_OPERATION_1, checkpoints)
+
+    assert tracking_filesystem.get_file_info_calls == [
+        [discarded_pending, second_discarded_pending]
+    ]
+
     state.discard_operation(_OPERATION_1)
 
     assert filesystem.get_file_info(discarded_pending).type == FileType.NotFound
+    assert filesystem.get_file_info(second_discarded_pending).type == FileType.NotFound
     assert filesystem.get_file_info(retained_pending).type == FileType.File
     assert filesystem.get_file_info(retained_committed).type == FileType.File
 
