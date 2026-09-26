@@ -432,12 +432,48 @@ def test_planner_enables_iceberg_checkpointing_before_recursive_planning(
     physical_plan, callbacks = planner.plan(logical_plan)
 
     assert physical_plan.dag is physical_dag
-    checkpoint_callback = next(
-        callback
-        for callback in callbacks
-        if isinstance(callback, LoadCheckpointCallback)
+    assert not any(
+        isinstance(callback, LoadCheckpointCallback) for callback in callbacks
     )
-    assert not checkpoint_callback._delete_on_execution_success
+
+
+def test_planner_checkpoint_callback_override_keeps_original_signature(
+    tmp_path, monkeypatch
+):
+    class PlannerWithCallbackOverride(Planner):
+        def __init__(self):
+            super().__init__()
+            self.callback_config = None
+
+        def _create_checkpoint_callback(self, checkpoint_config):
+            self.callback_config = checkpoint_config
+            return LoadCheckpointCallback(checkpoint_config)
+
+    config = _checkpoint_config(tmp_path)
+    data_context = DataContext.get_current()
+    data_context.checkpoint_config = config
+    logical_plan = LogicalPlan(
+        Write(_FakeIcebergSink(), input_dependencies=[InputData(input_data=[])]),
+        data_context,
+    )
+    planner = PlannerWithCallbackOverride()
+    physical_dag = object()
+
+    monkeypatch.setattr(
+        planner,
+        "_plan_recursively",
+        lambda *args, **kwargs: (physical_dag, {}),
+    )
+    monkeypatch.setattr(
+        "ray.data._internal.planner.planner.create_usage_callback",
+        lambda logical_plan: object(),
+    )
+
+    physical_plan, callbacks = planner.plan(logical_plan)
+
+    assert physical_plan.dag is physical_dag
+    assert planner.callback_config is config
+    assert any(isinstance(callback, LoadCheckpointCallback) for callback in callbacks)
 
 
 def test_write_planner_routes_iceberg_to_pending_checkpoint_transform(
