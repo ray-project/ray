@@ -75,6 +75,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data._internal.usage import create_usage_callback
+from ray.data.checkpoint._iceberg_checkpoint import IcebergCheckpointDatasink
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.datasource.file_datasink import _FileDatasink
@@ -292,10 +293,18 @@ class Planner:
             logical_plan
         ):
             self._supports_checkpointing = True
+            iceberg_checkpoint_datasink = self._get_iceberg_checkpoint_datasink(
+                logical_plan
+            )
+            if iceberg_checkpoint_datasink is not None:
+                # Resolve catalog state before the read planner loads committed IDs.
+                iceberg_checkpoint_datasink.enable_checkpointing()
+
             data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
             checkpoint_callback = self._create_checkpoint_callback(
                 checkpoint_config,
+                delete_on_execution_success=iceberg_checkpoint_datasink is None,
             )
 
             callbacks.append(checkpoint_callback)
@@ -381,6 +390,8 @@ class Planner:
     def _create_checkpoint_callback(
         self,
         checkpoint_config,
+        *,
+        delete_on_execution_success: bool = True,
     ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
@@ -388,7 +399,20 @@ class Planner:
         """
         return LoadCheckpointCallback(
             checkpoint_config,
+            delete_on_execution_success=delete_on_execution_success,
         )
+
+    @staticmethod
+    def _get_iceberg_checkpoint_datasink(
+        logical_plan: LogicalPlan,
+    ) -> Optional[IcebergCheckpointDatasink]:
+        last_op = logical_plan.dag
+        if not isinstance(last_op, Write):
+            return None
+        datasink = last_op.datasink_or_legacy_datasource
+        if isinstance(datasink, IcebergCheckpointDatasink):
+            return datasink
+        return None
 
     @staticmethod
     def _get_data_file_info(logical_plan: LogicalPlan):

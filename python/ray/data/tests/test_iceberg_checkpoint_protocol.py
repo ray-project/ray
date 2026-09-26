@@ -12,10 +12,14 @@ from ray.data._internal.datasource.iceberg_datasink import (
     IcebergWriteResult,
 )
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators import InputData, Write
 from ray.data._internal.planner.checkpoint.plan_write_op import (
     WRITE_UUID_KWARG_NAME,
     _generate_iceberg_write_checkpoint_transform,
+    plan_write_op_with_checkpoint_writer,
 )
+from ray.data._internal.planner.planner import Planner
 from ray.data._internal.savemode import SaveMode
 from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint._iceberg_checkpoint import (
@@ -28,6 +32,7 @@ from ray.data.checkpoint._iceberg_checkpoint_state import (
     build_task_checkpoint_id,
 )
 from ray.data.checkpoint.checkpoint_writer import BatchBasedCheckpointWriter
+from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import WriteResult
 
@@ -372,8 +377,12 @@ def test_wrapper_delegates_datasink_behavior(tmp_path):
     schema = pa.schema([(_ID_COLUMN, pa.int64())])
     task_context = TaskContext(task_idx=0, op_name="test")
 
-    with pytest.raises(RuntimeError, match="has not been enabled"):
-        wrapper.on_write_start(schema)
+    wrapper.on_write_start(schema)
+    assert (
+        wrapper.write([pa.table({_ID_COLUMN: [1]})], task_context)
+        is sink.written_result
+    )
+
     wrapper.enable_checkpointing()
     wrapper.on_write_start(schema)
     assert (
@@ -383,12 +392,89 @@ def test_wrapper_delegates_datasink_behavior(tmp_path):
     error = RuntimeError("failed")
     wrapper.on_write_failed(error)
 
-    assert sink.started_schemas == [schema]
+    assert sink.started_schemas == [schema, schema]
     assert sink.failed_errors == [error]
     assert wrapper.get_name() == "Iceberg"
     assert wrapper.supports_distributed_writes
     assert wrapper.min_rows_per_write == 10
     assert wrapper.min_bytes_per_write == 20
+
+
+def test_planner_enables_iceberg_checkpointing_before_recursive_planning(
+    tmp_path, monkeypatch
+):
+    config = _checkpoint_config(tmp_path)
+    data_context = DataContext.get_current()
+    data_context.checkpoint_config = config
+    wrapper = IcebergCheckpointDatasink(_FakeIcebergSink(), config)
+    monkeypatch.setattr(
+        IcebergCheckpointDatasink,
+        "min_bytes_per_write",
+        property(lambda _: None),
+    )
+    logical_plan = LogicalPlan(
+        Write(wrapper, input_dependencies=[InputData(input_data=[])]),
+        data_context,
+    )
+    planner = Planner()
+    physical_dag = object()
+
+    def plan_recursively(*args, **kwargs):
+        assert wrapper.operation_id
+        return physical_dag, {}
+
+    monkeypatch.setattr(planner, "_plan_recursively", plan_recursively)
+    monkeypatch.setattr(
+        "ray.data._internal.planner.planner.create_usage_callback",
+        lambda logical_plan: object(),
+    )
+
+    physical_plan, callbacks = planner.plan(logical_plan)
+
+    assert physical_plan.dag is physical_dag
+    checkpoint_callback = next(
+        callback
+        for callback in callbacks
+        if isinstance(callback, LoadCheckpointCallback)
+    )
+    assert not checkpoint_callback._delete_on_execution_success
+
+
+def test_write_planner_routes_iceberg_to_pending_checkpoint_transform(
+    tmp_path, monkeypatch
+):
+    config = _checkpoint_config(tmp_path)
+    data_context = DataContext.get_current()
+    data_context.checkpoint_config = config
+    wrapper = IcebergCheckpointDatasink(_FakeIcebergSink(), config)
+    wrapper.enable_checkpointing()
+    pending_transform = object()
+    physical_op = object()
+
+    monkeypatch.setattr(
+        "ray.data._internal.planner.checkpoint.plan_write_op."
+        "_generate_iceberg_write_checkpoint_transform",
+        lambda *args: pending_transform,
+    )
+
+    def plan_write(*args, post_transformations, pre_transformations):
+        assert pre_transformations == []
+        assert post_transformations[0] is pending_transform
+        return physical_op
+
+    monkeypatch.setattr(
+        "ray.data._internal.planner.checkpoint.plan_write_op."
+        "_plan_write_op_internal",
+        plan_write,
+    )
+
+    result = plan_write_op_with_checkpoint_writer(
+        SimpleNamespace(datasink_or_legacy_datasource=wrapper),
+        [],
+        data_context,
+    )
+
+    assert result is physical_op
 
 
 def test_iceberg_post_write_transform_publishes_pending_rows(tmp_path):

@@ -76,15 +76,17 @@ class IcebergCheckpointDatasink(Datasink[IcebergWriteResult]):
         return self._state
 
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
-        self._require_enabled()
         self._sink.on_write_start(schema)
 
     def write(self, blocks: Iterable[Block], ctx: "TaskContext") -> IcebergWriteResult:
-        self._require_enabled()
         return self._sink.write(blocks, ctx)
 
     def on_write_complete(self, write_result: WriteResult[IcebergWriteResult]) -> None:
         """Commit current files, confirm the snapshot, and promote row IDs."""
+        if self._operation_id is None:
+            self._sink.on_write_complete(write_result)
+            return
+
         operation_id = self.operation_id
         if not self._has_data_files(write_result):
             self._sink.on_write_complete(write_result)
