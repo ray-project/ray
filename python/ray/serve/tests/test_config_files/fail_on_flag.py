@@ -2,8 +2,9 @@
 
 Set the builder argument fail or the environment variable FAIL_ON_INIT=1
 to fail the constructor. FAIL_HEALTH_CHECK=1 lets the replica start, then
-fails subsequent health checks. BLOCK_ON_SIGNAL holds requests until the actor
-provided by serve_instance_with_signal is released. RECORD_FAILED_GANGS names
+fails subsequent health checks. BLOCK_INIT_ON_SIGNAL=1 holds the constructor,
+and BLOCK_ON_SIGNAL=1 holds requests, until the actor provided by
+serve_instance_with_signal is released. RECORD_FAILED_GANGS names
 an accumulator actor that records constructor failures by gang. A fixed
 max_constructor_retry_count keeps the failure threshold independent of the
 replica count.
@@ -18,6 +19,8 @@ from ray.serve._private.test_utils import SERVE_INSTANCE_SIGNAL_ACTOR_NAME
 @serve.deployment(num_replicas=2, max_ongoing_requests=7, max_constructor_retry_count=3)
 class FailOnFlag:
     def __init__(self, fail: bool):
+        if os.environ.get("BLOCK_INIT_ON_SIGNAL") == "1":
+            ray.get(ray.get_actor(SERVE_INSTANCE_SIGNAL_ACTOR_NAME).wait.remote())
         if fail or os.environ.get("FAIL_ON_INIT") == "1":
             if store_name := os.environ.get("RECORD_FAILED_GANGS"):
                 context = serve.context._get_internal_replica_context()
