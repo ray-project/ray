@@ -691,6 +691,7 @@ class DeploymentScheduler(ABC):
         replica_id = scheduling_request.replica_id
         deployment_id = replica_id.deployment_id
         placement_group = None
+        per_replica_pg = None
 
         scheduling_strategy: Any = default_scheduling_strategy
 
@@ -740,6 +741,7 @@ class DeploymentScheduler(ABC):
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 return False
+            per_replica_pg = pg
             # Pin the actor as a subset of bundle 0. ReplicaConfig
             # validates that actor resources fit in bundle 0, and
             # required_resources assumes this pin.
@@ -786,6 +788,16 @@ class DeploymentScheduler(ABC):
             # We add a defensive exception here, so the controller can
             # make progress even if the actor options are misconfigured.
             logger.exception(f"Failed to create an actor for {replica_id}.")
+            # Remove the per replica PG so it doesn't leak resources.
+            # Gang PGs are not removed here.
+            if per_replica_pg is not None:
+                try:
+                    ray.util.remove_placement_group(per_replica_pg)
+                except Exception:
+                    logger.exception(
+                        f"Failed to clean up placement group for {replica_id} "
+                        "after actor creation failure."
+                    )
             scheduling_request.status = (
                 ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
             )
