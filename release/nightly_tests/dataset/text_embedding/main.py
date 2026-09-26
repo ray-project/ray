@@ -160,4 +160,14 @@ def get_hf_token() -> str:
 if __name__ == "__main__":
     ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
+
+    # S3 sometimes returns transient ACCESS_DENIED on HeadBucket under heavy
+    # concurrent load (credential refresh or throttling). Retry these instead
+    # of aborting the entire job. Short-term mitigation for DATA-3602; the
+    # default-level fix is DATA-3607.
+    ctx = ray.data.DataContext.get_current()
+    ctx.retried_io_errors = list(ctx.retried_io_errors) + [
+        "AWS Error ACCESS_DENIED",
+    ]
+
     main(args)

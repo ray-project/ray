@@ -429,7 +429,9 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
             return self.value
 
     default_retried_error = ray.data.context.DEFAULT_RETRIED_IO_ERRORS[0]
-    custom_retried_error = "AWS Error ACCESS_DENIED"
+    # Deliberately not one of the defaults, so this test keeps exercising the
+    # "user appended a custom pattern" path.
+    custom_retried_error = "Custom transient error"
 
     class FlakyFileBasedDatasource(MockFileBasedDatasource):
         def __init__(self, *args, **kwargs):
@@ -453,6 +455,77 @@ def test_flaky_read_task_retries(ray_start_regular_shared, tmp_path):
     datasource = FlakyFileBasedDatasource([csv_path])
     ds = ray.data.read_datasource(datasource)
     assert len(ds.take()) == 1
+
+
+def test_default_retried_io_errors_cover_pyarrow_s3_access_denied():
+    """PyArrow's S3FileSystem reports a transient credential-lookup failure
+    (e.g. an empty IMDS response under load) as ACCESS_DENIED. Retrying it by
+    default is what keeps a single unlucky task from failing a whole write
+    (DATA-3602)."""
+    from ray._common.retry import matches_error
+    from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
+
+    message = (
+        "OSError: When testing for existence of bucket 'ray-data-write-benchmark': "
+        "AWS Error ACCESS_DENIED during HeadBucket operation: No response body"
+    )
+    assert any(matches_error(pattern, message) for pattern in DEFAULT_RETRIED_IO_ERRORS)
+
+    # Negative control: an unrelated error is still not retried by default.
+    unrelated = "OSError: connection refused"
+    assert not any(
+        matches_error(pattern, unrelated) for pattern in DEFAULT_RETRIED_IO_ERRORS
+    )
+
+
+def test_retrying_filesystem_retries_transient_s3_access_denied(monkeypatch):
+    """A datasink's bucket-existence check runs through ``RetryingPyFileSystem``
+    (``create_dir`` -> S3 HeadBucket). A transient ACCESS_DENIED there must be
+    retried under the default patterns rather than fail the write (DATA-3602)."""
+    import ray._common.retry as retry_module
+    from ray.data._internal.util import RetryingPyFileSystemHandler
+    from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
+
+    # Keep the exponential backoff between attempts instant.
+    monkeypatch.setattr(retry_module.time, "sleep", lambda _: None)
+
+    class FlakyFileSystem:
+        def __init__(self):
+            self.create_dir_calls = 0
+
+        def create_dir(self, path, recursive):
+            self.create_dir_calls += 1
+            if self.create_dir_calls == 1:
+                raise OSError(
+                    "When testing for existence of bucket 'ray-data-write-benchmark': "
+                    "AWS Error ACCESS_DENIED during HeadBucket operation: "
+                    "No response body"
+                )
+
+    flaky = FlakyFileSystem()
+    handler = RetryingPyFileSystemHandler(
+        flaky, retryable_errors=list(DEFAULT_RETRIED_IO_ERRORS), max_attempts=3
+    )
+    handler.create_dir("ray-data-write-benchmark/prefix", recursive=True)
+    assert flaky.create_dir_calls == 2
+
+    # Negative control: an error outside the default patterns fails on the
+    # first attempt instead of being retried.
+    class DeniedFileSystem:
+        def __init__(self):
+            self.create_dir_calls = 0
+
+        def create_dir(self, path, recursive):
+            self.create_dir_calls += 1
+            raise OSError("AWS Error INVALID_BUCKET_NAME during HeadBucket operation")
+
+    denied = DeniedFileSystem()
+    handler = RetryingPyFileSystemHandler(
+        denied, retryable_errors=list(DEFAULT_RETRIED_IO_ERRORS), max_attempts=3
+    )
+    with pytest.raises(OSError, match="INVALID_BUCKET_NAME"):
+        handler.create_dir("ray-data-write-benchmark/prefix", recursive=True)
+    assert denied.create_dir_calls == 1
 
 
 def test_flaky_read_stream_retry_does_not_drop_data(ray_start_regular_shared, tmp_path):
