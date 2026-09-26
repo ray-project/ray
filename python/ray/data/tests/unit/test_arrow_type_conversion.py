@@ -44,6 +44,33 @@ def test_convert_empty_numpy_tensor(
     assert restored.dtype == values.dtype
 
 
+@pytest.mark.parametrize("shape", [(0, 2, 2), (1, 2, 2)])
+def test_convert_array_like_tensor(
+    shape, tensor_format_context, disable_fallback_to_object_extension
+):
+    values = np.arange(np.prod(shape), dtype=np.int32).reshape(shape)
+
+    class ArrayLike:
+        @property
+        def ndim(self):
+            return values.ndim
+
+        def __len__(self):
+            return len(values)
+
+        def __array__(self, dtype=None, copy=None):
+            array = np.asarray(values, dtype=dtype)
+            return array.copy() if copy else array
+
+    converted = convert_to_pyarrow_array(ArrayLike(), "tensor")
+
+    expected = ArrowTensorArray.from_numpy(values)
+    assert converted.type == expected.type
+    restored = converted.to_numpy_ndarray()
+    assert restored.dtype == values.dtype
+    np.testing.assert_array_equal(restored, values)
+
+
 @pytest.mark.parametrize("values", [[], np.array([], dtype=np.int32)])
 def test_convert_empty_scalar_column(values, disable_fallback_to_object_extension):
     converted = convert_to_pyarrow_array(values, "scalar")
