@@ -1039,6 +1039,64 @@ INSTANTIATE_TEST_SUITE_P(NodeManagerReturnWorkerLeaseIdempotentVariations,
                          NodeManagerReturnWorkerLeaseIdempotentTest,
                          testing::Combine(testing::Bool(), testing::Bool()));
 
+TEST_F(NodeManagerTest, TestReleaseUnusedActorWorkersIncludesPendingActorCreation) {
+  const auto owner_id = TaskID::FromRandom(JobID::FromInt(1));
+  // An actor worker whose creation task finished, so it has an actor ID.
+  const auto created_actor_worker =
+      CreateActorWorker(owner_id, /*max_actor_restarts=*/0, /*port=*/10, clock_);
+  // Workers leased for an actor creation task that hasn't finished yet. They have no
+  // actor ID, e.g. because the GCS that requested the lease died before using it.
+  const auto pending_unused_worker = CreateTaskWorker(owner_id,
+                                                      /*max_retries=*/0,
+                                                      /*port=*/11,
+                                                      rpc::TaskType::ACTOR_CREATION_TASK,
+                                                      clock_);
+  const auto pending_in_use_worker = CreateTaskWorker(owner_id,
+                                                      /*max_retries=*/0,
+                                                      /*port=*/12,
+                                                      rpc::TaskType::ACTOR_CREATION_TASK,
+                                                      clock_);
+  // A worker leased for a normal task, which GCS doesn't track.
+  const auto task_worker = CreateTaskWorker(owner_id,
+                                            /*max_retries=*/0,
+                                            /*port=*/13,
+                                            rpc::TaskType::NORMAL_TASK,
+                                            clock_);
+  for (const auto &worker : {created_actor_worker,
+                             pending_unused_worker,
+                             pending_in_use_worker,
+                             task_worker}) {
+    leased_workers_[worker->GetGrantedLeaseId()] = worker;
+  }
+  ASSERT_TRUE(pending_unused_worker->GetActorId().IsNil());
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredWorker(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .WillRepeatedly(Return(nullptr));
+  EXPECT_CALL(
+      mock_worker_pool_,
+      GetRegisteredDriver(testing::A<const std::shared_ptr<ClientConnection> &>()))
+      .WillRepeatedly(Return(nullptr));
+
+  rpc::ReleaseUnusedActorWorkersRequest request;
+  request.add_worker_ids_in_use(pending_in_use_worker->WorkerId().Binary());
+  rpc::ReleaseUnusedActorWorkersReply reply;
+  bool replied = false;
+  node_manager_->HandleReleaseUnusedActorWorkers(
+      request,
+      &reply,
+      [&](Status s, std::function<void()> success, std::function<void()> failure) {
+        ASSERT_TRUE(s.ok());
+        replied = true;
+      });
+
+  ASSERT_TRUE(replied);
+  EXPECT_TRUE(created_actor_worker->IsDead());
+  EXPECT_TRUE(pending_unused_worker->IsDead());
+  EXPECT_FALSE(pending_in_use_worker->IsDead());
+  EXPECT_FALSE(task_worker->IsDead());
+}
+
 TEST_F(NodeManagerTest, TestHandleRequestWorkerLeaseGrantedLeaseIdempotent) {
   auto lease_spec = BuildLeaseSpec({});
   rpc::RequestWorkerLeaseRequest request;
