@@ -21,9 +21,12 @@ class LoadCheckpointCallback(ExecutionCallback):
     def __init__(
         self,
         config: CheckpointConfig,
+        *,
+        delete_on_execution_success: bool = True,
     ):
         assert config is not None
         self._config = config
+        self._delete_on_execution_success = delete_on_execution_success
 
     def before_execution_starts(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
@@ -38,7 +41,10 @@ class LoadCheckpointCallback(ExecutionCallback):
 
         # Delete checkpoint data.
         try:
-            if self._config.delete_checkpoint_on_success:
+            if (
+                self._delete_on_execution_success
+                and self._config.delete_checkpoint_on_success
+            ):
                 self._delete_checkpoint()
         except Exception:
             logger.warning("Failed to delete checkpoint data.", exc_info=True)
