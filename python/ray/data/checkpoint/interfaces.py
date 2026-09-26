@@ -85,7 +85,10 @@ class CheckpointConfig:
             object storage (e.g. `s3://bucket/path`) or a file system path.
             If the latter, the path must be a network-mounted file system (e.g.
             `/mnt/cluster_storage/`) that is accessible to the entire cluster.
-            If not set, defaults to `RAY_DATA_CHECKPOINT_PATH_BUCKET/ray_data_checkpoint`.
+            Checkpointed Iceberg writes require one logical writer per checkpoint path.
+            Don't run multiple Dataset executions concurrently with the same checkpoint
+            path. If not set, defaults to
+            `RAY_DATA_CHECKPOINT_PATH_BUCKET/ray_data_checkpoint`.
         delete_checkpoint_on_success: If true, automatically delete checkpoint
             data when the dataset execution succeeds. Only supported for
             batch-based backend currently.
