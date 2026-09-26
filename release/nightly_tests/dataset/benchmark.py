@@ -12,6 +12,9 @@ import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data import DataContext
+from ray.data._internal.execution.streaming_executor_state import (
+    WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+)
 from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
@@ -261,6 +264,7 @@ class BenchmarkMetric(Enum):
     OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
     OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
     HEAD_NODE_MEMORY_USED_PEAK_GB = "head_node_memory_used_peak_gb"
+    SCHED_LOOP_DURATIONS_P90_S = "sched_loop_durations_p90_s"
 
 
 class Benchmark:
@@ -270,7 +274,7 @@ class Benchmark:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
         max_sched_loop_duration_s: If set, fail if any dataset that executed during
-            the run had a scheduling loop iteration longer than this limit.
+            the run had a p90 scheduling loop iteration longer than this limit.
 
     Here's an example of typical usage:
 
@@ -301,7 +305,12 @@ class Benchmark:
         self,
         *,
         max_head_node_memory_bytes: int | None = None,
-        max_sched_loop_duration_s: float | None = None,
+        # `WAIT_FOR_TASK_COMPLETION_TIMEOUT_S` is the lower bound on the max scheduling
+        # loop duration. 4 is a constant multiplier chosen by practical judgement.
+        #
+        # TODO: Ratchet this down as we improve scheduling loop overhead.
+        max_sched_loop_duration_s: float
+        | None = 4 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     ):
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
@@ -354,6 +363,9 @@ class Benchmark:
         assert fn_output is None or isinstance(fn_output, dict), fn_output
 
         spilled_bytes_total = _get_spilled_bytes_total(state) - start_spilled_bytes
+        # This includes executions that finished before `run_fn` was called.
+        # The code assumes this isn't an issue to simplify the implementation.
+        stats_summaries = ray.data.list_stats_summaries()
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
@@ -366,6 +378,9 @@ class Benchmark:
                 memory_sampler.peak_utilization,
                 4,
             ),
+            BenchmarkMetric.SCHED_LOOP_DURATIONS_P90_S.value: [
+                summary.streaming_exec_schedule_p90_s for summary in stats_summaries
+            ],
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
@@ -403,19 +418,16 @@ class Benchmark:
             )
 
         if self._max_sched_loop_duration_s is not None:
-            # This includes executions that finished before `run_fn` was called.
-            # The code assumes this isn't an issue to simplify the implementation.
-            stats_summaries = ray.data.list_stats_summaries()
             datasets_exceeding_limit = [
                 f"{summary.dataset_uuid} "
-                f"({summary.streaming_exec_schedule_max_s} seconds)"
+                f"({summary.streaming_exec_schedule_p90_s} seconds)"
                 for summary in stats_summaries
-                if summary.streaming_exec_schedule_max_s
+                if summary.streaming_exec_schedule_p90_s
                 > self._max_sched_loop_duration_s
             ]
             if datasets_exceeding_limit:
                 raise AssertionError(
-                    f"Benchmark case {name!r} had datasets whose max scheduling loop "
+                    f"Benchmark case {name!r} had datasets whose p90 scheduling loop "
                     f"duration exceeded the configured limit of "
                     f"{self._max_sched_loop_duration_s} seconds: "
                     f"{', '.join(datasets_exceeding_limit)}."
