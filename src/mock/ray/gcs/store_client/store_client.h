@@ -26,6 +26,14 @@ class MockStoreClient : public StoreClient {
                Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(void,
+              AsyncPutIfMatch,
+              (const std::string &table_name,
+               const std::string &key,
+               std::string expected_value,
+               std::string data,
+               Postable<void(bool)> callback),
+              (override));
+  MOCK_METHOD(void,
               AsyncGet,
               (const std::string &table_name,
                const std::string &key,

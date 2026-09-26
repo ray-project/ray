@@ -374,6 +374,36 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
               });
 }
 
+void RocksDbStoreClient::AsyncPutIfMatch(const std::string &table_name,
+                                         const std::string &key,
+                                         std::string expected_value,
+                                         std::string data,
+                                         Postable<void(bool)> callback) {
+  RunIoForKey(table_name,
+              key,
+              [this,
+               table_name,
+               key,
+               expected_value = std::move(expected_value),
+               data = std::move(data),
+               callback = std::move(callback)]() mutable {
+                auto *cf = GetOrCreateColumnFamily(table_name);
+                std::string existing;
+                auto status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
+                RAY_CHECK(status.ok() || status.IsNotFound())
+                    << "RocksDB Get failed: " << status.ToString();
+                if (!status.ok() || existing != expected_value) {
+                  std::move(callback).Post("GcsRocksDb.PutIfMatchSkip", false);
+                  return;
+                }
+
+                status = db_->Put(SyncWriteOptions(), cf, key, std::move(data));
+                RAY_CHECK(status.ok()) << "RocksDB Put failed for table=" << table_name
+                                       << " key=" << key << ": " << status.ToString();
+                std::move(callback).Post("GcsRocksDb.PutIfMatch", true);
+              });
+}
+
 void RocksDbStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
