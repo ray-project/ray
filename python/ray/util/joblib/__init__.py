@@ -2,7 +2,13 @@ from joblib.parallel import register_parallel_backend
 
 
 def register_ray():
-    """Register Ray Backend to be called with parallel_backend("ray")."""
+    """Register Ray Backend to be called with ``parallel_backend("ray")``.
+
+    Actor capacity defaults to ``n_jobs``. Use ``min_size``, ``max_size``, and
+    ``idle_timeout_s`` to control how actors are added and released, or
+    ``maxtasksperchild`` to recycle them. ``n_jobs`` remains the concurrency
+    ceiling.
+    """
     try:
         from ray.util.joblib.ray_backend import RayBackend
 
