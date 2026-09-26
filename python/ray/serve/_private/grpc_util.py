@@ -70,7 +70,9 @@ class gRPCGenericServer(Server):
         """
         self._passthrough_service_names.add(service_name)
 
-    def _override_method_handler(self, service_method: str, method_handler):
+    def _override_method_handler(
+        self, service_method: str, method_handler: grpc.RpcMethodHandler
+    ) -> grpc.RpcMethodHandler:
         return method_handler._replace(
             response_serializer=None,
             unary_unary=self.service_handler_factory(
@@ -120,10 +122,22 @@ class gRPCGenericServer(Server):
         self.generic_rpc_handlers.append(generic_rpc_handlers)
         super().add_generic_rpc_handlers(generic_rpc_handlers)
 
-    def add_registered_method_handlers(self, service_name: str, method_handlers):
+    def add_registered_method_handlers(
+        self,
+        service_name: str,
+        method_handlers: dict[str, grpc.RpcMethodHandler],
+    ):
         """Route grpcio's registered-method handlers through Serve as well."""
+        base_add_registered_method_handlers = getattr(
+            super(), "add_registered_method_handlers", None
+        )
+        if base_add_registered_method_handlers is None:
+            # Older grpcio versions do not support this API. Generated services
+            # register generic handlers as the compatibility path.
+            return
+
         if service_name in self._passthrough_service_names:
-            super().add_registered_method_handlers(service_name, method_handlers)
+            base_add_registered_method_handlers(service_name, method_handlers)
             return
 
         serve_method_handlers = {
@@ -132,7 +146,7 @@ class gRPCGenericServer(Server):
             )
             for method_name, method_handler in method_handlers.items()
         }
-        super().add_registered_method_handlers(service_name, serve_method_handlers)
+        base_add_registered_method_handlers(service_name, serve_method_handlers)
 
 
 def get_service_names(
