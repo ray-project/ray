@@ -1,0 +1,205 @@
+-- Asks a router application's ingress for {application, replica_id} and pins
+-- the held request to that replica; non-2xx router responses go to the client.
+-- Filled in by _write_router_application_lua in haproxy.py.
+
+local DECISION_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
+local REQUEST_ID_HEADER = "x-request-id"
+-- Lowercase RAY_SERVE_SESSION_ID_HEADER_KEY; empty disables forwarding.
+local SESSION_HEADER = "${SESSION_HEADER}"
+
+-- router backend -> { app, p = route prefix, pool = replicas or fallback proxy }
+local ROUTERS = ${ROUTERS}
+
+-- app name -> { b = backend, p = route prefix, d = ingress deployment, r = { replica_id = server } }
+local APPS = ${APPS}
+
+-- Per-thread round-robin cursor (lua-load-per-thread).
+local _rr_cursor = {}
+
+local function first_header(hdrs, name)
+    local entry = hdrs and hdrs[name]
+    if entry then
+        return entry[0]
+    end
+    return nil
+end
+
+-- Also probes the `-`/`_` variant, like ingress_request_router.lua.
+local function session_id_from(hdrs)
+    if SESSION_HEADER == "" or not hdrs then
+        return nil
+    end
+    local entry = hdrs[SESSION_HEADER]
+    if not entry then
+        local alt = SESSION_HEADER:gsub("-", "_")
+        if alt == SESSION_HEADER then
+            alt = SESSION_HEADER:gsub("_", "-")
+        end
+        entry = hdrs[alt]
+    end
+    if entry then
+        return entry[0]
+    end
+    return nil
+end
+
+local function header_line(name, value)
+    if value and value ~= "" then
+        return name .. ": " .. value .. "\r\n"
+    end
+    return ""
+end
+
+-- Returns the response, or nil and a reason; only connect failures are retried.
+local function call_router(server, request)
+    local sock = core.tcp()
+    sock:settimeout(DECISION_REQUEST_TIMEOUT_S)
+    if not sock:connect(server.host, server.port) then
+        return nil, "router_unreachable"
+    end
+    -- Connection: close so receive("*a") ends on EOF.
+    local req = request.method .. " " .. request.pathq .. " HTTP/1.0\r\n"
+        .. "Host: " .. server.host_header .. "\r\n"
+        .. "Connection: close\r\n"
+        .. "Content-Length: " .. #request.body .. "\r\n"
+        .. request.headers
+        .. "\r\n"
+        .. request.body
+    if not sock:send(req) then
+        sock:close()
+        return nil, "router_unreachable"
+    end
+    local response = sock:receive("*a")
+    sock:close()
+    if not response or response == "" then
+        return nil, "router_timeout"
+    end
+    return response
+end
+
+local function parse_response(response)
+    local status = tonumber(response:match("^HTTP/[%d%.]+ (%d%d%d)"))
+    local head_end, body_start = response:find("\r\n\r\n", 1, true)
+    if not status or not head_end then
+        return nil
+    end
+    return status, response:sub(1, head_end - 1), response:sub(body_start + 1)
+end
+
+-- Decision fields are plain strings without escapes.
+local function json_string_field(json_body, name)
+    return json_body:match('"' .. name .. '"%s*:%s*"([^"\\]*)"')
+end
+
+local function reply_with(txn, status, head, body)
+    local content_type = head:match("\r\n[Cc]ontent%-[Tt]ype:%s*([^\r\n]*)")
+    local reply = txn:reply()
+    reply:set_status(status)
+    reply:add_header("content-type", content_type or "text/plain")
+    reply:set_body(body)
+    txn:done(reply)
+end
+
+local function fail(txn, reason)
+    txn:set_var("txn.router_failed", reason)
+end
+
+-- use-server skips a DOWN server and load-balances, so reject it here.
+local function server_is_up(backend_name, server_name)
+    local ok, up = pcall(function()
+        local status = core.backends[backend_name].servers[server_name]:get_stats()["status"]
+        return not (status:find("^DOWN") or status:find("^MAINT"))
+    end)
+    return not ok or up
+end
+
+local function moved_path(path, from_prefix, to_prefix)
+    local suffix = path
+    if from_prefix ~= "/" then
+        suffix = path:sub(#from_prefix + 1)
+    end
+    if to_prefix == "/" then
+        return suffix ~= "" and suffix or "/"
+    end
+    return to_prefix .. suffix
+end
+
+local function route(txn, router)
+    local body = txn.sf:req_body() or ""
+    local hdrs = txn.http:req_get_headers()
+    local headers = header_line("Content-Type", first_header(hdrs, "content-type"))
+        .. header_line(REQUEST_ID_HEADER, first_header(hdrs, REQUEST_ID_HEADER))
+        .. header_line(SESSION_HEADER, session_id_from(hdrs))
+    local cl = tonumber(txn.sf:hdr("content-length"))
+    if cl and #body < cl then
+        -- Over tune.bufsize: the router sees a prefix.
+        headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. cl .. "\r\n"
+    end
+    local request = {
+        method = txn.sf:method(),
+        pathq = txn.sf:pathq(),
+        headers = headers,
+        body = body,
+    }
+
+    local pool = router.pool
+    local n = #pool
+    local start = _rr_cursor[router.app] or 0
+    _rr_cursor[router.app] = start + 1
+    local response, reason
+    for i = 0, n - 1 do
+        response, reason = call_router(pool[(start + i) % n + 1], request)
+        if response or reason ~= "router_unreachable" then
+            break
+        end
+    end
+    if not response then
+        return fail(txn, reason)
+    end
+
+    local status, head, response_body = parse_response(response)
+    if not status then
+        return fail(txn, "malformed_decision")
+    end
+    if status < 200 or status > 299 then
+        return reply_with(txn, status, head, response_body)
+    end
+    if status ~= 200 then
+        return fail(txn, "malformed_decision")
+    end
+
+    local app_name = json_string_field(response_body, "application")
+    local replica_id = json_string_field(response_body, "replica_id")
+    if not app_name or not replica_id then
+        return fail(txn, "malformed_decision")
+    end
+    -- Attribute metrics and any 503 below to the selected application.
+    txn:set_var("txn.serve_app", app_name)
+    local target = APPS[app_name]
+    if not target then
+        return fail(txn, "unknown_application")
+    end
+    txn:set_var("txn.serve_deployment", target.d)
+    local server_name = target.r[replica_id]
+    if not server_name then
+        return fail(txn, "unknown_replica_id")
+    end
+    if not server_is_up(target.b, server_name) then
+        return fail(txn, "replica_unavailable")
+    end
+
+    txn.http:req_set_path(moved_path(txn.sf:path(), router.p, target.p))
+    txn:set_var("txn.router_server", server_name)
+    txn:set_var("txn.router_backend", target.b)
+end
+
+-- The frontend 503s any router request left without txn.router_backend.
+core.register_action("route_via_router_application", {"http-req"}, function(txn)
+    local router_app = txn:get_var("txn.router_app")
+    local router = router_app and ROUTERS[router_app]
+    if not router or #router.pool == 0 then
+        return fail(txn, "router_unavailable")
+    end
+    txn:set_var("txn.serve_routed_by", router.app)
+    route(txn, router)
+end, 0)
