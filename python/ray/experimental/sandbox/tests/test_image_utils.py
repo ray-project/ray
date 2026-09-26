@@ -2,6 +2,7 @@ import io
 import json
 import mmap
 import os
+import shutil
 import sys
 import tarfile
 import urllib.error
@@ -266,6 +267,110 @@ def test_pull_pins_image_until_release(tmp_path, monkeypatch):
     _release_image_use(extracted_dir, "sb-2")
     evict_least_recently_used_images(str(images_dir), max_bytes=0)
     assert not os.path.exists(extracted_dir)
+
+
+def _renamed_for_deletion(image_dir):
+    """Names of the image's directories renamed for deletion."""
+    images_dir, name = os.path.split(image_dir)
+    return [n for n in os.listdir(images_dir) if n.startswith(f".{name}.deleting.")]
+
+
+def test_eviction_crash_leaves_no_partial_image(tmp_path, monkeypatch):
+    """Eviction moves an image aside before deleting it, so a crash midway
+    leaves nothing under the image's name, and the next pull sweeps up
+    what's left, with eviction disabled too."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+
+    def crash(path, ignore_errors=False):
+        raise RuntimeError("worker killed")
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "rmtree", crash)
+        with pytest.raises(RuntimeError):
+            image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert not os.path.exists(image_dir)
+    stale = _renamed_for_deletion(image_dir)
+    assert len(stale) == 1
+
+    # Eviction doesn't take what's left for a cached image.
+    image_utils.evict_least_recently_used_images(str(images_dir), 0)
+    assert _renamed_for_deletion(image_dir) == stale
+    assert not os.path.exists(images_dir / f"{stale[0]}.lock")
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    assert _renamed_for_deletion(image_dir) == []
+
+
+def test_eviction_counts_an_image_evicted_concurrently(tmp_path, monkeypatch):
+    """An image another pull evicted since the scan counts as evicted, so
+    eviction doesn't evict another image in its place."""
+    images_dir = tmp_path / "images"
+    image_dirs = []
+    for name in ("older", "newer"):
+        local_tar = tmp_path / f"{name}.tar"
+        _write_sample_tar(local_tar)
+        image_dirs.append(
+            pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+        )
+    older, newer = image_dirs
+    marker = os.path.join(older, ".extracted")
+    os.utime(marker, (1, 1))
+
+    has_users = image_utils._has_users
+
+    def evicted_by_another_pull(image_dir):
+        if image_dir == older and os.path.isdir(older):
+            shutil.rmtree(older, ignore_errors=True)
+        return has_users(image_dir)
+
+    monkeypatch.setattr(image_utils, "_has_users", evicted_by_another_pull)
+    image_utils.evict_least_recently_used_images(
+        str(images_dir), image_utils._dir_size_bytes(newer)
+    )
+    assert not os.path.exists(older)
+    assert os.path.isdir(newer)
+
+
+def test_repull_crash_leaves_no_partial_image(tmp_path, monkeypatch):
+    """A re-pull moves the old image aside before deleting it, so a crash
+    midway leaves nothing under the image's name, and the next pull sweeps
+    up what's left, with eviction disabled too."""
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = tmp_path / "images"
+    image_dir = pull_and_extract_container_image(
+        str(local_tar), images_dir=str(images_dir)
+    )
+    marker = os.path.join(image_dir, ".extracted")
+    # Force a re-pull.
+    stale = os.path.getmtime(local_tar) - 10
+    os.utime(marker, (stale, stale))
+
+    rmtree = shutil.rmtree
+
+    def crash_deleting_the_old_image(path, ignore_errors=False):
+        if ".deleting." in path:
+            raise RuntimeError("worker killed")
+        rmtree(path, ignore_errors=ignore_errors)
+
+    with monkeypatch.context() as m:
+        m.setattr(shutil, "rmtree", crash_deleting_the_old_image)
+        with pytest.raises(RuntimeError):
+            pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert not os.path.exists(image_dir)
+    assert len(_renamed_for_deletion(image_dir)) == 1
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    pull_and_extract_container_image(str(local_tar), images_dir=str(images_dir))
+    assert os.path.isdir(image_dir)
+    assert _renamed_for_deletion(image_dir) == []
 
 
 def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
