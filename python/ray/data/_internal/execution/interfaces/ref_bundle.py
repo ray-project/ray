@@ -1,7 +1,7 @@
 import itertools
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
@@ -14,6 +14,25 @@ from ray.data.block import (
     _take_first_non_empty_schema,
 )
 from ray.types import ObjectRef
+
+
+class ReconstructionStamp(NamedTuple):
+    """A tuple of (data_task_id, plan_id) which is used to identify what lineage reconstruction task
+    will consume this input ref bundle. This is set to None for input bundles of fresh
+    (non-reconstruction) tasks.
+
+    - We need the consuming task's data task ID, which is stable across reconstruction attempts,
+      to find what downstream tasks depend on this reconstruction task.
+    - We need the plan ID to identify which target block triggered this reconstruction plan, and
+      therefore which output blocks of this particular reconstruction task need to be reused
+      for downstream reconstruction tasks, which blocks can be discarded/pruned,
+      and which blocks can be propagated as new/fresh blocks.
+    """
+
+    # Logical Ray Data ID of the task being re-executed.
+    data_task_id: str
+    # The reconstruction plan the re-execution serves.
+    plan_id: str
 
 
 @dataclass(frozen=True)
@@ -84,6 +103,18 @@ class RefBundle:
     # This attribute is used by the split() operator to assign bundles to logical
     # output splits. It is otherwise None.
     output_split_idx: Optional[int] = None
+
+    # Set by lineage reconstruction on the input bundle of a reconstruction task. This is
+    # a tuple of (data_task_id, plan_id) if the consuming task is a reconstruction task.
+    # Otherwise, this is set to None for input bundles of fresh tasks.
+    # If this bundle is stamped, the consuming operator skips its bundler and submits the task with
+    # the same logical task ID (given that this is a re-execution).
+    # Also, the consuming operator will use this stamp to identify which output blocks of this
+    # reconstruction task need to be reused.
+    #
+    # Code that rebuilds a ref bundle field-by-field must also forward this attribute
+    # for lineage reconstruction to keep track of the input bundle correctly.
+    reconstruction_stamp: Optional[ReconstructionStamp] = None
 
     # Object metadata (size, locations, spilling status)
     _cached_object_meta: Optional[Dict[ObjectRef, "_ObjectMetadata"]] = None
@@ -385,6 +416,7 @@ class RefBundle:
             and self.schema is other.schema
             and self.owns_blocks == other.owns_blocks
             and self.output_split_idx == other.output_split_idx
+            and self.reconstruction_stamp == other.reconstruction_stamp
         )
 
     def __hash__(self) -> int:
@@ -397,6 +429,7 @@ class RefBundle:
                 id(self.schema),
                 self.owns_blocks,
                 self.output_split_idx,
+                self.reconstruction_stamp,
             )
         )
 

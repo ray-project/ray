@@ -17,8 +17,11 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     Union,
 )
+
+from typing_extensions import override
 
 from ray._private.ray_constants import (
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
@@ -30,6 +33,7 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
 
 import ray
 from ray import ObjectRef
@@ -62,7 +66,14 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
+    ReconstructionStamp,
     _iter_sliced_blocks,
+)
+from ray.data._internal.execution.lineage_tracker import (
+    DataTaskId,
+    ObjectReuseStatus,
+    ParentBlockOutput,
+    PlanId,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -270,6 +281,19 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # All active `MetadataOpTask`s.
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
+        # Seed tasks' input bundles, kept so reconstruction can re-inject them: the
+        # tracker stores ids, not bundles. No extra memory -- the source operator
+        # holds these same bundles for the whole run anyway.
+        self._seed_task_inputs: Dict[DataTaskId, RefBundle] = {}
+        # For lineage reconstruction:
+        # Mapping of reconstruction plan ID -> blocks withheld (expressed as a mapping of parent block output to actual RefBundle) until every parent of a reconstruction
+        # child has produced the required blocks, and the reconstruction child task(s) can be scheduled with
+        # the complete set(s) of input blocks. For each plan ID, whichever parent task finishes last hands
+        # over the input set for that plan as one bundle carrying the child's `ReconstructionStamp`.
+        # See `_release_reconstruction_blocks_to_child` for more details.
+        self._reconstruction_outputs: Dict[
+            PlanId, Dict[ParentBlockOutput, RefBundle]
+        ] = {}
         # Keep track of all finished streaming generators.
         super().__init__(name, input_op, data_context, target_max_block_size_override)
 
@@ -492,8 +516,9 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         self,
         options: "ExecutionOptions",
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ):
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
         # Create output queue with desired ordering semantics.
         if options.preserve_order:
             self._output_queue = ReorderingBundleQueue()
@@ -535,6 +560,19 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
+
+        # Reconstruction inputs must be submitted without bundling, as they are
+        # already bundled by the parent operator. Seed inputs are bundled by this
+        # operator's bundler before they are stored in `_seed_task_inputs`, so they
+        # should also be submitted without bundling. Re-bundling could merge or slice
+        # input blocks, which would incorrectly modify the inputs passed to the reconstruction tasks.
+        #
+        # Skipping the bundler does not skip backpressure, because `add_input` is only
+        # called for operators that `get_eligible_operators` has already cleared.
+        if refs.reconstruction_stamp is not None:
+            self._try_schedule_task(refs, strict=True)
+            return
+
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
@@ -603,6 +641,135 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         """
         pass
 
+    def _is_seed_operator(self) -> bool:
+        """Whether this op is a seed operator for lineage reconstruction.
+
+        It is one when it consumes directly from an ``InputDataBuffer`` -- a
+        source with no upstream lineage, whose output bundle is therefore the
+        durable, resubmittable seed input. This covers, uniformly:
+          - ``Read`` (V1 / ``range``, input is a ``ReadTask``) and ``ReadFiles``
+            (V2, input is a ``FileManifest``): the input is tiny metadata and
+            re-running the task reproduces the data.
+          - ``from_blocks`` / ``from_items`` / ``from_pandas`` / ``from_arrow``
+            and cached blocks: the input *is* the data, captured durably as-is.
+        In every case reconstruction re-injects the captured input into this op.
+        """
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
+        )
+
+        return isinstance(self.input_dependency, InputDataBuffer)
+
+    def _data_task_id_for(self, task_index: int) -> str:
+        """The lineage id of this operator's ``task_index``-th fresh task.
+
+        The one place the format is known; ``owns_data_task`` is its inverse.
+        Everything else, the tracker included, treats the id as an opaque string.
+        """
+        return f"{self.id}:{task_index}"
+
+    @override
+    def owns_data_task(self, data_task_id: str) -> bool:
+        return data_task_id.rsplit(":", 1)[0] == self.id
+
+    @override
+    def retained_seed_input(self, seed_task_id: str) -> Optional[RefBundle]:
+        return self._seed_task_inputs.get(seed_task_id)
+
+    def _lineage_for_submission(
+        self,
+        lineage_tracker: "LineageTracker",
+        task_index: int,
+        inputs: RefBundle,
+    ) -> Tuple[DataTaskId, Optional[PlanId], List[ParentBlockOutput]]:
+        """Return the metadata this task that is being submitted should register with ``lineage_tracker``.
+
+        Only called for a lineage-tracked operator. Returns
+        ``(data_task_id, plan_id, dependencies)``, where ``plan_id`` is the reconstruction plan ID
+        if this is a reconstruction task. ``plan_id`` is ``None`` for a fresh task.
+
+        A fresh task returns Data task ID ``f"{operator_id}:{task_index}"``. A *reconstruction* attempt
+        must re-use the original logical id of the original task attempt, or the plan never resolves and
+        the graph grows a duplicate node.
+        """
+        # Pass every ref rather than just ``block_refs[0]``. `RebundleQueue` parks
+        # zero-row bundles and prepends them on the next merge, so the block of
+        # interest is not necessarily first.
+        dependencies = lineage_tracker.resolve_dependencies(
+            block_ref.hex() for block_ref in inputs.block_refs
+        )
+
+        stamp = inputs.reconstruction_stamp
+        if stamp is not None:
+            assert self.owns_data_task(stamp.data_task_id), stamp
+            return stamp.data_task_id, stamp.plan_id, dependencies
+
+        return self._data_task_id_for(task_index), None, dependencies
+
+    def _release_reconstruction_blocks_to_child(
+        self, data_task_id: str, plan_id: str, task_index: int
+    ) -> None:
+        """Release the reconstruction blocks that are now ready to be consumer by a child reconstruction task.
+
+        Called from the completing parent's task-done callback. 
+        For a downstream reconstruction child task, the parent task that completes last holds the full input
+        set of reconstruction blocks, and can release it to the operator's output queue for the child task to be
+        scheduled and consume.
+
+        The assembled bundle carries the reconstruction child task's data task ID and plan ID as its
+        ``reconstruction_stamp``, because a reconstruction child task must be submitted
+        under its *original* id, and the current reconstruction plan.
+        """
+        held = self._reconstruction_outputs.get(plan_id, {})
+        for child_task_id, requirements in self._lineage_tracker.get_pending_children(
+            data_task_id, plan_id
+        ).items():
+            # Requirement order is the child's original input order: the map is built
+            # from `parent_tasks` / `child_task_block_dependencies` insertion order,
+            # which is the order the first attempt's dependencies were registered in.
+            slots = [
+                ParentBlockOutput(
+                    parent_data_task_id=parent_task_id, output_index=output_index
+                )
+                for parent_task_id, output_indices in requirements.items()
+                for output_index in output_indices
+            ]
+            missing = [slot for slot in slots if slot not in held]
+            if missing:
+                # Some parent of this child has not re-produced its share yet. Wait:
+                # every parent serving the plan runs this on completion, and a parent's
+                # outputs are withheld before its own done-callback, so whichever
+                # completes last holds the whole set. Submitting now would run the child
+                # against part of its input and silently emit a subset of its rows.
+                logger.debug(
+                    "[lineage-reconstruction] Child %s of plan %s is not ready: %d of "
+                    "its input blocks are still pending (missing %s, held %s).",
+                    child_task_id,
+                    plan_id,
+                    len(missing),
+                    missing,
+                    sorted(
+                        held,
+                        key=lambda slot: (slot.parent_data_task_id, slot.output_index),
+                    ),
+                )
+                continue
+
+            # Create a complete RefBundle containing all reconstruction blocks wittheld for a child task,
+            # stamp it with the child's data task ID and the current reconstruction plan ID.
+            inputs = replace(
+                RefBundle.merge_ref_bundles([held.pop(slot) for slot in slots]),
+                reconstruction_stamp=ReconstructionStamp(
+                    data_task_id=child_task_id, plan_id=plan_id
+                ),
+            )
+            # Add to the output queue of the current task
+            self._output_queue.add(inputs, key=task_index)
+            self._metrics.on_output_queued(inputs)
+
+        if not held:
+            self._reconstruction_outputs.pop(plan_id, None)
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,
@@ -618,13 +785,72 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
 
+        # Resolve this attempt's lineage identity up front so the callbacks below
+        # can close over it. Both stay None when this operator has no lineage
+        # tracker. The callbacks branch on the tracker, which is set exactly when
+        # the identity is.
+        lineage_tracker = self._lineage_tracker
+        data_task_id: Optional[DataTaskId] = None
+        plan_id: Optional[PlanId] = None
+        if lineage_tracker is not None:
+            data_task_id, plan_id, dependencies = self._lineage_for_submission(
+                lineage_tracker, task_index, inputs
+            )
+            lineage_tracker.register_task_submission(
+                data_task_id, dependencies, plan_id
+            )
+            # If this is a seed operator and this is a fresh task, store the input bundle.
+            if self._is_seed_operator() and plan_id is None:
+                # A seed consumes straight from an `InputDataBuffer`, so its input is
+                # durable and resubmittable. `register_task_failed` hands back seed
+                # *ids* and the tracker stores no `RefBundle`s, so keep it here. Only
+                # the first attempt's input is kept. A re-execution's input is the
+                # same bundle with a `reconstruction_stamp` attached.
+                self._seed_task_inputs[data_task_id] = inputs
+
+        # This task's next output_index. A per-task closure local, so it is scoped
+        # exactly right and resets naturally on a re-execution.
+        num_outputs_emitted = 0
+
         def _output_ready_callback(
             task_index,
             output: RefBundle,
         ):
+            nonlocal num_outputs_emitted
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
+            output_index = num_outputs_emitted
+            num_outputs_emitted += 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            if lineage_tracker is not None:
+                # Attribute the block to (this task, output_index) so whichever
+                # downstream task consumes it can name its own dependencies.
+                lineage_tracker.register_block_output(
+                    data_task_id, output.block_refs[0].hex(), output_index
+                )
+                if plan_id is not None:
+                    status = lineage_tracker.get_object_reuse_status(
+                        data_task_id, output_index, plan_id
+                    )
+                    # REUSED: withhold until the child's whole input set is
+                    # re-produced, then release it as one bundle
+                    # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
+                    # child against part of its input.
+                    if status is ObjectReuseStatus.OBJECT_REUSED:
+                        self._reconstruction_outputs.setdefault(plan_id, {})[
+                            ParentBlockOutput(
+                                parent_data_task_id=data_task_id,
+                                output_index=output_index,
+                            )
+                        ] = output
+                        return
+                    # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
+                    # plan already finished with this task): no consumer is waiting,
+                    # so drop it rather than re-emit rows the consumer already has.
+                    # NEW falls through to the output queue.
+                    if status is not ObjectReuseStatus.OBJECT_NEW:
+                        return
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
@@ -657,6 +883,15 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 
+            if lineage_tracker is not None and exception is None:
+                # Hand any child whose whole input set this completion completes
+                # downstream before reporting the completion itself.
+                if plan_id is not None:
+                    self._release_reconstruction_blocks_to_child(
+                        data_task_id, plan_id, task_index
+                    )
+                lineage_tracker.register_task_complete(data_task_id, plan_id)
+
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
@@ -673,6 +908,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
+            data_task_id=data_task_id,
+            plan_id=plan_id,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()
@@ -726,6 +963,33 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def has_next(self) -> bool:
         assert self._started
         return self._output_queue.has_next()
+
+    def _held_reconstruction_bundles(self) -> Iterator[RefBundle]:
+        """The re-produced outputs withheld for reconstruction children not yet ready."""
+        for held in self._reconstruction_outputs.values():
+            yield from held.values()
+
+    @override
+    def internal_output_queue_num_blocks(self) -> int:
+        # Withheld reconstruction outputs are outputs this operator still owes a
+        # consumer, so they have to count here. `has_completed` is what gates the
+        # downstream operator's `all_inputs_done`, and reporting this operator complete
+        # while it holds a child's inputs would leave that child unsubmitted and drop
+        # its rows silently.
+        return super().internal_output_queue_num_blocks() + sum(
+            len(bundle.blocks) for bundle in self._held_reconstruction_bundles()
+        )
+
+    @override
+    def internal_output_queue_num_bytes(self) -> int:
+        return super().internal_output_queue_num_bytes() + sum(
+            bundle.size_bytes() for bundle in self._held_reconstruction_bundles()
+        )
+
+    @override
+    def clear_internal_output_queue(self) -> None:
+        super().clear_internal_output_queue()
+        self._reconstruction_outputs.clear()
 
     def _get_next_inner(self) -> RefBundle:
         assert self._started

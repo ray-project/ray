@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,10 @@ OutputIndex = int
 # The ID of a reconstruction plan. A plan ID is represented
 # by fresh data task execution it is trying to recover.
 PlanId = DataTaskId
+
+# An opaque, unique ID for one output block. Kept a plain string so this module
+# stays free of Ray types.
+BlockId = str
 
 
 class ObjectReuseStatus(Enum):
@@ -47,7 +51,7 @@ class ChildBlockDependency:
     output_index: OutputIndex
 
 
-@dataclass
+@dataclass(frozen=True)
 class ParentBlockOutput:
     """
     A tuple to associate a parent task to
@@ -102,6 +106,59 @@ class TaskNode:
 class LineageTracker:
     def __init__(self):
         self._data_task_id_to_task_node: Dict[DataTaskId, TaskNode] = {}
+        # Mapping of block ID -> the parent task output (task ID, output index) that produced it.
+        self._block_id_to_parent_output: Dict[BlockId, ParentBlockOutput] = {}
+
+    def register_block_output(
+        self,
+        data_task_id: DataTaskId,
+        block_id: BlockId,
+        output_index: OutputIndex,
+    ) -> None:
+        """
+        Record which task produced a block, so that whichever task later
+        consumes it can fetch the dependency easily with the block ID.
+
+        Args:
+            data_task_id: The ID of the data task that produced the block.
+            block_id: Opaque ID of the produced block, unique per block.
+            output_index: The index of this output within the producing task.
+        """
+        self._block_id_to_parent_output[block_id] = ParentBlockOutput(
+            parent_data_task_id=data_task_id, output_index=output_index
+        )
+
+    def resolve_dependencies(
+        self, block_ids: Iterable[BlockId]
+    ) -> List[ParentBlockOutput]:
+        """
+        Resolve the (producing task logical ID, output index) pair each of the blocks corresponds to
+        for a task that is being submitted.
+
+        Blocks with no recorded producer are skipped: they were not produced by
+        a tracked task. A seed task's input, for instance, comes from the source
+        rather than from any task, so it will have no producer task.
+
+        Args:
+            block_ids: IDs of the blocks the task takes as input.
+
+        Returns:
+            The dependencies to pass to ``register_task_submission``.
+
+        Note:
+            Entries are consumed since a block is only ever dispatched to one
+            task (except for outputs from the final operator, which must be explicitly GC'd as there is no consumer)
+            That keeps this bounded by the number of blocks in flight
+            rather than growing for the lifetime of the dataset.
+            TODO(ayushkum): figure out the GC for the final operator's outputs.
+        """
+        resolved = (
+            self._block_id_to_parent_output.pop(block_id, None)
+            for block_id in block_ids
+        )
+        return [
+            parent_output for parent_output in resolved if parent_output is not None
+        ]
 
     def register_task_submission(
         self,
