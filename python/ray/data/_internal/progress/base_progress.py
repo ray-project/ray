@@ -118,6 +118,13 @@ class BaseExecutionProgressManager(ABC):
     # refer to `streaming_executor.py::StreamingExecutor::_scheduling_loop_step`
     TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS = 50
 
+    # TODO(async-progress D, optional cleanup): drop the @abstractmethod on
+    # __init__ and move the expected-argument description into the CLASS
+    # docstring instead. AsyncProgressManagerWrapper's ctor is
+    # `(wrapped_manager)`, so advertising this fixed signature as the required
+    # one is misleading. NOTE this is cosmetic, not required: ABCs only enforce
+    # that an abstract method is overridden, not its signature, so the wrapper
+    # already satisfies it. (Requested by kyuds in review.)
     @abstractmethod
     def __init__(
         self,
