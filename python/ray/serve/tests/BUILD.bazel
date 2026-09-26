@@ -766,6 +766,29 @@ py_test_module_list(
     ],
 )
 
+# Node compaction tests need a short compaction delay.
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_SERVE_NODE_COMPACTION_DELAY_S": "1",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
+    files = [
+        "test_node_compaction.py",
+    ],
+    name_suffix = "_with_pack_scheduling",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Test handle API with local testing mode.
 py_test_module_list(
     size = "small",
