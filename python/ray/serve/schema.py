@@ -1671,6 +1671,11 @@ class TargetGroup(BaseModel):
         "",
         description="Name of the application's ingress deployment.",
     )
+    is_router_application: bool = Field(
+        False,
+        description="Whether the ingress routes requests to other applications' "
+        "replicas. HTTP target groups only.",
+    )
 
 
 @PublicAPI(stability="alpha")

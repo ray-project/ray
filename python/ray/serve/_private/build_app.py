@@ -20,6 +20,21 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 K = TypeVar("K")
 V = TypeVar("V")
 
+ROUTER_APPLICATION_REQUIRES_HAPROXY_ERROR = (
+    "Router applications require HAProxy. "
+    "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
+)
+
+ROUTER_APPLICATION_REQUIRES_HTTP_ERROR = (
+    "Router applications route HTTP requests and require a route prefix. "
+    "Application '{name}' has none."
+)
+
+ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR = (
+    "A router application cannot also have an `ingress_request_router`: both "
+    "choose the replica for requests to the application."
+)
+
 INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "`ingress_request_router` requires HAProxy. "
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
@@ -78,6 +93,8 @@ class BuiltApplication:
     # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
+    # See `Application._as_router_application`.
+    is_router_application: bool = False
 
     def validate_single_fastapi_ingress(self) -> None:
         """Validate that the application has at most one FastAPI ingress."""
@@ -144,6 +161,13 @@ def build_app(
         )
     if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
         raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
+    if app._is_router_application:
+        if not RAY_SERVE_ENABLE_HA_PROXY:
+            raise RayServeException(ROUTER_APPLICATION_REQUIRES_HAPROXY_ERROR)
+        if ingress_request_router is not None:
+            raise RayServeException(
+                ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR
+            )
 
     # Under HAProxy, ingress traffic is load-balanced by HAProxy and bypasses
     # the ingress deployment's Serve request router, so a custom router there is
@@ -211,6 +235,7 @@ def build_app(
         },
         external_scaler_enabled=external_scaler_enabled,
         ingress_request_router_deployment=ingress_request_router_deployment,
+        is_router_application=app._is_router_application,
     )
 
 

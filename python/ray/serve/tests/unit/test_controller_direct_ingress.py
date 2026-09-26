@@ -59,6 +59,7 @@ class FakeApplicationStateManager:
         route_prefixes,
         ingress_deployments,
         ingress_request_router_deployments=None,
+        router_applications=None,
     ):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
@@ -66,6 +67,7 @@ class FakeApplicationStateManager:
         self.ingress_request_router_deployments = (
             ingress_request_router_deployments or {}
         )
+        self.router_applications = set(router_applications or [])
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -78,6 +80,9 @@ class FakeApplicationStateManager:
 
     def get_ingress_request_router_deployment_name(self, app_name):
         return self.ingress_request_router_deployments.get(app_name)
+
+    def is_router_application(self, app_name):
+        return app_name in self.router_applications
 
 
 class FakeProxyState:
@@ -854,6 +859,89 @@ def test_get_target_groups_populates_ingress_request_router_targets(
             ],
         )
     ]
+
+
+def test_get_target_groups_marks_router_application_on_http_only(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    """Only the HTTP target group carries the router marker."""
+    app_name = "router"
+    ingress_deployment_id = DeploymentID(name="Router", app_name=app_name)
+    replica_id = ReplicaID(unique_id="r1", deployment_id=ingress_deployment_id)
+
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}, "model": {}},
+        route_prefixes={app_name: "/", "model": "/v1/model"},
+        ingress_deployments={app_name: ingress_deployment_id.name},
+        router_applications=[app_name],
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={
+            ingress_deployment_id: [
+                RunningReplicaInfo(
+                    replica_id=replica_id,
+                    node_id="node1",
+                    node_ip="10.0.0.1",
+                    availability_zone="az1",
+                    actor_name="router_replica",
+                    max_ongoing_requests=100,
+                )
+            ],
+        },
+    )
+    http_port = direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    grpc_port = direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.GRPC
+    )
+
+    target_groups = direct_ingress_controller.get_target_groups(app_name=app_name)
+
+    assert [(tg.protocol, tg.is_router_application) for tg in target_groups] == [
+        (RequestProtocol.HTTP, True),
+        (RequestProtocol.GRPC, False),
+    ]
+    assert target_groups[0].targets == [
+        Target(ip="10.0.0.1", port=http_port, instance_id="", name="r1")
+    ]
+    assert target_groups[1].targets[0].port == grpc_port
+
+
+@pytest.mark.parametrize("ha_proxy_enabled", [False, True])
+def test_get_target_groups_keeps_router_marker_with_no_running_replicas(
+    direct_ingress_controller: FakeDirectIngressController, ha_proxy_enabled: bool
+):
+    """A scaled-to-zero router application keeps its marker."""
+    direct_ingress_controller._ha_proxy_enabled = ha_proxy_enabled
+    app_name = "router"
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: "/"},
+        ingress_deployments={app_name: "Router"},
+        router_applications=[app_name],
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={},
+    )
+    direct_ingress_controller.proxy_state_manager.add_proxy_details(
+        "node1", "10.0.0.1", "proxy1"
+    )
+
+    target_groups = direct_ingress_controller.get_target_groups(
+        app_name=app_name, from_proxy_manager=True
+    )
+
+    assert [
+        tg.is_router_application
+        for tg in target_groups
+        if tg.protocol == RequestProtocol.HTTP
+    ] == [True]
+    assert not any(
+        tg.is_router_application
+        for tg in target_groups
+        if tg.protocol == RequestProtocol.GRPC
+    )
 
 
 def test_get_target_groups_app_with_no_running_replicas(
