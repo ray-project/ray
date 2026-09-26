@@ -495,6 +495,10 @@ LOG_MONITOR_NUM_LINES_TO_READ = int(
     os.environ.get("RAY_LOG_MONITOR_NUM_LINES_TO_READ", "1000")
 )
 
+# Whether log monitor stdout and stderr should also be emitted to their original
+# streams after being redirected to files.
+LOG_MONITOR_TEE_STDOUT = env_bool("RAY_LOG_MONITOR_TEE_STDOUT", False)
+
 # Autoscaler events are denoted by the ":event_summary:" magic token.
 LOG_PREFIX_EVENT_SUMMARY = ":event_summary:"
 # Cluster-level info events are denoted by the ":info_message:" magic token. These may
