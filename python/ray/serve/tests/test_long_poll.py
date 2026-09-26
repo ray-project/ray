@@ -791,5 +791,23 @@ async def test_stopped_client_does_not_reconnect():
     resolver.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_stop_cancels_in_flight_reconnect():
+    """A reconnect already in flight must not outlive stop()."""
+    dead = MagicMock()
+    client = _reconnecting_client(lambda: dead, host_actor=dead)
+    client._process_update(ray.exceptions.ActorDiedError())
+    await async_wait_for_condition(
+        lambda: client._reconnect_task is not None, timeout=20, retry_interval_ms=50
+    )
+
+    client.stop()
+
+    await async_wait_for_condition(
+        lambda: client._reconnect_task.done(), timeout=20, retry_interval_ms=50
+    )
+    assert client._reconnect_task.cancelled()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

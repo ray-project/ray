@@ -193,6 +193,11 @@ class LongPollClient:
     def stop(self) -> None:
         """Stop the long poll client after the next RPC returns."""
         self.is_running = False
+        # Otherwise a reconnect already in flight lingers for a backoff
+        # interval. Cancel on the loop thread, since callers may be elsewhere.
+        task = self._reconnect_task
+        if task is not None and not task.done() and self.event_loop.is_running():
+            self.event_loop.call_soon_threadsafe(task.cancel)
 
     def add_key_listeners(
         self, key_listeners: Dict[KeyType, UpdateStateCallable]
