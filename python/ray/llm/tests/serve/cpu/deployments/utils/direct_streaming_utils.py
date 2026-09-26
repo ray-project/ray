@@ -39,10 +39,23 @@ def consistent_hash_deployment_config() -> dict:
 
 
 def run_app_through_haproxy(app, timeout_s: int = 60) -> str:
-    """Run ``app`` and return its (HAProxy) URL once all replicas are RUNNING."""
+    """Run ``app`` and wait for requests to reach multiple replicas."""
     serve.run(app)
     wait_for_condition(check_running, timeout=timeout_s)
-    return get_application_url(use_localhost=True)
+    base_url = get_application_url(use_localhost=True)
+
+    def ingress_routing_ready():
+        # Wait for HAProxy and the router to learn about multiple replicas.
+        replicas = {
+            session_chat_response(base_url, f"readiness-session-{i}").headers[
+                "x-replica-id"
+            ]
+            for i in range(16)
+        }
+        return len(replicas) > 1
+
+    wait_for_condition(ingress_routing_ready, timeout=timeout_s)
+    return base_url
 
 
 def session_chat_response(base_url: str, session_id: str, model: str = "test-model"):

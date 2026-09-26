@@ -270,6 +270,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "protocol": "HTTP",
                     "app_name": "",
                     "ingress_request_router_targets": [],
+                    "ingress_router_fallback": False,
                     "ingress_deployment_name": "",
                 },
                 {

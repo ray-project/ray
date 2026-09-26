@@ -141,7 +141,7 @@ def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
 ) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router pool and replica map, restricted to backends with both.
+    """Router pools and replica maps for routed or fallback-enabled backends.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
@@ -150,7 +150,10 @@ def _routers_and_targets_by_backend(
     routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
-        if not backend.ingress_request_router_servers:
+        if (
+            not backend.ingress_request_router_servers
+            and not backend.ingress_router_fallback
+        ):
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
@@ -159,7 +162,9 @@ def _routers_and_targets_by_backend(
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
-        if colocated:
+        if not candidates:
+            pool = []
+        elif colocated:
             pool = sorted(colocated, key=lambda s: (s.host, s.port))
         else:
             pool = [min(candidates, key=lambda s: (s.host, s.port))]
@@ -518,6 +523,8 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+    # Stays true when a configured router has no running replicas.
+    ingress_router_fallback: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -1316,7 +1323,7 @@ class HAProxyApi(ProxyApi):
             grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
 
             # Derive from the write result: returns None when no backend has
-            # both routers and replicas with IDs (transient during scaling).
+            # replica IDs plus routers or an enabled fallback policy.
             # The ingress request router is HTTP-only.
             ingress_request_router_lua_path = self._write_ingress_request_router_lua(
                 http_backends
@@ -2096,6 +2103,7 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            ingress_router_fallback=target_group.ingress_router_fallback,
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
