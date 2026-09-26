@@ -1,0 +1,209 @@
+{
+  "arms": {
+    "q16_early": {
+      "Q": 16,
+      "repeat": 0,
+      "death_phase": 30.0,
+      "buffer_units": 48,
+      "predicted_lo": 52,
+      "predicted_hi": 54,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 98,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 16,
+        "queue_depth": 16,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1148377
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 16,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1148379
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 98,
+        "durable_at_death": 45,
+        "queued_at_death": 16,
+        "resumed_from": 45,
+        "redo": 53,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 2,
+        "producer_blocked": false,
+        "equals_formula": false
+      },
+      "label": "q16_early"
+    },
+    "q16_late": {
+      "Q": 16,
+      "repeat": 1,
+      "death_phase": 45.0,
+      "buffer_units": 48,
+      "predicted_lo": 52,
+      "predicted_hi": 54,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 99,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 16,
+        "queue_depth": 16,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1149895
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 16,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1149894
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 99,
+        "durable_at_death": 45,
+        "queued_at_death": 16,
+        "resumed_from": 45,
+        "redo": 54,
+        "saturated": true,
+        "in_interval": true,
+        "p_inferred": 3,
+        "producer_blocked": true,
+        "equals_formula": true
+      },
+      "label": "q16_late"
+    },
+    "q32_late": {
+      "Q": 32,
+      "repeat": 2,
+      "death_phase": 45.0,
+      "buffer_units": 96,
+      "predicted_lo": 100,
+      "predicted_hi": 102,
+      "at_death": {
+        "epoch": 1,
+        "executed_this_incarnation": 141,
+        "committed_this_incarnation": 49,
+        "durable_units": 45,
+        "queued": 31,
+        "queue_depth": 32,
+        "resumed_from": 0,
+        "writer_error": null,
+        "finished": false,
+        "fatal": null,
+        "pid": 1151350
+      },
+      "after": {
+        "after": {
+          "epoch": 2,
+          "executed_this_incarnation": 0,
+          "committed_this_incarnation": 6,
+          "durable_units": 45,
+          "queued": 0,
+          "queue_depth": 32,
+          "resumed_from": 45,
+          "writer_error": null,
+          "finished": false,
+          "fatal": null,
+          "pid": 1151352
+        },
+        "epoch_keys": [
+          2
+        ],
+        "committed": 45,
+        "contiguous": true,
+        "has_dupes": false
+      },
+      "measured": {
+        "executed_at_death": 141,
+        "durable_at_death": 45,
+        "queued_at_death": 31,
+        "resumed_from": 45,
+        "redo": 96,
+        "saturated": false,
+        "in_interval": false,
+        "p_inferred": -3,
+        "producer_blocked": false,
+        "equals_formula": false
+      },
+      "label": "q32_late"
+    }
+  },
+  "config": {
+    "N": 600,
+    "W": 3,
+    "K": 3,
+    "unit_seconds": 0.35,
+    "outage_s": 55,
+    "arms": [
+      [
+        16,
+        30.0,
+        "q16_early"
+      ],
+      [
+        16,
+        45.0,
+        "q16_late"
+      ],
+      [
+        32,
+        45.0,
+        "q32_late"
+      ]
+    ]
+  },
+  "verdict": {
+    "NC_early_reproduced_anomaly": true,
+    "early_redo": 53,
+    "early_p": 2,
+    "early_blocked": false,
+    "VOID_anomaly_did_not_reproduce": false,
+    "late_redo": 54,
+    "late_p": 3,
+    "late_blocked": true,
+    "late_equals_formula": true,
+    "q32_redo": 96,
+    "q32_blocked": false,
+    "q32_predicted_below_102": true,
+    "contiguous_everywhere": true,
+    "C31_proven": true
+  }
+}

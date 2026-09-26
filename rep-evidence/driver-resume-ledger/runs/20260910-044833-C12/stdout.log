@@ -1,0 +1,22 @@
+experiment=C12 git=798c7e7f79f8 budgets=[1, 2]
+
+==============================================================================
+C12 -- session scoping against a reused gcs_storage_path
+==============================================================================
+  small    real: executed=6/6 destroyed=0 CLEAN
+  small    NC9 : executed=0/6 destroyed=3 RED
+  batched  real: executed=8/8 destroyed=0 CLEAN
+  batched  NC9 : executed=0/8 destroyed=3 RED
+  wide     real: executed=12/12 destroyed=0 CLEAN
+  wide     NC9 : executed=0/12 destroyed=4 RED
+
+==============================================================================
+C15 -- is base@n uniqueness load-bearing under concurrency?
+==============================================================================
+  in-place, sequential crashes : 6585 traces CLEAN
+  in-place, 2-instance  : 630 traces {'INV-FENCE-ACK': 457}   (comparison arm {'INV-FENCE-ACK': 462})
+  in-place, 3-instance  : 1110 traces {'INV-FENCE-ACK': 881}   (comparison arm {'INV-FENCE-ACK': 885})
+
+==============================================================================
+VERDICT: C12=proven C15=refuted -- C12: new session executed every unit and destroyed nothing; NC9 red. C15: in-place base produced 0 INV-DUR under crashes and concurrency
+==============================================================================

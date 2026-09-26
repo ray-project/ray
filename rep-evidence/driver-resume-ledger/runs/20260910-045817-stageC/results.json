@@ -1,0 +1,105 @@
+{
+  "ray_version": "2.58.0",
+  "system_config": {
+    "gcs_storage": "rocksdb",
+    "gcs_storage_path": "/tmp/r4gcs_stage_c"
+  },
+  "python": "3.10.14",
+  "t1": {
+    "put_when_absent": false,
+    "put_when_present": true,
+    "value_after_failed_cas": "a",
+    "cas_held": true,
+    "return_value_is_inverted": true,
+    "prefix_list": [
+      "t1pfx/0",
+      "t1pfx/1",
+      "t1pfx/2"
+    ],
+    "prefix_list_works": true
+  },
+  "t2": {
+    "driver1_exited_cleanly": false,
+    "driver1_stderr_tail": "",
+    "reattached_by_name": true,
+    "info_after_reattach": {
+      "epoch": 1,
+      "instance_id": "2bd29d1e1aac4542bba0d29862ec95f7",
+      "resumed_from": 0,
+      "executed_this_incarnation": 0,
+      "finished": false,
+      "fatal": null,
+      "ledger_writes": 3,
+      "ledger_keys": 3,
+      "pid": 932217
+    }
+  },
+  "t3": {
+    "before_kill": {
+      "epoch": 1,
+      "instance_id": "2bd29d1e1aac4542bba0d29862ec95f7",
+      "resumed_from": 0,
+      "executed_this_incarnation": 0,
+      "finished": false,
+      "fatal": null,
+      "ledger_writes": 3,
+      "ledger_keys": 3,
+      "pid": 932217
+    },
+    "after_restart": {
+      "epoch": 2,
+      "instance_id": "4f22dfee344d47da8bf824df0121f7b7",
+      "resumed_from": 0,
+      "executed_this_incarnation": 0,
+      "finished": false,
+      "fatal": null,
+      "ledger_writes": 6,
+      "ledger_keys": 3,
+      "pid": 932215
+    },
+    "final": {
+      "epoch": 2,
+      "instance_id": "4f22dfee344d47da8bf824df0121f7b7",
+      "resumed_from": 0,
+      "executed_this_incarnation": 40,
+      "finished": true,
+      "fatal": null,
+      "ledger_writes": 34,
+      "ledger_keys": 4,
+      "pid": 932215
+    },
+    "new_process": true,
+    "epoch_advanced": true,
+    "resumed_rather_than_restarted": false
+  },
+  "t4": {
+    "old_session": "session_2026-09-10_04-58-17_844905_931937",
+    "new_session": "session_2026-09-10_04-58-17_844905_931937",
+    "session_name_inherited": true,
+    "session_name_file_contents": "session_2026-09-10_04-58-17_844905_931937",
+    "kv_survived_restart": true,
+    "survivor_value": "written-before-restart",
+    "keys_before": [
+      "session_2026-09-10_04-58-17_844905_931937/jobA/epoch/000002",
+      "session_2026-09-10_04-58-17_844905_931937/jobA/state/000002/base@000009",
+      "session_2026-09-10_04-58-17_844905_931937/jobA/state/000002/base_ptr",
+      "session_2026-09-10_04-58-17_844905_931937/jobA/state/000002/seg/000010",
+      "survivor",
+      "t1",
+      "t1pfx/0",
+      "t1pfx/1",
+      "t1pfx/2"
+    ],
+    "n_keys_before": 9,
+    "n_keys_after": 8,
+    "prior_ledger_visible_to_new_cluster": true
+  },
+  "verdict": {
+    "C8_zero_core_patches": true,
+    "C4a_survives_driver_death": false,
+    "C21_session_name_stable": true,
+    "C12_refuted_by_inherited_session": true,
+    "rocksdb_really_durable": true,
+    "inverted_put_return_confirmed": true
+  }
+}

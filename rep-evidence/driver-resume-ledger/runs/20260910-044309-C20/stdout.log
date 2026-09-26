@@ -1,0 +1,41 @@
+experiment=C20 git=04a7dfc14512 budgets=[1, 2]
+
+==============================================================================
+REGRESSIONS FIRST
+==============================================================================
+  C6 sequential      7620 traces CLEAN
+  2-instance tiny     2117 traces {'INV-FENCE-ACK': 1352}
+  2-instance small    2833 traces {'INV-FENCE-ACK': 2045}
+
+==============================================================================
+N CONCURRENT INSTANCES -- pushed past where the refutation appeared
+==============================================================================
+  n=3 tiny/w=4 traces=390     fenced-active=390    {'INV-FENCE-ACK': 307}  1s
+  n=3 tiny/w=5 traces=1110    fenced-active=1110   {'INV-FENCE-ACK': 885}  4s
+  n=3 tiny/w=6 traces=3270    fenced-active=3263   {'INV-FENCE-ACK': 2566}  10s
+  n=3 small/w=4 traces=390     fenced-active=390    {'INV-FENCE-ACK': 334}  1s
+  n=3 small/w=5 traces=1110    fenced-active=1110   {'INV-FENCE-ACK': 967}  4s
+  n=3 small/w=6 traces=3270    fenced-active=3270   {'INV-FENCE-ACK': 2799}  12s
+  n=4 tiny/w=4 traces=390     fenced-active=390    {'INV-FENCE-ACK': 307}  1s
+  n=4 tiny/w=5 traces=1350    fenced-active=1350   {'INV-FENCE-ACK': 1079}  5s
+  n=4 tiny/w=6 traces=5190    fenced-active=5183   {'INV-FENCE-ACK': 4110}  18s
+  n=4 small/w=4 traces=390     fenced-active=390    {'INV-FENCE-ACK': 334}  2s
+  n=4 small/w=5 traces=1350    fenced-active=1350   {'INV-FENCE-ACK': 1174}  6s
+  n=4 small/w=6 traces=5190    fenced-active=5190   {'INV-FENCE-ACK': 4461}  22s
+
+  fuzz, unbounded window, 5 seeds
+  n=3 tiny     traces=2000   {'INV-FENCE-ACK': 873}
+  n=3 small    traces=2000   {'INV-FENCE-ACK': 1295}
+  n=4 tiny     traces=2000   {'INV-FENCE-ACK': 880}
+  n=4 small    traces=2000   {'INV-FENCE-ACK': 1237}
+
+==============================================================================
+NEGATIVE CONTROLS
+==============================================================================
+  NC15_epochs_descending           {'INV-FENCE-ACK': 885, 'INV-DUR': 1146}  (1110 traces)
+  NC14_same_instance_id            {'INV-FENCE-ACK': 462, 'INV-ONE': 31}  (630 traces)
+  NC13_carry_forward_ptr_first     {'INV-FENCE-ACK': 885}  (1110 traces)
+
+==============================================================================
+VERDICT: proven -- zero INV-DUR at 3 and 4 instances; n3={'INV-FENCE-ACK': 10026}; n4={'INV-FENCE-ACK': 13582}; regressions {'INV-FENCE-ACK': 3397}; NC15 red
+==============================================================================
