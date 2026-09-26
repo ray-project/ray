@@ -1838,6 +1838,9 @@ class MemoryProfiler:
     perfect estimate (it can underestimate, e.g., if you use Torch tensors), but
     estimating the USS is much cheaper than computing the actual USS.
 
+    With one visible NVIDIA GPU sharing physical memory with the CPU, estimate
+    process memory as actual USS plus its GPU memory charge.
+
     .. warning::
 
         This class only works with Linux. If you use it on another platform,
@@ -1864,6 +1867,12 @@ class MemoryProfiler:
         self._poll_interval_s = poll_interval_s
 
         self._process = psutil.Process(os.getpid())
+        self._gpu_memory_reader = None
+        if self._can_estimate_uss():
+            from ray.data._internal.uma_memory import get_gpu_memory_reader
+
+            self._gpu_memory_reader = get_gpu_memory_reader(os.getpid())
+        self._measurement_failed = False
         self._max_uss = None
         self._max_uss_lock = threading.Lock()
 
@@ -1898,17 +1907,29 @@ class MemoryProfiler:
             return None
 
         with self._max_uss_lock:
-            if self._max_uss is None:
-                self._max_uss = self._estimate_uss()
-            else:
-                self._max_uss = max(self._max_uss, self._estimate_uss())
-
-        assert self._max_uss is not None
-        return self._max_uss
+            self._sample_memory()
+            if self._measurement_failed:
+                return None
+            assert self._max_uss is not None
+            return self._max_uss
 
     def reset(self):
         with self._max_uss_lock:
             self._max_uss = None
+            self._measurement_failed = False
+
+    def _sample_memory(self):
+        """Update the peak, or invalidate the estimate if sampling fails."""
+        if self._measurement_failed:
+            return
+        value = self._estimate_uss()
+        if value is None:
+            self._measurement_failed = True
+            self._max_uss = None
+        else:
+            self._max_uss = (
+                value if self._max_uss is None else max(self._max_uss, value)
+            )
 
     def _start_uss_poll_thread(self) -> Tuple[threading.Thread, threading.Event]:
         assert self._poll_interval_s is not None
@@ -1919,10 +1940,7 @@ class MemoryProfiler:
         def poll_uss():
             while not stop_event.is_set():
                 with self._max_uss_lock:
-                    if self._max_uss is None:
-                        self._max_uss = self._estimate_uss()
-                    else:
-                        self._max_uss = max(self._max_uss, self._estimate_uss())
+                    self._sample_memory()
                 stop_event.wait(self._poll_interval_s)
 
         thread = threading.Thread(target=poll_uss, daemon=True)
@@ -1935,8 +1953,17 @@ class MemoryProfiler:
             self._stop_uss_poll_event.set()
             self._uss_poll_thread.join()
 
-    def _estimate_uss(self) -> int:
+    def _estimate_uss(self) -> Optional[int]:
         assert self._can_estimate_uss()
+        if self._gpu_memory_reader is not None:
+            gpu_memory = self._gpu_memory_reader()
+            if gpu_memory is None:
+                return None
+            try:
+                return self._process.memory_full_info().uss + gpu_memory
+            except psutil.Error:
+                logger.warning("Process USS measurement unavailable", exc_info=True)
+                return None
         memory_info = self._process.memory_info()
         # Estimate the USS (the amount of memory that'd be free if we killed the
         # process right now) as the difference between the RSS (total physical memory)
