@@ -7,7 +7,8 @@ from dataclasses import dataclass
 # Version 2 -> 3: - Added optional fields entrypoint_num_cpus, entrypoint_num_gpus
 #                   and entrypoint_resources to submit_job sdk/cli/api.
 # Version 3 -> 4: - Added DELETE endpoint for deleting jobs.
-CURRENT_VERSION = "4"
+# Version 4 -> 5: - Added a structured 503 response for unavailable job logs.
+CURRENT_VERSION = "5"
 
 
 @dataclass
