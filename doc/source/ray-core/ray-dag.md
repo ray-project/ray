@@ -20,9 +20,7 @@ Ray DAG is designed to be a developer facing API where recommended use cases are
 
 
 :::{note}
-Ray has introduced an experimental API for high-performance workloads that is especially well suited for applications using multiple GPUs. This API is built on top of the Ray DAG API.
-
-See {ref}`Ray Compiled Graph <ray-compiled-graph>` for more details.
+{ref}`Ray Compiled Graph <ray-compiled-graph>`, an experimental API for high-performance workloads built on top of the Ray DAG API, is deprecated and will be removed in a future release. For direct GPU-to-GPU tensor transfer between actors, use {ref}`Ray Direct Transport (RDT) <direct-transport>` instead.
 :::
 
 
