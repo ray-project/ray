@@ -804,6 +804,95 @@ async def test_batch_generator_setters():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("fail_when_combining", [False, True])
+@pytest.mark.parametrize("use_generator", [False, True])
+async def test_batch_size_fn_error_does_not_stop_batching(
+    fail_when_combining, use_generator
+):
+    def batch_size_fn(items):
+        if (fail_when_combining and len(items) > 1) or (
+            not fail_when_combining and "bad" in items
+        ):
+            raise ValueError("Cannot size this batch")
+        return len(items)
+
+    async def handler(items):
+        return items
+
+    async def generator_handler(items):
+        yield items
+
+    batched = serve.batch(
+        max_batch_size=2,
+        batch_wait_timeout_s=0.01,
+        batch_size_fn=batch_size_fn,
+    )(generator_handler if use_generator else handler)
+
+    async def call(item):
+        if use_generator:
+            return [result async for result in batched(item)]
+        return await batched(item)
+
+    # Both requests are enqueued before batch assembly starts. An error while
+    # growing the batch must reach every request that has already been dequeued.
+    tasks = [asyncio.create_task(call("bad"))]
+    if fail_when_combining:
+        tasks.append(asyncio.create_task(call("other")))
+    tasks.append(asyncio.create_task(call("queued-good")))
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), timeout=1
+        )
+        assert all(isinstance(result, ValueError) for result in results[:-1])
+        assert all(str(result) == "Cannot size this batch" for result in results[:-1])
+        assert results[-1] == (["queued-good"] if use_generator else "queued-good")
+        assert await batched._is_batching_task_alive()
+        assert await asyncio.wait_for(call("ok"), timeout=1) == (
+            ["ok"] if use_generator else "ok"
+        )
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_error_during_execution():
+    from ray._common.signature import extract_signature, flatten_args
+    from ray.serve.batching import _SingleRequest
+
+    def batch_size_fn(items):
+        if "bad" in items:
+            raise ValueError("Cannot size this sub-batch")
+        return len(items)
+
+    async def handler(items):
+        return items
+
+    queue = _BatchQueue(2, 0, 1, batch_size_fn=batch_size_fn)
+
+    def request(item):
+        return _SingleRequest(
+            None,
+            flatten_args(extract_signature(handler), (item,), {}),
+            asyncio.get_running_loop().create_future(),
+            serve.context._get_serve_request_context(),
+            None,
+        )
+
+    # Sizing is repeated after splitting by model and removing cancelled requests.
+    # An error at that point must also complete the affected requests.
+    bad = request("bad")
+    await queue._process_sub_batches(handler, [[bad]])
+    with pytest.raises(ValueError, match="Cannot size this sub-batch"):
+        await asyncio.wait_for(bad.future, timeout=1)
+
+    good = request("ok")
+    await queue._process_sub_batches(handler, [[good]])
+    assert await asyncio.wait_for(good.future, timeout=1) == "ok"
+
+
+@pytest.mark.asyncio
 async def test_batch_size_fn_deferred_item_early_break():
     batches_processed = []
 
