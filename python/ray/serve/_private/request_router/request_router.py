@@ -1493,12 +1493,16 @@ class RequestRouter(ABC):
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
-        result: ReplicaResult,
+        result: Optional[ReplicaResult],
     ) -> None:
         """Called when a request is routed to a replica.
 
         This is used as a callback to update the state of the request router
         after a response is generated.
+
+        ``result`` is ``None`` when the caller only picks the replica and sends
+        the request itself (for example, the direct-streaming LLM ingress
+        router, which returns the replica to HAProxy).
         """
         pass
 
