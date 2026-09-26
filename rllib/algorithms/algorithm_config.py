@@ -379,6 +379,7 @@ class AlgorithmConfig(_Config):
         #  3 first, then with unlimited, and if both show the same behavior on
         #  an async algo, remove this restriction entirely.
         self.max_requests_in_flight_per_learner = 3
+        self.never_skip_update = False
 
         # `self.training()`
         self.gamma = 0.99
@@ -2305,6 +2306,7 @@ class AlgorithmConfig(_Config):
         max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         max_requests_in_flight_per_learner: Optional[int] = NotProvided,
+        never_skip_update: Optional[bool] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
             Callable[
@@ -2363,6 +2365,18 @@ class AlgorithmConfig(_Config):
                 updates a policy has undergone on the Learner vs the EnvRunners.
                 See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
                 for more details.
+            never_skip_update: By default (False), a Learner skips an `update()` call
+                whose train batch is empty (no timesteps for any module; e.g. all
+                sampled episodes were lost to EnvRunner or node failures), and with
+                `num_learners > 1` all Learners first agree on that via one small
+                collective per `update()`, so that they skip together and stay in
+                sync. The same collective also makes all Learners step through the
+                same number of minibatches when `minibatch_size` is set, even if
+                their shards differ in size. Set to True to turn this off: no skip
+                logic, no per-update collective, and an empty train batch raises an
+                error instead. Only for setups that guarantee non-empty and equally
+                sized batches on every Learner and want to save the (small)
+                per-update overhead.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule.
             learner_connector: A callable taking an env observation space and an env
@@ -2418,6 +2432,8 @@ class AlgorithmConfig(_Config):
             self.local_gpu_idx = local_gpu_idx
         if max_requests_in_flight_per_learner is not NotProvided:
             self.max_requests_in_flight_per_learner = max_requests_in_flight_per_learner
+        if never_skip_update is not NotProvided:
+            self.never_skip_update = never_skip_update
         if learner_class is not NotProvided:
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
