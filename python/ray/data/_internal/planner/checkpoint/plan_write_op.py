@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Iterable, List, Tuple
+from typing import Iterable, List, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -15,6 +15,7 @@ from ray.data._internal.planner.plan_write_op import (
     generate_collect_write_stats_fn,
 )
 from ray.data.block import Block, BlockAccessor
+from ray.data.checkpoint._iceberg_checkpoint import IcebergCheckpointDatasink
 from ray.data.checkpoint._iceberg_checkpoint_state import build_task_checkpoint_id
 from ray.data.checkpoint.checkpoint_writer import (
     CheckpointWriter,
@@ -27,9 +28,6 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import _split_base_and_ext
-
-if TYPE_CHECKING:
-    from ray.data.checkpoint._iceberg_checkpoint import IcebergCheckpointDatasink
 
 
 def _validate_id_column_exists(id_column: str, block: Block) -> None:
@@ -80,14 +78,20 @@ def plan_write_op_with_checkpoint_writer(
 ) -> PhysicalOperator:
     """Plan a write operation with checkpoint support.
 
+    For checkpoint-aware Iceberg datasinks:
+        1. Write physical Iceberg files
+        2. Publish pending row checkpoints
+        3. Let the driver commit the snapshot and promote the checkpoints
+
     For file-based datasinks (_FileDatasink):
         Uses 2-phase commit for atomicity:
         1. Pre-write: computes expected paths, write pending checkpoints
         2. Write: writes data files
         3. Post-write: commits checkpoints (renames pending -> committed)
 
-    Writing the pending checkpoint BEFORE the data file is critical: the
-    pending checkpoint is the source of truth for recovery. If failure occurs
+    Writing the pending checkpoint BEFORE the data file is critical for generic
+    file datasinks. The pending checkpoint is the source of truth for recovery.
+    If failure occurs
     after data write but before commit, recovery finds the pending checkpoint,
     deletes the matching data files, and retries cleanly. Writing checkpoints
     after data files would be non-atomic — if failure occurs between data
@@ -118,7 +122,16 @@ def plan_write_op_with_checkpoint_writer(
     checkpoint_writer = CheckpointWriter.create(data_context.checkpoint_config)
     collect_stats_fn = generate_collect_write_stats_fn()
 
-    if isinstance(datasink, _FileDatasink):
+    if isinstance(datasink, IcebergCheckpointDatasink):
+        write_checkpoint_fn = _generate_iceberg_write_checkpoint_transform(
+            data_context, datasink, checkpoint_writer
+        )
+        pre_transformations = []
+        post_transformations = [
+            write_checkpoint_fn,
+            collect_stats_fn,
+        ]
+    elif isinstance(datasink, _FileDatasink):
         # File-based datasink: use 2-phase commit for atomicity
         # Pre-write transform: compute expected paths and write pending checkpoints
         prepare_checkpoint_fn = _generate_prepare_checkpoint_transform(
