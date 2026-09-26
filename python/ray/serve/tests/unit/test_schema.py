@@ -10,6 +10,7 @@ from pydantic import ValidationError
 import ray
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.constants import DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 from ray.serve._private.deploy_utils import get_app_code_version
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
@@ -1667,9 +1668,9 @@ class TestTracingConfig:
             TracingConfig(enabled=True, unknown_field="value")
 
     def test_enabled_with_empty_exporter(self):
-        """Test that enabled=True with empty exporter stays empty (no auto-fill)."""
+        """Enabled tracing with an empty exporter resolves to the default exporter."""
         config = TracingConfig(enabled=True, exporter_import_path="")
-        assert config.exporter_import_path == ""
+        assert config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 
 
 if __name__ == "__main__":

@@ -61,6 +61,7 @@ class LongPollNamespace(Enum):
     DEPLOYMENT_TARGETS = auto()
     ROUTE_TABLE = auto()
     GLOBAL_LOGGING_CONFIG = auto()
+    GLOBAL_TRACING_CONFIG = auto()
     DEPLOYMENT_CONFIG = auto()
     TARGET_GROUPS = auto()
     FALLBACK_TARGETS = auto()

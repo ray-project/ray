@@ -38,6 +38,7 @@ from ray.serve._private.tracing_utils import (
     _validate_tracing_exporter_processors,
     set_trace_status,
     setup_tracing,
+    validate_tracing_exporter_import_path,
 )
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
@@ -110,6 +111,37 @@ def test_validate_tracing_exporter_with_string():
     for invalid_exporter in invalid_exporters:
         with pytest.raises(TypeError, match=expected_exception):
             _validate_tracing_exporter(invalid_exporter)
+
+
+def test_validate_tracing_exporter_import_path():
+    """Verify invalid tracing exporter paths are rejected before deployment."""
+    # Disabled tracing never resolves the path, even a bogus one.
+    validate_tracing_exporter_import_path(
+        TracingConfig(enabled=False, exporter_import_path="no.such.module:nope")
+    )
+
+    # An empty exporter path uses the default exporter.
+    validate_tracing_exporter_import_path(TracingConfig(enabled=True))
+    validate_tracing_exporter_import_path(
+        TracingConfig(
+            enabled=True, exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        )
+    )
+
+    # An invalid exporter path should be rejected.
+    with pytest.raises((ImportError, AttributeError)):
+        validate_tracing_exporter_import_path(
+            TracingConfig(enabled=True, exporter_import_path="no.such.module:nope")
+        )
+    with pytest.raises((ImportError, AttributeError)):
+        validate_tracing_exporter_import_path(
+            TracingConfig(
+                enabled=True,
+                exporter_import_path=(
+                    "ray.serve._private.tracing_utils:does_not_exist"
+                ),
+            )
+        )
 
 
 def test_validate_tracing_exporter_with_args():
