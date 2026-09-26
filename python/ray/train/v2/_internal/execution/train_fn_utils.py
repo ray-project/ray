@@ -155,6 +155,16 @@ class TrainFnUtils(ABC):
         """
         pass
 
+    @abstractmethod
+    def report_health(self, metrics: Dict[str, Any], step: Optional[int] = None):
+        """Record health signals to be sent on the next status poll.
+
+        Args:
+            metrics: The health signals to report.
+            step: The training step these signals belong to.
+        """
+        pass
+
 
 class DistributedTrainFnUtils(TrainFnUtils):
     def report(
@@ -178,6 +188,9 @@ class DistributedTrainFnUtils(TrainFnUtils):
             checkpoint_upload_fn,
             validation,
         )
+
+    def report_health(self, metrics: Dict[str, Any], step: Optional[int] = None):
+        return get_internal_train_context().report_health(metrics, step)
 
     def get_checkpoint(self):
         return get_internal_train_context().get_checkpoint()
@@ -253,6 +266,10 @@ class LocalTrainFnUtils(TrainFnUtils):
         self._last_metrics = metrics
         self._last_checkpoint = checkpoint
         logger.info(f"Reported metrics: {metrics}")
+
+    def report_health(self, metrics: Dict[str, Any], step: Optional[int] = None):
+        # No controller polls a local-mode run, so there is no one to send to.
+        logger.debug(f"Reported health metrics at step {step}: {metrics}")
 
     def get_checkpoint(self) -> Optional["Checkpoint"]:
         return self._last_checkpoint

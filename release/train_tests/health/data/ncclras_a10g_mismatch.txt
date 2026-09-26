@@ -1,0 +1,28 @@
+NCCL version 2.28.9 compiled with CUDA 12.9
+CUDA runtime version 12090, driver version 13000
+
+Job summary
+===========
+
+  Nodes  Processes         GPUs  Processes     GPUs
+(total)   per node  per process    (total)  (total)
+      4          1            1          4        4
+
+Communicators... (0.001s)
+=============
+
+Group     Comms     Nodes     Ranks     Ranks     Ranks    Status  Errors
+    #  in group  per comm  per node  per comm  in group
+    0         1         4         1         4         4   RUNNING  MISMATCH
+
+Errors
+======
+
+Warnings
+========
+
+#0-0 (f31e5874c3f25459) MISMATCH
+  Communicator ranks have different AllReduce operation counts
+  3 ranks have launched up to operation 101
+  Rank 1 has launched up to operation 100 -- GPU 0 managed by process 6247 on node 10.0.109.86
+
