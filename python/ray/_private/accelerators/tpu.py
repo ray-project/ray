@@ -816,40 +816,59 @@ class TPUAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
-        num_accelerators_on_node = (
-            TPUAcceleratorManager.get_current_node_num_accelerators()
-        )
-        # When autodetected, resource_and_label_spec caps a node's TPU resources
-        # at this count, so an allocation matching it holds the whole node.
-        if len(visible_tpu_chips) == num_accelerators_on_node:
-            # Let the ML framework use the defaults
-            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
-            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
-            return
-
         # TPU_VISIBLE_CHIPS masks physical chips, but Ray assigns one ID per
         # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1, so collapse them.
         resource_per_chip = get_tpu_resource_per_chip()
-        if resource_per_chip == 1:
-            physical_chips = visible_tpu_chips
-        else:
-            physical_chips = sorted(
-                {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
-            )
+        physical_chips = sorted(
+            {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
+        )
 
-        os.environ[
+        stale_subhost_bounds = len(physical_chips) not in (1, 2) and os.environ.get(
+            TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
+        ) in (
+            TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG,
+            TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG,
+        )
+
+        # When autodetected, resource_and_label_spec caps a node's TPU resources
+        # at this count, so an allocation matching it holds the whole node.
+        if (
+            len(visible_tpu_chips)
+            == TPUAcceleratorManager.get_current_node_num_accelerators()
+        ):
+            os.environ.pop(TPU_VISIBLE_CHIPS_ENV_VAR, None)
+            # If this worker on a >2-chip node previously ran a 1- or 2-chip
+            # sub-host task, clear the stale sub-host overrides so the ML
+            # framework uses the full-node defaults.
+            if stale_subhost_bounds:
+                os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+                os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
+            return
+
+        visible_chips_env_var = (
             TPUAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join(str(chip) for chip in physical_chips)
-        if len(physical_chips) == 1:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
-        elif len(physical_chips) == 2:
-            os.environ[
-                TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR
-            ] = TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
-            os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
+        )
+        visible_chips_str = ",".join(str(chip) for chip in physical_chips)
+        if os.environ.get(visible_chips_env_var) != visible_chips_str:
+            os.environ[visible_chips_env_var] = visible_chips_str
+        if len(physical_chips) in (1, 2):
+            expected_chip_bounds = (
+                TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+                if len(physical_chips) == 1
+                else TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
+            )
+            if (
+                os.environ.get(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
+                != expected_chip_bounds
+            ):
+                os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = expected_chip_bounds
+                if os.environ.get(TPU_HOST_BOUNDS_ENV_VAR) != TPU_SINGLE_HOST_BOUNDS:
+                    os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
+            else:
+                os.environ.setdefault(TPU_HOST_BOUNDS_ENV_VAR, TPU_SINGLE_HOST_BOUNDS)
+        elif stale_subhost_bounds:
+            os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+            os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
 
     @staticmethod
     def get_current_node_tpu_pod_type() -> Optional[str]:
