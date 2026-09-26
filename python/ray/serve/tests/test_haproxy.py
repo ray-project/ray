@@ -1298,5 +1298,109 @@ def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
     wait_for_condition(deploy_failed)
 
 
+def test_router_application_dispatches_across_applications(ray_shutdown):
+    """A router app picks sibling-app replicas; HAProxy sends requests there."""
+    from fastapi.responses import JSONResponse
+
+    ray.init(num_cpus=8)
+    serve.start()
+
+    def make_backend_app():
+        api = FastAPI()
+
+        @serve.deployment(num_replicas=2)
+        @serve.ingress(api)
+        class Backend:
+            @api.api_route("/{path:path}", methods=["GET", "POST"])
+            async def handle(self, path: str, request: Request):
+                return {
+                    "replica_id": serve.get_replica_context().replica_id.to_full_id_str(),
+                    "request_id": request.headers.get("x-request-id"),
+                    "path": request.url.path,
+                }
+
+        return Backend.bind()
+
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class Router:
+        def __init__(self):
+            self._decisions = {}
+
+        async def _decide(self, app_name: str, request: Request):
+            handle = serve.get_deployment_handle("Backend", app_name=app_name)
+            async with handle.choose_replica(_reserve=False) as selection:
+                replica_id = selection._replica.replica_id.to_full_id_str()
+            self._decisions[request.headers["x-request-id"]] = replica_id
+            return {"application": app_name, "replica_id": replica_id}
+
+        @router_api.post("/v1/chat/completions")
+        async def chat(self, request: Request):
+            model = (await request.json()).get("model")
+            if model not in ("model-a", "model-b"):
+                return JSONResponse({"error": "unknown model"}, status_code=404)
+            return await self._decide(model, request)
+
+        @router_api.get("/v1/models")
+        async def models(self, request: Request):
+            return await self._decide("control", request)
+
+        def get_decisions(self):
+            return self._decisions
+
+    serve.run(make_backend_app(), name="model-a", route_prefix="/v1/model-a")
+    serve.run(make_backend_app(), name="model-b", route_prefix="/v1/model-b")
+    serve.run(make_backend_app(), name="control", route_prefix="/v1/control")
+    router_handle = serve.run(
+        Router.bind()._as_router_application(), name="router", route_prefix="/"
+    )
+
+    def chat(model, request_id):
+        return httpx.post(
+            "http://localhost:8000/v1/chat/completions",
+            json={"model": model},
+            headers={"x-request-id": request_id},
+            timeout=10,
+        )
+
+    wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
+
+    served = {}
+    for i in range(8):
+        model = ["model-a", "model-b"][i % 2]
+        resp = chat(model, f"req-{i}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["request_id"] == f"req-{i}"
+        assert body["path"] == f"/v1/{model}/v1/chat/completions"
+        assert f"::{model}#Backend#" in body["replica_id"]
+        served[f"req-{i}"] = body["replica_id"]
+    # Round-robin over two replicas per model: all four replicas served.
+    assert len(set(served.values())) == 4
+
+    resp = httpx.get(
+        "http://localhost:8000/v1/models", headers={"x-request-id": "models"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["path"] == "/v1/control/v1/models"
+    assert "::control#Backend#" in resp.json()["replica_id"]
+
+    # Each response came from the replica the router chose.
+    decisions = router_handle.get_decisions.remote().result()
+    assert {k: decisions[k] for k in served} == served
+
+    resp = chat("model-c", "req-unknown")
+    assert resp.status_code == 404
+    assert resp.json() == {"error": "unknown model"}
+
+    # Direct application routes are unchanged.
+    resp = httpx.post("http://localhost:8000/v1/model-a/v1/chat/completions")
+    assert "::model-a#Backend#" in resp.json()["replica_id"]
+
+    serve.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
