@@ -295,6 +295,69 @@ def test_async_callback(ray_start_regular_shared):
     wait_for_condition(lambda: "completed-2" in global_set)
 
 
+@pytest.mark.asyncio
+async def test_async_wait_for_object_ref_ready(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    ready_task = asyncio.create_task(ref._ready())
+    _, pending = await asyncio.wait({ready_task}, timeout=1)
+    assert ready_task in pending, "_ready resolved before the object was produced"
+    await signal.send.remote()
+    assert await ready_task is ref
+    assert await ref == "secret"
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_object_ref_ready_cancel(ray_start_regular_shared):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    ready_task = asyncio.create_task(ref._ready())
+    _, pending = await asyncio.wait({ready_task}, timeout=1)
+    assert ready_task in pending, "_ready resolved before the object was produced"
+    ready_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await ready_task
+    await signal.send.remote()
+    assert await ref == "secret"
+
+
+def test_on_ready_ref_drop_does_not_invoke_callback(ray_start_regular_shared):
+    """Dropping the ObjectRef leaves _on_ready pending, same as _on_completed."""
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def wait():
+        ray.get(signal.wait.remote())
+        return "secret"
+
+    ref = wait.remote()
+    done = threading.Event()
+    seen = []
+
+    def cb(exc):
+        seen.append(exc)
+        done.set()
+
+    ref._on_ready(cb)
+    del ref
+    assert not done.wait(timeout=1), "_on_ready ran when the ref was dropped"
+    ray.get(signal.send.remote())
+    assert done.wait(timeout=10), "_on_ready was not invoked after the object was ready"
+    assert seen == [None]
+
+
 @pytest.mark.parametrize("raise_in_callback", [False, True])
 @pytest.mark.skipif(
     client_mode_should_convert(), reason="Different ref counting in Ray client."
