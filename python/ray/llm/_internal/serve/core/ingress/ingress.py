@@ -42,11 +42,13 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     LLMChatResponse,
     LLMCompletionsResponse,
     LLMEmbeddingsResponse,
+    LLMResponsesResponse,
     LLMScoreResponse,
     LLMTranscriptionResponse,
     ModelCard,
     ModelList,
     OpenAIHTTPException,
+    ResponsesRequest,
     ScoreRequest,
     ScoreResponse,
     TokenizeCompletionRequest,
@@ -114,6 +116,7 @@ class CallMethod(Enum):
     CHAT = "chat"
     COMPLETIONS = "completions"
     TRANSCRIPTIONS = "transcriptions"
+    RESPONSES = "responses"
 
 
 DEFAULT_ENDPOINTS = {
@@ -127,6 +130,7 @@ DEFAULT_ENDPOINTS = {
     "transcriptions": lambda app: app.post(
         "/v1/audio/transcriptions",
     ),
+    "responses": lambda app: app.post("/v1/responses"),
     "score": lambda app: app.post("/v1/score"),
     "tokenize": lambda app: app.post("/tokenize"),
     "detokenize": lambda app: app.post("/detokenize"),
@@ -230,6 +234,35 @@ def make_fastapi_ingress(
 
     # Apply the serve.ingress decorator to the new class
     return serve.ingress(app)(new_cls)
+
+
+def _enforce_stateless_responses_request(
+    body: ResponsesRequest,
+) -> Optional[OpenAIHTTPException]:
+    """Reject opt-ins to server-side state, and pin ``store`` off otherwise.
+
+    vLLM keeps the response store in the engine process while Serve spreads
+    requests across replicas, so a follow-up would reach a replica without it.
+
+    ``store`` defaults to true and SDKs omit unset fields, so only an explicit
+    ``store`` counts as opting in. Survivors are pinned off here because vLLM
+    only forces that while ``VLLM_ENABLE_RESPONSES_API_STORE`` is unset.
+    """
+    explicitly_stored = "store" in body.model_fields_set and body.store
+    if explicitly_stored or body.previous_response_id is not None or body.background:
+        return OpenAIHTTPException(
+            message=(
+                "Server-side response storage is not supported: Ray Serve routes "
+                "requests across replicas, so a stored or background response is "
+                "not visible to the replica handling the follow-up. Omit `store` "
+                "and send the full conversation in `input`."
+            ),
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            type="not_implemented",
+        )
+
+    body.store = False
+    return None
 
 
 @asynccontextmanager
@@ -355,6 +388,7 @@ class OpenAiIngress(DeploymentProtocol):
             ChatCompletionRequest,
             EmbeddingRequest,
             TranscriptionRequest,
+            ResponsesRequest,
             ScoreRequest,
         ],
         call_method: str,
@@ -365,6 +399,7 @@ class OpenAiIngress(DeploymentProtocol):
             LLMCompletionsResponse,
             LLMEmbeddingsResponse,
             LLMTranscriptionResponse,
+            LLMResponsesResponse,
             LLMScoreResponse,
         ],
         None,
@@ -471,9 +506,15 @@ class OpenAiIngress(DeploymentProtocol):
 
     async def _process_llm_request(
         self,
-        body: Union[CompletionRequest, ChatCompletionRequest, TranscriptionRequest],
+        body: Union[
+            CompletionRequest,
+            ChatCompletionRequest,
+            TranscriptionRequest,
+            ResponsesRequest,
+        ],
         call_method: str,
         raw_request: Optional[Request] = None,
+        append_done: bool = True,
     ) -> Response:
 
         async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
@@ -502,7 +543,7 @@ class OpenAiIngress(DeploymentProtocol):
                 return JSONResponse(content=first_chunk.model_dump())
 
             # In case of streaming we need to iterate over the chunks and yield them
-            openai_stream_generator = _openai_json_wrapper(gen)
+            openai_stream_generator = _openai_json_wrapper(gen, append_done=append_done)
 
             return StreamingResponse(
                 openai_stream_generator, media_type="text/event-stream"
@@ -580,6 +621,29 @@ class OpenAiIngress(DeploymentProtocol):
 
         return await self._process_llm_request(
             body, call_method=CallMethod.TRANSCRIPTIONS.value, raw_request=request
+        )
+
+    async def responses(self, body: ResponsesRequest, request: Request) -> Response:
+        """Create a model response for the given input.
+
+        Args:
+            body: The Responses request.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with the generated output.
+
+        Raises:
+            OpenAIHTTPException: 501 if the request asks for server-side state.
+        """
+        if error := _enforce_stateless_responses_request(body):
+            raise error
+
+        return await self._process_llm_request(
+            body,
+            call_method=CallMethod.RESPONSES.value,
+            raw_request=request,
+            append_done=False,
         )
 
     async def score(self, body: ScoreRequest, request: Request) -> Response:

@@ -9,6 +9,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionStreamResponse,
     CompletionResponse,
     CompletionStreamResponse,
+    ResponsesResponse,
     TranscriptionResponse,
     TranscriptionStreamResponse,
 )
@@ -19,10 +20,15 @@ NON_STREAMING_RESPONSE_TYPES = (
     ChatCompletionResponse,
     CompletionResponse,
     TranscriptionResponse,
+    ResponsesResponse,
 )
 
+# str covers the Responses API, whose engine methods yield pre-encoded SSE frames.
 StreamResponseType = Union[
-    ChatCompletionStreamResponse, CompletionStreamResponse, TranscriptionStreamResponse
+    ChatCompletionStreamResponse,
+    CompletionStreamResponse,
+    TranscriptionStreamResponse,
+    str,
 ]
 BatchedStreamResponseType = List[StreamResponseType]
 
@@ -128,6 +134,7 @@ async def _openai_json_wrapper(
     generator: AsyncGenerator[
         Union[StreamResponseType, BatchedStreamResponseType], None
     ],
+    append_done: bool = True,
 ) -> AsyncGenerator[str, None]:
     """Wrapper that converts stream responses into OpenAI JSON strings.
 
@@ -136,6 +143,9 @@ async def _openai_json_wrapper(
             (StreamResponseType) or batches of stream responses (BatchedStreamResponseType).
             Each response is converted into OpenAI JSON format and streamed to the client.
             For batched responses, the items are concatenated together as a single string.
+        append_done: whether to emit a trailing "data: [DONE]\n\n". The Responses
+            API terminates with a response.completed event and has no such
+            sentinel, so that endpoint passes False.
 
     Yields:
         String chunks in OpenAI SSE format: "data: {json}\n\n", with a final
@@ -149,5 +159,5 @@ async def _openai_json_wrapper(
             done_sent = True
         yield packet
 
-    if not done_sent:
+    if append_done and not done_sent:
         yield "data: [DONE]\n\n"
