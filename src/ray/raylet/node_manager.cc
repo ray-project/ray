@@ -2219,9 +2219,14 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
       HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
-    // If the worker is exiting, don't add it to our pool. The worker will cleanup
-    // and terminate itself.
-    if (!request.worker_exiting()) {
+    RAY_CHECK(!worker->GetGrantedLeaseId().IsNil());
+    if (request.worker_exiting()) {
+      // The worker will not return to the pool, and one that hangs in shutdown
+      // never triggers DisconnectClient, so release the lease (and its pinned
+      // args) here instead of deferring.
+      CleanupLease(worker);
+    } else {
+      // Cleans up the lease and returns the worker to the pool.
       HandleWorkerAvailable(worker);
     }
   }
