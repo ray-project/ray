@@ -1,8 +1,17 @@
+"""Prepare and execute chunked takes for fixed- and variable-shaped tensors.
+
+The shared entry point checks column eligibility and dispatches to two peer
+implementations. Each validates its storage and cost/capacity bounds, retains
+source views, and returns a plan with the same normalized-index take contract.
+Fixed rows use bounded, grouped gathers; variable rows compute output offsets
+and copy source slices directly into the final payload.
+"""
+
 import logging
 import math
 from enum import Enum
 from itertools import chain
-from typing import Any, NamedTuple, Optional, Tuple
+from typing import Any, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -11,6 +20,7 @@ from ray._common.utils import env_bool
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorType,
     ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,27 +30,42 @@ ENABLE_CHUNKED_TENSOR_TAKE = env_bool(
     True,
 )
 
-# Soft cap for temporary tensor payload produced by each gather subbatch. The
+# Soft cap for temporary payload in each fixed-shape gather subbatch. The
 # final output and index, offset, and zero-copy view metadata are excluded. A
 # source row is irreducible, so an oversized row uses a one-row subbatch and may
 # exceed the cap.
-TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
+FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES = 8 * 1024 * 1024
 # Narrow rows do not copy enough payload per grouped NumPy operation, while a
 # small source column does not amortize preparation even when its rows are wide.
 # Keep these operational gates independent of the scratch limit: an eligible
 # source row may be larger than the soft scratch cap.
-_MIN_FAST_ROW_BYTES = 1024
-_MIN_FAST_PAYLOAD_BYTES = 1024 * 1024
+_MIN_FIXED_ROW_BYTES = 1024
+_MIN_FIXED_PAYLOAD_BYTES = 1024 * 1024
 # Preparation also has fixed work per physical source chunk, including the
 # empty chunks it must inspect. Require enough source payload per chunk unless
 # the requested output itself is large enough to amortize that work.
-_MIN_FAST_BYTES_PER_CHUNK = 128 * 1024
+_MIN_FIXED_SOURCE_BYTES_PER_CHUNK = 128 * 1024
+# Variable-shaped rows need a Python slice copy per selected row. Require more
+# payload per source row than the vectorized fixed-shape gather to amortize it.
+# This is a source average, including zero-length rows, not a minimum row size.
+# Oversampling also uses this budget per output row, unless every source row
+# meets it independently of which indices the request selects.
+_MIN_VARIABLE_ROW_BYTES = 8 * 1024
+# Variable preparation also validates shapes and two sets of offsets per chunk.
+# Keep small sources on Arrow: avoiding their copy does not repay that setup.
+_MIN_VARIABLE_PAYLOAD_BYTES = 8 * 1024 * 1024
+# For small requests, require an average of 2 MiB of source payload per physical
+# chunk, including empty chunks. A larger estimated output can amortize setup
+# at an average of 512 KiB per physical chunk.
+# Local shuffle's full-generation bound accounts for reuse across its batches.
+_MIN_VARIABLE_SOURCE_BYTES_PER_CHUNK = 2 * 1024 * 1024
+_MIN_VARIABLE_OUTPUT_BYTES_PER_CHUNK = 512 * 1024
 
 
 class _TakeFallbackReason(str, Enum):
     """Reasons column preparation or request normalization declines the fast path.
 
-    Tensor layout covers the Ray V1/V2 type, numeric scalar, and fixed shape.
+    Tensor layout covers Ray fixed/variable tensor types and numeric scalars.
     Chunk storage covers child offsets/nulls, logical offsets, and buffer bounds.
     Unsupported indices include invalid values as well as unsupported types.
     """
@@ -60,18 +85,19 @@ def try_prepare_chunked_tensor_take(
     column: pa.ChunkedArray,
     *,
     max_output_rows: int,
-) -> Optional["PreparedChunkedTensorTake"]:
+) -> Optional["PreparedTensorTake"]:
     """Authoritatively select and prepare the chunked tensor take fast path.
 
     This function owns every column-level and operational eligibility rule:
 
     * The feature flag must be enabled.
-    * The column must be a non-null, fixed-shape numeric Ray tensor with at
+    * The column must be a non-null numeric Ray tensor with at
       least two nonempty chunks.
-    * Its row and total source payload must be large enough, and either its
-      per-chunk source payload or requested output must amortize preparation.
+    * Its row size (averaged for variable shapes) and total source payload must
+      be large enough, and either its per-chunk source payload or requested
+      output must amortize preparation.
     * Its declared maximum output must fit the tensor type's Arrow offsets.
-    * Every chunk must have regular logical offsets and expose a safe zero-copy
+    * Every chunk must have valid logical offsets and expose a safe zero-copy
       view within the numeric child buffer.
 
     Callers may identify broad multi-chunk extension candidates as part of
@@ -82,7 +108,7 @@ def try_prepare_chunked_tensor_take(
 
     A returned plan may take any valid normalized index array containing at
     most ``max_output_rows`` rows. All eligibility checks happen here: once
-    preparation succeeds, :meth:`PreparedChunkedTensorTake.take` never falls
+    preparation succeeds, the returned plan's ``take`` method never falls
     back to Arrow's standard path.
 
     Args:
@@ -103,77 +129,13 @@ def try_prepare_chunked_tensor_take(
         return _log_take_fallback(_TakeFallbackReason.CONTAINS_NULLS, column=column)
 
     tensor_type = column.type
-    layout = _prepare_tensor_layout(tensor_type)
-    if layout is None:
-        return _log_take_fallback(
-            _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
-        )
-    values_per_row, row_bytes, value_dtype = layout
-
-    if not _passes_size_gates(
-        source_rows=len(column),
-        row_bytes=row_bytes,
-        source_chunks=column.num_chunks,
-        max_output_rows=max_output_rows,
-    ):
-        return _log_take_fallback(
-            _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
-        )
-
-    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
-    offset_capacity_rows = np.iinfo(offset_dtype).max // values_per_row
-    if max_output_rows > offset_capacity_rows:
-        return _log_take_fallback(
-            _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
-        )
-
-    chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
-    if len(chunks) <= 1:
-        return _log_take_fallback(
-            _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS, column=column
-        )
-
-    subbatch_rows = max(
-        1,
-        TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
+    if isinstance(tensor_type, ArrowVariableShapedTensorType):
+        return _try_prepare_variable_tensor_take(column, max_output_rows)
+    if isinstance(tensor_type, (ArrowTensorType, ArrowTensorTypeV2)):
+        return _try_prepare_fixed_tensor_take(column, max_output_rows)
+    return _log_take_fallback(
+        _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
     )
-
-    chunk_views = []
-    chunk_starts = []
-    row_offset = 0
-    for chunk in chunks:
-        view = _prepare_zero_copy_chunk_view(
-            chunk,
-            tensor_type,
-            values_per_row,
-            value_dtype,
-        )
-        if view is None:
-            return _log_take_fallback(
-                _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
-            )
-        chunk_views.append(view)
-        chunk_starts.append(row_offset)
-        row_offset += len(chunk)
-
-    plan = PreparedChunkedTensorTake(
-        tensor_type=tensor_type,
-        values_per_row=values_per_row,
-        value_dtype=value_dtype,
-        subbatch_rows=subbatch_rows,
-        chunk_views=tuple(chunk_views),
-        chunk_starts=np.asarray(chunk_starts, dtype=np.int64),
-    )
-    logger.debug(
-        "Chunked tensor take fast path prepared: rows=%s, chunks=%s, "
-        "row_bytes=%s, max_output_rows=%s, subbatch_rows=%s",
-        len(column),
-        len(chunks),
-        row_bytes,
-        max_output_rows,
-        subbatch_rows,
-    )
-    return plan
 
 
 def _log_take_fallback(
@@ -200,26 +162,104 @@ def _log_take_fallback(
     return None
 
 
-def _passes_size_gates(
+def _try_prepare_fixed_tensor_take(
+    column: pa.ChunkedArray, max_output_rows: int
+) -> Optional["PreparedFixedShapedTensorTake"]:
+    """Prepare a fixed-shape plan after the common column checks."""
+    tensor_type = column.type
+    layout = _prepare_fixed_tensor_layout(tensor_type)
+    if layout is None:
+        return _log_take_fallback(
+            _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
+        )
+    values_per_row, row_bytes, value_dtype = layout
+
+    if not _passes_fixed_size_gates(
+        source_rows=len(column),
+        row_bytes=row_bytes,
+        source_chunks=column.num_chunks,
+        max_output_rows=max_output_rows,
+    ):
+        return _log_take_fallback(
+            _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
+        )
+
+    offset_dtype = np.dtype(tensor_type.OFFSET_DTYPE.to_pandas_dtype())
+    offset_capacity_rows = np.iinfo(offset_dtype).max // values_per_row
+    if max_output_rows > offset_capacity_rows:
+        return _log_take_fallback(
+            _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
+        )
+
+    chunks = tuple(chunk for chunk in column.chunks if len(chunk) > 0)
+    if len(chunks) <= 1:
+        return _log_take_fallback(
+            _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS, column=column
+        )
+
+    subbatch_rows = max(
+        1,
+        FIXED_TENSOR_TAKE_SCRATCH_CAP_BYTES // row_bytes,
+    )
+
+    chunk_views = []
+    chunk_starts = []
+    row_offset = 0
+    for chunk in chunks:
+        view = _prepare_fixed_chunk_view(
+            chunk,
+            tensor_type,
+            values_per_row,
+            value_dtype,
+        )
+        if view is None:
+            return _log_take_fallback(
+                _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
+            )
+        chunk_views.append(view)
+        chunk_starts.append(row_offset)
+        row_offset += len(chunk)
+
+    plan = PreparedFixedShapedTensorTake(
+        tensor_type=tensor_type,
+        values_per_row=values_per_row,
+        value_dtype=value_dtype,
+        subbatch_rows=subbatch_rows,
+        chunk_views=tuple(chunk_views),
+        chunk_starts=np.asarray(chunk_starts, dtype=np.int64),
+    )
+    logger.debug(
+        "Chunked tensor take fast path prepared: rows=%s, chunks=%s, "
+        "row_bytes=%s, max_output_rows=%s, subbatch_rows=%s",
+        len(column),
+        len(chunks),
+        row_bytes,
+        max_output_rows,
+        subbatch_rows,
+    )
+    return plan
+
+
+def _passes_fixed_size_gates(
     source_rows: int,
     row_bytes: int,
     source_chunks: int,
     max_output_rows: int,
 ) -> bool:
-    """Return whether the source or requested output can amortize setup."""
+    """Return whether a fixed-shape source or output can amortize setup."""
     source_bytes = source_rows * row_bytes
     output_bytes = max_output_rows * row_bytes
     return (
-        row_bytes >= _MIN_FAST_ROW_BYTES
-        and source_bytes >= _MIN_FAST_PAYLOAD_BYTES
+        row_bytes >= _MIN_FIXED_ROW_BYTES
+        and source_bytes >= _MIN_FIXED_PAYLOAD_BYTES
         and (
-            source_bytes >= source_chunks * _MIN_FAST_BYTES_PER_CHUNK
-            or output_bytes >= _MIN_FAST_PAYLOAD_BYTES
+            source_bytes >= source_chunks * _MIN_FIXED_SOURCE_BYTES_PER_CHUNK
+            or output_bytes >= _MIN_FIXED_PAYLOAD_BYTES
         )
     )
 
 
-def _prepare_tensor_layout(
+def _prepare_fixed_tensor_layout(
     tensor_type: Any,
 ) -> Optional[Tuple[int, int, np.dtype]]:
     """Return validated fixed numeric layout metadata, or ``None``.
@@ -252,13 +292,13 @@ def _prepare_tensor_layout(
     return values_per_row, values_per_row * value_dtype.itemsize, value_dtype
 
 
-def _prepare_zero_copy_chunk_view(
+def _prepare_fixed_chunk_view(
     chunk: Any,
     tensor_type: Any,
     values_per_row: int,
     value_dtype: np.dtype,
 ) -> Optional[np.ndarray]:
-    """Return a validated zero-copy chunk view, or ``None``.
+    """Return a validated zero-copy fixed-shape chunk view, or ``None``.
 
     Constructing the view from the numeric child buffer makes its shape, dtype,
     contiguity, ownership, and buffer bounds explicit. The logical list
@@ -302,8 +342,8 @@ def _prepare_zero_copy_chunk_view(
     )
 
 
-class PreparedChunkedTensorTake(NamedTuple):
-    """Executable tensor take prepared from one immutable chunked column."""
+class PreparedFixedShapedTensorTake(NamedTuple):
+    """Fixed-shape tensor take prepared from an immutable chunked column."""
 
     tensor_type: Any
     values_per_row: int
@@ -479,3 +519,264 @@ def _gather_by_sorted_chunk_ids(
         chunk_id = chunk_ids[positions[0]]
         output[positions] = chunks[chunk_id][local_indices[positions]]
         group_start = group_stop
+
+
+class _VariableTensorChunk(NamedTuple):
+    """Zero-copy payload and validated row metadata from one physical chunk."""
+
+    values: np.ndarray
+    offsets: np.ndarray
+    shapes: np.ndarray
+
+
+def _try_prepare_variable_tensor_take(
+    column: pa.ChunkedArray, max_output_rows: int
+) -> Optional["PreparedVariableShapedTensorTake"]:
+    """Prepare a variable-shape plan after the common column checks.
+
+    Decline the fast path unless all variable-specific conditions hold:
+
+    * Integer or floating-point scalars, a nonnegative consistent rank, and at
+      least two nonempty chunks. Zero-length rows are allowed.
+    * Enough logical source payload in total and per row on average, plus
+      enough source or estimated output payload per physical chunk. Empty
+      chunks count toward preparation cost; retained parent bytes do not.
+    * Safe data/shape storage, as validated by ``_prepare_variable_chunk``.
+    * Shape offsets fit int32, and even repeating the largest row up to
+      ``max_output_rows`` fits payload offsets and NumPy allocation bounds.
+    * Oversampling is covered by source bytes per requested row or by the
+      smallest source row. A large average alone cannot justify tiny repeats.
+
+    Average row size estimates cost only; the largest row bounds capacity for
+    every request, including shuffle batches and carry-over takes.
+    """
+    tensor_type = column.type
+    scalar_type = tensor_type.value_type
+    if (
+        not (pa.types.is_integer(scalar_type) or pa.types.is_floating(scalar_type))
+        or not isinstance(tensor_type.ndim, int)
+        or tensor_type.ndim < 0
+    ):
+        return _log_take_fallback(
+            _TakeFallbackReason.UNSUPPORTED_TENSOR_LAYOUT, column=column
+        )
+    value_dtype = np.dtype(scalar_type.to_pandas_dtype())
+    storages = [chunk.storage for chunk in column.chunks if len(chunk)]
+    if len(storages) < 2:
+        return _log_take_fallback(
+            _TakeFallbackReason.FEWER_THAN_TWO_NONEMPTY_CHUNKS, column=column
+        )
+
+    source_values = 0
+    for storage in storages:
+        data = storage.field("data")
+        first, last = int(data.offsets[0].as_py()), int(data.offsets[-1].as_py())
+        if not 0 <= first <= last <= len(data.values):
+            return _log_take_fallback(
+                _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
+            )
+        source_values += last - first
+    source_bytes = source_values * value_dtype.itemsize
+    if (
+        source_bytes < len(column) * _MIN_VARIABLE_ROW_BYTES
+        or source_bytes < _MIN_VARIABLE_PAYLOAD_BYTES
+        or (
+            source_bytes < column.num_chunks * _MIN_VARIABLE_SOURCE_BYTES_PER_CHUNK
+            and source_bytes * max_output_rows
+            < len(column) * column.num_chunks * _MIN_VARIABLE_OUTPUT_BYTES_PER_CHUNK
+        )
+    ):
+        return _log_take_fallback(
+            _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
+        )
+
+    # Shape lists have int32 offsets even though data lists use int64 offsets.
+    if max_output_rows * tensor_type.ndim > np.iinfo(np.dtype(np.int32)).max:
+        return _log_take_fallback(
+            _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
+        )
+    chunks, starts = [], []
+    row_start, largest_row = 0, 0
+    for storage in storages:
+        chunk = _prepare_variable_chunk(storage, tensor_type.ndim, value_dtype)
+        if chunk is None:
+            return _log_take_fallback(
+                _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
+            )
+        largest_row = max(largest_row, int(np.max(np.diff(chunk.offsets))))
+        chunks.append(chunk)
+        starts.append(row_start)
+        row_start += len(storage)
+    # Bound NumPy allocation bytes as well as Arrow's element offsets. Python
+    # integer arithmetic avoids overflow while checking even huge repeat counts.
+    if (
+        max_output_rows * largest_row
+        > np.iinfo(np.dtype(np.intp)).max // value_dtype.itemsize
+    ):
+        return _log_take_fallback(
+            _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
+        )
+    # Repeated indices can select only tiny rows despite a large source average.
+    # Cover the per-output-row cost with either avoided source-copy bytes or a
+    # lower bound on every selected row. Shuffle generations already satisfy
+    # the source bound because max_output_rows never exceeds the source rows.
+    if source_bytes < max_output_rows * _MIN_VARIABLE_ROW_BYTES and any(
+        int(np.min(np.diff(chunk.offsets))) * value_dtype.itemsize
+        < _MIN_VARIABLE_ROW_BYTES
+        for chunk in chunks
+    ):
+        return _log_take_fallback(
+            _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
+        )
+    logger.debug(
+        "Variable tensor take fast path prepared: rows=%s, chunks=%s, "
+        "source_bytes=%s, max_output_rows=%s",
+        len(column),
+        len(chunks),
+        source_bytes,
+        max_output_rows,
+    )
+    return PreparedVariableShapedTensorTake(
+        tensor_type, value_dtype, tuple(chunks), np.asarray(starts, dtype=np.int64)
+    )
+
+
+def _prepare_variable_chunk(
+    storage: pa.StructArray, ndim: int, value_dtype: np.dtype
+) -> Optional[_VariableTensorChunk]:
+    """Validate logical data/shape offsets and expose numeric child views.
+
+    Accept sliced parents and children, nonzero logical offsets, and empty
+    rows (including an empty numeric child with no data buffer). Reject:
+
+    * Nulls in the struct, either list, or either list's child values.
+    * Descending or out-of-bounds data offsets, shape offsets that do not
+      advance by the declared rank, or a truncated numeric child buffer.
+    * Negative dimensions or a shape product unequal to the row's data length.
+
+    Division checks shape products without multiplying dimensions in a fixed
+    width dtype. This accepts zero-sized dimensions without overflow and rejects
+    shapes whose product differs from their row's actual data length.
+    """
+    data, shape = storage.field("data"), storage.field("shape")
+    if any(
+        array.null_count for array in (storage, data, data.values, shape, shape.values)
+    ):
+        return None
+    offsets = data.offsets.to_numpy(zero_copy_only=True)
+    shape_offsets = shape.offsets.to_numpy(zero_copy_only=True)
+    if (
+        np.any(offsets[1:] < offsets[:-1])
+        or not 0 <= int(offsets[0]) <= int(offsets[-1]) <= len(data.values)
+        or not 0 <= int(shape_offsets[0]) <= int(shape_offsets[-1]) <= len(shape.values)
+        or np.any(np.diff(shape_offsets.astype(np.int64, copy=False)) != ndim)
+    ):
+        return None
+    data_buffer = data.values.buffers()[1]
+    if data_buffer is None:
+        # A zero-length numeric child need not have a data buffer.
+        if len(data.values):
+            return None
+    elif (
+        data.values.offset + len(data.values)
+    ) * value_dtype.itemsize > data_buffer.size:
+        return None
+    flat_shapes = shape.values.to_numpy(zero_copy_only=True)
+    shapes = flat_shapes[int(shape_offsets[0]) : int(shape_offsets[-1])].reshape(
+        len(storage), ndim
+    )
+    if np.any(shapes < 0):
+        return None
+    remaining = np.diff(offsets)
+    zero_rows = np.any(shapes == 0, axis=1)
+    for axis in range(ndim):
+        factors = np.maximum(shapes[:, axis], 1)
+        if np.any(remaining % factors):
+            return None
+        remaining //= factors
+    if np.any(remaining != np.where(zero_rows, 0, 1)):
+        return None
+    return _VariableTensorChunk(
+        data.values.to_numpy(zero_copy_only=True), offsets, shapes
+    )
+
+
+class PreparedVariableShapedTensorTake(NamedTuple):
+    """Gather variable rows without concatenation or per-scalar take indices.
+
+    Source slices are copied straight into the final payload: no temporary
+    tensor payload is needed, even for a row larger than the fixed-shape scratch
+    cap. Row routing and shape/offset metadata consume O(K * ndim) space.
+    """
+
+    tensor_type: ArrowVariableShapedTensorType
+    value_dtype: np.dtype
+    chunks: tuple[_VariableTensorChunk, ...]
+    chunk_starts: np.ndarray
+
+    def take(self, indices: np.ndarray) -> pa.Array:
+        """Take valid native int64 indices within the prepared output bound.
+
+        Callers establish the same index contract as fixed-shape prepared takes.
+        Preparation proves the largest possible output fits the buffer/offset
+        dtypes, so even repeated long rows can safely use a cumulative sum here.
+
+        Sort positions by chunk to gather row lengths, source offsets, and
+        shapes once per selected chunk, then restore their requested order.
+        Unlike fixed rows, variable rows need output offsets before copying:
+        a prefix sum sizes the final payload and locates each destination slice.
+        Copies preserve arbitrary order and duplicates without payload sorting.
+        Empty requests and requests selecting only zero-length rows still
+        produce offsets/shapes, but skip payload copying entirely.
+        """
+        chunk_ids = np.searchsorted(self.chunk_starts, indices, side="right") - 1
+        local = indices - self.chunk_starts[chunk_ids]
+        lengths = np.empty(len(indices), dtype=np.int64)
+        source_offsets = np.empty(len(indices), dtype=np.int64)
+        shapes = np.empty((len(indices), self.tensor_type.ndim), dtype=np.int64)
+        # Sort once to avoid scanning every requested row for every source chunk.
+        order = np.argsort(chunk_ids)
+        sorted_ids = chunk_ids[order]
+        boundaries = np.flatnonzero(sorted_ids[1:] != sorted_ids[:-1]) + 1
+        start = 0
+        for stop in chain(boundaries, (len(order),)):
+            if start == stop:
+                continue
+            positions = order[start:stop]
+            chunk = self.chunks[int(sorted_ids[start])]
+            rows = local[positions]
+            source_offsets[positions] = chunk.offsets[rows]
+            lengths[positions] = chunk.offsets[rows + 1] - chunk.offsets[rows]
+            shapes[positions] = chunk.shapes[rows]
+            start = stop
+        offsets = np.empty(len(indices) + 1, dtype=np.int64)
+        offsets[0] = 0
+        np.cumsum(lengths, out=offsets[1:])
+        output = np.empty(int(offsets[-1]), dtype=self.value_dtype)
+        if output.size:
+            for position, chunk_id in enumerate(chunk_ids):
+                source_start = int(source_offsets[position])
+                source_stop = source_start + int(lengths[position])
+                output[offsets[position] : offsets[position + 1]] = self.chunks[
+                    int(chunk_id)
+                ].values[source_start:source_stop]
+        data = pa.LargeListArray.from_arrays(
+            pa.array(offsets),
+            pa.Array.from_buffers(
+                self.tensor_type.value_type, len(output), [None, pa.py_buffer(output)]
+            ),
+        )
+        shape_offsets = (
+            np.arange(len(indices) + 1, dtype=np.int64) * self.tensor_type.ndim
+        )
+        shape = pa.ListArray.from_arrays(
+            pa.array(shape_offsets, type=pa.int32()), pa.array(shapes.reshape(-1))
+        )
+        return self.tensor_type.wrap_array(
+            pa.StructArray.from_arrays([data, shape], names=["data", "shape"])
+        )
+
+
+PreparedTensorTake = Union[
+    PreparedFixedShapedTensorTake, PreparedVariableShapedTensorTake
+]
