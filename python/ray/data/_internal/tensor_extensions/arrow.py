@@ -297,8 +297,10 @@ def convert_to_pyarrow_array(
         # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
         # we have to make sure that we handle this case utilizing `ArrowTensorArray`
         # extension type
-        if len(column_values) > 0 and _should_convert_to_tensor(
-            column_values, column_name
+        # Empty multidimensional arrays still carry tensor shape and dtype.
+        if (hasattr(column_values, "ndim") and column_values.ndim > 1) or (
+            len(column_values) > 0
+            and _should_convert_to_tensor(column_values, column_name)
         ):
             from ray.data.extensions.tensor_extension import ArrowTensorArray
 
