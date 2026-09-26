@@ -146,14 +146,14 @@ class TestRoute:
         router._pick_replica = AsyncMock(
             return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
         )
-        router._push_prompt_tokens = MagicMock(return_value=pushed_token_key)
+        router.push_prompt_tokens = MagicMock(return_value=pushed_token_key)
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
         request.headers = Headers({})
         response = await router.route(request)
 
-        router._push_prompt_tokens.assert_called_once()
+        router.push_prompt_tokens.assert_called_once()
         if pushed_token_key:
             assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
                 KV_TOKEN_KEY_HEADER: pushed_token_key

@@ -12,6 +12,7 @@ import asyncio
 import sys
 import threading
 
+import httpx
 import pytest
 import requests
 from dynamo.llm import compute_block_hash_for_seq
@@ -192,9 +193,7 @@ class TestIngressSynchronization:
             reservation_converged, timeout=30, retry_interval_ms=100
         )
 
-        await _broadcast(
-            router, "on_lifecycle_events", [("on_prefill_complete", ("probe",))]
-        )
+        await _broadcast(router, "on_prefill_complete", "probe")
 
         async def prefill_converged():
             states = await _broadcast(router, "get_request_lifecycle", "probe")
@@ -210,9 +209,7 @@ class TestIngressSynchronization:
             prefill_converged, timeout=30, retry_interval_ms=100
         )
 
-        await _broadcast(
-            router, "on_lifecycle_events", [("on_request_completed", ("probe",))]
-        )
+        await _broadcast(router, "on_request_completed", "probe")
 
         async def completion_converged():
             states = await _broadcast(router, "get_request_lifecycle", "probe")
@@ -276,6 +273,69 @@ class TestIngressSynchronization:
             return all(load["active_requests"] == 0 for load in loads)
 
         await async_wait_for_condition(is_cleared, timeout=30, retry_interval_ms=500)
+
+    @pytest.mark.asyncio
+    async def test_stream_close_frees_load(
+        self, ingress_replicas_per_node, deployed_handle
+    ):
+        """An early HTTP close frees aggregated load on every ingress."""
+        router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
+        ingress_count = len(
+            await _ingress_replica_ids(router, ingress_replicas_per_node)
+        )
+        worker_id = await _registered_worker(router, ingress_count)
+        endpoint = get_application_url(app_name=APP_NAME, use_localhost=True)
+
+        async with httpx.AsyncClient(base_url=endpoint, timeout=90) as client:
+            async with client.stream(
+                "POST",
+                "/v1/chat/completions",
+                json={
+                    "model": MODEL_ID,
+                    "messages": MESSAGES,
+                    "max_tokens": 1024,
+                    "ignore_eos": True,
+                    "stream": True,
+                },
+            ) as response:
+                assert response.status_code == 200
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        assert line != "data: [DONE]"
+                        break
+                else:
+                    pytest.fail("The stream ended before its first completion chunk")
+
+                # Confirm every tracker holds the same request before closing it.
+                async def request_booked():
+                    per_ingress = await _broadcast(router, "get_active_request_ids")
+                    loads = await _broadcast(router, "get_worker_load", worker_id)
+                    return (
+                        len(per_ingress) == len(loads) == ingress_count
+                        and all(len(ids) == 1 for ids in per_ingress)
+                        and len({ids[0] for ids in per_ingress}) == 1
+                        and all(load["active_requests"] > 0 for load in loads)
+                    )
+
+                await async_wait_for_condition(request_booked, timeout=30)
+                request_id = (await _broadcast(router, "get_active_request_ids"))[0][0]
+
+            # The engine's completion event must release every ingress reservation.
+            async def request_freed():
+                states = await _broadcast(router, "get_request_lifecycle", request_id)
+                loads = await _broadcast(router, "get_worker_load", worker_id)
+                logs = await _broadcast(router, "get_event_log")
+                return (
+                    len(states) == len(loads) == len(logs) == ingress_count
+                    and all(state is None for state in states)
+                    and all(load["active_requests"] == 0 for load in loads)
+                    and all(
+                        ("on_request_completed", (request_id,)) in events
+                        for events in logs
+                    )
+                )
+
+            await async_wait_for_condition(request_freed, timeout=30)
 
     @pytest.mark.asyncio
     async def test_kv_events_indexed(self, ingress_replicas_per_node, deployed_handle):

@@ -15,26 +15,13 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     TokenizeCompletionRequest,
 )
+from ray.llm._internal.serve.core.protocol import TokenizeError
 from ray.llm._internal.serve.engines.vllm.vllm_engine import (
     _get_vllm_engine_config,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-class TokenizeError(Exception):
-    """The request was rejected the same way vLLM's native ASGI route
-    ``/tokenize`` would reject it.
-
-    Carries the HTTP ``status_code``, ``message`` and error ``type``.
-    """
-
-    def __init__(self, message: str, *, status_code: int, type: str):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
-        self.type = type
 
 
 def build_tokenize_request(

@@ -1,19 +1,20 @@
-"""Prefill-Decode disaggregated LLM serving: decode-as-orchestrator architecture.
-
-3-tier graph (ingress -> PDDecodeServer -> PDPrefillServer) where the
-decode deployment owns a real engine and orchestrates remote prefill.
-"""
+"""Prefill/decode serving with decode orchestration or KV-aware ingress routing."""
 
 import asyncio
+import base64
+import binascii
 import contextlib
+import json
 import logging
 import uuid
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
+from fastapi import HTTPException
 from fastapi.routing import APIRoute
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ray import serve
 from ray.llm._internal.common.patches.vllm.tokenize_once import (
     install as _install_tokenize_once,
     reuse_prompt_token_ids as _reuse_prompt_token_ids,
@@ -35,6 +36,20 @@ from ray.llm._internal.serve.core.ingress.utils import (
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_KEY_HEADER,
+    KV_TRANSFER_PARAMS_HEADER,
+    PD_ROUTING_STAGE,
+    ROUTING_REQUEST_ID_CONTEXT,
+    RoutingStage,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_llm_router_handle,
+    get_worker_id,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
+    LifecycleEventForwarder,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.serve._private.http_util import session_id_from_headers
@@ -210,6 +225,46 @@ class PDOrchestratorMixin:
             method = "completions"
         else:
             raise ValueError(f"Unsupported request type: {type(request)}")
+
+        if (
+            self._llm_config.experimental_configs.get(PD_ROUTING_STAGE)
+            == RoutingStage.DECODE
+        ):
+            key = (
+                raw_request_info.headers.get(KV_TOKEN_KEY_HEADER)
+                if raw_request_info
+                else None
+            )
+            metadata = (
+                raw_request_info.headers.get(KV_TRANSFER_PARAMS_HEADER)
+                if raw_request_info
+                else None
+            )
+            if not key or not metadata:
+                raise HTTPException(503, "KV-aware P/D requires transfer metadata")
+            try:
+                params = json.loads(base64.b64decode(metadata, validate=True))
+                if not isinstance(params, dict):
+                    raise ValueError("Transfer metadata must be an object")
+            except (ValueError, binascii.Error) as exc:
+                raise HTTPException(400, "Invalid P/D transfer metadata") from exc
+            request = request.model_copy(deep=True)
+            request.kv_transfer_params = params
+            request.request_id = key
+            ROUTING_REQUEST_ID_CONTEXT.set(key)
+            gen = None
+            try:
+                gen = await getattr(super(), method)(request, raw_request_info)
+                async for chunk in gen:
+                    yield chunk
+            finally:
+                try:
+                    if gen is not None:
+                        await gen.aclose()
+                finally:
+                    self._report_pd_completion(key)
+                    ROUTING_REQUEST_ID_CONTEXT.set(None)
+            return
 
         backend = self._get_connector_backend()
 
@@ -590,9 +645,38 @@ async def _drain_prefill(prefill_resp) -> Optional[ErrorResponse]:
 class PDPrefillServer(LLMServer):
     """Prefill-side LLM server for P/D disaggregation.
 
-    This is a standard LLMServer with an additional ``prewarm_prefill``
-    method used during the pre-warm handshake.
+    Supports ingress-driven prefill and the pre-warm handshake.
     """
+
+    async def prefill(
+        self,
+        request: Union[ChatCompletionRequest, CompletionRequest],
+        raw_request_info: RawRequestInfo,
+        *,
+        request_token_ids: List[int],
+        routing_request_id: str,
+    ) -> Dict[str, Any]:
+        backend = self._llm_config.kv_connector_backend
+        prefill_request = backend.prepare_prefill_request(request=request, peer=None)
+        prefill_request.request_id = routing_request_id
+        prefill_request.kv_transfer_params["prompt_token_ids"] = request_token_ids
+        ROUTING_REQUEST_ID_CONTEXT.set(routing_request_id)
+        method = "chat" if isinstance(request, ChatCompletionRequest) else "completions"
+        params: Optional[Dict[str, Any]] = None
+        gen = None
+        try:
+            gen = await getattr(super(), method)(prefill_request, raw_request_info)
+            async for chunk in gen:
+                if isinstance(chunk, ErrorResponse):
+                    raise RuntimeError(f"Prefill failed: {chunk}")
+                params = getattr(chunk, "kv_transfer_params", None) or params
+            if not params:
+                raise RuntimeError("Prefill returned no KV transfer metadata")
+            return params
+        finally:
+            if gen is not None:
+                await gen.aclose()
+            ROUTING_REQUEST_ID_CONTEXT.set(None)
 
     async def record_replica_metadata(self) -> Dict[str, Any]:
         """Publish this prefill replica's connector coordination metadata.
@@ -662,7 +746,25 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
             bool(self._llm_config.experimental_configs.get("pd_tokenize_once"))
             and _install_tokenize_once()
         )
+        if (
+            self._llm_config.experimental_configs.get(PD_ROUTING_STAGE)
+            == RoutingStage.DECODE
+        ):
+            rc = serve.get_replica_context()
+            self._pd_forwarder: LifecycleEventForwarder = LifecycleEventForwarder(
+                get_llm_router_handle(),
+                get_worker_id(rc.replica_id.unique_id),
+                deployment_id=rc.replica_id.deployment_id,
+            )
         await self._maybe_prewarm()
+
+    def _report_pd_completion(self, request_id: str) -> None:
+        self._pd_forwarder.report("on_request_completed", request_id)
+
+    async def __del__(self):
+        if hasattr(self, "_pd_forwarder"):
+            self._pd_forwarder.close()
+        await super().__del__()
 
     async def chat(
         self,
