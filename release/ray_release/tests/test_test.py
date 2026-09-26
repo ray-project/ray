@@ -199,36 +199,74 @@ def _repo():
     return GitHubClient("token").get_repo("owner/repo")
 
 
-def test_is_jailed_with_open_issue_not_jailed() -> None:
-    assert not Test(state="passing").is_jailed_with_open_issue(_repo())
+@pytest.mark.parametrize(
+    ("issue", "expected_open"),
+    [
+        ({"json": {**_ISSUE_JSON, "state": "open"}}, True),
+        # _close_github_issue leaves the number behind, so a recovered test
+        # keeps pointing at a closed issue; the state has to be checked.
+        ({"json": {**_ISSUE_JSON, "state": "closed"}}, False),
+        # Unreachable github answers "no open issue known here", never "no
+        # issue".
+        ({"json": {"message": "Not Found"}, "status": 404}, False),
+    ],
+    ids=["open", "closed", "unreachable"],
+)
+@responses.activate
+def test_get_open_github_issue(issue, expected_open) -> None:
+    responses.add(responses.GET, _ISSUE_URL, **issue)
+
+    got = Test(name="test", github_issue_number="1").get_open_github_issue(_repo())
+
+    if expected_open:
+        # The issue itself, so a caller acting on it need not fetch it again.
+        assert got is not None and got.number == _ISSUE_JSON["number"]
+        assert len(responses.calls) == 1
+    else:
+        assert got is None
 
 
-def test_is_jailed_with_open_issue_no_issue_number() -> None:
-    assert not Test(state="jailed").is_jailed_with_open_issue(_repo())
+def test_get_open_github_issue_no_issue_number() -> None:
+    assert Test().get_open_github_issue(_repo()) is None
 
 
 @responses.activate
-def test_is_jailed_with_open_issue_open() -> None:
+def test_has_open_github_issue_is_get_open_github_issue() -> None:
+    """It is a one-line delegation; cover that rather than repeat the states."""
     responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "open"})
-    assert Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
-        _repo()
-    )
+    test = Test(github_issue_number="1")
+
+    assert test.has_open_github_issue(_repo()) is True
+
+    with patch.object(Test, "get_open_github_issue", return_value=None) as delegate:
+        assert test.has_open_github_issue(_repo()) is False
+    delegate.assert_called_once()
 
 
-@responses.activate
-def test_is_jailed_with_open_issue_closed() -> None:
-    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "closed"})
-    assert not Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
-        _repo()
-    )
+def test_is_jailed_with_open_issue_not_jailed() -> None:
+    """The state is checked first, so github is never asked about a non-jailed
+    test."""
+    with patch.object(Test, "get_open_github_issue") as never:
+        assert not Test(state="passing").is_jailed_with_open_issue(_repo())
+    never.assert_not_called()
 
 
-@responses.activate
-def test_is_jailed_with_open_issue_github_exception() -> None:
-    responses.add(responses.GET, _ISSUE_URL, json={"message": "Not Found"}, status=404)
-    assert not Test(
-        name="test", state="jailed", github_issue_number="1"
-    ).is_jailed_with_open_issue(_repo())
+@pytest.mark.parametrize(
+    ("has_open_issue", "expected"), [(True, True), (False, False)], ids=["open", "no"]
+)
+def test_is_jailed_with_open_issue_delegates_for_the_issue(
+    has_open_issue, expected
+) -> None:
+    with patch.object(
+        Test, "has_open_github_issue", return_value=has_open_issue
+    ) as delegate:
+        assert (
+            Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
+                _repo()
+            )
+            is expected
+        )
+    delegate.assert_called_once()
 
 
 def test_is_stable() -> None:

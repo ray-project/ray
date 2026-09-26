@@ -35,7 +35,18 @@ BUILDKITE_TIME_LIMIT_FOR_RETRY=10800 # 3 hours
 # per-run rather than one global name every harness on the host shares.
 RELEASE_TEST_OBS_AGENT_FILE=${RELEASE_TEST_OBS_AGENT_FILE:-${RELEASE_RESULTS_DIR}/obs_agent_analysis.txt}
 
-export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_OBS_AGENT_FILE
+# TEMPORARY -- DO NOT MERGE. Serves a canned analysis, stands in for the
+# anyscale job and the tracked github issue, and forces one test to fail before
+# it reaches anyscale. Together these let this PR's release pipeline exercise
+# the observability agent path without creating a debug session, posting to
+# slack, or starting a cluster. Remove these five, and
+# release/obs_agent_fake_response.json, before merging.
+RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE=${RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE:-$PWD/obs_agent_fake_response.json}
+RELEASE_TEST_OBS_AGENT_FAKE_JOB_ID=${RELEASE_TEST_OBS_AGENT_FAKE_JOB_ID:-prodjob_fake00000000000000000000}
+RELEASE_TEST_OBS_AGENT_FAKE_ISSUE=${RELEASE_TEST_OBS_AGENT_FAKE_ISSUE:-2040}
+RELEASE_TEST_FORCE_FAILURE=${RELEASE_TEST_FORCE_FAILURE:-hello_world.aws}
+
+export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES BUILDKITE_RETRY_CODE BUILDKITE_TIME_LIMIT_FOR_RETRY RELEASE_TEST_OBS_AGENT_FILE RELEASE_TEST_OBS_AGENT_FAKE_RESPONSE RELEASE_TEST_OBS_AGENT_FAKE_JOB_ID RELEASE_TEST_OBS_AGENT_FAKE_ISSUE RELEASE_TEST_FORCE_FAILURE
 
 if [[ -n "${RAY_COMMIT_OF_WHEEL-}" ]]; then
   git config --global --add safe.directory /workdir

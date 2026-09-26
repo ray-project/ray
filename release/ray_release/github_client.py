@@ -158,6 +158,12 @@ class GitHubClient:
 
     BASE_URL = "https://api.github.com"
 
+    # requests waits forever by default. Nothing here is on the happy path of
+    # a test run -- every caller is reporting on a test that already finished
+    # -- so a github that accepts the connection and then never answers must
+    # time out rather than hold the buildkite step open until it is killed.
+    TIMEOUT = 30
+
     def __init__(self, token: str) -> None:
         """Initialize the client with a personal access token or app token."""
         self._session = requests.Session()
@@ -182,7 +188,9 @@ class GitHubClient:
             raise GitHubException(resp.status_code, data, resp.headers)
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> dict:
-        resp = self._session.get(f"{self.BASE_URL}{path}", params=params)
+        resp = self._session.get(
+            f"{self.BASE_URL}{path}", params=params, timeout=self.TIMEOUT
+        )
         self._raise_for_response(resp)
         return resp.json()
 
@@ -194,7 +202,7 @@ class GitHubClient:
         results = []
         url: Optional[str] = f"{self.BASE_URL}{path}"
         while url:
-            resp = self._session.get(url, params=params)
+            resp = self._session.get(url, params=params, timeout=self.TIMEOUT)
             self._raise_for_response(resp)
             results.extend(resp.json())
             url = resp.links.get("next", {}).get("url")
@@ -202,11 +210,15 @@ class GitHubClient:
         return results
 
     def _post(self, path: str, data: dict) -> dict:
-        resp = self._session.post(f"{self.BASE_URL}{path}", json=data)
+        resp = self._session.post(
+            f"{self.BASE_URL}{path}", json=data, timeout=self.TIMEOUT
+        )
         self._raise_for_response(resp)
         return resp.json()
 
     def _patch(self, path: str, data: dict) -> dict:
-        resp = self._session.patch(f"{self.BASE_URL}{path}", json=data)
+        resp = self._session.patch(
+            f"{self.BASE_URL}{path}", json=data, timeout=self.TIMEOUT
+        )
         self._raise_for_response(resp)
         return resp.json()
