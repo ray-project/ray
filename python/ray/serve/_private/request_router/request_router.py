@@ -495,6 +495,7 @@ class RequestRouter(ABC):
         initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+        request_routing_timeout_s: Optional[float] = None,
         *args,
         **kwargs,
     ):
@@ -509,6 +510,8 @@ class RequestRouter(ABC):
         self.initial_backoff_s = initial_backoff_s
         self.backoff_multiplier = backoff_multiplier
         self.max_backoff_s = max_backoff_s
+
+        self.request_routing_timeout_s = request_routing_timeout_s
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
@@ -1405,13 +1408,34 @@ class RequestRouter(ABC):
 
             self._add_pending_request_to_indices(pending_request)
             self._maybe_start_routing_tasks()
-            replica = await pending_request.future
+            if self.request_routing_timeout_s is None:
+                replica = await pending_request.future
+            else:
+                replica = await asyncio.wait_for(
+                    pending_request.future, self.request_routing_timeout_s
+                )
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             self._cancel_routing_task_for_pending_request(pending_request)
             self._remove_pending_request_from_indices(pending_request)
 
             raise e from None
+        except asyncio.TimeoutError:
+            self._cancel_routing_task_for_pending_request(pending_request)
+            self._remove_pending_request_from_indices(pending_request)
+            # No routing task runs while the deployment has no replicas, so the
+            # lazy cleanup in `_fulfill_pending_requests` can't drop the request.
+            for queue in (
+                self._pending_requests_to_fulfill,
+                self._pending_requests_to_route,
+            ):
+                while queue and queue[0].future.done():
+                    queue.popleft()
+
+            raise TimeoutError(
+                f"Failed to route request to a replica of {self._deployment_id} "
+                f"within {self.request_routing_timeout_s}s."
+            ) from None
 
         return replica
 
