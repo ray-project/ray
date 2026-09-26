@@ -69,7 +69,11 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
     {%- endif %}
-    {%- if has_ingress_request_router and ingress_request_router_forward_body %}
+    {%- if has_router_applications %}
+    lua-load-per-thread {{ router_application_lua_path }}
+    {%- endif %}
+    {%- if (has_ingress_request_router and ingress_request_router_forward_body) or has_router_applications %}
+    # Routed requests buffer the body for the router; larger bodies are truncated.
     tune.bufsize {{ ingress_request_router_bufsize }}
     {%- else %}
     tune.bufsize {{ config.bufsize }}
@@ -140,10 +144,8 @@ frontend prometheus
     no log
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
-    {%- if has_ingress_request_router %}
-    # Direct-streaming requests first pass through the ingress request router,
-    # then are forwarded to a selected replica. Generate a request ID here when
-    # the client did not provide one so both hops use the same lifecycle ID.
+    {%- if has_ingress_request_router or has_router_applications %}
+    # Routed requests make two hops; give both the same request ID.
     unique-id-format %[uuid]
     http-request set-header x-request-id %[unique-id] if !{ req.hdr(x-request-id) -m found }
     {%- endif %}
@@ -162,7 +164,7 @@ frontend http_frontend
     # metrics are also enabled, the router-specific fields are appended to the same
     # line.
     log {{ metrics_socket_path }} len 8192 format rfc5424 local1 debug
-    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
+    log-format-sd "%{+Q,+E}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts{% if has_router_applications %} routed_by=%[var(txn.serve_routed_by)]{% endif %}{% if ingress_request_router_metrics_enabled and has_ingress_request_router %} intended=%[var(txn.ingress_request_router_target)] actual=%s router_latency_us=%[var(txn.ingress_request_router_latency_us)] body_truncated_full_length=%[var(txn.ingress_request_router_truncated_full_length)] via_router=%[var(txn.via_ingress_request_router)] failed=%[var(txn.ingress_request_router_failed)]{% endif %}]"
     {%- endif %}
     {%- if config.root_path %}
     # Strip the configured global root_path so the health/routes endpoints, the
@@ -208,6 +210,24 @@ frontend http_frontend
     {%- endif %}
     {%- endfor %}
     {%- endif %}
+    {%- if has_router_applications %}
+    # Requests whose longest-prefix match is a router application: Lua asks it
+    # for a replica; anything unrouted 503s, never reaching the router's backend.
+    {%- for backend in backends %}
+    http-request set-var(txn.serve_backend) str({{ backend.name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.serve_backend) -m found }
+    {%- endfor %}
+    {%- for backend in backends %}
+    {%- if backend.is_router_application %}
+    http-request set-var(txn.router_app) str({{ backend.name or 'unknown' }}) if { var(txn.serve_backend) -m str "{{ backend.name or 'unknown' }}" }
+    {%- endif %}
+    {%- endfor %}
+    acl is_router_request var(txn.router_app) -m found
+    # Drop client-supplied Serve-owned headers.
+    http-request del-header {{ ingress_request_router_header_prefix }} -m beg if is_router_request
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if is_router_request
+    http-request lua.route_via_router_application if is_router_request
+    http-request return status 503 content-type text/plain lf-string "Router application failed: %[var(txn.router_failed)]" hdr X-Serve-Reason %[var(txn.router_failed)] if is_router_request !{ var(txn.router_backend) -m found }
+    {%- endif %}
     {%- if has_ingress_request_router %}
     # Set txn.ingress_request_router_app to the first matching router-bearing
     # backend. Backends are sorted longest-prefix-first, and the !found guard
@@ -224,7 +244,7 @@ frontend http_frontend
     {%- if ingress_request_router_forward_body %}
     http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
     {%- endif %}
-    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
+    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app{% if has_router_applications %} !is_router_request{% endif %}
     # A pin-miss is recoverable only if its app has a fallback proxy. Mark it
     # per app so the 503 below fails loud for apps with none.
     {%- for backend in backends %}
@@ -235,6 +255,14 @@ frontend http_frontend
     # 503 on any router failure except a recoverable pin-miss. Must precede the
     # use_backend rules so failures never fall through to the primary backend.
     http-request return status 503 content-type text/plain lf-string "Ingress request router failed: %[var(txn.ingress_request_router_failed)]" hdr X-Serve-Reason %[var(txn.ingress_request_router_failed)] if { var(txn.ingress_request_router_failed) -m found } !{ var(txn.ingress_request_router_recoverable) -m found }
+    {%- endif %}
+    {%- if has_router_applications %}
+    # Router-selected backend wins over path routing and ingress request routers.
+    {%- for backend in backends %}
+    {%- if backend.servers and not backend.is_router_application %}
+    use_backend {{ backend.name or 'unknown' }} if { var(txn.router_backend) -m str "{{ backend.name or 'unknown' }}" }
+    {%- endif %}
+    {%- endfor %}
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
@@ -287,6 +315,12 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
+    {%- if has_router_applications and backend.servers and not backend.is_router_application %}
+    # Pin to the replica a router application selected.
+    {%- for server in backend.servers %}
+    use-server {{ server.name }} if { var(txn.router_server) -m str "{{ server.name }}" }
+    {%- endfor %}
+    {%- endif %}
     # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check{% if config.observe_mark_down_enabled %} observe layer4 error-limit {{ config.observe_error_limit }} on-error mark-down{% endif %}
