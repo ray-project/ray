@@ -15,6 +15,7 @@ from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    ROUTER_APPLICATION_REQUIRES_HTTP_ERROR,
     BuiltApplication,
     build_app,
 )
@@ -364,6 +365,15 @@ class ApplicationState:
     @property
     def ingress_request_router_deployment(self) -> Optional[str]:
         return self._ingress_request_router_deployment_name
+
+    @property
+    def is_router_application(self) -> bool:
+        """From target state, so it survives scale-to-zero."""
+        deployment_infos = self._target_state.deployment_infos
+        if not deployment_infos or self._ingress_deployment_name is None:
+            return False
+        ingress_info = deployment_infos.get(self._ingress_deployment_name)
+        return ingress_info is not None and ingress_info.router_application
 
     @property
     def api_type(self) -> APIType:
@@ -1502,6 +1512,12 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_request_router_deployment
 
+    def is_router_application(self, name: str) -> bool:
+        if name not in self._application_states:
+            return False
+
+        return self._application_states[name].is_router_application
+
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1806,6 +1822,7 @@ def build_serve_application(
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=(is_ingress and built_app.is_router_application),
                 )
             )
 
@@ -2071,6 +2088,12 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
+
+    for info in deployment_infos.values():
+        if info.router_application and info.route_prefix is None:
+            raise RayServeException(
+                ROUTER_APPLICATION_REQUIRES_HTTP_ERROR.format(name=override_config.name)
+            )
 
     # build_app cannot see config overrides, so re-check the post-override
     # ingress router here.

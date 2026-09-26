@@ -61,6 +61,8 @@ class Application:
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
         self._ingress_request_router: Optional["Application"] = None
+        # See `_as_router_application`.
+        self._is_router_application: bool = False
 
     def _with_ingress_request_router(
         self, ingress_request_router: "Application"
@@ -68,6 +70,15 @@ class Application:
         # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
         # This is not a stable public Serve API.
         self._ingress_request_router = ingress_request_router
+        return self
+
+    def _as_router_application(self) -> "Application":
+        """Mark this app as a router: HAProxy asks its ingress for
+        ``{"application", "replica_id"}`` and sends the request to that replica.
+
+        Internal-only, unstable hook for Serve LLM direct streaming.
+        """
+        self._is_router_application = True
         return self
 
 

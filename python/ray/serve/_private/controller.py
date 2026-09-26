@@ -1196,6 +1196,7 @@ class ServeController:
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
                         "uses_multiplexing": args.uses_multiplexing,
+                        "router_application": args.router_application,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1664,6 +1665,9 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
+        )
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1701,6 +1705,7 @@ class ServeController:
                     ingress_request_router_targets=ingress_request_router_targets,
                     ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
 
@@ -1736,6 +1741,10 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        # Kept at zero replicas so HAProxy never returns decisions to clients.
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
+        )
 
         if self._ha_proxy_enabled:
             http_targets = []
@@ -1758,6 +1767,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=[],
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
         if include_grpc:
