@@ -128,6 +128,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # failure mode that made the earlier request_router.py instrumentation record
 # nothing. os.environ needs no PYTHONPATH and no benchmark-repo dependency.
 _PD_TRACE_ENABLED = bool(os.environ.get("RAY_PD_TRACE"))
+_pd_fastpath_samples = []
 
 
 def _pd_fastpath_log_sample(
@@ -145,12 +146,29 @@ def _pd_fastpath_log_sample(
     surrounding bookkeeping, so total - (resolve + choose) is the unattributed
     remainder inside this function.
     """
+    # BUFFERED, not logged per request: this runs inside the pinned LLMRouter
+    # actor's event loop, and with RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1
+    # (the default) a logger.info here is a synchronous flush on the measured
+    # path -- the probe distorting its own measurement. Appends are ~100ns;
+    # _pd_fastpath_drain() emits off the hot path.
     if _PD_TRACE_ENABLED:
+        _pd_fastpath_samples.append(
+            (resolve_args_s, choose_replicas_s, total_s, num_replicas, num_ranks)
+        )
+
+
+def _pd_fastpath_drain() -> None:
+    """Emit buffered fast-path samples. Called off the request path."""
+    if not _pd_fastpath_samples:
+        return
+    batch = _pd_fastpath_samples[:]
+    del _pd_fastpath_samples[: len(batch)]
+    for resolve_s, choose_s, total_s, n_rep, n_rank in batch:
         logger.info(
-            f"[pd_fastpath] resolve_args_ms={resolve_args_s * 1000:.3f} "
-            f"choose_replicas_ms={choose_replicas_s * 1000:.3f} "
+            f"[pd_fastpath] resolve_args_ms={resolve_s * 1000:.3f} "
+            f"choose_replicas_ms={choose_s * 1000:.3f} "
             f"total_ms={total_s * 1000:.3f} "
-            f"num_replicas={num_replicas} num_ranks={num_ranks}"
+            f"num_replicas={n_rep} num_ranks={n_rank}"
         )
 
 

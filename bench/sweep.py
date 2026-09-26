@@ -181,8 +181,14 @@ async def run_block(
     # charge that to the event loop the timings are measured on.
     prompts = [build_prompt(input_tokens, rng) for _ in range(num_requests)]
 
+    # Explicit connector: aiohttp's default TCPConnector caps at 100
+    # connections, which silently clamps any level above c=100 -- c=128 and
+    # c=256 both ran at ~100 effective concurrency in earlier sweeps, and the
+    # connector-queue wait landed INSIDE the measured TTFT. The semaphore above
+    # is the only intended concurrency control.
+    connector = aiohttp.TCPConnector(limit=0, limit_per_host=0)
     async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=600)
+        timeout=aiohttp.ClientTimeout(total=600), connector=connector
     ) as session:
 
         async def guarded(prompt: str) -> None:
@@ -201,14 +207,23 @@ async def run_block(
 async def warmup(
     url: str, model: str, input_tokens: int, count: int, rng: random.Random
 ) -> None:
-    """Discarded requests that pay for CUDA graph capture and NIXL rendezvous."""
+    """Discarded requests that pay for CUDA graph capture and NIXL rendezvous.
+
+    Issued CONCURRENTLY, not serially. Serial warmup only ever occupies one
+    replica at a time, so with 4P4D most replicas never warm and pay their
+    CUDA-graph capture and NIXL rendezvous inside the first MEASURED block --
+    which is exactly the low-concurrency region where the routing signal is
+    cleanest. Prior data shows the artifact surviving warmup: native c=32 rep0
+    took 707s of wall vs ~46s for reps 1-2.
+    """
+    connector = aiohttp.TCPConnector(limit=0, limit_per_host=0)
     async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=600)
+        timeout=aiohttp.ClientTimeout(total=600), connector=connector
     ) as session:
-        for _ in range(count):
-            await one_request(
-                session, url, model, build_prompt(input_tokens, rng), 16, 1, -1
-            )
+        prompts = [build_prompt(input_tokens, rng) for _ in range(count)]
+        await asyncio.gather(
+            *(one_request(session, url, model, p, 16, 1, -1) for p in prompts)
+        )
 
 
 def summarize(results: list[RequestResult], wall_s: Optional[float] = None) -> dict:
@@ -253,6 +268,25 @@ def summarize(results: list[RequestResult], wall_s: Optional[float] = None) -> d
         "ttft_min_s": ok[0],
         "ttft_max_s": ok[-1],
     }
+
+    # Output-length stats make every results file self-describing. Needed
+    # because --max-tokens is a CEILING, not a target: the random-vocabulary
+    # prompt is semantically empty, so the model hits EOS early and the
+    # realized length is far below the nominal OSL (measured ~67-72 against a
+    # nominal 500). Without these columns a file labelled "decode-heavy" cannot
+    # be distinguished from a short-reply run, and tpot denominators vary with
+    # content. NOTE: these count streamed CHUNKS, not tokens -- one chunk may
+    # carry several tokens, so treat them as a shape check, not a token count.
+    chunks = sorted(r.output_tokens for r in succeeded)
+    if chunks:
+        out.update(
+            {
+                "out_chunks_mean": statistics.fmean(chunks),
+                "out_chunks_p50": pct(chunks, 0.50),
+                "out_chunks_min": chunks[0],
+                "out_chunks_max": chunks[-1],
+            }
+        )
 
     if tpots:
         out.update(

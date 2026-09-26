@@ -1,8 +1,9 @@
+import asyncio
 import json
 import os
 import time
 from types import SimpleNamespace
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -35,6 +36,19 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 _PD_TRACE_ENABLED = bool(os.environ.get("RAY_PD_TRACE"))
 _pd_inflight = 0
 
+# Samples are BUFFERED, not logged per request. The earlier version called
+# logger.info() here on every request, inside the single pinned LLMRouter
+# actor's event loop -- the same loop whose scheduling delay this trace exists
+# to measure, and with RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE defaulting to 1
+# (one synchronous flush per line). That put a disk write inside the measured
+# pick_replica window: the probe perturbed the quantity it reports, and the
+# native side of the comparison carries no equivalent cost, so the measured
+# Ray-vs-native gap was inflated by an unknown amount. A list append is ~100ns
+# and cannot flush; the drain task below emits aggregates off the hot path.
+_pd_samples: List[Tuple[float, float, float, int, int]] = []
+_PD_DRAIN_INTERVAL_S = 5.0
+_pd_drain_task = None
+
 
 def _pd_route_log_sample(
     total_s: float,
@@ -44,12 +58,78 @@ def _pd_route_log_sample(
     body_len: int,
 ) -> None:
     if _PD_TRACE_ENABLED:
+        _pd_samples.append(
+            (total_s, pick_replica_s, body_parse_s, inflight_on_entry, body_len)
+        )
+
+
+def _pd_pct(sorted_vals, q: float) -> float:
+    if not sorted_vals:
+        return 0.0
+    idx = min(len(sorted_vals) - 1, int(q * len(sorted_vals)))
+    return sorted_vals[idx]
+
+
+def _pd_drain_samples() -> None:
+    """Emit one aggregate line for the samples buffered since the last drain.
+
+    Runs off the request path. Emits the same field names the per-request
+    version used, so existing log parsing keeps working, plus the count and
+    the percentiles that matter for a serialization point.
+    """
+    # The serve-side fast-path buffer lives in the same actor; drain it on the
+    # same tick so both traces leave the hot path together.
+    try:
+        from ray.serve._private.router import _pd_fastpath_drain
+
+        _pd_fastpath_drain()
+    except Exception:
+        pass
+    if not _pd_samples:
+        return
+    batch = _pd_samples[:]
+    del _pd_samples[: len(batch)]
+    picks = sorted(s[1] for s in batch)
+    totals = sorted(s[0] for s in batch)
+    inflights = sorted(s[3] for s in batch)
+    logger.info(
+        f"[pd_ingress_route_agg] n={len(batch)} "
+        f"pick_replica_ms_p50={_pd_pct(picks, 0.50) * 1000:.3f} "
+        f"pick_replica_ms_p95={_pd_pct(picks, 0.95) * 1000:.3f} "
+        f"pick_replica_ms_max={picks[-1] * 1000:.3f} "
+        f"total_ms_p50={_pd_pct(totals, 0.50) * 1000:.3f} "
+        f"inflight_p50={_pd_pct(inflights, 0.50)} "
+        f"inflight_max={inflights[-1]}"
+    )
+    # Per-request rows too, but written together, outside the measured window.
+    for total_s, pick_s, parse_s, inflight, body_len in batch:
         logger.info(
             f"[pd_ingress_route] total_ms={total_s * 1000:.3f} "
-            f"pick_replica_ms={pick_replica_s * 1000:.3f} "
-            f"body_parse_ms={body_parse_s * 1000:.3f} "
-            f"inflight={inflight_on_entry} body_len={body_len}"
+            f"pick_replica_ms={pick_s * 1000:.3f} "
+            f"body_parse_ms={parse_s * 1000:.3f} "
+            f"inflight={inflight} body_len={body_len}"
         )
+
+
+async def _pd_drain_loop() -> None:
+    while True:
+        await asyncio.sleep(_PD_DRAIN_INTERVAL_S)
+        try:
+            _pd_drain_samples()
+        except Exception:
+            logger.exception("[pd_ingress_route] drain failed")
+
+
+def _pd_start_drain_task() -> None:
+    """Start the drain loop once, from inside the actor's running loop."""
+    global _pd_drain_task
+    if not _PD_TRACE_ENABLED or _pd_drain_task is not None:
+        return
+    try:
+        _pd_drain_task = asyncio.get_running_loop().create_task(_pd_drain_loop())
+    except RuntimeError:
+        # No running loop yet; the next request-path call will try again.
+        _pd_drain_task = None
 
 
 # A request body routes on one of these fields. Body-aware routers read it off
@@ -152,6 +232,8 @@ class LLMRouter:
         # here when I arrived" -- the queue this request actually waited behind.
         _pd_inflight_on_entry = _pd_inflight
         _pd_inflight += 1
+        if _pd_drain_task is None:
+            _pd_start_drain_task()
         try:
             return await self._route_inner(request, _pd_t0, _pd_inflight_on_entry)
         finally:
