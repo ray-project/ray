@@ -127,6 +127,7 @@ class UsageInfo:
     workload: WorkloadInfo
     performance: Optional[PipelinePerf] = None
     detected_issues: List[Issue] = field(default_factory=list)
+    consumption_api: str = "unknown"
 
 
 # A callable that records config information for a logical operator.
