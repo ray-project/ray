@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import json
 import os
 import time
@@ -48,6 +49,13 @@ _pd_inflight = 0
 _pd_samples: List[Tuple[float, float, float, int, int]] = []
 _PD_DRAIN_INTERVAL_S = 5.0
 _pd_drain_task = None
+# Per-request rows bypass the logging stack entirely (see _pd_drain_samples).
+# RAY_PD_TRACE is a path; put the rows beside it so the collector finds them.
+_PD_ROWS_PATH = (
+    f"{os.environ['RAY_PD_TRACE']}.ingress_rows.{os.getpid()}"
+    if _PD_TRACE_ENABLED
+    else ""
+)
 
 
 def _pd_route_log_sample(
@@ -101,23 +109,44 @@ def _pd_drain_samples() -> None:
         f"inflight_p50={_pd_pct(inflights, 0.50)} "
         f"inflight_max={inflights[-1]}"
     )
-    # Per-request rows too, but written together, outside the measured window.
-    for total_s, pick_s, parse_s, inflight, body_len in batch:
-        logger.info(
-            f"[pd_ingress_route] total_ms={total_s * 1000:.3f} "
-            f"pick_replica_ms={pick_s * 1000:.3f} "
-            f"body_parse_ms={parse_s * 1000:.3f} "
-            f"inflight={inflight} body_len={body_len}"
-        )
+    # Per-request rows, written to their OWN file with a single write() and no
+    # logging handler in between. Routing them through logger.info would put
+    # one synchronous flush per buffered request onto this actor's event loop
+    # (Serve installs MemoryHandler(capacity=RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE),
+    # which defaults to 1 -- i.e. flush-per-record). At c=64 that is hundreds
+    # of flushes in one uninterrupted block every drain, stalling whatever
+    # /internal/route calls are mid-flight and landing inside exactly the
+    # pick_replica window this instrumentation exists to measure. Moving the
+    # cost off the per-request path only to concentrate it into a periodic
+    # stall would be no better than what it replaced.
+    if _PD_ROWS_PATH:
+        try:
+            with open(_PD_ROWS_PATH, "a") as fh:
+                fh.write(
+                    "".join(
+                        f"[pd_ingress_route] total_ms={t * 1000:.3f} "
+                        f"pick_replica_ms={p * 1000:.3f} "
+                        f"body_parse_ms={b * 1000:.3f} "
+                        f"inflight={i} body_len={n}\n"
+                        for t, p, b, i, n in batch
+                    )
+                )
+        except OSError:
+            # Diagnostics must never take the deployment down.
+            pass
 
 
 async def _pd_drain_loop() -> None:
+    # Drain immediately on start, then on the interval: a short run (the c=1
+    # arm is 30 requests) can finish inside one window, and the bench driver
+    # kills the Serve process after the sweep, so a buffer that has not been
+    # drained is simply lost.
     while True:
-        await asyncio.sleep(_PD_DRAIN_INTERVAL_S)
         try:
             _pd_drain_samples()
         except Exception:
             logger.exception("[pd_ingress_route] drain failed")
+        await asyncio.sleep(_PD_DRAIN_INTERVAL_S)
 
 
 def _pd_start_drain_task() -> None:
@@ -130,6 +159,18 @@ def _pd_start_drain_task() -> None:
     except RuntimeError:
         # No running loop yet; the next request-path call will try again.
         _pd_drain_task = None
+        return
+    # The bench driver kills the Serve process once the sweep ends, so without
+    # this the final window's samples never reach disk.
+    atexit.register(_pd_final_drain)
+
+
+def _pd_final_drain() -> None:
+    """Flush whatever is buffered at process exit."""
+    try:
+        _pd_drain_samples()
+    except Exception:
+        pass
 
 
 # A request body routes on one of these fields. Body-aware routers read it off

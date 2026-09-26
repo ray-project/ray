@@ -1429,6 +1429,10 @@ class RequestRouter(ABC):
     # Does this handle when every worker is full ?
     # Ans - it actually does it the correct way by parking the request and going to sleep,
     # rather than spinning and wasting CPU.
+    # This is an async method (can be paused/resumed without blocking the whole program).
+    # It takes a pending_request — an object representing a request that needs a replica (server instance) assigned to it —
+    # and an optional flag is_retry saying whether this is a fresh request or a retry of one that failed.
+    # It will eventually return a RunningReplica (the chosen server).
     async def _choose_replica_for_request(
         self, pending_request: PendingRequest, *, is_retry: bool = False
     ) -> RunningReplica:
@@ -1439,6 +1443,7 @@ class RequestRouter(ABC):
         """
         try:
             if not is_retry:
+                # this is the queue _pending_requests_to_fulfill that gets full
                 self._pending_requests_to_fulfill.append(pending_request)
                 self._pending_requests_to_route.append(pending_request)
             else:

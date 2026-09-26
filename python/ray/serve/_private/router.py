@@ -129,6 +129,11 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # nothing. os.environ needs no PYTHONPATH and no benchmark-repo dependency.
 _PD_TRACE_ENABLED = bool(os.environ.get("RAY_PD_TRACE"))
 _pd_fastpath_samples = []
+_PD_ROWS_PATH = (
+    f"{os.environ['RAY_PD_TRACE']}.fastpath_rows.{os.getpid()}"
+    if _PD_TRACE_ENABLED
+    else ""
+)
 
 
 def _pd_fastpath_log_sample(
@@ -163,13 +168,25 @@ def _pd_fastpath_drain() -> None:
         return
     batch = _pd_fastpath_samples[:]
     del _pd_fastpath_samples[: len(batch)]
-    for resolve_s, choose_s, total_s, n_rep, n_rank in batch:
-        logger.info(
-            f"[pd_fastpath] resolve_args_ms={resolve_s * 1000:.3f} "
-            f"choose_replicas_ms={choose_s * 1000:.3f} "
-            f"total_ms={total_s * 1000:.3f} "
-            f"num_replicas={n_rep} num_ranks={n_rank}"
-        )
+    # One write(), no logging handler: Serve's request-path MemoryHandler has
+    # capacity 1 by default, so a logger.info per buffered sample would be a
+    # burst of synchronous flushes blocking this actor's event loop -- the very
+    # thing being measured. See the matching note in the ingress router.
+    if not _PD_ROWS_PATH:
+        return
+    try:
+        with open(_PD_ROWS_PATH, "a") as fh:
+            fh.write(
+                "".join(
+                    f"[pd_fastpath] resolve_args_ms={r * 1000:.3f} "
+                    f"choose_replicas_ms={c * 1000:.3f} "
+                    f"total_ms={t * 1000:.3f} "
+                    f"num_replicas={nr} num_ranks={nk}\n"
+                    for r, c, t, nr, nk in batch
+                )
+            )
+    except OSError:
+        pass
 
 
 class RouterMetricsManager:
