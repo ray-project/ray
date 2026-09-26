@@ -1,5 +1,5 @@
 import warnings
-from typing import Iterable, List, Tuple
+from typing import TYPE_CHECKING, Iterable, List, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -15,6 +15,7 @@ from ray.data._internal.planner.plan_write_op import (
     generate_collect_write_stats_fn,
 )
 from ray.data.block import Block, BlockAccessor
+from ray.data.checkpoint._iceberg_checkpoint_state import build_task_checkpoint_id
 from ray.data.checkpoint.checkpoint_writer import (
     CheckpointWriter,
     PendingCheckpoint,
@@ -26,6 +27,9 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import _split_base_and_ext
+
+if TYPE_CHECKING:
+    from ray.data.checkpoint._iceberg_checkpoint import IcebergCheckpointDatasink
 
 
 def _validate_id_column_exists(id_column: str, block: Block) -> None:
@@ -260,6 +264,61 @@ def _generate_prepare_checkpoint_transform(
 
     return BlockMapTransformFn(
         prepare_checkpoint,
+        disable_block_shaping=True,
+    )
+
+
+def _generate_iceberg_write_checkpoint_transform(
+    data_context: DataContext,
+    datasink: "IcebergCheckpointDatasink",
+    checkpoint_writer: CheckpointWriter,
+) -> BlockMapTransformFn:
+    """Generate a post-write transform that publishes pending Iceberg row IDs.
+
+    The transform first drains its input because consuming the upstream write
+    transform is what creates the physical Iceberg files. It then writes one
+    deterministic pending row checkpoint for the task. The driver promotes that
+    checkpoint only after confirming the operation's marked Iceberg snapshot.
+
+    Args:
+        data_context: The data context containing the checkpoint configuration.
+        datasink: The checkpoint-aware Iceberg datasink for this operation.
+        checkpoint_writer: The writer used to publish row checkpoints.
+
+    Returns:
+        A transform that preserves the original blocks while publishing their
+        row IDs as pending checkpoint state.
+    """
+
+    def write_pending_checkpoint(
+        blocks: Iterable[Block], ctx: TaskContext
+    ) -> Iterable[Block]:
+        block_list, combined_block = _combine_blocks(blocks)
+        block_accessor = BlockAccessor.for_block(combined_block)
+        if block_accessor.num_rows() == 0:
+            return iter(block_list)
+
+        checkpoint_config = data_context.checkpoint_config
+        assert checkpoint_config is not None
+        id_column = checkpoint_config.id_column
+        _validate_id_column_exists(id_column, combined_block)
+
+        write_id = ctx.kwargs.get(WRITE_UUID_KWARG_NAME)
+        assert write_id is not None, "WRITE_UUID_KWARG_NAME is required"
+        checkpoint_id = build_task_checkpoint_id(
+            datasink.operation_id, write_id, ctx.task_idx
+        )
+        id_column_data = BlockAccessor.for_block(
+            block_accessor.select(columns=[id_column])
+        ).to_arrow()[id_column]
+        checkpoint_writer.write_pending_checkpoint(
+            id_column_data,
+            checkpoint_id=checkpoint_id,
+        )
+        return iter(block_list)
+
+    return BlockMapTransformFn(
+        write_pending_checkpoint,
         disable_block_shaping=True,
     )
 
