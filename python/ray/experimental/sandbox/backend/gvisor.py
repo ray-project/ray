@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -236,7 +236,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
+            try:
+                shutil.rmtree(root_dir)
+            except Exception:
+                subprocess.run(["sudo", "rm", "-rf", root_dir], capture_output=True)
             # The sandbox never registered, so delete_sandbox will not run
             # for it: release the image here to keep it evictable.
             self._image_manager.release_image(config.image, sandbox_id)
@@ -285,7 +288,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            shutil.rmtree(root_dir, ignore_errors=True)
+            try:
+                shutil.rmtree(root_dir)
+            except Exception:
+                subprocess.run(["sudo", "rm", "-rf", root_dir], capture_output=True)
             # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
 
@@ -479,12 +485,461 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Get operational status of the gVisor sandbox."""
         meta = self._sandbox_metadata.get(sandbox_id)
         if meta and os.path.exists(meta["root_dir"]):
-            return SandboxStatus.RUNNING
+            return meta.get("status", SandboxStatus.RUNNING)
         return SandboxStatus.TERMINATED
+
+    def pause_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Pause all processes inside the sandbox without disk serialization."""
+        meta = self._get_metadata_or_raise(sandbox_id)
+        config: SandboxConfig = meta["config"]
+        pause_args = self._runsc_base_args(config) + ["pause", sandbox_id]
+        res = subprocess.run(
+            pause_args, capture_output=True, text=True, timeout=timeout_seconds
+        )
+        if res.returncode != 0:
+            raise SandboxError(f"Failed to pause sandbox '{sandbox_id}': {res.stderr}")
+        meta["status"] = SandboxStatus.PAUSED
+
+    def resume_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Resume execution of a paused sandbox."""
+        meta = self._get_metadata_or_raise(sandbox_id)
+        config: SandboxConfig = meta["config"]
+        resume_args = self._runsc_base_args(config) + ["resume", sandbox_id]
+        res = subprocess.run(
+            resume_args, capture_output=True, text=True, timeout=timeout_seconds
+        )
+        if res.returncode != 0:
+            raise SandboxError(f"Failed to resume sandbox '{sandbox_id}': {res.stderr}")
+        meta["status"] = SandboxStatus.RUNNING
+
+    def checkpoint_sandbox(
+        self,
+        sandbox_id: str,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        compression: str = "none",
+        exclude_committed_zero_pages: bool = True,
+        direct: bool = False,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Save the sandbox state to a checkpoint bundle directory.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            checkpoint_path: Directory path where the checkpoint bundle will be saved.
+                If None, defaults to /tmp/ray/sandbox/checkpoints/<sandbox_id>-<checkpoint_uuid>.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            compression: Compression level ('none' or 'flate-best-speed').
+            exclude_committed_zero_pages: If True, exclude committed zero-filled pages.
+            direct: If True, use O_DIRECT for writing checkpoint pages.
+            timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            Dictionary containing checkpoint metadata.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        config: SandboxConfig = meta["config"]
+        root_dir = meta["root_dir"]
+
+        if config.rootless:
+            raise SandboxError(
+                "gVisor (runsc) does not support checkpoint/restore in rootless mode. "
+                "Please configure the sandbox with rootless=False."
+            )
+
+        if not checkpoint_path:
+            chk_uuid = uuid.uuid4().hex[:8]
+            checkpoint_path = os.path.join(
+                _RAY_SANDBOX_DIR, "checkpoints", f"{sandbox_id}-{chk_uuid}"
+            )
+
+        checkpoint_path = os.path.abspath(checkpoint_path)
+        state_dir = os.path.join(checkpoint_path, "state")
+        fs_dir = os.path.join(checkpoint_path, "fs")
+
+        os.makedirs(state_dir, mode=0o755, exist_ok=True)
+        os.makedirs(fs_dir, mode=0o755, exist_ok=True)
+
+        checkpoint_args = self._runsc_base_args(config)
+        checkpoint_args.extend(["checkpoint", f"--image-path={state_dir}"])
+        if leave_running:
+            checkpoint_args.append("--leave-running")
+        if compression in ("none", "flate-best-speed"):
+            checkpoint_args.append(f"--compression={compression}")
+        if exclude_committed_zero_pages:
+            checkpoint_args.append("--exclude-committed-zero-pages")
+        if direct:
+            checkpoint_args.append("--direct")
+        checkpoint_args.append(sandbox_id)
+
+        start_time = time.time()
+        res = subprocess.run(
+            checkpoint_args, capture_output=True, text=True, timeout=timeout_seconds
+        )
+        duration = time.time() - start_time
+
+        if res.returncode != 0:
+            raise SandboxError(
+                f"Failed to checkpoint sandbox '{sandbox_id}': {res.stderr}"
+            )
+
+        # Snapshot overlay filesystem state and writable workdir
+        saved_rootfs = os.path.join(root_dir, "rootfs")
+        if os.path.isdir(saved_rootfs):
+            dest_rootfs = os.path.join(fs_dir, "rootfs")
+            try:
+                shutil.copytree(
+                    saved_rootfs,
+                    dest_rootfs,
+                    dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(".gvisor.filestore*"),
+                )
+            except (PermissionError, shutil.Error):
+                if not config.rootless and os.geteuid() != 0:
+                    try:
+                        os.makedirs(dest_rootfs, exist_ok=True)
+                        subprocess.run(
+                            [
+                                "sudo",
+                                "cp",
+                                "-a",
+                                os.path.join(saved_rootfs, "."),
+                                dest_rootfs,
+                            ],
+                            check=True,
+                        )
+                        subprocess.run(
+                            [
+                                "sudo",
+                                "find",
+                                dest_rootfs,
+                                "-name",
+                                ".gvisor.filestore*",
+                                "-delete",
+                            ],
+                            check=False,
+                        )
+                    except Exception as e:
+                        raise SandboxError(
+                            f"Failed to copy rootfs overlay via sudo: {e}"
+                        ) from e
+                else:
+                    raise
+            except Exception:
+                pass
+
+        if meta.get("workdir") and os.path.isdir(meta["workdir"]):
+            shutil.copytree(
+                meta["workdir"], os.path.join(fs_dir, "workdir"), dirs_exist_ok=True
+            )
+
+        bundle_config_path = os.path.join(root_dir, "config.json")
+        if os.path.isfile(bundle_config_path):
+            shutil.copy2(
+                bundle_config_path, os.path.join(checkpoint_path, "config.json")
+            )
+
+        manifest = {
+            "version": "1.0",
+            "created_at": time.time(),
+            "sandbox_id": sandbox_id,
+            "image": config.image,
+            "cwd": meta["cwd"],
+            "workdir": meta.get("workdir"),
+            "config": {
+                "image": config.image,
+                "cpu": config.cpu,
+                "memory": config.memory,
+                "network": config.network,
+                "readonly": config.readonly,
+                "shell": config.shell,
+                "rootless": config.rootless,
+                "env": config.env,
+                "workdir": config.workdir,
+                "capabilities": config.capabilities,
+                "dns": config.dns,
+                "_ignore_cgroups": getattr(config, "_ignore_cgroups", False),
+            },
+            "state_dir": "state",
+            "fs_dir": "fs",
+            "leave_running": leave_running,
+        }
+        with open(
+            os.path.join(checkpoint_path, "manifest.json"), "w", encoding="utf-8"
+        ) as f:
+            json.dump(manifest, f, indent=2)
+
+        if not leave_running:
+            meta["status"] = SandboxStatus.TERMINATED
+            proc = meta.get("proc")
+            if proc:
+                self._terminate_tree(proc)
+
+        # Ensure all saved state files and memory dumps created by root are accessible
+        # to the current process owner without exposing write permissions to all local users.
+        if not config.rootless and os.geteuid() != 0:
+            uid = os.getuid()
+            gid = os.getgid()
+            subprocess.run(
+                ["sudo", "chown", "-R", f"{uid}:{gid}", checkpoint_path],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["sudo", "chmod", "-R", "u+rwX,go+rX", checkpoint_path],
+                capture_output=True,
+            )
+
+        return {
+            "checkpoint_path": checkpoint_path,
+            "sandbox_id": sandbox_id,
+            "duration_seconds": duration,
+            "leave_running": leave_running,
+            "image": config.image,
+        }
+
+    def restore_sandbox(
+        self,
+        checkpoint_path: str,
+        cpu: Optional[float] = None,
+        memory: Optional[Union[str, int, float]] = None,
+        background: bool = True,
+        direct: bool = False,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Restore a new sandbox instance from a checkpoint bundle.
+
+        Args:
+            checkpoint_path: Directory path of the saved checkpoint bundle.
+            cpu: Optional CPU allocation override.
+            memory: Optional memory allocation override.
+            background: If True, restore guest memory asynchronously for sub-10ms start.
+            direct: If True, use O_DIRECT for reading checkpoint pages.
+            timeout_seconds: Timeout in seconds for restore to reach 'running' state.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            A unique string identifier for the restored sandbox instance.
+        """
+        checkpoint_path = os.path.abspath(checkpoint_path)
+        if not os.path.exists(checkpoint_path):
+            raise SandboxError(f"Checkpoint path does not exist: '{checkpoint_path}'")
+        manifest_file = os.path.join(checkpoint_path, "manifest.json")
+        state_dir = os.path.join(checkpoint_path, "state")
+
+        if not os.path.isfile(manifest_file):
+            raise SandboxError(
+                f"Missing manifest.json in checkpoint directory '{checkpoint_path}'."
+            )
+        if not os.path.isdir(state_dir):
+            raise SandboxError(
+                f"Missing state directory in checkpoint directory '{checkpoint_path}'."
+            )
+
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        cfg_dict = dict(manifest.get("config", {}))
+        if cpu is not None:
+            cfg_dict["cpu"] = cpu
+        if memory is not None:
+            cfg_dict["memory"] = memory
+        for key in ["env", "workdir", "network", "dns", "capabilities", "readonly"]:
+            if kwargs.get(key) is not None:
+                cfg_dict[key] = kwargs[key]
+
+        config = SandboxConfig(**cfg_dict)
+
+        if config.rootless:
+            raise SandboxError(
+                "gVisor (runsc) does not support restore in rootless mode."
+            )
+
+        sandbox_uuid = uuid.uuid4().hex[:12]
+        sandbox_id = f"ray-sandbox-{sandbox_uuid}"
+        root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
+
+        try:
+            os.makedirs(root_dir, mode=0o777, exist_ok=True)
+
+            # Pin base image in image cache
+            self._image_manager.pull_image(
+                config.image,
+                timeout_seconds=timeout_seconds,
+                instance_id=sandbox_id,
+            )
+
+            container_cwd = (
+                config.workdir or self._image_manager.get_workdir(config.image) or "/"
+            )
+
+            # Restore workdir scratch if explicit workdir on readonly rootfs
+            workdir_path = None
+            if config.workdir and config.readonly:
+                workdir_path = os.path.abspath(
+                    os.path.join(root_dir, config.workdir.lstrip("/"))
+                )
+                os.makedirs(workdir_path, mode=0o777, exist_ok=True)
+                saved_workdir = os.path.join(checkpoint_path, "fs", "workdir")
+                if os.path.isdir(saved_workdir):
+                    shutil.copytree(saved_workdir, workdir_path, dirs_exist_ok=True)
+
+            # Restore copy-on-write overlay upper layer
+            rootfs_dir = os.path.join(root_dir, "rootfs")
+            os.makedirs(rootfs_dir, exist_ok=True)
+            for cand in ("rootfs", "upper"):
+                saved_rootfs = os.path.join(checkpoint_path, "fs", cand)
+                if os.path.isdir(saved_rootfs):
+                    try:
+                        shutil.copytree(
+                            saved_rootfs,
+                            rootfs_dir,
+                            dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns(".gvisor.filestore*"),
+                        )
+                    except (PermissionError, shutil.Error):
+                        if not config.rootless and os.geteuid() != 0:
+                            try:
+                                subprocess.run(
+                                    [
+                                        "sudo",
+                                        "cp",
+                                        "-a",
+                                        os.path.join(saved_rootfs, "."),
+                                        rootfs_dir,
+                                    ],
+                                    check=True,
+                                )
+                                subprocess.run(
+                                    [
+                                        "sudo",
+                                        "find",
+                                        rootfs_dir,
+                                        "-name",
+                                        ".gvisor.filestore*",
+                                        "-delete",
+                                    ],
+                                    check=False,
+                                )
+                            except Exception as e:
+                                raise SandboxCreationError(
+                                    f"Failed to restore rootfs overlay via sudo: {e}"
+                                ) from e
+                        else:
+                            raise
+                    except Exception:
+                        pass
+                    break
+
+            # Prepare OCI bundle config
+            self._image_manager.prepare_oci_bundle(
+                root_dir=root_dir,
+                workdir_path=workdir_path,
+                container_cwd=container_cwd,
+                image=config.image,
+                env_dict=config.env,
+                cpu=config.cpu,
+                memory=config.memory,
+                readonly=config.readonly,
+                capabilities=config.capabilities,
+                network=config.network,
+                dns=config.dns,
+                _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            )
+        except Exception as err:
+            self._image_manager.release_image(config.image, sandbox_id)
+            shutil.rmtree(root_dir, ignore_errors=True)
+            raise SandboxCreationError(
+                f"Failed to prepare restored sandbox '{sandbox_id}': {err}"
+            ) from err
+
+        restore_args = self._build_restore_command(
+            config,
+            root_dir,
+            state_dir,
+            sandbox_id,
+            background=background,
+            direct=direct,
+        )
+
+        stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
+        stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
+        proc = subprocess.Popen(
+            restore_args,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=stderr_file,
+            start_new_session=True,
+        )
+
+        start_time = time.time()
+        timeout = timeout_seconds
+
+        try:
+            while True:
+                if proc.poll() is not None and proc.returncode != 0:
+                    stderr_file.seek(0)
+                    stderr_str = stderr_file.read()
+                    raise SandboxCreationError(
+                        f"gVisor restore failed to start: {stderr_str}"
+                    )
+
+                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+                res = subprocess.run(state_args, capture_output=True, text=True)
+                if res.returncode == 0:
+                    try:
+                        state_data = json.loads(res.stdout)
+                        status = state_data.get("status")
+                        if status == "running":
+                            break
+                        elif status in ("stopped", "error"):
+                            raise SandboxCreationError(
+                                f"Restored gVisor container stopped unexpectedly (status: {status})."
+                            )
+                    except Exception as e:
+                        if isinstance(e, SandboxCreationError):
+                            raise
+                        pass
+
+                if time.time() - start_time > timeout:
+                    raise SandboxTimeoutError(
+                        f"Restored gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
+                    )
+
+                time.sleep(0.01)
+        except Exception:
+            self._delete_container_state(config, sandbox_id)
+            self._terminate_tree(proc)
+            stderr_file.close()
+            try:
+                shutil.rmtree(root_dir)
+            except Exception:
+                subprocess.run(["sudo", "rm", "-rf", root_dir], capture_output=True)
+            self._image_manager.release_image(config.image, sandbox_id)
+            raise
+
+        self._sandbox_metadata[sandbox_id] = {
+            "root_dir": root_dir,
+            "workdir": workdir_path,
+            "cwd": container_cwd,
+            "config": config,
+            "proc": proc,
+            "stderr_file": stderr_file,
+            "status": SandboxStatus.RUNNING,
+        }
+        return sandbox_id
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
         args = ["runsc"]
+        if not config.rootless and os.geteuid() != 0:
+            args = ["sudo"] + args
         if config.rootless:
             args.append("--rootless")
         if (
@@ -558,6 +1013,57 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # foreground, so it lives and dies with this process group.
                 # It writes "1" to --ready-fd once the tap is configured:
                 # that is the go signal.
+                f"{slirp} --ready-fd=3 --netns-type=path "
+                "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
+                f"3>{ready_file} & "
+                "SLIRP=$!; "
+                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
+                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+            )
+            return ["bash", "-c", script]
+        return args
+
+    def _build_restore_command(
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        state_dir: str,
+        sandbox_id: str,
+        background: bool = True,
+        direct: bool = False,
+    ) -> List[str]:
+        """Build the full `runsc restore` argv, namespace-wrapped for network="public"."""
+        args = self._runsc_base_args(config)
+        use_netns = config.network == "public"
+        if use_netns and "--rootless" in args:
+            args = [a for a in args if a != "--rootless"]
+            if "--ignore-cgroups" not in args:
+                args.insert(1, "--ignore-cgroups")
+        if config.network:
+            runsc_network = "host" if config.network == "public" else config.network
+            args.extend(["--network", runsc_network])
+        args.extend(["restore", "--bundle", root_dir, "--image-path", state_dir])
+        if background:
+            args.append("--background")
+        if direct:
+            args.append("--direct")
+        args.append(sandbox_id)
+
+        if use_netns:
+            netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
+            ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
+            runsc = " ".join(shlex.quote(a) for a in args)
+            slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
+            script = (
+                "unshare --user --map-root-user --net --fork --kill-child "
+                f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
+                "HOLDER=$!; "
+                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
+                '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 f"{slirp} --ready-fd=3 --netns-type=path "
                 "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
                 f"3>{ready_file} & "

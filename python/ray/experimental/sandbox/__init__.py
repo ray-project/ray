@@ -114,8 +114,72 @@ def create(
     )
 
 
+@PublicAPI(stability="alpha")
+def restore(
+    checkpoint_path: str,
+    cpu: Optional[float] = None,
+    memory: Optional[Union[str, int, float]] = None,
+    env: Optional[Dict[str, str]] = None,
+    workdir: Optional[str] = None,
+    ttl_seconds: Optional[int] = None,
+    timeout_seconds: float = 30.0,
+    network: Optional[str] = None,
+    dns: Optional[List[str]] = None,
+    capabilities: Optional[List[str]] = None,
+    resources: Optional[Dict[str, float]] = None,
+    readonly: Optional[bool] = None,
+    **kwargs,
+) -> ActorHandle:
+    """Restore a remote sandbox environment from a checkpoint managed by a Ray actor.
+
+    Args:
+        checkpoint_path: Path to the checkpoint bundle directory.
+        cpu: Optional CPU allocation override.
+        memory: Optional memory allocation override.
+        env: Optional environment variables override.
+        workdir: Optional workdir override.
+        ttl_seconds: Optional time-to-live in seconds.
+        timeout_seconds: Timeout in seconds for restore.
+        network: Network mode override.
+        dns: DNS nameservers override.
+        capabilities: Linux capabilities override.
+        resources: Custom logical resource requirements.
+        readonly: Optional readonly override.
+        **kwargs: Additional options.
+
+    Returns:
+        A Sandbox actor handle.
+    """
+    actor_opts = {}
+    if cpu is not None and cpu >= 0:
+        actor_opts["num_cpus"] = cpu
+    if memory is not None:
+        parsed_mem = parse_memory_bytes(memory)
+        if parsed_mem is not None and parsed_mem > 0:
+            actor_opts["memory"] = parsed_mem
+    if resources:
+        actor_opts["resources"] = resources
+
+    return Sandbox.options(**actor_opts).remote(
+        restore_from=checkpoint_path,
+        cpu=cpu,
+        memory=memory,
+        env=env,
+        workdir=workdir,
+        ttl_seconds=ttl_seconds,
+        timeout_seconds=timeout_seconds,
+        rootless=False,
+        network=network,
+        dns=dns,
+        capabilities=capabilities,
+        readonly=readonly,
+        **kwargs,
+    )
+
+
 __all__ = [
     "create",
+    "restore",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",

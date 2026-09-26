@@ -279,6 +279,110 @@ class SandboxRuntime:
         """
         return self._backend.get_status(instance_id)
 
+    def checkpoint(
+        self,
+        instance_id: str,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Create a checkpoint of the running sandbox.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            checkpoint_path: Path where the checkpoint directory will be saved.
+                If None, a default directory inside the sandbox storage root is used.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            timeout_seconds: Timeout for the checkpoint operation.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            Absolute path to the checkpoint directory.
+        """
+        res = self._backend.checkpoint_sandbox(
+            sandbox_id=instance_id,
+            checkpoint_path=checkpoint_path,
+            leave_running=leave_running,
+            timeout_seconds=timeout_seconds,
+            **kwargs,
+        )
+        if isinstance(res, dict) and "checkpoint_path" in res:
+            return res["checkpoint_path"]
+        return checkpoint_path or ""
+
+    def restore(
+        self,
+        checkpoint_path: str,
+        cpu: Optional[float] = None,
+        memory: Optional[Union[str, int, float]] = None,
+        env: Optional[Dict[str, str]] = None,
+        workdir: Optional[str] = None,
+        ttl_seconds: Optional[int] = None,
+        timeout_seconds: float = 30.0,
+        network: Optional[str] = None,
+        dns: Optional[List[str]] = None,
+        capabilities: Optional[List[str]] = None,
+        readonly: Optional[bool] = None,
+        **kwargs,
+    ) -> str:
+        """Restore a sandbox instance from a previously saved checkpoint.
+
+        Args:
+            checkpoint_path: Path to the checkpoint directory.
+            cpu: CPU allocation override.
+            memory: Memory allocation override.
+            env: Environment variable overrides.
+            workdir: Working directory override.
+            ttl_seconds: Optional time-to-live for the restored sandbox.
+            timeout_seconds: Timeout for the restore operation.
+            network: Network mode override.
+            dns: DNS nameservers override.
+            capabilities: Linux capabilities override.
+            readonly: Readonly flag override.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            A unique string identifier for the restored sandbox.
+        """
+        instance_id = self._backend.restore_sandbox(
+            checkpoint_path=checkpoint_path,
+            cpu=cpu,
+            memory=memory,
+            env=env,
+            workdir=workdir,
+            timeout_seconds=timeout_seconds,
+            network=network,
+            dns=dns,
+            capabilities=capabilities,
+            readonly=readonly,
+            **kwargs,
+        )
+        if ttl_seconds is not None and ttl_seconds > 0:
+            timer = threading.Timer(ttl_seconds, self._expire, args=(instance_id,))
+            timer.daemon = True
+            self._ttl_timers[instance_id] = timer
+            timer.start()
+        return instance_id
+
+    def pause(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
+        """Pause a running sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            timeout_seconds: Timeout for pause operation.
+        """
+        self._backend.pause_sandbox(instance_id, timeout_seconds=timeout_seconds)
+
+    def resume(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
+        """Resume a paused sandbox instance.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            timeout_seconds: Timeout for resume operation.
+        """
+        self._backend.resume_sandbox(instance_id, timeout_seconds=timeout_seconds)
+
     def delete(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance.
 

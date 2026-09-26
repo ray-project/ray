@@ -13,6 +13,7 @@ class SandboxStatus(Enum):
 
     PENDING = "PENDING"
     RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
 
@@ -150,5 +151,86 @@ class BaseSandboxBackend(ABC):
 
         Returns:
             Current SandboxStatus value.
+        """
+        pass
+
+    @abstractmethod
+    def checkpoint_sandbox(
+        self,
+        sandbox_id: str,
+        checkpoint_path: Optional[str] = None,
+        leave_running: bool = True,
+        compression: str = "none",
+        exclude_committed_zero_pages: bool = True,
+        direct: bool = False,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Save the sandbox state to a checkpoint bundle directory.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            checkpoint_path: Directory path where the checkpoint bundle will be saved.
+                If None, a default path inside the sandbox directory will be used.
+            leave_running: If True, keep the sandbox running after checkpointing.
+            compression: Compression level ('none' or 'flate-best-speed').
+            exclude_committed_zero_pages: If True, exclude committed zero-filled pages.
+            direct: If True, use O_DIRECT for writing checkpoint pages.
+            timeout_seconds: Timeout in seconds for the checkpoint operation.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            Dictionary containing checkpoint metadata.
+        """
+        pass
+
+    @abstractmethod
+    def restore_sandbox(
+        self,
+        checkpoint_path: str,
+        cpu: Optional[float] = None,
+        memory: Optional[Union[str, int, float]] = None,
+        background: bool = True,
+        direct: bool = False,
+        timeout_seconds: float = 30.0,
+        **kwargs,
+    ) -> str:
+        """Restore a new sandbox instance from a checkpoint bundle.
+
+        Args:
+            checkpoint_path: Directory path of the saved checkpoint bundle.
+            cpu: Optional CPU allocation override.
+            memory: Optional memory allocation override.
+            background: If True, restore guest memory asynchronously for sub-10ms start.
+            direct: If True, use O_DIRECT for reading checkpoint pages.
+            timeout_seconds: Timeout in seconds for restore to reach 'running' state.
+            **kwargs: Backend-specific arguments.
+
+        Returns:
+            A unique string identifier for the restored sandbox instance.
+        """
+        pass
+
+    @abstractmethod
+    def pause_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Pause all processes inside the sandbox without disk serialization.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            timeout_seconds: Optional timeout for the pause operation.
+        """
+        pass
+
+    @abstractmethod
+    def resume_sandbox(
+        self, sandbox_id: str, timeout_seconds: Optional[float] = None
+    ) -> None:
+        """Resume execution of a paused sandbox.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            timeout_seconds: Optional timeout for the resume operation.
         """
         pass
