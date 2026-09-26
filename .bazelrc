@@ -50,6 +50,11 @@ build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"
 build:windows --cxxopt="/std:c++17"
 build:windows --cxxopt="/utf-8"
+# Compile out protobuf's deprecated Arena::CreateMessage shim. GCC 10 (the
+# manylinux2014 devtoolset) warns on the shim's own body in every file that
+# includes arena.h, which -Werror turns into an error. Nothing calls it.
+build --cxxopt="-DPROTOBUF_FUTURE_REMOVE_CREATEMESSAGE"
+build --host_cxxopt="-DPROTOBUF_FUTURE_REMOVE_CREATEMESSAGE"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"
@@ -297,3 +302,6 @@ build:macos --host_copt=-mmacosx-version-min=12.0
 build:macos --host_linkopt=-mmacosx-version-min=12.0
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off
+# Emit Java 8 bytecode. rules_java 7.x defaulted to 8; 8.x defaults to 11, which
+# breaks consumers on a Java 8 runtime (e.g. RayDP).
+build --java_language_version=8
