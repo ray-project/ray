@@ -25,6 +25,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.serve._private.constants import RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -105,6 +106,15 @@ def _build_openai_ingress_request_router(
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
+    if (
+        llm_config.lora_config is not None
+        and not RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+    ):
+        raise ValueError(
+            "LoRA multiplexing with direct streaming requires "
+            "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1."
+        )
+
     ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
     if is_kv_aware(llm_config):
         runtime_env = _get_tokenizing_router_runtime_env(llm_config)
@@ -119,6 +129,9 @@ def _build_openai_ingress_request_router(
     return deployment.bind(
         server=server,
         llm_config=llm_config if is_kv_aware(llm_config) else None,
+        base_model_id=(
+            llm_config.model_id if llm_config.lora_config is not None else None
+        ),
     )
 
 
