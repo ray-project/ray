@@ -5349,6 +5349,8 @@
   cluster:
     byod:
       runtime_env:
+        HF_HOME: "/home/ray/.cache/huggingface"
+        RAY_LLM_BENCHMARK_DATASET_PATH: "/tmp/ray_llm_benchmark_dataset"
         VLLM_DISABLE_COMPILE_CACHE: "1"
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
