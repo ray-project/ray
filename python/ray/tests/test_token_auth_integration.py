@@ -715,6 +715,46 @@ def test_ray_init_connect_reuses_existing_token(address, propagate_logs, caplog)
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
+def test_ray_init_connect_auth_off_cluster_stays_disabled():
+    """ray.init() with a token available stays disabled when the running
+    cluster has auth off, so the cluster's calls into the driver succeed."""
+    from ray._private.authentication_test_utils import set_default_auth_token
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    set_default_auth_token("c" * 64)
+
+    env = os.environ.copy()
+    env["RAY_AUTH_MODE"] = "disabled"
+    env.pop("RAY_AUTH_TOKEN", None)
+    env.pop("RAY_AUTH_TOKEN_PATH", None)
+    env.pop("RAY_ADDRESS", None)
+
+    try:
+        _run_ray_start_and_verify_status(
+            ["--head", "--port=0"], env, expect_success=True
+        )
+
+        os.environ.pop("RAY_AUTH_MODE", None)
+        reset_auth_token_state()
+        ray.init()
+
+        assert get_authentication_mode() == AuthenticationMode.DISABLED
+
+        # Actor creation needs the GCS to call back into the driver.
+        @ray.remote
+        class A:
+            def ping(self):
+                return "ok"
+
+        assert ray.get(A.remote().ping.remote()) == "ok"
+    finally:
+        _cleanup_ray_start(env)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
 @pytest.mark.parametrize(
     "auth_mode, expect_warn",
     [
