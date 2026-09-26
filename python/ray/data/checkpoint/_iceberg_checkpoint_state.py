@@ -5,7 +5,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Dict, List, Optional
 
-from pyarrow.fs import FileSelector, FileType
+from pyarrow.fs import FileInfo, FileSelector, FileType
 
 from ray.data._internal.util import call_with_retry
 from ray.data.checkpoint.checkpoint_writer import PENDING_CHECKPOINT_SUFFIX
@@ -120,7 +120,7 @@ class IcebergCheckpointState:
 
         namespace_info = self._filesystem.get_file_info(self._namespace_path)
         if namespace_info.type != FileType.NotFound:
-            actual = self._read_namespace()
+            actual = self._read_namespace(namespace_info)
             self._validate_namespace(actual, expected)
             return actual
 
@@ -131,7 +131,7 @@ class IcebergCheckpointState:
         def publish() -> None:
             final_info = self._filesystem.get_file_info(self._namespace_path)
             if final_info.type != FileType.NotFound:
-                self._validate_namespace(self._read_namespace(), expected)
+                self._validate_namespace(self._read_namespace(final_info), expected)
                 return
 
             with self._filesystem.open_output_stream(temporary_path) as stream:
@@ -143,8 +143,11 @@ class IcebergCheckpointState:
             final_info = self._filesystem.get_file_info(self._namespace_path)
             if final_info.type == FileType.NotFound:
                 self._filesystem.move(temporary_path, self._namespace_path)
+                actual = self._read_namespace()
+            else:
+                actual = self._read_namespace(final_info)
 
-            self._validate_namespace(self._read_namespace(), expected)
+            self._validate_namespace(actual, expected)
 
         try:
             self._retry_io(publish, "publish the Iceberg checkpoint namespace")
@@ -215,8 +218,11 @@ class IcebergCheckpointState:
         self._retry_io(delete_directory, "delete the Iceberg checkpoint namespace")
 
     def _promote_checkpoint(self, checkpoint: PendingOperationCheckpoint) -> None:
-        pending_type = self._filesystem.get_file_info(checkpoint.pending_path).type
-        committed_type = self._filesystem.get_file_info(checkpoint.committed_path).type
+        pending_info, committed_info = self._filesystem.get_file_info(
+            [checkpoint.pending_path, checkpoint.committed_path]
+        )
+        pending_type = pending_info.type
+        committed_type = committed_info.type
         self._validate_checkpoint_file_type(checkpoint.pending_path, pending_type)
         self._validate_checkpoint_file_type(checkpoint.committed_path, committed_type)
 
@@ -232,10 +238,14 @@ class IcebergCheckpointState:
         entries = self._filesystem.get_file_info(
             FileSelector(self._metadata_path, recursive=True, allow_not_found=True)
         )
+        metadata_prefix = self._metadata_path.rstrip("/") + "/"
         for entry in entries:
-            relative_path = posixpath.relpath(entry.path, self._metadata_path)
+            entry_path = entry.path
+            if not entry_path.startswith(metadata_prefix):
+                continue
+            relative_path = entry_path[len(metadata_prefix) :]
             components = set(relative_path.split("/"))
-            if components.intersection(_LEGACY_COMPONENTS) or entry.path.endswith(
+            if components.intersection(_LEGACY_COMPONENTS) or entry_path.endswith(
                 ".arrow"
             ):
                 raise ValueError(
@@ -258,8 +268,11 @@ class IcebergCheckpointState:
                     "has no Iceberg namespace identity. Use a new checkpoint path."
                 )
 
-    def _read_namespace(self) -> IcebergCheckpointNamespace:
-        info = self._filesystem.get_file_info(self._namespace_path)
+    def _read_namespace(
+        self, info: Optional[FileInfo] = None
+    ) -> IcebergCheckpointNamespace:
+        if info is None:
+            info = self._filesystem.get_file_info(self._namespace_path)
         if info.type != FileType.File:
             raise ValueError(
                 f"Iceberg checkpoint namespace {self._namespace_path!r} is not a file."
