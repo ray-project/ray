@@ -8,6 +8,7 @@ the bundler.
 """
 
 import pickle
+from dataclasses import replace
 from typing import Dict
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
+from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import LineageTracker
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.streaming_executor_state import (
@@ -249,14 +251,47 @@ def test_lost_child_reconstructs_across_graph_shapes(
     assert len(_nodes(tracker)) == num_blocks + num_children
 
 
+def test_reconstruction_stamp_survives_schema_divergence():
+    """``OpState.add_output`` rebuilds a bundle whose schema diverges from the
+    operator's, field by field. The stamp must survive the rebuild, or the
+    re-execution is bundled and submitted as a fresh task.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
+    from ray.data._internal.execution.streaming_executor_state import (
+        dedupe_schemas_with_validation,
+    )
+    from ray.data.block import BlockMetadata
+
+    stamp = ReconstructionStamp(data_task_id="child:0", plan_id="plan_a")
+    meta = BlockMetadata(num_rows=2, size_bytes=16, exec_stats=None, input_files=None)
+    # The same column comes back all nulls on the re-run, so it is inferred as null.
+    bundle = RefBundle(
+        blocks=[BlockEntry(ray.ObjectRef(b"1" * 28), meta)],
+        schema=pa.schema([("x", pa.null())]),
+        owns_blocks=True,
+        reconstruction_stamp=stamp,
+    )
+
+    rebuilt, diverged = dedupe_schemas_with_validation(
+        pa.schema([("x", pa.int64())]), bundle, enforce_schemas=False
+    )
+
+    assert diverged and rebuilt is not bundle
+    assert rebuilt.reconstruction_stamp == stamp
+
+
 def test_reconstruction_input_bypasses_the_bundler(
     ray_start_regular_shared,
 ):  # noqa: F405
     """A reconstruction input must reach submission exactly as assembled.
 
-    This holds for a child's input set and for a re-injected seed's input.
-    ``RebundleQueue`` would hold it back, merge it with other pending input, or slice
-    it to hit the row target. Any of those runs the task against the wrong blocks.
+    This holds for a child's input set and for a re-injected seed's input, which both
+    carry a ``reconstruction_stamp``. ``RebundleQueue`` would hold it back, merge it
+    with other pending input, or slice it to hit the row target. Any of those runs the
+    task against the wrong blocks.
     """
     from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
     from ray.data._internal.execution.util import make_ref_bundles
@@ -281,21 +316,14 @@ def test_reconstruction_input_bypasses_the_bundler(
     assert bundler.num_blocks() == 1
 
     # A stamped reconstruction input goes straight to submission.
-    stamped = make_ref_bundles([[2]])[0]
-    # pyrefly: ignore[missing-attribute]
-    stamped_id = stamped.block_refs[0].hex()
-    op._pending_child_ids[stamped_id] = ("child:0", "plan_a")
+    stamped = replace(
+        make_ref_bundles([[2]])[0],
+        reconstruction_stamp=ReconstructionStamp(
+            data_task_id="child:0", plan_id="plan_a"
+        ),
+    )
     op._add_input_inner(stamped, 0)
     assert scheduled == [(stamped, True)]
-    assert bundler.num_blocks() == 1
-    # Read, not consumed: `_lineage_for_submission` still needs it to name the task.
-    assert op._pending_child_ids == {stamped_id: ("child:0", "plan_a")}
-
-    # A re-injected seed's input goes straight to submission too.
-    seed_input = make_ref_bundles([[3]])[0]
-    op.stamp_seed_reinjection("seed:0", "plan_a", seed_input)
-    op._add_input_inner(seed_input, 0)
-    assert scheduled[-1] == (seed_input, True)
     assert bundler.num_blocks() == 1
 
 

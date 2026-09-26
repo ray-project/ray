@@ -6,7 +6,10 @@ import pytest
 
 from ray import ObjectRef
 from ray.data._internal.execution.interfaces import BlockSlice, RefBundle
-from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    BlockEntry,
+    ReconstructionStamp,
+)
 from ray.data.block import BlockMetadata
 
 _TEST_SCHEMA = pa.schema([("col", pa.int64())])
@@ -478,6 +481,12 @@ def test_ref_bundle_eq_and_hash():
 
     diff_bundle_4 = replace(bundle, slices=(None,))
     assert bundle != diff_bundle_4 and hash(bundle) != hash(diff_bundle_4)
+
+    diff_bundle_5 = replace(
+        bundle,
+        reconstruction_stamp=ReconstructionStamp(data_task_id="task:0", plan_id="plan"),
+    )
+    assert bundle != diff_bundle_5 and hash(bundle) != hash(diff_bundle_5)
 
     # Differing block ref
     diff_ref_bundle = replace(bundle, blocks=[BlockEntry(ref_b, meta)])

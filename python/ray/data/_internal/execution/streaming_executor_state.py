@@ -30,6 +30,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     Waitable,
 )
+from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -750,9 +751,15 @@ def _reconstruct_lost_object(
         # `OpState.output_queue` of the source is the seed op's `input_queues[0]`
         # (same object, wired in `build_streaming_topology`).
         # Backpressure gates the resubmission like any other input.
-        # Carry the seed's identity across to its resubmission; without it the
-        # resubmitted bundle is minted a fresh id and the plan never resolves.
-        seed_op.stamp_seed_reinjection(seed_id, plan_id, seed_input)
+        # The seed's identity travels on the bundle as its `reconstruction_stamp`.
+        # Without it the resubmitted bundle is minted a fresh id and the plan never
+        # resolves.
+        seed_input = dataclasses.replace(
+            seed_input,
+            reconstruction_stamp=ReconstructionStamp(
+                data_task_id=seed_id, plan_id=plan_id
+            ),
+        )
         source_op = seed_op.input_dependencies[0]
         topology[source_op].add_output(seed_input)
         logger.info(
@@ -1301,6 +1308,7 @@ def dedupe_schemas_with_validation(
             schema=old_schema,
             owns_blocks=bundle.owns_blocks,
             output_split_idx=bundle.output_split_idx,
+            reconstruction_stamp=bundle.reconstruction_stamp,
             _cached_object_meta=bundle._cached_object_meta,
             _cached_preferred_locations=bundle._cached_preferred_locations,
         ),

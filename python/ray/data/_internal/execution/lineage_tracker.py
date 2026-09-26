@@ -132,11 +132,12 @@ class LineageTracker:
         self, block_ids: Iterable[BlockId]
     ) -> List[ParentBlockOutput]:
         """
-        Resolve a task's input blocks into the dependencies to register it with.
+        Resolve the (producing task logical ID, output index) pair each of the blocks corresponds to
+        for a task that is being submitted.
 
         Blocks with no recorded producer are skipped: they were not produced by
         a tracked task. A seed task's input, for instance, comes from the source
-        rather than from any task.
+        rather than from any task, so it will have no producer task.
 
         Args:
             block_ids: IDs of the blocks the task takes as input.
@@ -145,9 +146,11 @@ class LineageTracker:
             The dependencies to pass to ``register_task_submission``.
 
         Note:
-            Entries are consumed, since a block is only ever dispatched to one
-            task. That keeps this bounded by the number of blocks in flight
+            Entries are consumed since a block is only ever dispatched to one
+            task (except for outputs from the final operator, which must be explicitly GC'd as there is no consumer)
+            That keeps this bounded by the number of blocks in flight
             rather than growing for the lifetime of the dataset.
+            TODO(ayushkum): figure out the GC for the final operator's outputs.
         """
         resolved = (
             self._block_id_to_parent_output.pop(block_id, None)

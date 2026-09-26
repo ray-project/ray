@@ -6,13 +6,11 @@ import logging
 import math
 import time
 from abc import ABC, abstractmethod
-from collections import deque
 from dataclasses import replace
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Deque,
     Dict,
     Final,
     Iterable,
@@ -68,10 +66,10 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
+    ReconstructionStamp,
     _iter_sliced_blocks,
 )
 from ray.data._internal.execution.lineage_tracker import (
-    BlockId,
     DataTaskId,
     ObjectReuseStatus,
     ParentBlockOutput,
@@ -106,10 +104,6 @@ from ray.data.block import (
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
-
-# The identity stamped onto a bundle: the data task id its consumer must be
-# submitted under, and the reconstruction plan that submission serves.
-ReconstructionStamp = Tuple[DataTaskId, PlanId]
 
 SAFE_DEFAULT_LOGICAL_MEMORY_PER_CPU: Final[int] = int(
     4
@@ -291,21 +285,12 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # tracker stores ids, not bundles. No extra memory -- the source operator
         # holds these same bundles for the whole run anyway.
         self._seed_task_inputs: Dict[DataTaskId, RefBundle] = {}
-        # block hex -> the task id a re-injected seed must be submitted under.
-        # `_reconstruct_lost_object` writes it, submission reads and removes it.
-        # A queue: re-injection reuses the *same* bundle, so two losses tracing
-        # back to one seed submit both as pending.
-        self._pending_seed_ids: Dict[BlockId, Deque[ReconstructionStamp]] = {}
-        # block hex -> the task id a reconstruction child must be submitted under.
-        # The producing operator writes it when it releases the child's inputs;
-        # submission reads and removes it. Also tells `_add_input_inner` to skip
-        # the bundler for these blocks. A single value: each release stamps
-        # freshly produced blocks, so two releases never collide on a key.
-        self._pending_child_ids: Dict[BlockId, ReconstructionStamp] = {}
-        # Re-produced blocks held back until every parent of a reconstruction
-        # child has produced its share, then handed over as one bundle by
-        # whichever parent finishes last. Collected on the producer, so the whole
-        # set is in hand synchronously -- see `_release_reconstruction_children`.
+        # For lineage reconstruction:
+        # Mapping of reconstruction plan ID -> blocks withheld (expressed as a mapping of parent block output to actual RefBundle) until every parent of a reconstruction
+        # child has produced the required blocks, and the reconstruction child task(s) can be scheduled with
+        # the complete set(s) of input blocks. For each plan ID, whichever parent task finishes last hands
+        # over the input set for that plan as one bundle carrying the child's `ReconstructionStamp`.
+        # See `_release_reconstruction_blocks_to_child` for more details.
         self._reconstruction_outputs: Dict[
             PlanId, Dict[ParentBlockOutput, RefBundle]
         ] = {}
@@ -580,17 +565,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # already bundled by the parent operator. Seed inputs are bundled by this
         # operator's bundler before they are stored in `_seed_task_inputs`, so they
         # should also be submitted without bundling. Re-bundling could merge or slice
-        # them, which would modify the inputs passed to the reconstruction tasks.
+        # input blocks, which would incorrectly modify the inputs passed to the reconstruction tasks.
         #
         # Skipping the bundler does not skip backpressure, because `add_input` is only
         # called for operators that `get_eligible_operators` has already cleared.
-        if (
-            self._pending_child_ids
-            and any(entry.ref.hex() in self._pending_child_ids for entry in refs.blocks)
-        ) or (
-            self._pending_seed_ids
-            and any(entry.ref.hex() in self._pending_seed_ids for entry in refs.blocks)
-        ):
+        if refs.reconstruction_stamp is not None:
             self._try_schedule_task(refs, strict=True)
             return
 
@@ -697,63 +676,22 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def retained_seed_input(self, seed_task_id: str) -> Optional[RefBundle]:
         return self._seed_task_inputs.get(seed_task_id)
 
-    def stamp_seed_reinjection(
-        self, seed_task_id: str, plan_id: str, seed_input: RefBundle
-    ) -> None:
-        """Carry a re-injected seed's identity across to its resubmission.
-
-        A seed's input comes from the source rather than from a task, so no producer
-        recorded it and `_lineage_for_submission` cannot look it up. Without this the
-        re-injected bundle is minted a fresh id and the plan never resolves.
-
-        Every block of the bundle is stamped. The stamp also tells `_add_input_inner`
-        to skip the bundler, so the bundle is resubmitted exactly as it first ran.
-        """
-        for block_ref in seed_input.block_refs:
-            self._pending_seed_ids.setdefault(block_ref.hex(), deque()).append(
-                (seed_task_id, plan_id)
-            )
-
     def _lineage_for_submission(
         self,
         lineage_tracker: "LineageTracker",
         task_index: int,
         inputs: RefBundle,
     ) -> Tuple[DataTaskId, Optional[PlanId], List[ParentBlockOutput]]:
-        """Work out what this attempt should register with ``lineage_tracker``.
+        """Return the metadata this task that is being submitted should register with ``lineage_tracker``.
 
         Only called for a lineage-tracked operator. Returns
-        ``(data_task_id, plan_id, dependencies)``, where ``plan_id`` is the plan
-        this attempt serves -- ``None`` for a fresh attempt.
+        ``(data_task_id, plan_id, dependencies)``, where ``plan_id`` is the reconstruction plan ID
+        if this is a reconstruction task. ``plan_id`` is ``None`` for a fresh task.
 
-        A fresh attempt is named ``f"{self.id}:{task_index}"``. A *reconstruction*
-        must re-use the original logical id instead, or the plan never resolves and
+        A fresh task returns Data task ID ``f"{operator_id}:{task_index}"``. A *reconstruction* attempt
+        must re-use the original logical id of the original task attempt, or the plan never resolves and
         the graph grows a duplicate node.
         """
-        # A re-injected seed is the one identity that cannot be looked up: its input
-        # came from the source rather than from a task, so no producer ever recorded
-        # it. `_reconstruct_lost_object` carries the id across instead. Check first --
-        # the lookup below would find nothing for these blocks.
-        #
-        # Every block of the seed input is stamped, so drain this bundle's entry from
-        # *all* of them rather than stopping at the first. A leftover entry would
-        # otherwise be picked up by a later re-injection of the same bundle and pair
-        # it with the wrong plan.
-        seed = None
-        if self._pending_seed_ids:
-            for block_ref in inputs.block_refs:
-                queued = self._pending_seed_ids.get(block_ref.hex())
-                if not queued:
-                    continue
-                claimed = queued.popleft()
-                if not queued:
-                    del self._pending_seed_ids[block_ref.hex()]
-                if seed is None:
-                    seed = claimed
-        if seed is not None:
-            seed_id, plan_id = seed
-            return seed_id, plan_id, []
-
         # Pass every ref rather than just ``block_refs[0]``. `RebundleQueue` parks
         # zero-row bundles and prepends them on the next merge, so the block of
         # interest is not necessarily first.
@@ -761,35 +699,26 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             block_ref.hex() for block_ref in inputs.block_refs
         )
 
-        # A re-produced block carries the identity of the child it is owed to. Pop
-        # every match rather than stopping at the first: a bundle can merge several
-        # of them, and a stamp left behind would misidentify some later task.
-        reconstruction = None
-        if self._pending_child_ids:
-            for block_ref in inputs.block_refs:
-                child = self._pending_child_ids.pop(block_ref.hex(), None)
-                if child is not None and reconstruction is None:
-                    reconstruction = child
-
-        if reconstruction is not None:
-            data_task_id, plan_id = reconstruction
-            return data_task_id, plan_id, dependencies
+        stamp = inputs.reconstruction_stamp
+        if stamp is not None:
+            assert self.owns_data_task(stamp.data_task_id), stamp
+            return stamp.data_task_id, stamp.plan_id, dependencies
 
         return self._data_task_id_for(task_index), None, dependencies
 
-    def _release_reconstruction_children(
+    def _release_reconstruction_blocks_to_child(
         self, data_task_id: str, plan_id: str, task_index: int
     ) -> None:
-        """Release the reconstruction children whose whole input set is now in hand.
+        """Release the reconstruction blocks that are now ready to be consumer by a child reconstruction task.
 
-        Called from the completing parent's task-done callback. Every parent of a child
-        is a task of this operator, and each one's re-produced outputs were withheld
-        into ``_reconstruction_outputs`` as they were generated, so the parent that
-        completes last holds the child's full input set and can hand it downstream as a
-        single bundle.
+        Called from the completing parent's task-done callback. 
+        For a downstream reconstruction child task, the parent task that completes last holds the full input
+        set of reconstruction blocks, and can release it to the operator's output queue for the child task to be
+        scheduled and consume.
 
-        The assembled bundle is stamped with the child's identity, because a
-        reconstruction child must be submitted under its *original* id.
+        The assembled bundle carries the reconstruction child task's data task ID and plan ID as its
+        ``reconstruction_stamp``, because a reconstruction child task must be submitted
+        under its *original* id, and the current reconstruction plan.
         """
         held = self._reconstruction_outputs.get(plan_id, {})
         for child_task_id, requirements in self._lineage_tracker.get_pending_children(
@@ -826,35 +755,20 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 )
                 continue
 
-            inputs = RefBundle.merge_ref_bundles([held.pop(slot) for slot in slots])
-            self._stamp_reconstruction_child(child_task_id, plan_id, inputs)
-            # Queued under the completing task's index, just before this callback
-            # finalizes that key, so the bundle travels the ordinary path downstream
-            # (backpressure, metrics and `add_output` all unchanged).
+            # Create a complete RefBundle containing all reconstruction blocks wittheld for a child task,
+            # stamp it with the child's data task ID and the current reconstruction plan ID.
+            inputs = replace(
+                RefBundle.merge_ref_bundles([held.pop(slot) for slot in slots]),
+                reconstruction_stamp=ReconstructionStamp(
+                    data_task_id=child_task_id, plan_id=plan_id
+                ),
+            )
+            # Add to the output queue of the current task
             self._output_queue.add(inputs, key=task_index)
             self._metrics.on_output_queued(inputs)
 
         if not held:
             self._reconstruction_outputs.pop(plan_id, None)
-
-    def _stamp_reconstruction_child(
-        self, child_task_id: str, plan_id: str, inputs: RefBundle
-    ) -> None:
-        """Store a mapping of the input bundle to the (child task, plan ID) it belongs to.
-
-        The bundle travels downstream through the normal output queue, and the child op
-        needs to the original child task ID and plan ID for scheduling it as a reconstruction task.
-        When that operator submits a task for these blocks, it reuses the child's
-        original id, so the lineage tracker sees the plan's re-execution rather than
-        a new task.
-        """
-        # The executor only builds a lineage tracker for map-only plans, so the
-        # child's owner is this operator's single downstream map.
-        (child_op,) = self.output_dependencies
-        assert isinstance(child_op, MapOperator), type(child_op)
-        assert child_op.owns_data_task(child_task_id), child_task_id
-        for block_ref in inputs.block_refs:
-            child_op._pending_child_ids[block_ref.hex()] = (child_task_id, plan_id)
 
     def _submit_data_task(
         self,
@@ -885,10 +799,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             lineage_tracker.register_task_submission(
                 data_task_id, dependencies, plan_id
             )
-            if self._is_seed_operator():
+            # If this is a seed operator and this is a fresh task, store the input bundle.
+            if self._is_seed_operator() and plan_id is None:
                 # A seed consumes straight from an `InputDataBuffer`, so its input is
                 # durable and resubmittable. `register_task_failed` hands back seed
-                # *ids* and the tracker stores no `RefBundle`s, so keep it here.
+                # *ids* and the tracker stores no `RefBundle`s, so keep it here. Only
+                # the first attempt's input is kept. A re-execution's input is the
+                # same bundle with a `reconstruction_stamp` attached.
                 self._seed_task_inputs[data_task_id] = inputs
 
         # This task's next output_index. A per-task closure local, so it is scoped
@@ -918,7 +835,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     )
                     # REUSED: withhold until the child's whole input set is
                     # re-produced, then release it as one bundle
-                    # (`_release_reconstruction_children`). Emitting now would run the
+                    # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
                     # child against part of its input.
                     if status is ObjectReuseStatus.OBJECT_REUSED:
                         self._reconstruction_outputs.setdefault(plan_id, {})[
@@ -970,7 +887,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
                 if plan_id is not None:
-                    self._release_reconstruction_children(
+                    self._release_reconstruction_blocks_to_child(
                         data_task_id, plan_id, task_index
                     )
                 lineage_tracker.register_task_complete(data_task_id, plan_id)
