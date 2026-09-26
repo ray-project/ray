@@ -13,6 +13,21 @@ class MyDeployment:
 app = MyDeployment.bind()
 # __max_replicas_per_node_end__
 
+# __topology_spread_start__
+@serve.deployment(
+    num_replicas=6,
+    # Cover at least two TPU slices before packing the rest of the replicas.
+    topology_spread={"ray.io/tpu-slice-name": 2},
+    ray_actor_options={"num_cpus": 0.1},
+)
+class SlicedDeployment:
+    def __call__(self, request):
+        return "Hello!"
+
+
+sliced_app = SlicedDeployment.bind()
+# __topology_spread_end__
+
 # __placement_group_start__
 from ray import serve
 

@@ -589,6 +589,39 @@ class TestDeploymentSchema:
         ):
             DeploymentSchema.model_validate(deployment_schema)
 
+    def test_mutually_exclusive_topology_spread_and_gang_scheduling_config(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["topology_spread"] = {"ray.io/node-id": 2}
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Setting topology_spread is not allowed when "
+                "gang_scheduling_config is provided."
+            ),
+        ):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    @pytest.mark.parametrize("count", [True, "2", 2.0])
+    def test_topology_spread_counts_are_strict_integers(self, count):
+        """A bool or a string is rejected rather than converted to a count."""
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["topology_spread"] = {"ray.io/node-id": count}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_topology_spread_round_trips_through_deployment(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["topology_spread"] = {"ray.io/tpu-slice-name": 3}
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        deployment = schema_to_deployment(schema)
+        assert deployment._replica_config.topology_spread == {
+            "ray.io/tpu-slice-name": 3
+        }
+        assert deployment_to_schema(deployment).topology_spread == {
+            "ray.io/tpu-slice-name": 3
+        }
+
     def test_mutually_exclusive_placement_group_strategy_and_gang_scheduling_config(
         self,
     ):
@@ -1616,6 +1649,33 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
 
     schema = _deployment_info_to_schema("test_deployment", info)
     assert schema.max_replicas_per_node is DEFAULT.VALUE
+
+
+def test_deployment_info_to_schema_survives_revalidation():
+    """The details API wraps this schema in DeploymentDetails, which validates
+    it again, so anything copied in here has to leave the schema legal."""
+    from ray.serve._private.deployment_info import DeploymentInfo
+    from ray.serve.schema import _deployment_info_to_schema
+
+    rc = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+        topology_spread={"ray.io/tpu-slice-name": 2},
+    )
+    dc = DeploymentConfig.from_default(num_replicas=2)
+    info = DeploymentInfo(
+        deployment_config=dc,
+        replica_config=rc,
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.topology_spread == {"ray.io/tpu-slice-name": 2}
+
+    # Re-running the model validators is what the details API does.
+    DeploymentSchema.model_validate(schema.model_dump(exclude_unset=True))
 
 
 class TestTracingConfig:

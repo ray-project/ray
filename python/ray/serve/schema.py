@@ -514,6 +514,16 @@ class DeploymentSchema(BaseModel):
             "[1, 100]. "
         ),
     )
+    topology_spread: Dict[str, StrictInt] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "A dict from a node label key to the minimum number of distinct values "
+            "of that label the deployment's replicas must cover before the "
+            "scheduler may pack them, such as {'ray.io/node-id': 2} or "
+            "{'ray.io/tpu-slice-name': 3}. Overrides the cluster default from "
+            "RAY_SERVE_MIN_REPLICA_NODES for this deployment."
+        ),
+    )
     logging_config: LoggingConfig = Field(
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
@@ -678,6 +688,22 @@ class DeploymentSchema(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_topology_spread_and_gang_scheduling_config(self):
+        topology_spread = self.topology_spread
+        gang_scheduling_config = self.gang_scheduling_config
+
+        if topology_spread not in [
+            DEFAULT.VALUE,
+            None,
+        ] and gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting topology_spread is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_placement_group_strategy_and_gang_scheduling_config(self):
         placement_group_strategy = self.placement_group_strategy
         gang_scheduling_config = self.gang_scheduling_config
@@ -748,6 +774,11 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         request_router_config=info.deployment_config.request_router_config,
         rolling_update_percentage=info.deployment_config.rolling_update_percentage,
     )
+
+    # `topology_spread` lives on the replica config, so it needs copying by hand
+    # for operators to read back the floor the deployment is running with.
+    if info.replica_config.topology_spread is not None:
+        schema.topology_spread = info.replica_config.topology_spread
 
     if info.deployment_config.autoscaling_config is not None:
         schema.autoscaling_config = (

@@ -17,6 +17,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Multi-GPU inference with tensor parallelism | `placement_group_bundles` + `STRICT_PACK` | vLLM with `tensor_parallel_size=4` |
 | Target specific GPU types or zones | `label_selector` in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
+| Survive the loss of a node, zone, or TPU slice, then pack | `topology_spread` | Cover at least 2 slices, then pack the rest |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
 | Shard large embeddings across nodes | `placement_group_bundles` + `STRICT_SPREAD` | Recommendation model with distributed embedding table |
@@ -71,15 +72,15 @@ By default, Ray Serve uses a **spread scheduling strategy** that distributes rep
 - Balances load across the cluster
 - Helps prevent resource contention between replicas
 
-### Scheduling priority
+### Scheduling pipeline
 
-When scheduling a replica, the scheduler evaluates strategies in the following priority order:
+The scheduler places pending replicas largest resource request first. Serve chooses the node itself when pack scheduling is on, or when the deployment has a floor above 1 from `topology_spread` or `RAY_SERVE_MIN_REPLICA_NODES`. Otherwise it hands the replica to Ray Core with the `SPREAD` strategy. When Serve chooses, it works in three steps:
 
-1. **Placement groups**: If you specify `placement_group_bundles`, the scheduler uses a `PlacementGroupSchedulingStrategy` to co-locate the replica with its required resources. If you specify `placement_group_bundle_label_selector`, the scheduler will only select nodes with the required labels for each bundle.
-2. **Pack scheduling with node affinity**: If pack scheduling is enabled, the scheduler identifies the best available node by preferring non-idle nodes (nodes already running replicas) and using a best-fit algorithm to minimize resource fragmentation. It then uses a `NodeAffinitySchedulingStrategy` with soft constraints to schedule the replica on that node.
-  - **With labels**: If a `label_selector` is provided, the scheduler strictly filters candidate nodes to match the labels before selecting the best fit.
-  - **With fallback**: If a `fallback_strategy` is provided, the scheduler first attempts to pack on nodes matching the labels. If no matching nodes are available, it retries using the next fallback option.
-3. **Default strategy**: Falls back to `SPREAD` when pack scheduling isn't enabled.
+1. **Filter**: Apply each placement rule in turn and drop the nodes it rejects. A `label_selector` rejects nodes without matching labels. A floor rule from `topology_spread`, or from `RAY_SERVE_MIN_REPLICA_NODES` when the deployment sets none, rejects every node in a domain the deployment already occupies while the deployment covers fewer domains than its floor.
+2. **Score**: Rank the surviving nodes with the active scorer. The spread scorer is the default. It prefers the node with the fewest replicas of the same deployment, then the most free resources. Setting `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` selects the pack scorer, which prefers nodes that already run replicas and picks the tightest fit to minimize fragmentation. If a `fallback_strategy` is provided, the scheduler tries the primary labels first and then each fallback in order.
+3. **Bind**: Launch the replica on the chosen node with a soft `NodeAffinitySchedulingStrategy`. For deployments with `placement_group_bundles` and the `STRICT_PACK` strategy, the placement group is created with the chosen node as a soft target. Placement groups with other strategies are handed to Ray Core, which decides where the bundles land.
+
+Every rule in step 1 is also a label selector, and the launch carries it, including when Ray Core chooses the node. For a plain replica the selector is a preference: Ray tries nodes that satisfy the rules first and accepts any node the deployment's own selectors allow if none of those has room. A replica therefore never waits on a rule alone, and if the chosen node fills up before Ray places the replica, Ray still prefers a node that keeps the rule. Placement groups have no fallback selectors in Ray, so bundle 0, where the replica actor runs, carries the rules as a hard constraint and waits until a node that satisfies them has room. Replicas pinned to a node by the ingress request router, and gang replicas, skip the rules, because a hard constraint already places them.
 
 ### Downscaling behavior
 
@@ -88,6 +89,7 @@ When Ray Serve scales down a deployment, it intelligently selects which replicas
 1. **Non-running replicas first**: Pending, launching, or recovering replicas are stopped before running replicas.
 2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster. Among replicas on the same node, newer replicas are stopped before older ones.
 3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released. Among replicas on the head node, newer replicas are stopped before older ones.
+4. **Keep the floor**: A replica is skipped if stopping it would leave the deployment on fewer nodes, zones, or slices than its `topology_spread` floor, or the `RAY_SERVE_MIN_REPLICA_NODES` default, allows for the new replica count. Downscaling never collapses a spread deployment into one domain.
 
 :::{note}
 Running replicas on the head node isn't recommended for production deployments. The head node runs critical cluster processes such as the GCS and Serve controller, and replica workloads can compete for resources.
@@ -126,6 +128,42 @@ applications:
         num_replicas: 6
         max_replicas_per_node: 2
 ```
+
+### Spread across nodes, zones, or slices with `topology_spread`
+
+Use `topology_spread` to keep a deployment's replicas on at least a given number of distinct nodes, zones, racks, or TPU slices, and let the scheduler pack them beyond that. It's a dict from a node label key to a minimum count. Every node carries `ray.io/node-id`, so `{"ray.io/node-id": 2}` keeps the replicas on at least two nodes. `{"ray.io/tpu-slice-name": 2}` keeps them on at least two slices. Several keys are several independent rules, and the scheduler applies them all.
+
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __topology_spread_start__
+:end-before: __topology_spread_end__
+:language: python
+```
+
+You can also set it in a config file:
+
+```yaml
+applications:
+  - name: my_app
+    import_path: my_module:app
+    deployments:
+      - name: SlicedDeployment
+        num_replicas: 6
+        topology_spread:
+          ray.io/tpu-slice-name: 2
+```
+
+How the floor behaves:
+
+- The scheduler caps the floor by the replica count and by the number of distinct label values among live nodes, so a floor above the cluster never blocks a replica.
+- A node without the label is in no domain, so it can never raise the count. While the floor is unmet the scheduler skips it, otherwise a single unlabeled node would absorb every replica and the floor would never engage. Once the floor is met it is a candidate again. The launch keeps its own fallback chain, so a replica that fits nowhere else still lands there and never waits on the floor alone.
+- While the floor is unmet, the replica prefers nodes outside the occupied domains and falls back to any node its own `label_selector` allows, so a replica never waits on the floor alone. For a placement group, bundle 0 carries the rule as a hard constraint instead.
+- For a placement group whose strategy isn't `STRICT_PACK`, Ray Core chooses the nodes, and Serve learns the domain only once the replica runs. Until the floor is met, Serve starts the next replica of that deployment only after the previous one is up.
+- Downscaling skips a replica whose stop would drop the deployment below the floor for the new replica count.
+- A deployment that sets `topology_spread` replaces the cluster default from `RAY_SERVE_MIN_REPLICA_NODES` for itself. Other deployments keep the default.
+
+Serve rejects a config whose `label_selector`, `fallback_strategy` entry, or `placement_group_bundle_label_selector` names a key that `topology_spread` spreads over, because pinning a value and spreading over the same key contradict each other. Pin a different key, or drop the floor on that key.
+
+Compare this with `max_replicas_per_node`, which caps replicas per node and needs a new value whenever the replica count or node size changes. A floor states the availability goal directly and stays correct as the deployment scales. You can't set `topology_spread` together with `gang_scheduling_config`, because a gang's placement group is reserved before any replica exists.
 
 ### Reserve resources with placement groups
 
@@ -258,6 +296,19 @@ Label selectors and fallback strategies offer several advantages for Ray Serve d
 
 These environment variables modify Ray Serve's scheduling behavior. Set them before starting Ray.
 
+### `RAY_SERVE_MIN_REPLICA_NODES`
+
+**Default**: `1`
+
+The cluster default for the minimum number of distinct nodes each deployment's replicas must cover before the scheduler is free to pack them. A deployment that sets `topology_spread` uses its own floor instead. The effective floor is the smallest of this value, the deployment's replica count, and the number of active nodes, so a deployment with one replica is never blocked and a floor above the cluster size never excludes every node. The floor is enforced when placing replicas, when choosing replicas to stop during downscaling, and for either scorer.
+
+```bash
+export RAY_SERVE_MIN_REPLICA_NODES=2
+ray start --head
+```
+
+**When to use it:** Every deployment on the cluster should survive the loss of any one node without giving up pack scheduling on the rest of the replicas. With a floor of `2`, six replicas of one CPU each on two nodes with eight CPUs each land as `3/3` or `5/1` instead of `6/0`, and all sixteen CPUs stay usable. To set a floor for one deployment, or on a label other than the node, use `topology_spread` on the deployment instead.
+
 ### `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY`
 
 **Default**: `0` (disabled)
@@ -277,7 +328,7 @@ ray start --head
 **When to avoid pack scheduling:** High availability is critical and you want replicas spread across nodes
 
 :::{note}
-Pack scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because pack scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
+Replicas whose placement groups use the `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies are placed by Ray Core rather than by the Serve scheduler, because their bundles can land on several nodes and Serve can't predict which. With `STRICT_PACK`, all bundles are guaranteed to land on one node, so Serve chooses that node. Other deployments keep using the pipeline above, but the scheduler's view of free resources only counts the first bundle of such a group, so its node choices for other replicas are less precise while those groups are scaling.
 :::
 
 ### `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES`
