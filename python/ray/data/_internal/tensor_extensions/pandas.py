@@ -760,7 +760,7 @@ class TensorArray(
             ]
             values = _create_possibly_ragged_ndarray(values)
         elif isinstance(values, TensorArrayElement):
-            values = np.array([np.asarray(values)], copy=False)
+            values = np.asarray([np.asarray(values)])
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:
