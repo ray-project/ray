@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import List
+from typing import AsyncIterator, Dict, List
 
 import pytest
 
@@ -801,6 +801,244 @@ async def test_batch_generator_setters():
             await coro.__anext__() == expected_result
         with pytest.raises(StopAsyncIteration):
             await coro.__anext__()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+@pytest.mark.parametrize("use_gen", [False, True])
+@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "mixed-keyword-first"])
+async def test_batch_size_fn_args_kwargs(
+    use_class: bool, use_gen: bool, mode: str
+) -> None:
+    batches_seen = []
+    batch_decorator = serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=lambda items: sum(len(item) for item in items),
+    )
+
+    async def unary_func(items: List[str]) -> List[str]:
+        batches_seen.append(items)
+        return items
+
+    async def streaming_func(items: List[str]) -> AsyncIterator[List[str]]:
+        batches_seen.append(items)
+        yield items
+
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def unary_method(self, items: List[str]) -> List[str]:
+                return await unary_func(items)
+
+            @batch_decorator
+            async def streaming_method(
+                self, items: List[str]
+            ) -> AsyncIterator[List[str]]:
+                async for result in streaming_func(items):
+                    yield result
+
+        instance = Handler()
+        func = instance.streaming_method if use_gen else instance.unary_method
+    else:
+        func = batch_decorator(streaming_func if use_gen else unary_func)
+
+    if mode == "args":
+        calls = [func("ab"), func("cde")]
+    elif mode == "kwargs":
+        calls = [func(items="ab"), func(items="cde")]
+    elif mode == "mixed":
+        calls = [func("ab"), func(items="cde")]
+    else:
+        calls = [func(items="ab"), func("cde")]
+
+    awaitables = [call.__anext__() for call in calls] if use_gen else calls
+    results = await asyncio.wait_for(asyncio.gather(*awaitables), timeout=1)
+    assert results == ["ab", "cde"]
+    assert batches_seen == [["ab", "cde"]]
+    assert await func._is_batching_task_alive()
+
+    if use_gen:
+        for call in calls:
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(call.__anext__(), timeout=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+async def test_batch_size_fn_keyword_only_payload(use_class: bool) -> None:
+    batch_decorator = serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=lambda items: sum(len(item) for item in items),
+    )
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def method(self, *, items: List[str]) -> List[str]:
+                return items
+
+        func = Handler().method
+    else:
+
+        @batch_decorator
+        async def func(*, items: List[str]) -> List[str]:
+            return items
+
+    results = await asyncio.wait_for(
+        asyncio.gather(func(items="ab"), func(items="cde")), timeout=1
+    )
+    assert results == ["ab", "cde"]
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_oversized_keyword_payload() -> None:
+    @serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=lambda items: sum(len(item) for item in items),
+    )
+    async def func(*, items: List[str]) -> List[str]:
+        return items
+
+    with pytest.raises(
+        RuntimeError, match="Size of item is greater than max_batch_size"
+    ):
+        await asyncio.wait_for(func(items="too long"), timeout=1)
+
+    assert await asyncio.wait_for(func(items="valid"), timeout=1) == "valid"
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_gen", [False, True])
+async def test_batch_size_fn_rejects_omitted_default_without_killing_worker(
+    use_gen: bool,
+) -> None:
+    batch_size_fn_calls = []
+
+    def batch_size_fn(items: List[str]) -> int:
+        batch_size_fn_calls.append(items)
+        return sum(len(item) for item in items)
+
+    async def unary_func(items: List[str] = "default") -> List[str]:
+        return items
+
+    async def streaming_func(
+        items: List[str] = "default",
+    ) -> AsyncIterator[List[str]]:
+        yield items
+
+    func = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=batch_size_fn,
+    )(streaming_func if use_gen else unary_func)
+
+    async def invoke(*args, **kwargs):
+        call = func(*args, **kwargs)
+        if not use_gen:
+            return await call
+
+        result = await call.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await call.__anext__()
+        return result
+
+    assert await asyncio.wait_for(invoke("valid"), timeout=1) == "valid"
+    with pytest.raises(
+        TypeError,
+        match="requires an input value to pass to `batch_size_fn`",
+    ):
+        await asyncio.wait_for(invoke(), timeout=1)
+
+    assert await asyncio.wait_for(invoke(items="again"), timeout=1) == "again"
+    assert await func._is_batching_task_alive()
+    assert all(items for items in batch_size_fn_calls)
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_rejects_keywords_for_multi_input_handler() -> None:
+    batch_size_fn_calls = []
+
+    def batch_size_fn(items: List[str]) -> int:
+        batch_size_fn_calls.append(items)
+        return sum(len(item) for item in items)
+
+    @serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=batch_size_fn,
+    )
+    async def func(items: List[str], tag: List[str]) -> List[str]:
+        return [f"{item}:{item_tag}" for item, item_tag in zip(items, tag)]
+
+    # Preserve the existing multi-input positional behavior: batch_size_fn sizes
+    # each request using the first positional input.
+    assert await asyncio.wait_for(func("ok", "positional"), timeout=1) == (
+        "ok:positional"
+    )
+
+    calls_before_invalid_request = list(batch_size_fn_calls)
+    with pytest.raises(
+        TypeError,
+        match="keyword arguments are only supported for batch handlers with a "
+        "single input parameter",
+    ):
+        # Put the second parameter first to exercise flattened keyword ordering.
+        await asyncio.wait_for(func(tag="t", items="x" * 20), timeout=1)
+
+    assert batch_size_fn_calls == calls_before_invalid_request
+    assert await asyncio.wait_for(func("still-ok", "positional"), timeout=1) == (
+        "still-ok:positional"
+    )
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"value": "one"},
+        {"tag": "t", "items": "x" * 20},
+    ],
+)
+async def test_batch_size_fn_rejects_variadic_keyword_handler(
+    use_class: bool, kwargs: Dict[str, str]
+) -> None:
+    batch_size_fn_calls = []
+    batch_decorator = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=lambda items: batch_size_fn_calls.append(items) or len(items),
+    )
+
+    async def unary_func(**values: List[str]) -> List[str]:
+        return next(iter(values.values()))
+
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def method(self, **values: List[str]) -> List[str]:
+                return await unary_func(**values)
+
+        func = Handler().method
+    else:
+        func = batch_decorator(unary_func)
+
+    assert await func._is_batching_task_alive()
+    with pytest.raises(
+        TypeError,
+        match="variadic keyword parameters are not supported",
+    ):
+        await asyncio.wait_for(func(**kwargs), timeout=1)
+
+    assert batch_size_fn_calls == []
+    assert await func._is_batching_task_alive()
 
 
 @pytest.mark.asyncio

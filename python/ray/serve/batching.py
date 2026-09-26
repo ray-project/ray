@@ -5,7 +5,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from functools import wraps
-from inspect import isasyncgenfunction, iscoroutinefunction
+from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
     AsyncGenerator,
@@ -239,16 +239,9 @@ class _BatchQueue:
         if self.batch_size_fn is None:
             return len(batch)
 
-        # Extract the actual data items from requests to pass to batch_size_fn.
-        # We need to reconstruct the original arguments from flattened_args.
-        items = []
-        for request in batch:
-            # Recover the original arguments from flattened format
-            args, kwargs = recover_args(request.flattened_args)
-            # The batch function expects a single positional argument (the item)
-            # after 'self' has been extracted (if it was a method)
-            items.append(args[0])
-
+        # Flattened arguments alternate names and values, with `self` already
+        # removed. The first value is the item for either positional or keyword calls.
+        items = [request.flattened_args[1] for request in batch]
         return self.batch_size_fn(items)
 
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
@@ -924,6 +917,7 @@ def batch(
     _validate_batch_size_fn(batch_size_fn)
 
     def _batch_decorator(_func):
+        signature_parameters = extract_signature(_func)
         lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
             max_batch_size,
             batch_wait_timeout_s,
@@ -947,12 +941,42 @@ def batch(
                     break
 
         def enqueue_request(args, kwargs) -> asyncio.Future:
-            flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
+            flattened_args: List = flatten_args(signature_parameters, args, kwargs)
 
             # If the function is a method, remove self as an argument.
             self = extract_self_if_method_call(args, _func)
             if self is not None:
                 flattened_args = flattened_args[2:]
+
+            if batch_size_fn is not None:
+                input_parameters = (
+                    signature_parameters[1:]
+                    if self is not None
+                    else signature_parameters
+                )
+                if not flattened_args:
+                    raise TypeError(
+                        "A batch handler using `batch_size_fn` requires an input "
+                        "value to pass to `batch_size_fn`."
+                    )
+
+                _, keyword_args = recover_args(flattened_args)
+                if keyword_args and any(
+                    parameter.kind == Parameter.VAR_KEYWORD
+                    for parameter in input_parameters
+                ):
+                    raise TypeError(
+                        "When using `batch_size_fn`, variadic keyword parameters "
+                        "are not supported. Use an explicit single input parameter "
+                        "or pass multiple inputs positionally instead."
+                    )
+
+                if len(input_parameters) > 1 and keyword_args:
+                    raise TypeError(
+                        "When using `batch_size_fn`, keyword arguments are only "
+                        "supported for batch handlers with a single input parameter. "
+                        "Pass all arguments positionally instead."
+                    )
 
             batch_queue = lazy_batch_queue_wrapper.queue
 
