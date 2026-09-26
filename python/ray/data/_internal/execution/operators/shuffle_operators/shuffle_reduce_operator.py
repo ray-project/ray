@@ -84,6 +84,8 @@ class ShuffleReduceOp(PhysicalOperator):
         name: Display name shown in progress bars and logs.
         should_emit_empty_partitions: If True (default), an empty partition emits one
             schema-only placeholder block.
+        preserves_row_count: If False, the reduce may change the row count
+            (aggregation, fused map), so the output row total is unknown.
         fused_output_map_transformer: Set by ``FuseOperators`` when a
             ``TaskPoolMapOperator`` directly downstream is fused into this
             reduce: each reduce task applies it to its output blocks before
@@ -108,6 +110,7 @@ class ShuffleReduceOp(PhysicalOperator):
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleReduce",
         should_emit_empty_partitions: bool = True,
+        preserves_row_count: bool = True,
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
@@ -127,6 +130,9 @@ class ShuffleReduceOp(PhysicalOperator):
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._emit_empty_partitions: bool = should_emit_empty_partitions
+        # False when reduce_fn (aggregation) or a fused map can change the row
+        # count, so num_output_rows_total() can't borrow the map op's total.
+        self._preserves_row_count: bool = preserves_row_count
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Reduce task config & tracking -----------------------------------

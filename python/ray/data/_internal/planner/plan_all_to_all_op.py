@@ -217,6 +217,8 @@ def _plan_hash_shuffle_aggregate_v2(
         # block; a placeholder would carry the map's pre-finalize schema and
         # conflict with finalized non-empty partitions.
         should_emit_empty_partitions=False,
+        # Aggregation collapses each key group to one row.
+        preserves_row_count=False,
         name=(
             f"{prefix}HashAggregateReduce(key_columns={key_columns}, "
             f"num_partitions={num_partitions})"
