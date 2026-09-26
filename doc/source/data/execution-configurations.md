@@ -82,3 +82,15 @@ ctx.checkpoint_config = CheckpointConfig(
     delete_checkpoint_on_success=False,  # Preserves checkpoints after successful runs
 )
 ```
+
+#### Checkpointing Iceberg appends
+
+Ray Data supports job-level checkpointing for Iceberg writes in `APPEND` mode. The configured ID column must contain a stable, unique value for every source row and must remain present throughout the pipeline. Checkpointed Iceberg writes require the default checkpoint manager and filter.
+
+Use each checkpoint path for one Iceberg table and one logical writer. Don't run concurrent Dataset executions with the same checkpoint path. Ray binds retained checkpoint data to the table identifier and UUID and rejects reuse with a different table.
+
+Workers publish row IDs as pending only after they write their physical Iceberg files. The driver marks the Iceberg snapshot with the operation ID and commits those row checkpoints only after it confirms the marked snapshot. If a write fails before the catalog commit, the next execution discards the pending row checkpoints and recomputes those rows. This process can leave orphaned physical files that Iceberg maintenance should remove.
+
+If a catalog commit succeeds but returns an error, the next execution reloads the table and uses the marked snapshot to finish committing the row checkpoints without appending the rows again. The catalog must expose a successful commit on that refreshed read, and snapshot history must retain the operation marker until recovery finishes. This initial implementation doesn't preserve files from an uncommitted attempt or handle a commit that becomes visible only after Ray reloads the table.
+
+When `delete_checkpoint_on_success=True`, Ray removes checkpoint state only after it confirms the Iceberg snapshot and commits the row checkpoints. Set it to `False` to retain committed row IDs for later incremental executions.
