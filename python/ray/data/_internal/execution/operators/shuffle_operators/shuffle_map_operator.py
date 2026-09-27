@@ -393,6 +393,11 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         return {self._name: self._map_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
+        # The aggregation combiner (block_transformer) pre-aggregates each map
+        # task's input before partitioning, so the output row count is unknown
+        # until the maps run.
+        if self._block_transformer is not None:
+            return None
         return self._total_input_rows if self._total_input_rows > 0 else None
 
     def current_logical_usage(self) -> ExecutionResources:

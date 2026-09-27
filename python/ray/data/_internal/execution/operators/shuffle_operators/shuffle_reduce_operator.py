@@ -434,9 +434,10 @@ class ShuffleReduceOp(PhysicalOperator):
         return {self._name: self._output_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
-        # Multi-input reduces (e.g. join) can grow or shrink the row count, so it
-        # is unknown until the reducers run; a single-input reduce preserves it.
-        if self._num_inputs > 1:
+        # Multi-input reduces (e.g. join) and non-row-preserving reduces
+        # (aggregation, fused map) can grow or shrink the row count, so it is
+        # unknown until the reducers run.
+        if self._num_inputs > 1 or not self._preserves_row_count:
             return None
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp)
