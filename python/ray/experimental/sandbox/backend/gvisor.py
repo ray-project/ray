@@ -1,3 +1,4 @@
+import functools
 import json
 import logging
 import os
@@ -7,9 +8,10 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Sequence, Set, Union
 
-from ray.experimental.sandbox._internal import overlayfs
+import ray
+from ray.experimental.sandbox._internal import cdi, overlayfs
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -125,6 +127,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "and util-linux on the node image."
                 )
 
+        # Only `runsc run` needs the runsc args for the node's GPUs, such as
+        # --nvproxy. exec, kill, delete and state talk to the booted sandbox
+        # over a control socket. Resolve them before pull_image, so a node
+        # without a GPU CDI spec or with a driver gVisor doesn't support
+        # fails before pulling the image. _build_run_command then stays pure
+        # argv construction.
+        gpu_run_args = []
+        if config.gpu_ids:
+            self._validate_gpu_ids(config.gpu_ids)
+            gpu_run_args = self._resolve_gpu_run_args()
+
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
@@ -183,6 +196,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 capabilities=config.capabilities,
                 network=config.network,
                 dns=config.dns,
+                gpu_ids=config.gpu_ids,
                 _oci_spec_transform_fn=config._oci_spec_transform_fn,
             )
             # Read back the final spec, as written to config.json.
@@ -199,7 +213,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._image_manager.release_image(config.image, sandbox_id)
             raise
         run_args = self._build_run_command(
-            config, root_dir, sandbox_id, rootfs_overlay=rootfs_overlay
+            config, root_dir, sandbox_id, gpu_run_args, rootfs_overlay=rootfs_overlay
         )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
@@ -568,6 +582,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig,
         root_dir: str,
         sandbox_id: str,
+        gpu_run_args: Sequence[str] = (),
         rootfs_overlay: Optional[overlayfs.RootfsOverlay] = None,
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
@@ -610,6 +625,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         # Start from runsc's base arguments, then adjust them for this sandbox.
         args = self._runsc_base_args(config)
+        args.extend(gpu_run_args)
         if with_userns:
             # runsc gives every gofer an empty network namespace. By default,
             # all gofers under --root share one, created by the first gofer
@@ -697,6 +713,101 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except (subprocess.TimeoutExpired, ValueError):
             pass
 
+    @staticmethod
+    def _validate_gpu_ids(gpu_ids: List[str]) -> None:
+        """Raise ValueError unless Ray assigned every id in ``gpu_ids`` to the
+        calling actor or task, per ``ray.get_gpu_ids()``."""
+        assigned_gpu_ids = [str(i) for i in ray.get_gpu_ids()]
+        if not assigned_gpu_ids:
+            raise ValueError(
+                "gpu_ids was requested, but ray.get_gpu_ids() returned no "
+                "GPUs for this actor or task. Request GPUs with num_gpus to "
+                "give a sandbox GPU access."
+            )
+        unassigned = [g for g in gpu_ids if g not in assigned_gpu_ids]
+        if unassigned:
+            raise ValueError(
+                f"gpu_ids {unassigned} are not among the GPUs Ray assigned "
+                f"to this actor or task ({assigned_gpu_ids}). A sandbox can "
+                "only access GPUs Ray scheduled to its owning actor or task."
+            )
+
+    def _resolve_gpu_run_args(self) -> List[str]:
+        """The runsc flags GPU passthrough needs for this node's GPU CDI kind.
+        Only nvidia.com/gpu is supported, which needs --nvproxy.
+
+        Returns:
+            The runsc flags, ``["--nvproxy"]``.
+
+        Raises:
+            SandboxCreationError: If this node has no GPU CDI spec, its kind
+                isn't nvidia.com/gpu, or gVisor doesn't support its NVIDIA
+                driver.
+        """
+        spec = cdi.require_spec("GPU")
+        if spec.kind != "nvidia.com/gpu":
+            raise SandboxCreationError(
+                f"This node's GPU CDI spec is for kind '{spec.kind}', which "
+                f"gVisor sandbox GPU passthrough doesn't support (only "
+                f"'nvidia.com/gpu' has been validated)."
+            )
+        self._check_nvidia_driver_supported()
+        return ["--nvproxy"]
+
+    @functools.lru_cache(maxsize=None)  # noqa: B019
+    def _list_nvproxy_supported_drivers(self) -> Set[str]:
+        """The driver versions gVisor's --nvproxy supports, from `runsc
+        nvproxy list-supported-drivers`. The subcommand prints runsc's
+        compiled-in list and needs no container. Cached per instance. A runsc
+        without the subcommand, or a failed call, raises and isn't cached, so
+        the next call retries.
+
+        lru_cache on a method holds a reference to self. GVisorSandboxBackend
+        lives as long as its process, so that doesn't leak.
+        """
+        try:
+            result = subprocess.run(
+                ["runsc", "nvproxy", "list-supported-drivers"],
+                capture_output=True,
+                timeout=10,
+                text=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+            stderr = getattr(e, "stderr", None)
+            detail = f" {stderr.strip()}" if stderr else ""
+            raise SandboxCreationError(
+                f"Could not determine which NVIDIA driver versions this "
+                f"node's gVisor (runsc) supports: {e}. Run `runsc nvproxy "
+                f"list-supported-drivers` on this node directly to see why "
+                f"it failed.{detail}"
+            ) from e
+
+        return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+    def _check_nvidia_driver_supported(self) -> None:
+        """Raise unless gVisor's --nvproxy supports this node's NVIDIA driver.
+        Only runs once a sandbox requests GPUs, so failing to read the driver
+        version or the supported list raises too, as a SandboxCreationError.
+        """
+        import ray._private.thirdparty.pynvml as pynvml
+        from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
+
+        supported = self._list_nvproxy_supported_drivers()
+        try:
+            version = NvidiaGPUAcceleratorManager.get_current_node_driver_version()
+        except pynvml.NVMLError as err:
+            raise SandboxCreationError(
+                f"Could not read this node's NVIDIA driver version via NVML: {err}"
+            ) from err
+        if version not in supported:
+            raise SandboxCreationError(
+                f"This node's NVIDIA driver ({version}) isn't one "
+                f"gVisor's GPU passthrough (--nvproxy) recognizes. Update "
+                f"the driver to one of the supported versions: "
+                f"{', '.join(sorted(supported))}."
+            )
+
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")
         return os.path.join(root_dir, clean_path)
@@ -723,6 +834,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
@@ -737,5 +849,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             capabilities=capabilities,
             network=network,
             dns=dns,
+            gpu_ids=gpu_ids,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )

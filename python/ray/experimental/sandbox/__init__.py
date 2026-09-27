@@ -45,6 +45,7 @@ def create(
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
+    num_gpus: Optional[float] = None,
     **kwargs,
 ) -> ActorHandle:
     """Create a remote sandbox environment managed by a Ray actor.
@@ -81,6 +82,9 @@ def create(
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
+        num_gpus: Number of GPUs to schedule the sandbox actor with. The
+            sandbox gets every GPU Ray assigns the actor, exposed through CDI.
+            This is the only way to give a sandbox created here GPUs.
         **kwargs: Additional options.
 
     Returns:
@@ -94,6 +98,8 @@ def create(
         parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
+    if num_gpus is not None and num_gpus >= 0:
+        actor_opts["num_gpus"] = num_gpus
     if resources:
         actor_opts["resources"] = resources
 

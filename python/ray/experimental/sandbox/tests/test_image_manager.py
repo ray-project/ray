@@ -4,11 +4,11 @@ import logging
 import os
 import sys
 import tarfile
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.experimental.sandbox._internal import overlayfs
+from ray.experimental.sandbox._internal import cdi_lib, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
@@ -193,6 +193,87 @@ def test_image_manager_create_oci_spec(tmp_path):
 
     # Verify custom transform
     assert spec.get("customField") == "customValue"
+
+
+def _prepare_gpu_bundle(tmp_path, cdi_spec):
+    """Run prepare_oci_bundle with gpu_ids=["0"], with cdi.get_spec patched
+    to return ``cdi_spec``, and return the bundle's config.json path."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "gpu_test.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("file.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"data"))
+
+    with patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        return_value=cdi_spec,
+    ):
+        return mgr.prepare_oci_bundle(
+            root_dir=str(tmp_path / "bundle"),
+            workdir_path=None,
+            container_cwd="/",
+            image=str(local_tar),
+            gpu_ids=["0"],
+        )
+
+
+def test_prepare_oci_bundle_raises_when_no_cdi_spec_found(tmp_path):
+    """gpu_ids on a node with no GPU CDI spec fails and says so."""
+    with pytest.raises(SandboxCreationError, match="No CDI spec"):
+        _prepare_gpu_bundle(tmp_path, None)
+
+
+def test_prepare_oci_bundle_translates_cdi_error(tmp_path):
+    """A cdi_lib.CDIError, such as a gpu_ids entry with no matching CDI
+    device, surfaces as a SandboxCreationError."""
+    cdi_spec = cdi_lib.CDISpec("acme.com/widget", {"devices": []})
+    with pytest.raises(
+        SandboxCreationError, match="Failed to configure GPU access via CDI"
+    ):
+        _prepare_gpu_bundle(tmp_path, cdi_spec)
+
+
+def test_prepare_oci_bundle_injects_cdi_devices_for_any_kind(tmp_path):
+    """The image manager merges CDI edits for any kind. Whether a backend
+    supports a kind is that backend's concern (see
+    GVisorSandboxBackend._resolve_gpu_run_args)."""
+    cdi_spec = cdi_lib.CDISpec(
+        "acme.com/widget",
+        {
+            "kind": "acme.com/widget",
+            "devices": [
+                {
+                    "name": "0",
+                    "containerEdits": {
+                        "env": ["ACME=1"],
+                        "mounts": [
+                            {"hostPath": str(tmp_path), "containerPath": "/acme"}
+                        ],
+                        "hooks": [
+                            {
+                                "hookName": "createContainer",
+                                "path": sys.executable,
+                                "args": ["x"],
+                            }
+                        ],
+                    },
+                }
+            ],
+        },
+    )
+    config_json_path = _prepare_gpu_bundle(tmp_path, cdi_spec)
+    with open(config_json_path, "r", encoding="utf-8") as f:
+        spec = json.load(f)
+
+    assert "ACME=1" in spec["process"]["env"]
+    assert {
+        "destination": "/acme",
+        "type": "bind",
+        "source": str(tmp_path),
+        "options": ["rbind", "ro"],
+    } in spec["mounts"]
+    assert {"path": sys.executable, "args": ["x"]} in spec["hooks"]["createContainer"]
 
 
 def test_image_manager_prepare_oci_bundle(tmp_path):
