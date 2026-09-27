@@ -512,7 +512,7 @@ def _reconcile_diverging_fields(
             # Reconcile immediately if it's a special type and if it's divergent.
             if any(flags.values()) and len(field_types[field_name]) > 1:
                 reconciled_value = _reconcile_field(
-                    non_null_types=field_types[field_name],
+                    field_types=field_types[field_name],
                     promote_types=promote_types,
                 )
                 if reconciled_value is not None:
@@ -522,18 +522,23 @@ def _reconcile_diverging_fields(
 
 
 def _reconcile_field(
-    non_null_types: List[pyarrow.DataType],
+    field_types: List[pyarrow.DataType],
     promote_types: bool = False,
 ) -> Optional[pyarrow.DataType]:
     """
     Reconcile a single divergent field across schemas.
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
+    ``pa.null()`` entries are stripped first — null unifies with any type.
     """
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
     from ray.data._internal.tensor_extensions.arrow import (
         get_arrow_extension_tensor_types,
     )
+
+    # Null unifies with anything; strip so downstream branches only see
+    # types that carry structure.
+    non_null_types = [t for t in field_types if not pyarrow.types.is_null(t)]
 
     if not non_null_types:
         return None
@@ -551,15 +556,10 @@ def _reconcile_field(
     if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
         return ArrowPythonObjectType()
 
-    # 3. Struct fields (recursive unification)
-    struct_types = [t for t in non_null_types if pyarrow.types.is_struct(t)]
-    if struct_types:
-        # Convert struct types to schemas
-        struct_schemas = []
-        for t in non_null_types:
-            if pyarrow.types.is_struct(t):
-                struct_schemas.append(pyarrow.schema(list(t)))
-        # Recursively unify
+    # 3. Struct fields (recursive unification). Reconcile only when every
+    # arm is a struct; otherwise return None so PyArrow reports the conflict.
+    if all(pyarrow.types.is_struct(t) for t in non_null_types):
+        struct_schemas = [pyarrow.schema(list(t)) for t in non_null_types]
         unified_struct = unify_schemas(struct_schemas, promote_types=promote_types)
         return pyarrow.struct(list(unified_struct))
 
@@ -570,7 +570,6 @@ def _reconcile_field(
         if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
     ]
     if null_lists:
-        # Find first non-null list type
         for t in non_null_types:
             if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
                 return t
@@ -757,6 +756,9 @@ def _backfill_missing_fields(
 
     Returns:
         pa.StructArray: The aligned struct array.
+
+    Raises:
+        ValueError: If ``column`` is neither a struct nor an all-null array.
     """
     import pyarrow as pa
 
@@ -767,6 +769,22 @@ def _backfill_missing_fields(
     from ray.data._internal.utils.transform_pyarrow import (
         _is_native_tensor_type,
     )
+
+    # An all-null nested field infers as ``pa.null()``; fill it with nulls
+    # of the target struct type.
+    column_type = column.type
+    if pa.types.is_null(column_type):
+        return pa.nulls(block_length, type=unified_struct_type)
+
+    # Defensive guard for callers aligning to an externally supplied schema
+    # (e.g. the Parquet reader). ``unify_schemas`` rejects struct/primitive
+    # mixes, so this is unreachable from the normal ``concat`` path.
+    if not pa.types.is_struct(column_type):
+        raise ValueError(
+            f"Column of type {column_type} cannot be aligned with struct type "
+            f"{unified_struct_type}. A block holds a non-struct value where the "
+            "unified schema expects a struct."
+        )
 
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
@@ -904,16 +922,20 @@ def _align_struct_fields(
             if column_name in block_schema_field_names:
                 column = block[column_name]
 
-                # Check if the column type matches a struct type
-                if (
+                if pa.types.is_null(column.type):
+                    aligned_column = pa.nulls(block_length, type=unified_struct_type)
+                    block = block.set_column(
+                        block.schema.get_field_index(column_name),
+                        column_name,
+                        aligned_column,
+                    )
+                elif (
                     isinstance(column.type, pa.StructType)
                     and column.type != unified_struct_type
                 ):
-                    # Align struct fields
                     aligned_column = _backfill_missing_fields(
                         column, unified_struct_type, block_length
                     )
-                    # Replace the column with the aligned version
                     block = block.set_column(
                         block.schema.get_field_index(column_name),
                         column_name,
