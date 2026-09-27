@@ -218,7 +218,8 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
 
 
 def _format_progress(m: _LoggingMetrics) -> str:
-    return f"{m.name}: {m.completed}/{m.total or '?'}"
+    total = "?" if m.total is None else m.total
+    return f"{m.name}: {m.completed}/{total}"
 
 
 def _log_global_progress(m: _LoggingMetrics):
