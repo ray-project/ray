@@ -6,13 +6,14 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
-from ray.experimental.sandbox._internal import image_utils, overlayfs
+from ray.experimental.sandbox._internal import cdi_lib, image_utils, overlayfs
 from ray.experimental.sandbox._internal.overlayfs import (
     ImageMountMode,
     UserNamespaceType,
@@ -77,6 +78,53 @@ def test_create_sandbox_helper():
     assert "Process isolation" in res.stdout
     assert res.duration_ms >= 0
     ray.get(sb.terminate.remote())
+
+
+def test_create_threads_num_gpus_into_actor_options():
+    """create()'s num_gpus reaches Sandbox.options(), the same way cpu and
+    memory do. Otherwise Ray's scheduler never sees the GPU request, and
+    Sandbox.__init__ finds no GPUs in ray.get_gpu_ids(), with no error
+    telling the caller why."""
+    captured_options = {}
+
+    class _FakeSandboxHandle:
+        def remote(self, *args, **kwargs):
+            return "sandbox-actor-handle"
+
+    def fake_options(**kwargs):
+        captured_options.update(kwargs)
+        return _FakeSandboxHandle()
+
+    with patch("ray.experimental.sandbox.Sandbox.options", side_effect=fake_options):
+        create("busybox:latest", num_gpus=2)
+
+    assert captured_options.get("num_gpus") == 2
+
+
+def test_create_num_gpus_reaches_real_ray_scheduling():
+    """Spawns a real actor on a cluster with one logical GPU, so num_gpus
+    reaches Ray's scheduler without a real GPU. create() starts a separate
+    worker process that mock.patch can't reach, so whether CDI resolution
+    succeeds depends on the test machine. Either outcome shows gpu_ids
+    reached Sandbox.__init__, whether the sandbox has gpu_ids set or fails
+    with the CDI lookup error that
+    test_gvisor_backend_gpu_ids_without_cdi_spec_raises checks. The bug this
+    guards against is a sandbox with no error and no gpu_ids."""
+    if ray.is_initialized():
+        ray.shutdown()
+    ray.init(num_gpus=1)
+
+    try:
+        try:
+            actor = create("busybox:latest", num_gpus=1)
+            config = ray.get(actor.get_config.remote())
+            assert config.gpu_ids is not None
+            ray.get(actor.delete.remote())
+            ray.kill(actor)
+        except ray.exceptions.ActorDiedError as e:
+            assert "CDI" in str(e)
+    finally:
+        ray.shutdown()
 
 
 def test_gvisor_backend_container_image_support():
@@ -239,6 +287,99 @@ def test_gvisor_backend_ignore_cgroups_flag():
     finally:
         if orig_env is not None:
             os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = orig_env
+
+
+def _gpu_sandbox_config():
+    return GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", gpu_ids=["0"])
+
+
+def test_gvisor_backend_nvproxy_flag():
+    """An NVIDIA GPU CDI spec resolves to --nvproxy, and a sandbox without
+    GPUs never gets it."""
+    backend = GVisorSandboxBackend()
+    with patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        return_value=cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
+    ), patch.object(backend, "_check_nvidia_driver_supported"):
+        assert backend._resolve_gpu_run_args() == ["--nvproxy"]
+
+    cfg_no_gpu = GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    assert "--nvproxy" not in backend._build_run_command(cfg_no_gpu, "/tmp/rd", "sb-1")
+
+
+def test_validate_gpu_ids_accepts_subset_of_ray_assignment():
+    with patch("ray.get_gpu_ids", return_value=["0", "1"]):
+        GVisorSandboxBackend._validate_gpu_ids(["0"])
+
+
+def test_validate_gpu_ids_rejects_ids_outside_ray_assignment():
+    """A sandbox can only access GPUs Ray assigned the calling actor or task,
+    so an id outside that assignment fails rather than granting CDI access
+    to a GPU Ray scheduled elsewhere."""
+    with patch("ray.get_gpu_ids", return_value=["0"]):
+        with pytest.raises(ValueError, match="are not among the GPUs"):
+            GVisorSandboxBackend._validate_gpu_ids(["1"])
+
+
+def test_validate_gpu_ids_rejects_empty_ray_assignment():
+    """An empty ray.get_gpu_ids() means Ray assigned the calling actor or task
+    no GPUs, such as when it didn't request num_gpus, so gpu_ids fails."""
+    with patch("ray.get_gpu_ids", return_value=[]):
+        with pytest.raises(ValueError, match="returned no"):
+            GVisorSandboxBackend._validate_gpu_ids(["0"])
+
+
+def test_validate_gpu_ids_propagates_ray_get_gpu_ids_errors():
+    """An error from ray.get_gpu_ids(), such as outside a Ray task or actor,
+    propagates rather than being reported as "Ray assigned no GPUs"."""
+    with patch("ray.get_gpu_ids", side_effect=RuntimeError("not in a task")):
+        with pytest.raises(RuntimeError, match="not in a task"):
+            GVisorSandboxBackend._validate_gpu_ids(["0"])
+
+
+def test_gvisor_backend_rejects_unsupported_gpu_cdi_kind():
+    """gpu_ids resolved to a CDI kind gVisor GPU passthrough has no known
+    runsc flag for, such as a hypothetical AMD device, fails before any
+    sandbox state is created, rather than attempting unverified
+    passthrough."""
+    backend = GVisorSandboxBackend()
+    with patch("ray.get_gpu_ids", return_value=["0"]), patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        return_value=cdi_lib.CDISpec("amd.com/gpu", {"devices": []}),
+    ):
+        with pytest.raises(SandboxCreationError, match="amd.com/gpu"):
+            backend.create_sandbox(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_gpu_ids_without_cdi_spec_raises():
+    """When no CDI spec for this node's GPUs can be generated, a sandbox
+    requesting gpu_ids fails with a clear error. Mocks get_spec rather than
+    relying on the test machine having no nvidia-ctk on PATH, which breaks
+    if a CI image ships nvidia-ctk for unrelated reasons."""
+    backend = GVisorSandboxBackend()
+    with patch("ray.get_gpu_ids", return_value=["0"]), patch(
+        "ray.experimental.sandbox._internal.cdi.get_spec", return_value=None
+    ):
+        with pytest.raises(SandboxCreationError, match="CDI"):
+            backend.create_sandbox(_gpu_sandbox_config())
+
+
+def test_gvisor_backend_nvml_failure_raises_sandbox_creation_error():
+    """An NVML failure reading the driver version surfaces as a
+    SandboxCreationError, like every other GPU setup failure, not a raw
+    NVMLError."""
+    import ray._private.thirdparty.pynvml as pynvml
+
+    backend = GVisorSandboxBackend()
+    with patch.object(
+        backend, "_list_nvproxy_supported_drivers", return_value={"580.126.20"}
+    ), patch(
+        "ray._private.accelerators.nvidia_gpu.NvidiaGPUAcceleratorManager"
+        ".get_current_node_driver_version",
+        side_effect=pynvml.NVMLError(pynvml.NVML_ERROR_DRIVER_NOT_LOADED),
+    ):
+        with pytest.raises(SandboxCreationError, match="Driver Not Loaded"):
+            backend._check_nvidia_driver_supported()
 
 
 def test_string_exec_shell_configuration():
@@ -790,6 +931,7 @@ def _create_until_run(
     userns=UserNamespaceType.PRIVATE,
     image_mount_mode=ImageMountMode.FUSE,
     readonly=False,
+    gpu_ids=None,
 ):
     """Run create_sandbox with a recording image manager up to the point it
     would start runsc, and return what _build_run_command got and the
@@ -800,8 +942,10 @@ def _create_until_run(
     _boot_from_overlays(monkeypatch, overlay)
     captured = {}
 
-    def _capture(config, root_dir, sandbox_id, rootfs_overlay=None):
-        captured.update(root_dir=root_dir, rootfs_overlay=rootfs_overlay)
+    def _capture(config, root_dir, sandbox_id, gpu_run_args=(), rootfs_overlay=None):
+        captured.update(
+            root_dir=root_dir, gpu_run_args=gpu_run_args, rootfs_overlay=rootfs_overlay
+        )
         raise _StopBeforeRun()
 
     manager = _RecordingImageManager(image=str(tmp_path / "rootfs.erofs"))
@@ -809,7 +953,9 @@ def _create_until_run(
     monkeypatch.setattr(backend, "_build_run_command", _capture)
     with pytest.raises(_StopBeforeRun):
         backend.create_sandbox(
-            GVisorSandboxConfig(image="busybox:latest", readonly=readonly)
+            GVisorSandboxConfig(
+                image="busybox:latest", readonly=readonly, gpu_ids=gpu_ids
+            )
         )
     return captured, manager
 
@@ -860,6 +1006,20 @@ def test_create_sandbox_erofs_sandbox_skips_overlay(tmp_path, monkeypatch):
 
     assert captured["rootfs_overlay"] is None
     assert manager.rootfs_image_calls == []
+
+
+def test_create_sandbox_passes_gpu_run_args(tmp_path, monkeypatch):
+    """A sandbox with gpu_ids on an NVIDIA node runs runsc with --nvproxy."""
+    monkeypatch.setattr("ray.get_gpu_ids", lambda: ["0"])
+    monkeypatch.setattr(
+        "ray.experimental.sandbox._internal.cdi.get_spec",
+        lambda resource_name: cdi_lib.CDISpec("nvidia.com/gpu", {"devices": []}),
+    )
+    monkeypatch.setattr(
+        GVisorSandboxBackend, "_check_nvidia_driver_supported", lambda self: None
+    )
+    captured, _ = _create_until_run(tmp_path, monkeypatch, False, gpu_ids=["0"])
+    assert captured["gpu_run_args"] == ["--nvproxy"]
 
 
 def _create_overlayfs_sandbox(tmp_path, monkeypatch, manager):
