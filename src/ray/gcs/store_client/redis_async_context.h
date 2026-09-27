@@ -96,7 +96,8 @@ class RedisAsyncContext {
   /// it. Because hiredis arms its first write while those callbacks are being
   /// registered, before our event hooks exist, Reset() arms it again itself.
   ///
-  /// \param redis_async_context An already-connected raw context to adopt.
+  /// \param redis_async_context A raw context to adopt, typically with its
+  /// non-blocking connect still in progress.
   void Reset(std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
 
   /// Whether a live raw context is currently attached. Test-only: the answer

@@ -400,14 +400,16 @@ each), about 65 seconds. The reconnect budget, 120 attempts at a backoff capped
 at one second, lasts about two minutes and so does not decide the outcome
 unless you lower it: with `RAY_redis_db_connect_retries=3`, GCS exits after
 three failed attempts rather than waiting out the minute. To survive a longer
-failover, raise `RAY_redis_reconnect_grace_period_ms`; raising
-`RAY_redis_db_connect_retries` on its own does not help.
+failover, raise both: the grace period, and the reconnect budget so that it
+outlasts the grace period. At the one-second backoff ceiling that is about one
+attempt per second of grace. Raising either one alone does not help.
 
-Raise the grace period when a failover takes longer than a minute, which
-happens with a large Sentinel `down-after-milliseconds`:
+Raise both when a failover takes longer than a minute, which happens with a
+large Sentinel `down-after-milliseconds`. For three minutes:
 
 ```sh
 export RAY_redis_reconnect_grace_period_ms=180000
+export RAY_redis_db_connect_retries=200
 ```
 
 The backoff variables are shared with the command retry path, so changing them
