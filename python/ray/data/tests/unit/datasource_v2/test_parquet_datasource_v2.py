@@ -26,8 +26,11 @@ from ray.data._internal.datasource_v2.listing.footer_file_indexer import (
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
-from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-    ParquetInMemorySizeEstimator,
+from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    PartitionHints,
+)
+from ray.data._internal.datasource_v2.partitioners.online_bin_packer import (
+    OnlineBinPacker,
 )
 from ray.data._internal.datasource_v2.readers.parquet_file_reader import (
     ParquetFileReader,
@@ -111,9 +114,11 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
     assert scanner.schema == schema
 
 
-def test_get_size_estimator_returns_parquet_estimator(tmp_path):
+def test_get_file_partitioner_returns_bin_packer(tmp_path):
+    """Parquet sizes read units from footer stats, so the hints are unused."""
     datasource = ParquetDatasourceV2([str(tmp_path)])
-    assert isinstance(datasource.get_size_estimator(), ParquetInMemorySizeEstimator)
+    hints = PartitionHints(min_bucket_size=1, max_bucket_size=2, num_buckets=7)
+    assert isinstance(datasource.get_file_partitioner(hints=hints), OnlineBinPacker)
 
 
 def test_paths_and_filesystem_resolved(tmp_path):
