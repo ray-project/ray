@@ -190,17 +190,11 @@ def test_gvisor_backend_container_image_overlay_isolation():
         backend.delete_sandbox(sb3)
 
 
-# readonly=True with an explicit workdir needs runsc to keep the rootfs
-# overlay for a read-only root (it drops it today, and an immutable EROFS
-# image cannot grow the workdir mount point), so the sandbox runs on a
-# private writable overlay instead; test_readonly_rootfs_with_workdir pins
-# that behavior. This test states the intended one, for when runsc's
-# initGoferConfs honors an explicitly requested overlay on a read-only root.
-@pytest.mark.skip(
-    reason="readonly + explicit workdir runs on a private writable overlay "
-    "until runsc keeps the rootfs overlay for read-only roots"
-)
-def test_gvisor_backend_readonly_rootfs():
+# readonly=True with an explicit workdir boots from a kernel overlay, where
+# runsc can create the workdir's mount point, so the rest of the rootfs stays
+# read-only. A worker that can't mount one runs the sandbox on a private
+# writable overlay instead.
+def test_gvisor_backend_readonly_rootfs(ensure_overlayfs_mount):
     backend = GVisorSandboxBackend()
     # Default is readonly=True
     cfg = GVisorSandboxConfig(
@@ -268,10 +262,12 @@ def test_string_exec_shell_configuration():
         runtime.delete(instance_id)
 
 
-def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
-    """readonly + explicit workdir currently runs on a private writable
-    overlay: the workdir works, and rootfs writes land in the overlay and are
-    discarded with the sandbox rather than rejected."""
+def test_readonly_rootfs_with_workdir_runs_on_private_overlay(monkeypatch):
+    """On a worker that can't mount an overlayfs rootfs, readonly + explicit
+    workdir runs on a private writable overlay. The workdir works, and rootfs
+    writes land in the overlay and are discarded with the sandbox rather
+    than rejected."""
+    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: False)
     backend = GVisorSandboxBackend()
     sb = backend.create_sandbox(
         GVisorSandboxConfig(
@@ -308,8 +304,8 @@ def test_workdir_writability_matrix():
         runtime.delete(instance_id)
 
     # readonly=True, explicit workdir: the workdir is writable and is the
-    # cwd (the rest of the root runs on a private writable overlay today;
-    # see the note above test_gvisor_backend_readonly_rootfs).
+    # cwd. Whether the rest of the root stays read-only depends on whether
+    # this worker can mount a kernel overlay.
     instance_id = runtime.create(
         image="busybox:latest", workdir="/data", shell="/bin/sh"
     )
@@ -1016,6 +1012,61 @@ def test_overlayfs_sandbox_with_public_network(
         assert res.exit_code == 0, res.stderr
     finally:
         backend.delete_sandbox(sb)
+
+
+def _with_prestart_hook(spec):
+    """Add an OCI hook that runs on the host before the sandbox starts, and
+    writes /hook-marker into its rootfs, as hooks that set up a sandbox do.
+    runsc passes the hook the sandbox's state, whose bundle holds the rootfs."""
+    script = (
+        'bundle=$(sed -n \'s/.*"bundle":"\\([^"]*\\)".*/\\1/p\'); '
+        'echo hook > "$bundle/rootfs/hook-marker"'
+    )
+    hook = {"path": "/bin/sh", "args": ["sh", "-c", script]}
+    spec.setdefault("hooks", {})["createRuntime"] = [hook]
+    return spec
+
+
+def test_overlayfs_sandbox_runs_prestart_hooks_in_its_overlay(overlay_mount):
+    """Sandboxes with hooks that run before they start boot from an overlay
+    over the cached EROFS image, which the hooks write into. The hooks' writes
+    never reach the image or a sandbox without them."""
+    backend = GVisorSandboxBackend()
+    manager = backend._image_manager
+    manager.pull_image("busybox:latest", instance_id="image-snapshot")
+    try:
+        image = manager.get_rootfs_image("busybox:latest")
+        before = _file_digest(image)
+        writable = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                readonly=False,
+                _oci_spec_transform_fn=_with_prestart_hook,
+            )
+        )
+        readonly = backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                _oci_spec_transform_fn=_with_prestart_hook,
+            )
+        )
+        erofs = backend.create_sandbox(
+            GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+        )
+        try:
+            for sb in (writable, readonly):
+                res = backend.exec_command(sb, "cat /hook-marker")
+                assert res.stdout.strip() == "hook", res.stderr
+            assert backend.exec_command(erofs, "test -e /hook-marker").exit_code != 0
+            assert backend.exec_command(readonly, "touch /etc/probe").exit_code != 0
+        finally:
+            for sb in (erofs, readonly, writable):
+                backend.delete_sandbox(sb)
+        assert _file_digest(image) == before
+    finally:
+        manager.release_image("busybox:latest", "image-snapshot")
 
 
 def test_create_sandbox_requires_slirp4netns(monkeypatch):

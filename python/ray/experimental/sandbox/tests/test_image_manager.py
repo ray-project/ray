@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 import os
 import sys
 import tarfile
@@ -27,6 +28,17 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 def _build_images_with_fake_mkfs(fake_mkfs_erofs):
     """Every pull here builds its image through the fake mkfs.erofs."""
     yield
+
+
+# The real check, which _without_rootfs_overlays replaces for every test.
+_can_mount_rootfs_overlay = overlayfs.can_mount_rootfs_overlay
+
+
+@pytest.fixture(autouse=True)
+def _without_rootfs_overlays(monkeypatch):
+    """Specs here are built without probing whether this worker can mount an
+    overlayfs rootfs, as if it can't. Tests of that path say otherwise."""
+    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: False)
 
 
 def test_image_manager_init(tmp_path):
@@ -155,7 +167,8 @@ def test_image_manager_create_oci_spec(tmp_path):
     )
     assert spec["annotations"]["dev.gvisor.spec.rootfs.type"] == "erofs"
     assert spec["root"]["path"] == os.path.join(extracted_dir, "root")
-    # readonly=True with an explicit workdir runs on a private writable
+    # readonly=True with an explicit workdir, which needs a mount point, on a
+    # worker that can't mount an overlayfs rootfs, runs on a private writable
     # overlay (runsc drops the rootfs overlay for read-only roots).
     assert spec["root"]["readonly"] is False
     assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
@@ -687,6 +700,121 @@ def test_create_oci_spec_erofs_image(tmp_path):
     assert not (tmp_path / "rootfs").exists()
 
 
+@pytest.mark.parametrize("can_mount", [True, False])
+def test_create_oci_spec_readonly_workdir(tmp_path, monkeypatch, caplog, can_mount):
+    """A readonly sandbox with an explicit workdir stays readonly on a kernel
+    overlay, where runsc can create the workdir's mount point. A worker that
+    can't mount one runs it on a private writable overlay instead, and warns
+    about it."""
+    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: can_mount)
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = tmp_path / "work"
+    workdir_path.mkdir()
+    with caplog.at_level(logging.WARNING):
+        spec = mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            container_cwd="/work",
+            workdir_path=str(workdir_path),
+            readonly=True,
+        )
+    assert spec["root"]["readonly"] is can_mount
+    if can_mount:
+        assert spec.get("annotations", {}) == {}
+        assert caplog.text == ""
+    else:
+        assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
+        assert "private writable overlay" in caplog.text
+
+
+def test_create_oci_spec_with_hooks_never_falls_back_to_a_writable_root(
+    tmp_path, monkeypatch, caplog
+):
+    """A readonly sandbox with hooks that need a kernel overlay fails to boot
+    where the worker can't mount one, so it keeps its read-only root rather
+    than warning that it runs on a writable one."""
+    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: False)
+
+    def add_hook_and_mount(spec):
+        spec.setdefault("hooks", {})["createContainer"] = [{"path": "/bin/true"}]
+        spec["mounts"].append(
+            {"destination": "/missing", "type": "bind", "source": str(tmp_path)}
+        )
+        return spec
+
+    mgr = _StubImageManager(tmp_path)
+    with caplog.at_level(logging.WARNING):
+        spec = mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            readonly=True,
+            _oci_spec_transform_fn=add_hook_and_mount,
+        )
+    assert spec["root"]["readonly"] is True
+    assert caplog.text == ""
+
+
+def test_create_oci_spec_raises_when_the_overlay_probe_times_out(tmp_path, monkeypatch):
+    """A probe timeout says nothing about whether the worker can mount a
+    kernel overlay, so a readonly sandbox with a workdir fails rather than
+    silently getting a writable root."""
+    monkeypatch.setattr(
+        overlayfs, "can_mount_rootfs_overlay", _can_mount_rootfs_overlay
+    )
+
+    def times_out():
+        raise overlayfs._ProbeTimeoutError("Timed out checking")
+
+    monkeypatch.setattr(overlayfs.UserNamespaceType, "detect", times_out)
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = tmp_path / "work"
+    workdir_path.mkdir()
+    with pytest.raises(SandboxCreationError, match="Timed out"):
+        mgr.create_oci_spec(
+            image="fake:latest",
+            base_spec=_sample_base_spec(),
+            container_cwd="/work",
+            workdir_path=str(workdir_path),
+            readonly=True,
+        )
+
+
+def test_create_oci_spec_mounts_from_the_transform_need_an_overlay(
+    tmp_path, monkeypatch
+):
+    """A mount the transform adds, such as a library a CDI spec mounts, needs
+    a mount point too, so a readonly sandbox with one boots from a kernel
+    overlay."""
+    monkeypatch.setattr(overlayfs, "can_mount_rootfs_overlay", lambda: True)
+
+    def add_library(spec):
+        spec["mounts"].append(
+            {
+                "destination": "/usr/lib/libcuda.so.1",
+                "type": "bind",
+                "source": "/usr/lib/libcuda.so.1",
+                "options": ["ro", "bind"],
+            }
+        )
+        return spec
+
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=True,
+        _oci_spec_transform_fn=add_library,
+    )
+    assert spec["root"]["readonly"] is True
+    assert spec.get("annotations", {}) == {}
+
+
+def _with_prestart_hook(spec):
+    """Add an OCI hook that runs on the host before the sandbox starts."""
+    spec.setdefault("hooks", {})["createRuntime"] = [{"path": "/bin/true"}]
+    return spec
+
+
 @pytest.mark.parametrize("readonly", [True, False])
 def test_create_oci_spec_overlayfs(tmp_path, monkeypatch, readonly):
     """A spec that needs a kernel overlay gets no gVisor rootfs annotations.
@@ -699,6 +827,25 @@ def test_create_oci_spec_overlayfs(tmp_path, monkeypatch, readonly):
         base_spec=_sample_base_spec(),
         readonly=readonly,
         root_path=str(root_path),
+    )
+    assert spec.get("annotations", {}) == {}
+    assert spec["root"] == {"path": str(root_path), "readonly": readonly}
+
+
+@pytest.mark.parametrize("readonly", [True, False])
+def test_create_oci_spec_prestart_hooks_need_an_overlay(tmp_path, readonly):
+    """Hooks that run on the host before the sandbox starts can write to its
+    rootfs, so a spec with them, even ones the transform added, gets no
+    gVisor rootfs annotations. Its root.path is where the backend mounts the
+    sandbox's kernel overlay."""
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=readonly,
+        root_path=str(root_path),
+        _oci_spec_transform_fn=_with_prestart_hook,
     )
     assert spec.get("annotations", {}) == {}
     assert spec["root"] == {"path": str(root_path), "readonly": readonly}

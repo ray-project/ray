@@ -432,18 +432,6 @@ class ImageManager(BaseImageManager):
         # layer's backing file, so make it per sandbox.
         rootfs = root_path or os.path.join(image_dir, "root")
         os.makedirs(rootfs, exist_ok=True)
-        # runsc applies no overlay to a read-only root, and an immutable image
-        # can't grow a mount point for an arbitrary workdir, so a readonly
-        # sandbox with an explicit workdir gets a private writable overlay
-        # instead (its writes are discarded with it).
-        if readonly and workdir_path is not None:
-            logger.warning(
-                "readonly=True with an explicit workdir: runsc cannot create "
-                "the workdir mount point in a read-only EROFS image, so this "
-                "sandbox runs on a private writable overlay (its writes are "
-                "discarded with it)."
-            )
-            readonly = False
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
 
@@ -580,6 +568,20 @@ class ImageManager(BaseImageManager):
             if result is not None:
                 spec = result
 
+        # runsc applies no overlay to a read-only root, and can't create mount
+        # points in the image, so a readonly sandbox whose mounts need some
+        # boots from a kernel overlay instead. A worker that can't mount one
+        # runs it on a private writable overlay, whose writes are discarded
+        # with it.
+        if self._needs_writable_root_fallback(spec):
+            logger.warning(
+                "readonly=True, but this worker can't mount an overlayfs rootfs, "
+                "and runsc cannot create this sandbox's mount points in a "
+                "read-only EROFS image, so it runs on a private writable overlay "
+                "(its writes are discarded with it)."
+            )
+            spec["root"]["readonly"] = False
+
         # Only a sandbox that boots straight from the EROFS image needs the
         # gVisor rootfs annotations, and a writable one its private overlay.
         # Whether it does depends on the final spec, including anything the
@@ -593,6 +595,29 @@ class ImageManager(BaseImageManager):
                 annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
 
         return spec
+
+    @staticmethod
+    def _needs_writable_root_fallback(spec: Dict[str, Any]) -> bool:
+        """Whether a readonly sandbox needs a writable root to boot.
+
+        Args:
+            spec: The final OCI spec.
+
+        Returns:
+            True if the root is read-only, the spec has no hooks that need a
+            kernel overlay, some of the spec's mounts need mount points the
+            image may not have, and this worker can't mount a kernel overlay to
+            create them.
+        """
+        if not spec["root"].get("readonly"):
+            return False
+        if overlayfs.has_prestart_hooks(spec):
+            return False
+        if len(overlayfs.missing_mount_points(spec)) == 0:
+            return False
+        if overlayfs.can_mount_rootfs_overlay():
+            return False
+        return True
 
     def prepare_oci_bundle(
         self,
