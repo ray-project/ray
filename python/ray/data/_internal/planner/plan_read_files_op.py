@@ -58,7 +58,7 @@ def plan_read_files_op(
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
-        # ``prune_input_split`` is an identity by default; ``ArrowFileScanner``
+        # ``prune_input_split`` is an identity by default; ``FileScanner``
         # overrides it to drop files failing a pushed-down partition predicate.
         for block in blocks:
             manifest = scanner.prune_input_split(FileManifest(block))
