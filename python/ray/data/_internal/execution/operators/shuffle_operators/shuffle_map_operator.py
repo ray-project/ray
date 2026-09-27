@@ -139,7 +139,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._partition_bundles_emitted: bool = False
 
         # -- Stats -----------------------------------------------------------
-        self._total_input_rows: int = 0
         self._total_input_bytes: int = 0
         self._map_blocks_stats: List[BlockStats] = []
 
@@ -293,7 +292,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         for bundle in input_bundles:
             bundle.destroy_if_owned()
 
-        self._total_input_rows += input_meta.num_rows or 0
         self._total_input_bytes += input_meta.size_bytes or 0
         self._map_blocks_stats.append(input_meta.to_stats())
 
@@ -398,7 +396,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         # until the maps run.
         if self._block_transformer is not None:
             return None
-        return self._total_input_rows if self._total_input_rows > 0 else None
+        return self.input_dependencies[0].num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
         return ExecutionResources(
