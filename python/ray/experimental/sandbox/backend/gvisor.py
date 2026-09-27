@@ -9,6 +9,7 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import overlayfs
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -45,6 +46,10 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # leaves through slirp4netns's tap. Mount and pid namespaces stay shared, so
 # the bundle and runsc's control sockets under _RUNSC_ROOT keep working for
 # pod-side state/exec/kill/delete.
+# An overlayfs sandbox runs all of this inside its kernel overlay's
+# namespaces (see RootfsOverlay.wrap), so the holder only creates the network
+# namespace. The overlay's mount namespace starts as a copy of the pod's and
+# gains only the kernel overlay, so those paths still resolve.
 #
 # slirp4netns NATs every flow through a fresh, kernel-assigned host port, so
 # flows from different sandboxes can never share a host socket (pasta, which
@@ -77,6 +82,12 @@ _SLIRP4NETNS_FLAGS = [
     "--disable-dns",
     "--enable-seccomp",
 ]
+
+# The bundle directory where gVisor's --overlay2 layer keeps writes made inside
+# a writable overlayfs sandbox. runsc keeps them under root.path by default,
+# but an overlayfs sandbox's root.path is its kernel overlay, whose upper layer
+# is a small tmpfs.
+_OVERLAY2_DIRNAME = "runsc-overlay2"
 
 
 def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
@@ -160,7 +171,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         # Prepare OCI bundle config for long-running container process
         try:
-            self._image_manager.prepare_oci_bundle(
+            config_json_path = self._image_manager.prepare_oci_bundle(
                 root_dir=root_dir,
                 workdir_path=workdir_path,
                 container_cwd=container_cwd,
@@ -174,11 +185,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 dns=config.dns,
                 _oci_spec_transform_fn=config._oci_spec_transform_fn,
             )
+            # Read back the final spec, as written to config.json.
+            with open(config_json_path, encoding="utf-8") as f:
+                spec = json.load(f)
+
+            # Boot the sandbox from a kernel overlay over its cached EROFS
+            # image if its final spec needs one.
+            rootfs_overlay = None
+            if overlayfs.needs_rootfs_overlay(spec):
+                rootfs_overlay = self._prepare_rootfs_overlay(config, spec, root_dir)
         except Exception:
             shutil.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
             raise
-        run_args = self._build_run_command(config, root_dir, sandbox_id)
+        run_args = self._build_run_command(
+            config, root_dir, sandbox_id, rootfs_overlay=rootfs_overlay
+        )
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -510,30 +532,94 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except subprocess.TimeoutExpired:
             pass
 
+    def _prepare_rootfs_overlay(
+        self,
+        config: SandboxConfig,
+        spec: Dict,
+        root_dir: str,
+    ) -> overlayfs.RootfsOverlay:
+        """Check that this host can mount an overlayfs sandbox's kernel
+        overlay, and set up the bundle directories for the kernel overlay
+        and gVisor's writable layer.
+
+        It runs after the bundle is written, since the kernel overlay mounts
+        on root.path as written in its final ``spec``.
+        """
+        # The kernel overlay sits on the image's cached EROFS image.
+        image = self._image_manager.get_rootfs_image(config.image)
+
+        # root.path reflects any _oci_spec_transform_fn. A relative root.path
+        # resolves against the bundle.
+        mountpoint = os.path.join(root_dir, spec["root"]["path"])
+
+        # gVisor's --overlay2 layer keeps writes made inside the sandbox here.
+        # A readonly sandbox gets it too, where it stays empty and is removed
+        # with the bundle.
+        os.makedirs(os.path.join(root_dir, _OVERLAY2_DIRNAME), exist_ok=True)
+
+        return overlayfs.prepare(
+            image=image,
+            mountpoint=mountpoint,
+            bundle_dir=root_dir,
+        )
+
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        sandbox_id: str,
+        rootfs_overlay: Optional[overlayfs.RootfsOverlay] = None,
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
+        For an overlayfs sandbox, the argv is also wrapped so that its kernel
+        overlay gets mounted over the cached EROFS image, in a new mount
+        namespace and a new user namespace (if needed), before runsc starts.
+
         Pure argv construction (no filesystem side effects) so tests can
-        assert the exact command without runsc or slirp4netns installed. The
-        rootfs and its writable overlay come from the bundle's gVisor
-        annotations (see ``ImageManager.create_oci_spec``), so runsc gets no
+        assert the exact command without runsc or slirp4netns installed.
+
+        Two types of sandboxes can be started, an EROFS sandbox or an overlayfs
+        sandbox. An EROFS sandbox boots straight from the cached EROFS image,
+        which the sandbox's gVisor annotations point runsc at (see
+        ``ImageManager.create_oci_spec``). If the sandbox is writable, those
+        annotations also give it an overlay of its own, so runsc gets no
         ``--overlay2`` flag.
+
+        An overlayfs sandbox, on the other hand, mounts the cached EROFS image
+        on the host, and boots from a kernel overlay layered on top of it,
+        mounted at the sandbox's root.path. The overlay's upper layer is a small
+        tmpfs for host-side writes into the sandbox, such as those from OCI
+        hooks and the mount points runsc creates. A writable sandbox's own
+        writes go to gVisor's ``--overlay2`` layer.
         """
+        # If an overlayfs sandbox needs a user namespace, rootfs_overlay.wrap()
+        # creates it when wrapping the runsc command at the end of this method.
+        # For an EROFS sandbox, the network="public" script creates it directly.
+        create_userns_with_overlay = (
+            rootfs_overlay is not None
+            and rootfs_overlay.userns is overlayfs.UserNamespaceType.PRIVATE
+        )
+        create_userns_with_netns = config.network == "public" and rootfs_overlay is None
+
+        # runsc runs in a new network namespace for network="public". It also
+        # runs in a new user namespace if rootfs_overlay.wrap() or the
+        # network="public" script creates one for it.
+        with_netns = config.network == "public"
+        with_userns = create_userns_with_overlay or create_userns_with_netns
+
+        # Start from runsc's base arguments, then adjust them for this sandbox.
         args = self._runsc_base_args(config)
-        use_netns = config.network == "public"
-        if use_netns:
+        if with_userns:
             # runsc gives every gofer an empty network namespace. By default,
             # all gofers under --root share one, created by the first gofer
             # that needs it, in whatever user namespace that gofer runs in.
-            # However, this sandbox's runsc runs in the user namespace the
-            # script below creates, where its gofer can't join a network
-            # namespace created outside it. So its gofer creates an empty one
-            # of its own instead.
+            # However, a gofer in the user namespace created for this sandbox
+            # can't join a network namespace created outside it, so it creates
+            # an empty one of its own instead.
             args.append("--gofer-network-namespace=new")
-        if use_netns and "--rootless" in args:
-            # runsc runs as mapped root inside the holder's user namespace;
+        if with_userns and "--rootless" in args:
+            # runsc runs as mapped root inside the user namespace that wraps it;
             # --rootless would nest a second user namespace whose
             # /proc/<pid>/root magic links the gofer cannot dereference.
             # Rootless mode also tolerates cgroup permission failures, so
@@ -547,16 +633,27 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
+        # Always pass --overlay2 for an overlayfs sandbox. runsc only layers
+        # gVisor's overlay over a writable root and ignores the flag for a
+        # read-only one, so a readonly sandbox's root stays read-only.
+        if rootfs_overlay is not None:
+            overlay2_dir = os.path.join(root_dir, _OVERLAY2_DIRNAME)
+            args.extend(["--overlay2", f"root:dir={overlay2_dir}"])
         args.extend(["run", "--bundle", root_dir, sandbox_id])
-        if use_netns:
+        if with_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
             ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
+            unshare_extra_args = slirp_extra_args = nsenter_extra_args = ""
+            if create_userns_with_netns:
+                unshare_extra_args = "--user --map-root-user"
+                slirp_extra_args = "--userns-path /proc/$NSPID/ns/user"
+                nsenter_extra_args = "-U"
             script = (
                 # The holder pins the namespaces for the sandbox's lifetime;
                 # --kill-child ties it to this script's process group.
-                "unshare --user --map-root-user --net --fork --kill-child "
+                f"unshare --net --fork --kill-child {unshare_extra_args} "
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
                 # Stop waiting as soon as the holder dies, and refuse an
@@ -569,16 +666,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # foreground, so it lives and dies with this process group.
                 # It writes "1" to --ready-fd once the tap is configured:
                 # that is the go signal.
-                f"{slirp} --ready-fd=3 --netns-type=path "
-                "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
-                f"3>{ready_file} & "
+                f"{slirp} --ready-fd=3 --netns-type=path /proc/$NSPID/ns/net tap0 "
+                f"{slirp_extra_args} 3>{ready_file} & "
                 "SLIRP=$!; "
                 f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
                 "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
-                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+                "exec nsenter --preserve-credentials -n -t $NSPID "
+                f"{nsenter_extra_args} -- {runsc}"
             )
-            return ["bash", "-c", script]
+            args = ["bash", "-c", script]
+        if rootfs_overlay is not None:
+            return rootfs_overlay.wrap(args)
         return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:

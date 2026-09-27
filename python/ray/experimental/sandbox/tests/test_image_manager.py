@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ray.experimental.sandbox._internal import overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
@@ -684,6 +685,41 @@ def test_create_oci_spec_erofs_image(tmp_path):
     assert spec["root"] == {"path": str(root_path), "readonly": False}
     assert root_path.is_dir()
     assert not (tmp_path / "rootfs").exists()
+
+
+@pytest.mark.parametrize("readonly", [True, False])
+def test_create_oci_spec_overlayfs(tmp_path, monkeypatch, readonly):
+    """A spec that needs a kernel overlay gets no gVisor rootfs annotations.
+    Its root.path is where the backend mounts the sandbox's overlay."""
+    monkeypatch.setattr(overlayfs, "needs_rootfs_overlay", lambda spec: True)
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=readonly,
+        root_path=str(root_path),
+    )
+    assert spec.get("annotations", {}) == {}
+    assert spec["root"] == {"path": str(root_path), "readonly": readonly}
+
+
+def test_create_oci_spec_annotates_the_transformed_spec(tmp_path):
+    """The gVisor rootfs annotations follow the final spec, so a transform
+    that makes the root writable also gets it a private overlay."""
+
+    def make_writable(spec):
+        spec["root"]["readonly"] = False
+        return spec
+
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=True,
+        _oci_spec_transform_fn=make_writable,
+    )
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
 
 
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
