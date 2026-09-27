@@ -35,6 +35,7 @@ class TestCheckpointRestore(unittest.TestCase):
         self.image_manager.pull_image.return_value = os.path.join(
             self.temp_dir, "images", "busybox_latest"
         )
+        self.image_manager.prepare_oci_bundle.side_effect = self._write_bundle
         self.backend = GVisorSandboxBackend(
             image_manager=self.image_manager,
         )
@@ -56,6 +57,15 @@ class TestCheckpointRestore(unittest.TestCase):
                     ignore_errors=True,
                 )
         shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    @staticmethod
+    def _write_bundle(root_dir, **kwargs):
+        """Write a bundle's config.json, as prepare_oci_bundle does, with a
+        spec that boots straight from the image."""
+        path = os.path.join(root_dir, "config.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"root": {"path": "rootfs", "readonly": True}}, f)
+        return path
 
     @staticmethod
     def _running_proc():
@@ -307,6 +317,67 @@ class TestCheckpointRestore(unittest.TestCase):
         assert (
             self.backend._sandbox_metadata[sandbox_id]["status"] == SandboxStatus.PAUSED
         )
+
+    def test_checkpoint_restores_an_overlayfs_sandbox_in_its_overlay(self):
+        """leave_running=True restores an overlayfs sandbox inside its kernel
+        overlay."""
+        sandbox_id, _ = self._create_mock_sandbox()
+        rootfs_overlay = MagicMock()
+        self.backend._sandbox_metadata[sandbox_id]["rootfs_overlay"] = rootfs_overlay
+
+        stack, _, _ = self._fake_runsc()
+        with (
+            stack,
+            patch.object(
+                self.backend, "_build_run_command", return_value=["true"]
+            ) as build,
+        ):
+            self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=os.path.join(self.temp_dir, "overlay_checkpoint"),
+                leave_running=True,
+            )
+
+        assert build.call_args.kwargs["restore"] is not None
+        assert build.call_args.kwargs["rootfs_overlay"] is rootfs_overlay
+
+    def test_restore_boots_an_overlayfs_sandbox_in_its_overlay(self):
+        """A restored sandbox whose spec needs a kernel overlay is restored
+        inside one."""
+        ckpt_dir = os.path.join(self.temp_dir, "overlay_checkpoint")
+        os.makedirs(os.path.join(ckpt_dir, "state"))
+        manifest = {
+            "config": {
+                "image": "busybox:latest",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+        rootfs_overlay = MagicMock()
+
+        stack, _, _ = self._fake_runsc()
+        with (
+            stack,
+            patch(
+                "ray.experimental.sandbox._internal.overlayfs.needs_rootfs_overlay",
+                return_value=True,
+            ),
+            patch.object(
+                self.backend, "_prepare_rootfs_overlay", return_value=rootfs_overlay
+            ),
+            patch.object(
+                self.backend, "_build_run_command", return_value=["true"]
+            ) as build,
+        ):
+            restored_id = self.backend.restore_sandbox(ckpt_dir)
+
+        assert build.call_args.kwargs["restore"] is not None
+        assert build.call_args.kwargs["rootfs_overlay"] is rootfs_overlay
+        meta = self.backend._sandbox_metadata[restored_id]
+        assert meta["rootfs_overlay"] is rootfs_overlay
 
     def test_restore_success(self):
         # Setup mock checkpoint directory
@@ -788,7 +859,9 @@ class TestCheckpointRestore(unittest.TestCase):
             patch("subprocess.run") as mock_run,
             patch("time.sleep"),
             patch.object(
-                self.backend._image_manager, "prepare_oci_bundle"
+                self.backend._image_manager,
+                "prepare_oci_bundle",
+                side_effect=self._write_bundle,
             ) as mock_prep,
         ):
             mock_run.return_value = MagicMock(
@@ -964,7 +1037,11 @@ class TestCheckpointRestore(unittest.TestCase):
         with (
             patch("shutil.which", return_value="/usr/bin/runsc"),
             patch.object(self.backend._image_manager, "pull_image"),
-            patch.object(self.backend._image_manager, "prepare_oci_bundle"),
+            patch.object(
+                self.backend._image_manager,
+                "prepare_oci_bundle",
+                side_effect=self._write_bundle,
+            ),
             patch.object(self.backend._image_manager, "release_image") as mock_release,
             patch(
                 "subprocess.Popen", side_effect=FileNotFoundError("missing executable")
