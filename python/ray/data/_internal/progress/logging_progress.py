@@ -124,7 +124,7 @@ class LoggingExecutionProgressManager(BaseExecutionProgressManager):
             op = state.op
             if isinstance(op, InputDataBuffer):
                 continue
-            total = op.num_output_rows_total() or 1
+            total = op.num_output_rows_total()
 
             contains_sub_progress_bars = isinstance(op, SubProgressBarMixin)
             sub_progress_bar_enabled = show_op_progress and (
