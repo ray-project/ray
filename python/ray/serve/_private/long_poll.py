@@ -319,9 +319,9 @@ class LongPollClient:
             f"{_actor_id_str(self.host_actor)}: {type(error).__name__}. "
             "Trying to re-resolve it."
         )
-        deadline = time.time() + LONG_POLL_RECONNECT_TIMEOUT_S
+        deadline = time.monotonic() + LONG_POLL_RECONNECT_TIMEOUT_S
         backoff = LONG_POLL_RECONNECT_BACKOFF_S[0]
-        while self.is_running and time.time() < deadline:
+        while self.is_running and time.monotonic() < deadline:
             if not ray.is_initialized():
                 # This process shut Ray down, so there is nothing left to
                 # reconnect to and no one to deliver updates to.
