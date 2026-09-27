@@ -23,9 +23,11 @@ def main(args):
         #   OR (... 'Brand#34', LG containers, quantity 20..30, size 1..15 ...);
         #
         # Note:
-        # The shipmode/shipinstruct predicates are common to all three clauses
-        # and filter lineitem before the join; the disjunction of the remaining
-        # brand/container/quantity/size conjunctions runs after the join.
+        # Weaker implied predicates are pushed below the join: the disjunction
+        # of the part-only (brand/container/size) conjunctions onto part, and
+        # the shared shipmode/shipinstruct predicates plus the global quantity
+        # bounds onto lineitem. The exact per-clause disjunction, which ties
+        # each brand to its quantity range, still runs after the join.
 
         part = load_table("part", args.sf).select_columns(
             ["p_partkey", "p_brand", "p_size", "p_container"]
@@ -48,30 +50,45 @@ def main(args):
             ("Brand#34", ["LG CASE", "LG BOX", "LG PACK", "LG PKG"], 20, 30, 15),
         ]
 
+        part_disjunction = None
+        disjunction = None
+        for brand, containers, qty_lo, qty_hi, size_hi in clauses:
+            part_clause = (
+                (col("p_brand") == brand)
+                & col("p_container").is_in(containers)
+                & (col("p_size") >= 1)
+                & (col("p_size") <= size_hi)
+            )
+            clause = (
+                part_clause
+                & (col("l_quantity") >= qty_lo)
+                & (col("l_quantity") <= qty_hi)
+            )
+            part_disjunction = (
+                part_clause
+                if part_disjunction is None
+                else (part_disjunction | part_clause)
+            )
+            disjunction = clause if disjunction is None else (disjunction | clause)
+
+        part_filtered = part.filter(expr=part_disjunction)
+
+        min_qty = min(qty_lo for _, _, qty_lo, _, _ in clauses)
+        max_qty = max(qty_hi for _, _, _, qty_hi, _ in clauses)
         lineitem_filtered = lineitem.filter(
             expr=col("l_shipmode").is_in(["AIR", "AIR REG"])
             & (col("l_shipinstruct") == "DELIVER IN PERSON")
+            & (col("l_quantity") >= min_qty)
+            & (col("l_quantity") <= max_qty)
         )
 
         joined = lineitem_filtered.join(
-            part,
+            part_filtered,
             join_type="inner",
             num_partitions=200,
             on=("l_partkey",),
             right_on=("p_partkey",),
         )
-
-        disjunction = None
-        for brand, containers, qty_lo, qty_hi, size_hi in clauses:
-            clause = (
-                (col("p_brand") == brand)
-                & col("p_container").is_in(containers)
-                & (col("l_quantity") >= qty_lo)
-                & (col("l_quantity") <= qty_hi)
-                & (col("p_size") >= 1)
-                & (col("p_size") <= size_hi)
-            )
-            disjunction = clause if disjunction is None else (disjunction | clause)
 
         ds = joined.filter(expr=disjunction)
 

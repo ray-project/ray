@@ -58,21 +58,23 @@ def main(args):
             expr=col("s_comment").str.match_regex("Customer.*Complaints")
         ).select_columns(["s_suppkey"])
 
-        # NOT IN -> anti join.
-        ps_clean = partsupp.join(
-            complainers,
-            join_type="left_anti",
-            num_partitions=200,
-            on=("ps_suppkey",),
-            right_on=("s_suppkey",),
-        )
-
-        joined = ps_clean.join(
+        # Inner join with the selective part filter first so the anti join
+        # below shuffles the reduced dataset instead of all of partsupp.
+        ps_filtered = partsupp.join(
             part_filtered,
             join_type="inner",
             num_partitions=200,
             on=("ps_partkey",),
             right_on=("p_partkey",),
+        )
+
+        # NOT IN -> anti join.
+        joined = ps_filtered.join(
+            complainers,
+            join_type="left_anti",
+            num_partitions=200,
+            on=("ps_suppkey",),
+            right_on=("s_suppkey",),
         ).select_columns(["p_brand", "p_type", "p_size", "ps_suppkey"])
 
         # COUNT(DISTINCT ps_suppkey): dedupe first, then count.
