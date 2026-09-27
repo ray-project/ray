@@ -54,6 +54,7 @@ def create(
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
     disk: Union[str, int, float] = 0,
+    num_gpus: Optional[float] = None,
     **kwargs,
 ) -> ActorHandle:
     """Create a remote sandbox environment managed by a Ray actor.
@@ -101,6 +102,9 @@ def create(
             fail with ENOSPC. Zero (default) means no cap. Requires
             ``readonly=False`` or a ``workdir``; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+        num_gpus: Number of GPUs to schedule the sandbox actor with. The
+            sandbox gets every GPU Ray assigns the actor, exposed through CDI.
+            This is the only way to give a sandbox created here GPUs.
         **kwargs: Additional options.
 
     Returns:
@@ -121,6 +125,8 @@ def create(
         parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
+    if num_gpus is not None and num_gpus >= 0:
+        actor_opts["num_gpus"] = num_gpus
     if resources:
         actor_opts["resources"] = resources
 

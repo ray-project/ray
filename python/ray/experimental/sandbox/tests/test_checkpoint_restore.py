@@ -379,6 +379,12 @@ class TestCheckpointRestore(unittest.TestCase):
         meta = self.backend._sandbox_metadata[restored_id]
         assert meta["rootfs_overlay"] is rootfs_overlay
 
+    def test_checkpoint_refuses_a_sandbox_with_gpus(self):
+        sandbox_id, _ = self._create_mock_sandbox()
+        self.backend._sandbox_metadata[sandbox_id]["config"].gpu_ids = ["0"]
+        with pytest.raises(SandboxError, match="GPUs"):
+            self.backend.checkpoint_sandbox(sandbox_id)
+
     def test_restore_success(self):
         # Setup mock checkpoint directory
         ckpt_dir = os.path.join(self.temp_dir, "valid_checkpoint")
