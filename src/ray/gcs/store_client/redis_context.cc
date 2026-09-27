@@ -37,6 +37,7 @@ extern "C" {
 // TODO(pcm): Integrate into the C++ tree.
 #include "absl/functional/function_ref.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -317,7 +318,13 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         redis_reply != nullptr     ? std::string(redis_reply->str, redis_reply->len)
         : async_context != nullptr ? std::string(async_context->errstr)
                                    : std::string("Redis connection unavailable");
-    HandleFailure(request_cxt, /*reached_redis=*/redis_reply != nullptr, error_msg);
+    // -NOAUTH is not about the command: it arrives for commands queued behind a
+    // reconnect AUTH that the server rejected, on a connection that rejection
+    // is already tearing down. The command never ran, so count it like a reply
+    // that never came.
+    const bool reached_redis =
+        redis_reply != nullptr && !absl::StartsWith(error_msg, "NOAUTH");
+    HandleFailure(request_cxt, reached_redis, error_msg);
   } else {
     // Measure while hiredis still owns the reply, and before anything is posted
     // to the io_service: `request_cxt` is deleted at the end of this branch, so

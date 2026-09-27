@@ -268,6 +268,76 @@ TEST_F(RedisAsyncContextTest, TestReconnectsThroughHostName) {
   ExpectReconnectAfterServerDropsConnection("localhost");
 }
 
+// A server that answers -NOAUTH never ran the command: that is what commands
+// queued behind a rejected reconnect AUTH get back. Such replies must not spend
+// the retry budget while the grace period lasts. The budget is six attempts
+// over about 3.5s; the server keeps refusing for 5s, and the command must
+// still succeed once it is allowed through.
+TEST_F(RedisAsyncContextTest, TestNoAuthRepliesDoNotSpendRetries) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  redisContext *admin = redisConnect("127.0.0.1", port);
+  ASSERT_TRUE(admin != nullptr && admin->err == 0);
+  auto admin_command = [admin](const char *command, const char *arg = nullptr) {
+    auto *reply =
+        static_cast<redisReply *>(arg == nullptr ? redisCommand(admin, command)
+                                                 : redisCommand(admin, command, arg));
+    ASSERT_TRUE(reply != nullptr);
+    EXPECT_NE(reply->type, REDIS_REPLY_ERROR) << command << ": " << reply->str;
+    freeReplyObject(reply);
+  };
+  // Changing requirepass also drops the authentication of connections that are
+  // already open, the admin's included, so it authenticates before lifting it.
+  // The empty password goes in as an argument: hiredis does not parse quotes,
+  // so a literal "" in the format string would set a two-character password.
+  auto lift_password = [admin]() {
+    freeReplyObject(redisCommand(admin, "AUTH noauth_test_pw"));
+    freeReplyObject(redisCommand(admin, "CONFIG SET requirepass %s", ""));
+  };
+  absl::Cleanup stop = [&] {
+    // Lift the password for the tests that follow even if this one failed
+    // half way; harmless when it is already lifted.
+    lift_password();
+    redisFree(admin);
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(ctx->Connect("127.0.0.1", port, /*username=*/"", /*password=*/"").ok());
+
+  // Require a password the client does not have, then drop its connection:
+  // it reconnects without AUTH and every command comes back -NOAUTH.
+  admin_command("CONFIG SET requirepass noauth_test_pw");
+  admin_command("CLIENT KILL TYPE normal");
+
+  std::promise<bool> done;
+  ctx->RunArgvAsync(
+      {"SET", "noauth_probe", "1"},
+      [&done](const std::shared_ptr<CallbackReply> &reply) {
+        done.set_value(reply->ReadAsStatus().ok());
+      },
+      kNoTable);
+  auto future = done.get_future();
+  // Longer than the whole retry budget: without the refund the command would
+  // have run out of attempts and aborted the process by now.
+  EXPECT_EQ(future.wait_for(std::chrono::seconds(5)), std::future_status::timeout);
+
+  // Lift the password and drop the connection once more: lifting it does not
+  // authenticate a connection that is already open, and in production the
+  // rejected AUTH tears the connection down too, so the retry lands on a fresh
+  // one.
+  admin_command("AUTH noauth_test_pw");
+  admin_command("CONFIG SET requirepass %s", "");
+  admin_command("CLIENT KILL TYPE normal");
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+  EXPECT_TRUE(future.get());
+}
+
 // The outage deadline is stamped once, by whoever gets there first, and every
 // later caller in the same outage sees that same deadline regardless of the
 // grace it passes. Clearing it lets the next outage start fresh.
