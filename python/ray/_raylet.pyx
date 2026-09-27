@@ -2855,21 +2855,31 @@ cdef CRayStatus check_signals() nogil:
 
 
 cdef void gc_collect() nogil:
-     with gil:
-        if RayConfig.instance().start_python_gc_manager_thread():
-            start = time.perf_counter()
-            worker = ray._private.worker.global_worker
-            worker.core_worker.trigger_gc()
-            end = time.perf_counter()
-            logger.debug("GC event triggered in {} seconds".format(end - start))
-        else:
-            start = time.perf_counter()
-            num_freed = gc.collect()
-            end = time.perf_counter()
-            if num_freed > 0:
-                logger.debug(
-                    "gc.collect() freed {} refs in {} seconds".format(
-                        num_freed, end - start))
+    with gil:
+        try:
+            if RayConfig.instance().start_python_gc_manager_thread():
+                worker = ray._private.worker.global_worker
+                core_worker = getattr(worker, "core_worker", None)
+                # LocalGC can arrive before CoreWorker construction has returned
+                # and worker.core_worker has been assigned.
+                if core_worker is None:
+                    return
+                start = time.perf_counter()
+                core_worker.trigger_gc()
+                end = time.perf_counter()
+                logger.debug("GC event triggered in {} seconds".format(end - start))
+            else:
+                start = time.perf_counter()
+                num_freed = gc.collect()
+                end = time.perf_counter()
+                if num_freed > 0:
+                    logger.debug(
+                        "gc.collect() freed {} refs in {} seconds".format(
+                            num_freed, end - start))
+        except BaseException:
+            # This callback runs on a C++ thread without a Python caller to
+            # receive exceptions, including SystemExit and KeyboardInterrupt.
+            logger.exception("Error during garbage collection")
 
 
 cdef c_vector[c_string] spill_objects_handler(
