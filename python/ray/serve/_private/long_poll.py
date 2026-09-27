@@ -299,7 +299,8 @@ class LongPollClient:
     def _resolve_host_actor(self) -> Optional[Any]:
         """Resolve the host by name, or None while no replacement exists."""
         resolver = self._host_actor_resolver
-        if resolver is None:
+        if resolver is None or not ray.is_initialized():
+            # Resolving auto-inits Ray, so never reach for it once it is gone.
             return None
 
         try:
@@ -321,6 +322,12 @@ class LongPollClient:
         deadline = time.time() + LONG_POLL_RECONNECT_TIMEOUT_S
         backoff = LONG_POLL_RECONNECT_BACKOFF_S[0]
         while self.is_running and time.time() < deadline:
+            if not ray.is_initialized():
+                # This process shut Ray down, so there is nothing left to
+                # reconnect to and no one to deliver updates to.
+                self.is_running = False
+                return
+
             # This blocks on the GCS, so it must not run on the event loop nor
             # on the Ray callback thread that delivers the reply it waits for.
             host_actor = await self.event_loop.run_in_executor(

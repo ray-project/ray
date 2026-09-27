@@ -659,6 +659,12 @@ def test_long_poll_client_disable_propagates_to_host_log():
     assert "not running" in output.lower(), output
 
 
+@pytest.fixture
+def ray_initialized(monkeypatch):
+    """These tests mock the host, so Ray itself is not running."""
+    monkeypatch.setattr(ray, "is_initialized", lambda: True)
+
+
 def _reconnecting_client(resolver, host_actor=None, client_id="test_reconnect"):
     return LongPollClient(
         host_actor if host_actor is not None else MagicMock(),
@@ -736,7 +742,7 @@ def test_rebind_host_actor_resets_snapshot_ids():
 
 
 @pytest.mark.asyncio
-async def test_reconnect_declines_stale_name_resolution(monkeypatch):
+async def test_reconnect_declines_stale_name_resolution(monkeypatch, ray_initialized):
     """A name still pointing at the dead actor is not a replacement."""
     monkeypatch.setattr(long_poll_module, "LONG_POLL_RECONNECT_TIMEOUT_S", 0.2)
     dead = MagicMock()
@@ -751,7 +757,9 @@ async def test_reconnect_declines_stale_name_resolution(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_client_disables_itself_when_host_never_resolves(monkeypatch):
+async def test_client_disables_itself_when_host_never_resolves(
+    monkeypatch, ray_initialized
+):
     """Reconnection is bounded so an intentional shutdown still retires it."""
     monkeypatch.setattr(long_poll_module, "LONG_POLL_RECONNECT_TIMEOUT_S", 0.2)
 
@@ -792,7 +800,7 @@ async def test_stopped_client_does_not_reconnect():
 
 
 @pytest.mark.asyncio
-async def test_stop_cancels_in_flight_reconnect():
+async def test_stop_cancels_in_flight_reconnect(ray_initialized):
     """A reconnect already in flight must not outlive stop()."""
     dead = MagicMock()
     client = _reconnecting_client(lambda: dead, host_actor=dead)
@@ -807,6 +815,21 @@ async def test_stop_cancels_in_flight_reconnect():
         lambda: client._reconnect_task.done(), timeout=20, retry_interval_ms=50
     )
     assert client._reconnect_task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_reconnect_retires_when_ray_is_shut_down(monkeypatch):
+    """Resolving auto-inits Ray, which would revive a process that shut it down."""
+    monkeypatch.setattr(ray, "is_initialized", lambda: False)
+    resolver = MagicMock()
+    client = _reconnecting_client(resolver)
+
+    client._process_update(ray.exceptions.ActorDiedError())
+
+    await async_wait_for_condition(
+        lambda: client.is_running is False, timeout=20, retry_interval_ms=50
+    )
+    resolver.assert_not_called()
 
 
 if __name__ == "__main__":
