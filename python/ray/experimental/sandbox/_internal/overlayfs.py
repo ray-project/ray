@@ -605,11 +605,97 @@ class RootfsOverlay:
         return ["bash", "-c", "; ".join(steps)]
 
 
+# The OCI hooks that run on the host before a container starts, and so can
+# write to its rootfs.
+_PRESTART_HOOKS = ("prestart", "createRuntime", "createContainer")
+
+
 def needs_rootfs_overlay(spec: Dict[str, Any]) -> bool:
     """Whether a sandbox with this final OCI spec boots from a kernel overlay
-    over its cached EROFS image, rather than from the image itself. No
-    sandbox does yet."""
-    return False
+    over its cached EROFS image, rather than from the image itself.
+
+    It does when OCI hooks run on the host before it starts, since those can
+    write to its rootfs, and those writes must never reach the cached image.
+    It also does when its rootfs is read-only and some of its mounts need
+    mount points the image doesn't have. runsc applies no overlay of its own
+    to a read-only root, and can't create them in the image, but can in the
+    kernel overlay's upper layer.
+    """
+    if has_prestart_hooks(spec):
+        return True
+    if not spec.get("root", {}).get("readonly"):
+        return False
+    return len(missing_mount_points(spec)) > 0
+
+
+def has_prestart_hooks(spec: Dict[str, Any]) -> bool:
+    """Whether this OCI spec has hooks that run on the host before the
+    container starts."""
+    hooks = spec.get("hooks") or {}
+    return any(hooks.get(kind) for kind in _PRESTART_HOOKS)
+
+
+def missing_mount_points(spec: Dict[str, Any]) -> List[str]:
+    """The destinations of this OCI spec's mounts that need a mount point in
+    the image, which it may not have.
+
+    Every image has the mount points image_utils seeds into it at build time,
+    so mounts there never need one. Neither does a mount inside another
+    mount, such as a device node under /dev, since its mount point gets
+    created in that mount rather than in the image. This doesn't check
+    whether the image has any others, so a mount onto a path it does have
+    counts too.
+    """
+    # Build a list of available mount points, which every image has. This
+    # includes "/" as well as the directories and files image_utils seeds into
+    # every image at build time.
+    available = {"/"}
+    for path in image_utils._MOUNTPOINT_DIRS + image_utils._MOUNTPOINT_FILES:
+        available.add(os.path.join("/", path))
+
+    # Build the list of desired mounts from the spec.
+    mounts = []
+    for m in spec.get("mounts") or []:
+        if m.get("destination"):
+            mounts.append(os.path.normpath(m["destination"]))
+
+    # Define a helper function to check if a given mount is inside another
+    # mount or not. If it is, its mount point comes from that other mount
+    # rather than the image, so it doesn't need to be in "available".
+    def inside_another_mount(path: str) -> bool:
+        parent = os.path.dirname(path)
+        if parent == path:
+            return False
+        return parent in mounts or inside_another_mount(parent)
+
+    # Build the list of missing mount points and return it. Skip any mounts
+    # that are verified as already available or inside another mount.
+    missing = []
+    for m in mounts:
+        if m in available or inside_another_mount(m):
+            continue
+        missing.append(m)
+    return missing
+
+
+def can_mount_rootfs_overlay() -> bool:
+    """Whether this worker can mount an overlayfs sandbox's rootfs, as
+    ``UserNamespaceType.detect`` and ``ImageMountMode.detect`` decide.
+
+    Returns:
+        True if it can, else False.
+
+    Raises:
+        SandboxCreationError: If a probe times out, since that says nothing
+            about whether it can.
+    """
+    try:
+        ImageMountMode.detect(UserNamespaceType.detect())
+    except _ProbeTimeoutError:
+        raise
+    except SandboxCreationError:
+        return False
+    return True
 
 
 def prepare(

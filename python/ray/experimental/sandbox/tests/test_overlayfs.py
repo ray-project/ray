@@ -425,6 +425,97 @@ def test_subids_read_ranges(tmp_path):
     assert read(str(tmp_path / "missing"), "ray", 1000) == ()
 
 
+@pytest.mark.parametrize(
+    "hooks, needs",
+    [
+        (None, False),
+        ({}, False),
+        ({"prestart": [{"path": "/bin/true"}]}, True),
+        ({"createRuntime": [{"path": "/bin/true"}]}, True),
+        ({"createContainer": [{"path": "/bin/true"}]}, True),
+        ({"createRuntime": []}, False),
+        # These run after the rootfs is in use, so they don't need an overlay.
+        ({"startContainer": [{"path": "/bin/true"}]}, False),
+        ({"poststart": [{"path": "/bin/true"}]}, False),
+        ({"poststop": [{"path": "/bin/true"}]}, False),
+    ],
+)
+def test_needs_rootfs_overlay_for_hooks_that_run_before_start(hooks, needs):
+    """Only OCI hooks that run on the host before the sandbox starts can
+    write to its rootfs before it's in use."""
+    spec = {"root": {"path": "rootfs"}}
+    if hooks is not None:
+        spec["hooks"] = hooks
+    assert overlayfs.needs_rootfs_overlay(spec) is needs
+
+
+@pytest.mark.parametrize(
+    "destinations, missing",
+    [
+        ([], []),
+        # Mount points image_utils seeds into every image.
+        (["/proc", "/dev", "/sys", "/tmp", "/etc/hosts", "/etc/resolv.conf"], []),
+        # A workdir, or a library mounted where the image may have nothing.
+        (["/work"], ["/work"]),
+        (["/usr/lib/libcuda.so.1"], ["/usr/lib/libcuda.so.1"]),
+        # A mount inside another mount gets its mount point there.
+        (["/dev", "/dev/nvidia0"], []),
+        (["/work", "/work/sub"], ["/work"]),
+        (["/work/", "/work/sub"], ["/work"]),
+        # A sibling that only shares a prefix isn't inside it.
+        (["/work", "/workshop"], ["/work", "/workshop"]),
+    ],
+)
+def test_missing_mount_points(destinations, missing):
+    spec = {"mounts": [{"type": "bind", "destination": d} for d in destinations]}
+    assert overlayfs.missing_mount_points(spec) == missing
+
+
+@pytest.mark.parametrize("readonly, needs", [(True, True), (False, False)])
+def test_needs_rootfs_overlay_for_missing_mount_points(readonly, needs):
+    """runsc can't create mount points in a read-only EROFS image, but can in
+    a kernel overlay. A writable sandbox's own gVisor overlay has room for
+    them."""
+    spec = {
+        "root": {"path": "rootfs", "readonly": readonly},
+        "mounts": [{"type": "bind", "destination": "/work", "source": "/w"}],
+    }
+    assert overlayfs.needs_rootfs_overlay(spec) is needs
+
+
+def test_can_mount_rootfs_overlay(monkeypatch):
+    monkeypatch.setattr(
+        overlayfs.UserNamespaceType, "detect", lambda: UserNamespaceType.PRIVATE
+    )
+    monkeypatch.setattr(
+        overlayfs.ImageMountMode, "detect", lambda userns: ImageMountMode.FUSE
+    )
+    assert overlayfs.can_mount_rootfs_overlay() is True
+
+    def cant_mount(userns):
+        raise SandboxCreationError("Can't mount an overlayfs sandbox's rootfs")
+
+    monkeypatch.setattr(overlayfs.ImageMountMode, "detect", cant_mount)
+    assert overlayfs.can_mount_rootfs_overlay() is False
+
+    def times_out(userns):
+        raise overlayfs._ProbeTimeoutError("Timed out checking")
+
+    monkeypatch.setattr(overlayfs.ImageMountMode, "detect", times_out)
+    with pytest.raises(SandboxCreationError, match="Timed out"):
+        overlayfs.can_mount_rootfs_overlay()
+
+
+@pytest.mark.skipif(
+    os.environ.get("TEST_SANDBOX_OVERLAYFS") != "1",
+    reason="Only the CI sandbox job guarantees a worker that mounts overlays",
+)
+def test_ci_worker_mounts_rootfs_overlays():
+    """The CI sandbox job's worker can mount overlayfs sandboxes, so the
+    tests that need one run there instead of skipping."""
+    assert overlayfs.can_mount_rootfs_overlay()
+
+
 @pytest.mark.parametrize("userns", list(UserNamespaceType))
 @pytest.mark.parametrize("image_mount_mode", list(ImageMountMode))
 def test_prepare_creates_the_overlay_dirs(
