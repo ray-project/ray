@@ -59,6 +59,11 @@ class Sandbox:
         readonly: bool = True,
         **kwargs,
     ):
+        if "gpu_ids" in kwargs:
+            raise TypeError(
+                "Sandbox does not accept 'gpu_ids'. A sandbox gets every GPU "
+                "Ray assigned this actor, from ray.get_gpu_ids()."
+            )
         env = env or {}
 
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
@@ -71,6 +76,12 @@ class Sandbox:
                 memory = int(assigned["memory"])
         except Exception:
             pass
+
+        # A sandbox gets every GPU Ray assigned this actor. Unlike cpu and
+        # memory, the actor has no other use for them, so there is nothing to
+        # override. An error resolving them propagates, so the sandbox never
+        # boots without them.
+        gpu_ids = [str(i) for i in ray.get_gpu_ids()] or None
 
         self.runtime = SandboxRuntime()
         self.instance_id = self.runtime.create(
@@ -86,6 +97,7 @@ class Sandbox:
             dns=dns,
             capabilities=capabilities,
             readonly=readonly,
+            gpu_ids=gpu_ids,
             **kwargs,
         )
 
