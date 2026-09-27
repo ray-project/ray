@@ -23,11 +23,6 @@ def main(args):
         #         WHERE s_comment LIKE '%Customer%Complaints%')
         #   GROUP BY p_brand, p_type, p_size
         #   ORDER BY supplier_cnt DESC, p_brand, p_type, p_size;
-        #
-        # Note:
-        # The NOT IN subquery is a left_anti join (as in Q22). COUNT(DISTINCT)
-        # is expressed as two groupbys: dedupe on (brand, type, size, suppkey),
-        # then count rows per (brand, type, size).
 
         part = load_table("part", args.sf).select_columns(
             ["p_partkey", "p_brand", "p_type", "p_size"]

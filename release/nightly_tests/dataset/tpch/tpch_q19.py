@@ -21,13 +21,6 @@ def main(args):
         #      AND l_shipinstruct = 'DELIVER IN PERSON')
         #   OR (... 'Brand#23', MED containers, quantity 10..20, size 1..10 ...)
         #   OR (... 'Brand#34', LG containers, quantity 20..30, size 1..15 ...);
-        #
-        # Note:
-        # Weaker implied predicates are pushed below the join: the disjunction
-        # of the part-only (brand/container/size) conjunctions onto part, and
-        # the shared shipmode/shipinstruct predicates plus the global quantity
-        # bounds onto lineitem. The exact per-clause disjunction, which ties
-        # each brand to its quantity range, still runs after the join.
 
         part = load_table("part", args.sf).select_columns(
             ["p_partkey", "p_brand", "p_size", "p_container"]
