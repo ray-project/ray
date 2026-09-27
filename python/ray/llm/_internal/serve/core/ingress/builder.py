@@ -312,26 +312,21 @@ def build_openai_app(builder_config: dict) -> Application:
     )
 
 
-# Segments under `/v1` the router and control applications own.
-_RESERVED_V1_SEGMENTS = frozenset({"chat", "models", "control"})
+_MODELS_ROUTE = "/models"
+_CONTROL_ROUTE = "/control"
 # Characters that pass unchanged through URLs, HAProxy ACLs, and the replica's
 # ASGI server, which decodes percent-escapes before matching the route prefix.
 _MODEL_ROUTE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
 
 
 def _model_route_segment(model_id: str) -> str:
-    """The model's segment under `/v1`, with `/` spelled `--` as in `/v1/models/{model}`."""
+    """The model's route segment, with `/` spelled `--` as in `/v1/models/{model}`."""
     segment = model_id.replace("/", "--")
     if not _MODEL_ROUTE_SEGMENT_RE.match(segment):
         raise ValueError(
             f'Model ID "{model_id}" cannot be used in a route. Model IDs served '
             "by build_openai_applications may contain only letters, digits, "
             "'.', '_', '~', '-', and '/'."
-        )
-    if segment in _RESERVED_V1_SEGMENTS:
-        raise ValueError(
-            f'Model ID "{model_id}" would route at /v1/{segment}, which is '
-            f"reserved. Reserved segments: {sorted(_RESERVED_V1_SEGMENTS)}."
         )
     return segment
 
@@ -403,7 +398,9 @@ def build_openai_applications(
     routes: Dict[str, str] = {}
     for llm_config in llm_configs:
         model_id = llm_config.model_id
-        model_route = _join_route(route_prefix, f"/v1/{_model_route_segment(model_id)}")
+        model_route = _join_route(
+            route_prefix, f"{_MODELS_ROUTE}/{_model_route_segment(model_id)}"
+        )
         if model_route in routes:
             raise ValueError(
                 f'Model IDs "{routes[model_route]}" and "{model_id}" both route '
@@ -440,7 +437,7 @@ def build_openai_applications(
         RunTarget(
             target=control_app,
             name=control.application_name,
-            route_prefix=_join_route(route_prefix, "/v1/control"),
+            route_prefix=_join_route(route_prefix, _CONTROL_ROUTE),
         )
     )
     router_app = (

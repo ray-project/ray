@@ -57,9 +57,9 @@ class TestTopology:
         targets = _build(["model-a", "org/model-b"])
 
         assert [(t.name, t.route_prefix) for t in targets] == [
-            (_model_name("model-a"), "/v1/model-a"),
-            (_model_name("org/model-b"), "/v1/org--model-b"),
-            ("llm-control", "/v1/control"),
+            (_model_name("model-a"), "/models/model-a"),
+            (_model_name("org/model-b"), "/models/org--model-b"),
+            ("llm-control", "/control"),
             ("llm", "/"),
         ]
         assert _model_name("org/model-b").startswith("llm-model-org--model-b-")
@@ -120,8 +120,8 @@ class TestTopology:
     @pytest.mark.parametrize(
         "route_prefix, expected",
         [
-            ("/", ["/v1/model-a", "/v1/control", "/"]),
-            ("/llm", ["/llm/v1/model-a", "/llm/v1/control", "/llm"]),
+            ("/", ["/models/model-a", "/control", "/"]),
+            ("/llm", ["/llm/models/model-a", "/llm/control", "/llm"]),
         ],
     )
     def test_route_prefix(self, route_prefix, expected):
@@ -181,13 +181,14 @@ class TestValidation:
             _build(["model-a", "model-a"])
 
     def test_rejects_route_collisions(self):
-        with pytest.raises(ValueError, match="both route at /v1/org--model"):
+        with pytest.raises(ValueError, match="both route at /models/org--model"):
             _build(["org/model", "org--model"])
 
-    @pytest.mark.parametrize("model_id", ["models", "chat", "control"])
-    def test_rejects_reserved_segments(self, model_id):
-        with pytest.raises(ValueError, match="reserved"):
-            _build([model_id])
+    @pytest.mark.parametrize("model_id", ["models", "chat", "control", "completions"])
+    def test_openai_route_names_are_valid_model_ids(self, model_id):
+        """Model routes sit outside `/v1`, so they cannot shadow OpenAI routes."""
+        routes = {t.route_prefix for t in _build([model_id])}
+        assert routes == {f"/models/{model_id}", "/control", "/"}
 
     @pytest.mark.parametrize("model_id", ["a b", "a%2Fb", "a?b", "a:b", "a#b"])
     def test_rejects_ids_that_cannot_be_routed(self, model_id):

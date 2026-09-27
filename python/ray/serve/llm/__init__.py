@@ -266,8 +266,8 @@ def build_openai_applications(
 
     * ``<route_prefix>/v1/chat/completions`` streams directly from a replica of
       the requested ``model``; ``<route_prefix>/v1/models`` lists the models.
-    * Each model is also served at ``<route_prefix>/v1/<model>`` (``/`` in the
-      model ID spelled ``--``), e.g. ``/v1/qwen-0.5b/v1/chat/completions``.
+    * Each model is also served at ``<route_prefix>/models/<model>`` (``/`` in
+      the model ID spelled ``--``), e.g. ``/models/qwen-0.5b/v1/chat/completions``.
 
     KV-aware routing and LoRA are not supported yet.
 

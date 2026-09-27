@@ -101,7 +101,7 @@ def targets():
 def app_names(targets) -> Dict[str, str]:
     """Model ID -> model application name."""
     by_route = {t.route_prefix: t.name for t in targets.values()}
-    return {m: by_route[f"/v1/{m.replace('/', '--')}"] for m in MODELS}
+    return {m: by_route[f"/models/{m.replace('/', '--')}"] for m in MODELS}
 
 
 def _all_running() -> bool:
@@ -215,7 +215,7 @@ class TestRouterApplication:
         for model in MODELS:
             _chat(
                 model,
-                url=f"{BASE_URL}/v1/{model.replace('/', '--')}/v1/chat/completions",
+                url=f"{BASE_URL}/models/{model.replace('/', '--')}/v1/chat/completions",
             )
         wait_for_condition(
             lambda: _router_route_calls() >= before + len(MODELS), timeout=20
@@ -240,11 +240,11 @@ class TestControlRoutes:
         assert _backend_bytes_out()[router] == before[router]
 
     def test_control_routes_are_directly_accessible(self, targets):
-        resp = httpx.get(f"{BASE_URL}/v1/control/v1/models")
+        resp = httpx.get(f"{BASE_URL}/control/v1/models")
         assert resp.status_code == 200
         assert [m["id"] for m in resp.json()["data"]] == MODELS
 
-        resp = httpx.get(f"{BASE_URL}/v1/control/v1/models/org--session-model")
+        resp = httpx.get(f"{BASE_URL}/control/v1/models/org--session-model")
         assert resp.json()["id"] == SESSION_MODEL
 
     @pytest.mark.parametrize(
@@ -316,7 +316,7 @@ def test_scale_from_zero(targets):
     serve.run_many(scaled_targets, wait_for_applications_running=False)
     # Before HAProxy has the new routes, requests 404.
     wait_for_condition(
-        lambda: "/v1/zero-model" in httpx.get(f"{BASE_URL}/-/routes").text,
+        lambda: "/models/zero-model" in httpx.get(f"{BASE_URL}/-/routes").text,
         timeout=60,
     )
 
