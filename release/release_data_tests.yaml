@@ -1255,7 +1255,7 @@
   frequency: manual
   matrix:
     setup:
-      query: [q2, q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q17, q18, q20]
+      query: [q2, q3, q4, q5, q6, q7, q9, q10, q11, q12, q14, q16, q17, q18, q19, q20]
 
   cluster:
     anyscale_sdk_2026: true
