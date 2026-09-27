@@ -104,6 +104,37 @@ Shuffle v2 supports the following operations:
 
 Shuffle v2 doesn't yet support {meth}`Dataset.sort <ray.data.Dataset.sort>` or {meth}`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`, which use the {ref}`range-partitioning shuffle <range-partitioning-shuffle>`.
 
+(disk-based-shuffle)=
+
+##### Disk-based shuffle
+
+Shuffle v2 can optionally transport intermediate shuffle data through node-local disk files instead of the Ray object store. In this disk-based shuffle mode, shuffle bytes never enter the object store; only small file-handle metadata travels through it.
+
+Disk-based shuffle works as follows:
+
+1. Each map task partitions its input and writes all of the resulting shards into a single file on its node's local disk.
+2. Each node runs a lightweight file-server actor that serves those files over [Arrow Flight](https://arrow.apache.org/docs/format/Flight.html), a high-throughput RPC protocol for Arrow data.
+3. Each reduce task fetches its partition's byte ranges from every mapper node's file server over Arrow Flight, then reduces them.
+
+Ray Data deletes the shuffle files when the shuffle completes.
+
+Because intermediate data goes straight to disk instead of filling the object store and relying on reactive spilling, disk-based shuffle is a good fit when:
+
+- The shuffled data is much larger than the cluster's aggregate object-store memory, for example large joins and aggregations over out-of-core datasets.
+- Object-store pressure from shuffle intermediates causes spilling that interferes with other operators in the pipeline.
+
+For shuffles that fit comfortably in object-store memory, the default in-memory path avoids the disk round trip and is typically faster.
+
+To enable disk-based shuffle for key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set `DataContext.use_disk_based_hash_shuffle` before creating a `Dataset`:
+
+```python
+import ray
+
+ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True
+```
+
+Alternatively, set the environment variable `RAY_DATA_ENABLE_DISK_SHUFFLE=1`.
+
 (tuning-shuffle-v2)=
 
 ##### Tuning shuffle v2
