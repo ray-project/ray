@@ -1,5 +1,6 @@
 from typing import Dict, Iterable, List
 
+import numpy as np
 import pyarrow as pa
 
 from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
@@ -22,6 +23,20 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
         return hash_partition(
             block, hash_cols=key_columns, num_partitions=num_partitions
         )
+
+    return _partition
+
+
+def _make_round_robin_partition_fn(num_partitions: int) -> PartitionFn:
+    """Return a partitioner assigning row i of each block to i % num_partitions."""
+
+    def _partition(block: pa.Table) -> Dict[int, pa.Table]:
+        partitions: Dict[int, pa.Table] = {}
+        for partition_id in range(num_partitions):
+            if partition_id < block.num_rows:
+                row_indices = np.arange(partition_id, block.num_rows, num_partitions)
+                partitions[partition_id] = block.take(row_indices)
+        return partitions
 
     return _partition
 
