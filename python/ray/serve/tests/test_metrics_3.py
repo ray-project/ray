@@ -387,7 +387,7 @@ def test_batching_metrics(metrics_start_shutdown):
     app_name = "batched_app"
     serve.run(BatchedDeployment.bind(), name=app_name, route_prefix="/batch")
 
-    http_url = "http://localhost:8000/batch"
+    http_url = get_application_url("HTTP", app_name)
 
     # Send multiple concurrent requests to trigger batching
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
