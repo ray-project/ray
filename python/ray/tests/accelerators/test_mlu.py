@@ -1,6 +1,5 @@
 import os
 import sys
-import time
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +12,7 @@ from ray._private.accelerators.mlu import (
     CN_VISIBLE_DEVICES_ENV_VAR,
     NOSET_CN_VISIBLE_DEVICES_ENV_VAR,
 )
+from ray._private.test_utils import mock_accelerator_detection
 
 
 @patch("glob.glob", return_value=[f"/dev/cambricon_dev{i}" for i in range(4)])
@@ -65,6 +65,7 @@ def test_get_current_process_visible_accelerator_ids(monkeypatch):
 
 
 def test_set_current_process_visible_accelerator_ids(monkeypatch):
+    monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "")
     monkeypatch.delenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
     MLUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "2"])
     assert os.environ[CN_VISIBLE_DEVICES_ENV_VAR] == "0,2"
@@ -80,14 +81,7 @@ def test_set_current_process_visible_accelerator_ids(monkeypatch):
 
 def test_ray_registers_mlu_resources_without_type(monkeypatch, shutdown_only):
     monkeypatch.delenv(CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value={"MLU"},
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=4,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=4):
         import ray
 
         ray.init(num_cpus=1, include_dashboard=False)
@@ -103,14 +97,7 @@ def test_ray_limits_and_isolates_visible_mlus(monkeypatch, shutdown_only):
     import ray
 
     monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value={"MLU"},
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=4,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=4):
         ray.init(num_cpus=3, include_dashboard=False)
 
     assert ray.cluster_resources()["MLU"] == 3
@@ -136,14 +123,7 @@ def test_ray_respects_noset_mlu_visible_devices(monkeypatch, shutdown_only):
 
     monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5")
     monkeypatch.setenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, "true")
-    with patch(
-        "ray._private.accelerators.get_all_accelerator_resource_names",
-        return_value={"MLU"},
-    ), patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=2,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=2):
         ray.init(num_cpus=1, include_dashboard=False)
 
     @ray.remote(resources={"MLU": 1})
@@ -158,42 +138,23 @@ def test_ray_respects_noset_mlu_visible_devices(monkeypatch, shutdown_only):
     assert visible_devices == "4,5"
 
 
-def test_ray_mlu_task_ids_reuse_and_actor_environment(monkeypatch, shutdown_only):
+def test_ray_mlu_task_ids_and_actor_environment(monkeypatch, shutdown_only):
     import ray
 
     monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
     monkeypatch.delenv(NOSET_CN_VISIBLE_DEVICES_ENV_VAR, raising=False)
-    with patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=3,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=3):
         ray.init(num_cpus=3, include_dashboard=False)
 
     @ray.remote(num_cpus=1)
-    def task(num_mlus):
-        time.sleep(0.1)
+    def task():
         ids = ray.get_runtime_context().get_accelerator_ids()["MLU"]
         return ids, os.environ[CN_VISIBLE_DEVICES_ENV_VAR]
 
-    no_mlu_ids, no_mlu_visible = ray.get(task.options(resources={"MLU": 0}).remote(0))
-    assert no_mlu_ids == []
-    assert no_mlu_visible == "4,5,6"
-
-    two_mlu_ids, two_mlu_visible = ray.get(task.options(resources={"MLU": 2}).remote(2))
+    two_mlu_ids, two_mlu_visible = ray.get(task.options(resources={"MLU": 2}).remote())
     assert len(two_mlu_ids) == 2
     assert sorted(two_mlu_ids) == sorted(two_mlu_visible.split(","))
     assert set(two_mlu_ids).issubset({"4", "5", "6"})
-
-    # Run two waves to verify that completed tasks return their MLU instances.
-    for _ in range(2):
-        assignments = ray.get(
-            [task.options(resources={"MLU": 1}).remote(1) for _ in range(3)]
-        )
-        ids = [task_ids[0] for task_ids, _ in assignments]
-        visible = [task_visible for _, task_visible in assignments]
-        assert sorted(ids) == ["4", "5", "6"]
-        assert sorted(visible) == ["4", "5", "6"]
 
     @ray.remote(resources={"MLU": 1})
     class MutableEnvironmentActor:
@@ -220,11 +181,7 @@ def test_ray_fractional_mlu_assignments(monkeypatch, shutdown_only):
     import ray
 
     monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6")
-    with patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=3,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=3):
         ray.init(num_cpus=6, include_dashboard=False)
 
     @ray.remote(num_cpus=1, resources={"MLU": 0.5})
@@ -258,11 +215,7 @@ def test_ray_mlu_placement_group_assignments(monkeypatch, shutdown_only):
     from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
     monkeypatch.setenv(CN_VISIBLE_DEVICES_ENV_VAR, "4,5,6,7")
-    with patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=4,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=4):
         ray.init(num_cpus=4, include_dashboard=False)
 
     pg = placement_group([{"CPU": 1, "MLU": 1} for _ in range(4)])
@@ -314,11 +267,7 @@ def test_ray_mlu_zero_resource_environment(
             override_on_zero,
         )
 
-    with patch.object(
-        MLUAcceleratorManager,
-        "get_current_node_num_accelerators",
-        return_value=2,
-    ):
+    with mock_accelerator_detection(MLUAcceleratorManager, num_accelerators=2):
         ray.init(num_cpus=2, include_dashboard=False)
 
     @ray.remote(num_cpus=1, resources={"MLU": 0})

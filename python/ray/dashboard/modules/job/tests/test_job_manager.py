@@ -543,6 +543,15 @@ def job_manager(shared_ray_instance, tmp_path):
     yield job_manager
 
 
+@pytest.fixture
+def mlu_job_manager(tmp_path, monkeypatch):
+    monkeypatch.delenv(RAY_ADDRESS_ENVIRONMENT_VARIABLE, raising=False)
+    with ray.init(num_cpus=2, resources={"MLU": 2}) as cluster:
+        manager = create_job_manager(cluster, tmp_path)
+        manager.JOB_MONITOR_LOOP_PERIOD_S = 0.01
+        yield manager
+
+
 async def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
     tmp_file = os.path.join(tmp_dir, "hello")
     pid_file = os.path.join(tmp_dir, "pid")
@@ -1031,6 +1040,53 @@ class TestRuntimeEnv:
 
         await async_wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id
+        )
+
+    @pytest.mark.parametrize("resources_specified", [True, False])
+    async def test_mlu_visible_devices(self, mlu_job_manager, resources_specified):
+        import shlex
+        import textwrap
+
+        script = textwrap.dedent(
+            """
+            import os
+            import ray
+
+            ray.init(address="auto")
+            driver_ids = ray.get_runtime_context().get_accelerator_ids()["MLU"]
+            driver_visible = os.environ["CN_VISIBLE_DEVICES"]
+            # Entrypoint resources belong to the supervisor; the driver inherits
+            # its visibility mask but has no task or actor resource assignment.
+            assert driver_ids == [], driver_ids
+            if os.environ["RAY_TEST_RESOURCES_SPECIFIED"] == "1":
+                assert driver_visible in ("0", "1"), driver_visible
+            else:
+                assert driver_visible == "0,2", driver_visible
+
+            @ray.remote(resources={"MLU": 1})
+            def assignment():
+                ids = ray.get_runtime_context().get_accelerator_ids()["MLU"]
+                return ids, os.environ["CN_VISIBLE_DEVICES"]
+
+            ids, visible = ray.get(assignment.remote())
+            assert len(ids) == 1, ids
+            assert visible == ids[0], (ids, visible)
+            if os.environ["RAY_TEST_RESOURCES_SPECIFIED"] == "1":
+                assert visible != driver_visible, (driver_visible, visible)
+            """
+        )
+        job_id = await mlu_job_manager.submit_job(
+            entrypoint=f"python -c {shlex.quote(script)}",
+            runtime_env={
+                "env_vars": {
+                    "CN_VISIBLE_DEVICES": "0,2",
+                    "RAY_TEST_RESOURCES_SPECIFIED": str(int(resources_specified)),
+                },
+            },
+            entrypoint_resources={"MLU": 1} if resources_specified else None,
+        )
+        await async_wait_for_condition(
+            check_job_succeeded, job_manager=mlu_job_manager, job_id=job_id
         )
 
     async def test_entrypoint_label_selector(self, job_manager):

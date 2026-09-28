@@ -487,9 +487,9 @@ ray.get(mlu_task.remote())
 ```{testoutput}
 :options: +MOCK
 
-(MLUActor pid=52420) MLU IDs: [0]
+(MLUActor pid=52420) MLU IDs: ['0']
 (MLUActor pid=52420) CN_VISIBLE_DEVICES: 0
-(mlu_task pid=51830) MLU IDs: [1]
+(mlu_task pid=51830) MLU IDs: ['1']
 (mlu_task pid=51830) CN_VISIBLE_DEVICES: 1
 ```
 :::
