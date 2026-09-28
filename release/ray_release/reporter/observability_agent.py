@@ -112,8 +112,8 @@ CODE_REGION = re.compile(
     re.DOTALL | re.MULTILINE,
 )
 
-# `meta-data` talks to buildkite's api, so it can hang. Same 30s as
-# GitHubClient.TIMEOUT.
+# Every buildkite-agent call talks to buildkite's api, so it can hang. Same 30s
+# as GitHubClient.TIMEOUT.
 BUILDKITE_AGENT_TIMEOUT = 30
 
 # Creating a debug session is a quick bookkeeping call, whereas the query runs
@@ -586,7 +586,12 @@ class ObservabilityAgentReporter(Reporter):
         try:
             # Not check=True: an annotation is advisory, and a missing binary or
             # a non-zero exit must not change the outcome of the test run.
-            completed = subprocess.run(command, capture_output=True, text=True)
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=BUILDKITE_AGENT_TIMEOUT,
+            )
         except Exception as e:
             logger.warning(f"Could not annotate the buildkite job: {e}")
             return

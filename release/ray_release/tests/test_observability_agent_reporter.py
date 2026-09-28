@@ -1129,19 +1129,21 @@ def test_a_summary_that_fits_is_not_trimmed():
     assert "truncated" not in issue.comments[0]
 
 
-def test_the_meta_data_calls_cannot_hang():
-    """`meta-data` talks to buildkite's api, so it can hang like any request."""
+def test_no_buildkite_agent_call_can_hang():
+    """Every one of them reaches buildkite's api, annotate included."""
     agent = FakeAgent()
 
     _report_on_buildkite(FakeRepo(issue=FakeIssue(state="open")), agent)
 
-    meta = [
-        k
+    calls = [
+        (c, k)
         for c, k in zip(agent.commands, agent.kwargs)
-        if c[:2] == ["buildkite-agent", "meta-data"]
+        if c[:1] == ["buildkite-agent"]
     ]
-    assert meta
-    assert all(k.get("timeout") == BUILDKITE_AGENT_TIMEOUT for k in meta)
+    # Both subcommands are exercised by this run, not just one.
+    assert {c[1] for c, _ in calls} == {"meta-data", "annotate"}
+    unbounded = [c[1] for c, k in calls if k.get("timeout") != BUILDKITE_AGENT_TIMEOUT]
+    assert not unbounded, f"unbounded buildkite-agent calls: {unbounded}"
 
 
 @pytest.mark.parametrize(
