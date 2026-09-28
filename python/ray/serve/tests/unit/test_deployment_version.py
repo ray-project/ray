@@ -322,6 +322,24 @@ def test_placement_group_options():
     assert v6.requires_actor_restart(v7)
 
 
+def test_topology_spread_restarts_replicas():
+    """A new floor re-places every replica."""
+    base = dict(
+        deployment_config=DeploymentConfig(), ray_actor_options={"num_cpus": 0.1}
+    )
+    v3 = DeploymentVersion("1", topology_spread={"zone": 2}, **base)
+    v4 = DeploymentVersion("1", topology_spread={"zone": 3}, **base)
+    v5 = DeploymentVersion("1", **base)
+    assert v3 != v4
+    assert v3.requires_actor_restart(v4)
+    assert v5 != v3
+    assert v5.requires_actor_restart(v3)
+
+    round_trip = DeploymentVersion.from_proto(v3.to_proto())
+    assert round_trip.topology_spread == {"zone": 2}
+    assert not round_trip.requires_actor_restart(v3)
+
+
 def test_requires_actor_restart():
     # Code version different
     v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})

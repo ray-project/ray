@@ -131,6 +131,7 @@ def deploy_args_to_deployment_info(
                 replica_config.placement_group_fallback_strategy
             ),
             max_replicas_per_node=replica_config.max_replicas_per_node,
+            topology_spread=replica_config.topology_spread,
         )
 
     # Java API passes in JobID as bytes

@@ -2325,11 +2325,17 @@ class TestDeploymentFloors:
             (f.label_key, f._min_domains) for f in scheduler._deployments[d_id].floors
         ]
 
-    def test_cluster_default_applies(self):
+    def test_cluster_default_applies_without_topology_spread(self):
         assert self._floors(2) == [(RAY_NODE_ID_LABEL, 2)]
 
     def test_default_floor_of_one_is_left_out(self):
         assert self._floors(1) == []
+
+    def test_topology_spread_replaces_the_cluster_default(self):
+        slice_key = "ray.io/tpu-slice-name"
+        assert self._floors(3, topology_spread={slice_key: 2}) == [(slice_key, 2)]
+        # A floor of 1 still replaces the default, and is itself always met.
+        assert self._floors(3, topology_spread={slice_key: 1}) == []
 
     def test_placement_group_fallback_strategy_skips_the_cluster_default(self):
         """The scheduler can't place such a group, so it must stay with Ray."""
@@ -2728,6 +2734,160 @@ class TestReplicaNodeFloor:
             },
         )
         assert len(to_stop[d_id]) == 1
+
+
+class TestTopologySpread:
+    """`topology_spread` on a deployment is a floor on any node label."""
+
+    SLICE = "ray.io/tpu-slice-name"
+
+    def _cluster(self):
+        """Two nodes in slice a and one in slice b, keyed by a short name."""
+        cache = MockClusterNodeInfoCache()
+        nodes = {name: NodeID.from_random().hex() for name in ["a1", "a2", "b1"]}
+        for name, node_id in nodes.items():
+            cache.add_node(node_id, {"CPU": 4}, labels={self.SLICE: name[0]})
+        return cache, nodes
+
+    @pytest.mark.parametrize("scorer", [PackNodeScorer(), SpreadNodeScorer()])
+    def test_deployment_spreads_over_slices(self, scorer):
+        d_id = DeploymentID(name="tpu")
+        cache, _ = self._cluster()
+        scheduler = make_scheduler(cache, scorer, min_replica_nodes=1)
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            rconfig(ray_actor_options={"num_cpus": 1}, topology_spread={self.SLICE: 2}),
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [make_request(d_id, f"r{i}", 1, on_scheduled) for i in range(2)]
+            },
+            downscales={},
+        )
+
+        first_node, second_node = scheduled_node_ids(on_scheduled)
+        first_slice = cache.get_node_labels(first_node)[self.SLICE]
+        assert cache.get_node_labels(second_node)[self.SLICE] != first_slice
+        # The second replica carries the slice rule to Ray as a preference.
+        second = on_scheduled.call_args_list[1].args[0]._options
+        assert second["label_selector"] == {self.SLICE: f"!in({first_slice})"}
+        assert second["fallback_strategy"] == [{"label_selector": {}}]
+
+    def test_deployment_floor_overrides_cluster_default(self):
+        """A deployment's own floor replaces the env var floor for it alone."""
+        tpu, cpu = DeploymentID(name="tpu"), DeploymentID(name="cpu")
+        cache, _ = self._cluster()
+        scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=2)
+        for d_id in (tpu, cpu):
+            scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            tpu,
+            rconfig(ray_actor_options={"num_cpus": 1}, topology_spread={self.SLICE: 1}),
+        )
+        scheduler.on_deployment_deployed(
+            cpu, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+
+        tpu_scheduled, cpu_scheduled = Mock(), Mock()
+        scheduler.schedule(
+            upscales={
+                tpu: [make_request(tpu, f"t{i}", 1, tpu_scheduled) for i in range(2)],
+                cpu: [make_request(cpu, f"c{i}", 1, cpu_scheduled) for i in range(2)],
+            },
+            downscales={},
+        )
+
+        # One slice satisfies the tpu floor, so pack keeps both replicas together.
+        assert len(set(scheduled_node_ids(tpu_scheduled))) == 1
+        # The cluster default of two nodes still applies to the other deployment.
+        assert len(set(scheduled_node_ids(cpu_scheduled))) == 2
+
+    def test_ray_placed_groups_are_started_one_per_cycle_until_the_floor_is_met(self):
+        """Serve reads back Ray's slice only when a replica runs, so it waits."""
+        d_id = DeploymentID(name="sharded")
+        cache, nodes = self._cluster()
+        create_pg_fn = Mock(side_effect=MockPlacementGroup)
+        scheduler = make_scheduler(
+            cache, PackNodeScorer(), create_placement_group_fn=create_pg_fn
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            rconfig(
+                placement_group_bundles=[{"CPU": 1}],
+                placement_group_strategy="SPREAD",
+                topology_spread={self.SLICE: 2},
+            ),
+        )
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={
+                d_id: [
+                    make_request(
+                        d_id,
+                        f"r{i}",
+                        1,
+                        on_scheduled,
+                        actor_options={"name": f"r{i}"},
+                        placement_group_bundles=[{"CPU": 1}],
+                        placement_group_strategy="SPREAD",
+                    )
+                    for i in range(2)
+                ]
+            },
+            downscales={},
+        )
+
+        # Only one group is created; the other replica stays pending.
+        assert create_pg_fn.call_count == 1
+        assert len(scheduler._pending_replicas[d_id]) == 1
+
+        # Further cycles change nothing while the first group's domain is still
+        # unknown. Waiting one tick is not enough, the replica has to be up.
+        for _ in range(3):
+            scheduler.schedule(upscales={}, downscales={})
+        assert create_pg_fn.call_count == 1
+        assert len(scheduler._pending_replicas[d_id]) == 1
+
+        # Once the first replica runs in slice a, the second is free to go and
+        # carries an exclusion naming that slice.
+        scheduler.on_replica_running(
+            ReplicaID(unique_id="r0", deployment_id=d_id), nodes["a1"]
+        )
+        scheduler.schedule(upscales={}, downscales={})
+
+        assert create_pg_fn.call_count == 2
+        assert create_pg_fn.call_args.args[0].bundle_label_selector == [
+            {self.SLICE: "!in(a)"}
+        ]
+
+    def test_downscale_keeps_slices(self):
+        d_id = DeploymentID(name="tpu")
+        cache, nodes = self._cluster()
+        scheduler = make_scheduler(cache, PackNodeScorer(), min_replica_nodes=1)
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            rconfig(ray_actor_options={"num_cpus": 1}, topology_spread={self.SLICE: 2}),
+        )
+        replicas = [ReplicaID(unique_id=f"r{i}", deployment_id=d_id) for i in range(3)]
+        for replica_id, name in zip(replicas, ["a1", "a2", "b1"]):
+            scheduler.on_replica_running(replica_id, nodes[name])
+
+        to_stop = scheduler.schedule(
+            upscales={},
+            downscales={
+                d_id: DeploymentDownscaleRequest(deployment_id=d_id, num_to_stop=1)
+            },
+        )
+
+        # b1 holds the only replica in slice b, so a replica in slice a goes.
+        assert len(to_stop[d_id]) == 1
+        assert to_stop[d_id] <= {replicas[0], replicas[1]}
 
 
 class TestSpreadNodeScorer:
