@@ -73,7 +73,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     lua-load-per-thread {{ router_application_lua_path }}
     {%- endif %}
     {%- if (has_ingress_request_router and ingress_request_router_forward_body) or has_router_applications %}
-    # Routed requests buffer the body for the router; larger bodies are truncated.
+    # Routed requests buffer the body; routers see at most this much of it.
     tune.bufsize {{ ingress_request_router_bufsize }}
     {%- else %}
     tune.bufsize {{ config.bufsize }}
