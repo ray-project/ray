@@ -1270,6 +1270,7 @@ The following connectors are maintained by the community and provide integration
 with additional data systems:
 
 * `Apache Doris Ray Connector <https://github.com/jiangxt2/ray-doris>`_ - Read and write data between Ray Data and `Apache Doris <https://doris.apache.org/>`_.
+* `ClickHouse Ray Connector <https://github.com/jiangxt2/ray-clickhouse>`_ - Read and write data between Ray Data and `ClickHouse <https://clickhouse.com/>`_.
 * `Kinetica Ray Connector <https://github.com/kineticadb/kinetica-ray>`_ - Read and write data between Ray Data and `Kinetica <https://www.kinetica.com/>`_.
 
 Performance considerations
