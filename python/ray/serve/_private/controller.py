@@ -1737,7 +1737,7 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
-        # Kept at zero replicas so HAProxy never returns decisions to clients.
+        # Keep the marker at zero replicas so HAProxy never forwards a decision.
         is_router_application = self.application_state_manager.is_router_application(
             app_name
         )
