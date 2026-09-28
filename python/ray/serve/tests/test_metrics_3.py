@@ -28,6 +28,17 @@ from ray.serve._private.test_utils import (
 from ray.util.state import list_actors
 
 
+def _request_retrying_dropped_connection(
+    method: str, url: str, **kwargs
+) -> httpx.Response:
+    """Send again if HAProxy dropped the connection before responding: it reloads
+    on every replica change, and httpx does not retry."""
+    try:
+        return httpx.request(method, url, **kwargs)
+    except httpx.RemoteProtocolError:
+        return httpx.request(method, url, **kwargs)
+
+
 def test_deployment_and_application_status_metrics(metrics_start_shutdown):
     """Test that deployment and application status metrics are exported correctly.
 
@@ -139,7 +150,7 @@ def test_replica_startup_and_initialization_latency_metrics(metrics_start_shutdo
 
     serve.run(MyDeployment.bind(), name="app", route_prefix="/f")
     url = get_application_url("HTTP", "app")
-    assert "hello" == httpx.get(url).text
+    assert "hello" == _request_retrying_dropped_connection("GET", url).text
 
     # Verify startup latency: two replicas aggregate into one time series (_count == 2).
     wait_for_metric(
@@ -208,7 +219,7 @@ def test_replica_reconfigure_latency_metrics(metrics_start_shutdown):
         route_prefix="/config",
     )
     url = get_application_url("HTTP", "app")
-    assert httpx.get(url).json() == {"version": 1}
+    assert _request_retrying_dropped_connection("GET", url).json() == {"version": 1}
 
     # Update user_config to trigger in-place reconfigure (same version, different config)
     serve.run(
@@ -257,7 +268,7 @@ def test_health_check_latency_metrics(metrics_start_shutdown):
 
     serve.run(MyDeployment.bind(), name="app", route_prefix="/f")
     url = get_application_url("HTTP", "app")
-    assert "hello" == httpx.get(url).text
+    assert "hello" == _request_retrying_dropped_connection("GET", url).text
 
     # Wait for at least one health check to complete and verify metric is recorded
     def check_health_check_latency_metrics():
@@ -309,10 +320,10 @@ def test_health_check_failures_metrics(metrics_start_shutdown):
     url = get_application_url("HTTP", "app")
 
     # Verify deployment is healthy initially
-    assert httpx.get(url).text == "ok"
+    assert _request_retrying_dropped_connection("GET", url).text == "ok"
 
     # Trigger health check failure
-    httpx.request("GET", url, content=b"fail")
+    _request_retrying_dropped_connection("GET", url, content=b"fail")
 
     # Wait for at least one health check failure to be recorded
     def check_health_check_failure_metrics():
@@ -342,7 +353,7 @@ def test_replica_shutdown_duration_metrics(metrics_start_shutdown):
     # Deploy the application
     serve.run(MyDeployment.bind(), name="app", route_prefix="/f")
     url = get_application_url("HTTP", "app")
-    assert "hello" == httpx.get(url).text
+    assert "hello" == _request_retrying_dropped_connection("GET", url).text
 
     # Delete the application to trigger shutdown
     serve.delete("app", _blocking=True)
@@ -392,7 +403,11 @@ def test_batching_metrics(metrics_start_shutdown):
     # Send multiple concurrent requests to trigger batching
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         futures = [
-            executor.submit(lambda i=i: httpx.post(http_url, content=f"req{i}"))
+            executor.submit(
+                lambda i=i: _request_retrying_dropped_connection(
+                    "POST", http_url, content=f"req{i}"
+                )
+            )
             for i in range(8)
         ]
         results = [f.result() for f in futures]
@@ -965,7 +980,7 @@ def test_event_loop_monitoring_metrics(metrics_start_shutdown):
 
     # Make a request to ensure everything is running
     url = get_application_url("HTTP", "app")
-    assert httpx.get(url).text == "child"
+    assert _request_retrying_dropped_connection("GET", url).text == "child"
 
     timeseries = PrometheusTimeseries()
 
