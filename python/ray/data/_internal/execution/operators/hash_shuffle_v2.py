@@ -1,3 +1,4 @@
+import random
 from typing import Dict, Iterable, List
 
 import numpy as np
@@ -28,14 +29,15 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
 
 
 def _make_round_robin_partition_fn(num_partitions: int) -> PartitionFn:
-    """Return a partitioner assigning row i of each block to i % num_partitions."""
+    """Return a round-robin partitioner with a random starting partition per block."""
 
     def _partition(block: pa.Table) -> Dict[int, pa.Table]:
         partitions: Dict[int, pa.Table] = {}
-        for partition_id in range(num_partitions):
-            if partition_id < block.num_rows:
-                row_indices = np.arange(partition_id, block.num_rows, num_partitions)
-                partitions[partition_id] = block.take(row_indices)
+        start_partition = random.randrange(num_partitions)
+        for partition_id in range(min(num_partitions, block.num_rows)):
+            row_indices = np.arange(partition_id, block.num_rows, num_partitions)
+            target_partition = (start_partition + partition_id) % num_partitions
+            partitions[target_partition] = block.take(row_indices)
         return partitions
 
     return _partition

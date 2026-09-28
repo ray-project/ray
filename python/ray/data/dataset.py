@@ -2379,7 +2379,7 @@ class Dataset:
                 minimizing data movement. When shuffle is enabled with
                 ``ShuffleStrategy.SHUFFLE_V2`` and no keys, rows within each input
                 block are assigned round-robin to output partitions, starting
-                at partition 0 for each block.
+                at a randomly selected partition for each block.
             keys: List of key columns repartitioning will use to determine which
                 partition will row belong to after repartitioning (by applying
                 hash-partitioning algorithm to the whole dataset). Note that, this
