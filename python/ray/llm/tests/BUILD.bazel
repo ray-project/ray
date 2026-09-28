@@ -41,7 +41,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    # Shorten direct-ingress draining because these tests repeatedly shut down
+    # or replace Serve applications within their target timeouts.
     env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
         "VLLM_FLASH_ATTN_VERSION": "2",
     },
     files = glob(

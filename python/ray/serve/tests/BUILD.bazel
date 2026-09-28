@@ -1,6 +1,12 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 load("//bazel:python.bzl", "py_test_module_list", "py_test_module_list_with_env_variants")
 
+# Shorten direct-ingress draining because these tests repeatedly shut down or
+# replace Serve applications within their target timeouts.
+SHORT_DIRECT_INGRESS_DRAIN_ENV = {
+    "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+}
+
 py_library(
     name = "conftest",
     srcs = ["conftest.py"],
@@ -60,6 +66,7 @@ py_test_module_list_with_env_variants(
 # Small tests.
 py_test_module_list(
     size = "small",
+    env = SHORT_DIRECT_INGRESS_DRAIN_ENV,
     files = [
         "test_advanced.py",
         "test_cluster_node_info_cache.py",
@@ -88,6 +95,7 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
     size = "medium",
+    env = SHORT_DIRECT_INGRESS_DRAIN_ENV,
     files = [
         "test_actor_replica_wrapper.py",
         "test_backpressure.py",
@@ -116,7 +124,6 @@ py_test_module_list(
         "test_http_routes.py",
         "test_https_proxy.py",
         "test_list_outbound_deployments.py",
-        "test_max_replicas_per_node.py",
         "test_multiplex.py",
         "test_prometheus_autoscaling.py",
         "test_proxy_actor_wrapper.py",
@@ -136,6 +143,29 @@ py_test_module_list(
     ],
     tags = [
         "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# AutoscalingCluster simulates several Ray nodes on one host. Disable HAProxy
+# because per-node HAProxy managers cannot all bind the same host ports.
+py_test_module_list(
+    size = "medium",
+    env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+        "RAY_SERVE_ENABLE_HA_PROXY": "0",
+    },
+    files = [
+        "test_max_replicas_per_node.py",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
         "team:serve",
     ],
     deps = [
@@ -168,6 +198,7 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "large",
+    env = SHORT_DIRECT_INGRESS_DRAIN_ENV,
     files = [
         "test_dependency_ordered_shutdown.py",
         "test_deployment_scheduler.py",
@@ -187,6 +218,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
         "RAY_SERVE_FAIL_ON_RANK_ERROR": "1",
     },
     files = [
@@ -232,6 +264,7 @@ py_test_module_list(
 py_test_module_list(
     size = "enormous",
     data = glob(["test_config_files/**/*"]),
+    env = SHORT_DIRECT_INGRESS_DRAIN_ENV,
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -323,6 +356,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
+    env = SHORT_DIRECT_INGRESS_DRAIN_ENV,
     files = [
         "test_standalone_2.py",
     ],
@@ -344,6 +378,7 @@ py_test_module_list(
     timeout = "long",
     data = glob(["test_config_files/**/*"]),
     env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
         "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
@@ -384,6 +419,7 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {
         "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
     },
     files = [
@@ -435,6 +471,7 @@ py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
         "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
         "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
@@ -553,6 +590,7 @@ py_test(
         "test_failure.py",
         "test_failure_2.py",
     ],
+    env = SHORT_DIRECT_INGRESS_DRAIN_ENV,
     tags = [
         "exclusive",
         "team:serve",
@@ -589,6 +627,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
     "metr_collect_on_replica": {
         "env": {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0",
+            "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
@@ -597,6 +636,7 @@ AUTOSCALING_METRIC_ENV_VARIANTS = {
     "metr_collect_on_handle": {
         "env": {
             "RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "1",
+            "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
             # Make sure queued metrics are cleared out quickly.
             "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S": "0.1",
         },
@@ -690,13 +730,40 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
+    env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
         "test_gcs_failure.py",
-        "test_max_replicas_per_node.py",
         "test_replica_placement_group.py",
+    ],
+    name_suffix = "_with_pack_scheduling",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# This is the pack-scheduling variant of the same simulated multi-node test.
+py_test_module_list(
+    size = "medium",
+    data = glob(["test_config_files/**/*"]),
+    env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+        "RAY_SERVE_ENABLE_HA_PROXY": "0",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
+    files = [
+        "test_max_replicas_per_node.py",
     ],
     name_suffix = "_with_pack_scheduling",
     tags = [
@@ -714,7 +781,10 @@ py_test_module_list(
 # Large tests with pack scheduling
 py_test_module_list(
     size = "enormous",
-    env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
+    env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
     files = [
         "test_standalone.py",
         "test_standalone_3.py",
@@ -735,7 +805,10 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
+    env = {
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
     files = [
         "test_deployment_scheduler.py",
         "test_deployment_scheduler_downscale.py",
