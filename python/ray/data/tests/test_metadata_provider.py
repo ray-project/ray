@@ -1,19 +1,23 @@
 import logging
+import ntpath
 import os
+import pathlib
 import posixpath
 import urllib.parse
 from functools import partial
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
 from pyarrow.fs import LocalFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
+import ray.data.datasource.file_meta_provider as fmp
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
     FileMetadataProvider,
+    Partitioning,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
@@ -364,6 +368,45 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
                 list, zip(*meta_provider.expand_paths(dir_paths, fs))
             )
         assert len(file_paths) == len(paths) * num_dfs
+
+
+@pytest.mark.parametrize("partitioned", [False, True])
+def test_default_file_metadata_provider_windows_cloud_commonpath(
+    s3_fs,
+    s3_path,
+    partitioned,
+):
+    """Regression test for https://github.com/ray-project/ray/issues/54779:
+    Ensure expanding cloud paths on Windows preserves POSIX `/` separators
+    when computing the common path prefix (both unpartitioned and partitioned).
+    """
+    base_path = _unwrap_protocol(s3_path)
+    paths = []
+    for i in range(FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD):
+        rel_dir = (
+            posixpath.join(base_path, f"part={i % 2}") if partitioned else base_path
+        )
+        file_path = posixpath.join(rel_dir, f"test_{i}.csv")
+        with s3_fs.open_output_stream(file_path) as f:
+            f.write(b"one\n1\n")
+        paths.append(file_path)
+
+    partitioning = Partitioning("hive", base_dir=s3_path) if partitioned else None
+    meta_provider = DefaultFileMetadataProvider()
+
+    with patch.object(fmp, "os", Mock(path=ntpath), create=True), patch.object(
+        fmp, "pathlib", Mock(Path=pathlib.PureWindowsPath), create=True
+    ), patch(
+        "ray.data.datasource.file_meta_provider._get_file_infos_common_path_prefix",
+        wraps=_get_file_infos_common_path_prefix,
+    ) as mock_get:
+        file_paths, file_sizes = map(
+            list, zip(*meta_provider.expand_paths(paths, s3_fs, partitioning))
+        )
+
+    mock_get.assert_called_once_with(paths, base_path, s3_fs, False)
+    assert file_paths == paths
+    assert file_sizes == _get_file_sizes_bytes(paths, s3_fs)
 
 
 if __name__ == "__main__":

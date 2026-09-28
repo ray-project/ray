@@ -1,7 +1,6 @@
 import itertools
 import logging
-import os
-import pathlib
+import posixpath
 import re
 from typing import (
     TYPE_CHECKING,
@@ -285,8 +284,9 @@ def _expand_paths(
         yield from _get_file_infos_serial(paths, filesystem, ignore_missing_paths)
     else:
         # 2. Common path prefix case.
-        # Get longest common path of all paths.
-        common_path = os.path.commonpath(paths)
+        # Get longest common path of all paths using POSIX separators so that
+        # cloud/remote paths on Windows do not get converted to backslashes.
+        common_path = posixpath.commonpath(paths)
         # If parent directory (or base directory, if using partitioning) is common to
         # all paths, fetch all file infos at that prefix and filter the response to the
         # provided paths.
@@ -295,7 +295,7 @@ def _expand_paths(
                 partitioning is not None
                 and common_path == _unwrap_protocol(partitioning.base_dir)
             )
-            or all(str(pathlib.Path(path).parent) == common_path for path in paths)
+            or all(posixpath.dirname(path) == common_path for path in paths)
         ):
             yield from _get_file_infos_common_path_prefix(
                 paths, common_path, filesystem, ignore_missing_paths
