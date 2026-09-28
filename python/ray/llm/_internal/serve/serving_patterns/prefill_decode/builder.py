@@ -19,6 +19,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     _build_direct_streaming_llm_deployment,
     _build_openai_ingress_request_router,
+    _ingress_request_router_requires_body,
     _validate_direct_streaming_ingress_config,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
@@ -35,6 +36,7 @@ from ray.llm._internal.serve.serving_patterns.prefill_decode.pd_server import (
     PDDecodeServer,
     PDPrefillServer,
 )
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -188,7 +190,12 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
                 server=decode_deployment, llm_config=pd_config.decode_config
-            )
+            ),
+            config=IngressRequestRouterConfig(
+                forward_request_body=_ingress_request_router_requires_body(
+                    [pd_config.decode_config]
+                )
+            ),
         )
 
     decode_builder = build_dp_deployment if decode_dp_size > 1 else build_llm_deployment

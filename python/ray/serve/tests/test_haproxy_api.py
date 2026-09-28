@@ -1006,20 +1006,14 @@ def test_default_data_plane_tuning_renders(haproxy_api_cleanup):
 
 @pytest.mark.parametrize("forward_body", [True, False])
 def test_ingress_request_router_forward_body_gate_renders(
-    haproxy_api_cleanup, monkeypatch, forward_body
+    haproxy_api_cleanup, forward_body
 ):
-    """The FORWARD_BODY escape hatch must drive both:
+    """The per-app forwarding decision must drive both:
     - HAProxy ``wait-for-body`` + ``tune.bufsize`` directives (memory cost
       and the per-request body round-trip), and
-    - the Lua ``FORWARD_BODY`` constant (whether the action reads the body
+    - the Lua forwarding map (whether the action reads the body
       and forwards it to ``/internal/route``).
-
-    Off by default: round-robin ignores the body, so neither cost is paid.
     """
-    monkeypatch.setattr(
-        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
-        forward_body,
-    )
     with tempfile.TemporaryDirectory() as temp_dir:
         api = _make_api(
             temp_dir,
@@ -1039,6 +1033,7 @@ def test_ingress_request_router_forward_body_gate_renders(
                     ingress_request_router_servers=[
                         ServerConfig(name="router", host="10.0.0.10", port=9000)
                     ],
+                    ingress_request_router_forward_body=forward_body,
                 ),
             },
         )
@@ -1058,10 +1053,10 @@ def test_ingress_request_router_forward_body_gate_renders(
                 f"tune.bufsize {RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE}"
                 in cfg
             ), cfg
-            assert "local FORWARD_BODY = true" in lua, lua
+            assert '["llm"] = true' in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
-            assert "local FORWARD_BODY = false" in lua, lua
+            assert '["llm"] = false' in lua, lua
         assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
         assert (
             "http-request del-header x-serve-router- -m beg "
@@ -1179,14 +1174,10 @@ def _shutdown_fake_servers(servers, threads):
 
 
 @pytest.mark.asyncio
-async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
+async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
     """Run actual HAProxy against a fake router + two replicas; verify a POST
     is pinned to the replica the router selects, while a GET (which doesn't
     trigger the router-routed path) is not."""
-    monkeypatch.setattr(
-        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
-        True,
-    )
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -1230,6 +1221,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 ingress_request_router_servers=[
                     ServerConfig(name="router", host="127.0.0.1", port=router_port),
                 ],
+                ingress_request_router_forward_body=True,
             )
 
             await _start_router_haproxy(
@@ -1307,14 +1299,10 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
 
 @pytest.mark.asyncio
 async def test_ingress_request_router_forwards_trusted_headers(
-    haproxy_api_cleanup, monkeypatch
+    haproxy_api_cleanup,
 ):
     """Router metadata is forwarded generically, while client-supplied values
     under the router-owned prefix are stripped."""
-    monkeypatch.setattr(
-        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
-        True,
-    )
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
         stats_port = find_free_port()
@@ -1357,6 +1345,7 @@ async def test_ingress_request_router_forwards_trusted_headers(
                 ingress_request_router_servers=[
                     ServerConfig(name="router", host="127.0.0.1", port=router_port),
                 ],
+                ingress_request_router_forward_body=True,
             )
 
             await _start_router_haproxy(

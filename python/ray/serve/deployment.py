@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.serve._private.config import (
     DeploymentConfig,
+    IngressRequestRouterConfig,
     ReplicaConfig,
     RequestRouterConfig,
     handle_num_replicas_auto,
@@ -61,13 +62,18 @@ class Application:
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
         self._ingress_request_router: Optional["Application"] = None
+        self._ingress_request_router_config: Optional[IngressRequestRouterConfig] = None
 
     def _with_ingress_request_router(
-        self, ingress_request_router: "Application"
+        self,
+        ingress_request_router: "Application",
+        *,
+        config: IngressRequestRouterConfig,
     ) -> "Application":
         # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
         # This is not a stable public Serve API.
         self._ingress_request_router = ingress_request_router
+        self._ingress_request_router_config = config
         return self
 
 

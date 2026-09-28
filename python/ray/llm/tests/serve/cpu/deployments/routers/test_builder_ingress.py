@@ -18,9 +18,16 @@ from ray.llm._internal.serve.core.configs.llm_config import (
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
+    _ingress_request_router_requires_body,
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    KVAwareRouter,
+)
+from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
+    PrefixCacheAffinityRouter,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_openai_app,
 )
@@ -440,6 +447,45 @@ class TestBuildOpenaiApp:
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
 
+    @pytest.mark.parametrize(
+        ("router_class", "expected"),
+        [
+            (RoundRobinRouter, False),
+            (ConsistentHashRouter, False),
+            (PrefixCacheAffinityRouter, True),
+            (KVAwareRouter, True),
+        ],
+    )
+    def test_direct_streaming_auto_body_forwarding(
+        self,
+        llm_config,
+        disable_placement_bundles,
+        monkeypatch,
+        router_class,
+        expected,
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=router_class
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is expected
+
+    def test_multi_model_direct_streaming_forwards_body_for_model_selection(
+        self, llm_config
+    ):
+        other_llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="other-model")
+        )
+
+        assert _ingress_request_router_requires_body([llm_config, other_llm_config])
+
     def test_direct_streaming_rejects_multiple_llm_configs(
         self, llm_config, disable_placement_bundles, monkeypatch
     ):
@@ -534,6 +580,8 @@ class TestDirectStreamingDP:
         assert request_router_config.request_router_class == (
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is False
 
     def test_dp_user_request_router_config_wins(
         self, llm_config, disable_placement_bundles, monkeypatch
@@ -554,6 +602,21 @@ class TestDirectStreamingDP:
         assert request_router_config.request_router_class == (
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is False
+
+    def test_dp_body_aware_router_forwards_body(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        llm_config.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=PrefixCacheAffinityRouter,
+        )
+
+        app = build_dp_openai_app({"llm_config": llm_config})
+
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is True
 
 
 class TestDirectStreamingPD:
@@ -651,6 +714,8 @@ class TestDirectStreamingPD:
         assert request_router_config.request_router_class == (
             f"{RoundRobinRouter.__module__}.{RoundRobinRouter.__name__}"
         )
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is False
 
     def test_pd_user_request_router_config_wins(
         self, pd_configs, disable_placement_bundles, monkeypatch
@@ -672,6 +737,22 @@ class TestDirectStreamingPD:
         assert request_router_config.request_router_class == (
             f"{ConsistentHashRouter.__module__}.{ConsistentHashRouter.__name__}"
         )
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is False
+
+    def test_pd_body_aware_router_forwards_body(
+        self, pd_configs, disable_placement_bundles, monkeypatch
+    ):
+        self._enable_direct_streaming(monkeypatch)
+        prefill, decode = pd_configs
+        decode.deployment_config["request_router_config"] = RequestRouterConfig(
+            request_router_class=PrefixCacheAffinityRouter,
+        )
+
+        app = build_pd_openai_app({"prefill_config": prefill, "decode_config": decode})
+
+        assert app._ingress_request_router_config is not None
+        assert app._ingress_request_router_config.forward_request_body is True
 
 
 class TestIngressScaleToZero:

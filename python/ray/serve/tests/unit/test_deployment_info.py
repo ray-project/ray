@@ -4,7 +4,11 @@ from unittest.mock import patch
 import pytest
 
 from ray.serve._private.common import TargetCapacityDirection
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    IngressRequestRouterConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 
 
@@ -51,6 +55,9 @@ def test_deployment_info_serialization(
         assert info1.start_time_ms == info2.start_time_ms
         assert info1.target_capacity == info2.target_capacity
         assert info1.target_capacity_direction == info2.target_capacity_direction
+        assert (
+            info1.ingress_request_router_config == info2.ingress_request_router_config
+        )
 
     deployment_info_args = dict(
         version="123",
@@ -58,6 +65,10 @@ def test_deployment_info_serialization(
         replica_config=ReplicaConfig.create(lambda x: x),
         start_time_ms=0,
         deployer_job_id="",
+        ingress_request_router=True,
+        ingress_request_router_config=IngressRequestRouterConfig(
+            forward_request_body=True
+        ),
     )
 
     # Check that serialization works correctly when the DeploymentInfo is

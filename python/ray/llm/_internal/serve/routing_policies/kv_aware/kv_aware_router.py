@@ -41,6 +41,8 @@ class KVAwareRouter(RequestRouter):
     candidate replicas to/from Dynamo worker ids.
     """
 
+    requires_request_body = True
+
     def initialize_state(self):
         """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
         process. When absent (e.g. the proxy's fallback router), KV-aware

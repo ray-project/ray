@@ -7,7 +7,11 @@ from typing import Any, Dict, Optional, Union
 import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    IngressRequestRouterConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S,
@@ -26,6 +30,7 @@ def get_deploy_args(
     replica_config: ReplicaConfig,
     ingress: bool = False,
     ingress_request_router: bool = False,
+    ingress_request_router_config: Optional[IngressRequestRouterConfig] = None,
     deployment_config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
@@ -56,6 +61,7 @@ def get_deploy_args(
         "deployer_job_id": ray.get_runtime_context().get_job_id(),
         "ingress": ingress,
         "ingress_request_router": ingress_request_router,
+        "ingress_request_router_config": ingress_request_router_config,
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
@@ -73,6 +79,7 @@ def deploy_args_to_deployment_info(
     app_name: Optional[str] = None,
     ingress: bool = False,
     ingress_request_router: bool = False,
+    ingress_request_router_config: Optional[IngressRequestRouterConfig] = None,
     route_prefix: Optional[str] = None,
     uses_multiplexing: bool = False,
     **kwargs,
@@ -152,6 +159,7 @@ def deploy_args_to_deployment_info(
         route_prefix=route_prefix,
         ingress=ingress,
         ingress_request_router=ingress_request_router,
+        ingress_request_router_config=ingress_request_router_config,
     )
 
 

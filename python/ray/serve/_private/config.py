@@ -51,6 +51,7 @@ from ray.serve.generated.serve_pb2 import (
     GangPlacementStrategy as GangPlacementStrategyProto,
     GangRuntimeFailurePolicy as GangRuntimeFailurePolicyProto,
     GangSchedulingConfig as GangSchedulingConfigProto,
+    IngressRequestRouterConfig as IngressRequestRouterConfigProto,
     LoggingConfig as LoggingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
     RequestRouterConfig as RequestRouterConfigProto,
@@ -120,6 +121,23 @@ def _proto_to_dict(proto: Message) -> Dict:
         ):
             data[field.name] = field.default_value
     return data
+
+
+class IngressRequestRouterConfig(BaseModel):
+    """Internal configuration for an application's ingress request router."""
+
+    forward_request_body: bool = False
+
+    @classmethod
+    def from_proto(
+        cls, proto: IngressRequestRouterConfigProto
+    ) -> "IngressRequestRouterConfig":
+        return cls(forward_request_body=proto.forward_request_body)
+
+    def to_proto(self) -> IngressRequestRouterConfigProto:
+        return IngressRequestRouterConfigProto(
+            forward_request_body=self.forward_request_body
+        )
 
 
 class DeploymentConfig(BaseModel):

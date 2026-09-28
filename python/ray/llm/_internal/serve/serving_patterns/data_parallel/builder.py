@@ -13,6 +13,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     _build_direct_streaming_llm_deployment,
     _build_openai_ingress_request_router,
+    _ingress_request_router_requires_body,
     _validate_direct_streaming_ingress_config,
 )
 from ray.llm._internal.serve.core.ingress.ingress import (
@@ -23,6 +24,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
     DPServer,
 )
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve.deployment import Application
 
 logger = get_logger(__name__)
@@ -125,7 +127,10 @@ def build_dp_openai_app(builder_config: dict) -> Application:
         return direct_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
                 server=direct_deployment, llm_config=llm_config
-            )
+            ),
+            config=IngressRequestRouterConfig(
+                forward_request_body=_ingress_request_router_requires_body([llm_config])
+            ),
         )
 
     dp_deployment = build_dp_deployment(llm_config)

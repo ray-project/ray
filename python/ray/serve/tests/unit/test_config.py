@@ -60,6 +60,10 @@ class FakeRequestRouter:
     ...
 
 
+class FakeBodyAwareRequestRouter:
+    requires_request_body = True
+
+
 @ray.remote
 class _TestDummyActor:
     """Used for deployment_actors import path test."""
@@ -355,6 +359,14 @@ class TestDeploymentConfig:
             deployment_config.request_router_config.get_request_router_class()
             == PowerOfTwoChoicesRequestRouter
         )
+
+    def test_request_router_body_requirement(self):
+        assert not RequestRouterConfig(
+            request_router_class=FakeRequestRouter
+        ).requires_request_body()
+        assert RequestRouterConfig(
+            request_router_class=FakeBodyAwareRequestRouter
+        ).requires_request_body()
 
     def test_backoff_params_imperative(self):
         """Check that custom backoff params are set via the imperative path."""

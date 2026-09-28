@@ -38,13 +38,13 @@ pip install "ai-dynamo>=1.4.0"
 
 ## Configuration
 
-`KVAwareRouter` runs inside the `LLMRouter` ingress request router, so it needs the {ref}`direct streaming <direct-streaming-guide>` path. It scores on prompt tokens, so the ingress also needs the request body. Export all three environment variables before you start Serve:
+`KVAwareRouter` runs inside the `LLMRouter` ingress request router, so it needs the {ref}`direct streaming <direct-streaming-guide>` path. Enable it before starting Serve:
 
 ```bash
-export RAY_SERVE_ENABLE_HA_PROXY=1
 export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
-export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
+
+The router scores on prompt tokens, so Serve automatically enables request-body forwarding for applications that select it.
 
 :::{note}
 With body forwarding enabled, `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` sets HAProxy's request-buffer cap (8 MiB by default). HAProxy sends only a prefix of larger bodies to the router. Raise it when `serve_haproxy_ingress_router_truncations_total` shows that this truncation is affecting body-aware routing; a larger buffer increases HAProxy memory use and can delay routing and TTFT.

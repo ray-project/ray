@@ -6,6 +6,7 @@ import sys
 import pytest
 
 from ray import serve
+from ray.serve._private.config import IngressRequestRouterConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -139,7 +140,8 @@ def test_ingress_request_router_requires_haproxy(monkeypatch):
     ):
         llm_server = LLMServer.bind()
         app = llm_server._with_ingress_request_router(
-            IngressRequestRouter.bind(llm_deployment=llm_server)
+            IngressRequestRouter.bind(llm_deployment=llm_server),
+            config=IngressRequestRouterConfig(),
         )
         serve.run(
             app,
