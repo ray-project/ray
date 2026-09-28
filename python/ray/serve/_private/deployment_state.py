@@ -600,6 +600,7 @@ class DeploymentTargetState:
             placement_group_fallback_strategy=(
                 info.replica_config.placement_group_fallback_strategy
             ),
+            topology_spread=info.replica_config.topology_spread,
         )
 
         return cls(info, target_num_replicas, version, deleting)
@@ -635,6 +636,10 @@ class DeploymentTargetState:
         max_replicas_match = (
             self.info.replica_config.max_replicas_per_node
             == other_target_state.info.replica_config.max_replicas_per_node
+        )
+        topology_spread_match = (
+            self.info.replica_config.topology_spread
+            == other_target_state.info.replica_config.topology_spread
         )
         deployment_config_match = self.info.deployment_config.model_dump(
             exclude={"num_replicas"}
@@ -679,6 +684,7 @@ class DeploymentTargetState:
                 bundle_label_selector_match,
                 fallback_match,
                 max_replicas_match,
+                topology_spread_match,
                 deployment_config_match,
                 version_match,
             ]

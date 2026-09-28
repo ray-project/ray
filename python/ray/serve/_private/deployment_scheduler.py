@@ -322,8 +322,8 @@ class DeploymentSchedulingInfo:
     fallback_strategy: Optional[List[Dict[str, Any]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
-    # Built once at deploy time from `RAY_SERVE_MIN_REPLICA_NODES`. A floor of 1
-    # is always met, so it is left out.
+    # Built once at deploy time from `topology_spread`, or else from
+    # `RAY_SERVE_MIN_REPLICA_NODES`. A floor of 1 is always met, so it is left out.
     floors: Tuple["MinTopologyDomainsConstraint", ...] = ()
 
     @property
@@ -825,7 +825,10 @@ class DeploymentScheduler(ABC):
             "fallback_strategy"
         )
         info.max_replicas_per_node = replica_config.max_replicas_per_node
-        floors = {RAY_NODE_ID_LABEL: RAY_SERVE_MIN_REPLICA_NODES}
+        # `topology_spread` replaces the cluster default for this deployment.
+        floors = replica_config.topology_spread or {
+            RAY_NODE_ID_LABEL: RAY_SERVE_MIN_REPLICA_NODES
+        }
         info.floors = tuple(
             MinTopologyDomainsConstraint(label_key, min_domains)
             for label_key, min_domains in floors.items()
@@ -834,6 +837,7 @@ class DeploymentScheduler(ABC):
         if replica_config.placement_group_fallback_strategy:
             # The scheduler can't place a group with fallback strategies, so the
             # cluster default must not make it choose the node for one.
+            # Validation rejects an explicit floor on such a deployment.
             info.floors = ()
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
@@ -1581,7 +1585,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
             return
         self._logged_serialized_floors.add(deployment_id)
         logger.info(
-            f"Deployment {deployment_id} has a floor on "
+            f"Deployment {deployment_id} has a topology_spread floor on "
             f"{label_keys} and a placement group that Ray Core places. Serve "
             "reads back the domain Ray chose only once a replica is running, so "
             "it starts the next replica only after the previous one is up. "

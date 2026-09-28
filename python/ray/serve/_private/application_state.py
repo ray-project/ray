@@ -1903,6 +1903,9 @@ def override_deployment_info(
         override_max_replicas_per_node = options.pop(
             "max_replicas_per_node", replica_config.max_replicas_per_node
         )
+        override_topology_spread = options.pop(
+            "topology_spread", replica_config.topology_spread
+        )
         override_bundle_label_selector = options.pop(
             "placement_group_bundle_label_selector",
             replica_config.placement_group_bundle_label_selector,
@@ -1933,6 +1936,7 @@ def override_deployment_info(
             placement_group_bundles=override_placement_group_bundles,
             placement_group_strategy=override_placement_group_strategy,
             max_replicas_per_node=override_max_replicas_per_node,
+            topology_spread=override_topology_spread,
             placement_group_bundle_label_selector=override_bundle_label_selector,
             placement_group_fallback_strategy=override_fallback_strategy,
         )
