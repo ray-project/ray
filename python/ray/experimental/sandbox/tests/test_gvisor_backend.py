@@ -551,6 +551,14 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert "--rootless" not in script
 
 
+def test_build_run_command_public_gives_the_gofer_its_own_netns():
+    """runsc runs in the network="public" script's user namespace, whose gofer
+    can't join the network namespace runsc shares between gofers under --root
+    when a sandbox outside it created that one."""
+    assert "--gofer-network-namespace=new" in _run_argv("public")[2]
+    assert "--gofer-network-namespace=new" not in _run_argv("none")
+
+
 def test_build_run_command_public_keeps_rootless_cgroup_tolerance(monkeypatch):
     """Dropping --rootless must not make runsc start configuring cgroups: the
     wrapper forces --ignore-cgroups for rootless configs, and only for them."""

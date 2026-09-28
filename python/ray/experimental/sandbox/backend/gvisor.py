@@ -521,6 +521,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         args = self._runsc_base_args(config)
         use_netns = config.network == "public"
+        if use_netns:
+            # runsc gives every gofer an empty network namespace. By default,
+            # all gofers under --root share one, created by the first gofer
+            # that needs it, in whatever user namespace that gofer runs in.
+            # However, this sandbox's runsc runs in the user namespace the
+            # script below creates, where its gofer can't join a network
+            # namespace created outside it. So its gofer creates an empty one
+            # of its own instead.
+            args.append("--gofer-network-namespace=new")
         if use_netns and "--rootless" in args:
             # runsc runs as mapped root inside the holder's user namespace;
             # --rootless would nest a second user namespace whose
