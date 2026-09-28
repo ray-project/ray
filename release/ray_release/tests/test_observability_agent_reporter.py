@@ -19,6 +19,7 @@ from ray_release.reporter.observability_agent import (
     COMMENT_CLAIM_PREFIX,
     DEBUG_SESSION_QUERY,
     FEEDBACK_REMINDER,
+    GITHUB_COMMENT_ENV,
     GITHUB_COMMENT_LIMIT,
     ObservabilityAgentReporter,
 )
@@ -116,6 +117,7 @@ def _report(
     test: Optional[Test] = None,
     repo: Optional["FakeRepo"] = None,
     get_ray_repo: Optional[MagicMock] = None,
+    comments_disabled: bool = False,
 ) -> FakePost:
     """Run the reporter against fakes; no call here leaves the process.
 
@@ -127,6 +129,7 @@ def _report(
     env = {
         "ANYSCALE_HOST": "https://console.anyscale-staging.com",
         "ANYSCALE_CLI_TOKEN": "test_token",
+        GITHUB_COMMENT_ENV: "0" if comments_disabled else "1",
     }
     if analysis_file:
         env[ANALYSIS_FILE_ENV] = analysis_file
@@ -936,7 +939,12 @@ CLAIM_KEY = f"{COMMENT_CLAIM_PREFIX}test_name"
 
 
 def _report_on_buildkite(
-    repo, agent, job_id="01a0691c-job", summary=SUMMARY, result=None
+    repo,
+    agent,
+    job_id="01a0691c-job",
+    summary=SUMMARY,
+    result=None,
+    comments_disabled=False,
 ):
     """Run the reporter as one job of a build, against a shared fake agent."""
     query_response = {
@@ -951,6 +959,7 @@ def _report_on_buildkite(
             {
                 "ANYSCALE_HOST": "https://console.anyscale-staging.com",
                 "ANYSCALE_CLI_TOKEN": "test_token",
+                GITHUB_COMMENT_ENV: "0" if comments_disabled else "1",
                 "BUILDKITE": "true",
                 "BUILDKITE_JOB_ID": job_id,
             },
@@ -1167,6 +1176,40 @@ def test_prose_after_a_code_region_is_still_defused(summary, expected):
     assert expected in body
     # The code region itself is left exactly as the agent wrote it.
     assert "@b" not in body or "code @b" in body
+
+
+def test_no_comment_when_github_comments_are_not_enabled():
+    """A release-branch build runs the agent but must not comment."""
+    issue = FakeIssue(state="open")
+    repo = FakeRepo(issue=issue)
+
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        test=_test_with_issue(),
+        repo=repo,
+        comments_disabled=True,
+    )
+
+    assert issue.comments == []
+    # Not even looked up: the flag is checked before the repo handle is built.
+    assert repo.get_issue_calls == []
+
+
+def test_the_analysis_is_still_reported_when_comments_are_disabled(caplog):
+    """The log and the annotation are exactly what a release branch gets."""
+    issue = FakeIssue(state="open")
+    agent = FakeAgent()
+
+    with caplog.at_level("INFO", logger=logger.name):
+        _report_on_buildkite(FakeRepo(issue=issue), agent, comments_disabled=True)
+
+    assert SUMMARY in caplog.text
+    assert SLACK_THREAD in caplog.text
+    annotates = [c for c in agent.commands if c[:2] == ["buildkite-agent", "annotate"]]
+    assert len(annotates) == 1
+    assert SUMMARY in annotates[0][-1]
+    assert issue.comments == []
 
 
 def test_the_annotation_is_not_deduped_by_build():
