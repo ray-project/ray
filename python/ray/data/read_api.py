@@ -35,6 +35,11 @@ from ray.data._internal.datasource.databricks_credentials import (
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hive_contract import (
+    HiveAuthMechanism,
+    HiveConnectionOptions,
+    HiveReadSpec,
+)
 from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -3890,6 +3895,117 @@ def read_binary_files(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+@PublicAPI(stability="alpha")
+def read_hive(
+    table: Optional[str] = None,
+    *,
+    host: str,
+    query: Optional[str] = None,
+    schema: Optional["pyarrow.Schema"] = None,
+    port: int = 10000,
+    auth_mechanism: HiveAuthMechanism,
+    user: Optional[str] = None,
+    password: Optional[str] = None,
+    kerberos_service_name: str = "hive",
+    use_ssl: bool = False,
+    ca_cert: Optional[str] = None,
+    timeout: Optional[float] = None,
+    limit: Optional[int] = None,
+    num_cpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    resources: Optional[Dict[str, float]] = None,
+    label_selector: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, Any]]] = None,
+    runtime_env: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Read a HiveServer2 table or trusted SQL query into a Dataset.
+
+    This initial binary HS2 reader executes one data statement in one Ray task
+    per Dataset execution. Rows are fetched in bounded batches. It does not
+    retry a failed read, so a partial result cannot be silently replayed.
+
+    Install the optional ``impyla`` package on the driver for table metadata
+    lookup and on Ray workers for reading. ``GSSAPI`` also requires
+    ``impyla[kerberos]`` and Kerberos credentials on those nodes. Query reads
+    require an explicit :class:`pyarrow.Schema`; table reads obtain the schema
+    through HS2 metadata.
+
+    Args:
+        table: Hive table name, optionally qualified as ``database.table``.
+        host: HiveServer2 hostname.
+        query: Trusted SQL statement to execute instead of reading a table.
+            The statement is sent to HiveServer2 as given.
+        schema: Required Arrow schema for a query read. Column names
+            (case-insensitively) and order must match the result; table reads
+            infer their schema.
+        port: Binary HiveServer2 port.
+        auth_mechanism: Required HS2 authentication profile: ``NOSASL``,
+            ``PLAIN``, or ``GSSAPI``.
+        user: HS2 user or proxy user.
+        password: Password for ``PLAIN`` authentication.
+        kerberos_service_name: Kerberos service principal name.
+        use_ssl: Connect using TLS with certificate verification.
+        ca_cert: Optional CA certificate path accessible on the driver and
+            worker. Requires ``use_ssl=True``.
+        timeout: HS2 transport I/O timeout in seconds, not a query deadline.
+        limit: Maximum rows for a table read. ``0`` performs no data query.
+        num_cpus: CPUs reserved for the read task.
+        memory: Heap memory in bytes reserved for the read task.
+        resources: Custom resources reserved for the read task.
+        label_selector: Labels required on the read task's node.
+        fallback_strategy: Alternative label requirements.
+        runtime_env: Runtime environment of the read task.
+        override_num_blocks: Repartition the output into this many blocks
+            after the single HS2 read. This can incur data movement and does
+            not increase the number of HS2 queries.
+
+    Returns:
+        A Dataset backed by a single HiveServer2 read task.
+    """
+    if override_num_blocks is not None and (
+        isinstance(override_num_blocks, bool)
+        or not isinstance(override_num_blocks, int)
+        or override_num_blocks < 1
+    ):
+        raise ValueError("override_num_blocks must be a positive integer")
+
+    from ray.data._internal.datasource_v2.hive_datasource import HiveDatasource
+
+    spec = HiveReadSpec(
+        connection=HiveConnectionOptions(
+            host=host,
+            port=port,
+            auth_mechanism=auth_mechanism,
+            user=user,
+            password=password,
+            kerberos_service_name=kerberos_service_name,
+            use_ssl=use_ssl,
+            ca_cert=ca_cert,
+            timeout=timeout,
+        ),
+        table=table,
+        query=query,
+        schema=schema,
+        limit=limit,
+    )
+    dataset = _read_datasource_v2(
+        HiveDatasource(spec),
+        parallelism=1,
+        num_cpus=num_cpus,
+        memory=memory,
+        resources=resources,
+        label_selector=label_selector,
+        fallback_strategy=fallback_strategy,
+        runtime_env=runtime_env,
+        ray_remote_args={"max_retries": 0},
+    )
+    dataset.context.max_errored_blocks = 0
+    if override_num_blocks is not None:
+        dataset = dataset.repartition(override_num_blocks)
+    return dataset
 
 
 @PublicAPI(stability="alpha")

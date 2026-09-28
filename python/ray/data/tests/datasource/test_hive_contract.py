@@ -10,7 +10,7 @@ from ray.data._internal.datasource.hive_contract import (
 
 
 def test_table_and_query_modes():
-    connection = HiveConnectionOptions(host="hive.example.com")
+    connection = HiveConnectionOptions(host="hive.example.com", auth_mechanism="NOSASL")
     assert HiveReadSpec(connection, table="events").table_identifier == (
         "default",
         "events",
@@ -36,6 +36,7 @@ def test_table_and_query_modes():
         ({}, "exactly one"),
         ({"table": "events", "query": "SELECT 1"}, "exactly one"),
         ({"table": ""}, "table must be"),
+        ({"table": 123}, "table must be"),
         ({"table": "analytics.events.extra"}, "table must be"),
         ({"table": "analytics.bad-name"}, "table must be"),
         ({"table": "events", "schema": pa.schema([("id", pa.int64())])}, "schema"),
@@ -54,6 +55,13 @@ def test_table_and_query_modes():
         (
             {
                 "query": "SELECT 1",
+                "schema": pa.schema([("ID", pa.int64()), ("id", pa.string())]),
+            },
+            "unique column names",
+        ),
+        (
+            {
+                "query": "SELECT 1",
                 "schema": pa.schema([("id", pa.int64())]),
                 "limit": 1,
             },
@@ -63,7 +71,10 @@ def test_table_and_query_modes():
 )
 def test_read_spec_rejects_unsupported_inputs(kwargs, message):
     with pytest.raises(ValueError, match=message):
-        HiveReadSpec(HiveConnectionOptions(host="hive.example.com"), **kwargs)
+        HiveReadSpec(
+            HiveConnectionOptions(host="hive.example.com", auth_mechanism="NOSASL"),
+            **kwargs,
+        )
 
 
 @pytest.mark.parametrize(
@@ -77,14 +88,35 @@ def test_read_spec_rejects_unsupported_inputs(kwargs, message):
         ({"host": "hive.example.com", "auth_mechanism": "NONE"}, "auth_mechanism"),
         ({"host": "hive.example.com", "auth_mechanism": "PLAIN"}, "user and password"),
         ({"host": "hive.example.com", "password": "secret"}, "only supported"),
+        (
+            {
+                "host": "hive.example.com",
+                "auth_mechanism": "GSSAPI",
+                "password": "secret",
+            },
+            "only supported",
+        ),
+        ({"host": "hive.example.com", "user": ""}, "user"),
         ({"host": "hive.example.com", "ca_cert": "ca.pem"}, "use_ssl"),
         ({"host": "hive.example.com", "use_ssl": "yes"}, "use_ssl"),
         ({"host": "hive.example.com", "timeout": float("inf")}, "timeout"),
+        ({"host": "hive.example.com", "timeout": 0}, "timeout"),
+        ({"host": "hive.example.com", "timeout": -1}, "timeout"),
     ],
 )
 def test_connection_options_reject_unsupported_inputs(kwargs, message):
     with pytest.raises(ValueError, match=message):
-        HiveConnectionOptions(**kwargs)
+        HiveConnectionOptions(**{"auth_mechanism": "NOSASL", **kwargs})
+
+
+def test_authentication_selection_is_required():
+    with pytest.raises(TypeError, match="auth_mechanism"):
+        HiveConnectionOptions(host="hive.example.com")
+
+
+def test_read_spec_requires_connection_options():
+    with pytest.raises(TypeError, match="connection"):
+        HiveReadSpec("hive.example.com", table="events")
 
 
 def test_supported_auth_profiles_and_secret_redaction():
@@ -105,3 +137,9 @@ def test_supported_auth_profiles_and_secret_redaction():
     spec = HiveReadSpec(plain, query=query_text, schema=pa.schema([("id", pa.int64())]))
     assert "private-password" not in repr(spec)
     assert "private-literal" not in repr(spec)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

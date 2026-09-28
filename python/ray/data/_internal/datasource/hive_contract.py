@@ -39,8 +39,8 @@ class HiveConnectionOptions:
     """Connection fields accepted by the initial binary HS2 profile."""
 
     host: str
+    auth_mechanism: HiveAuthMechanism
     port: int = 10000
-    auth_mechanism: HiveAuthMechanism = "NOSASL"
     user: Optional[str] = None
     password: Optional[str] = field(default=None, repr=False)
     kerberos_service_name: str = "hive"
@@ -139,7 +139,9 @@ class HiveReadSpec:
                 raise ValueError("query must be a non-empty SQL string")
             if not isinstance(self.schema, pa.Schema) or len(self.schema) == 0:
                 raise ValueError("query reads require a non-empty pyarrow.Schema")
-            if len(set(self.schema.names)) != len(self.schema.names):
+            if len({name.casefold() for name in self.schema.names}) != len(
+                self.schema.names
+            ):
                 raise ValueError("query schema must have unique column names")
             if self.limit is not None:
                 raise ValueError("limit is only supported for table reads")
