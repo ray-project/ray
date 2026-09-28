@@ -208,6 +208,7 @@ py_test(
     tags = [
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "team:core",
     ],
@@ -221,6 +222,7 @@ py_test(
     tags = [
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "team:core",
     ],
@@ -234,6 +236,7 @@ py_test(
     tags = [
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "team:core",
     ],
@@ -286,6 +289,8 @@ py_test_run_all_subdirectory(
         "source/ray-core/doc_code/cgraph_profiling.py",
         "source/ray-core/doc_code/cgraph_nccl.py",
         "source/ray-core/doc_code/cgraph_overlap.py",
+        "source/ray-core/doc_code/cgraph_quickstart.py",
+        "source/ray-core/doc_code/cgraph_visualize.py",
         # not testing this as it purposefully segfaults
         "source/ray-core/doc_code/cgraph_troubleshooting.py",
         "source/ray-core/doc_code/direct_transport_nccl.py",

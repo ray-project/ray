@@ -189,7 +189,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_stopped_(false),
       // Leader election disabled => always the leader (legacy single-GCS behavior).
       // Enabled => start passive; promotion to leader is wired up in a later PR.
-      is_leader_(!config.ray_leader_elect_enabled) {
+      is_leader_(!config.enable_gcs_leader_election) {
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
@@ -290,20 +290,52 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 GcsServer::~GcsServer() { Stop(); }
 
 void GcsServer::Start() {
-  // Load gcs tables data asynchronously.
-  auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
   // Init KV Manager. This needs to be initialized first here so that
   // it can be used to retrieve the cluster ID.
   InitKVManager();
-  gcs_init_data->AsyncLoad({[this, gcs_init_data] {
-                              GetOrGenerateClusterId(
-                                  {[this, gcs_init_data](ClusterID cluster_id) {
-                                     rpc_server_.SetClusterId(cluster_id);
+
+  if (!config_.enable_gcs_leader_election) {
+    // Load gcs tables data asynchronously.
+    auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
+    gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                                GetOrGenerateClusterId(
+                                    {[this, gcs_init_data](ClusterID cluster_id) {
+                                       rpc_server_.SetClusterId(cluster_id);
+                                       DoStart(*gcs_init_data);
+                                     },
+                                     io_context_provider_.GetDefaultIOContext()});
+                              },
+                              io_context_provider_.GetDefaultIOContext()});
+    return;
+  }
+
+  // Passive boot: do not load GCS tables and do not write to shared storage. Only
+  // resolve the cluster ID (waiting for the active leader to write it) and start the
+  // RPC server, so gated/allowed RPCs and health checks work. Table loading is
+  // deferred to promotion.
+  RAY_LOG(INFO) << "GCS leader election is enabled. Starting in passive mode.";
+  GetOrGenerateClusterId(
+      {[this](ClusterID cluster_id) {
+         rpc_server_.SetClusterId(cluster_id);
+         if (!IsLeader()) {
+           GcsInitData empty_init_data(*gcs_table_storage_);
+           DoStart(empty_init_data);
+           return;
+         }
+         // Won the election while resolving the cluster ID, so there is no passive
+         // state to promote out of: boot active with the tables loaded, exactly like
+         // the leader-election-disabled path above.
+         RAY_LOG(INFO) << "GCS was promoted during startup. Starting as the leader.";
+         auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
+         gcs_init_data->AsyncLoad({[this, gcs_init_data] {
                                      DoStart(*gcs_init_data);
+                                     // Init skipped these: leader election was enabled,
+                                     // so this GCS was still passive when they ran.
+                                     WriteActiveOnlyKeys();
                                    },
                                    io_context_provider_.GetDefaultIOContext()});
-                            },
-                            io_context_provider_.GetDefaultIOContext()});
+       },
+       io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::GetOrGenerateClusterId(
@@ -315,30 +347,61 @@ void GcsServer::GetOrGenerateClusterId(
       kClusterIdKey,
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
-         if (!provided_cluster_id.has_value()) {
-           instrumented_io_context &io_ctx = continuation.io_context();
-           ClusterID cluster_id = ClusterID::FromRandom();
-           RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
-           kv_manager_->GetInstance().Put(
-               kClusterIdNamespace,
-               kClusterIdKey,
-               cluster_id.Binary(),
-               false,
-               {[cluster_id,
-                 continuation = std::move(continuation)](bool added_entry) mutable {
-                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID.";
-                  std::move(continuation)
-                      .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
-                                cluster_id);
-                },
-                io_ctx});
-         } else {
+         // 1. Existing cluster ID found in storage: use it.
+         if (provided_cluster_id.has_value()) {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
            RAY_LOG(INFO).WithField(cluster_id)
                << "Using existing cluster ID from external storage.";
            std::move(continuation)
                .Dispatch("GcsServer.GetOrGenerateClusterId.continuation", cluster_id);
+           return;
          }
+
+         // 2. No Cluster ID yet and this GCS is passive: wait
+         // for the active leader to write it. Retry every second.
+         if (config_.enable_gcs_leader_election && !IsLeader()) {
+           // A passive GCS must not write the cluster ID; wait for the active leader
+           // to write it. Rate-limit the log since this retries every second.
+           RAY_LOG_EVERY_MS(INFO, 30000)
+               << "Cluster ID not found in storage. Waiting for the active GCS leader "
+                  "to write it...";
+           instrumented_io_context &io_ctx = continuation.io_context();
+           execute_after(
+               io_ctx,
+               [this, continuation = std::move(continuation)]() mutable {
+                 GetOrGenerateClusterId(std::move(continuation));
+               },
+               std::chrono::seconds(1));
+           return;
+         }
+
+         // 3. No Cluster ID yet and this GCS is active: generate and persist it.
+         instrumented_io_context &io_ctx = continuation.io_context();
+         ClusterID cluster_id = ClusterID::FromRandom();
+         RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
+         kv_manager_->GetInstance().Put(
+             kClusterIdNamespace,
+             kClusterIdKey,
+             cluster_id.Binary(),
+             false,
+             {[this, cluster_id, continuation = std::move(continuation)](
+                  bool added_entry) mutable {
+                // overwrite=false makes this a compare-and-set, so losing it means
+                // another head persisted an ID between our Get and this Put. Any ID
+                // will do as long as the cluster agrees on one, so adopt the winner's
+                // rather than treating the race as fatal.
+                if (!added_entry) {
+                  RAY_LOG(INFO).WithField(cluster_id)
+                      << "Another GCS persisted a cluster ID first. Discarding the one "
+                         "generated here and adopting theirs.";
+                  GetOrGenerateClusterId(std::move(continuation));
+                  return;
+                }
+                std::move(continuation)
+                    .Dispatch("GcsServer.GetOrGenerateClusterId.continuation",
+                              cluster_id);
+              },
+              io_ctx});
        },
        io_context});
 }
@@ -390,14 +453,32 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitIOContextMonitor();
 
   periodical_runner_->RunFnPeriodically(
-      [this] { RecordMetrics(); },
-      /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
-      "GCSServer.deadline_timer.metrics_report");
-
-  periodical_runner_->RunFnPeriodically(
       [this] { PrintDebugState(); },
       /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
       "GCSServer.deadline_timer.debug_state_event_stats_print");
+
+  // With leader election disabled IsLeader() is always true.
+  if (IsLeader()) {
+    StartMetricsReporting();
+  }
+
+  is_started_ = true;
+}
+
+void GcsServer::WriteActiveOnlyKeys() {
+  WriteAutoscalerV2Flag();
+  WriteGcsPid();
+}
+
+void GcsServer::StartMetricsReporting() {
+  // Active only because RecordMetrics() writes the actor and placement group usage
+  // counters to shared storage. A passive GCS has empty tables, so it would overwrite
+  // the active leader's counts with zeroes, and being GCS-initiated the write is not
+  // something the RPC gating can catch.
+  periodical_runner_->RunFnPeriodically(
+      [this] { RecordMetrics(); },
+      /*ms*/ RayConfig::instance().metrics_report_interval_ms() / 2,
+      "GCSServer.deadline_timer.metrics_report");
 
   // If the metrics agent port is already known (not dynamically assigned),
   // initialize the metrics exporter now. Otherwise, it will be initialized
@@ -405,8 +486,66 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   if (config_.metrics_agent_port > 0) {
     InitMetricsExporter(config_.metrics_agent_port);
   }
+}
 
-  is_started_ = true;
+void GcsServer::HydrateManagers(const GcsInitData &gcs_init_data) {
+  // Same order as DoStart: the placement group and actor managers schedule as part of
+  // Initialize() and need the resource view already populated. GcsNodeManager does not
+  // fan out to the node-added listeners, which here -- unlike in DoStart -- are already
+  // installed, so every manager below is hydrated exactly once.
+  gcs_node_manager_->Initialize(gcs_init_data);
+  gcs_resource_manager_->Initialize(gcs_init_data);
+  HydrateHealthCheckManager(gcs_init_data);
+  gcs_job_manager_->Initialize(gcs_init_data);
+  gcs_placement_group_manager_->Initialize(gcs_init_data);
+  gcs_actor_manager_->Initialize(gcs_init_data);
+  gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
+  gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
+}
+
+void GcsServer::PromoteToLeader() {
+  // The leader election callbacks fire on the elector's own threads, so the caller must
+  // post to default io context.
+  RAY_CHECK(
+      io_context_provider_.GetDefaultIOContext().get_executor().running_in_this_thread())
+      << "PromoteToLeader() must run on the default io context.";
+
+  // Both conditions are needed. IsLeader() alone leaves a window: it only becomes true
+  // once the table load below completes, so a second call arriving in that window would
+  // start a second load. promotion_started_ alone misses the GCS that is already active
+  // without having run this path -- leader election disabled, or promoted before startup
+  // finished. Either way a second load hydrates twice, and hydration is not idempotent
+  // everywhere: GcsJobManager bumps a per-job function reference count that would then
+  // never drop back to zero.
+  if (IsLeader() || promotion_started_) {
+    return;
+  }
+  if (!is_started_) {
+    // Start() is still resolving the cluster ID. Becoming the leader here also
+    // releases that wait (a leader generates the cluster ID instead of waiting for
+    // one), and its continuation then boots active with the tables loaded.
+    RAY_LOG(INFO) << "GCS promoted to leader before startup finished.";
+    is_leader_ = true;
+    return;
+  }
+
+  promotion_started_ = true;
+  RAY_LOG(INFO) << "GCS promoting to leader. Loading GCS tables.";
+  auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
+  gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                              // Hydrate before opening the gate, so no mutating RPC is
+                              // served against half-loaded state, and before promoting
+                              // the node manager, so the head node registration retires
+                              // the stale head that hydration just loaded.
+                              HydrateManagers(*gcs_init_data);
+                              // Set is_leader_ before promoting the node manager.
+                              is_leader_ = true;
+                              gcs_node_manager_->PromoteNodeManager();
+                              WriteActiveOnlyKeys();
+                              StartMetricsReporting();
+                              RAY_LOG(INFO) << "GCS is now the active leader.";
+                            },
+                            io_context_provider_.GetDefaultIOContext()});
 }
 
 void GcsServer::RegisterRpcServices() {
@@ -421,9 +560,10 @@ void GcsServer::RegisterRpcServices() {
       io_context_provider_.GetIOContext<GcsNodeManager>(),
       MaybeGate(gated_node_info_handler_,
                 *gcs_node_manager_,
-                std::function<void(const rpc::GcsNodeInfo &)>(
+                std::function<bool(const rpc::GcsNodeInfo &)>(
                     [this](const rpc::GcsNodeInfo &node_info) {
-                      gcs_node_manager_->CachePassiveLocalNode(node_info);
+                      return gcs_node_manager_->TryHandlePassiveHeadRegistration(
+                          node_info);
                     })),
       max_rpcs));
 
@@ -561,6 +701,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
                                     node_death_callback,
                                     metrics_.health_check_rpc_latency_ms_histogram,
                                     clock_);
+  HydrateHealthCheckManager(gcs_init_data);
+}
+
+void GcsServer::HydrateHealthCheckManager(const GcsInitData &gcs_init_data) {
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       auto remote_address =
@@ -898,6 +1042,13 @@ void GcsServer::InitKVManager() {
       config_.raylet_config_list,
       io_context);
 
+  // A passive GCS must not write to shared storage; it defers this to promotion.
+  if (!config_.enable_gcs_leader_election) {
+    WriteGcsPid();
+  }
+}
+
+void GcsServer::WriteGcsPid() {
   kv_manager_->GetInstance().Put(
       "",
       kGcsPidKey,
@@ -982,7 +1133,7 @@ void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_->RestoreDeadWorkerIdsQueue(gcs_init_data);
 }
 
-void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
+void GcsServer::WriteAutoscalerV2Flag() {
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
   auto v2_enabled =
       std::to_string(static_cast<int>(RayConfig::instance().enable_autoscaler_v2()));
@@ -1014,6 +1165,15 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
          }
        },
        io_context_provider_.GetDefaultIOContext()});
+}
+
+void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
+  RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
+
+  // A passive GCS must not write to shared storage; it defers this to promotion.
+  if (!config_.enable_gcs_leader_election) {
+    WriteAutoscalerV2Flag();
+  }
 
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
       config_.session_name,
