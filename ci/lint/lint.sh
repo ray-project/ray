@@ -32,6 +32,7 @@ pre_commit() {
     shellcheck
     docstyle
     check-import-order
+    data-tests-location
     check-cpp-files-inclusion
     end-of-file-fixer
     check-json

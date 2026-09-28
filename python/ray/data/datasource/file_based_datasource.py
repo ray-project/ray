@@ -24,6 +24,7 @@ from ray.data._internal.util import (
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
+    _truncated_repr,
     infer_compression,
     iterate_with_retry,
     make_async_gen,
@@ -180,23 +181,35 @@ class FileBasedDatasource(Datasource):
         self._filesystem = RetryingPyFileSystem.wrap(
             self._filesystem, retryable_errors=self._data_context.retried_io_errors
         )
-        paths, file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
+        expanded_paths = list(
+            meta_provider.expand_paths(
+                paths,
+                self._filesystem,
+                partitioning,
+                ignore_missing_paths=ignore_missing_paths,
+            )
         )
 
-        if ignore_missing_paths and len(paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
+        if not expanded_paths:
+            # Only listing has run at this point: `partition_filter` and
+            # `file_extensions` are applied below and raise their own errors, so
+            # naming them here would point at causes that cannot apply yet. What
+            # can leave the listing empty is a path that holds nothing readable,
+            # including a directory whose entries are all skipped by prefix.
+            message = (
+                f"No files found under {_truncated_repr(paths)}. Note that "
+                "listing skips names starting with '_' or '.'."
             )
+            if ignore_missing_paths:
+                # Missing paths are dropped inside listing, so we cannot tell
+                # here whether they were absent or merely empty.
+                message += (
+                    " Paths that do not exist were also skipped because "
+                    "'ignore_missing_paths' is set to True."
+                )
+            raise ValueError(message)
+
+        paths, file_sizes = map(list, zip(*expanded_paths))
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
@@ -484,9 +497,14 @@ def _add_partitions_to_table(
     for field, value in partitions.items():
         column = pa.array([value] * len(table))
         if field in column_names:
-            # TODO: Handle cast error.
             column_type = table.schema.field(field).type
-            column = column.cast(column_type)
+            try:
+                column = column.cast(column_type)
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError) as e:
+                raise ValueError(
+                    f"Partition value {value!r} for field {field!r} cannot be cast "
+                    f"to target type {column_type}."
+                ) from e
 
             values_are_equal = pc.all(pc.equal(column, table[field]))
             values_are_equal = values_are_equal.as_py()

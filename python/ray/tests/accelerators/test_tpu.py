@@ -383,6 +383,123 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
 
 
 @pytest.mark.parametrize(
+    "device_ids, expected_chips, expected_bounds",
+    [
+        # 2 logical devices, both on physical chip 0.
+        (["0", "1"], "0", tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG),
+        # 4 logical devices spanning physical chips 0 and 1.
+        (["0", "1", "2", "3"], "0,1", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        # The other half of the node maps onto the other half of the chips.
+        (["4", "5", "6", "7"], "2,3", tpu.TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG),
+        # Every device on the node: let the ML framework use the defaults.
+        ([str(i) for i in range(8)], None, None),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_and_bounds_dual_device(
+    mock_glob, device_ids, expected_chips, expected_bounds
+):
+    """Dual-device chips (v7x) expose 2 logical devices per physical chip, so the
+    device IDs Ray assigns must be collapsed onto chips before being written to
+    TPU_VISIBLE_CHIPS.
+    """
+    # 4 physical chips, enumerated by the driver as 8 logical devices.
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
+    with patch.dict(
+        "os.environ", {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}, clear=True
+    ):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(device_ids)
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_chips
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == expected_bounds
+
+
+@patch("glob.glob")
+def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
+    """A sub-chip allocation is masked to the chip containing it, not rejected.
+
+    TPU_VISIBLE_CHIPS has whole-chip granularity, so either device of a
+    dual-device chip resolves to the same mask.
+    """
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(8)]
+    for device_id in ("0", "1"):
+        with patch.dict(
+            "os.environ", {tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2"}, clear=True
+        ):
+            TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+                [device_id]
+            )
+            assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0"
+            assert (
+                os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
+                == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
+            )
+
+
+def test_get_current_process_visible_accelerator_ids(monkeypatch):
+    """Test get_current_process_visible_accelerator_ids with default and opt-in settings."""
+    monkeypatch.delenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, raising=False)
+    monkeypatch.delenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() is None
+
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == []
+
+    # Default host-level mode: preserves physical chip IDs.
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,2,3")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        "0",
+        "1",
+        "2",
+        "3",
+    ]
+
+    # Opt-in per-device mode: expands physical chips to logical device IDs.
+    monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        str(i) for i in range(8)
+    ]
+
+    # A trailing comma must not be expanded into a bogus device ID.
+    monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,")
+    assert TPUAcceleratorManager.get_current_process_visible_accelerator_ids() == [
+        str(i) for i in range(4)
+    ]
+
+
+def test_get_tpu_resource_per_chip(monkeypatch):
+    """Test get_tpu_resource_per_chip defaults to 1 and respects RAY_TPU_RESOURCE_PER_CHIP."""
+    monkeypatch.delenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    assert tpu.get_tpu_resource_per_chip() == 1
+
+    monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+    assert tpu.get_tpu_resource_per_chip() == 2
+
+    for invalid_value in ["0", "-1", "abc"]:
+        monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, invalid_value)
+        with pytest.raises(
+            ValueError, match="RAY_TPU_RESOURCE_PER_CHIP must be a positive integer"
+        ):
+            tpu.get_tpu_resource_per_chip()
+
+
+@pytest.mark.parametrize(
+    "accelerator_type, expected",
+    [
+        ("TPU-V6E", "v6e"),
+        ("TPU-V5LITEPOD", "v5litepod"),
+        ("tpuv6e-8", "v6e-8"),
+        ("tpu7x-16", "v7x-16"),
+        ("v4-8", "v4-8"),
+        (None, ""),
+    ],
+)
+def test_normalize_tpu_accelerator_type(accelerator_type, expected):
+    assert tpu.normalize_tpu_accelerator_type(accelerator_type) == expected
+
+
+@pytest.mark.parametrize(
     "test_config",
     [
         (0, "v4-16", {"TPU-v4-16-head": 1, "my-tpu": 1}),

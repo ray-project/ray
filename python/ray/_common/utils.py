@@ -31,7 +31,7 @@ def env_integer(key, default):
         try:
             return int(value)
         except ValueError:
-            logger.debug(
+            logger.warning(
                 f"Found {key} in environment, but value must "
                 f"be an integer. Got: {value}. Returning "
                 f"provided default {default}."
@@ -46,7 +46,7 @@ def env_float(key, default):
         try:
             return float(value)
         except ValueError:
-            logger.debug(
+            logger.warning(
                 f"Found {key} in environment, but value must "
                 f"be a float. Got: {value}. Returning "
                 f"provided default {default}."

@@ -391,6 +391,16 @@ RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 500)
 /// Timeout for synchronous Redis probe commands issued while initializing GCS storage.
 RAY_CONFIG(int64_t, redis_db_probe_timeout_milliseconds, 30000)
 
+/// Whether the GCS records per-command Redis payload byte metrics
+/// (gcs_redis_request_payload_bytes, gcs_redis_response_payload_bytes,
+/// gcs_redis_command_count). Recording costs two ray::stats::Metric::Record
+/// calls for the first accepted submission, using a snapshot captured under the
+/// Redis mutex and recorded after unlocking. The successful reply adds one
+/// recording call under the Redis IO mutex. Set to false to
+/// skip label construction, payload accounting, and these recording calls if
+/// that overhead is measurable in a high-throughput GCS.
+RAY_CONFIG(bool, gcs_redis_payload_metrics_enabled, true)
+
 /// Whether GCS namespace cleanup deletes Redis keys with UNLINK instead of DEL.
 /// This is disabled by default. With Redis's default lazyfree-lazy-user-del=no,
 /// DEL reclaims memory synchronously; Redis operators can configure DEL itself

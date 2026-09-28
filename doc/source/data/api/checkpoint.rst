@@ -15,4 +15,3 @@ Configuration
 
    CheckpointConfig
    CheckpointBackend
-

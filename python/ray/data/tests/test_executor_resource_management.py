@@ -182,7 +182,11 @@ def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_co
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2, "scheduling_strategy": "DEFAULT"},
     )
-    assert op._ray_remote_args == {"num_gpus": 2, "scheduling_strategy": "DEFAULT"}
+    assert op._ray_remote_args == {
+        "num_cpus": 1,
+        "num_gpus": 2,
+        "scheduling_strategy": "DEFAULT",
+    }
 
     ray.data.DataContext.get_current().scheduling_strategy = "DEFAULT"
     op = MapOperator.create(
@@ -193,7 +197,7 @@ def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_co
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2},
     )
-    assert op._ray_remote_args == {"num_gpus": 2}
+    assert op._ray_remote_args == {"num_cpus": 1, "num_gpus": 2}
 
 
 def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
