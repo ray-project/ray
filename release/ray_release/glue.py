@@ -476,6 +476,19 @@ def run_release_test_anyscale(
         # a status the agent triggers on.
         forced = os.environ.get("RELEASE_TEST_FORCE_FAILURE")
         if forced and test.get_name() == forced:
+            # _load_test_configuration below is what normally fills these in,
+            # and it has not run yet, so the reporters would see no buildkite
+            # url at all -- which is not how a real failure reaches them, since
+            # that call is the first thing in this try. Mirrored from
+            # _load_test_configuration rather than reached by calling it, so
+            # that nothing else it does runs.
+            buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
+            buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
+            if buildkite_url:
+                buildkite_url += "#" + buildkite_job_id
+            result.buildkite_url = buildkite_url
+            result.buildkite_job_id = buildkite_job_id
+
             result.runtime = 10**9
             raise TestCommandError(
                 f"DO NOT MERGE: forced failure for {forced}, before any "
