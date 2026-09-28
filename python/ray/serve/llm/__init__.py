@@ -264,10 +264,12 @@ def build_openai_applications(
     application, to deploy together with ``serve.run_many``. Requires
     ``RAY_SERVE_ENABLE_HA_PROXY=1`` and ``RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1``.
 
-    * ``<route_prefix>/v1/chat/completions`` streams directly from a replica of
-      the requested ``model``; ``<route_prefix>/v1/models`` lists the models.
-    * Each model is also served at ``<route_prefix>/models/<model>`` (``/`` in
-      the model ID spelled ``--``), e.g. ``/models/qwen-0.5b/v1/chat/completions``.
+    Routes, relative to ``route_prefix``:
+
+    * ``/v1/chat/completions`` streams directly from a replica of the requested
+      ``model``; ``/v1/models`` lists the models.
+    * ``/models/<model>`` serves each model's full OpenAI API (``/`` in the
+      model ID spelled ``--``), e.g. ``/models/qwen-0.5b/v1/completions``.
 
     KV-aware routing and LoRA are not supported yet.
 
@@ -300,7 +302,7 @@ def build_openai_applications(
             applications are routed under it.
 
     Returns:
-        The model, control, and router applications' ``RunTarget``s.
+        ``RunTarget`` objects for the model, control, and router applications.
     """
     from ray.llm._internal.serve.core.ingress.builder import (
         build_openai_applications,

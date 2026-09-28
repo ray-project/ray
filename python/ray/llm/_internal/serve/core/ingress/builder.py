@@ -310,17 +310,18 @@ _MODELS_ROUTE = "/models"
 _CONTROL_ROUTE = "/control"
 # Characters that pass unchanged through URLs, HAProxy ACLs, and the replica's
 # ASGI server, which decodes percent-escapes before matching the route prefix.
-_MODEL_ROUTE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9._~-]+$")
+_MODEL_ROUTE_SEGMENT_RE = re.compile(r"[A-Za-z0-9._~-]+")
 
 
 def _model_route_segment(model_id: str) -> str:
     """The model's route segment, with `/` spelled `--` as in `/v1/models/{model}`."""
     segment = model_id.replace("/", "--")
-    if not _MODEL_ROUTE_SEGMENT_RE.match(segment):
+    # "." and ".." are dot-segments, which clients drop from URLs.
+    if not _MODEL_ROUTE_SEGMENT_RE.fullmatch(segment) or segment in (".", ".."):
         raise ValueError(
             f'Model ID "{model_id}" cannot be used in a route. Model IDs served '
             "by build_openai_applications may contain only letters, digits, "
-            "'.', '_', '~', '-', and '/'."
+            "'.', '_', '~', '-', and '/', and may not be '.' or '..'."
         )
     return segment
 

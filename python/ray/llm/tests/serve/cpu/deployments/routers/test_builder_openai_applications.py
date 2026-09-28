@@ -140,9 +140,13 @@ class TestTopology:
         ]
         assert _build(["a"], name="group")[0].name.startswith("group-model-a-")
 
-    def test_names_distinguish_ids_that_sanitize_alike(self):
-        names = {t.name for t in _build(["org/model", "org.model"])}
-        assert len(names) == 4
+    @pytest.mark.parametrize(
+        "model_ids", [["a~b", "a-b"], ["x" * 48 + "-1", "x" * 48 + "-2"]]
+    )
+    def test_names_distinguish_ids_that_sanitize_alike(self, model_ids):
+        names = [_model_name(m) for m in model_ids]
+        assert names[0][:-8] == names[1][:-8]
+        assert len({t.name for t in _build(model_ids)}) == 4
 
     def test_router_and_control_scale_to_zero_with_all_models(self):
         def configs(min_replicas):
@@ -190,7 +194,9 @@ class TestValidation:
         routes = {t.route_prefix for t in _build([model_id])}
         assert routes == {f"/models/{model_id}", "/control", "/"}
 
-    @pytest.mark.parametrize("model_id", ["a b", "a%2Fb", "a?b", "a:b", "a#b"])
+    @pytest.mark.parametrize(
+        "model_id", ["a b", "a%2Fb", "a?b", "a:b", "a#b", "a\n", ".", ".."]
+    )
     def test_rejects_ids_that_cannot_be_routed(self, model_id):
         with pytest.raises(ValueError, match="cannot be used in a route"):
             _build([model_id])

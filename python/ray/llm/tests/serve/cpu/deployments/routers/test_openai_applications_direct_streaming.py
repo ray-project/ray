@@ -275,7 +275,7 @@ class TestControlRoutes:
 
 @requires_direct_streaming
 def test_unavailable_model_application(targets, app_names):
-    """Runs last in this module: it deletes a model application."""
+    """Deletes a model application; runs after the tests that need all models."""
     serve.delete(app_names[BODY_MODEL])
 
     def unavailable():
