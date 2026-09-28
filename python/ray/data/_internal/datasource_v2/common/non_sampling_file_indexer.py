@@ -63,11 +63,10 @@ class _TraversalWorkItem:
 
     # Could be a file path or a directory path.
     path: str
-    # Index of the seed path this item descends from; restores deterministic
-    # ordering when requested.
-    input_path_index: int
     # True for subdirectories discovered during traversal; False for seed input paths.
     is_discovered_subdir: bool = False
+    # Original seed-path index used to restore deterministic ordering when requested.
+    input_path_index: Optional[int] = None
     # Top-level path the traversal started from, used to scope hidden-prefix
     # exclusion to entries whose path relative to the root is hidden.
     root_path: Optional[str] = None
@@ -265,7 +264,7 @@ class NonSamplingFileIndexer(FileIndexer):
             _TraversalWorkItem(
                 path=p,
                 is_discovered_subdir=False,
-                input_path_index=i,
+                input_path_index=i if preserve_order else None,
             )
             for i, p in enumerate(paths_list)
         ]
@@ -302,6 +301,7 @@ class NonSamplingFileIndexer(FileIndexer):
             for file_path, file_size in contents.files:
                 file_info = FileInfo(path=file_path, size=file_size)
                 if preserve_order:
+                    assert input_path_index is not None
                     add_result(
                         OrderedFileResult(
                             input_path_index=input_path_index,
