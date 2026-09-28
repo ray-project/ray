@@ -80,7 +80,9 @@ python release/train_tests/health/collective_join.py              # all three
 python release/train_tests/health/collective_join.py slow_step    # one
 ```
 
-The job has real TP and PP subgroups over 4 ranks and calls
+The job has real TP and PP subgroups over 4 ranks, plus one barrier on the
+default group so NCCL creates the world communicator the probe uses to map
+subgroup ranks to global ranks. It calls
 `health.report({"tp_rank", "pp_rank", "step_time_s"}, step=...)`.
 `CollectiveHangEvaluator` sets the stall threshold to 5 × the reported step
 time (30s), names a frozen communicator by the ranks' reported coordinates, and
@@ -90,7 +92,7 @@ diagnoses on the nodes involved before deciding.
 |---|---|---|---|
 | `slow_step` | `SlowStep`: 18s pause every 5 steps | our policy | no decision, although RAS reports frozen communicators on every pause |
 | `slow_step_merged` | the same | merged, fixed 10s window | fires: the false positive the join avoids |
-| `wedge` | `LeaveCollective` at step 6 | our policy | fires, and the decision names the TP group |
+| `wedge` | `LeaveCollective` at step 6 | our policy | fires, and the decision names TP group `[0, 1]` (PP `[1, 3]` freezes too, waiting on the same rank) |
 
 About 10 minutes for all three.
 

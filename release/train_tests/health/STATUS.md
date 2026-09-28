@@ -91,8 +91,8 @@ Additions to the REP, and why:
 |---|---|
 | unit tests | contracts, merging, state, the manager, on-demand dispatch, pre-flight, callback collection, and how the controller maps each action |
 | `local_e2e.py` (laptop, 4 local nodes) | through the real controller: no-config is untouched, broken components do not fail the run, pre-flight rejection, DIAGNOSE → REATTEMPT, EVICT and restart off the node |
-| `nccl_hang.py` (4 × A10G) | not yet run in this form. Its predecessor showed the port detects a real hang, diagnoses it and ends in `HealthDecisionError`, about 10s behind the merged detector because it polled every 5s instead of 2s |
-| `collective_join.py` (4 × A10G) | not yet run in this form. Its predecessor passed the slow-step scenario, silent through every pause |
+| `nccl_hang.py` (4 × A10G) | parity: over two runs, merged detected at +22.5s and +20.6s, ours at +22.5s both times. Ours can land up to one poll later, since it acts on a probe result at the controller's next poll |
+| `collective_join.py` (4 × A10G) | all three pass: silent through 3 slow steps (frozen 16s against a 30s threshold), the merged detector with a 10s window fires on the same slow step, and the wedge is caught at +33.8s. The first run named TP by luck, since the job had no world communicator; fixed, needs a rerun |
 
 ## Metrics
 
@@ -119,11 +119,17 @@ Measured with the scripts above, on the same cluster and fault, baseline first.
    false-positive data behind them. Nothing should default to acting until
    healthy run-hours are measured.
 4. **A cascade can hide the culprit.** When one rank wedges, groups that wait
-   on it freeze too, so a decision can name several communicators. The probe
-   has what is needed to name the one lagging rank; the evaluators do not yet.
-5. **Blocking work in the control loop.** DIAGNOSE and pre-flight wait for
+   on it freeze too: on the GPU run, TP `[0, 1]` and PP `[1, 3]`, both behind
+   on rank 1. The decision names the groups, not the rank.
+5. **Global ranks need a world communicator.** RAS numbers ranks per
+   communicator, and the probe maps them to global ranks through the world
+   communicator. A job that never uses the default group has none, and its
+   groups are left unnamed. `ClusterContext` could carry each rank's
+   `(node_ip, pid)` to remove that dependency; adding the field later is
+   backward compatible.
+6. **Blocking work in the control loop.** DIAGNOSE and pre-flight wait for
    their probes inside the controller's step, up to each probe's timeout.
-6. **NVSentinel depends on work outside Ray Train**: the platform team's
+7. **NVSentinel depends on work outside Ray Train**: the platform team's
    Kubernetes setup and a KubeRay change mapping Ray node ids to Kubernetes
    node names.
 

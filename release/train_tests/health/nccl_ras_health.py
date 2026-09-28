@@ -76,16 +76,26 @@ class RasComm:
 _MISSING_COMMA_RE = re.compile(r'([\d"el])(\s*\n\s*)("[^"\n]*"\s*:)')
 
 
-def parse_ras_json(text: str) -> Optional[Dict[str, RasComm]]:
+def parse_ras_json(
+    text: str, world_size: Optional[int] = None
+) -> Optional[Dict[str, RasComm]]:
     """Parse ``ncclras -f json`` into communicators keyed by hash.
 
     RAS numbers ranks *within each communicator*: a two-rank subgroup reports
     ranks 0 and 1 whichever global ranks it spans. Found on a real 4-rank run
     where four different subgroups all reported ``{0, 1}``. The process is the
     only identity comparable across communicators, so ranks are translated
-    through ``(host, pid)`` against the widest communicator -- the world group
-    every parallelism strategy creates, the only one whose local ranks are the
-    global ones.
+    through ``(host, pid)`` against the world communicator, the only one whose
+    local ranks are the global ones.
+
+    NCCL creates a communicator only when a collective first runs on it, so a
+    job that never uses the default group has no world communicator. Then no
+    communicator is translated, rather than a subgroup being mistaken for the
+    world.
+
+    Args:
+        text: ``ncclras -f json`` output.
+        world_size: The job's world size, to recognize the world communicator.
 
     Returns:
         ``{comm_hash: RasComm}``, or ``None`` if the output does not parse.
@@ -107,6 +117,8 @@ def parse_ras_json(text: str) -> Optional[Dict[str, RasComm]]:
             for comm in comms
         }
         world = max(proc_of.values(), key=len) if proc_of else {}
+        if world_size is not None and len(world) != world_size:
+            world = {}
         to_global = {proc: rank for rank, proc in world.items() if None not in proc}
 
         out: Dict[str, RasComm] = {}
@@ -191,7 +203,7 @@ class NcclRasProbe(health.ClusterProbe):
 
     def poll(self, ctx: health.ClusterContext) -> Dict[str, health.ProbeResult]:
         raw = self.query(ctx)
-        comms = parse_ras_json(raw) if raw else None
+        comms = parse_ras_json(raw, len(ctx.rank_to_node) or None) if raw else None
         if comms is None:
             return {}
         prev, self._prev = self._prev, comms

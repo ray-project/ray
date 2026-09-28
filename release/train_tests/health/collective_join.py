@@ -73,6 +73,9 @@ def train_func(config):
     # creates every group, in the same order.
     tp_groups = [dist.new_group([p * 2, p * 2 + 1]) for p in range(world // 2)]
     pp_groups = [dist.new_group(list(range(t, world, 2))) for t in range(2)]
+    # Real jobs touch the default group; this creates the world communicator
+    # the RAS probe translates subgroup ranks against.
+    dist.barrier()
     tensor = torch.ones(256, 256, device=f"cuda:{torch.cuda.current_device()}")
 
     for step in range(config["steps"]):
@@ -176,9 +179,9 @@ def run(name: str) -> bool:
         ok = isinstance(error, NCCLHangError)
         why = "the fixed window called a slow step a hang" if ok else "did not fire"
     else:
-        named = any("TP group" in d for d in decisions)
+        named = any("TP group, ranks [0, 1]" in d for d in decisions)
         ok = isinstance(error, health.HealthDecisionError) and named
-        why = "fired and named the TP group" if ok else "did not fire or name TP"
+        why = "fired and named TP group [0, 1]" if ok else "did not fire or name it"
     print(f"\n  {'PASS' if ok else 'FAIL'}: {why}")
     return ok
 
