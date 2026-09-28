@@ -25,6 +25,7 @@ from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import RayTaskError
 from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_DEFAULT_APP_NAME,
@@ -885,6 +886,42 @@ def test_reconfigure_rejects_bad_exporter_import_path(ray_shutdown):
     # The rejected config was not applied; the previous one is still in effect.
     assert ray.get(client._controller.get_tracing_config.remote()) == good_config
     serve.shutdown()
+
+
+def test_partial_tracing_config_resolves_from_controller_env(ray_shutdown, monkeypatch):
+    """Unset tracing fields resolve from the controller's env, not the caller's.
+
+    The exporter env var is set only on the controller (via
+    controller_options.runtime_env); the driver, which builds the partial
+    TracingConfig, does not have it. If defaults were resolved in the driver,
+    tracing would come out disabled.
+    """
+    monkeypatch.delenv("RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH", raising=False)
+    controller_options = {
+        "runtime_env": {
+            "env_vars": {
+                "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH": (
+                    DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+                )
+            }
+        }
+    }
+    partial = {"sampling_ratio": 0.5}
+    serve.start(controller_options=controller_options, tracing_config=partial)
+    client = _get_global_client()
+
+    try:
+        effective = ray.get(client._controller.get_tracing_config.remote())
+        assert effective.enabled is True
+        assert effective.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        assert effective.sampling_ratio == 0.5
+
+        # Re-passing the same partial config is a no-op: both sides resolve in
+        # the controller's env, so it is not mistaken for a change.
+        serve.start(tracing_config=partial)
+    finally:
+        serve.shutdown()
+        shutil.rmtree(os.path.join(get_serve_logs_dir(), "spans"), ignore_errors=True)
 
 
 @pytest.mark.parametrize(

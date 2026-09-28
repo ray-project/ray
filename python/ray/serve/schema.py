@@ -237,6 +237,11 @@ class TracingConfig(BaseModel):
 
             # Enable tracing with default exporter
             serve.start(tracing_config=TracingConfig(enabled=True))
+
+    Fields that are not set explicitly default from the ``RAY_SERVE_TRACING_*``
+    environment variables of the Serve controller process (which can be set via
+    ``controller_options.runtime_env.env_vars``), not of the process that
+    builds the config.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -279,7 +284,13 @@ class TracingConfig(BaseModel):
         # fall back to the built-in file-based exporter; callers can then read
         # exporter_import_path directly.
         if self.enabled and not self.exporter_import_path:
+            was_set = "exporter_import_path" in self.model_fields_set
             self.exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+            # Assignment marks the field as set; undo that for a filled-in
+            # default so the controller can still re-resolve it from its own
+            # environment (see _coerce_tracing_config).
+            if not was_set:
+                self.model_fields_set.discard("exporter_import_path")
         return self
 
 

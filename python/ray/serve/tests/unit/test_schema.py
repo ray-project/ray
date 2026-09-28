@@ -1672,6 +1672,26 @@ class TestTracingConfig:
         config = TracingConfig(enabled=True, exporter_import_path="")
         assert config.exporter_import_path == DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 
+    def test_unset_fields_re_resolve_in_another_env(self, monkeypatch):
+        """Unset fields stay unset so another process can re-resolve them.
+
+        The controller rebuilds a config from its explicitly-set fields to
+        resolve defaults from its own env; a filled-in default exporter must not
+        count as explicitly set.
+        """
+        config = TracingConfig(enabled=True)
+        assert config.model_fields_set == {"enabled"}
+
+        env_var = "ray.serve.schema.RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH"
+        monkeypatch.setattr(env_var, "")
+        partial = TracingConfig(sampling_ratio=0.5)
+        assert partial.enabled is False
+        monkeypatch.setattr(env_var, "my.mod:exp")
+        resolved = TracingConfig(**partial.model_dump(exclude_unset=True))
+        assert resolved.enabled is True
+        assert resolved.exporter_import_path == "my.mod:exp"
+        assert resolved.sampling_ratio == 0.5
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

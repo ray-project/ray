@@ -135,16 +135,18 @@ SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 def _coerce_tracing_config(
     tracing_config: Optional[TracingConfig],
 ) -> TracingConfig:
-    """Default an optional TracingConfig to an env-var-sourced one.
+    """Resolve a TracingConfig's defaults in the controller process.
 
     The global tracing config must never be None -- it is the single source of
-    truth for ``setup_tracing`` and its fields default from the
-    RAY_SERVE_TRACING_* env vars. Every caller passes either a validated model
-    or None: ``api.py`` converts a user-supplied dict to a TracingConfig before
-    the controller starts, and ``apply_config`` passes the schema-validated
-    model.
+    truth for ``setup_tracing``. Unset fields default from the RAY_SERVE_TRACING_*
+    env vars, but the model may have been built in another process (the driver
+    for serve.start, the dashboard for serve deploy), where those env vars can
+    differ from the controller's (e.g. set via controller_options.runtime_env).
+    Rebuild from only the explicitly-set fields so unset ones resolve here.
     """
-    return tracing_config if tracing_config is not None else TracingConfig()
+    if tracing_config is None:
+        return TracingConfig()
+    return TracingConfig(**tracing_config.model_dump(exclude_unset=True))
 
 
 class ServeController:
