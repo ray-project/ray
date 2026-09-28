@@ -1822,7 +1822,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         4. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
         5. Prioritize newer replicas over older replicas.
         A replica is skipped if stopping it would leave the deployment on fewer
-        domains than its floor, so downscaling never undoes the spread.
+        domains than its floor. If the floors together refuse every stop still
+        needed, they are relaxed from the last key to the first.
         Note that this algorithm doesn't consider other non-serve actors on the same node.
         See more at https://github.com/ray-project/ray/issues/20599.
 
@@ -1913,25 +1914,53 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replicas_to_stop.update(replicas_by_gang_id[gang_id])
             return replicas_to_stop
 
-        rules = self._rules_for(deployment_id)
+        # Floors on keys that cut across each other, such as zone and slice,
+        # can together refuse every stop. Each pass then drops the last floor
+        # still held, so keys listed first in `topology_spread` are held
+        # longest and the target is always reached. Stopping a replica never
+        # lets a floor allow a stop it refused, so one pass per level finds
+        # every stop that level allows. Rules for the whole cluster are never
+        # relaxed.
+        floors = self._deployments[deployment_id].floors
         refusals: "Counter[str]" = Counter()
-        for replica_id in replicas_priority:
-            veto = next(
-                (type(c).__name__ for c in rules if not c.may_stop(replica_id, ctx)),
-                None,
-            )
-            if veto is not None:
-                refusals[veto] += 1
-                continue
-            replicas_to_stop.add(replica_id)
-            stopped_node_id = ctx.node_by_replica.get(replica_id)
-            if stopped_node_id is not None:
-                ctx.replicas_per_node[stopped_node_id] -= 1
-                if ctx.replicas_per_node[stopped_node_id] == 0:
-                    del ctx.replicas_per_node[stopped_node_id]
+        relaxed_keys: List[str] = []
+        for num_floors in range(len(floors), -1, -1):
             if len(replicas_to_stop) == max_num_to_stop:
                 break
+            rules = floors[:num_floors] + self._profile.constraints
+            refusals = Counter()
+            num_stopped_before = len(replicas_to_stop)
+            for replica_id in replicas_priority:
+                if replica_id in replicas_to_stop:
+                    continue
+                veto = next(
+                    (
+                        type(c).__name__
+                        for c in rules
+                        if not c.may_stop(replica_id, ctx)
+                    ),
+                    None,
+                )
+                if veto is not None:
+                    refusals[veto] += 1
+                    continue
+                replicas_to_stop.add(replica_id)
+                stopped_node_id = ctx.node_by_replica.get(replica_id)
+                if stopped_node_id is not None:
+                    ctx.replicas_per_node[stopped_node_id] -= 1
+                    if ctx.replicas_per_node[stopped_node_id] == 0:
+                        del ctx.replicas_per_node[stopped_node_id]
+                if len(replicas_to_stop) == max_num_to_stop:
+                    break
+            if num_floors < len(floors) and len(replicas_to_stop) > num_stopped_before:
+                relaxed_keys.append(floors[num_floors].label_key)
 
+        if relaxed_keys:
+            logger.info(
+                f"The topology_spread floors of {deployment_id} refused every stop "
+                f"needed to reach {ctx.target_num_replicas} replicas, so Serve "
+                f"relaxed the floors on {relaxed_keys}, last key first."
+            )
         if len(replicas_to_stop) < max_num_to_stop:
             if deployment_id not in self._logged_short_downscales:
                 self._logged_short_downscales.add(deployment_id)
