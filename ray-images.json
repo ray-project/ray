@@ -25,7 +25,8 @@
       "cu12.6.3-cudnn",
       "cu12.8.1-cudnn",
       "cu12.9.1-cudnn",
-      "cu13.0.0-cudnn"
+      "cu13.0.0-cudnn",
+      "cu13.3.1-cudnn"
     ]
   },
   "ray-ml": {

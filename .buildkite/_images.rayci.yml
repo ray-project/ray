@@ -75,6 +75,7 @@ steps:
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -101,6 +102,7 @@ steps:
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
         - "13.0.0-cudnn"
+        - "13.3.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
@@ -243,6 +245,7 @@ steps:
         - "12.8.1"
         - "12.9.1"
         - "13.0.0"
+        - "13.3.1"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
