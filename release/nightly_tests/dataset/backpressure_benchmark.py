@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--consumer-sleep-s", type=float, default=1.0)
     parser.add_argument("--num-trainers", type=int, default=8)
     parser.add_argument("--prefetch-batches", type=int, default=8)
+    parser.add_argument("--num-trials", type=int, default=1)
     parser.add_argument(
         "--disable-locality-hints",
         action="store_true",
@@ -133,15 +134,42 @@ class Trainer:
         return ray.get_runtime_context().get_node_id()
 
 
+_AGGREGATE_MAX_METRICS = {
+    "object_store_spilled_total_gb",
+    "object_store_memory_used_peak_gb",
+    "object_store_memory_utilization_peak",
+}
+
+
 def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
-    if args.case == "fast-producer-slow-consumer":
-        benchmark.run_fn(args.case, run_fast_producer_slow_consumer, args)
-    elif args.case == "training-prefetch":
-        benchmark.run_fn(args.case, run_training_prefetch, args)
-    else:
-        raise ValueError(f"Unexpected benchmark case: {args.case}")
+    case_fns = {
+        "fast-producer-slow-consumer": run_fast_producer_slow_consumer,
+        "training-prefetch": run_training_prefetch,
+    }
+    fn = case_fns[args.case]
+    num_trials = args.num_trials
+
+    for trial in range(num_trials):
+        trial_name = f"{args.case}/trial-{trial}" if num_trials > 1 else args.case
+        benchmark.run_fn(trial_name, fn, args)
+
+    if num_trials > 1:
+        trial_results = [
+            benchmark.result[f"{args.case}/trial-{i}"] for i in range(num_trials)
+        ]
+        aggregated = {}
+        for key in trial_results[0]:
+            values = [r[key] for r in trial_results]
+            if key in _AGGREGATE_MAX_METRICS:
+                aggregated[key] = max(values)
+            elif isinstance(values[0], (int, float)):
+                aggregated[key] = sum(values) / len(values)
+            else:
+                aggregated[key] = values[0]
+        benchmark.result[args.case] = aggregated
+        print(f"Aggregated result over {num_trials} trials: {aggregated}")
 
     benchmark.write_result()
 
