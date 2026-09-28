@@ -155,7 +155,7 @@ applications:
 How the floor behaves:
 
 - The scheduler caps the floor by the replica count and by the number of distinct label values among live nodes, so a floor above the cluster never blocks a replica.
-- A node without the label is in no domain, so it can never raise the count. While the floor is unmet the scheduler skips it, otherwise a single unlabeled node would absorb every replica and the floor would never engage. Once the floor is met it is a candidate again. The launch keeps its own fallback chain, so a replica that fits nowhere else still lands there and never waits on the floor alone.
+- A node without the label is in no domain, so it can never raise the count. While the floor is unmet the scheduler skips it, otherwise a single unlabeled node would absorb every replica and the floor would never engage. The selector Serve sends to Ray Core carries the same rule as `exists()`, because `!in(...)` alone also matches a node without the label. Once the floor is met it is a candidate again. The launch keeps its own fallback chain, so a replica that fits nowhere else still lands there and never waits on the floor alone.
 - While the floor is unmet, the replica prefers nodes outside the occupied domains and falls back to any node its own `label_selector` allows, so a replica never waits on the floor alone. For a placement group, bundle 0 carries the rule as a hard constraint instead.
 - For a placement group whose strategy isn't `STRICT_PACK`, Ray Core chooses the nodes, and Serve learns the domain only once the replica runs. Until the floor is met, Serve starts the next replica of that deployment only after the previous one is up.
 - Downscaling skips a replica whose stop would drop the deployment below the floor for the new replica count.

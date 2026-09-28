@@ -12,6 +12,7 @@ from typing import (
     Callable,
     DefaultDict,
     Dict,
+    Iterable,
     List,
     Optional,
     Sequence,
@@ -467,13 +468,26 @@ def _label_value(
     return value
 
 
-def _exclusion_selector(exclusions: Dict[str, Set[str]]) -> Dict[str, str]:
-    """One `!in(...)` label selector entry for each key with values to avoid."""
-    return {
-        key: f"!in({','.join(sorted(values))})"
-        for key, values in exclusions.items()
-        if values
-    }
+def _exclusion_selector(
+    exclusions: Dict[str, Set[str]], required_keys: Iterable[str] = ()
+) -> Dict[str, str]:
+    """One label selector entry for each key a rule has an opinion on.
+
+    A key a rule requires gets `exists()`, because `!in(...)` alone also
+    matches a node without the label. Values to avoid get `!in(...)`, and a key
+    with both gets `exists(),!in(...)`.
+    """
+    required = set(required_keys)
+    selector = {}
+    for key in sorted(set(exclusions) | required):
+        expressions = []
+        if key in required:
+            expressions.append("exists()")
+        if exclusions.get(key):
+            expressions.append(f"!in({','.join(sorted(exclusions[key]))})")
+        if expressions:
+            selector[key] = ",".join(expressions)
+    return selector
 
 
 @dataclass
@@ -509,16 +523,20 @@ class SchedulingConstraint:
     """One hard placement rule, applied at every point where it has an opinion.
 
     `exclusions` names, for each node label key, the values a replica must
-    avoid. The scheduler drops the matching nodes and merges every rule's
-    values for a key into one `!in(...)` selector for Ray Core, so two rules
-    that exclude on the same key compose. `eligible` narrows the candidates by
-    any other test against cached node state. `may_stop` vetoes a downscale
-    that would break the rule. Each default is a no-op, so a constraint
-    overrides only the points it cares about.
+    avoid, and `required_label_keys` names the keys a node must carry. The
+    scheduler drops the matching nodes and merges every rule's opinions on a
+    key into one selector for Ray Core, so two rules on the same key compose.
+    `eligible` narrows the candidates by any other test against cached node
+    state. `may_stop` vetoes a downscale that would break the rule. Each
+    default is a no-op, so a constraint overrides only the points it cares
+    about.
     """
 
     def exclusions(self, ctx: SchedulingContext) -> Dict[str, Set[str]]:
         return {}
+
+    def required_label_keys(self, ctx: SchedulingContext) -> Set[str]:
+        return set()
 
     def eligible(
         self,
@@ -576,6 +594,15 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
         if not self.floor_is_unmet(ctx):
             return {}
         return {self._label_key: self._occupied_domains(ctx)}
+
+    def required_label_keys(self, ctx: SchedulingContext) -> Set[str]:
+        """The label key while the floor is unmet, for the reason in `eligible`.
+
+        Every node carries `ray.io/node-id`, so a node floor needs no check.
+        """
+        if self._label_key == RAY_NODE_ID_LABEL or not self.floor_is_unmet(ctx):
+            return set()
+        return {self._label_key}
 
     def eligible(
         self,
@@ -1458,7 +1485,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                     # travel with the replica as a label selector.
                     target_node = None
                     required_labels = _exclusion_selector(
-                        self._collect_exclusions(rules, ctx)
+                        self._collect_exclusions(rules, ctx),
+                        self._collect_required_keys(rules, ctx),
                     )
                 else:
                     target_node, required_labels = self._select_node(
@@ -1609,6 +1637,13 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 exclusions[key] |= values
         return exclusions
 
+    @staticmethod
+    def _collect_required_keys(
+        constraints: Sequence[SchedulingConstraint], ctx: SchedulingContext
+    ) -> Set[str]:
+        """Unions the label keys every rule requires a node to carry."""
+        return set().union(*(c.required_label_keys(ctx) for c in constraints))
+
     def _select_node(
         self,
         scheduling_request: ReplicaSchedulingRequest,
@@ -1633,7 +1668,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         }
         for constraint in constraints:
             eligible = constraint.eligible(eligible, ctx)
-        required_labels = _exclusion_selector(exclusions)
+        required_labels = _exclusion_selector(
+            exclusions, self._collect_required_keys(constraints, ctx)
+        )
 
         tie_break_key = self._node_preference_key(ctx)
         for required_resources, label_selectors in self._build_placement_candidates(

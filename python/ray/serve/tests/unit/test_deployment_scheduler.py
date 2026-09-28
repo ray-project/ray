@@ -2248,6 +2248,26 @@ class TestSchedulingConstraints:
             "n3",
         }
 
+    def test_domain_constraint_requires_the_label_on_ray_core(self):
+        """`!in` alone also matches a node without the label, so Ray gets exists."""
+        constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
+
+        def selector(occupied):
+            ctx = self._slice_ctx(occupied=occupied)
+            return _exclusion_selector(
+                constraint.exclusions(ctx), constraint.required_label_keys(ctx)
+            )
+
+        # Before any replica runs, no slice is excluded but n4 still is.
+        assert selector([]) == {self.SLICE: "exists()"}
+        assert selector(["n1"]) == {self.SLICE: "exists(),!in(a)"}
+        assert selector(["n1", "n3"]) == {}
+
+    def test_node_floor_needs_no_exists(self):
+        """Every node carries `ray.io/node-id`."""
+        constraint = self._node_floor(2)
+        assert constraint.required_label_keys(self._ctx(occupied=["n1"])) == set()
+
     def test_domain_constraint_lifts_once_floor_is_met(self):
         constraint = MinTopologyDomainsConstraint(self.SLICE, 2)
         ctx = self._slice_ctx(occupied=["n1", "n3"])
@@ -2773,7 +2793,7 @@ class TestTopologySpread:
         assert cache.get_node_labels(second_node)[self.SLICE] != first_slice
         # The second replica carries the slice rule to Ray as a preference.
         second = on_scheduled.call_args_list[1].args[0]._options
-        assert second["label_selector"] == {self.SLICE: f"!in({first_slice})"}
+        assert second["label_selector"] == {self.SLICE: f"exists(),!in({first_slice})"}
         assert second["fallback_strategy"] == [{"label_selector": {}}]
 
     def test_deployment_floor_overrides_cluster_default(self):
@@ -2862,7 +2882,7 @@ class TestTopologySpread:
 
         assert create_pg_fn.call_count == 2
         assert create_pg_fn.call_args.args[0].bundle_label_selector == [
-            {self.SLICE: "!in(a)"}
+            {self.SLICE: "exists(),!in(a)"}
         ]
 
     def test_downscale_keeps_slices(self):
