@@ -1,4 +1,5 @@
-from typing import Dict, Tuple
+import time
+from typing import Dict, Set, Tuple
 
 import ray
 import ray._private.internal_api
@@ -35,3 +36,19 @@ def get_actor_locations(logical_actor_ids: Tuple[str, ...]) -> Dict[str, str]:
             logical_actor_ids
         )
     )
+
+
+# If we submit a task immediately before the deadline, Ray Core might not have
+# enough time to launch the task and fetch objects before the node is terminated.
+# To avoid this, we stop using inputs on such nodes some time before the deadline.
+DRAIN_DEADLINE_BUFFER_TIME_MS = 5000
+
+
+def get_drained_nodes() -> Set[str]:
+    """Returns the set of nodes that are draining and are past their deadline."""
+    now_ms = time.time() * 1000
+    return {
+        node_id
+        for node_id, deadline_ms in get_draining_nodes().items()
+        if deadline_ms - DRAIN_DEADLINE_BUFFER_TIME_MS < now_ms
+    }

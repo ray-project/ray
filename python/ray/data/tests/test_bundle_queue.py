@@ -1,12 +1,20 @@
+import threading
+import time
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import (
+    HashLinkedQueue,
+    ObjectStoreAwareBundleQueue,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 
 
 def _create_bundle(data: Any) -> RefBundle:
@@ -142,6 +150,154 @@ def test_clear():
 
 
 # CVGA-end
+
+
+@pytest.mark.parametrize(
+    "env_value, preserve_order, expected_type",
+    [
+        (None, False, ObjectStoreAwareBundleQueue),
+        ("1", False, ObjectStoreAwareBundleQueue),
+        ("0", False, HashLinkedQueue),
+        (None, True, HashLinkedQueue),
+    ],
+)
+def test_create_bundle_queue(
+    env_value, preserve_order, expected_type, monkeypatch, restore_data_context
+):
+    if env_value is not None:
+        monkeypatch.setenv(
+            "RAY_DATA_ENABLE_OBJECT_STORE_AWARE_BUNDLE_QUEUES", env_value
+        )
+    DataContext.get_current().execution_options.preserve_order = preserve_order
+
+    assert isinstance(create_bundle_queue(), expected_type)
+
+
+def _mock_object_locations(node_ids_by_ref):
+    """Patch the local object-location lookup to return the given node IDs per ref,
+    with every object reported as 1 MiB so none are treated as inlined."""
+    mock = MagicMock(
+        side_effect=lambda refs: {
+            ref: {"node_ids": list(node_ids_by_ref[ref]), "object_size": 2**20}
+            for ref in refs
+        }
+    )
+    return patch.object(ray.experimental, "get_local_object_locations", mock)
+
+
+def test_rotates_missing_bundles():
+    lost = _create_bundle("lost")
+    resident1 = _create_bundle("resident1")
+    resident2 = _create_bundle("resident2")
+    node_ids_by_ref = {
+        lost.block_refs[0]: [],
+        resident1.block_refs[0]: ["node1"],
+        resident2.block_refs[0]: ["node1"],
+    }
+
+    queue = ObjectStoreAwareBundleQueue()
+    for bundle in (lost, resident1, resident2):
+        queue.add(bundle)
+
+    with _mock_object_locations(node_ids_by_ref), patch(
+        "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
+    ):
+        # The lost bundle sits at the front but is rotated behind the resident ones.
+        assert queue.peek_next() is resident1
+        assert queue.get_next() is resident1
+        assert queue.get_next() is resident2
+        # Once only lost bundles remain, they are still served rather than starved.
+        assert queue.has_next()
+        assert queue.get_next() is lost
+        assert len(queue) == 0
+
+
+def test_refreshes_size():
+    bundle = _create_bundle("test1")
+    # Two replicas of the block across nodes.
+    node_ids_by_ref = {bundle.block_refs[0]: ["node1", "node2"]}
+
+    queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+    queue.add(bundle)
+
+    with _mock_object_locations(node_ids_by_ref):
+        assert queue.estimate_size_bytes() == 2 * 2**20
+
+    # Objects lost from the object store no longer count towards the estimate.
+    node_ids_by_ref[bundle.block_refs[0]] = []
+    with _mock_object_locations(node_ids_by_ref):
+        assert queue.estimate_size_bytes() == 0
+
+
+def test_thread_safety():
+    with patch.object(
+        ray.experimental, "get_local_object_locations", MagicMock()
+    ) as mock_locations, patch(
+        "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
+    ):
+        mock_locations.return_value = {"": {"node_ids": ["node1"], "object_size": 100}}
+
+        queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+        exceptions = []
+
+        def add_pop_worker():
+            try:
+                for _ in range(1000):
+                    bundle = MagicMock(size_bytes=lambda: 100, num_rows=lambda: 1)
+                    queue.add(bundle)
+                    time.sleep(0.001)
+                    queue.get_next()
+            except Exception as e:
+                exceptions.append(f"Add/Pop thread: {e}")
+
+        def size_estimation_worker():
+            try:
+                for _ in range(2000):
+                    assert queue.estimate_size_bytes() in (0, 100)
+                    time.sleep(0.0005)
+            except Exception as e:
+                exceptions.append(f"Size thread: {e}")
+
+        threads = [
+            threading.Thread(target=add_pop_worker),
+            threading.Thread(target=size_estimation_worker),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=30)
+
+        assert not exceptions, f"Exceptions occurred: {exceptions}"
+        assert len(queue) == 0
+        assert queue.estimate_size_bytes() == 0
+
+
+def test_remove_duplicates():
+    bundle = _create_bundle(0)
+    queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+
+    queue.add(bundle)
+    queue.add(bundle)
+    # Refreshing sizes between add and remove used to drop the size entry early.
+    queue.estimate_size_bytes()
+    queue.remove(bundle)
+    queue.remove(bundle)
+
+    assert len(queue) == 0
+    assert queue.estimate_size_bytes() == 0
+
+
+def test_size_with_duplicates():
+    bundle = _create_bundle(0)
+    queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
+
+    queue.add(bundle)
+    initial_estimate = queue.estimate_size_bytes()
+    queue.add(bundle)
+
+    # Both entries reference the same objects, so object store usage is unchanged.
+    assert queue.estimate_size_bytes() == initial_estimate
+
 
 if __name__ == "__main__":
     import sys
