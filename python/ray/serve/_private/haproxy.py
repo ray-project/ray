@@ -765,14 +765,6 @@ class HAProxyConfig:
         return self.grpc_options.port
 
     @property
-    def root_path(self) -> str:
-        """Global root_path prefix, normalized without a trailing slash.
-
-        Empty when unset so the config template omits root_path handling.
-        """
-        return (self.http_options.root_path or "").rstrip("/")
-
-    @property
     def timeout_http_keep_alive_s(self) -> int:
         return self.http_options.keep_alive_timeout_s
 
