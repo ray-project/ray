@@ -77,7 +77,7 @@ The following router first prefers replicas that have the requested model loaded
 
 The router keeps every rank returned by the multiplexing and locality helpers. The first rank can be empty when no replica has loaded a model or no replica shares the router's node. Keeping the remaining ranks provides a fallback to other replicas.
 
-`select_available_replicas` skips replicas whose cached queue length has reached `max_ongoing_requests`. The router returns each remaining replica in its own rank so the base router tries them in throughput order. If a preferred replica rejects the request, lower-ranked replicas remain available as fallbacks. This policy returns all fallback ranks in one call and sets `routing_context.should_backoff` to `True` for the next retry. If every replica is at capacity, it returns an empty list and the base router retries with backoff.
+The router returns each replica in its own rank so the base router tries them in throughput order. It doesn't call `select_available_replicas`, which skips replicas whose cached queue length has reached `max_ongoing_requests`. The cached value can be stale, so the base router probes those replicas before it moves to the next rank. If a preferred replica rejects the request, lower-ranked replicas remain available as fallbacks. This policy returns all fallback ranks in one call and sets `routing_context.should_backoff` to `True` for the next retry. If every replica is at capacity, the base router retries with backoff.
 
 (deploy-app-with-throughput-aware-request-router)=
 ## Deploy an app with the throughput-aware request router
