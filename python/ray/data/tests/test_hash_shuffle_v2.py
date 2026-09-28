@@ -165,6 +165,41 @@ def test_round_robin_repartition(
     )
 
 
+@pytest.mark.parametrize("use_disk", [False, True])
+def test_round_robin_repartition_chunked_extensions(
+    ray_start_regular_shared_2_cpus, use_disk
+):
+    from ray.data.extensions import ArrowPythonObjectArray, ArrowTensorArray
+
+    DataContext.get_current().use_disk_based_hash_shuffle = use_disk
+    tensors = np.arange(48).reshape(12, 2, 2)
+    table = pa.table(
+        {
+            "id": range(12),
+            "tensor": ArrowTensorArray.from_numpy(tensors),
+            "object": ArrowPythonObjectArray.from_objects(
+                [{"id": i} for i in range(12)]
+            ),
+        }
+    )
+    table = pa.concat_tables([table.slice(0, 5), table.slice(5)])
+    assert all(column.num_chunks == 2 for column in table.columns)
+
+    out = ray.data.from_arrow(table).repartition(4, shuffle=True).materialize()
+    blocks = ray.get(out.get_internal_block_refs())
+    assert len(blocks) == 4
+    all_ids = []
+    for block in blocks:
+        assert block.schema == table.schema
+        ids = block["id"].to_numpy()
+        all_ids.extend(ids.tolist())
+        np.testing.assert_array_equal(
+            block["tensor"].combine_chunks().to_numpy(), tensors[ids]
+        )
+        assert block["object"].to_pylist() == [{"id": i} for i in ids]
+    assert sorted(all_ids) == list(range(12))
+
+
 @pytest.mark.parametrize("num_partitions", [1, 4, 8])
 def test_repartition_keys_preserves_rows(
     ray_start_regular_shared_2_cpus,

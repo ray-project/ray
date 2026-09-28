@@ -4,7 +4,7 @@ from typing import Dict, Iterable, List
 import numpy as np
 import pyarrow as pa
 
-from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
+from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition, take_table
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     PartitionFn,
     ReduceFn,
@@ -37,7 +37,7 @@ def _make_round_robin_partition_fn(num_partitions: int) -> PartitionFn:
         for partition_id in range(min(num_partitions, block.num_rows)):
             row_indices = np.arange(partition_id, block.num_rows, num_partitions)
             target_partition = (start_partition + partition_id) % num_partitions
-            partitions[target_partition] = block.take(row_indices)
+            partitions[target_partition] = take_table(block, row_indices)
         return partitions
 
     return _partition
