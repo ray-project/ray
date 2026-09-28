@@ -2910,6 +2910,96 @@ class TestTopologySpread:
         assert to_stop[d_id] <= {replicas[0], replicas[1]}
 
 
+class TestFloorRelaxation:
+    """Floors on keys that cut across each other can refuse every stop."""
+
+    # Each replica is the last one in its zone or its slice, and no 3 of them
+    # cover 3 zones and 3 slices at once.
+    LAYOUT = [("a", "Z"), ("b", "Z"), ("c", "X"), ("c", "Y")]
+
+    def _scheduler(self, topology_spread, layout=LAYOUT):
+        d_id = DeploymentID(name="d1")
+        cache = MockClusterNodeInfoCache()
+        replicas = []
+        for i, (zone, slice_name) in enumerate(layout):
+            cache.add_node(f"n{i}", labels={"zone": zone, "slice": slice_name})
+        scheduler = make_scheduler(cache, PackNodeScorer())
+        deploy(
+            scheduler,
+            d_id,
+            ray_actor_options={"num_cpus": 1},
+            topology_spread=topology_spread,
+        )
+        for i in range(len(layout)):
+            replica_id = ReplicaID(unique_id=f"r{i}", deployment_id=d_id)
+            scheduler.on_replica_running(replica_id, f"n{i}")
+            replicas.append(replica_id)
+        return scheduler, d_id, cache, replicas
+
+    def _stop(self, scheduler, d_id, num_to_stop):
+        return scheduler.schedule(
+            upscales={},
+            downscales={
+                d_id: DeploymentDownscaleRequest(
+                    deployment_id=d_id, num_to_stop=num_to_stop
+                )
+            },
+        )[d_id]
+
+    def _covered(self, cache, replicas, stopped, key):
+        return {
+            cache.get_node_labels(f"n{i}")[key]
+            for i, replica_id in enumerate(replicas)
+            if replica_id not in stopped
+        }
+
+    @pytest.mark.parametrize(
+        "topology_spread, kept_key",
+        [
+            ({"zone": 3, "slice": 3}, "zone"),
+            ({"slice": 3, "zone": 3}, "slice"),
+        ],
+    )
+    def test_the_last_key_gives_way_first(self, topology_spread, kept_key, caplog):
+        scheduler, d_id, cache, replicas = self._scheduler(topology_spread)
+
+        with caplog.at_level(logging.INFO, logger="ray.serve"):
+            stopped = self._stop(scheduler, d_id, 1)
+
+        assert len(stopped) == 1
+        assert len(self._covered(cache, replicas, stopped, kept_key)) == 3
+        assert "relaxed the floors on" in caplog.text
+
+    def test_nested_keys_never_relax(self, caplog):
+        """A node floor inside a zone floor always leaves a stop both allow."""
+        layout = [("a", "a1"), ("a", "a2"), ("b", "b1"), ("b", "b2")]
+        scheduler, d_id, cache, replicas = self._scheduler(
+            {"zone": 2, "slice": 3}, layout
+        )
+
+        with caplog.at_level(logging.INFO, logger="ray.serve"):
+            stopped = self._stop(scheduler, d_id, 1)
+
+        assert len(stopped) == 1
+        assert len(self._covered(cache, replicas, stopped, "zone")) == 2
+        assert len(self._covered(cache, replicas, stopped, "slice")) == 3
+        assert "relaxed" not in caplog.text
+
+    def test_relaxing_stops_only_what_the_target_needs(self):
+        """Stops the floors allow still come first, before any floor gives way."""
+        # r4 shares zone c and slice X with r2, so both floors allow its stop.
+        layout = self.LAYOUT + [("c", "X")]
+        scheduler, d_id, cache, replicas = self._scheduler(
+            {"zone": 3, "slice": 3}, layout
+        )
+
+        stopped = self._stop(scheduler, d_id, 2)
+
+        assert len(stopped) == 2
+        assert replicas[4] in stopped or replicas[2] in stopped
+        assert len(self._covered(cache, replicas, stopped, "zone")) == 3
+
+
 class TestSpreadNodeScorer:
     def test_prefers_fewest_replicas_of_the_same_deployment(self):
         """Replicas of other deployments do not count against a node."""

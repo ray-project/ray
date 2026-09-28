@@ -89,7 +89,7 @@ When Ray Serve scales down a deployment, it intelligently selects which replicas
 1. **Non-running replicas first**: Pending, launching, or recovering replicas are stopped before running replicas.
 2. **Minimize node count**: Running replicas are stopped from nodes with the fewest total replicas across all deployments, helping to free up nodes faster. Among replicas on the same node, newer replicas are stopped before older ones.
 3. **Head node protection**: Replicas on the head node have the lowest priority for removal since the head node can't be released. Among replicas on the head node, newer replicas are stopped before older ones.
-4. **Keep the floor**: A replica is skipped if stopping it would leave the deployment on fewer nodes, zones, or slices than its `topology_spread` floor, or the `RAY_SERVE_MIN_REPLICA_NODES` default, allows for the new replica count. Downscaling never collapses a spread deployment into one domain.
+4. **Keep the floor**: A replica is skipped if stopping it would leave the deployment on fewer nodes, zones, or slices than its `topology_spread` floor, or the `RAY_SERVE_MIN_REPLICA_NODES` default, allows for the new replica count. Floors on keys that cut across each other, such as zone and slice, can together refuse every stop. Serve then relaxes them from the last key listed to the first, so the deployment always reaches its target.
 
 :::{note}
 Running replicas on the head node isn't recommended for production deployments. The head node runs critical cluster processes such as the GCS and Serve controller, and replica workloads can compete for resources.
@@ -158,7 +158,7 @@ How the floor behaves:
 - A node without the label is in no domain, so it can never raise the count. While the floor is unmet the scheduler skips it, otherwise a single unlabeled node would absorb every replica and the floor would never engage. The selector Serve sends to Ray Core carries the same rule as `exists()`, because `!in(...)` alone also matches a node without the label. Once the floor is met it is a candidate again. The launch keeps its own fallback chain, so a replica that fits nowhere else still lands there and never waits on the floor alone.
 - While the floor is unmet, the replica prefers nodes outside the occupied domains and falls back to any node its own `label_selector` allows, so a replica never waits on the floor alone. For a placement group, bundle 0 carries the rule as a hard constraint instead.
 - For a placement group whose strategy isn't `STRICT_PACK`, Ray Core chooses the nodes, and Serve learns the domain once the replica's actor starts in bundle 0, before the replica finishes initializing. Until the floor is met, Serve starts the next replica of that deployment only after the previous one's actor starts.
-- Downscaling skips a replica whose stop would drop the deployment below the floor for the new replica count.
+- Downscaling skips a replica whose stop would drop the deployment below the floor for the new replica count. If the floors together refuse every stop still needed, Serve relaxes them from the last key listed to the first, so list the key that matters most first.
 - Once the floor is met, the remaining replicas follow the cluster's scorer. They pack when `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` and keep spreading otherwise.
 - A deployment that sets `topology_spread` replaces the cluster default from `RAY_SERVE_MIN_REPLICA_NODES` for itself. Other deployments keep the default.
 
