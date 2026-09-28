@@ -39,6 +39,9 @@ LABEL_SELECTOR_REGEX = re.compile(
     rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, ?{LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
 )
 
+# Regex to match the exists() and !exists() operators, which take no values.
+LABEL_EXISTS_REGEX = re.compile(r"^!?exists\(\)$")
+
 
 def parse_node_labels_json(labels_json: str) -> Dict[str, str]:
     labels = json.loads(labels_json)
@@ -166,16 +169,42 @@ def validate_label_selector(label_selector: Optional[Dict[str, str]]) -> Optiona
     return None
 
 
+def split_label_selector_value(selector: str) -> List[str]:
+    """Split a label selector value into its expressions.
+
+    Expressions are joined by commas outside parentheses, so
+    "exists(),!in(a,b)" gives ["exists()", "!in(a,b)"]. Commas inside
+    parentheses separate the values of a single `in` expression.
+    """
+    expressions = []
+    depth = 0
+    start = 0
+    for i, char in enumerate(selector):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            expressions.append(selector[start:i])
+            start = i + 1
+    expressions.append(selector[start:])
+    return expressions
+
+
 def validate_label_selector_value(selector: str) -> Optional[str]:
     if selector == "":
         return None
-    if not re.fullmatch(LABEL_SELECTOR_REGEX, selector):
-        return str(
-            f"Invalid label selector value `{selector}`. The label selector value should contain optional operators and a label value. Supported operators are: ! and {LABEL_OPERATORS}. "
-            f"Value must be 63 chars or less beginning and ending "
-            f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
-            f"dots (.), and alphanumerics between."
-        )
+    for expression in split_label_selector_value(selector):
+        if not (
+            re.fullmatch(LABEL_SELECTOR_REGEX, expression)
+            or re.fullmatch(LABEL_EXISTS_REGEX, expression)
+        ):
+            return str(
+                f"Invalid label selector value `{selector}`. The label selector value should contain one or more expressions separated by commas. Each expression is an optional operator and a label value, or `exists()` or `!exists()`. Supported operators are: ! and {LABEL_OPERATORS}. "
+                f"Value must be 63 chars or less beginning and ending "
+                f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
+                f"dots (.), and alphanumerics between."
+            )
 
     return None
 

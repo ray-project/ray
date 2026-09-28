@@ -288,6 +288,8 @@ cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
     cdef cppclass CLabelSelector "ray::LabelSelector":
         CLabelSelector() nogil except +
         void AddConstraint(const c_string& key, const c_string& value) nogil except +
+        @staticmethod
+        c_vector[c_string] SplitLabelSelectorValue(const c_string& value)
 
 cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
     cdef cppclass CFallbackOption "ray::FallbackOption":

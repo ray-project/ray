@@ -11,6 +11,7 @@ from ray._private.label_utils import (
     parse_node_labels_from_yaml_file,
     parse_node_labels_json,
     parse_node_labels_string,
+    split_label_selector_value,
     validate_fallback_strategy,
     validate_label_key,
     validate_label_selector,
@@ -239,6 +240,10 @@ def test_validate_label_value(value, should_raise, expected_message):
         (None, None),  # Valid: No input provided
         ({"region": "us-west4"}, None),  # Valid label key and value
         ({"ray.io/accelerator-type": "A100"}, None),  # Valid label key and value
+        (
+            {"ray.io/tpu-slice-name": "exists(),!in(slice-a,slice-b)"},
+            None,
+        ),  # Valid several expressions on one key
         ({"": "valid-value"}, "Invalid label key name"),  # Invalid label key (empty)
         (
             {"!-invalidkey": "valid-value"},
@@ -273,6 +278,17 @@ def test_validate_label_selector(label_selector, expected_error):
         ("in(H100, TPU!GPU)", "Invalid label selector value"),
         ("!!!in(H100, TPU)", "Invalid label selector value"),
         ("a" * 64, "Invalid label selector value"),
+        ("exists()", None),
+        ("!exists()", None),
+        ("exists(),!in(slice-a,slice-b)", None),
+        ("in(a,b),!c,!exists()", None),
+        ("exists(a)", "Invalid label selector value"),
+        ("!!exists()", "Invalid label selector value"),
+        ("exists", None),
+        ("exists(),", "Invalid label selector value"),
+        (",exists()", "Invalid label selector value"),
+        ("exists(),in()", "Invalid label selector value"),
+        ("exists(),a" + "a" * 63, "Invalid label selector value"),
     ],
     ids=[
         "spot",
@@ -287,6 +303,17 @@ def test_validate_label_selector(label_selector, expected_error):
         "invalid-noteq",
         "triple-noteq",
         "too-long",
+        "exists",
+        "not-exists",
+        "exists-and-not-in",
+        "three-expressions",
+        "exists-with-value",
+        "double-not-exists",
+        "plain-value-named-exists",
+        "trailing-comma",
+        "leading-comma",
+        "empty-in-after-exists",
+        "too-long-after-exists",
     ],
 )
 def test_validate_label_selector_value(selector, expected_error):
@@ -295,6 +322,22 @@ def test_validate_label_selector_value(selector, expected_error):
         assert expected_error in error_msg
     else:
         assert error_msg is None
+
+
+@pytest.mark.parametrize(
+    "selector, expected",
+    [
+        ("", [""]),
+        ("spot", ["spot"]),
+        ("!spot", ["!spot"]),
+        ("in(a,b)", ["in(a,b)"]),
+        ("!in(a, b)", ["!in(a, b)"]),
+        ("exists(),!in(a,b)", ["exists()", "!in(a,b)"]),
+        ("in(a,b),!c,!exists()", ["in(a,b)", "!c", "!exists()"]),
+    ],
+)
+def test_split_label_selector_value(selector, expected):
+    assert split_label_selector_value(selector) == expected
 
 
 def test_validate_node_labels():

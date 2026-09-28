@@ -32,8 +32,28 @@ enum class LabelSelectorOperator {
   // This is to support equality or in semantics.
   LABEL_IN = 1,
   // This is to support not equal or not in semantics.
-  LABEL_NOT_IN = 2
+  LABEL_NOT_IN = 2,
+  // The node has the label key, with any value.
+  LABEL_EXISTS = 3,
+  // The node does not have the label key.
+  LABEL_DOES_NOT_EXIST = 4
 };
+
+// Short operator name for debug output, e.g. "in" or "!exists".
+inline const char *LabelSelectorOperatorToString(LabelSelectorOperator op) {
+  switch (op) {
+  case LabelSelectorOperator::LABEL_IN:
+    return "in";
+  case LabelSelectorOperator::LABEL_NOT_IN:
+    return "!in";
+  case LabelSelectorOperator::LABEL_EXISTS:
+    return "exists";
+  case LabelSelectorOperator::LABEL_DOES_NOT_EXIST:
+    return "!exists";
+  default:
+    return "";
+  }
+}
 
 // Defines requirements for a label key and value.
 class LabelConstraint {
@@ -97,9 +117,11 @@ class LabelSelector {
   // Convert LabelSelector object to rpc::LabelSelector proto message.
   void ToProto(rpc::LabelSelector *proto) const;
 
-  // Convert the LabelSelector object back into a string map.
+  // Convert the LabelSelector object back into a string map. When a key has several
+  // constraints, they are joined with "," in the order they were added.
   google::protobuf::Map<std::string, std::string> ToStringMap() const;
 
+  // Parse a selector value and add one constraint for each expression in it.
   void AddConstraint(const std::string &key, const std::string &value);
 
   void AddConstraint(LabelConstraint constraint);
@@ -108,8 +130,14 @@ class LabelSelector {
 
   std::string DebugString() const;
 
+  // Parse a single expression such as "v", "!v", "in(a,b)", "!in(a,b)", "exists()",
+  // or "!exists()".
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
+
+  // Split a selector value into its expressions. Expressions are joined by commas
+  // outside parentheses, so "exists(),!in(a,b)" gives "exists()" and "!in(a,b)".
+  static std::vector<std::string> SplitLabelSelectorValue(const std::string &value);
 
  private:
   std::vector<LabelConstraint> constraints_;

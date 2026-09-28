@@ -52,12 +52,16 @@ cdef int prepare_label_selector(
             raise ValueError(f"Label selector value must be string, but got {type(value)}")
         if key == "":
             raise ValueError("Label selector key must be a non-empty string.")
-        if (value.startswith("in(") and value.endswith(")")) or \
-           (value.startswith("!in(") and value.endswith(")")):
-            inner = value[value.index("(")+1:-1].strip()
-            if not inner:
-                raise ValueError(f"No values provided for Label Selector '{value[:value.index('(')]}' operator on key '{key}'.")
-        # Add key-value constraint to the LabelSelector object.
+        # A value can hold several expressions, so check each one.
+        for c_expression in CLabelSelector.SplitLabelSelectorValue(
+                value.encode("utf-8")):
+            expression = c_expression.decode("utf-8")
+            if (expression.startswith("in(") and expression.endswith(")")) or \
+               (expression.startswith("!in(") and expression.endswith(")")):
+                inner = expression[expression.index("(")+1:-1].strip()
+                if not inner:
+                    raise ValueError(f"No values provided for Label Selector '{expression[:expression.index('(')]}' operator on key '{key}'.")
+        # Add one constraint for each expression to the LabelSelector object.
         c_label_selector[0].AddConstraint(key.encode("utf-8"), value.encode("utf-8"))
 
     return 0

@@ -57,6 +57,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common/scheduling:cluster_resource_data",
         "//src/ray/common/scheduling:label_selector",
     ],
 )

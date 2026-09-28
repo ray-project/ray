@@ -129,10 +129,14 @@ bool NodeResources::NodeLabelMatchesConstraint(const LabelConstraint &constraint
     if (!(node_labels.contains(key) && values.contains(node_labels.at(key)))) {
       return true;
     }
+  } else if (match_operator == LabelSelectorOperator::LABEL_EXISTS) {
+    return node_labels.contains(key);
+  } else if (match_operator == LabelSelectorOperator::LABEL_DOES_NOT_EXIST) {
+    return !node_labels.contains(key);
   } else {
     RAY_CHECK(false)
         << "Node label constraint operator type must be one of equals, not equals (!), "
-           "in, or not in (!in)";
+           "in, not in (!in), exists, or does not exist (!exists)";
   }
   return false;
 }
