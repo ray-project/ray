@@ -1421,16 +1421,21 @@ class RequestRouter(ABC):
 
             raise e from None
         except asyncio.TimeoutError:
+            pending_request.future.cancel()
             self._cancel_routing_task_for_pending_request(pending_request)
             self._remove_pending_request_from_indices(pending_request)
-            # No routing task runs while the deployment has no replicas, so the
-            # lazy cleanup in `_fulfill_pending_requests` can't drop the request.
+            # Remove the expired request itself: the lazy cleanup only pops a done
+            # prefix, so it can't reach a request queued behind a pending one, and
+            # no routing task runs while the deployment has no replicas. Match by
+            # identity; dataclass `==` would compare the request args.
             for queue in (
                 self._pending_requests_to_fulfill,
                 self._pending_requests_to_route,
             ):
-                while queue and queue[0].future.done():
-                    queue.popleft()
+                for i, queued in enumerate(queue):
+                    if queued is pending_request:
+                        del queue[i]
+                        break
 
             raise TimeoutError(
                 f"Failed to route request to a replica of {self._deployment_id} "
