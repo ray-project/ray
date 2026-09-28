@@ -46,6 +46,7 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
+from ray.exceptions import AuthenticationError, GcsPassiveError
 
 try:
     import prometheus_client
@@ -85,11 +86,12 @@ class AutoscalerMonitor:
         # TODO: eventually plumb ClusterID through to here
         self.gcs_client = GcsClient(address=self.gcs_address)
 
-        if monitor_ip:
-            monitor_addr = build_address(monitor_ip, AUTOSCALER_METRIC_PORT)
-            self.gcs_client.internal_kv_put(
-                b"AutoscalerMetricsAddress", monitor_addr.encode(), True, None
-            )
+        # Set once this head is known to be standing by for a promotion.
+        self._waiting_for_promotion = False
+        self._metrics_address = (
+            build_address(monitor_ip, AUTOSCALER_METRIC_PORT) if monitor_ip else None
+        )
+        self._publish_metrics_address()
         self._session_name = self._get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
         worker.set_mode(SCRIPT_MODE)
@@ -149,6 +151,48 @@ class AutoscalerMonitor:
             metrics_reporter=self.metric_reporter,
         )
 
+    def _publish_metrics_address(self):
+        if self._metrics_address is None:
+            return
+        try:
+            self.gcs_client.internal_kv_put(
+                b"AutoscalerMetricsAddress", self._metrics_address.encode(), True, None
+            )
+        except Exception as e:
+            if not self._refused_by_passive_gcs(e):
+                raise
+
+    def _note_passive_gcs(self):
+        if self._waiting_for_promotion:
+            return
+        self._waiting_for_promotion = True
+        # Logged once, not once per pass, so a passive window stays quiet.
+        logger.warning(
+            "GCS is in passive mode. Autoscaling stays paused until this head is "
+            "promoted."
+        )
+
+    def _resume_after_promotion(self):
+        """Take over the key this head could not write while it was passive.
+
+        The metrics address names the current leader's endpoint, so every promotion
+        rewrites it. It gets one attempt, as it does at startup.
+        """
+        if not self._waiting_for_promotion:
+            return
+        self._waiting_for_promotion = False
+        logger.info("GCS was promoted to leader. Resuming autoscaling.")
+        self._publish_metrics_address()
+
+    def _refused_by_passive_gcs(self, exc: Exception) -> bool:
+        """Returns whether the exception was a refusal by a passive GCS."""
+        if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
+            exc, GcsPassiveError
+        ):
+            self._note_passive_gcs()
+            return True
+        return False
+
     @staticmethod
     def _get_session_name(gcs_client: GcsClient) -> Optional[str]:
         """Obtain the session name from the GCS.
@@ -182,12 +226,30 @@ class AutoscalerMonitor:
         """Run the monitor loop."""
 
         while True:
-            autoscaling_state = self.autoscaler.update_autoscaling_state()
-            if autoscaling_state:
-                # report autoscaling state
-                self._report_autoscaling_state(self.gcs_client, autoscaling_state)
-            else:
-                logger.warning("No autoscaling state to report.")
+            try:
+                # The cloud provider is not leader-gated, so ask rather than wait
+                # for a refused RPC.
+                if (
+                    ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
+                    and not self.gcs_client.is_gcs_leader()
+                ):
+                    self._note_passive_gcs()
+                else:
+                    self._resume_after_promotion()
+                    autoscaling_state = self.autoscaler.update_autoscaling_state()
+                    if autoscaling_state:
+                        # report autoscaling state
+                        self._report_autoscaling_state(
+                            self.gcs_client, autoscaling_state
+                        )
+                    else:
+                        logger.warning("No autoscaling state to report.")
+            except AuthenticationError:
+                raise
+            except Exception:
+                # Nothing restarts this process, so a failed pass has to be
+                # survivable; the next one runs an update interval later.
+                logger.exception("Monitor: Execution exception. Trying again...")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

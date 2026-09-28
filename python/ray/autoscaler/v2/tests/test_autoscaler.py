@@ -238,6 +238,8 @@ class TestAutoscalerMonitor(AutoscalerMonitor):
         self.gcs_client = gcs_client
         self.autoscaler = autoscaler
         self._session_name = "test"
+        self._metrics_address = None
+        self._waiting_for_promotion = False
 
 
 def test_raise_AuthenticationError_v2(make_autoscaler):
