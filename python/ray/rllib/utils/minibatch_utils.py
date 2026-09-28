@@ -376,20 +376,13 @@ class ShardEpisodesIterator:
             else:
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
-                    slice_part, remaining_part = (
-                        # Note that the first slice will automatically "inherit" the
-                        # lookback buffer size of the episode.
-                        episode[:remaining_length],
-                        # However, the second slice might need a user defined lookback
-                        # buffer (into the first slice).
-                        episode.slice(
-                            slice(remaining_length, None),
-                            len_lookback_buffer=self._len_lookback_buffer,
-                        ),
-                    )
+                    slice_part, remaining_part = self._split(episode, remaining_length)
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
-                    self._episodes[episode_index] = remaining_part
+                    if remaining_part is None:
+                        episode_index += 1
+                    else:
+                        self._episodes[episode_index] = remaining_part
                 else:
                     assert remaining_length == 0
                     sublists[min_index].append(episode)
@@ -397,6 +390,48 @@ class ShardEpisodesIterator:
 
         for sublist in sublists:
             yield sublist
+
+    def _split(self, episode: EpisodeType, at: int):
+        """Cuts `episode` into its first `at` timesteps and the rest.
+
+        Cutting a multi-agent episode right at the env step where one agent's
+        episode ended would keep that agent in the second piece with no timesteps
+        (its last observation sits in the lookback buffer), and the Learner
+        connector pipeline cannot build a batch from such an agent. So the cut
+        moves forward to the next env step at which every agent keeps at least one
+        timestep in each piece it appears in.
+
+        Args:
+            episode: The episode to cut.
+            at: The number of env steps the first piece holds, unless the cut has to
+                move forward.
+
+        Returns:
+            The two pieces, or `(episode, None)` if there is no such env step, in
+            which case the episode goes into the shard whole.
+        """
+        # Agents that have no timesteps to begin with are not the cut's doing.
+        already_empty = _agents_without_timesteps(episode)
+        for cut in range(at, len(episode)):
+            # Note that the first slice will automatically "inherit" the lookback
+            # buffer size of the episode. However, the second slice might need a
+            # user defined lookback buffer (into the first slice).
+            first = episode[:cut]
+            second = episode.slice(
+                slice(cut, None), len_lookback_buffer=self._len_lookback_buffer
+            )
+            emptied = (
+                _agents_without_timesteps(first) | _agents_without_timesteps(second)
+            ) - already_empty
+            if not emptied:
+                return first, second
+        return episode, None
+
+
+def _agents_without_timesteps(episode: EpisodeType) -> set:
+    """The IDs of the agents of a multi-agent episode that have no timesteps."""
+    agent_episodes = getattr(episode, "agent_episodes", None) or {}
+    return {aid for aid, e in agent_episodes.items() if len(e) == 0}
 
 
 @DeveloperAPI

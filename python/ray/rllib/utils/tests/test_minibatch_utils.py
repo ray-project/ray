@@ -1,8 +1,10 @@
 import unittest
 
+import gymnasium as gym
 import numpy as np
 import pytest
 
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.minibatch_utils import (
@@ -300,6 +302,55 @@ class TestMinibatchUtils(unittest.TestCase):
         check([len(e) for e in shards[1]], [41, 3])  # 44
         check([len(e) for e in shards[2]], [35, 10])  # 45
         check([len(e) for e in shards[3]], [21, 15, 5, 1, 3])  # 45
+
+    def test_shard_episodes_iterator_leaves_every_agent_a_timestep(self):
+        """A cut must not leave an agent in a piece without timesteps.
+
+        Cutting a multi-agent episode right at the env step where one agent's
+        episode ended keeps that agent in the second piece with zero timesteps (its
+        last observation sits in the lookback buffer), which the Learner connector
+        pipeline cannot build a batch from. The sharder moves such a cut instead.
+        """
+        space = gym.spaces.Box(-1.0, 1.0, (4,), np.float32)
+        obs = np.zeros(4, np.float32)
+        episode = MultiAgentEpisode(
+            observation_space={0: space, 1: space},
+            action_space={0: gym.spaces.Discrete(2), 1: gym.spaces.Discrete(2)},
+            agent_module_ids={0: "p0", 1: "p1"},
+        )
+        episode.add_env_reset(observations={0: obs, 1: obs})
+        # Agent 1's episode ends after 3 env steps, agent 0's after 6.
+        for t in range(6):
+            agents = [0, 1] if t < 3 else [0]
+            episode.add_env_step(
+                observations={a: obs for a in agents},
+                actions={a: 0 for a in agents},
+                rewards={a: 1.0 for a in agents},
+                terminateds={1: True} if t == 2 else {},
+            )
+        episode.to_numpy()
+
+        # Two shards of 3 env steps each: the balanced cut is exactly where agent
+        # 1's episode ended.
+        shards = ShardEpisodesIterator([episode], num_shards=2, len_lookback_buffer=1)
+        pieces = [piece for shard in shards for piece in shard]
+
+        for piece in pieces:
+            lengths = {aid: len(e) for aid, e in piece.agent_episodes.items()}
+            self.assertTrue(
+                all(lengths.values()), f"agent without timesteps: {lengths}"
+            )
+        # No timestep is lost or duplicated.
+        self.assertEqual(len(episode), sum(len(piece) for piece in pieces))
+        for aid, agent_episode in episode.agent_episodes.items():
+            self.assertEqual(
+                len(agent_episode),
+                sum(
+                    len(p.agent_episodes[aid])
+                    for p in pieces
+                    if aid in p.agent_episodes
+                ),
+            )
 
 
 if __name__ == "__main__":
