@@ -182,8 +182,10 @@ class ServeHead(SubprocessModule):
                     controller_options=config.controller_options,
                 )
             except ValueError as e:
-                # e.g. trying to change the init-time tracing config on an
-                # already-running cluster. Return a client error, not a 500.
+                # A user config error, e.g. a tracing exporter that can't be
+                # imported in the controller's env, or trying to change the
+                # init-time tracing config on an already-running cluster.
+                # Return a client error, not a 500.
                 return Response(status=400, text=str(e))
 
         # Serve ignores HTTP options if it was already running when

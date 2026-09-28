@@ -180,6 +180,36 @@ def test_put_bad_schema(ray_start_stop):
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
+def test_put_bad_tracing_exporter(ray_start_stop):
+    """An unimportable tracing exporter fails the deploy with a 400.
+
+    It's validated when the controller starts, in the controller's env. The
+    failed start must not leave a controller behind, so a corrected deploy
+    then succeeds.
+    """
+    config = {
+        "tracing_config": {
+            "enabled": True,
+            "exporter_import_path": "serve_missing_tracing_exporter_mod:exp",
+        },
+        "applications": [],
+    }
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 400
+    assert "serve_missing_tracing_exporter_mod" in put_response.text
+
+    config["tracing_config"] = {"enabled": False}
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 200
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 def test_put_duplicate_apps(ray_start_stop):
     """If a config with duplicate app names is deployed, the PUT request should fail.
     The response should clearly indicate a validation error.

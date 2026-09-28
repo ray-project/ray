@@ -22,12 +22,13 @@ from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import RayTaskError
 from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -873,16 +874,27 @@ def test_serve_start_tracing_change_on_running_serve_raises(ray_shutdown):
 
 
 def test_serve_start_rejects_bad_exporter_import_path(ray_shutdown):
-    """serve.start fails at startup if the tracing exporter can't be imported.
+    """An unimportable tracing exporter fails serve.start with a config error.
 
-    Tracing is established when the controller is constructed, so the exporter
-    is validated there and a bad path fails startup rather than surfacing later.
+    The controller validates the exporter in its own env at startup and reports
+    it as a ValueError (not an opaque actor-creation failure). The failed
+    attempt must not leave a controller behind, so a corrected retry succeeds.
     """
     bad_config = TracingConfig(
         enabled=True, exporter_import_path="serve_missing_tracing_exporter_mod:exp"
     )
-    with pytest.raises(RayActorError, match="serve_missing_tracing_exporter_mod"):
+    with pytest.raises(ValueError, match="serve_missing_tracing_exporter_mod"):
         serve.start(tracing_config=bad_config)
+
+    # The half-created controller was cleaned up...
+    with pytest.raises(ValueError):
+        ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+
+    # ...so a corrected start creates a fresh, working controller.
+    serve.start(tracing_config=TracingConfig(enabled=False))
+    client = _get_global_client()
+    assert ray.get(client._controller.get_tracing_config.remote()).enabled is False
+    serve.shutdown()
 
 
 def test_partial_tracing_config_resolves_from_controller_env(ray_shutdown, monkeypatch):

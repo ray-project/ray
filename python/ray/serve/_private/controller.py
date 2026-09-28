@@ -22,6 +22,7 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
+from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -149,6 +150,39 @@ def _coerce_tracing_config(
     return TracingConfig(**tracing_config.model_dump(exclude_unset=True))
 
 
+def raise_if_controller_startup_failed(controller: ActorHandle) -> None:
+    """Surface a config error from a newly created controller as a ValueError.
+
+    The controller validates its config in __init__ (in its own env) and, if
+    invalid, skips initialization instead of raising, so the error arrives here
+    as a plain ValueError rather than an opaque actor-creation failure. Kill the
+    half-initialized controller first so its name is released and a later
+    serve.start can create a fresh one.
+    """
+    try:
+        ray.get(controller.check_startup_error.remote())  # type: ignore[attr-defined]
+    except ValueError as e:
+        ray.kill(controller, no_restart=True)
+        # ray.kill is asynchronous; wait until the actor is dead so its name is
+        # free and an immediate serve.start retry can't reconnect to it.
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                ray.get(
+                    controller.check_startup_error.remote(),  # type: ignore[attr-defined]
+                    timeout=5,
+                )
+            except RayActorError:
+                break
+            except (ValueError, GetTimeoutError):
+                # The call ran before the kill landed, or is still pending.
+                time.sleep(0.1)
+        # ray.get raises a RayTaskError that is also a ValueError; re-raise the
+        # original so callers see just the config error message.
+        cause = getattr(e, "cause", None)
+        raise (cause if isinstance(cause, ValueError) else e) from None
+
+
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -191,6 +225,37 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
+        # Tracing config is an init-time setting: it is delivered to the
+        # controller as a constructor argument (from serve.start, or from the
+        # declarative config via the Serve REST bootstrap), passed to proxies as
+        # a constructor arg, and pulled by replicas when they start. It is never
+        # changed on a running component -- reconfigure_global_tracing_config
+        # rejects that -- and it survives controller recovery via the replayed
+        # constructor argument, so no checkpoint is needed.
+        #
+        # Resolve and validate it first, in this process's env and before any
+        # state is written. An invalid config is a user error: record it and
+        # skip the rest of initialization rather than raising, so the creator
+        # gets a clean ValueError from check_startup_error() and can kill this
+        # actor (see raise_if_controller_startup_failed). On reconstruction the
+        # config was validated at first start, so log instead of refusing to
+        # recover.
+        self._startup_error: Optional[str] = None
+        self.global_tracing_config = _coerce_tracing_config(global_tracing_config)
+        try:
+            check_tracing_exporter_import_path(self.global_tracing_config)
+        except Exception as e:
+            error = (
+                "Invalid tracing config: could not import exporter_import_path "
+                f"{self.global_tracing_config.exporter_import_path!r} "
+                f"({type(e).__name__}: {e})."
+            )
+            if ray.get_runtime_context().was_current_actor_reconstructed:
+                logger.error(f"{error} Continuing controller recovery.")
+            else:
+                self._startup_error = error
+                return
+
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
@@ -208,17 +273,6 @@ class ServeController:
             global_logging_config = pickle.loads(log_config_checkpoint)
         self.reconfigure_global_logging_config(global_logging_config)
 
-        # Tracing config is an init-time setting: it is delivered to the
-        # controller as a constructor argument (from serve.start, or from the
-        # declarative config via the Serve REST bootstrap), passed to proxies as
-        # a constructor arg, and pulled by replicas when they start. It is never
-        # changed on a running component -- reconfigure_global_tracing_config
-        # rejects that -- and it survives controller recovery via the replayed
-        # constructor argument, so no checkpoint is needed.
-        self.global_tracing_config = _coerce_tracing_config(global_tracing_config)
-        # This is where tracing is established (it can't change afterward), so
-        # fail startup on an exporter that can't be imported.
-        check_tracing_exporter_import_path(self.global_tracing_config)
         logger.info(f"Global tracing config: {self.global_tracing_config}.")
 
         configure_component_memory_profiler(
@@ -379,6 +433,11 @@ class ServeController:
     def get_tracing_config(self) -> TracingConfig:
         """Return the global tracing config."""
         return self.global_tracing_config
+
+    def check_startup_error(self) -> None:
+        """Raise if __init__ rejected its config and skipped initialization."""
+        if self._startup_error is not None:
+            raise ValueError(self._startup_error)
 
     def reconfigure_global_tracing_config(
         self, global_tracing_config: Optional[TracingConfig]

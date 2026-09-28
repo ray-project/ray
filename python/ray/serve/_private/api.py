@@ -170,6 +170,13 @@ def _create_controller_and_proxy_refs(
         proxy_location=proxy_location,
         global_tracing_config=global_tracing_config,
     )
+    # Imported lazily, like get_controller_impl does.
+    from ray.serve._private.controller import raise_if_controller_startup_failed
+
+    # An invalid config (e.g. a tracing exporter that can't be imported in the
+    # controller's env) surfaces here as a ValueError, with the half-created
+    # controller cleaned up.
+    raise_if_controller_startup_failed(controller)
 
     proxy_handles: Any = ray.get(controller.get_proxies.remote())
     proxy_ready_refs = (
