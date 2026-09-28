@@ -3,6 +3,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,7 @@ from ray.serve._private.haproxy import (
     HAProxyConfig,
     HAProxyManager,
     ServerConfig,
+    _lua_str,
     _router_application_pools,
     _router_target_apps,
     get_haproxy_binary,
@@ -153,6 +155,40 @@ class TestRouterApplicationConfig:
             with open(lua_path) as f:
                 assert '"SERVE_REPLICA::model-a#Ingress#a1"' in f.read()
             _check_config(os.path.join(temp_dir, "haproxy.cfg"))
+
+    def test_any_application_name_renders_valid_lua(self):
+        app = 'mod\u00e8le "a"\\'
+        with tempfile.TemporaryDirectory() as temp_dir:
+            _render(
+                temp_dir,
+                [
+                    _backend(
+                        "router",
+                        "/",
+                        [_server("router", "r1", 9000)],
+                        is_router_application=True,
+                    ),
+                    BackendConfig(
+                        name="http-model",
+                        path_prefix="/v1/model",
+                        app_name=app,
+                        servers=[
+                            ServerConfig(
+                                name="a1",
+                                host="127.0.0.1",
+                                port=9001,
+                                replica_id=_replica_id(app, "a1"),
+                            )
+                        ],
+                    ),
+                ],
+            )
+            # haproxy -c compiles the Lua file.
+            _check_config(os.path.join(temp_dir, "haproxy.cfg"))
+        # Lua reads \ddd as one byte.
+        lua = _lua_str(app)
+        raw = re.sub(rb"\\(\d{3})", lambda m: bytes([int(m[1])]), lua[1:-1].encode())
+        assert raw.decode() == app
 
 
 def test_manager_carries_router_marker_to_backend_config():
@@ -494,7 +530,7 @@ async def test_returns_router_error_to_client(router_cluster, status):
     ],
 )
 async def test_fails_closed_on_bad_decision(router_cluster, status, decision, reason):
-    url, router, replicas = router_cluster
+    url, router, _ = router_cluster
     body = decision if isinstance(decision, str) else json.dumps(decision)
     router.response = (status, body)
 

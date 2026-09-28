@@ -203,8 +203,12 @@ def _format_replica_targets_lua(
 
 
 def _lua_str(value: str) -> str:
-    # JSON string escapes are valid Lua string escapes.
-    return json.dumps(value)
+    # Escape all but printable ASCII as \ddd; json.dumps' \uXXXX is invalid Lua.
+    escaped = "".join(
+        chr(b) if 0x20 <= b < 0x7F and b not in b'"\\' else f"\\{b:03d}"
+        for b in value.encode()
+    )
+    return f'"{escaped}"'
 
 
 def _router_application_pools(
