@@ -471,16 +471,6 @@ def run_release_test_anyscale(
         # which the agent does not trigger on.
         forced = os.environ.get("RELEASE_TEST_FORCE_FAILURE")
         if forced and test.get_name() == forced:
-            # Mirrored from _load_test_configuration, which normally fills
-            # these in and has not run yet. Copied rather than called so that
-            # nothing else it does runs.
-            buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
-            buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
-            if buildkite_url:
-                buildkite_url += "#" + buildkite_job_id
-            result.buildkite_url = buildkite_url
-            result.buildkite_job_id = buildkite_job_id
-
             result.runtime = 10**9
             raise TestCommandError(
                 f"DO NOT MERGE: forced failure for {forced}, before any "
