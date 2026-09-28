@@ -247,21 +247,28 @@ class TestChatDecision:
         assert _body(response)["error"]["type"] == "ServiceUnavailableError"
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("pick_only", ["error", "slow"])
-    async def test_falls_back_to_reserving_path(self, monkeypatch, pick_only):
+    async def test_falls_back_to_reserving_path(self, monkeypatch):
         """Without a quick pick-only result, reserve, which registers demand."""
         monkeypatch.setattr(applications_module, "PICK_ONLY_TIMEOUT_S", 0.05)
         router, handles = _new_router()
         handle = handles["llm-model-model-a-1"]
-        if pick_only == "error":
-            handle.pick_only_error = RuntimeError("no replicas")
-        else:
-            handle.pick_only_delay_s = 10
+        handle.pick_only_delay_s = 10
 
         decision = await _chat(router, {"model": "model-a"})
 
         assert decision["replica_id"] == handle.replica_id
         assert [c["kwargs"] for c in handle.calls] == [{"_reserve": False}, {}]
+
+    @pytest.mark.asyncio
+    async def test_pick_only_error_is_not_retried(self):
+        router, handles = _new_router()
+        handle = handles["llm-model-model-a-1"]
+        handle.pick_only_error = RuntimeError("down")
+
+        response = await _chat(router, {"model": "model-a"})
+
+        assert response.status_code == 503
+        assert len(handle.calls) == 1
 
     @pytest.mark.asyncio
     async def test_no_ready_replica_times_out(self, monkeypatch):
@@ -289,6 +296,16 @@ class TestModelsDecision:
         assert control.calls == [
             {"args": (), "kwargs": {"_reserve": False}, "session_id": "s"}
         ]
+
+    @pytest.mark.asyncio
+    async def test_model_data_selects_control_replica(self):
+        router, handles = _new_router()
+
+        decision = await router.model_data(_FakeRequest())
+
+        assert decision["application"] == "llm-control"
+        assert len(handles["llm-control"].calls) == 1
+        assert all(not h.calls for a, h in handles.items() if a != "llm-control")
 
     @pytest.mark.asyncio
     async def test_unavailable_control(self):

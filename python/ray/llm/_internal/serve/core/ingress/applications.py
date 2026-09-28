@@ -9,6 +9,7 @@ import asyncio
 import copy
 import json
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, Request, status
@@ -19,8 +20,14 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
 )
-from ray.llm._internal.serve.core.ingress.router import _routing_payload_from_dict
+from ray.llm._internal.serve.core.ingress.router import (
+    _BODY_TRUNCATED_HEADER,
+    _routing_payload_from_dict,
+)
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.serve._private.constants import (
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+)
 from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
@@ -28,11 +35,9 @@ from ray.serve.handle import DeploymentHandle
 logger = get_logger(__name__)
 
 # Below HAProxy's decision timeout, so clients get an OpenAI-shaped 503.
-CHOOSE_REPLICA_TIMEOUT_S = 4.0
+CHOOSE_REPLICA_TIMEOUT_S = 0.8 * RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
 # Pick-only waits silently with no replicas; then reserve, which registers demand.
 PICK_ONLY_TIMEOUT_S = 0.5
-
-_BODY_TRUNCATED_HEADER = "x-body-truncated"
 
 # Same defaults as the OpenAI ingress.
 DEFAULT_INGRESS_OPTIONS = {
@@ -161,6 +166,10 @@ class RouterApplication:
     async def models(self, request: Request):
         return await self._decide(self._control, None, request)
 
+    @router_app.get("/v1/models/{model:path}")
+    async def model_data(self, request: Request):
+        return await self._decide(self._control, None, request)
+
     @router_app.post("/v1/chat/completions")
     async def chat(self, request: Request):
         body = await request.body()
@@ -215,7 +224,7 @@ class RouterApplication:
     async def _decide(
         self,
         app: ApplicationDescriptor,
-        routing_payload: Optional[Any],
+        routing_payload: Optional[SimpleNamespace],
         request: Request,
     ):
         handle = self._handles[app.application_name]
@@ -241,7 +250,9 @@ class RouterApplication:
         return {"application": app.application_name, "replica_id": replica_id}
 
     @staticmethod
-    async def _choose_replica(handle: DeploymentHandle, routing_payload) -> str:
+    async def _choose_replica(
+        handle: DeploymentHandle, routing_payload: Optional[SimpleNamespace]
+    ) -> str:
         """Pick a replica without dispatching; HAProxy sends the request.
 
         Pick-only registers no autoscaling demand, so if it finds no replica
@@ -257,7 +268,7 @@ class RouterApplication:
             return await asyncio.wait_for(
                 pick(_reserve=False), timeout=PICK_ONLY_TIMEOUT_S
             )
-        except (asyncio.TimeoutError, RuntimeError):
+        except asyncio.TimeoutError:
             return await pick()
 
     @classmethod
