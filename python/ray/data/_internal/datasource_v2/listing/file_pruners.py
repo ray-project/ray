@@ -52,7 +52,7 @@ class PartitionPredicatePruner(FilePruner):
     Backs ``ds.filter(expr=...)`` on a partition column, once the optimizer has
     pushed that expression onto the scanner -- not something a caller
     constructs. Unlike :class:`PartitionPruner`, it duplicates pruning the
-    reader also performs (``ArrowFileScanner.prune_input_split``), so the two
+    reader also performs (``FileScanner.prune_input_split``), so the two
     must drop exactly the same files: a pushed-down limit stops listing early,
     and every row listing counted towards it has to belong to a file the reader
     keeps. Sharing

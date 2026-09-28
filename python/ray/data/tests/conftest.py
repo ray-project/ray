@@ -19,6 +19,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.cache import _disable_timed_cache_for_tests
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy
@@ -324,8 +325,8 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-# (shuffle_strategy, use_external_hash_shuffle) params. The fixture yields the
-# strategy, so ``shuffle_v2_external`` presents as SHUFFLE_V2 to tests.
+# (shuffle_strategy, use_disk_based_hash_shuffle) params. The fixture yields the
+# strategy, so ``shuffle_v2_disk`` presents as SHUFFLE_V2 to tests.
 _SHUFFLE_METHOD_PARAMS = [
     pytest.param(
         (ShuffleStrategy.SORT_SHUFFLE_PULL_BASED, False), id="sort_shuffle_pull_based"
@@ -335,7 +336,7 @@ _SHUFFLE_METHOD_PARAMS = [
     ),
     pytest.param((ShuffleStrategy.HASH_SHUFFLE, False), id="hash_shuffle"),
     pytest.param((ShuffleStrategy.SHUFFLE_V2, False), id="shuffle_v2"),
-    pytest.param((ShuffleStrategy.SHUFFLE_V2, True), id="shuffle_v2_external"),
+    pytest.param((ShuffleStrategy.SHUFFLE_V2, True), id="shuffle_v2_disk"),
 ]
 if os.environ.get("RAY_PYTEST_USE_GPU") == "1":
     _SHUFFLE_METHOD_PARAMS.append(
@@ -345,18 +346,18 @@ if os.environ.get("RAY_PYTEST_USE_GPU") == "1":
 
 @pytest.fixture(params=_SHUFFLE_METHOD_PARAMS)
 def configure_shuffle_method(request):
-    shuffle_strategy, use_external_hash_shuffle = request.param
+    shuffle_strategy, use_disk_based_hash_shuffle = request.param
 
     ctx = ray.data.context.DataContext.get_current()
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
     original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
-    original_use_external_hash_shuffle = ctx.use_external_hash_shuffle
+    original_use_disk_based_hash_shuffle = ctx.use_disk_based_hash_shuffle
     original_shuffle_input_batch_bytes = ctx.shuffle_input_batch_bytes
 
     ctx.shuffle_strategy = shuffle_strategy
-    ctx.use_external_hash_shuffle = use_external_hash_shuffle
+    ctx.use_disk_based_hash_shuffle = use_disk_based_hash_shuffle
     if shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         # One map task per input bundle, so reducers see multiple shards per
         # partition (the default batching folds small test data into one mapper).
@@ -380,7 +381,7 @@ def configure_shuffle_method(request):
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
     ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
-    ctx.use_external_hash_shuffle = original_use_external_hash_shuffle
+    ctx.use_disk_based_hash_shuffle = original_use_disk_based_hash_shuffle
     ctx.shuffle_input_batch_bytes = original_shuffle_input_batch_bytes
 
 
@@ -844,3 +845,9 @@ def assert_blocks_expected_in_plasma(
 @pytest.fixture(autouse=True, scope="function")
 def log_internal_stack_trace(restore_data_context):
     ray.data.context.DataContext.get_current().log_internal_stack_trace = True
+
+
+@pytest.fixture
+def disable_timed_cache_fixture():
+    with _disable_timed_cache_for_tests():
+        yield
