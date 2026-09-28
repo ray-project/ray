@@ -1,0 +1,25 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html'
+level: warning
+ignorecase: false
+# RLlib-specific terminology. This file is seeded small and grows as the RLlib style
+# pass surfaces terms across the library (DOC-1551). Most general prose rules live in
+# the shared Ray/ style package, not here.
+#
+# `vocab: false` because the targets (RLModule, multi-agent) are accepted vocab terms,
+# and an accept entry otherwise shadows the swap silently. See .vale/styles/KubeRay/Terms.yml.
+vocab: false
+swap:
+  # Standardize on "multi-agent" (the majority form in the corpus) over "multiagent".
+  # "multiagent" stays in the RLlib accept list so code identifiers aren't spell-flagged;
+  # this swap fires on it anyway because of vocab: false above (verified: with vocab: true
+  # the accept entry shadows it and the swap goes silent). "multi-agent" is dictionary-fine,
+  # so it needs no accept entry of its own, and keeping it out avoids a target-in-accept shadow.
+  multiagent: multi-agent
+  Multiagent: Multi-agent
+  # The RLModule class, written as two words in prose. "rl_module" (underscore) is a
+  # code identifier and doesn't match this token.
+  'RL module': RLModule
+  'rl module': RLModule
+  'RL Module': RLModule

@@ -363,15 +363,15 @@ See the [ArgoCD diff customization documentation](https://argo-cd.readthedocs.io
 
 By ignoring these differences, ArgoCD allows the Ray Autoscaler to dynamically manage worker replicas without interference.
 
-## Step 4: Access the Ray Dashboard
+## Step 4: Access the Ray dashboard
 
-To access the Ray Dashboard, port-forward the head service:
+To access the Ray dashboard, port-forward the head service:
 
 ```sh
 kubectl port-forward -n ray-cluster svc/raycluster-kuberay-head-svc 8265:8265
 ```
 
-Navigate to `http://localhost:8265` in your browser to view the Ray Dashboard.
+Navigate to `http://localhost:8265` in your browser to view the Ray dashboard.
 
 ## Customizing the Configuration
 

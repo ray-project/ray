@@ -35,7 +35,7 @@ else:
 config.load_kube_config()
 cli = client.CoreV1Api()
 
-yaml_path = pathlib.Path("/tmp/ray_v1alpha1_rayservice.yaml")
+yaml_path = pathlib.Path("/tmp/ray_rayservice.yaml")
 
 
 def generate_cluster_variable():
@@ -88,7 +88,7 @@ def start_rayservice():
         ]
     )
     template = (
-        pathlib.Path("ray_v1alpha1_rayservice_template.yaml")
+        pathlib.Path("ray_rayservice_template.yaml")
         .read_text()
         .format(
             cluster_id=CLUSTER_ID,
@@ -100,7 +100,7 @@ def start_rayservice():
 
     print("=== YamlFile ===")
     print(template)
-    tmp_yaml = pathlib.Path("/tmp/ray_v1alpha1_rayservice.yaml")
+    tmp_yaml = pathlib.Path("/tmp/ray_rayservice.yaml")
     tmp_yaml.write_text(template)
 
     print("=== Get Pods from ray-system ===")

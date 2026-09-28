@@ -20,7 +20,7 @@ The following examples show how to use Ingress or Gateway to access your Ray clu
 
 ```{admonition} Warning
 :class: warning
-**Only expose Ingresses or Gateways to authorized users.** The Ray Dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress or Gateway can execute arbitrary code on the Ray Cluster.
+**Only expose Ingresses or Gateways to authorized users.** The Ray dashboard provides read and write access to the Ray Cluster. Anyone with access to this Ingress or Gateway can execute arbitrary code on the Ray Cluster.
 ```
 
 (kuberay-builtin-ingress)=
@@ -249,7 +249,7 @@ spec:
 
 ```{admonition} Warning
 :class: warning
-Exposing the Ray Dashboard provides cluster access, which allows executing arbitrary code. If you configure a public, external Gateway (using `gke-l7-global-external-managed`), ensure that you configure proper authentication and authorization. For details on setting up SSL/TLS, Google Cloud Armor, and Identity-Aware Proxy (IAP), see the Google Cloud guide on [Securing a Gateway](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway).
+Exposing the Ray dashboard provides cluster access, which allows executing arbitrary code. If you configure a public, external Gateway (using `gke-l7-global-external-managed`), ensure that you configure proper authentication and authorization. For details on setting up SSL/TLS, Google Cloud Armor, and Identity-Aware Proxy (IAP), see the Google Cloud guide on [Securing a Gateway](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/secure-gateway).
 ```
 
 Now run the following commands:
@@ -286,7 +286,7 @@ kubectl delete -f ray-cluster-gke-gateway.yaml
 ```
 
 ```{note}
-This guide focuses on exposing the Ray Dashboard and API on a single GKE cluster. For deploying multi-cluster Ray serving architectures, see the Google Cloud guide on [serving multi-cluster Ray inference using a Gateway](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/serve-multi-cluster-ray-inference-gateway).
+This guide focuses on exposing the Ray dashboard and API on a single GKE cluster. For deploying multi-cluster Ray serving architectures, see the Google Cloud guide on [serving multi-cluster Ray inference using a Gateway](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/serve-multi-cluster-ray-inference-gateway).
 ```
 
 (kuberay-nginx)=

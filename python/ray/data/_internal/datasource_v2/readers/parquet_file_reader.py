@@ -1,7 +1,16 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+)
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -13,14 +22,20 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
-from ray.data._internal.datasource.parquet_datasource import (
-    _row_group_uncompressed_size,
-)
 from ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils import (
-    _fragments_from_chunk_metadata,
+    _fragments_from_row_group_ids,
+    _with_io_retry,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.footer_reader import _leaf_matches
+from ray.data._internal.datasource_v2.parquet_utils import (
+    _get_safe_batch_size_for_nested_types,
+    _needs_nested_type_fallback,
+    _resolve_leaf_column_indices,
+    _resolve_read_columns,
+    _row_group_uncompressed_size,
+)
+from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragment
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -32,6 +47,9 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
 from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
     SupportsMetadata,
+)
+from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+    SynthesizedColumn,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
@@ -50,6 +68,12 @@ _UNSET = object()
 _PARQUET_FRAGMENT_BUFFER_SIZE = env_integer(
     "RAY_DATA_PARQUET_FRAGMENT_BUFFER_SIZE", 8 * MiB
 )
+
+# Arrow process-wide IO / CPU thread pools for the read task. Arrow's default
+# (~num cores, 8 IO threads) throttles the concurrent column/range fetches a
+# Parquet scan issues against S3, especially for row-group-scoped fragments.
+_READER_IO_THREAD_COUNT = env_integer("RAY_DATA_PARQUET_READER_IO_THREAD_COUNT", 128)
+_READER_CPU_COUNT = env_integer("RAY_DATA_PARQUET_READER_CPU_COUNT", 32)
 
 
 def _estimate_batch_size_from_metadata(
@@ -136,6 +160,32 @@ def _estimate_batch_size_from_metadata(
     return target_batch_size
 
 
+def _estimate_batch_size_from_chunk_stats(
+    uncompressed_size: int,
+    num_rows: int,
+    target_block_size: int,
+) -> Optional[int]:
+    """Estimate batch size from footer-derived chunk stats, without any I/O.
+
+    ``ListFiles`` already read each file's footer and recorded the
+    projection-scoped uncompressed byte size and row count of the row groups it
+    assigned to this chunk (:class:`ParquetRowGroupChunkMetadata`). Sizing from
+    those avoids the extra footer read that
+    :func:`_estimate_batch_size_from_metadata` incurs. Mirrors that function's
+    math but over the whole chunk (its row-group average) rather than the first
+    row group; the estimate is refined from real data after the first batch.
+    """
+    if num_rows <= 0 or uncompressed_size <= 0:
+        return None
+    estimated_in_mem_row_size = (
+        uncompressed_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT / num_rows
+    )
+    if estimated_in_mem_row_size == 0:
+        return None
+    # Never request more rows than the chunk actually contains.
+    return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
+
+
 @DeveloperAPI
 class ParquetFileReader(FileReader, SupportsMetadata):
     """Parquet-specific file reader with adaptive batch sizing.
@@ -167,8 +217,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         partitioning: "Optional[Partitioning]" = None,
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
-        include_paths: bool = False,
-        include_row_hash: bool = False,
+        synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
     ):
@@ -186,10 +235,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             ignore_prefixes: Prefixes to ignore when reading files.
             target_block_size: Target in-memory size per batch in bytes.
                 Used for adaptive batch sizing when ``batch_size`` is not set.
-            include_paths: If True, include the source file path in a
-                ``'path'`` column for each row.
-            include_row_hash: If True, include a deterministic uint64 hash
-                per row in a ``'row_hash'`` column.
+            synthesized_columns: Columns appended to every batch instead of
+                being read from the file (``PathColumn``, ``RowHashColumn``);
+                see :class:`FileReader`. One that requires read unit
+                boundaries makes each row group its own read unit.
             schema: Caller-supplied unified schema forwarded to the base
                 :class:`FileReader` for per-fragment inference override
                 and partition-column type casting.
@@ -208,8 +257,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             filesystem=filesystem,
             partitioning=partitioning,
             ignore_prefixes=ignore_prefixes,
-            include_paths=include_paths,
-            include_row_hash=include_row_hash,
+            synthesized_columns=synthesized_columns,
             schema=schema,
         )
         self._explicit_batch_size = batch_size
@@ -218,13 +266,20 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
+        # Size Arrow's process-wide IO/CPU pools for the read task so a Parquet
+        # scan can issue many concurrent column/range fetches against S3 instead
+        # of being capped at Arrow's small default.
+        if _READER_IO_THREAD_COUNT > 0:
+            pa.set_io_thread_count(_READER_IO_THREAD_COUNT)
+        if _READER_CPU_COUNT > 0:
+            pa.set_cpu_count(_READER_CPU_COUNT)
 
     @override
     def _make_format(self) -> pds.ParquetFileFormat:
         return pds.ParquetFileFormat(**self._parquet_format_kwargs)
 
     @override
-    def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
+    def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
         """Determine batch size from explicit setting, metadata, or default.
 
         Priority: explicit batch_size > sampled estimate > metadata estimate > default.
@@ -233,6 +288,12 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         through to the metadata estimate and seed ``_sampled_batch_size`` with
         the result.  ``_on_batch_read`` later refines it from actual data, and
         subsequent ``read()`` calls on the same instance use the refined value.
+
+        The metadata estimate prefers the footer-derived stats ``ListFiles``
+        already recorded on the manifest (:class:`ParquetRowGroupChunkMetadata`),
+        so the common footer-chunking path sizes batches without re-reading the
+        footer. It falls back to reading the first fragment's metadata only when
+        the manifest carries no such stats (e.g. the whole-file path).
         """
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
@@ -242,21 +303,40 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         batch_size = _ARROW_DEFAULT_BATCH_SIZE
         if self._target_block_size is not None:
-            first_fragment = next(dataset.get_fragments(), None)
-            if first_fragment is not None:
-                estimated = _estimate_batch_size_from_metadata(
-                    first_fragment, self._columns, self._target_block_size
+            estimated = self._estimate_batch_size(dataset, manifest)
+            if estimated is not None:
+                logger.debug(
+                    "Estimated Parquet batch size: %d rows (target_block_size=%d)",
+                    estimated,
+                    self._target_block_size,
                 )
-                if estimated is not None:
-                    logger.debug(
-                        "Estimated Parquet batch size: %d rows (target_block_size=%d)",
-                        estimated,
-                        self._target_block_size,
-                    )
-                    batch_size = estimated
+                batch_size = estimated
 
         self._sampled_batch_size = batch_size
         return batch_size
+
+    def _estimate_batch_size(
+        self, dataset: pds.Dataset, manifest: FileManifest
+    ) -> Optional[int]:
+        assert self._target_block_size is not None
+        # Prefer footer stats already on the manifest; fall back to a footer read.
+        chunk = next(
+            (md for md in manifest.file_chunk_metadatas if md is not None), None
+        )
+        if chunk is not None and "uncompressed_size" in chunk:
+            estimated = _estimate_batch_size_from_chunk_stats(
+                chunk["uncompressed_size"],
+                chunk["num_rows"],
+                self._target_block_size,
+            )
+            if estimated is not None:
+                return estimated
+        first_fragment = next(dataset.get_fragments(), None)
+        if first_fragment is None:
+            return None
+        return _estimate_batch_size_from_metadata(
+            first_fragment, self._columns, self._target_block_size
+        )
 
     @override
     def _on_batch_read(self, table: pa.Table) -> None:
@@ -271,42 +351,68 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self,
         dataset: pds.Dataset,
         manifest: FileManifest,
-    ) -> List[Tuple[pds.Fragment, int]]:
-        """Fan file fragments into chunk-level sub-fragments per manifest row.
+    ) -> List[ReadUnitFragment]:
+        """Fan file fragments into read-level sub-fragments per manifest row.
 
         For each manifest row, looks up the file's fragment by path and:
 
         - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is with a row offset of 0. This matches
-          ``ParquetFileChunker``'s behavior for files at or below
-          ``target_chunk_size`` and the default ``WholeFileChunker`` for
-          non-chunking callers.
-        - Otherwise the row carries a :class:`ParquetFileChunkMetadata`;
+          fragment is yielded as-is, as a read unit named by its path with a
+          row offset of 0. When a synthesized column needs read unit
+          boundaries the unit also carries the file's row count, read from
+          the footer pyarrow opens to scan the file anyway.
+        - Otherwise the row carries a :class:`ParquetRowGroupChunkMetadata`
+          naming the exact physical row groups the bin assigned to this file
+          (predicate pruning + bin packing already happened in ``ListFiles``);
           we slice the fragment via
-          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_chunk_metadata`
-          which returns one sub-fragment per row group in the chunk's
-          row-group range, paired with the cumulative pre-filter row
-          offset of that row group within the file. The downstream
-          ``_compute_row_hashes`` call uses this offset so row hashes
-          remain unique across sub-fragments that share ``fragment.path``.
+          :func:`~ray.data._internal.datasource_v2.chunkers.parquet_file_chunking_utils._fragments_from_row_group_ids`.
+          When a synthesized column needs read unit boundaries
+          (``RowHashColumn``) it fans out one sub-fragment per row group,
+          each a :class:`ReadUnit` of its own paired with its cumulative
+          pre-filter row offset, so per-row values stay unique across
+          sub-fragments that share ``fragment.path``. Otherwise the groups
+          are scanned together as one unit named by the path.
 
         Paths are deduped by :meth:`FileReader.read` before the dataset is
         built, so the dataset has exactly one fragment per file. The
         per-row chunk metadata drives the fan-out here, not the dataset
         itself — multiple manifest rows can share a single path with
-        different chunk indices.
+        different row-group sets.
         """
         path_to_fragment = {
             fragment.path: fragment for fragment in dataset.get_fragments()
         }
-        fragments: List[Tuple[pds.Fragment, int]] = []
+        # Scan each row group on its own when a column's value depends on
+        # the row's position in the file (``RowHashColumn``); otherwise let
+        # pyarrow coalesce a file's groups into one scan.
+        per_row_group_offsets = any(
+            c.requires_read_unit_boundaries for c in self._synthesized_columns
+        )
+        fragments: List[ReadUnitFragment] = []
         for path, chunk_metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-            fragment = path_to_fragment[path]
+            fragment: pds.ParquetFileFragment = path_to_fragment[path]
             if chunk_metadata is None:
-                fragments.append((fragment, 0))
+                num_rows = None
+                if per_row_group_offsets:
+                    # The whole file is the unit; a column that positions rows
+                    # within their unit still needs its row count.
+                    num_rows = _with_io_retry(
+                        lambda: fragment.metadata.num_rows,
+                        f"read Parquet footer for {path}",
+                    )
+                fragments.append(
+                    ReadUnitFragment(
+                        fragment,
+                        ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
+                    )
+                )
             else:
                 fragments.extend(
-                    _fragments_from_chunk_metadata(fragment, chunk_metadata)
+                    _fragments_from_row_group_ids(
+                        fragment,
+                        chunk_metadata["row_group_ids"],
+                        per_row_group_offsets=per_row_group_offsets,
+                    )
                 )
         return fragments
 
@@ -331,19 +437,13 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
-        """Use V1's nested-type fallback path when the fragment has nested
-        columns whose row-group size exceeds Arrow's ~2GB chunking limit
-        (ARROW-5030).
+        """Use the row-level nested-type fallback path when the fragment has
+        nested columns whose row-group size exceeds Arrow's ~2GB chunking
+        limit (ARROW-5030).
         """
         import pyarrow.compute as pc
 
         from ray.data._internal.arrow_ops.transform_pyarrow import _align_struct_fields
-        from ray.data._internal.datasource.parquet_datasource import (
-            _get_safe_batch_size_for_nested_types,
-            _needs_nested_type_fallback,
-            _resolve_leaf_column_indices,
-            _resolve_read_columns,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             get_column_references,
         )

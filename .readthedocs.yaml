@@ -109,10 +109,19 @@ build:
     # -j auto, so nothing off this builder pays for the reduced parallelism.
     # Raising the RtD memory limit would let the parallelism come back; that
     # is a separate ask to Read the Docs, not a change in this repo.
+    #
+    # PYTHONFAULTHANDLER=1 makes Python dump the stack of every thread to
+    # stderr when the process receives a fatal signal such as SIGSEGV. Since
+    # 2026-09-23 some builds have died with a bare "Segmentation fault (core
+    # dumped)" from make about 7 seconds into sphinx-build, right after
+    # autosummary starts, while the same commit and the same installed package
+    # versions pass on a retry. Without the handler the log names no module or
+    # frame, so there is nothing to act on or to hand to Read the Docs support.
+    # The handler costs nothing unless a fatal signal arrives.
     build:
       html:
         - |
-          make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2
+          PYTHONFAULTHANDLER=1 make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

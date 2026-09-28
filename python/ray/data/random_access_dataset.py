@@ -15,8 +15,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.types import ObjectRef
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
@@ -24,7 +23,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(
+    message="`RandomAccessDataset` is unmaintained and will be removed in a future release.",
+    warning=False,
+)
 class RandomAccessDataset:
     """A class that provides distributed, random access to a Dataset.
 
@@ -131,7 +133,7 @@ class RandomAccessDataset:
 
         return block_to_workers, worker_to_blocks
 
-    def get_async(self, key: Any) -> ObjectRef[Any]:
+    def get_async(self, key: Any) -> "ray.ObjectRef[Any]":
         """Asynchronously finds the record for a single key.
 
         Args:

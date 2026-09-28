@@ -291,10 +291,6 @@ message GetInternalConfigReply {
   string config = 2;
 }
 
-message DeleteResourcesReply {
-  GcsStatus status = 1;
-}
-
 message GetAllAvailableResourcesRequest {}
 
 message GetAllAvailableResourcesReply {

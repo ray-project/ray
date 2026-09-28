@@ -51,18 +51,16 @@ For a high-level overview, see this example:
         # Sample a integer uniformly between -9 (inclusive) and 15 (exclusive)
         "randint": tune.randint(-9, 15),
 
-        # Sample a random uniformly between -21 (inclusive) and 12 (inclusive (!))
+        # Sample a random uniformly between -21 (inclusive) and 12 (inclusive except q=1 where it is exclusive)
         # rounding to multiples of 3 (includes 12)
-        # if q is 1, then randint is called instead with the upper bound exclusive
         "qrandint": tune.qrandint(-21, 12, 3),
 
         # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
         # while sampling in log space
         "lograndint": tune.lograndint(1, 10),
 
-        # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
+        # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive except q=1 where it is exclusive),
         # while sampling in log space and rounding to multiples of 2
-        # if q is 1, then lograndint is called instead with the upper bound exclusive
         "qlograndint": tune.qlograndint(1, 10, 2),
 
         # Sample an option uniformly from the specified choices

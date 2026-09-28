@@ -34,7 +34,7 @@ This guide assumes that you are using a local Ray Cluster, which you can start b
     # ...
 
 This command creates a Ray head node on a local machine that you can use for development purposes.
-Note the Ray Dashboard URL that appears on stdout when starting or connecting to a Ray Cluster. Use this URL later to submit a job.
+Note the Ray dashboard URL that appears on stdout when starting or connecting to a Ray Cluster. Use this URL later to submit a job.
 For more details on production deployment scenarios, see the guides for deploying Ray on :ref:`VMs <vm-cluster-quick-start>` and :ref:`Kubernetes <kuberay-quickstart>`.
 
 
@@ -64,14 +64,14 @@ Create an empty working directory with the preceding Python script inside a file
   | ├── script.py
 
 Next, find the HTTP address of the Ray Cluster to which you can submit a job request.
-Submit jobs to the same address that the **Ray Dashboard** uses.
+Submit jobs to the same address that the **Ray dashboard** uses.
 By default, this job uses port 8265.
 
 If you are using a local Ray Cluster (``ray start --head``), connect directly at ``http://127.0.0.1:8265``.
 If you are using a Ray Cluster started on VMs or Kubernetes, follow the instructions there for setting up network access from a client. See :ref:`Using a Remote Cluster <jobs-remote-cluster>` for tips.
 
 
-To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray Dashboard address. Set the ``RAY_API_SERVER_ADDRESS`` environment variable:
+To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray dashboard address. Set the ``RAY_API_SERVER_ADDRESS`` environment variable:
 
 .. code-block:: bash
 
@@ -219,7 +219,7 @@ Run the following command on your local machine, where ``cluster.yaml`` is the c
 
     ray dashboard cluster.yaml
 
-Once this command is running, verify that you can view the Ray Dashboard in your local browser at ``http://127.0.0.1:8265``.
+Once this command is running, verify that you can view the Ray dashboard in your local browser at ``http://127.0.0.1:8265``.
 Also, verify that you set the environment variable ``RAY_API_SERVER_ADDRESS`` to ``"http://127.0.0.1:8265"``. After this setup, you can use the Jobs CLI on the local machine as in the preceding example to interact with the remote Ray cluster.
 
 Using the CLI on Kubernetes

@@ -284,7 +284,7 @@ Utilize the `RayCluster` CR's `autoscalerOptions` field to accomplish this. This
 
 The `autoscalerOptions` field also provides options for configuring the Autoscaler container. Usually, it's not necessary to specify these options.
 
-* **`resources`**: The `resources` sub-field of `autoscalerOptions` sets optional resource overrides for the Autoscaler sidecar container. These overrides should be specified in the standard [container resource spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#resources). The default values are indicated below:
+* **`resources`**: The `resources` sub-field of `autoscalerOptions` sets optional resource overrides for the Autoscaler sidecar container. These overrides should be specified in the standard [container resource spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#ResourceRequirements). The default values are indicated below:
   ```yaml
   resources:
     limits:
@@ -299,7 +299,7 @@ The `autoscalerOptions` field also provides options for configuring the Autoscal
 
 * **`imagePullPolicy`**: This field overrides the Autoscaler container's image pull policy. The default is `IfNotPresent`.
 
-* **`env`** and **`envFrom`**: These fields specify Autoscaler container environment variables. These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#environment-variables) for container environment variables.
+* **`env`** and **`envFrom`**: These fields specify Autoscaler container environment variables. These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#EnvVar) for container environment variables.
 
 * **`command`** and **`args`** (KubeRay >= v1.7.0):
 These fields independently override the autoscaler container's `command` and `args`.

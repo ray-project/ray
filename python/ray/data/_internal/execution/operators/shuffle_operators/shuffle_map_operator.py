@@ -238,7 +238,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
-            compression=self.data_context.hash_shuffle_compression,
+            compression=self.data_context.shuffle_compression,
             block_transformer=self._block_transformer,
         )
         metadata_ref = map_refs[0]
@@ -395,13 +395,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         return super().has_execution_finished()
 
     def has_completed(self) -> bool:
-        return (
-            not self._shuffle_map_tasks
-            and not self._merge_buffer_refs_by_node
-            and self._partition_bundles_emitted
-            and not self._output_queue.has_next()
-            and super().has_completed()
-        )
+        return self.has_execution_finished()
 
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
