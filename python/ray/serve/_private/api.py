@@ -83,21 +83,15 @@ def _check_tracing_config(
     client: ServeControllerClient,
     tracing_config: Union[dict, TracingConfig],
 ) -> None:
-    """Reject an explicit tracing config that differs from the running one.
+    """Reject a tracing config that differs from the running controller's.
 
-    Tracing is an initialization-time setting, so it cannot be changed by
-    calling ``serve.start`` again against an existing controller. Raise rather
-    than silently ignore it (``serve deploy`` rejects such a change too).
-
-    The comparison runs in the controller, which resolves unset fields from its
-    own environment; comparing here would resolve them from this process's.
+    Compared on the controller so unset fields resolve from its env vars.
     """
     new_tracing_config = (
         tracing_config
         if isinstance(tracing_config, TracingConfig)
         else TracingConfig(**tracing_config)
     )
-    # A no-op if it matches the running config; raises ValueError otherwise.
     ray.get(
         client._controller.reconfigure_global_tracing_config.remote(  # type: ignore[attr-defined]
             new_tracing_config
@@ -106,10 +100,10 @@ def _check_tracing_config(
 
 
 def _get_actor_init_error(error: RayActorError) -> Optional[BaseException]:
-    """Return the exception an actor's __init__ raised, if that's why it died.
+    """Return the exception raised by the actor's __init__, if any.
 
-    For a constructor failure Ray raises ``ActorDiedError(RayTaskError)``, and
-    the ``RayTaskError``'s ``args[2]`` is the original exception.
+    Ray raises ``ActorDiedError(RayTaskError)``; ``RayTaskError.args[2]`` is
+    the original exception.
     """
     if not error.actor_init_failed:
         return None
@@ -190,8 +184,7 @@ def _create_controller_and_proxy_refs(
     try:
         proxy_handles: Any = ray.get(controller.get_proxies.remote())
     except RayActorError as e:
-        # An invalid tracing config fails the controller's constructor. Surface
-        # that as the clean config error; re-raise any other failure unchanged.
+        # Surface an invalid tracing config as-is; re-raise anything else.
         init_error = _get_actor_init_error(e)
         if isinstance(init_error, InvalidTracingConfigError):
             raise init_error from None
@@ -243,7 +236,7 @@ async def serve_start_async(
         if http_options:
             _check_http_options(client, http_options)
         if global_tracing_config is not None:
-            # Blocks on a controller RPC; keep it off the event loop.
+            # Blocking RPC; keep it off the event loop.
             await asyncio.to_thread(
                 _check_tracing_config, client, global_tracing_config
             )

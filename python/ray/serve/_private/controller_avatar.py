@@ -44,9 +44,7 @@ class ServeControllerAvatar:
                 proxy_location=ProxyLocation.HeadOnly,
                 global_logging_config=LoggingConfig(),
             )
-            # Wait for the controller to finish construction, so a failed
-            # startup (e.g. an invalid tracing config) fails this avatar instead
-            # of leaving it holding a handle to a dead controller.
+            # Wait for construction so a failed start fails this avatar.
             ray.get(self._controller.check_alive.remote())
 
     def check_alive(self) -> None:

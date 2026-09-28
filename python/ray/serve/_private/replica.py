@@ -1201,9 +1201,7 @@ class Replica:
         tracing_config = ray.get(
             self._controller_handle.get_tracing_config.remote()  # type: ignore[attr-defined]
         )
-        # Tracing is set up once, at startup. A setup failure (e.g. a bad
-        # exporter_import_path on this node) is left to raise so it surfaces at
-        # startup rather than silently disabling the tracing the user asked for.
+        # Let a setup failure raise so it surfaces at startup.
         is_tracing_setup_successful = setup_tracing(
             component_type=ServeComponentType.REPLICA,
             component_name=self._component_name,

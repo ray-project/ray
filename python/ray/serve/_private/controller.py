@@ -138,14 +138,10 @@ SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 def _coerce_tracing_config(
     tracing_config: Optional[TracingConfig],
 ) -> TracingConfig:
-    """Resolve a TracingConfig's defaults in the controller process.
+    """Resolve unset tracing fields from this process's env vars.
 
-    The global tracing config must never be None -- it is the single source of
-    truth for ``setup_tracing``. Unset fields default from the RAY_SERVE_TRACING_*
-    env vars, but the model may have been built in another process (the driver
-    for serve.start, the dashboard for serve deploy), where those env vars can
-    differ from the controller's (e.g. set via controller_options.runtime_env).
-    Rebuild from only the explicitly-set fields so unset ones resolve here.
+    The config may have been built in another process (the driver or the
+    dashboard), whose RAY_SERVE_TRACING_* env vars can differ from ours.
     """
     if tracing_config is None:
         return TracingConfig()
@@ -194,21 +190,10 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
-        # Tracing config is an init-time setting: it is delivered to the
-        # controller as a constructor argument (from serve.start, or from the
-        # declarative config via the Serve REST bootstrap), passed to proxies as
-        # a constructor arg, and pulled by replicas when they start. It is never
-        # changed on a running component -- reconfigure_global_tracing_config
-        # rejects that -- and it survives controller recovery via the replayed
-        # constructor argument, so no checkpoint is needed.
-        #
-        # Resolve and validate it first, in this process's env and before any
-        # state is written. An invalid config fails the constructor: Ray does
-        # not restart an actor whose __init__ raised (even with max_restarts=-1)
-        # and releases the detached name, so no broken controller is left
-        # behind. serve.start recovers this error from the creation failure. On
-        # reconstruction the config was validated at first start, so log
-        # instead of refusing to recover.
+        # Tracing is set once, here, and survives recovery via the replayed
+        # constructor arg. Validate before writing any state: if __init__
+        # raises, Ray doesn't restart the actor and releases its name. On a
+        # restart, log instead so recovery isn't blocked.
         self.global_tracing_config = _coerce_tracing_config(global_tracing_config)
         try:
             check_tracing_exporter_import_path(self.global_tracing_config)
@@ -403,17 +388,11 @@ class ServeController:
     def reconfigure_global_tracing_config(
         self, global_tracing_config: Optional[TracingConfig]
     ):
-        """Reject a change to the global tracing config.
+        """Reject a change to the tracing config after startup.
 
-        Tracing is configured once, at cluster initialization (via the
-        controller's constructor argument), and delivered to proxies and
-        replicas when they start. OpenTelemetry only honors the first
-        tracer-provider setup per process, so a live component cannot adopt a
-        new config. This is a no-op when the config matches what is already in
-        effect (e.g. the declarative config re-applying its own value at
-        startup) and raises otherwise, so a runtime change is surfaced rather
-        than silently dropped. The exporter is validated when the config is
-        established in __init__, not here.
+        A no-op if it matches the config in effect. OpenTelemetry sets the
+        tracer provider once per process, so running components can't adopt a
+        new config.
         """
         global_tracing_config = _coerce_tracing_config(global_tracing_config)
 
@@ -1346,11 +1325,7 @@ class ServeController:
         )
         self._target_capacity = config.target_capacity
 
-        # Validate the declarative tracing config against the one the
-        # controller was started with. On the first `serve deploy` the Serve
-        # bootstrap passes it into the controller constructor, so this is a
-        # no-op; a later deploy that changes it is rejected (tracing is an
-        # init-time setting).
+        # A no-op for the config the controller started with; rejects a change.
         if config.tracing_config is not None:
             self.reconfigure_global_tracing_config(config.tracing_config)
 

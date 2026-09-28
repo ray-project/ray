@@ -1488,7 +1488,7 @@ class ProxyActorInterface(ABC):
             node_id: ID of the node this proxy is running on
             node_ip_address: IP address of the node
             logging_config: Logging configuration
-            tracing_config: Tracing configuration, set up once at startup
+            tracing_config: Tracing configuration
             log_buffer_size: Size of the log buffer
         """
         self._node_id = node_id
@@ -1498,11 +1498,8 @@ class ProxyActorInterface(ABC):
 
         self._update_logging_config(logging_config)
 
-        # Tracing is set up once, at startup. OpenTelemetry only honors the
-        # first set_tracer_provider call per process, so tracing config cannot
-        # be changed after the proxy starts. A setup failure (e.g. a bad
-        # exporter_import_path on this node) is left to raise so it surfaces at
-        # startup rather than silently disabling tracing.
+        # OpenTelemetry allows one tracer provider per process, so set tracing
+        # up once, here. Let a failure raise so it surfaces at startup.
         if setup_tracing(
             component_name="proxy",
             component_id=self._node_ip_address,

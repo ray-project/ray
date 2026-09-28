@@ -236,25 +236,15 @@ def tracing_decorator_factory(
 
 
 class InvalidTracingConfigError(ValueError):
-    """The Serve tracing config is invalid (e.g. its exporter can't be imported).
-
-    Raised by the controller constructor on initial startup; serve.start
-    recovers it from the actor-creation failure and re-raises it as is.
-    """
+    """The tracing config is invalid, e.g. its exporter can't be imported."""
 
 
 def check_tracing_exporter_import_path(
     tracing_config: "TracingConfig",
 ) -> None:
-    """Check that the configured tracing exporter can be imported.
-
-    The controller checks this when it establishes the tracing config at
-    startup. The exporter may still be unavailable on a worker even if it can
-    be imported on the controller.
-    """
+    """Check that the configured tracing exporter can be imported."""
     if not tracing_config.enabled:
         return
-    # The model resolves the default exporter path, so import it directly.
     import_attr(tracing_config.exporter_import_path)
 
 
@@ -272,11 +262,8 @@ def setup_tracing(
         component_name: The name of the component.
         component_id: The unique identifier of the component.
         component_type: The type of the component.
-        tracing_config: The TracingConfig to set up tracing with. This is the
-            single source of truth. Its fields default from the
-            RAY_SERVE_TRACING_* environment variables of the controller's
-            process (where the config is now resolved), not of each proxy or
-            replica; see TracingConfig.
+        tracing_config: The TracingConfig to set up tracing with, as resolved
+            by the controller.
 
     Returns:
         bool: True if tracing setup is successful, False otherwise.

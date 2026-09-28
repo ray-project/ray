@@ -533,9 +533,7 @@ def run(
         http_options = config.http_options.model_dump()
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
         controller_options = config.controller_options
-        # Tracing is an init-time setting, so it must be passed when the
-        # controller is created; applying it later via deploy_apps would be
-        # rejected as a runtime change.
+        # Tracing can only be set at controller creation.
         global_tracing_config = config.tracing_config
 
     client = _private_api.serve_start(
