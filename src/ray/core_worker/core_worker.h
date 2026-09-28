@@ -1927,7 +1927,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// \return Status.
   Status GetObjects(const std::vector<ObjectID> &ids,
                     const int64_t timeout_ms,
-                    std::vector<std::shared_ptr<RayObject>> &results);
+                    std::vector<std::shared_ptr<RayObject>> &results,
+                    PlasmaGetRoute route);
+
+  Status GetWithPlasmaRoute(const std::vector<ObjectID> &ids,
+                            int64_t timeout_ms,
+                            std::vector<std::shared_ptr<RayObject>> &results,
+                            PlasmaGetRoute route);
 
   /// Helper to compute idleness from precomputed counters.
   ///

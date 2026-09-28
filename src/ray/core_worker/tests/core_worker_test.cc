@@ -17,8 +17,10 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <future>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -1007,6 +1009,7 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*check_signals=*/[] { return Status::OK(); },
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
+      /*get_client=*/fake_plasma,
       /*fetch_batch_size=*/2,
       /*clock=*/clock,
       /*get_current_call_site=*/nullptr);
@@ -1018,7 +1021,13 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
 
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
 
-  ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
+  ASSERT_TRUE(provider
+                  .Get(ids,
+                       owner_addresses,
+                       /*timeout_ms=*/-1,
+                       &results,
+                       PlasmaGetRoute::kGetClient)
+                  .ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
   ASSERT_EQ(observed_batches.size(), 3U);
@@ -1045,6 +1054,7 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
       /*check_signals=*/[] { return Status::OK(); },
       /*warmup=*/false,
       /*store_client=*/fake_plasma,
+      /*get_client=*/fake_plasma,
       /*fetch_batch_size=*/10,
       /*clock=*/clock,
       /*get_current_call_site=*/nullptr);
@@ -1053,7 +1063,11 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   // timeout=0 since this test verifies only what's sent to the raylet, not
   // whether polling resolves the remote objects.
-  auto status = provider.Get(ids, owner_addresses, /*timeout_ms=*/0, &results);
+  auto status = provider.Get(ids,
+                             owner_addresses,
+                             /*timeout_ms=*/0,
+                             &results,
+                             PlasmaGetRoute::kGetClient);
   EXPECT_TRUE(status.IsTimedOut());
   EXPECT_EQ(results.size(), 3U);
 
@@ -1061,6 +1075,89 @@ TEST(CoreWorkerPlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   absl::flat_hash_set<ObjectID> pulled(fake_raylet->async_get_object_calls[0].begin(),
                                        fake_raylet->async_get_object_calls[0].end());
   EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
+}
+
+TEST(CoreWorkerPlasmaStoreProviderTest, BlockingGetDoesNotBlockControlClient) {
+  class BlockingPlasmaGetClient : public plasma::FakePlasmaClient {
+   public:
+    BlockingPlasmaGetClient()
+        : get_started_future_(get_started_.get_future()),
+          unblock_get_future_(unblock_get_.get_future()) {}
+
+    Status Get(const std::vector<ObjectID> &object_ids,
+               int64_t timeout_ms,
+               std::vector<plasma::ObjectBuffer> *object_buffers) override {
+      std::lock_guard<std::mutex> lock(client_mutex_);
+      get_started_.set_value();
+      unblock_get_future_.wait();
+      return plasma::FakePlasmaClient::Get(object_ids, timeout_ms, object_buffers);
+    }
+
+    Status Release(const ObjectID &object_id) override {
+      std::lock_guard<std::mutex> lock(client_mutex_);
+      return plasma::FakePlasmaClient::Release(object_id);
+    }
+
+    std::future_status WaitForGetStarted(std::chrono::seconds timeout) {
+      return get_started_future_.wait_for(timeout);
+    }
+
+    void UnblockGet() { unblock_get_.set_value(); }
+
+   private:
+    std::promise<void> get_started_;
+    std::future<void> get_started_future_;
+    std::promise<void> unblock_get_;
+    std::future<void> unblock_get_future_;
+    std::mutex client_mutex_;
+  };
+
+  auto control_client = std::make_shared<plasma::FakePlasmaClient>();
+  auto get_client = std::make_shared<BlockingPlasmaGetClient>();
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+  const auto get_object_id = ObjectID::FromRandom();
+  const auto control_object_id = ObjectID::FromRandom();
+  get_client->MarkLocal({get_object_id});
+  control_client->MarkLocal({control_object_id, get_object_id});
+
+  Clock clock;
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/control_client,
+      /*get_client=*/get_client,
+      /*fetch_batch_size=*/10,
+      /*clock=*/clock,
+      /*get_current_call_site=*/nullptr);
+
+  std::vector<rpc::Address> owner_addresses(1);
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+  auto blocking_get = std::async(std::launch::async, [&] {
+    return provider.Get({get_object_id},
+                        owner_addresses,
+                        /*timeout_ms=*/-1,
+                        &results,
+                        PlasmaGetRoute::kGetClient);
+  });
+  auto get_started_status = get_client->WaitForGetStarted(std::chrono::seconds(1));
+  EXPECT_EQ(get_started_status, std::future_status::ready);
+  if (get_started_status != std::future_status::ready) {
+    get_client->UnblockGet();
+    EXPECT_TRUE(blocking_get.get().ok());
+    return;
+  }
+
+  auto release =
+      std::async(std::launch::async, [&] { return provider.Release(control_object_id); });
+  auto release_status = release.wait_for(std::chrono::seconds(1));
+
+  get_client->UnblockGet();
+  EXPECT_EQ(release_status, std::future_status::ready);
+  EXPECT_TRUE(release.get().ok());
+  EXPECT_TRUE(blocking_get.get().ok());
+  EXPECT_TRUE(results.contains(get_object_id));
 }
 
 TEST_F(CoreWorkerTest, NamedActorRegisterFailureReleasesHandleReference) {
