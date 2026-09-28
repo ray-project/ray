@@ -62,7 +62,7 @@ class SupaGPUAcceleratorManager(AcceleratorManager):
 
             if not hasattr(torch, "supa"):
                 try:
-                    import torch_supa
+                    import torch_supa  # noqa: F401
                 except ImportError:
                     pass
 
