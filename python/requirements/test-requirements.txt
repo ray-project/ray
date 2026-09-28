@@ -133,9 +133,10 @@ grpcio-tools==1.76.0; python_version >= '3.14'
 grpcio-status==1.71.2; python_version < '3.12'
 grpcio-status==1.75.0; python_version >= '3.12' and python_version < '3.14'
 grpcio-status==1.76.0; python_version >= '3.14'
-# grpcio-reflection (a ray[serve] dependency) tracks grpcio the same way:
-# 1.72+ requires protobuf>=6.30, so it stays on 1.71.2 wherever protobuf is 5.27.5.
-grpcio-reflection==1.71.2; python_version < '3.12'
+# grpcio-reflection (a ray[serve] dependency) tracks grpcio the same way, but
+# lags further behind wherever protobuf is 5.27.5: its bundled protobuf gencode
+# must not be newer than the runtime, and 1.68+ was generated with protobuf 5.28+.
+grpcio-reflection==1.67.1; python_version < '3.12'
 grpcio-reflection==1.75.0; python_version >= '3.12' and python_version < '3.14'
 grpcio-reflection==1.76.0; python_version >= '3.14'
 
