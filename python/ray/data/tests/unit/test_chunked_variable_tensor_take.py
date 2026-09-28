@@ -288,31 +288,56 @@ def test_variable_shuffle_reuses_plan_and_disables_failed_column(
 
 
 @pytest.mark.parametrize(
-    "rows,row_bytes,chunks,output_rows,eligible",
+    "rows,source_bytes,chunks,output_rows,eligible",
     [
-        (2048, 8188, 4, 1, False),  # Below average row gate, even with a large source.
-        # Even row count keeps the average at 8 KiB; the full request satisfies
-        # the output-per-chunk gate, isolating the 8 MiB source-payload gate.
-        (1022, 8192, 4, 1022, False),
-        (1024, 8192, 4, 1, True),  # Source and per-chunk gates exactly meet the bound.
-        (1024, 8192, 16, 1023, False),
-        (1024, 8192, 16, 1024, True),  # Estimated output per chunk reaches 512 KiB.
+        (2048, 2048 * 8192 - 1, 4, 1, False),  # Below average row gate.
+        (2048, 2048 * 8192, 4, 1, True),  # Exactly 8 KiB per row.
+        (1023, 8 * 1024**2 - 1, 4, 1023, False),  # Below total payload gate.
+        (1024, 8 * 1024**2, 4, 1, True),  # Exactly 8 MiB and 2 MiB per chunk.
+        (1024, 8 * 1024**2, 5, 1, False),  # Too little source/output per chunk.
+        (1024, 8 * 1024**2, 16, 1023, False),
+        (1024, 8 * 1024**2, 16, 1024, True),  # Exactly 512 KiB output per chunk.
+        (1024, 8 * 1024**2, 4, 0, True),  # Source budget covers an empty take.
+        (1024, 8 * 1024**2, 16, 0, False),
+        (2**50, 2**63, 4, 2**50, True),  # Python integer products do not wrap.
     ],
 )
 def test_variable_take_size_gate_boundaries(
-    rows, row_bytes, chunks, output_rows, eligible
+    rows, source_bytes, chunks, output_rows, eligible
 ):
-    values = [
-        np.zeros(row_bytes // 4 + (1 if i % 2 else -1), dtype=np.float32)
-        for i in range(rows)
-    ]
-    array = ArrowVariableShapedTensorArray.from_numpy(values)
-    parts = np.array_split(np.arange(rows), chunks)
-    column = pa.chunked_array([array.slice(int(p[0]), len(p)) for p in parts])
-    plan = take_module.try_prepare_chunked_tensor_take(
-        column, max_output_rows=output_rows
+    assert (
+        take_module._passes_variable_size_gates(
+            source_rows=rows,
+            source_bytes=source_bytes,
+            source_chunks=chunks,
+            max_output_rows=output_rows,
+        )
+        == eligible
     )
-    assert (plan is not None) == eligible
+
+
+@pytest.mark.parametrize(
+    "source_bytes,output_rows,min_row_bytes,eligible",
+    [
+        (8 * 1024**2, 1024, 0, True),  # Source budget exactly covers the request.
+        (8 * 1024**2 - 1, 1024, 0, False),
+        (8 * 1024**2, 1025, 8191, False),  # Neither budget covers oversampling.
+        (8 * 1024**2, 1025, 8192, True),  # Minimum row size independently suffices.
+        (8 * 1024**2, 0, 0, True),
+        (2**63, 2**50 + 1, 0, False),  # No fixed-width arithmetic overflow.
+    ],
+)
+def test_variable_oversampling_gate_boundaries(
+    source_bytes, output_rows, min_row_bytes, eligible
+):
+    assert (
+        take_module._passes_variable_oversampling_gate(
+            source_bytes=source_bytes,
+            max_output_rows=output_rows,
+            min_row_bytes=min_row_bytes,
+        )
+        == eligible
+    )
 
 
 def test_variable_take_counts_empty_chunks_in_cost_gate():

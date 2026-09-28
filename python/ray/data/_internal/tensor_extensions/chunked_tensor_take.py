@@ -128,6 +128,13 @@ def try_prepare_chunked_tensor_take(
     if column.null_count > 0:
         return _log_take_fallback(_TakeFallbackReason.CONTAINS_NULLS, column=column)
 
+    return _try_prepare_tensor_take(column, max_output_rows)
+
+
+def _try_prepare_tensor_take(
+    column: pa.ChunkedArray, max_output_rows: int
+) -> Optional["PreparedTensorTake"]:
+    """Dispatch tensor preparation after the common column checks."""
     tensor_type = column.type
     if isinstance(tensor_type, ArrowVariableShapedTensorType):
         return _try_prepare_variable_tensor_take(column, max_output_rows)
@@ -577,14 +584,11 @@ def _try_prepare_variable_tensor_take(
             )
         source_values += last - first
     source_bytes = source_values * value_dtype.itemsize
-    if (
-        source_bytes < len(column) * _MIN_VARIABLE_ROW_BYTES
-        or source_bytes < _MIN_VARIABLE_PAYLOAD_BYTES
-        or (
-            source_bytes < column.num_chunks * _MIN_VARIABLE_SOURCE_BYTES_PER_CHUNK
-            and source_bytes * max_output_rows
-            < len(column) * column.num_chunks * _MIN_VARIABLE_OUTPUT_BYTES_PER_CHUNK
-        )
+    if not _passes_variable_size_gates(
+        source_rows=len(column),
+        source_bytes=source_bytes,
+        source_chunks=column.num_chunks,
+        max_output_rows=max_output_rows,
     ):
         return _log_take_fallback(
             _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
@@ -597,13 +601,16 @@ def _try_prepare_variable_tensor_take(
         )
     chunks, starts = [], []
     row_start, largest_row = 0, 0
+    smallest_row = source_values
     for storage in storages:
         chunk = _prepare_variable_chunk(storage, tensor_type.ndim, value_dtype)
         if chunk is None:
             return _log_take_fallback(
                 _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
             )
-        largest_row = max(largest_row, int(np.max(np.diff(chunk.offsets))))
+        row_lengths = np.diff(chunk.offsets)
+        largest_row = max(largest_row, int(np.max(row_lengths)))
+        smallest_row = min(smallest_row, int(np.min(row_lengths)))
         chunks.append(chunk)
         starts.append(row_start)
         row_start += len(storage)
@@ -616,14 +623,10 @@ def _try_prepare_variable_tensor_take(
         return _log_take_fallback(
             _TakeFallbackReason.OUTPUT_OFFSET_OVERFLOW, column=column
         )
-    # Repeated indices can select only tiny rows despite a large source average.
-    # Cover the per-output-row cost with either avoided source-copy bytes or a
-    # lower bound on every selected row. Shuffle generations already satisfy
-    # the source bound because max_output_rows never exceeds the source rows.
-    if source_bytes < max_output_rows * _MIN_VARIABLE_ROW_BYTES and any(
-        int(np.min(np.diff(chunk.offsets))) * value_dtype.itemsize
-        < _MIN_VARIABLE_ROW_BYTES
-        for chunk in chunks
+    if not _passes_variable_oversampling_gate(
+        source_bytes=source_bytes,
+        max_output_rows=max_output_rows,
+        min_row_bytes=smallest_row * value_dtype.itemsize,
     ):
         return _log_take_fallback(
             _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
@@ -638,6 +641,36 @@ def _try_prepare_variable_tensor_take(
     )
     return PreparedVariableShapedTensorTake(
         tensor_type, value_dtype, tuple(chunks), np.asarray(starts, dtype=np.int64)
+    )
+
+
+def _passes_variable_size_gates(
+    *, source_rows: int, source_bytes: int, source_chunks: int, max_output_rows: int
+) -> bool:
+    """Require enough average row, total, and per-chunk payload to repay setup."""
+    return (
+        source_bytes >= source_rows * _MIN_VARIABLE_ROW_BYTES
+        and source_bytes >= _MIN_VARIABLE_PAYLOAD_BYTES
+        and (
+            source_bytes >= source_chunks * _MIN_VARIABLE_SOURCE_BYTES_PER_CHUNK
+            or source_bytes * max_output_rows
+            >= source_rows * source_chunks * _MIN_VARIABLE_OUTPUT_BYTES_PER_CHUNK
+        )
+    )
+
+
+def _passes_variable_oversampling_gate(
+    *, source_bytes: int, max_output_rows: int, min_row_bytes: int
+) -> bool:
+    """Cover repeated-row cost with avoided source copying or a minimum row size.
+
+    Repeated indices can select only tiny rows despite a large source average.
+    Ordinary shuffle generations satisfy the source budget because their output
+    row bound never exceeds the source row count.
+    """
+    return (
+        source_bytes >= max_output_rows * _MIN_VARIABLE_ROW_BYTES
+        or min_row_bytes >= _MIN_VARIABLE_ROW_BYTES
     )
 
 
@@ -706,7 +739,8 @@ class PreparedVariableShapedTensorTake(NamedTuple):
 
     Source slices are copied straight into the final payload: no temporary
     tensor payload is needed, even for a row larger than the fixed-shape scratch
-    cap. Row routing and shape/offset metadata consume O(K * ndim) space.
+    cap. Row routing and shape/offset metadata consume O(K * ndim) space; the
+    copy loop also converts routing arrays to O(K) Python integer lists.
     """
 
     tensor_type: ArrowVariableShapedTensorType
@@ -754,12 +788,16 @@ class PreparedVariableShapedTensorTake(NamedTuple):
         np.cumsum(lengths, out=offsets[1:])
         output = np.empty(int(offsets[-1]), dtype=self.value_dtype)
         if output.size:
-            for position, chunk_id in enumerate(chunk_ids):
-                source_start = int(source_offsets[position])
-                source_stop = source_start + int(lengths[position])
-                output[offsets[position] : offsets[position + 1]] = self.chunks[
-                    int(chunk_id)
-                ].values[source_start:source_stop]
+            # Convert once to avoid NumPy scalar access in the per-row loop.
+            for chunk_id, src, length, dst in zip(
+                chunk_ids.tolist(),
+                source_offsets.tolist(),
+                lengths.tolist(),
+                offsets.tolist(),
+            ):
+                output[dst : dst + length] = self.chunks[chunk_id].values[
+                    src : src + length
+                ]
         data = pa.LargeListArray.from_arrays(
             pa.array(offsets),
             pa.Array.from_buffers(
