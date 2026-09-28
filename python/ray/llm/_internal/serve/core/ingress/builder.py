@@ -15,12 +15,6 @@ from ray.llm._internal.common.utils.import_utils import load_class
 from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
-from ray.llm._internal.serve.core.ingress.applications import (
-    ApplicationDescriptor,
-    ControlApplication,
-    ModelApplication,
-    RouterApplication,
-)
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     _all_models_scale_to_zero,
@@ -383,6 +377,14 @@ def build_openai_applications(
 
     Side-effect free: nothing is deployed.
     """
+    # Lazy: `ray.serve.llm` imports this module, and `applications` pulls in FastAPI.
+    from ray.llm._internal.serve.core.ingress.applications import (
+        ApplicationDescriptor,
+        ControlApplication,
+        ModelApplication,
+        RouterApplication,
+    )
+
     builder_config = LLMServingArgs.model_validate(llm_serving_args)
     _validate_openai_applications_args(builder_config)
     validate_route_prefix(route_prefix)
