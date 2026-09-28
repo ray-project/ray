@@ -500,6 +500,7 @@ def _read_datasource_v2(
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     block_udf: Optional[Callable[[Any], Any]] = None,
+    sample_all_files_for_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -521,23 +522,29 @@ def _read_datasource_v2(
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
       via ``scanner.create_reader().read(manifest)``.
 
-    Schema inference happens once on the driver by sampling the first
-    file — no caching layer needed.
+    Schema inference samples up to 16 files by default. The opt-in full-schema
+    path retains the discovered file infos so ``ListFiles`` reads that same set.
 
     This function is the whole framework <-> datasource contract: every
     attribute it reads is declared on ``DataSourceV2`` or, behind the one
     ``isinstance`` check below, on ``FileDataSourceV2``. The object is not
     referenced after it returns (``ReadFiles`` keeps only ``datasource.name``).
     """
+    import builtins
     import time
 
     from ray.data._internal.datasource_v2.common.listing_utils import (
+        DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE,
         _build_pruners,
         sample_files,
     )
     from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
         DataSourceWithMetadata,
         FileDataSourceV2,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_SIZE_COLUMN_NAME,
+        PATH_COLUMN_NAME,
     )
     from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         PartitionHints,
@@ -597,17 +604,58 @@ def _read_datasource_v2(
     # listed or opened here, so an empty table still reads and no partitioning is
     # derived from paths.
     sample = None
+    listing_started = time.perf_counter() if sample_all_files_for_schema else None
     if datasource.schema_needs_file_sample:
-        # Sample a few files for schema inference. Listed again (cheaply) during
-        # execution inside the ListFiles op — no caching layer needed.
-        sample = sample_files(indexer, datasource.paths, filesystem, pruners)
+        # Full-schema mode retains the discovered files for execution. The
+        # default bounded sample is listed again by ListFiles as before.
+        sample = sample_files(
+            indexer,
+            datasource.paths,
+            filesystem,
+            pruners,
+            max_files=None if sample_all_files_for_schema else 16,
+        )
         if len(sample) == 0:
             raise ValueError(
                 f"no files found under {datasource.paths!r}. Check the path and any "
                 "configured `partition_filter` or `file_extensions` filters."
             )
 
+    listing_elapsed = (
+        time.perf_counter() - listing_started if listing_started is not None else None
+    )
+    schema_started = time.perf_counter() if sample_all_files_for_schema else None
     schema = datasource.infer_schema(sample)
+    schema_elapsed = (
+        time.perf_counter() - schema_started if schema_started is not None else None
+    )
+    prelisted_file_infos = None
+    if sample_all_files_for_schema:
+        assert sample is not None
+        import pyarrow as pa
+
+        sample_block = sample.as_block()
+        assert isinstance(sample_block, pa.Table)
+        file_infos = sample_block.select([PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME])
+        prelisted_file_infos = []
+        for i in builtins.range(
+            0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
+        ):
+            batch = file_infos.slice(i, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE)
+            # Copy each slice into its own buffers; retained chunks must not
+            # each keep the full listing's Arrow buffers alive.
+            prelisted_file_infos.append(
+                pa.Table.from_pydict(batch.to_pydict(), schema=file_infos.schema)
+            )
+        assert listing_elapsed is not None and schema_elapsed is not None
+        logger.info(
+            "Full Parquet schema inference: %d candidate files, %.2fs listing, "
+            "%.2fs footer merge, %d retained Arrow file-info bytes",
+            len(sample),
+            listing_elapsed,
+            schema_elapsed,
+            sum(block.nbytes for block in prelisted_file_infos),
+        )
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
     # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
@@ -667,6 +715,7 @@ def _read_datasource_v2(
         file_indexer=indexer,
         filesystem=filesystem,
         source_paths=list(datasource.paths),
+        prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
@@ -1612,6 +1661,7 @@ def read_parquet(
     tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
+    merge_schema: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
     include_row_hash: bool = False,
@@ -1743,6 +1793,14 @@ def read_parquet(
             with a custom callback to read only selected partitions of a dataset.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
+        merge_schema: If ``True``, infer the schema from every eligible Parquet
+            file before returning the Dataset. This lists all files and reads
+            every footer up front, which can be expensive for large or remote
+            datasets. The files discovered for inference are also the files
+            considered when the Dataset executes. Files appended after discovery
+            aren't included, and a changing directory isn't an atomic snapshot.
+            Defaults to ``False``, which infers from up to 16 files. Requires
+            the V2 datasource.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
@@ -1849,6 +1907,14 @@ def read_parquet(
     schema = arrow_parquet_args.pop("schema", None)
 
     ctx = DataContext.get_current()
+    if merge_schema and schema is not None:
+        raise ValueError("`merge_schema=True` cannot be combined with `schema`.")
+    if merge_schema and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`merge_schema=True` on `read_parquet` requires the V2 datasource. "
+            "Enable it with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
     if ctx.use_datasource_v2:
         # ``tensor_column_schema`` is folded into ``_block_udf`` by
         # ``_resolve_parquet_args`` above; passing that transform through
@@ -1949,6 +2015,7 @@ def read_parquet(
             concurrency=concurrency,
             partition_filter=partition_filter,
             block_udf=_block_udf,
+            sample_all_files_for_schema=merge_schema,
         )
         if select_columns_after_read is not None:
             ds = ds.select_columns(select_columns_after_read)

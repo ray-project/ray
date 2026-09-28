@@ -55,6 +55,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Bound submitted footer reads when full schema inference covers many files.
+_SCHEMA_READ_BATCH_SIZE = 256
+
 
 @DeveloperAPI
 class ParquetDatasourceV2(FileDataSourceV2):
@@ -63,7 +66,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the
     ``ListFiles`` logical op; scanning and reading are delegated to
     :class:`ParquetScanner` and :class:`ParquetFileReader`. Schema
-    inference reads the first file's footer only and augments with
+    inference merges the supplied file sample's footers and augments with
     partition/path columns as configured.
     """
 
@@ -313,11 +316,31 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 with filesystem.open_input_file(path) as handle:
                     return pq.read_schema(handle)
 
+            per_file_schemas: List[pa.Schema] = []
             with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-                per_file_schemas = list(executor.map(_read_schema, sample_paths))
-            schema = (
-                unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
-            )
+                for start in range(0, len(sample_paths), _SCHEMA_READ_BATCH_SIZE):
+                    batch = sample_paths[start : start + _SCHEMA_READ_BATCH_SIZE]
+                    per_file_schemas.extend(executor.map(_read_schema, batch))
+            try:
+                schema = (
+                    unify_schemas_with_validation(per_file_schemas)
+                    or per_file_schemas[0]
+                )
+            except (pa.ArrowTypeError, pa.ArrowInvalid):
+                # Locate the first file that conflicts with the schema seen so
+                # far. This only runs on failure and reads no additional footers.
+                merged = per_file_schemas[0]
+                for path, file_schema in zip(sample_paths[1:], per_file_schemas[1:]):
+                    try:
+                        merged = (
+                            unify_schemas_with_validation([merged, file_schema])
+                            or merged
+                        )
+                    except (pa.ArrowTypeError, pa.ArrowInvalid) as cause:
+                        raise type(cause)(
+                            f"Failed to merge Parquet schema from {path!r}: {cause}"
+                        ) from cause
+                raise
             assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
