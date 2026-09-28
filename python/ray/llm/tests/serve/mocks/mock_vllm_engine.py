@@ -8,6 +8,12 @@ from fastapi import FastAPI, HTTPException, Request
 from starlette.responses import JSONResponse, StreamingResponse
 
 from ray.llm._internal.common.utils.cloud_utils import LoraMirrorConfig
+from ray.llm._internal.serve.core.configs.anthropic_api_models import (
+    AnthropicCountTokensRequest,
+    AnthropicCountTokensResponse,
+    AnthropicMessagesRequest,
+    AnthropicMessagesResponse,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -236,6 +242,24 @@ class MockVLLMEngine(LLMEngine):
             check_model(body.model)
             return await to_response(self.completions(body))
 
+        @app.post("/v1/messages")
+        async def messages(request: Request):
+            body = AnthropicMessagesRequest.model_validate(await request.json())
+            check_model(body.model)
+            return await to_response(self.messages(body))
+
+        @app.post("/v1/messages/count_tokens")
+        async def count_tokens(request: Request):
+            body = AnthropicCountTokensRequest.model_validate(await request.json())
+            check_model(body.model)
+            result = await self.count_tokens(body).__anext__()
+            if isinstance(result, ErrorResponse):
+                raise HTTPException(
+                    status_code=result.error.code,
+                    detail=result.error.message,
+                )
+            return JSONResponse(content=result.model_dump(exclude_none=True))
+
         return app
 
     async def chat(
@@ -279,6 +303,88 @@ class MockVLLMEngine(LLMEngine):
             request=request, prompt_text=prompt_text, max_tokens=max_tokens
         ):
             yield response
+
+    async def messages(
+        self,
+        request: AnthropicMessagesRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, AnthropicMessagesResponse, ErrorResponse], None]:
+        """Mock Anthropic Messages API."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        prompt_text = ""
+        for message in request.messages:
+            content = message.content
+            if isinstance(content, str):
+                prompt_text += content + " "
+            elif content is not None:
+                for block in content:
+                    if getattr(block, "text", None):
+                        prompt_text += block.text + " "
+
+        max_tokens = request.max_tokens
+        model_name = request.model or self.llm_config.model_id
+
+        if request.stream:
+            message_id = f"msg_{random.randint(1000, 9999)}"
+            start_event = {
+                "type": "message_start",
+                "message": {
+                    "id": message_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": model_name,
+                    "usage": {"input_tokens": 1, "output_tokens": 0},
+                },
+            }
+            yield f"event: message_start\ndata: {json.dumps(start_event)}\n\n"
+
+            text = " ".join(f"test_{i}" for i in range(max_tokens))
+            delta_event = {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": text},
+            }
+            yield f"event: content_block_delta\ndata: {json.dumps(delta_event)}\n\n"
+            yield "event: message_stop\ndata: {}\n\n"
+            return
+
+        response = AnthropicMessagesResponse(
+            id=f"msg_{random.randint(1000, 9999)}",
+            type="message",
+            role="assistant",
+            content=[{"type": "text", "text": "mock anthropic response"}],
+            model=model_name,
+            stop_reason="end_turn",
+            usage={
+                "input_tokens": len(prompt_text.split()),
+                "output_tokens": max_tokens,
+            },
+        )
+        yield response
+
+    async def count_tokens(
+        self,
+        request: AnthropicCountTokensRequest,
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[AnthropicCountTokensResponse, ErrorResponse], None]:
+        """Mock Anthropic count_tokens."""
+        if not self.started:
+            raise RuntimeError("Engine not started")
+
+        token_count = 0
+        for message in request.messages:
+            content = message.content
+            if isinstance(content, str):
+                token_count += len(content.split())
+            elif content is not None:
+                for block in content:
+                    if getattr(block, "text", None):
+                        token_count += len(block.text.split())
+
+        yield AnthropicCountTokensResponse(input_tokens=max(token_count, 1))
 
     async def embeddings(
         self,

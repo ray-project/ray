@@ -49,6 +49,12 @@ from ray.llm._internal.serve.utils.server_utils import (
 )
 
 if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.anthropic_api_models import (
+        AnthropicCountTokensRequest,
+        AnthropicCountTokensResponse,
+        AnthropicMessagesRequest,
+        AnthropicMessagesResponse,
+    )
     from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
         ChatCompletionResponse,
@@ -426,6 +432,29 @@ class LLMServer(LLMServerProtocol):
             batch_output_stream=True,
             raw_request_info=raw_request_info,
         )
+
+    async def messages(
+        self,
+        request: "AnthropicMessagesRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[
+        Union[str, "AnthropicMessagesResponse", "ErrorResponse"],
+        None,
+    ]:
+        """Runs an Anthropic Messages request to the LLM engine."""
+        await self._maybe_resolve_lora_from_multiplex()
+        async for response in self.engine.messages(request, raw_request_info):
+            yield response
+
+    async def count_tokens(
+        self,
+        request: "AnthropicCountTokensRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["AnthropicCountTokensResponse", "ErrorResponse"], None]:
+        """Runs an Anthropic count_tokens request to the LLM engine."""
+        await self._maybe_resolve_lora_from_multiplex()
+        async for response in self.engine.count_tokens(request, raw_request_info):
+            yield response
 
     async def embeddings(
         self,

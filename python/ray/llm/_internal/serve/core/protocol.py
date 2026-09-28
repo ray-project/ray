@@ -13,6 +13,12 @@ from typing import (
 from starlette.requests import Request
 
 if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.anthropic_api_models import (
+        AnthropicCountTokensRequest,
+        AnthropicCountTokensResponse,
+        AnthropicMessagesRequest,
+        AnthropicMessagesResponse,
+    )
     from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
     from ray.llm._internal.serve.core.configs.openai_api_models import (
         ChatCompletionRequest,
@@ -113,6 +119,20 @@ class LLMServerProtocol(DeploymentProtocol):
         """
         Inferencing to the engine for completion api, and return the response.
         """
+
+    async def messages(
+        self,
+        request: "AnthropicMessagesRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, "AnthropicMessagesResponse", "ErrorResponse"], None]:
+        """Inferencing to the engine for Anthropic Messages API."""
+
+    async def count_tokens(
+        self,
+        request: "AnthropicCountTokensRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union["AnthropicCountTokensResponse", "ErrorResponse"], None]:
+        """Count tokens for an Anthropic Messages request."""
 
     async def check_health(self) -> None:
         """
