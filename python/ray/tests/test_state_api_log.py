@@ -16,6 +16,7 @@ import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
@@ -78,21 +79,33 @@ def generate_task_event(
     return task_event
 
 
-async def generate_actor_data(id, node_id, worker_id):
-    if worker_id:
-        worker_id = worker_id.binary()
+async def generate_actor_data(
+    id, node_id, worker_id, previous_incarnations=None, state=None
+):
+    from ray.core.generated.gcs_pb2 import PreviousActorIncarnation
+
+    # node_id and worker_id may be None to model the RESTARTING window
+    # where GCS has cleared the address but retained
+    # previous_incarnations. previous_incarnations is a list of
+    # (WorkerID, NodeID) tuples ordered oldest-first.
+    address_kwargs = {"ip_address": "127.0.0.1", "port": 1234}
+    if node_id is not None:
+        address_kwargs["node_id"] = node_id.binary()
+    if worker_id is not None:
+        address_kwargs["worker_id"] = worker_id.binary()
+
+    previous = [
+        PreviousActorIncarnation(worker_id=w.binary(), node_id=n.binary())
+        for (w, n) in (previous_incarnations or [])
+    ]
     message = ActorTableData(
         actor_id=id.binary(),
-        state=ActorTableData.ActorState.ALIVE,
+        state=state if state is not None else ActorTableData.ActorState.ALIVE,
         name="abc",
         pid=1234,
         class_name="class",
-        address=Address(
-            node_id=node_id.binary(),
-            ip_address="127.0.0.1",
-            port=1234,
-            worker_id=worker_id,
-        ),
+        address=Address(**address_kwargs),
+        previous_incarnations=previous,
     )
     return message
 
@@ -679,6 +692,271 @@ async def test_logs_manager_resolve_file(logs_manager):
     assert log_file_name == f"worker-123-123-{pid}.err"
 
 
+@pytest.mark.asyncio
+async def test_logs_manager_resolve_actor_falls_back_to_previous_incarnation(
+    logs_manager,
+):
+    """When the current worker's log file is absent (e.g. the actor was
+    restarted and the current incarnation hasn't produced output yet), the
+    resolver must fall back to `previous_incarnations` in newest-to-oldest
+    order, and each candidate must be looked up on its *own* node — a
+    previous incarnation may live on a different node than the current one.
+    """
+    current_node_id = NodeID(b"1" * 28)
+    older_node_id = NodeID(b"6" * 28)
+    newer_previous_node_id = NodeID(b"7" * 28)
+    actor_id = ActorID(b"2" * 16)
+    current_worker_id = WorkerID(b"3" * 28)
+    older_worker_id = WorkerID(b"4" * 28)
+    newer_previous_worker_id = WorkerID(b"5" * 28)
+
+    async def list_logs_side_effect(node_id_hex, _timeout, glob_filter):
+        # Only the "newer previous" incarnation has a matching log file,
+        # AND the caller must query the correct node to find it.
+        if (
+            node_id_hex == newer_previous_node_id.hex()
+            and newer_previous_worker_id.hex() in glob_filter
+        ):
+            return {
+                "worker_out": [f"worker-{newer_previous_worker_id.hex()}-123-456.out"],
+                "worker_err": [],
+            }
+        return {"worker_out": [], "worker_err": []}
+
+    logs_manager.list_logs = AsyncMock(side_effect=list_logs_side_effect)
+
+    # previous_incarnations is stored oldest-to-newest, so the newest-first
+    # fallback should hit `newer_previous_*` before `older_*`.
+    res = await logs_manager.resolve_filename(
+        node_id=current_node_id.hex(),
+        log_filename=None,
+        actor_id=actor_id.hex(),
+        task_id=None,
+        pid=None,
+        get_actor_fn=lambda _: generate_actor_data(
+            actor_id,
+            current_node_id,
+            current_worker_id,
+            previous_incarnations=[
+                (older_worker_id, older_node_id),
+                (newer_previous_worker_id, newer_previous_node_id),
+            ],
+        ),
+        timeout=10,
+    )
+    assert res.filename == f"worker-{newer_previous_worker_id.hex()}-123-456.out"
+    # The reported node_id must be the node where the log was actually
+    # found, not the actor's current node.
+    assert res.node_id == newer_previous_node_id.hex()
+
+    # Verify iteration order: current node/worker → newest previous → older.
+    calls = logs_manager.list_logs.await_args_list
+    node_ids_queried = [c.args[0] for c in calls]
+    workers_queried = [c.kwargs["glob_filter"] for c in calls]
+    assert node_ids_queried[0] == current_node_id.hex()
+    assert current_worker_id.hex() in workers_queried[0]
+    assert node_ids_queried[1] == newer_previous_node_id.hex()
+    assert newer_previous_worker_id.hex() in workers_queried[1]
+    # Search stops after the hit — older incarnation must never be queried.
+    assert all(older_worker_id.hex() not in c for c in workers_queried)
+    assert all(older_node_id.hex() not in n for n in node_ids_queried)
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_resolve_actor_during_restarting_window(logs_manager):
+    """During a RESTARTING window GCS clears `address` (both worker_id and
+    node_id are empty) but has already appended the departing incarnation
+    to `previous_incarnations`. Log lookup must still work — using the
+    most recent previous incarnation — rather than erroring out because
+    the current address is empty.
+    """
+    previous_node_id = NodeID(b"8" * 28)
+    actor_id = ActorID(b"2" * 16)
+    previous_worker_id = WorkerID(b"9" * 28)
+
+    logs_manager.list_logs = AsyncMock(
+        return_value={
+            "worker_out": [f"worker-{previous_worker_id.hex()}-123-456.out"],
+            "worker_err": [],
+        }
+    )
+
+    res = await logs_manager.resolve_filename(
+        node_id=None,
+        log_filename=None,
+        actor_id=actor_id.hex(),
+        task_id=None,
+        pid=None,
+        get_actor_fn=lambda _: generate_actor_data(
+            actor_id,
+            node_id=None,
+            worker_id=None,
+            previous_incarnations=[(previous_worker_id, previous_node_id)],
+            state=ActorTableData.ActorState.RESTARTING,
+        ),
+        timeout=10,
+    )
+    assert res.filename == f"worker-{previous_worker_id.hex()}-123-456.out"
+    assert res.node_id == previous_node_id.hex()
+    # Only one lookup, and it was against the previous incarnation's node.
+    logs_manager.list_logs.assert_awaited_once()
+    assert logs_manager.list_logs.await_args.args[0] == previous_node_id.hex()
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_resolve_actor_no_previous_incarnations(logs_manager):
+    """When previous_incarnations is empty and the current worker's log
+    file is absent, `resolve_filename` raises FileNotFoundError — the
+    fallback loop is not entered when there's nothing to fall back to.
+    """
+    node_id = NodeID(b"1" * 28)
+    actor_id = ActorID(b"2" * 16)
+    worker_id = WorkerID(b"3" * 28)
+
+    logs_manager.list_logs = AsyncMock(
+        return_value={"worker_out": [], "worker_err": []}
+    )
+
+    with pytest.raises(FileNotFoundError):
+        await logs_manager.resolve_filename(
+            node_id=node_id.hex(),
+            log_filename=None,
+            actor_id=actor_id.hex(),
+            task_id=None,
+            pid=None,
+            get_actor_fn=lambda _: generate_actor_data(actor_id, node_id, worker_id),
+            timeout=10,
+        )
+    # Only the current worker was queried; no fallback iteration happened
+    # because previous_incarnations is empty.
+    assert logs_manager.list_logs.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_resolve_actor_skips_unreachable_nodes(logs_manager):
+    """A previous incarnation's node is frequently gone by lookup time —
+    that is the common case after a node-death restart. `list_logs` raises
+    for those nodes instead of returning an empty result, and that must not
+    abort the fallback chain: the remaining candidates still get tried.
+    """
+    dead_current_node_id = NodeID(b"1" * 28)
+    dead_previous_node_id = NodeID(b"7" * 28)
+    live_node_id = NodeID(b"6" * 28)
+    actor_id = ActorID(b"2" * 16)
+    current_worker_id = WorkerID(b"3" * 28)
+    dead_previous_worker_id = WorkerID(b"5" * 28)
+    live_worker_id = WorkerID(b"4" * 28)
+
+    async def list_logs_side_effect(node_id_hex, _timeout, glob_filter):
+        # Both the current node and the newest previous node are gone.
+        if node_id_hex in (dead_current_node_id.hex(), dead_previous_node_id.hex()):
+            raise ValueError(f"Agent for node id: {node_id_hex} doesn't exist.")
+        return {
+            "worker_out": [f"worker-{live_worker_id.hex()}-123-456.out"],
+            "worker_err": [],
+        }
+
+    logs_manager.list_logs = AsyncMock(side_effect=list_logs_side_effect)
+
+    res = await logs_manager.resolve_filename(
+        node_id=dead_current_node_id.hex(),
+        log_filename=None,
+        actor_id=actor_id.hex(),
+        task_id=None,
+        pid=None,
+        get_actor_fn=lambda _: generate_actor_data(
+            actor_id,
+            dead_current_node_id,
+            current_worker_id,
+            previous_incarnations=[
+                (live_worker_id, live_node_id),
+                (dead_previous_worker_id, dead_previous_node_id),
+            ],
+        ),
+        timeout=10,
+    )
+    # The surviving node's log is found even though two earlier candidates
+    # raised on the way there.
+    assert res.filename == f"worker-{live_worker_id.hex()}-123-456.out"
+    assert res.node_id == live_node_id.hex()
+    assert logs_manager.list_logs.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_resolve_actor_clean_miss_when_a_node_is_reachable(
+    logs_manager,
+):
+    """If at least one candidate node answers but has no matching file, the
+    result is a plain "no such log" (FileNotFoundError) — an unreachable
+    node elsewhere in the chain must not turn a clean miss into a
+    node-lookup error.
+    """
+    live_node_id = NodeID(b"1" * 28)
+    dead_node_id = NodeID(b"7" * 28)
+    actor_id = ActorID(b"2" * 16)
+    current_worker_id = WorkerID(b"3" * 28)
+    previous_worker_id = WorkerID(b"5" * 28)
+
+    async def list_logs_side_effect(node_id_hex, _timeout, glob_filter):
+        if node_id_hex == dead_node_id.hex():
+            raise ValueError(f"Agent for node id: {node_id_hex} doesn't exist.")
+        return {"worker_out": [], "worker_err": []}
+
+    logs_manager.list_logs = AsyncMock(side_effect=list_logs_side_effect)
+
+    with pytest.raises(FileNotFoundError):
+        await logs_manager.resolve_filename(
+            node_id=live_node_id.hex(),
+            log_filename=None,
+            actor_id=actor_id.hex(),
+            task_id=None,
+            pid=None,
+            get_actor_fn=lambda _: generate_actor_data(
+                actor_id,
+                live_node_id,
+                current_worker_id,
+                previous_incarnations=[(previous_worker_id, dead_node_id)],
+            ),
+            timeout=10,
+        )
+
+
+@pytest.mark.asyncio
+async def test_logs_manager_resolve_actor_all_nodes_unreachable(logs_manager):
+    """When *every* candidate node is unreachable we surface the underlying
+    lookup failure rather than a misleading "could not find a log file".
+    This also preserves the pre-existing behaviour for actors with no
+    incarnation history whose only node is gone.
+    """
+    dead_node_id = NodeID(b"1" * 28)
+    other_dead_node_id = NodeID(b"7" * 28)
+    actor_id = ActorID(b"2" * 16)
+    current_worker_id = WorkerID(b"3" * 28)
+    previous_worker_id = WorkerID(b"5" * 28)
+
+    logs_manager.list_logs = AsyncMock(
+        side_effect=ValueError("Agent for node id doesn't exist.")
+    )
+
+    with pytest.raises(ValueError, match="Agent for node id"):
+        await logs_manager.resolve_filename(
+            node_id=dead_node_id.hex(),
+            log_filename=None,
+            actor_id=actor_id.hex(),
+            task_id=None,
+            pid=None,
+            get_actor_fn=lambda _: generate_actor_data(
+                actor_id,
+                dead_node_id,
+                current_worker_id,
+                previous_incarnations=[(previous_worker_id, other_dead_node_id)],
+            ),
+            timeout=10,
+        )
+    # Both candidates were attempted before giving up.
+    assert logs_manager.list_logs.await_count == 2
+
+
 async def get_actor_info_raises(actor_id):
     raise ValueError("should not be called")
 
@@ -798,7 +1076,9 @@ def test_logs_list(ray_start_with_dashboard):
     node_id = list_nodes()[0]["node_id"]
 
     def verify():
-        response = requests.get(webui_url + f"/api/v0/logs?node_id={node_id}")
+        response = request_with_auth_token(
+            "GET", webui_url + f"/api/v0/logs?node_id={node_id}"
+        )
         response.raise_for_status()
         result = json.loads(response.text)
         assert result["result"]
@@ -827,8 +1107,8 @@ def test_logs_list(ray_start_with_dashboard):
 
     def verify_filter():
         # Test that logs/list can be filtered
-        response = requests.get(
-            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*gcs*"
+        response = request_with_auth_token(
+            "GET", webui_url + f"/api/v0/logs?node_id={node_id}&glob=*gcs*"
         )
         response.raise_for_status()
         result = json.loads(response.text)
@@ -843,8 +1123,8 @@ def test_logs_list(ray_start_with_dashboard):
     wait_for_condition(verify_filter)
 
     def verify_worker_logs():
-        response = requests.get(
-            webui_url + f"/api/v0/logs?node_id={node_id}&glob=*worker*"
+        response = request_with_auth_token(
+            "GET", webui_url + f"/api/v0/logs?node_id={node_id}&glob=*worker*"
         )
         response.raise_for_status()
         result = json.loads(response.text)
@@ -881,7 +1161,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     node_id = list_nodes()[0]["node_id"]
 
     def verify_basic():
-        stream_response = requests.get(
+        stream_response = request_with_auth_token(
+            "GET",
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out&lines=5",
             stream=True,
@@ -910,7 +1191,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     ray.get(actor.write_log.remote([test_log_text.format("XXXXXX")]))
 
     # Test stream and fetching by actor id
-    stream_response = requests.get(
+    stream_response = request_with_auth_token(
+        "GET",
         webui_url
         + "/api/v0/logs/stream?&lines=-1"
         + f"&actor_id={actor._ray_actor_id.hex()}",
@@ -941,7 +1223,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
 
     # Test tailing log by actor id
     LINES = 150
-    file_response = requests.get(
+    file_response = request_with_auth_token(
+        "GET",
         webui_url
         + f"/api/v0/logs/file?&lines={LINES}"
         + "&actor_id="
@@ -954,7 +1237,8 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
     # Test query by pid & node_ip instead of actor id.
     node_ip = list(ray.nodes())[0]["NodeManagerAddress"]
     pid = ray.get(actor.getpid.remote())
-    file_response = requests.get(
+    file_response = request_with_auth_token(
+        "GET",
         webui_url
         + f"/api/v0/logs/file?node_ip={node_ip}&lines={LINES}"
         + f"&pid={pid}",
@@ -978,7 +1262,8 @@ def test_log_download_filename(ray_start_with_dashboard):
     download_filename = "dummy.out"
 
     def verify():
-        stream_response = requests.get(
+        stream_response = request_with_auth_token(
+            "GET",
             webui_url
             + (
                 f"/api/v0/logs/file?node_id={node_id}&filename=gcs_server.out"
@@ -1120,10 +1405,11 @@ def test_log_get_subdir(ray_start_with_dashboard):
     # HTTP endpoint
     def verify():
         # Direct logs stream
-        response = requests.get(
+        response = request_with_auth_token(
+            "GET",
             webui_url
             + f"/api/v0/logs/file?node_id={node_id}"
-            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}"
+            + f"&filename={urllib.parse.quote('test_subdir/test_#file.log')}",
         )
         assert response.status_code == 200, response.reason
         assert "test log" in response.text

@@ -1,7 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -16,7 +16,18 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
+from ray.data._internal.tensor_extensions.chunked_tensor_take import (
+    PreparedChunkedTensorTake,
+    _log_take_fallback,
+    _TakeFallbackReason,
+    try_prepare_chunked_tensor_take,
+)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.transform_pyarrow import (
+    _concatenate_extension_column,
+    _is_multi_chunk_extension_column,
+    _is_pa_extension_type,
+)
 
 # Minimum version support {String,List,Binary}View types
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
@@ -98,6 +109,124 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     return False
 
 
+def _has_unhashable_polars_types(schema: "pyarrow.Schema") -> bool:
+    """Return True if this schema must not be hashed with Polars.
+
+    Union columns are the one type ``pl.from_arrow`` can't convert. Arrow
+    extension types (Ray's tensor / Python-object) don't need gating: Polars
+    loads them as their storage type and hashes that, deterministically.
+
+    Checked on the schema (not per block) so that every block of a dataset
+    picks the same hash algorithm; Polars and pandas hashes are incompatible.
+    """
+    for field in schema:
+        if pyarrow.types.is_union(field.type):
+            return True
+    return False
+
+
+def _dictionary_decoded_type(dtype: "pyarrow.DataType") -> "pyarrow.DataType":
+    """Return ``dtype`` with every dictionary type replaced by its value type.
+
+    Recurses into structs, lists, and maps: a dictionary nested inside a
+    composite key must be decoded too, or it hashes as Categorical while a
+    plain-encoded block of the same values hashes as String.
+    """
+    if pyarrow.types.is_dictionary(dtype):
+        return _dictionary_decoded_type(dtype.value_type)
+    if pyarrow.types.is_struct(dtype):
+        return pyarrow.struct(
+            [field.with_type(_dictionary_decoded_type(field.type)) for field in dtype]
+        )
+    if pyarrow.types.is_map(dtype):
+        return pyarrow.map_(
+            _dictionary_decoded_type(dtype.key_type),
+            _dictionary_decoded_type(dtype.item_type),
+        )
+    if pyarrow.types.is_list(dtype):
+        return pyarrow.list_(_dictionary_decoded_type(dtype.value_type))
+    if pyarrow.types.is_large_list(dtype):
+        return pyarrow.large_list(_dictionary_decoded_type(dtype.value_type))
+    if pyarrow.types.is_fixed_size_list(dtype):
+        return pyarrow.list_(
+            _dictionary_decoded_type(dtype.value_type), dtype.list_size
+        )
+    return dtype
+
+
+def _hash_partition_vectorized(
+    projected_table: "pyarrow.Table",
+    num_partitions: int,
+) -> np.ndarray:
+    """
+    For each row, calculates hash(row_values) % num_partitions in a vectorized
+    manner using Polars, falling back to :func:`_hash_partition` when Polars is
+    unavailable or cannot handle the input.
+
+    Args:
+        projected_table: Arrow table containing rows to hash.
+        num_partitions: Number of target partitions (must be > 0).
+
+    Returns:
+        np.ndarray: Array of hashed values for each row.
+    """
+    try:
+        import polars as pl
+        from polars.exceptions import PolarsError
+    except ImportError:
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+    if _has_unhashable_polars_types(projected_table.schema):
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+    # Polars hashes dictionary (Categorical) values differently from the same
+    # values plainly encoded, so a dict-encoded block would partition a key
+    # differently from a plain-encoded block of the same dataset. Decode to
+    # the value type (at any nesting depth) before hashing.
+    decoded_schema = pyarrow.schema(
+        [f.with_type(_dictionary_decoded_type(f.type)) for f in projected_table.schema]
+    )
+    if decoded_schema != projected_table.schema:
+        projected_table = projected_table.cast(decoded_schema)
+
+    try:
+        df: "pl.DataFrame" = pl.from_arrow(projected_table, rechunk=False)
+        return (df.hash_rows(seed=0) % num_partitions).cast(pl.Int64).to_numpy()
+    except (PolarsError, TypeError, ValueError, NotImplementedError) as e:
+        logger.warning(
+            f"Polars-based hash partitioning failed, falling back to the "
+            f"default implementation: {e}"
+        )
+        return _hash_partition(projected_table, num_partitions=num_partitions)
+
+
+def _group_indices(
+    partition_mask: np.ndarray, counts: np.ndarray
+) -> Tuple["pyarrow.Array", np.ndarray]:
+    """Group row indices by their partition id.
+
+    Args:
+        partition_mask: partition_mask[i] is the partition id of row i.
+        counts: counts[j] is the number of rows assigned to partition j.
+
+    Returns:
+        - grouped_indices: row indices ordered so that partition 0's rows come
+          first, then partition 1's, etc. Original order is kept within each
+          partition (Arrow's ``sort_indices`` is a stable sort).
+        - offsets: offsets[j] is where partition j starts in
+          ``grouped_indices`` (exclusive prefix sum of ``counts``).
+
+    Example:
+        partition_mask=[1,0,1,0], counts=[2,2] returns
+        grouped_indices=[1,3,0,2] and offsets=[0,2].
+    """
+    import pyarrow.compute as pac
+
+    offsets = np.concatenate((np.zeros(1, dtype=counts.dtype), counts)).cumsum()[:-1]
+    grouped_indices = pac.sort_indices(pyarrow.array(partition_mask))
+    return grouped_indices, offsets
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -145,9 +274,6 @@ def hash_partition(
           dictionary, rather than a list
     """
 
-    import numpy as np
-    import pyarrow.compute as pac
-
     assert num_partitions > 0
 
     if table.num_rows == 0:
@@ -156,29 +282,117 @@ def hash_partition(
         return {0: table}
 
     projected_table = table.select(hash_cols)
-    partitions_array = _hash_partition(projected_table, num_partitions=num_partitions)
-    # bincount needs signed int; pandas hash path returns uint64.
+    partitions_array = _hash_partition_vectorized(projected_table, num_partitions)
+    # bincount needs signed int; the pandas hash path returns uint64.
     partitions_array = np.asarray(partitions_array, dtype=np.int64)
 
-    # Sort rows by partition id so each partition occupies a contiguous range
-    # of the result, then carve out partitions with zero-copy slices. The N
-    # output partitions together form a permutation of `table`, so one big
+    # Group row indices by partition id so each partition occupies a contiguous
+    # range of the result, then carve out partitions with zero-copy slices. The
+    # N output partitions together form a permutation of `table`, so one big
     # take + N slices is equivalent to N independent takes and pays the take
     # fixed cost once.
-    sort_indices = pac.sort_indices(pyarrow.array(partitions_array))
-    counts = np.bincount(partitions_array, minlength=num_partitions)
-    offsets = np.zeros(num_partitions + 1, dtype=np.int64)
-    offsets[1:] = np.cumsum(counts)
+    counts = np.bincount(partitions_array, minlength=num_partitions).astype(np.int64)
+    grouped_indices, offsets = _group_indices(partitions_array, counts)
 
-    sorted_table = take_table(table, sort_indices)
+    sorted_table = take_table(table, grouped_indices)
     return {
-        p: sorted_table.slice(int(offsets[p]), int(counts[p]))
+        int(p): sorted_table.slice(int(offsets[p]), int(counts[p]))  # noqa
         # NOTE: Since some of the partitions might be empty, we're filtering out
         #       indices of the length 0 to make sure we're not passing around
         #       empty tables
-        for p in range(num_partitions)
-        if counts[p] > 0
+        for p in np.nonzero(counts)[0]
     }
+
+
+def _try_normalize_take_indices(
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+    row_count: int,
+) -> Optional[np.ndarray]:
+    """Normalize ``take_table`` indices once for the chunked tensor fast path.
+
+    This is the input boundary between Arrow's broad ``take`` API and the
+    internal tensor gather kernel. It performs all index-dependent work:
+
+    * Python lists are first parsed by Arrow so their type inference and errors
+      stay consistent with the standard path.
+    * Arrow arrays (contiguous or chunked) must have a non-null integer logical
+      type before conversion. This prevents non-integer logical types whose
+      NumPy representation happens to be integral from entering the fast path.
+    * The resulting NumPy array must be one-dimensional, native-endian,
+      integral, non-negative, and within ``row_count``.
+
+    On success, the returned array is always a native ``np.int64`` array. Fast
+    path consumers rely on that contract and must not reinterpret or rescan the
+    indices. Unsupported or invalid inputs return ``None`` so ``take_table`` can
+    preserve the standard Arrow fallback and its exception behavior.
+
+    Args:
+        indices: Row indices accepted by ``take_table``.
+        row_count: Number of rows in the source table.
+
+    Returns:
+        Normalized indices when the input satisfies the fast-path contract.
+        Otherwise, ``None`` and the caller must preserve the standard fallback.
+    """
+    if isinstance(indices, np.ma.MaskedArray):
+        return None
+
+    if isinstance(indices, list):
+        try:
+            indices = pyarrow.array(indices)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    if isinstance(indices, (pyarrow.Array, pyarrow.ChunkedArray)):
+        if indices.null_count > 0 or not pyarrow.types.is_integer(indices.type):
+            return None
+        values = indices.to_numpy(zero_copy_only=False)
+    elif isinstance(indices, np.ndarray):
+        values = np.asarray(indices)
+    else:
+        return None
+
+    if not values.dtype.isnative:
+        return None
+    if values.ndim != 1 or values.dtype.kind not in "iu":
+        return None
+    if values.size > 0:
+        if values.dtype.kind == "i" and np.any(values < 0):
+            return None
+        if np.any(values >= row_count):
+            return None
+    return values.astype(np.int64, copy=False)
+
+
+def _prepare_chunked_tensor_takes(
+    table: "pyarrow.Table",
+    indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
+) -> Dict[int, PreparedChunkedTensorTake]:
+    """Prepare eligible tensor columns for one table take request.
+
+    The index length is the exact output-size bound required by column
+    preparation. An unsized input produces no plans so the standard Arrow path
+    remains responsible for its existing exception behavior. This helper only
+    coordinates request-level preparation; all column eligibility rules remain
+    in ``try_prepare_chunked_tensor_take``.
+    """
+    try:
+        max_output_rows = len(indices)
+    except TypeError:
+        _log_take_fallback(_TakeFallbackReason.UNSUPPORTED_INDICES)
+        return {}
+
+    prepared_takes = {}
+    for index, column in enumerate(table.columns):
+        if not _is_multi_chunk_extension_column(column):
+            continue
+        prepared = try_prepare_chunked_tensor_take(
+            column,
+            max_output_rows=max_output_rows,
+        )
+        if prepared is not None:
+            prepared_takes[index] = prepared
+    return prepared_takes
 
 
 def take_table(
@@ -188,18 +402,54 @@ def take_table(
     """Select rows from the table.
 
     This method is an alternative to pyarrow.Table.take(), which breaks for
-    extension arrays. This is exposed as a static method for easier use on
-    intermediate tables, not underlying an ArrowBlockAccessor.
-    """
-    from ray.data._internal.utils.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_pa_extension_type,
-    )
+    extension arrays. Keeping the operation at table level also allows callers
+    to use it on intermediate tables without constructing an ArrowBlockAccessor.
 
+    When the operational fast path is enabled, eligible multi-chunk tensor
+    columns are prepared once before the per-column loop. Indices are normalized
+    only if at least one preparation succeeds, and the normalized representation
+    is shared by all prepared columns. Preparation validates the exact request
+    size. Unexpected preparation or execution failures are logged with a
+    traceback and retried through the standard path outside the exception handler. If the feature
+    is disabled or preparation or normalization fails, the original ``indices``
+    object is passed unchanged to the standard Arrow fallback.
+    """
     if any(_is_pa_extension_type(col.type) for col in table.columns):
+        try:
+            prepared_takes = _prepare_chunked_tensor_takes(table, indices)
+
+            if prepared_takes:
+                normalized_indices = _try_normalize_take_indices(
+                    indices, table.num_rows
+                )
+                if normalized_indices is None:
+                    _log_take_fallback(_TakeFallbackReason.UNSUPPORTED_INDICES)
+            else:
+                normalized_indices = None
+        except Exception:
+            logger.warning(
+                "Tensor take preparation failed; using standard take", exc_info=True
+            )
+            prepared_takes = {}
+            normalized_indices = None
+
         new_cols = []
-        for col in table.columns:
-            if _is_pa_extension_type(col.type) and col.num_chunks > 1:
+        for index, col in enumerate(table.columns):
+            if _is_multi_chunk_extension_column(col):
+                prepared = prepared_takes.get(index)
+                if normalized_indices is not None and prepared is not None:
+                    try:
+                        result = prepared.take(normalized_indices)
+                    except Exception:
+                        logger.warning(
+                            "Tensor take failed for column %s; using standard take",
+                            index,
+                            exc_info=True,
+                        )
+                    else:
+                        new_cols.append(result)
+                        continue
+                # Regular path.
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)

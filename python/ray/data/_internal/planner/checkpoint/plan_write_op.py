@@ -260,7 +260,6 @@ def _generate_prepare_checkpoint_transform(
 
     return BlockMapTransformFn(
         prepare_checkpoint,
-        is_udf=False,
         disable_block_shaping=True,
     )
 
@@ -284,6 +283,11 @@ def _generate_commit_checkpoint_transform(
     def commit_checkpoints(
         blocks: Iterable[Block], ctx: TaskContext
     ) -> Iterable[Block]:
+        # Each stage runs on the first pull from it, so nothing upstream has
+        # run yet. `prepare_checkpoint` is what leaves the pending checkpoints
+        # on `ctx`. Drain first, or there is nothing here to commit.
+        blocks = list(blocks)
+
         # Get pending checkpoints written in pre-write phase
         pending_checkpoints: List[PendingCheckpoint] = ctx.kwargs.get(
             PENDING_CHECKPOINTS_KWARG_NAME, []
@@ -297,7 +301,6 @@ def _generate_commit_checkpoint_transform(
 
     return BlockMapTransformFn(
         commit_checkpoints,
-        is_udf=False,
         disable_block_shaping=True,
     )
 
@@ -344,7 +347,6 @@ def _generate_non_atomic_write_checkpoint_transform(
 
     return BlockMapTransformFn(
         write_checkpoint,
-        is_udf=False,
         # NOTE: No need for block-shaping
         disable_block_shaping=True,
     )

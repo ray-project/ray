@@ -20,11 +20,12 @@ from ray._private.accelerators.tpu import (
     _parse_topology_dims,
     get_chips_per_host,
     get_num_chips_from_topology,
+    get_tpu_resource_per_chip,
     infer_tpu_pod_type_from_topology,
     reserve_tpu_slice,
 )
 from ray._private.client_mode_hook import client_mode_wrap
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -33,8 +34,6 @@ from ray.util.placement_group import (
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR = "RAY_TPU_RESOURCE_PER_CHIP"
 
 
 @PublicAPI(stability="alpha")
@@ -128,11 +127,6 @@ def get_tpu_num_slices_for_workers(
     if not topology or not accelerator_type:
         return 1
 
-    if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = int(
-            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
-        )
-
     try:
         # Calculate how many workers fit in a single slice (num_slices=1)
         # given the topology and resources per worker.
@@ -185,9 +179,7 @@ def get_tpu_worker_resources(
         - worker_resources: The resource dictionary for a single worker.
     """
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = int(
-            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
-        )
+        tpu_resource_per_chip = get_tpu_resource_per_chip()
 
     if tpu_resource_per_chip <= 0:
         raise ValueError("`tpu_resource_per_chip` must be a positive integer.")
@@ -409,9 +401,7 @@ def get_num_ready_tpu_slices(
         The integer count of fully ready and available TPU slices.
     """
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = int(
-            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
-        )
+        tpu_resource_per_chip = get_tpu_resource_per_chip()
     intact_slices = _get_intact_tpu_slices(
         topology, accelerator_type, tpu_resource_per_chip
     )
@@ -473,9 +463,7 @@ def get_num_tpu_slices(
         The integer count of physically intact TPU slices.
     """
     if tpu_resource_per_chip is None:
-        tpu_resource_per_chip = int(
-            os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
-        )
+        tpu_resource_per_chip = get_tpu_resource_per_chip()
     return len(
         _get_intact_tpu_slices(topology, accelerator_type, tpu_resource_per_chip)
     )
@@ -585,9 +573,7 @@ class SlicePlacementGroup:
         self._num_slices = num_slices
         self._head_reservation_timeout_s = head_reservation_timeout_s
         if tpu_resource_per_chip is None:
-            tpu_resource_per_chip = int(
-                os.environ.get(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, 1)
-            )
+            tpu_resource_per_chip = get_tpu_resource_per_chip()
         self._tpu_resource_per_chip = tpu_resource_per_chip
 
         # Calculate number of bundles and bundle resources for specified TPU topology.
@@ -979,7 +965,7 @@ def slice_placement_group(
 
 
 @PublicAPI(stability="alpha")
-def dispatch(
+def run_on_slice(
     fn: Any,
     *args: Any,
     topology: Optional[str] = None,
@@ -1017,7 +1003,7 @@ def dispatch(
             ignored otherwise.
         tpu_slice: An existing :class:`SlicePlacementGroup` to schedule
             onto. When provided, the slice is used directly and
-            ``dispatch`` does **not** create, modify, or tear down
+            ``run_on_slice`` does **not** create, modify, or tear down
             any placement groups. When ``None`` (default), a new slice
             is reserved internally and its head placement groups are
             released once the worker placement group becomes ready.
@@ -1057,7 +1043,7 @@ def dispatch(
         :skipif: True
 
         import ray
-        from ray.util.tpu import dispatch, slice_placement_group
+        from ray.util.tpu import run_on_slice, slice_placement_group
 
         @ray.remote
         def my_tpu_task():
@@ -1067,15 +1053,15 @@ def dispatch(
         # One-shot: reserve a v6e 4x4 slice, run on every host, then
         # release automatically when the driver exits.
         results = ray.get(
-            dispatch(my_tpu_task, topology="4x4", accelerator_version="v6e")
+            run_on_slice(my_tpu_task, topology="4x4", accelerator_version="v6e")
         )
 
         # Reuse an existing slice across multiple calls.
         slice_handle = slice_placement_group(topology="4x4", accelerator_version="v6e")
         ray.get(slice_handle.slice_placement_group.ready())
 
-        results1 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
-        results2 = ray.get(dispatch(my_tpu_task, tpu_slice=slice_handle))
+        results1 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
+        results2 = ray.get(run_on_slice(my_tpu_task, tpu_slice=slice_handle))
         slice_handle.shutdown()
     """
 
@@ -1187,6 +1173,22 @@ def dispatch(
             )
 
     return results
+
+
+# Deprecated alias — ``dispatch`` was the original name of ``run_on_slice``.
+# New code should use ``run_on_slice``.
+@PublicAPI(stability="alpha")
+@Deprecated(
+    message="'dispatch' is deprecated and has been renamed to 'run_on_slice'. "
+    "Please use 'run_on_slice' instead.",
+    warning=True,
+)
+def dispatch(*args: Any, **kwargs: Any) -> "List[ray.ObjectRef]":
+    """Run a remote function on every host in a TPU slice.
+
+    Deprecated, please use ``run_on_slice`` instead.
+    """
+    return run_on_slice(*args, **kwargs)
 
 
 @PublicAPI(stability="alpha")

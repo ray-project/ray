@@ -170,7 +170,7 @@ class MCAPDatasource(FileBasedDatasource):
             yield builder.build()
 
     def _should_include_message(
-        self, schema: "Schema", channel: "Channel", message: "Message"
+        self, schema: Optional["Schema"], channel: "Channel", message: "Message"
     ) -> bool:
         """Check if a message should be included based on filters.
 
@@ -179,7 +179,8 @@ class MCAPDatasource(FileBasedDatasource):
         MCAP reader, so only message_types filtering is needed here.
 
         Args:
-            schema: MCAP schema object containing message type information.
+            schema: MCAP schema object containing message type information, or
+                ``None`` when the channel declares no schema.
             channel: MCAP channel object containing topic and metadata.
             message: MCAP message object containing the actual data.
 
@@ -193,7 +194,11 @@ class MCAPDatasource(FileBasedDatasource):
         return True
 
     def _message_to_dict(
-        self, schema: "Schema", channel: "Channel", message: "Message", path: str
+        self,
+        schema: Optional["Schema"],
+        channel: "Channel",
+        message: "Message",
+        path: str,
     ) -> Dict[str, Any]:
         """Convert MCAP message to dictionary format.
 
@@ -201,7 +206,8 @@ class MCAPDatasource(FileBasedDatasource):
         format suitable for Ray Data processing.
 
         Args:
-            schema: MCAP schema object containing message type and encoding info.
+            schema: MCAP schema object containing message type and encoding
+                info, or ``None`` when the channel declares no schema.
             channel: MCAP channel object containing topic and channel metadata.
             message: MCAP message object containing the actual message data.
             path: Path to the source file (for include_paths functionality).

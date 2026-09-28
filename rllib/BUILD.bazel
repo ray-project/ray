@@ -2682,7 +2682,7 @@ py_test(
 
 py_test(
     name = "test_offline_env_runner",
-    size = "small",
+    size = "medium",
     srcs = ["offline/tests/test_offline_env_runner.py"],
     tags = [
         "offline",
@@ -3210,7 +3210,7 @@ py_test(
     size = "small",
     srcs = ["utils/replay_buffers/tests/test_prioritized_episode_buffer.py"],
     tags = [
-        "team::rllib",
+        "team:rllib",
         "utils",
     ],
     deps = [":conftest"],

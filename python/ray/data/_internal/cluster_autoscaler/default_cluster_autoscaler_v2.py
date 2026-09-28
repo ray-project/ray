@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
 from .base_autoscaling_coordinator import (
+    STANDARD_RESOURCE_TYPES,
     AutoscalingCoordinator,
     LabelSelector,
     LabelValue,
@@ -397,7 +398,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._autoscaling_coordinator.request_resources(
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
-            request_remaining=True,
+            request_remaining=STANDARD_RESOURCE_TYPES,
         )
         if resource_request and update_non_empty_request_state:
             self._last_non_empty_resource_request = [
@@ -428,6 +429,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         """Get total resources available from the autoscaling coordinator."""
         resources = self._autoscaling_coordinator.get_reserved_resources()
         total = ExecutionResources.zero()
-        for res in resources:
+        for res in resources.values():
             total = total.add(ExecutionResources.from_resource_dict(res))
         return total
