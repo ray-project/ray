@@ -21,13 +21,17 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
+    List,
+    Literal,
     Optional,
+    Union,
 )
 
 import pyarrow as pa
 
 from ray.data._internal.datasource_v2 import InputSplit
 from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
+from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -35,11 +39,10 @@ if TYPE_CHECKING:
 
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
-    )
-    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-        InMemorySizeEstimator,
+        PartitionHints,
     )
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
 @DeveloperAPI
@@ -67,19 +70,28 @@ class DatasourceCategory(Enum):
 class DataSourceV2(ABC, Generic[InputSplit]):
     """Abstract base class for V2 datasources.
 
-    DataSourceV2 is the entry point for reading data from a source. It provides:
-    1. File listing (for file-based sources) - via _get_file_indexer()
+    The entry point for reading data from a source. It provides:
+
+    1. File listing, via ``_get_file_indexer()``
     2. Schema inference
-    3. Size estimation
+    3. Read-task grouping, via ``get_file_partitioner()``
     4. Scanner creation
 
-    Subclasses should implement the abstract methods and can optionally
-    override _get_file_indexer(), get_size_estimator(), and optionally
-    get_file_partitioner() for file-based sources.
+    Do not extend this class directly. Every datasource extends one of its two
+    subclasses, and the read path rejects anything else:
+
+    - :class:`FileDataSourceV2` when the framework finds the files by walking a
+      filesystem (Parquet, CSV, JSON, images).
+    - :class:`DataSourceWithMetadata` when the source finds its own data through a
+      catalog, table metadata or a database (Iceberg, Delta, Hudi, Lance, SQL).
+
+    Implementing the abstract members is enough for a new source to work end
+    to end. ``resolve_partitioning()`` has a default and is optional to
+    override.
 
     Example::
 
-        datasource = ParquetDatasourceV2()
+        datasource = ParquetDatasourceV2(paths)
         indexer = datasource._get_file_indexer()
         # List files with optional sampling
         for manifest in indexer.list_files(paths, filesystem=fs):
@@ -130,38 +142,54 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         return self._supports_distributed_reads
 
-    def _get_file_indexer(self) -> Optional[FileIndexer]:
-        """Return FileIndexer component if applicable.
+    @property
+    @abstractmethod
+    def paths(self) -> List[str]:
+        """Listing inputs, one ``ListFiles`` task each, passed to the indexer
+        unread -- the framework never interprets them.
 
-        Override this for file-based datasources to provide file discovery.
-
-        Returns:
-            FileIndexer instance, or None for non-file-based sources.
+        File sources return the roots to walk. A catalog- or engine-backed
+        source, whose indexer already knows what to read, returns a single
+        identifier label. Must be non-empty, or ``ListFiles`` schedules no task
+        and the read is silently empty.
         """
-        return None
+        ...
 
-    def get_file_partitioner(self, **kwargs) -> Optional["FilePartitioner"]:
+    @abstractmethod
+    def _get_file_indexer(self) -> FileIndexer:
+        """Indexer that ``ListFiles`` runs to turn :attr:`paths` into
+        ``FileManifest`` blocks.
+
+        Abstract rather than defaulted, because a default would commit a new
+        format to per-file listing without anyone choosing it. Formats without
+        usable file metadata return ``NonSamplingFileIndexer``; Parquet returns
+        ``FooterFileIndexer``.
+        """
+        ...
+
+    @abstractmethod
+    def get_file_partitioner(
+        self, *, hints: Optional["PartitionHints"] = None
+    ) -> Optional["FilePartitioner"]:
         """Partitioner that groups this source's listing rows into read units.
 
-        Defaults to the size-estimating ``RoundRobinPartitioner``. Override when
-        the indexer emits rows carrying richer metadata (e.g. Parquet row-group
-        stats) that a different grouping strategy can exploit.
-        """
-        from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (  # noqa: E501
-            RoundRobinPartitioner,
-        )
+        Each listing task holds its own pickled copy of the partitioner, so
+        anything it carries (such as an ``InMemorySizeEstimator``) must pickle
+        cheaply; any I/O the estimator does runs once per listing task.
+        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats;
+        return something else when the listing rows carry metadata worth
+        grouping on (Parquet row-group stats), and ``None`` to emit each
+        listing block as one read unit.
 
-        return RoundRobinPartitioner(**kwargs)
-
-    def get_size_estimator(self) -> Optional[InMemorySizeEstimator]:
-        """Return size estimator for this datasource.
-
-        Override this to provide format-specific size estimation.
+        Args:
+            hints: Sizing hints derived from ``DataContext`` and
+                ``override_num_blocks``, always passed by keyword. Optional
+                so an override that ignores them can take ``**kwargs``.
 
         Returns:
-            InMemorySizeEstimator instance, or None if not supported.
+            The partitioner, or ``None`` to emit listing blocks unchanged.
         """
-        return None
+        ...
 
     @property
     @abstractmethod
@@ -209,7 +237,8 @@ class DataSourceV2(ABC, Generic[InputSplit]):
 
         Args:
             schema: Schema for the data to read.
-            filesystem: Optional filesystem for file-based sources.
+            filesystem: :attr:`FileDataSourceV2.filesystem`, or ``None`` for
+                a :class:`DataSourceWithMetadata`.
             **options: Additional datasource-specific options.
 
         Returns:
@@ -230,3 +259,59 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         path to read keys from.
         """
         return None
+
+
+@DeveloperAPI
+class FileDataSourceV2(DataSourceV2[FileManifest]):
+    """Base class for sources whose files the framework finds itself.
+
+    ``ListFiles`` walks :attr:`paths` through :attr:`filesystem`, keeps the
+    files matching :attr:`file_extensions` and applies :attr:`shuffle` to the
+    listing. Parquet, CSV and every other plain file format belong here; a
+    source that finds its own data extends :class:`DataSourceWithMetadata` instead.
+    """
+
+    @property
+    @abstractmethod
+    def filesystem(self) -> "FileSystem":
+        """PyArrow filesystem the indexer and scanner list and read through.
+
+        Resolve it in ``__init__`` together with :attr:`paths`, see
+        ``_resolve_paths_and_filesystem``.
+        """
+        ...
+
+    @property
+    def file_extensions(self) -> Optional[List[str]]:
+        """File extensions to keep while listing; ``None`` keeps every file."""
+        return None
+
+    @property
+    def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
+        """File-level shuffle the user asked for; ``None`` means no shuffle.
+
+        ``"files"`` shuffles with a seed drawn per execution; a
+        :class:`FileShuffleConfig` pins the seed.
+        """
+        return None
+
+
+@DeveloperAPI
+class DataSourceWithMetadata(DataSourceV2[InputSplit]):
+    """Base class for sources that find their own data.
+
+    The indexer from :meth:`_get_file_indexer` asks a catalog, a table format's
+    metadata or a database what to read, so the framework has no filesystem to
+    walk and passes ``None`` wherever a :class:`FileDataSourceV2` supplies one.
+    Iceberg, Delta, Hudi, Lance and SQL sources belong here.
+
+    :attr:`paths` stays abstract and is usually one label such as
+    ``"iceberg://db.table"``, handed to the indexer unread.
+    """
+
+    @property
+    def schema_needs_file_sample(self) -> bool:
+        """``False``: the schema comes from the same metadata as the listing,
+        not from opening a data file. Override if a format needs the sample.
+        """
+        return False

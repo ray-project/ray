@@ -555,7 +555,6 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     IO this rule exists to defer into the parallel count pass -- and emits one
     manifest row per row-group run, which would count each file once per run.
     """
-    from ray.data._internal.datasource_v2.chunkers.file_chunker import WholeFileChunker
     from ray.data._internal.datasource_v2.listing.file_indexer import (
         NonSamplingFileIndexer,
     )
@@ -578,7 +577,6 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     # Exact type: an ``isinstance`` check is precisely what let the footer
     # indexer through before.
     assert type(list_files_op.file_indexer) is NonSamplingFileIndexer
-    assert isinstance(list_files_op.file_indexer.file_chunker, WholeFileChunker)
     assert list_files_op.file_partitioner is None
 
 

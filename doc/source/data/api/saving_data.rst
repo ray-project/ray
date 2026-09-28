@@ -243,4 +243,3 @@ Pandas refs
    :toctree: doc/
 
    Dataset.to_pandas_refs
-

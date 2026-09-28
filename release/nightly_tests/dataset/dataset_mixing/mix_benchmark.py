@@ -55,7 +55,10 @@ def _random_shuffle_fn(batch: pa.Table) -> pa.Table:
 
 
 def main(args):
-    benchmark = Benchmark()
+    # 1 is ~2x the p90 scheduling loop duration observed on Ray 2.59.
+    #
+    # TODO: Ratchet this down as we improve scheduling loop overhead.
+    benchmark = Benchmark(max_sched_loop_duration_s=1)
 
     stopping = MixStoppingCondition(args.stopping_condition)
     weights = args.weights or [1.0] * args.num_datasets
