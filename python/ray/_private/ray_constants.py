@@ -457,6 +457,9 @@ RAYGO_AVAILABLE_COMMAND_SETUP_WORKER = "setup_worker"
 RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER = "defaultworker"
 RAYGO_AVAILABLE_COMMAND_RUNTIME_ENV_AGENT = "runtime-env-agent"
 
+# Enable launching the Go runtime env agent instead of the Python one.
+ENABLE_GO_RUNTIME_ENV_AGENT = env_bool("RAY_ENABLE_GO_RUNTIME_ENV_AGENT", False)
+
 # Regex for log messages to never deduplicate, or None. This takes precedence over
 # the skip regex below. A default pattern is set for testing.
 TESTING_NEVER_DEDUP_TOKEN = "__ray_testing_never_deduplicate__"

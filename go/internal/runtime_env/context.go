@@ -33,7 +33,7 @@ import (
 	"github.com/ray-project/ray/go/proto"
 )
 
-// envVarPattern matches ${VAR} reference patterns in environment variables.
+// envVarPattern matches ${VAR} references in environment variable values.
 var envVarPattern = regexp.MustCompile(`\$\{[A-Z0-9_]+\}`)
 
 var runtimeGOOS = runtime.GOOS
@@ -89,11 +89,11 @@ func (c *RuntimeEnvContext) IsEmpty() bool {
 		c.GoExecutable == ""
 }
 
-// applyEnvVars applies the environment variable configuration.
+// applyEnvVars applies the configured environment variables.
 func (c *RuntimeEnvContext) applyEnvVars() error {
 	for k, v := range c.EnvVars {
-		// Expand ${VAR} and $VAR forms with os.ExpandEnv, then remove any
-		// remaining ${VAR} references using the precompiled envVarPattern.
+		// Expand variables of the form ${VAR} and $VAR with os.ExpandEnv,
+		// then use the precompiled envVarPattern to drop any remaining ${VAR} references.
 		expanded := os.ExpandEnv(v)
 		if err := os.Setenv(k, envVarPattern.ReplaceAllString(expanded, "")); err != nil {
 			return fmt.Errorf("failed to set env %s: %w", k, err)
@@ -102,16 +102,16 @@ func (c *RuntimeEnvContext) applyEnvVars() error {
 	return nil
 }
 
-// ExecWorker executes the Worker process.
-// Corresponds to Python: RuntimeEnvContext.exec_worker()
+// ExecWorker executes the worker process.
+// It mirrors the Python RuntimeEnvContext.exec_worker().
 //
-// Args:
-//   - passthroughArgs: args passed to the worker
-//   - language: worker language type (PYTHON, JAVA, CPP, GO)
+// Parameters:
+//   - passthroughArgs: arguments passed through to the worker
+//   - language: worker language (PYTHON, JAVA, CPP, GO)
 //
-// Note: On Unix systems it execs to replace the current process; on Windows it uses exec.Command().Run().
+// On Unix the current process is replaced via exec; on Windows exec.Command().Run() is used.
 func (c *RuntimeEnvContext) ExecWorker(passthroughArgs []string, language proto.Language) error {
-	// 1. Apply environment variables.
+	// 1. Apply the environment variables.
 	if err := c.applyEnvVars(); err != nil {
 		return err
 	}
@@ -122,15 +122,15 @@ func (c *RuntimeEnvContext) ExecWorker(passthroughArgs []string, language proto.
 		return err
 	}
 
-	// 3. Execute (Unix: exec, Windows: exec.Command).
+	// 3. Execute it (Unix: exec, Windows: exec.Command).
 	if runtime.GOOS == "windows" {
 		return c.execWorkerWindows(cmd)
 	}
 	return c.execWorkerUnix(cmd)
 }
 
-// buildWorkerCommand builds the worker startup command.
-// It returns the command array and an error.
+// buildWorkerCommand builds the worker launch command.
+// It returns the command argv and an error.
 func (c *RuntimeEnvContext) buildWorkerCommand(passthroughArgs []string, language proto.Language) ([]string, error) {
 	var executable []string
 
@@ -166,7 +166,7 @@ func (c *RuntimeEnvContext) buildWorkerCommand(passthroughArgs []string, languag
 		executable = c.buildExecPrefix(c.GoExecutable)
 
 	default:
-		// Unknown language, use the exec prefix.
+		// Unknown language: fall back to the exec prefix.
 		if runtimeGOOS == "windows" {
 			executable = []string{}
 		} else {
@@ -209,15 +209,14 @@ func (c *RuntimeEnvContext) buildExecPrefix(executable string) []string {
 	return []string{"exec", executable}
 }
 
-// execWorkerUnix executes the worker on Unix systems (using syscall.Exec to replace the current process).
+// execWorkerUnix executes the worker on Unix, replacing the current process via syscall.Exec.
 func (c *RuntimeEnvContext) execWorkerUnix(cmd []string) error {
 	if len(cmd) == 0 || cmd[0] == "" {
 		return fmt.Errorf("no executable specified")
 	}
 
-	// macOS special handling: DYLD_LIBRARY_PATH.
-	// The environment variable must be inlined into the bash -c command string,
-	// e.g.: DYLD_LIBRARY_PATH=/path cmd args
+	// macOS special case: DYLD_LIBRARY_PATH.
+	// The variable must be inlined into the bash -c command string, e.g. DYLD_LIBRARY_PATH=/path cmd args.
 	var envPrefix string
 	if runtime.GOOS == "darwin" {
 		if libPath := os.Getenv("DYLD_LIBRARY_PATH"); libPath != "" {
@@ -225,19 +224,19 @@ func (c *RuntimeEnvContext) execWorkerUnix(cmd []string) error {
 		}
 	}
 
-	// Join the cmd array into a single string as the argument to bash -c.
-	// bash -c expects a single string command, e.g.: bash -c "exec raygo setup_worker ..."
+	// Join the cmd argv into a single string used as the bash -c argument.
+	// bash -c expects one command string, e.g. bash -c "exec raygo setup_worker ...".
 	cmdStr := strings.Join(cmd, " ")
 	if envPrefix != "" {
 		// macOS: prepend the environment variable to the command.
 		cmdStr = envPrefix + cmdStr
 	}
 
-	// Build the bash -c command array.
-	// argv[0] = "/bin/bash", argv[1] = "-c", argv[2] = command string.
+	// Build the bash -c argv:
+	// argv[0] = "/bin/bash", argv[1] = "-c", argv[2] = the command string.
 	bashCmd := []string{"/bin/bash", "-c", cmdStr}
 
-	// Print the debug log.
+	// Emit a debug log line.
 	log.Log.Info("execWorkerUnix: executing command",
 		"cmd", cmd,
 		"cmdStr", cmdStr,
@@ -247,7 +246,7 @@ func (c *RuntimeEnvContext) execWorkerUnix(cmd []string) error {
 	return syscall.Exec("/bin/bash", bashCmd, os.Environ())
 }
 
-// execWorkerWindows executes the worker on Windows systems.
+// execWorkerWindows executes the worker on Windows.
 func (c *RuntimeEnvContext) execWorkerWindows(cmd []string) error {
 	if len(cmd) == 0 || cmd[0] == "" {
 		return fmt.Errorf("no executable specified")

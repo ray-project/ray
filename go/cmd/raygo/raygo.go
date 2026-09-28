@@ -19,6 +19,7 @@ import (
 
 	"github.com/ray-project/ray/go/cmd/raygo/default_worker"
 	"github.com/ray-project/ray/go/cmd/raygo/log_monitor"
+	"github.com/ray-project/ray/go/cmd/raygo/runtime_env_agent"
 	"github.com/ray-project/ray/go/cmd/raygo/setup_worker"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/log/zap"
@@ -41,6 +42,8 @@ func init() {
 	rootCmd.AddCommand(setup_worker.GetSetupWorkerCmd())
 	// Register log-monitor subcommand.
 	rootCmd.AddCommand(log_monitor.GetLogMonitorCmd())
+	// Register runtime-env-agent subcommand.
+	rootCmd.AddCommand(runtime_env_agent.GetRuntimeEnvAgentCmd())
 }
 
 func main() {

@@ -12,17 +12,141 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+# The cloud storage download implementations (GS, S3, Azure Blob Storage and
+# ABFSS; protocol_cloud.go) pull the google cloud auth/proto chain and the AWS
+# and Azure SDKs into the dependency graph. The Azure SDK's azcore graph has a
+# known repository visibility conflict in this workspace, and the google cloud
+# chain (s2a-go proto packages) is not compilable under this bazel setup, so
+# they are only built with the "cloud" Go build tag. In bazel, rules_go
+# forwards the "gotags" --define to the Go compiler, so a single flag selects
+# the sources and activates the //go:build constraints:
+#   bazel build //go/... --define gotags=cloud
+# Default builds compile protocol_cloud_stub.go instead, whose handlers return
+# a descriptive error, keeping those dependencies out of the default build.
+config_setting(
+    name = "cloud_build",
+    values = {"define": "gotags=cloud"},
+)
 
 go_library(
     name = "runtime_env",
-    srcs = ["context.go"],
+    srcs = [
+        "accessors.go",
+        "conda.go",
+        "conda_utils.go",
+        "context.go",
+        "dependency_utils.go",
+        "image_uri.go",
+        "internal_kv.go",
+        "java_jars.go",
+        "logging_utils.go",
+        "merge.go",
+        "nsight.go",
+        "packaging.go",
+        "packaging_types.go",
+        "packaging_utils.go",
+        "pip.go",
+        "plugin.go",
+        "protocol.go",
+        "py_executable.go",
+        "py_modules.go",
+        "python_utils.go",
+        "rocprof_sys.go",
+        "runtime_env.go",
+        "runtime_env_config.go",
+        "types.go",
+        "uri_cache.go",
+        "utils.go",
+        "uv.go",
+        "validation.go",
+        "virtualenv_utils.go",
+        "working_dir.go",
+    ] + select({
+        ":cloud_build": ["protocol_cloud.go"],
+        "//conditions:default": ["protocol_cloud_stub.go"],
+    }),
     importpath = "github.com/ray-project/ray/go/internal/runtime_env",
     visibility = ["//visibility:public"],
     deps = [
         "//go/internal/common",
+        "//go/pkg/gcs",
+        "//go/pkg/log",
+        "//go/pkg/log/lumberjack",
+        "//go/pkg/log/zap",
+        "//go/proto",
+        "@com_github_go_logr_logr//:logr",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_mohae_deepcopy//:deepcopy",
+        "@com_github_sabhiram_go_gitignore//:go-gitignore",
+        "@dev_al_essio_pkg_shellescape//:shellescape",
+        "@in_gopkg_yaml_v3//:yaml_v3",
+        "@org_uber_go_zap//zapcore",
+    ] + select({
+        ":cloud_build": [
+            "@com_github_aws_aws_sdk_go_v2//aws",
+            "@com_github_aws_aws_sdk_go_v2_config//:config",
+            "@com_github_aws_aws_sdk_go_v2_service_s3//:s3",
+            "@com_github_azure_azure_sdk_for_go_sdk_azidentity//:azidentity",
+            "@com_github_azure_azure_sdk_for_go_sdk_storage_azblob//:azblob",
+            "@com_github_azure_azure_sdk_for_go_sdk_storage_azdatalake//service",
+            "@org_golang_google_api//option",
+            "@org_golang_google_api//storage/v1:storage",
+            "@org_golang_x_oauth2//google",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "runtime_env_test",
+    srcs = [
+        "accessors_test.go",
+        "conda_test.go",
+        "conda_utils_test.go",
+        "context_test.go",
+        "dependency_utils_test.go",
+        "image_uri_test.go",
+        "internal_kv_test.go",
+        "java_jars_test.go",
+        "logging_utils_test.go",
+        "merge_test.go",
+        "nsight_test.go",
+        "packaging_test.go",
+        "packaging_types_test.go",
+        "packaging_utils_test.go",
+        "pip_test.go",
+        "plugin_test.go",
+        "py_executable_test.go",
+        "py_modules_test.go",
+        "python_utils_test.go",
+        "rocprof_sys_test.go",
+        "runtime_env_config_test.go",
+        "runtime_env_test.go",
+        "types_test.go",
+        "uri_cache_test.go",
+        "utils_test.go",
+        "uv_test.go",
+        "validation_test.go",
+        "virtualenv_utils_test.go",
+        "working_dir_test.go",
+    ] + select({
+        ":cloud_build": [
+            "protocol_cloud_test.go",
+            "protocol_test.go",
+        ],
+        "//conditions:default": ["protocol_test.go"],
+    }),
+    embed = [":runtime_env"],
+    deps = [
+        "//go/internal/common",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
         "//go/pkg/log",
         "//go/proto",
-        "@dev_al_essio_pkg_shellescape//:shellescape",
+        "@com_github_go_logr_logr//:logr",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
     ],
 )

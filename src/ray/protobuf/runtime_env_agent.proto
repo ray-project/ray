@@ -19,6 +19,8 @@ package ray.rpc;
 import "src/ray/protobuf/runtime_env_common.proto";
 import "src/ray/protobuf/public/runtime_environment.proto";
 
+option go_package = "github.com/ray-project/ray/go/proto";
+
 enum AgentRpcStatus {
   // OK.
   AGENT_RPC_STATUS_OK = 0;

@@ -1970,47 +1970,64 @@ def start_raylet(
     if is_head_node:
         dashboard_agent_command.append("--head")
 
-    runtime_env_agent_command = [
-        *_build_python_executable_command_memory_profileable(
-            ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
-        ),
-        os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
-        f"--node-id={node_id}",
-        f"--node-ip-address={node_ip_address}",
-        f"--runtime-env-agent-port={runtime_env_agent_port}",
-        f"--session-dir={session_dir}",
-        f"--gcs-address={gcs_address}",
-        f"--cluster-id-hex={cluster_id}",
-        f"--runtime-env-dir={resource_dir}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-        f"--log-dir={log_dir}",
-        f"--temp-dir={temp_dir}",
-    ]
-    if runtime_env_agent_stdout_filepath:
-        runtime_env_agent_command.append(
-            f"--stdout-filepath={runtime_env_agent_stdout_filepath}"
+    if ray_constants.ENABLE_GO_RUNTIME_ENV_AGENT:
+        runtime_env_agent_command = build_go_runtime_env_agent_command(
+            node_ip_address,
+            runtime_env_agent_port,
+            gcs_address,
+            cluster_id,
+            resource_dir,
+            max_bytes,
+            backup_count,
+            log_dir,
+            temp_dir,
+            session_dir,
+            node_id,
+            runtime_env_agent_stdout_filepath,
+            runtime_env_agent_stderr_filepath,
         )
-    if runtime_env_agent_stderr_filepath:
-        runtime_env_agent_command.append(
-            f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
-        )
-    if runtime_env_agent_log_filepath:
-        runtime_env_agent_command.append(
-            f"--logging-filename={os.path.basename(runtime_env_agent_log_filepath)}"
-        )
-    if (
-        runtime_env_agent_stdout_filepath is None
-        and runtime_env_agent_stderr_filepath is None
-    ):
-        # If not redirecting logging to files, unset log filename.
-        # This will cause log records to go to stderr.
-        runtime_env_agent_command.append("--logging-filename=")
-        # Use stderr log format with the component name as a message prefix.
-        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
-            component=ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT
-        )
-        runtime_env_agent_command.append(f"--logging-format={logging_format}")
+    else:
+        runtime_env_agent_command = [
+            *_build_python_executable_command_memory_profileable(
+                ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, session_dir
+            ),
+            os.path.join(RAY_PATH, "_private", "runtime_env", "agent", "main.py"),
+            f"--node-id={node_id}",
+            f"--node-ip-address={node_ip_address}",
+            f"--runtime-env-agent-port={runtime_env_agent_port}",
+            f"--session-dir={session_dir}",
+            f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id}",
+            f"--runtime-env-dir={resource_dir}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--log-dir={log_dir}",
+            f"--temp-dir={temp_dir}",
+        ]
+        if runtime_env_agent_stdout_filepath:
+            runtime_env_agent_command.append(
+                f"--stdout-filepath={runtime_env_agent_stdout_filepath}"
+            )
+        if runtime_env_agent_stderr_filepath:
+            runtime_env_agent_command.append(
+                f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
+            )
+        if runtime_env_agent_log_filepath:
+            runtime_env_agent_command.append(
+                f"--logging-filename={os.path.basename(runtime_env_agent_log_filepath)}"
+            )
+        if (
+            runtime_env_agent_stdout_filepath is None
+            and runtime_env_agent_stderr_filepath is None
+        ):
+            # If not redirecting logging to files, unset log filename.
+            # This will cause log records to go to stderr.
+            runtime_env_agent_command.append("--logging-filename=")
+            # Use stderr log format with the component name as a message prefix.
+            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+                component=ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT
+            )
+            runtime_env_agent_command.append(f"--logging-format={logging_format}")
 
     command = [
         RAYLET_EXECUTABLE,
@@ -2284,6 +2301,44 @@ def build_go_worker_command(
     # This matches the behavior of Python's start_worker_command
     command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
+    return command
+
+
+def build_go_runtime_env_agent_command(
+    node_ip_address: str,
+    runtime_env_agent_port: str,
+    gcs_address: str,
+    cluster_id: str,
+    resource_dir: str,
+    max_bytes: int,
+    backup_count: int,
+    log_dir: str,
+    temp_dir: str,
+    session_dir: str,
+    node_id: str,
+    runtime_env_agent_stdout_filepath: Optional[str] = None,
+    runtime_env_agent_stderr_filepath: Optional[str] = None,
+):
+    command = [
+        RAYGO_EXECUTABLE,
+        ray_constants.RAYGO_AVAILABLE_COMMAND_RUNTIME_ENV_AGENT,
+        f"--node-ip-address={node_ip_address}",
+        f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
+        f"--runtime-env-dir={resource_dir}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--log-dir={log_dir}",
+        f"--temp-dir={temp_dir}",
+        f"--session-dir={session_dir}",
+        f"--node-id={node_id}",
+        f"--python-executable={sys.executable}",
+    ]
+    if runtime_env_agent_stdout_filepath:
+        command.append(f"--stdout-filepath={runtime_env_agent_stdout_filepath}")
+    if runtime_env_agent_stderr_filepath:
+        command.append(f"--stderr-filepath={runtime_env_agent_stderr_filepath}")
     return command
 
 

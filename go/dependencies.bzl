@@ -325,6 +325,7 @@ def gazelle_dependencies():
         importpath = "github.com/google/s2a-go",
         sum = "h1:LGD7gtMgezd8a/Xak7mEWL0PjoTQFvpRudN895yqKW0=",
         version = "v0.1.9",
+        build_file_generation = "on",
     )
     go_repository(
         name = "com_github_google_shlex",
@@ -798,18 +799,21 @@ def gazelle_dependencies():
         importpath = "golang.org/x/net",
         sum = "h1:He/TN1l0e4mmR3QqHMT2Xab3Aj3L9qjbhRm78/6jrW0=",
         version = "v0.52.0",
+        build_file_generation = "on",
     )
     go_repository(
         name = "org_golang_x_oauth2",
         importpath = "golang.org/x/oauth2",
         sum = "h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=",
         version = "v0.36.0",
+        build_file_generation = "on",
     )
     go_repository(
         name = "org_golang_x_sync",
         importpath = "golang.org/x/sync",
         sum = "h1:e0PTpb7pjO8GAtTs2dQ6jYa5BWYlMuX047Dco/pItO4=",
         version = "v0.20.0",
+        build_file_generation = "on",
     )
     go_repository(
         name = "org_golang_x_sys",

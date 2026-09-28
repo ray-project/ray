@@ -1,0 +1,54 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "agent",
+    srcs = [
+        "http_server.go",
+        "runtime_env_agent.go",
+        "runtime_env_consts.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/runtime_env/agent",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/runtime_env",
+        "//go/pkg/gcs",
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "//go/proto",
+        "@com_github_go_logr_logr//:logr",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_x_sync//errgroup",
+        "@org_uber_go_zap//zapcore",
+    ],
+)
+
+go_test(
+    name = "agent_test",
+    srcs = [
+        "http_server_test.go",
+        "runtime_env_agent_test.go",
+        "runtime_env_consts_test.go",
+    ],
+    embed = [":agent"],
+    deps = [
+        "//go/internal/runtime_env",
+        "//go/pkg/gcs/mockgcs",
+        "//go/proto",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

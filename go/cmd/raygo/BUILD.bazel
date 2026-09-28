@@ -22,6 +22,7 @@ go_library(
     deps = [
         "//go/cmd/raygo/default_worker",
         "//go/cmd/raygo/log_monitor",
+        "//go/cmd/raygo/runtime_env_agent",
         "//go/cmd/raygo/setup_worker",
         "//go/pkg/log",
         "//go/pkg/log/zap",

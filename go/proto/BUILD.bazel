@@ -28,6 +28,7 @@ PROTO_SRCS = [
     "common.pb.go",
     "gcs.pb.go",
     "profile_events.pb.go",
+    "runtime_env_agent.pb.go",
     "runtime_env_common.pb.go",
     "runtime_environment.pb.go",
 ]
