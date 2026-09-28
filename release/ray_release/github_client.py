@@ -158,10 +158,8 @@ class GitHubClient:
 
     BASE_URL = "https://api.github.com"
 
-    # requests waits forever by default. Nothing here is on the happy path of
-    # a test run -- every caller is reporting on a test that already finished
-    # -- so a github that accepts the connection and then never answers must
-    # time out rather than hold the buildkite step open until it is killed.
+    # requests waits forever by default, which would hold a buildkite step
+    # open until it is killed.
     TIMEOUT = 30
 
     def __init__(self, token: str) -> None:

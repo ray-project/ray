@@ -466,22 +466,14 @@ def run_release_test_anyscale(
     fetch_result_exception = None
     try:
         # TEMPORARY -- DO NOT MERGE. Fails the named test before anything
-        # reaches anyscale, so that the observability agent path can be
-        # exercised on a PR build without starting a cluster or a job. The
-        # reporter stands in a fake job id; see FAKE_JOB_ID_ENV.
-        #
-        # runtime is set above BUILDKITE_TIME_LIMIT_FOR_RETRY first, because
-        # _is_transient_error would otherwise rewrite a zero-runtime failure to
-        # TRANSIENT_INFRA_ERROR on every attempt but the last, and that is not
-        # a status the agent triggers on.
+        # reaches anyscale. runtime is raised first: _is_transient_error would
+        # otherwise rewrite a zero-runtime failure to TRANSIENT_INFRA_ERROR,
+        # which the agent does not trigger on.
         forced = os.environ.get("RELEASE_TEST_FORCE_FAILURE")
         if forced and test.get_name() == forced:
-            # _load_test_configuration below is what normally fills these in,
-            # and it has not run yet, so the reporters would see no buildkite
-            # url at all -- which is not how a real failure reaches them, since
-            # that call is the first thing in this try. Mirrored from
-            # _load_test_configuration rather than reached by calling it, so
-            # that nothing else it does runs.
+            # Mirrored from _load_test_configuration, which normally fills
+            # these in and has not run yet. Copied rather than called so that
+            # nothing else it does runs.
             buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
             buildkite_job_id = os.getenv("BUILDKITE_JOB_ID", "")
             if buildkite_url:
