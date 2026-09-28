@@ -369,9 +369,7 @@ class ApplicationState:
     @property
     def is_router_application(self) -> bool:
         """From target state, so it survives scale-to-zero."""
-        deployment_infos = self._target_state.deployment_infos
-        if not deployment_infos or self._ingress_deployment_name is None:
-            return False
+        deployment_infos = self._target_state.deployment_infos or {}
         ingress_info = deployment_infos.get(self._ingress_deployment_name)
         return ingress_info is not None and ingress_info.router_application
 
@@ -1822,7 +1820,7 @@ def build_serve_application(
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
-                    router_application=(is_ingress and built_app.is_router_application),
+                    router_application=is_ingress and built_app.is_router_application,
                 )
             )
 
