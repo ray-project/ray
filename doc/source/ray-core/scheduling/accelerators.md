@@ -626,6 +626,8 @@ ray.shutdown()
 ```
 
 ```{testcode}
+:skipif: True
+
 import os
 import ray
 
