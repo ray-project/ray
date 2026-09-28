@@ -296,6 +296,19 @@ class OpBufferQueue:
         """
         return self._get_queue_for(output_split_idx).has_next()
 
+    def has_resident_next(self, output_split_idx: Optional[int] = None) -> bool:
+        """Whether the next RefBundle can be consumed without waiting on lineage
+        reconstruction. See ``BundleQueue.has_resident_next``.
+
+        Args:
+            output_split_idx: If specified, only check ref bundles with the
+                given output split. When None, checks the default queue (index 0).
+
+        Returns:
+            ``True`` if a resident ``RefBundle`` is available for the split.
+        """
+        return self._get_queue_for(output_split_idx).has_resident_next()
+
     def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
         self._get_queue_for(bundle.output_split_idx).add(bundle)

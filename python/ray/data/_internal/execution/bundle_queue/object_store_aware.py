@@ -80,6 +80,13 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
         return self.peek_next() is not None
 
     @override
+    def has_resident_next(self) -> bool:
+        # Rotation brings any resident bundle to the front, so this answers
+        # whether the queue holds at least one resident bundle.
+        with self._lock:
+            return self._try_ensure_first_bundle_exists()
+
+    @override
     def remove(self, bundle: "RefBundle") -> "RefBundle":
         with self._lock:
             if bundle not in self._bundle_nbytes:
@@ -119,21 +126,26 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
                 self._last_size_refresh_ts = now
             return self._total_nbytes
 
-    def _try_ensure_first_bundle_exists(self) -> None:
+    def _try_ensure_first_bundle_exists(self) -> bool:
         """Rotate bundles with missing blocks to the back until a fully resident
-        bundle is at the front, or every queued instance has been checked."""
+        bundle is at the front, or every queued instance has been checked.
+
+        Returns:
+            Whether the bundle now at the front is fully resident.
+        """
         num_bundles_skipped = 0
         while num_bundles_skipped < len(self._hash_linked):
             first_bundle = self._hash_linked.peek_next()
             if first_bundle is None:
-                return
+                return False
 
             if all_objects_exist_for_bundle(first_bundle):
-                return
+                return True
 
             self._hash_linked.get_next()
             self._hash_linked.add(first_bundle)
             num_bundles_skipped += 1
+        return False
 
     def _refresh_bundle_sizes(self) -> None:
         for bundle in self._bundle_nbytes:

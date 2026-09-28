@@ -211,6 +211,29 @@ def test_rotates_missing_bundles():
         assert len(queue) == 0
 
 
+def test_has_resident_next():
+    lost = _create_bundle("lost")
+    resident = _create_bundle("resident")
+    node_ids_by_ref = {lost.block_refs[0]: [], resident.block_refs[0]: ["node1"]}
+
+    queue = ObjectStoreAwareBundleQueue()
+    with _mock_object_locations(node_ids_by_ref), patch(
+        "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
+    ):
+        assert not queue.has_resident_next()
+
+        # A lost bundle counts as present but not resident.
+        queue.add(lost)
+        assert queue.has_next()
+        assert not queue.has_resident_next()
+
+        # One resident bundle anywhere in the queue makes the next bundle resident.
+        queue.add(resident)
+        assert queue.has_resident_next()
+        assert queue.get_next() is resident
+        assert not queue.has_resident_next()
+
+
 def test_refreshes_size():
     bundle = _create_bundle("test1")
     # Two replicas of the block across nodes.
