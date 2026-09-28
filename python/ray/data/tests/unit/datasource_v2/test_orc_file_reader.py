@@ -215,3 +215,9 @@ def test_orc_reader_projects_synthesized_path(tmp_path):
         {"path": str(path)},
         {"path": str(path)},
     ]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
