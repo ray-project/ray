@@ -192,7 +192,7 @@ def ray_single_host_tpu_cluster(ray_start_cluster):
     """
     Simulates a Ray cluster with two single-host v7x (Ironwood) TPU nodes.
     """
-    pod_type = "tpu7x"
+    pod_type = "tpu7x-16"
     topology = "2x2x1"
 
     cluster = ray_start_cluster
@@ -201,13 +201,21 @@ def ray_single_host_tpu_cluster(ray_start_cluster):
         num_cpus=2,
         resources={"TPU": 4},
         env_vars={"TPU_NAME": "test-v7x-single-1", "TPU_ACCELERATOR_TYPE": pod_type},
-        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
+        labels={
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X",
+        },
     )
     cluster.add_node(
         num_cpus=2,
         resources={"TPU": 4},
         env_vars={"TPU_NAME": "test-v7x-single-2", "TPU_ACCELERATOR_TYPE": pod_type},
-        labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
+        labels={
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X",
+        },
     )
 
     ray.init(address=cluster.address)
@@ -310,6 +318,7 @@ def ray_v6e_tpu_cluster(ray_start_cluster):
             "ray.io/tpu-worker-id": "0",
             "ray.io/tpu-pod-type": pod_type,
             "ray.io/tpu-topology": topology,
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E",
         }
         # A single-host v6e-8 has 8 chips on one node
         cluster.add_node(
@@ -462,6 +471,74 @@ def test_single_host_slice_placement_group_integration(ray_single_host_tpu_clust
     ray.get(slice_placement_group.placement_group.ready(), timeout=10)
 
     assert slice_placement_group.placement_group.bundle_count == 2
+
+
+def test_single_host_slice_placement_group_heterogeneous_cluster(ray_start_cluster):
+    """Test that single-host SlicePlacementGroups in a heterogeneous cluster (v6e and v7x)
+    are strictly placed on nodes matching their requested accelerator version.
+    """
+    cluster = ray_start_cluster
+    # v6e single-host node (8 chips, TPU: 8)
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 8},
+        labels={
+            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: "v6e-8",
+            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x4",
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E",
+        },
+    )
+    # v7x single-host node (TPU: 8)
+    cluster.add_node(
+        num_cpus=2,
+        resources={"TPU": 8},
+        labels={
+            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: "tpu7x",
+            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x2x1",
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X",
+        },
+    )
+
+    ray.init(address=cluster.address)
+    try:
+        # Request v6e single-host slice (2x4)
+        v6e_handle = ray.util.tpu.slice_placement_group(
+            topology="2x4",
+            accelerator_version="v6e",
+        )
+        ray.get(v6e_handle.placement_group.ready(), timeout=10)
+        assert v6e_handle.bundle_label_selector == [
+            {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V6E"}
+        ]
+
+        # Verify placed node has the v6e accelerator type
+        v6e_pg_table = ray.util.placement_group_table(v6e_handle.placement_group)
+        v6e_node_id = v6e_pg_table["bundles_to_node_id"][0]
+        v6e_node = next(n for n in ray.nodes() if n["NodeID"] == v6e_node_id)
+        assert (
+            v6e_node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] == "TPU-V6E"
+        )
+        v6e_handle.shutdown()
+
+        # Request v7x single-host slice (2x2x1)
+        v7x_handle = ray.util.tpu.slice_placement_group(
+            topology="2x2x1",
+            accelerator_version="v7x",
+        )
+        ray.get(v7x_handle.placement_group.ready(), timeout=10)
+        assert v7x_handle.bundle_label_selector == [
+            {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: "TPU-V7X"}
+        ]
+
+        v7x_pg_table = ray.util.placement_group_table(v7x_handle.placement_group)
+        v7x_node_id = v7x_pg_table["bundles_to_node_id"][0]
+        v7x_node = next(n for n in ray.nodes() if n["NodeID"] == v7x_node_id)
+        assert (
+            v7x_node["Labels"][ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY] == "TPU-V7X"
+        )
+        v7x_handle.shutdown()
+    finally:
+        ray.shutdown()
 
 
 @patch("ray.util.tpu.placement_group")
@@ -731,6 +808,35 @@ def _make_mock_tpu_node(
                 "S2_3": {"TPU": 4},
             },
             2,
+        ),
+        # Sparse resource map: node A is in available_resources_per_node() with
+        # "TPU" omitted because all 4 TPUs are allocated -> 0 ready slices.
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"CPU": 8},
+                "B": {"TPU": 4},
+            },
+            0,
+        ),
+        # Newly registered node B has not yet heartbeated to
+        # available_resources_per_node() -> defaults to available (1 ready slice).
+        (
+            "2x2x2",
+            "v4",
+            [
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 0, node_id="A"),
+                _make_mock_tpu_node(True, "v4-16", "slice-1", 1, node_id="B"),
+            ],
+            {
+                "A": {"TPU": 4},
+            },
+            1,
         ),
     ],
 )
@@ -1154,6 +1260,102 @@ def test_release_head_pgs_after_ready_then_shutdown(ray_tpu_cluster):
 
     slice_pg.shutdown()
     assert slice_pg.placement_group is None
+
+
+@pytest.mark.parametrize(
+    "worker_hostnames, worker_id, kwargs, expected_env",
+    [
+        (
+            "10.0.0.1:8471, 10.0.0.2:8471",
+            0,
+            {},
+            {
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
+                "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+        (
+            ["10.0.0.1:8471", "10.0.0.2:8471"],
+            0,
+            {"process_bounds": "1,2,1", "chips_per_process_bounds": "2,2,1"},
+            {
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
+                "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471",
+                "TPU_WORKER_ID": "0",
+                "TPU_PROCESS_BOUNDS": "1,2,1",
+                "TPU_HOST_BOUNDS": "1,2,1",
+                "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
+                "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
+            },
+        ),
+        (
+            "10.0.0.1:8471",
+            None,
+            {},
+            {
+                "TPU_WORKER_HOSTNAMES": "10.0.0.1",
+                "TPU_PROCESS_ADDRESSES": "10.0.0.1:8471",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+        (
+            ["[2001:db8::1]:8471", "[2001:db8::2]:8471"],
+            0,
+            {},
+            {
+                "TPU_WORKER_HOSTNAMES": "2001:db8::1,2001:db8::2",
+                "TPU_PROCESS_ADDRESSES": "[2001:db8::1]:8471,[2001:db8::2]:8471",
+                "TPU_WORKER_ID": "0",
+            },
+        ),
+    ],
+)
+def test_get_jax_env_vars_free_function(
+    worker_hostnames, worker_id, kwargs, expected_env
+):
+    """Test get_jax_env_vars free function parsing, port stripping, and worker ID."""
+    assert (
+        ray.util.tpu.get_jax_env_vars(worker_hostnames, worker_id=worker_id, **kwargs)
+        == expected_env
+    )
+    with pytest.raises(
+        ValueError,
+        match="worker_id must be specified when multiple hosts are provided",
+    ):
+        ray.util.tpu.get_jax_env_vars("10.0.0.1:8471, 10.0.0.2:8471")
+
+
+def test_slice_placement_group_worker_id_and_jax_env_vars(ray_tpu_cluster):
+    """Test deterministic bundle-to-worker-ID pinning and get_jax_env_vars on SlicePlacementGroup."""
+    spg = ray.util.tpu.slice_placement_group(
+        topology="2x2x2",
+        accelerator_version="v4",
+        resources_per_bundle={"CPU": 0, "TPU": 1},
+    )
+    assert spg.num_hosts == 2
+    assert spg.bundles_per_slice == 8
+    # 8 bundles across 2 hosts -> bundles 0..3 pin worker 0, bundles 4..7 pin worker 1.
+    assert [
+        sel[ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY] for sel in spg.bundle_label_selector
+    ] == ["0"] * 4 + ["1"] * 4
+
+    ray.get(spg.placement_group.ready(), timeout=10)
+    assert len(spg.get_worker_addrs()) == 2
+
+    env0 = spg.get_jax_env_vars(worker_id=0)
+    assert env0["TPU_WORKER_ID"] == "0"
+    assert len(env0["TPU_WORKER_HOSTNAMES"].split(",")) == 2
+    assert spg.get_jax_env_vars(worker_id=1)["TPU_WORKER_ID"] == "1"
+
+    with pytest.raises(
+        ValueError, match="worker_id must be specified for multi-host placement groups"
+    ):
+        spg.get_jax_env_vars()
+    with pytest.raises(ValueError, match="out of bounds"):
+        spg.get_jax_env_vars(worker_id=2)
+
+    spg.shutdown()
 
 
 def test_chips_per_vm_zero_raises_value_error():
@@ -1780,11 +1982,11 @@ def _mock_worker_pg():
     return mock_pg
 
 
-# Standard 4x4 → 2x4 subslice cache: workers 0,1 form subslice 0; 2,3 form 1.
+# Standard 4x4 → 2x4 subslice cache: workers 0,2 form subslice 0; 1,3 form 1.
 _SUBSLICE_2X4_LABELS = {
     "0": {"ray.io/tpu-subslice-2x4": "0"},
-    "1": {"ray.io/tpu-subslice-2x4": "0"},
-    "2": {"ray.io/tpu-subslice-2x4": "1"},
+    "1": {"ray.io/tpu-subslice-2x4": "1"},
+    "2": {"ray.io/tpu-subslice-2x4": "0"},
     "3": {"ray.io/tpu-subslice-2x4": "1"},
 }
 
@@ -1905,9 +2107,12 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
         # Verify cache was populated correctly.
         assert slice_name in ray.util.tpu._tpu_subslice_cache
         cache = ray.util.tpu._tpu_subslice_cache[slice_name]
+        # A 2x4 subslice is 2 chips wide in x and 4 tall in y. Each host owns a
+        # 2x2 chip block, so the grouping is by x position: workers 0 and 2
+        # (x in {0,1}) form subslice 0, workers 1 and 3 (x in {2,3}) subslice 1.
         assert cache["0"]["ray.io/tpu-subslice-2x4"] == "0"
-        assert cache["1"]["ray.io/tpu-subslice-2x4"] == "0"
-        assert cache["2"]["ray.io/tpu-subslice-2x4"] == "1"
+        assert cache["1"]["ray.io/tpu-subslice-2x4"] == "1"
+        assert cache["2"]["ray.io/tpu-subslice-2x4"] == "0"
         assert cache["3"]["ray.io/tpu-subslice-2x4"] == "1"
 
         sg.shutdown()
@@ -1916,7 +2121,7 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
 def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
     """Auto-select skips a fully-occupied subslice and picks the next idle one.
 
-    Workers 0 and 1 form subslice 0; workers 2 and 3 form subslice 1.
+    Workers 0 and 2 form subslice 0; workers 1 and 3 form subslice 1.
     With subslice 0 fully busy, auto-select should pick subslice 1.
     """
     mock_head_pg, mock_worker_pg = mock_4x4_pgs
@@ -1926,11 +2131,11 @@ def test_subslice_auto_select_skips_busy_first_subslice(mock_4x4_pgs):
     # Pre-populate cache so no discovery is needed.
     ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
 
-    # Workers 0 and 1 (subslice 0) fully occupied; workers 2 and 3 idle.
+    # Workers 0 and 2 (subslice 0) fully occupied; workers 1 and 3 idle.
     avail = {
         "node_0": {"TPU": 0},
-        "node_1": {"TPU": 0},
-        "node_2": {"TPU": 4},
+        "node_1": {"TPU": 4},
+        "node_2": {"TPU": 0},
         "node_3": {"TPU": 4},
     }
 
@@ -1999,11 +2204,11 @@ def test_subslice_select_specific_index_busy(mock_4x4_pgs):
     # Pre-populate cache so no discovery is needed.
     ray.util.tpu._tpu_subslice_cache[slice_name] = _SUBSLICE_2X4_LABELS
 
-    # Workers 2 and 3 (subslice 1) busy; workers 0 and 1 (subslice 0) idle.
+    # Workers 1 and 3 (subslice 1) busy; workers 0 and 2 (subslice 0) idle.
     avail = {
         "node_0": {"TPU": 4},
-        "node_1": {"TPU": 4},
-        "node_2": {"TPU": 0},
+        "node_1": {"TPU": 0},
+        "node_2": {"TPU": 4},
         "node_3": {"TPU": 0},
     }
 
@@ -2505,6 +2710,12 @@ def test_find_undiscovered_idle_slice():
     # Undiscovered but one worker busy → None.
     assert check([parent_topo], nodes, one_busy) is None
 
+    # Fully allocated worker has "TPU" omitted from Ray's sparse resource map → None.
+    assert check([parent_topo], nodes, {"n0": {"CPU": 8}, "n1": {"TPU": 4}}) is None
+
+    # Worker not yet reported in available resources defaults to idle.
+    assert check([parent_topo], nodes, {"n1": {"TPU": 4}}) == (parent_topo, "slice-a")
+
     # Slice present in cache → treated as already discovered → None.
     ray.util.tpu._tpu_subslice_cache["slice-a"] = {}
     assert check([parent_topo], nodes, all_free) is None
@@ -2766,10 +2977,483 @@ def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):
         )
         == 1
     )
+    monkeypatch.setitem(
+        ray.util.tpu._tpu_subslice_cache,
+        "v7x-slice",
+        {
+            "1": {"ray.io/tpu-subslice-2x2x2": "0", "physical_worker_id": "0"},
+            "0": {"ray.io/tpu-subslice-2x2x2": "0", "physical_worker_id": "1"},
+            "2": {"ray.io/tpu-subslice-2x2x2": "1", "physical_worker_id": "2"},
+            "3": {"ray.io/tpu-subslice-2x2x2": "1", "physical_worker_id": "3"},
+        },
+    )
+    with (
+        patch("ray.nodes", return_value=_slice_nodes("v7x-slice", "2x2x4")),
+        patch(
+            "ray._private.state.available_resources_per_node",
+            return_value={f"v7x-slice-w{i}": {"TPU": 8} for i in range(4)},
+        ),
+        patch(
+            "ray.util.tpu.placement_group", return_value=MagicMock(id="mock_pg")
+        ) as mock_pg,
+    ):
+        sg_whole = ray.util.tpu.subslice_placement_group("2x2x2", "v7x")
+        assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
+        assert sg_whole.tpu_resource_per_chip == 2
+        assert sg_whole.devices_per_host == 8
+        assert sg_whole.bundle_resources == {"CPU": 1, "TPU": 8}
+        assert sg_whole.num_hosts == 2
+        assert sg_whole.num_bundles == 2
+        assert len(sg_whole.bundle_label_selector) == 2
+
+        sg_per_device = ray.util.tpu.subslice_placement_group(
+            "2x2x2", "v7x", resources_per_bundle={"TPU": 1}
+        )
+        assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
+        assert sg_per_device.bundle_resources == {"CPU": 1, "TPU": 1}
+        assert sg_per_device.num_hosts == 2
+        assert sg_per_device.num_bundles == 16
+        assert len(sg_per_device.bundle_label_selector) == 16
+        assert [
+            s["ray.io/tpu-worker-id"] for s in sg_per_device.bundle_label_selector
+        ] == (["1"] * 8 + ["0"] * 8)
 
     monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "0")
     with pytest.raises(ValueError, match="must be a positive integer"):
         get_tpu_worker_resources("2x2x1", "v7x")
+
+
+def test_physical_worker_ordering_in_subslice_and_slice_pg(monkeypatch):
+    """Verify both subslice and full-slice placement groups order bundles by
+    physical_worker_id when discovered, and fall back to label order otherwise.
+    """
+    slice_name = "slice-shuffled"
+    # Node with tpu-worker-id="3" is physical worker 0; tpu-worker-id="1" is physical worker 1.
+    worker_labels = {
+        "3": {"ray.io/tpu-subslice-2x4": "0", "physical_worker_id": "0"},
+        "1": {"ray.io/tpu-subslice-2x4": "0", "physical_worker_id": "1"},
+        "2": {"ray.io/tpu-subslice-2x4": "1", "physical_worker_id": "2"},
+        "0": {"ray.io/tpu-subslice-2x4": "1", "physical_worker_id": "3"},
+    }
+    dummy_nodes = [
+        {
+            "NodeID": f"node_{wid}",
+            "Alive": True,
+            "Resources": {"TPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: wid,
+            },
+        }
+        for wid in ["0", "1", "2", "3"]
+    ]
+    avail = {f"node_{wid}": {"TPU": 4} for wid in ["0", "1", "2", "3"]}
+    slice_worker_to_node = {
+        (slice_name, wid): node for wid, node in zip(["0", "1", "2", "3"], dummy_nodes)
+    }
+
+    worker_ids, idx = ray.util.tpu._find_available_subslice(
+        slice_name, "2x4", worker_labels, avail, slice_worker_to_node
+    )
+    assert idx == 0
+    assert worker_ids == ["3", "1"]
+
+    # Full-slice _get_physical_to_label_worker_map uses the same physical mapping:
+    monkeypatch.setitem(ray.util.tpu._tpu_subslice_cache, slice_name, worker_labels)
+    assert ray.util.tpu._get_physical_to_label_worker_map(slice_name, "4x4") == {
+        0: "3",
+        1: "1",
+        2: "2",
+        3: "0",
+    }
+
+
+def test_subslice_placement_group_jax_env_vars(monkeypatch):
+    """SubslicePlacementGroup.get_jax_env_vars populates subslice bounds and port offset."""
+    sg = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=MagicMock(id="mock_subslice_pg"),
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=1,
+        slice_name="slice-sub",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"TPU": 4},
+    )
+    expected = {
+        "TPU_WORKER_HOSTNAMES": "10.0.0.10,10.0.0.11",
+        "TPU_PROCESS_ADDRESSES": "10.0.0.10:8472,10.0.0.11:8472",
+        "TPU_PROCESS_PORT": "8472",
+        "TPU_WORKER_ID": "1",
+        "TPU_PROCESS_BOUNDS": "1,2,1",
+        "TPU_HOST_BOUNDS": "1,2,1",
+        "TPU_CHIPS_PER_PROCESS_BOUNDS": "2,2,1",
+        "TPU_CHIPS_PER_HOST_BOUNDS": "2,2,1",
+        "TPU_TOPOLOGY": "2x4",
+    }
+    assert (
+        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
+        == expected
+    )
+    # Even when kuberay-tpu-webhook sets TPU_PROCESS_PORT=8471 in os.environ,
+    # subslice_index=1 must still offset the port to 8472.
+    monkeypatch.setenv("TPU_PROCESS_PORT", "8471")
+    assert (
+        sg.get_jax_env_vars(worker_id=1, worker_hostnames=["10.0.0.10", "10.0.0.11"])
+        == expected
+    )
+
+    # A 4-chip (2x2) subslice on an 8-chip (2x4) parent VM must use the subslice's
+    # per-host chip count (4 -> "2,2,1") rather than the parent host's chip count (8 -> "2,4,1").
+    sg_single_host_subslice = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=MagicMock(id="mock_subslice_8chip_pg"),
+        parent_topology="2x4",
+        subslice_topology="2x2",
+        subslice_index=0,
+        slice_name="slice-8chip",
+        num_hosts=1,
+        chips_per_host=8,
+        bundle_resources={"TPU": 4},
+    )
+    env_4chip = sg_single_host_subslice.get_jax_env_vars(worker_hostnames=["10.0.0.10"])
+    assert env_4chip["TPU_CHIPS_PER_PROCESS_BOUNDS"] == "2,2,1"
+    assert env_4chip["TPU_CHIPS_PER_HOST_BOUNDS"] == "2,2,1"
+
+    # Multi-slice SlicePlacementGroup must not fall back to os.environ[TPU_WORKER_HOSTNAMES]
+    # when bundles are not yet placed.
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2")
+    spg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    spg._topology = "2x2x2"
+    spg._num_slices = 2
+    spg._num_bundles = 4
+    spg._num_hosts = 4
+    spg._pg_per_slice = False
+    spg._managed_pgs = []
+    spg._tpu_resource_per_chip = 1
+    monkeypatch.setattr(spg, "get_worker_addrs", lambda idx=0: [None, None])
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        spg.get_jax_env_vars(slice_index=1, worker_id=0)
+
+
+def test_build_slice_worker_to_node_ignores_dead_nodes():
+    """Verify _build_slice_worker_to_node ignores dead node entries (Alive=False)."""
+    labels_0 = {
+        ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-1",
+        ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+        ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
+    }
+    labels_1 = {**labels_0, ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "1"}
+    alive_node = {"NodeID": "alive_0", "Alive": True, "Labels": labels_0}
+    dead_node_0 = {"NodeID": "dead_0", "Alive": False, "Labels": labels_0}
+    dead_node_1 = {"NodeID": "dead_1", "Alive": False, "Labels": labels_1}
+    sw = ray.util.tpu._build_slice_worker_to_node(
+        [alive_node, dead_node_0, dead_node_1]
+    )
+    assert len(sw) == 1
+    assert sw[("slice-1", "0")]["NodeID"] == "alive_0"
+
+
+def test_normalize_torchtpu_topology():
+    """Test topology normalization for 3D and 4D topologies across TPU generations."""
+    # 3D topologies (Megacore and Single-Core)
+    assert tpu.normalize_torchtpu_topology("2x2x1", tpu_resource_per_chip=1) == "2,2,1"
+    assert tpu.normalize_torchtpu_topology("2x2x4", tpu_resource_per_chip=1) == "2,2,4"
+    assert tpu.normalize_torchtpu_topology("4x4x4", tpu_resource_per_chip=1) == "4,4,4"
+    assert tpu.normalize_torchtpu_topology("4x4", tpu_resource_per_chip=1) == "4,4,1"
+    assert tpu.normalize_torchtpu_topology("2x4", tpu_resource_per_chip=1) == "2,4,1"
+    assert tpu.normalize_torchtpu_topology(" 4X4 ", tpu_resource_per_chip=1) == "4,4,1"
+    assert (
+        tpu.normalize_torchtpu_topology(" 2, 4, 1 ", tpu_resource_per_chip=1) == "2,4,1"
+    )
+    assert (
+        tpu.normalize_torchtpu_topology(" 4 x 4 ", tpu_resource_per_chip=1) == "4,4,1"
+    )
+
+    # 4D topologies (Dual-Device e.g. v7x with 2 devices per chip)
+    assert tpu.normalize_torchtpu_topology("2x4", tpu_resource_per_chip=2) == "2,4,1,2"
+    assert (
+        tpu.normalize_torchtpu_topology("2x2x4", tpu_resource_per_chip=2) == "2,2,4,2"
+    )
+    assert tpu.normalize_torchtpu_topology("2x4", accelerator_type="v7x") == "2,4,1,2"
+    assert tpu.normalize_torchtpu_topology("2x2x4", accelerator_type="v7x") == "2,2,4,2"
+    assert tpu.normalize_torchtpu_topology("2x2x4", accelerator_type="v6e") == "2,2,4"
+    # GKE-style and Ray label spellings of v7x also get the dual-device dimension.
+    for v7x_type in ["tpu7x", "tpu7x-16", "TPU-V7X"]:
+        assert (
+            tpu.normalize_torchtpu_topology("2x2x1", accelerator_type=v7x_type)
+            == "2,2,1,2"
+        )
+
+    # Invalid topology strings raise ValueError
+    for invalid_topo in ["", "foo", "4x0", "-2x4"]:
+        with pytest.raises(ValueError, match="Invalid topology string"):
+            tpu.normalize_torchtpu_topology(invalid_topo)
+
+    # Invalid non-positive tpu_resource_per_chip raises ValueError
+    for invalid_rpc in [0, -1]:
+        with pytest.raises(ValueError, match="tpu_resource_per_chip must be positive"):
+            tpu.normalize_torchtpu_topology("4x4", tpu_resource_per_chip=invalid_rpc)
+
+    # Invalid types for tpu_resource_per_chip raise TypeError
+    for invalid_type in [True, 2.0]:
+        with pytest.raises(TypeError, match="must be an integer"):
+            tpu.normalize_torchtpu_topology("4x4", tpu_resource_per_chip=invalid_type)
+
+
+@pytest.mark.parametrize(
+    "addresses, expected_addresses",
+    [
+        ("10.0.0.1:8431,10.0.0.2:8431", "10.0.0.1:8431,10.0.0.2:8431"),
+        (["10.0.0.1:8431", "10.0.0.2:8431"], "10.0.0.1:8431,10.0.0.2:8431"),
+        (None, None),
+    ],
+)
+def test_get_torchtpu_env_vars(addresses, expected_addresses):
+    """Test get_torchtpu_env_vars utility with string, list, and None addresses."""
+    env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses=addresses,
+        worker_id=1,
+    )
+    assert env.get("TORCH_TPU_TOPOLOGY") == "2,4,1"
+    assert env.get("TPU_WORKER_ID") == "1"
+    assert "NNODES" not in env
+
+    if expected_addresses is not None:
+        assert env.get("TORCH_TPU_SLICEBUILDER_ADDRESSES") == expected_addresses
+        assert env.get("TPU_WORKER_HOSTNAMES") == "10.0.0.1,10.0.0.2"
+        assert env.get("MASTER_ADDR") == "10.0.0.1"
+    else:
+        assert "TORCH_TPU_SLICEBUILDER_ADDRESSES" not in env
+        assert "TPU_WORKER_HOSTNAMES" not in env
+
+    with pytest.raises(TypeError, match="must be an integer"):
+        ray.util.tpu.get_torchtpu_env_vars(topology="2x4", worker_id="invalid")
+
+
+def test_get_torchtpu_env_vars_explicit_master_addr_and_worker_id_validation():
+    """Verify explicit master_addr overrides worker_hostnames[0] and worker_id < 0 raises ValueError."""
+    env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        worker_id=0,
+        worker_hostnames=["host-a", "host-b"],
+        master_addr="10.0.0.99:8471",
+    )
+    assert env["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+    assert env["MASTER_ADDR"] == "10.0.0.99"
+
+    env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4", worker_id=0, master_addr="10.0.0.99:8471"
+    )
+    assert env["MASTER_ADDR"] == "10.0.0.99"
+
+    with pytest.raises(ValueError, match="worker_id -1 must be >= 0."):
+        ray.util.tpu.get_torchtpu_env_vars(topology="2x4", worker_id=-1)
+
+
+def test_get_torchtpu_env_vars_explicit_hostnames_and_deduplication():
+    """Verify explicit worker_hostnames override and slicebuilder address de-duplication."""
+    env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        worker_id=0,
+        worker_hostnames=["host-a", "host-b"],
+    )
+    assert env["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+    assert env["MASTER_ADDR"] == "host-a"
+
+    multi_proc_addrs = [
+        "10.0.0.1:8471",
+        "10.0.0.1:8472",
+        "10.0.0.2:8471",
+        "10.0.0.2:8472",
+    ]
+    env_dedup = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses=multi_proc_addrs,
+        worker_id=1,
+    )
+    assert env_dedup["TPU_WORKER_HOSTNAMES"] == "10.0.0.1,10.0.0.2"
+    assert env_dedup["MASTER_ADDR"] == "10.0.0.1"
+
+
+@pytest.mark.parametrize(
+    "placement_group_class", [SlicePlacementGroup, ray.util.tpu.SubslicePlacementGroup]
+)
+def test_placement_group_torchtpu_env_vars(monkeypatch, placement_group_class):
+    """Test SlicePlacementGroup and SubslicePlacementGroup get_torchtpu_env_vars with placed addresses and overrides."""
+    if placement_group_class is SlicePlacementGroup:
+        sg = placement_group_class.__new__(placement_group_class)
+        sg._topology = "2x2x2"
+        sg._num_slices = 1
+        sg._num_bundles = 2
+        sg._num_hosts = 2
+        sg._pg_per_slice = False
+        sg._managed_pgs = []
+        sg._tpu_resource_per_chip = 1
+        sg._accelerator_version = "v6e"
+    else:
+        sg = placement_group_class(
+            placement_group=None,
+            parent_topology="4x4",
+            subslice_topology="2x4",
+            subslice_index=1,
+            slice_name="slice-sub",
+            num_hosts=2,
+            chips_per_host=4,
+            bundle_resources={"TPU": 4},
+            accelerator_version="v6e",
+        )
+
+    monkeypatch.setattr(sg, "get_worker_addrs", lambda idx=0: ["10.0.0.1", "10.0.0.2"])
+    monkeypatch.setenv(
+        "TORCH_TPU_SLICEBUILDER_ADDRESSES", "192.168.1.1:8471,192.168.1.2:8471"
+    )
+
+    env = (
+        sg.get_torchtpu_env_vars(slice_index=0, worker_id=0)
+        if placement_group_class is SlicePlacementGroup
+        else sg.get_torchtpu_env_vars(worker_id=0)
+    )
+
+    expected_topology = (
+        "2,2,2" if placement_group_class is SlicePlacementGroup else "2,4,1"
+    )
+    assert env == {
+        "TORCH_TPU_TOPOLOGY": expected_topology,
+        "TORCH_TPU_SLICEBUILDER_ADDRESSES": "10.0.0.1:8471,10.0.0.2:8471"
+        if placement_group_class is SlicePlacementGroup
+        else "10.0.0.1:8472,10.0.0.2:8472",
+        "TPU_WORKER_HOSTNAMES": "10.0.0.1,10.0.0.2",
+        "TPU_WORKER_ID": "0",
+        "MASTER_ADDR": "10.0.0.1",
+        **(
+            {"TPU_PROCESS_PORT": "8472", "TPU_TOPOLOGY": "2x4"}
+            if placement_group_class is ray.util.tpu.SubslicePlacementGroup
+            else {}
+        ),
+    }
+
+    # Explicit worker_hostnames determine MASTER_ADDR rather than the placed bundle 0 IP.
+    explicit_env = sg.get_torchtpu_env_vars(
+        worker_id=0, worker_hostnames=["host-a", "host-b"]
+    )
+    assert explicit_env["TPU_WORKER_HOSTNAMES"] == "host-a,host-b"
+    assert explicit_env["MASTER_ADDR"] == "host-a"
+
+
+def test_ipv6_and_master_addr_handling_in_env_vars():
+    """Verify IPv6 bracket formatting and explicit master_addr in get_torchtpu_env_vars."""
+    torch_env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        worker_hostnames=["2001:db8::1", "[2001:db8::2]:8471"],
+        worker_id=1,
+    )
+    assert torch_env["TPU_WORKER_HOSTNAMES"] == "2001:db8::1,2001:db8::2"
+    assert (
+        torch_env["TORCH_TPU_SLICEBUILDER_ADDRESSES"]
+        == "[2001:db8::1]:8471,[2001:db8::2]:8471"
+    )
+    assert torch_env["MASTER_ADDR"] == "2001:db8::1"
+
+    # Explicit master_addr when worker_hostnames is None
+    env_master_only = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        master_addr="10.0.0.99:8471",
+    )
+    assert env_master_only["MASTER_ADDR"] == "10.0.0.99"
+
+    # Portless and whitespace slicebuilder_addresses normalization
+    env_sb_norm = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x4",
+        slicebuilder_addresses=" 10.0.0.1 , 2001:db8::1 , node-2:9000 ",
+        worker_id=0,
+    )
+    assert (
+        env_sb_norm["TORCH_TPU_SLICEBUILDER_ADDRESSES"]
+        == "10.0.0.1:8471,[2001:db8::1]:8471,node-2:9000"
+    )
+
+
+def test_torchtpu_unplaced_and_subslice_topology(monkeypatch):
+    """Verify unplaced error handling and that subslice TORCH_TPU_TOPOLOGY depends on the accelerator version, not bundle size."""
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2")
+    monkeypatch.setenv(
+        "TORCH_TPU_SLICEBUILDER_ADDRESSES", "10.0.0.1:8471,10.0.0.2:8471"
+    )
+    spg = SlicePlacementGroup.__new__(SlicePlacementGroup)
+    spg._topology = "2x2x2"
+    spg._num_slices = 2
+    spg._num_bundles = 4
+    spg._num_hosts = 4
+    spg._pg_per_slice = False
+    spg._managed_pgs = []
+    spg._tpu_resource_per_chip = 1
+    spg._accelerator_version = "v6e"
+    monkeypatch.setattr(spg, "get_worker_addrs", lambda idx=0: [None, None])
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        spg.get_torchtpu_env_vars(slice_index=1, worker_id=0)
+
+    sg_unplaced = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=1,
+        slice_name="slice-sub",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources=None,
+        accelerator_version="v6e",
+    )
+    with pytest.raises(RuntimeError, match="Could not resolve TPU_WORKER_HOSTNAMES"):
+        sg_unplaced.get_torchtpu_env_vars(worker_id=0)
+
+    explicit_env = sg_unplaced.get_torchtpu_env_vars(
+        worker_id=0, slicebuilder_addresses="10.0.0.10:8471,10.0.0.11:8471"
+    )
+    assert (
+        explicit_env["TORCH_TPU_SLICEBUILDER_ADDRESSES"]
+        == "10.0.0.10:8471,10.0.0.11:8471"
+    )
+    assert explicit_env["TORCH_TPU_TOPOLOGY"] == "2,4,1"
+
+    # A 2x2 subslice whose bundle reserves a whole 8-chip v6e host stays 3D:
+    # bundle size does not imply multiple devices per chip.
+    sg_8chip = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="2x4",
+        subslice_topology="2x2",
+        subslice_index=0,
+        slice_name="slice-8chip",
+        num_hosts=1,
+        chips_per_host=8,
+        bundle_resources={"TPU": 8},
+        accelerator_version="v6e",
+    )
+    assert (
+        sg_8chip.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
+            "TORCH_TPU_TOPOLOGY"
+        ]
+        == "2,2,1"
+    )
+
+    # A v7x subslice gets the dual-device dimension from its accelerator version.
+    sg_v7x = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=None,
+        parent_topology="2x2x2",
+        subslice_topology="2x2x1",
+        subslice_index=0,
+        slice_name="slice-v7x",
+        num_hosts=1,
+        chips_per_host=4,
+        bundle_resources={"TPU": 4},
+        accelerator_version="v7x",
+    )
+    assert (
+        sg_v7x.get_torchtpu_env_vars(worker_hostnames=["10.0.0.1"])[
+            "TORCH_TPU_TOPOLOGY"
+        ]
+        == "2,2,1,2"
+    )
 
 
 if __name__ == "__main__":
