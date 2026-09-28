@@ -1201,12 +1201,15 @@ class Replica:
         tracing_config = ray.get(
             self._controller_handle.get_tracing_config.remote()  # type: ignore[attr-defined]
         )
+        # Tracing is set up once, at startup. A setup failure (e.g. a bad
+        # exporter_import_path on this node) is left to raise so it surfaces at
+        # startup rather than silently disabling the tracing the user asked for.
         is_tracing_setup_successful = setup_tracing(
             component_type=ServeComponentType.REPLICA,
             component_name=self._component_name,
             component_id=self._component_id,
             # ray.get of the ActorHandle result is mistyped as list; it is a
-            # TracingConfig | None at runtime.
+            # TracingConfig at runtime (the controller never returns None).
             tracing_config=tracing_config,  # type: ignore[arg-type]
         )
         if is_tracing_setup_successful:

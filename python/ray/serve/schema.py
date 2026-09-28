@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
@@ -270,6 +271,16 @@ class TracingConfig(BaseModel):
         if v < 0.0 or v > 1.0:
             raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
         return v
+
+    @model_validator(mode="after")
+    def resolve_exporter_import_path(self) -> "TracingConfig":
+        # Resolve the exporter default here so the model is the single place
+        # that decides it. When tracing is enabled without an explicit path,
+        # fall back to the built-in file-based exporter; callers can then read
+        # exporter_import_path directly.
+        if self.enabled and not self.exporter_import_path:
+            self.exporter_import_path = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        return self
 
 
 @PublicAPI(stability="stable")

@@ -77,6 +77,32 @@ def _check_http_options(
             )
 
 
+def _check_tracing_config(
+    client: ServeControllerClient,
+    tracing_config: Union[dict, TracingConfig],
+) -> None:
+    """Reject an explicit tracing config that differs from the running one.
+
+    Tracing is an initialization-time setting, so it cannot be changed by
+    calling ``serve.start`` again against an existing controller. Raise rather
+    than silently ignore it (``serve deploy`` rejects such a change too).
+    """
+    new_tracing_config = (
+        tracing_config
+        if isinstance(tracing_config, TracingConfig)
+        else TracingConfig(**tracing_config)
+    )
+    existing_tracing_config = ray.get(
+        client._controller.get_tracing_config.remote()  # type: ignore[attr-defined]
+    )
+    if new_tracing_config != existing_tracing_config:
+        raise ValueError(
+            "Tracing config cannot be changed after Serve has started; it is an "
+            "initialization-time setting. To change it, shut down and restart "
+            "Serve with the new tracing config."
+        )
+
+
 def _create_controller_and_proxy_refs(
     http_options: Union[None, dict, HTTPOptions],
     grpc_options: Union[None, dict, gRPCOptions],
@@ -192,6 +218,8 @@ async def serve_start_async(
         )
         if http_options:
             _check_http_options(client, http_options)
+        if global_tracing_config is not None:
+            _check_tracing_config(client, global_tracing_config)
         return client
 
     # Run the blocking controller-creation helper in a worker thread so its
@@ -316,6 +344,8 @@ def serve_start(
         )
         if http_options:
             _check_http_options(client, http_options)
+        if global_tracing_config is not None:
+            _check_tracing_config(client, global_tracing_config)
         return client
 
     controller, proxy_ready_refs = _create_controller_and_proxy_refs(

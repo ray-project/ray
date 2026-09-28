@@ -525,6 +525,7 @@ def run(
     proxy_location = ProxyLocation.EveryNode
     grpc_options = gRPCOptions()
     controller_options = None
+    global_tracing_config = None
     # Merge http_options, grpc_options, and controller_options with the ones on
     # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
@@ -532,11 +533,16 @@ def run(
         http_options = config.http_options.model_dump()
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
         controller_options = config.controller_options
+        # Tracing is an init-time setting, so it must be passed when the
+        # controller is created; applying it later via deploy_apps would be
+        # rejected as a runtime change.
+        global_tracing_config = config.tracing_config
 
     client = _private_api.serve_start(
         http_options=http_options,
         proxy_location=proxy_location,
         grpc_options=grpc_options,
+        global_tracing_config=global_tracing_config,
         controller_options=controller_options,
     )
 
