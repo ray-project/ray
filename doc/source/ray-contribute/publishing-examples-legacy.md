@@ -40,7 +40,7 @@ Put your finished notebook under `content/`. Sphinx discovers `.ipynb`, `.md`, a
 * - General examples
   - Add the page to the `toctree` in `doc/source/ray-overview/examples/index.md`.
 * - Ray Core
-  - Add the page to the `toctree` in `doc/source/ray-core/examples/overview.rst` and add a row under the matching skill-level section.
+  - Add the page to the `toctree` in `doc/source/ray-core/examples/overview.md` and add a row under the matching skill-level section.
 * - Ray Serve, Ray Data, Ray Train
   - Add an entry to the library's `examples.yml`, which generates the gallery and its `toctree`.
 * - Ray Tune
