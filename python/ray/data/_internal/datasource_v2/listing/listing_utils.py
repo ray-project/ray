@@ -14,6 +14,9 @@ from ray.data._internal.datasource_v2.listing.file_pruners import (
 from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
     FilePartitioner,
 )
+from ray.data._internal.datasource_v2.read_units import (
+    EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
+)
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.block import Block
 
@@ -59,7 +62,7 @@ def _build_pruners(
 
 def list_files_for_each_block(
     blocks: Iterable[Block],
-    _: TaskContext,
+    ctx: TaskContext,
     *,
     indexer: "FileIndexer",
     filesystem: Optional["FileSystem"],
@@ -91,8 +94,22 @@ def list_files_for_each_block(
     after path discovery and before metadata fetch. Listing still runs as a
     single task when shuffle is requested so the indexer sees the full file
     set.
+
+    ``ctx.kwargs[EXCLUDED_READ_UNIT_IDS_KWARG_NAME]``, when a resumed job sets
+    it on the ``ListFiles`` operator, is the set of read unit ids already
+    finished; the indexer leaves them out, so the partitioner packs only the
+    remaining work.
     """
     pruners = _build_pruners(file_extensions, partition_filter, partition_pruner)
+    # The excluded ids arrive through ``TaskContext.kwargs`` rather than as an
+    # argument of this function because they do not exist at plan time: every
+    # write task checkpoints, so the checkpoint is many files that are only
+    # loaded once execution starts, after the plan is built. A map-task kwarg
+    # is resolved when each listing task launches, so it can carry them.
+    # ``TaskContext.kwargs`` is untyped, so normalize here once: every lookup
+    # downstream (per file, per row group) then stays O(1) whatever was passed.
+    excluded_ids = ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME)
+    excluded_read_unit_ids = frozenset(excluded_ids) if excluded_ids else None
     for block in blocks:
         for manifest in indexer.list_files(
             block[PATH_COLUMN_NAME],
@@ -104,6 +121,7 @@ def list_files_for_each_block(
             projected_columns=projected_columns,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()
