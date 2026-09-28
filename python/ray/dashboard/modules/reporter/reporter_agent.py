@@ -524,6 +524,7 @@ class ReporterAgent(
         self._metrics_collection_disabled = dashboard_agent.metrics_collection_disabled
         self._metrics_agent = None
         self._open_telemetry_metric_recorder = None
+        self._export_failure_warned = set()
         self._session_name = dashboard_agent.session_name
         if not self._metrics_collection_disabled:
             stats_exporter = prometheus_exporter.new_stats_exporter(
@@ -786,10 +787,23 @@ class ReporterAgent(
         for resource_metrics in request.resource_metrics:
             for scope_metrics in resource_metrics.scope_metrics:
                 for metric in scope_metrics.metrics:
-                    if metric.WhichOneof("data") == "histogram":
-                        self._export_histogram_data(metric)
-                    else:
-                        self._export_number_data(metric)
+                    # Isolate failures per metric: one bad metric must not discard
+                    # the reporting component's remaining metrics.
+                    try:
+                        if metric.WhichOneof("data") == "histogram":
+                            self._export_histogram_data(metric)
+                        else:
+                            self._export_number_data(metric)
+                    except Exception as e:
+                        # A failing metric usually keeps failing every interval, so
+                        # warn once per name rather than on every export.
+                        if metric.name not in self._export_failure_warned:
+                            self._export_failure_warned.add(metric.name)
+                            logger.warning(
+                                "Failed to export metric %s, skipping it: %r",
+                                metric.name,
+                                e,
+                            )
 
     async def Export(
         self,

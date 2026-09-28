@@ -177,6 +177,17 @@ int main(int argc, char *argv[]) {
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
+  gcs_server_config.enable_gcs_leader_election =
+      RayConfig::instance().ENABLE_GCS_LEADER_ELECTION();
+  if (gcs_server_config.enable_gcs_leader_election) {
+    // Nothing drives promotion yet, so this GCS stays passive until a future release
+    // wires up the leader election client. Warn loudly: on a cluster with no other
+    // active GCS it will block in startup waiting for a cluster ID.
+    RAY_LOG(WARNING)
+        << "RAY_ENABLE_GCS_LEADER_ELECTION is set. Active-passive GCS leader election "
+           "is experimental and incomplete: this GCS starts passive and cannot yet be "
+           "promoted. Unset it unless you are developing this feature.";
+  }
 
   // Create individual metrics
   auto actor_by_state_gauge = ray::GetActorByStateGaugeMetric();

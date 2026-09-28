@@ -56,7 +56,10 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
+from ray.data._internal.datasource.webdataset_datasink import (
+    WebDatasetDatasink,
+    WebDatasetEncoderConfig,
+)
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.executor import OutputIterator
@@ -104,6 +107,7 @@ from ray.data._internal.usage.util import record_operators_usage
 from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
+    _validate_min_bytes_per_file_args,
     _validate_rows_per_file_args,
     explain_plan,
     get_compute_strategy,
@@ -2330,6 +2334,14 @@ class Dataset:
             ..
                 https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
+        .. tip::
+
+            Repartitioning with ``keys`` hash-shuffles the whole dataset. If the
+            dataset is much larger than the cluster's aggregate object-store
+            memory, enable :ref:`disk-based shuffle <disk-based-shuffle>` by
+            setting ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100).repartition(10).materialize()
@@ -3607,6 +3619,16 @@ class Dataset:
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys.
 
+        Joins require the ``polars`` package.
+
+        .. tip::
+
+            Joins hash-shuffle both input datasets by key. If the inputs are
+            much larger than the cluster's aggregate object-store memory,
+            enable :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
+
         Args:
             ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of ("inner",
@@ -3783,6 +3805,14 @@ class Dataset:
 
         Use this method to transform data based on a
         categorical variable.
+
+        .. tip::
+
+            Grouping hash-shuffles the dataset by key. If the dataset is much
+            larger than the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by setting
+            ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
+            environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
         Examples:
 
@@ -4852,6 +4882,7 @@ class Dataset:
         arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
+        min_bytes_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -4861,7 +4892,7 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call
+        To control the number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
         If pyarrow can't represent your data, this method errors.
@@ -4911,7 +4942,7 @@ class Dataset:
                 look like. The filename is expected to be templatized with `{i}`
                 to ensure unique filenames when writing multiple files. If it's not
                 templatized, Ray Data will add `{i}` to the filename to ensure
-                compatibility with the pyarrow `write_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_dataset.html>`_.
+                compatibility with the pyarrow `write_to_dataset <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_to_dataset.html>`_.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
                 arguments that are provided to `pyarrow.parquet.ParquetWriter() <https:/\
                     /arrow.apache.org/docs/python/generated/\
@@ -4941,6 +4972,18 @@ class Dataset:
                 might write more or fewer rows to each file. If both ``min_rows_per_file``
                 and ``max_rows_per_file`` are specified, ``max_rows_per_file`` takes
                 precedence when they cannot both be satisfied.
+            min_bytes_per_file: [Experimental] The minimum in-memory size, in bytes,
+                of input blocks to combine for each write. This must be a positive
+                integer. Ray Data combines small input blocks until their total
+                in-memory size reaches this value. Note that
+                since this is compared against the uncompressed in-memory size, the
+                resulting on-disk files will typically be much smaller than this value
+                due to Parquet compression and encoding. Ray Data doesn't split blocks
+                or write inputs that exceed this value, so output files can be larger.
+                Partitioning can also cause actual file sizes to differ. Operator
+                fusion is disabled when this parameter is set. You can't use this
+                parameter with ``min_rows_per_file``, ``max_rows_per_file``, or
+                ``num_rows_per_file``.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5004,6 +5047,12 @@ class Dataset:
                     )
                 filesystem = resolved.filesystem
 
+        _validate_min_bytes_per_file_args(
+            min_bytes_per_file=min_bytes_per_file,
+            num_rows_per_file=num_rows_per_file,
+            min_rows_per_file=min_rows_per_file,
+            max_rows_per_file=max_rows_per_file,
+        )
         effective_min_rows, effective_max_rows = _validate_rows_per_file_args(
             num_rows_per_file=num_rows_per_file,
             min_rows_per_file=min_rows_per_file,
@@ -5017,6 +5066,7 @@ class Dataset:
             arrow_parquet_args=arrow_parquet_args,
             min_rows_per_file=effective_min_rows,
             max_rows_per_file=effective_max_rows,
+            min_bytes_per_file=min_bytes_per_file,
             filesystem=filesystem,
             try_create_dir=try_create_dir,
             open_stream_args=arrow_open_stream_args,
@@ -5372,27 +5422,28 @@ class Dataset:
             storage_options: A dictionary of storage options passed to the
                 ``deltalake`` library for authentication and configuration (e.g.
                 cloud credentials).
-            schema_mode: How an ``APPEND`` handles a column present in the
+            schema_mode: How an ``APPEND`` handles a field present in the
                 data being written but absent from the table's current
-                schema. Has no effect on ``SaveMode.OVERWRITE`` (which always
+                schema, including fields nested in structs, lists, or maps.
+                Has no effect on ``SaveMode.OVERWRITE`` (which always
                 replaces the table's schema wholesale) or when the table
                 doesn't exist yet (there's no existing schema to compare
                 against). One of:
 
-                * ``"merge"`` (default): Add the new column to the table
+                * ``"merge"`` (default): Add the new field to the table
                   before committing the write, like SQL's
-                  ``ALTER TABLE ... ADD COLUMN``. The new column is always
+                  ``ALTER TABLE ... ADD COLUMN``. The new field is always
                   added as nullable, and every row written before this
                   reads back with ``None`` for it.
                 * ``"error"``: Reject the write with a ``ValueError``
                   instead, leaving the table's schema unchanged.
 
-                A column present in *both* the data and the table, but with
+                A field present in *both* the data and the table, but with
                 an incompatible type (for example, writing a string into a
                 column the table has as an integer), always raises a
                 ``ValueError`` -- regardless of ``schema_mode``. Only adding
-                a brand-new column is supported; changing an existing
-                column's type is not.
+                a brand-new field is supported; changing an existing
+                field's type is not.
             filesystem: Optional PyArrow filesystem used for worker Parquet
                 writes, instead of one built from ``storage_options`` or ambient
                 credentials. Cannot be combined with ``catalog``.
@@ -5904,29 +5955,21 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
-        encoder: Optional[Union[bool, str, callable, list]] = True,
+        encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
-        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_ files.
+        """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_
+        tar archives.
 
-        The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
-        records, with one Example record for each row in the dataset.
-
-        .. warning::
-            tf.train.Feature only natively stores ints, floats, and bytes,
-            so this function only supports datasets with these data types,
-            and will error if the dataset contains unsupported types.
+        Each row is written as a WebDataset sample.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
 
-        Unless a custom filename provider is given, the format of the output
-        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
-        for the dataset.
+        Unless a custom filename provider is given, generated output filenames end
+        in ``.tar``.
 
         Examples:
 
@@ -5935,14 +5978,19 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.range(100)
+                ds = ray.data.from_items(
+                    [
+                        {"__key__": f"{i:06d}", "txt": str(i)}
+                        for i in range(100)
+                    ]
+                )
                 ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where tfrecords
-                files are written to.
+            path: The path to the destination root directory, where WebDataset tar
+                archives are written.
             filesystem: The filesystem implementation to write to.
             try_create_dir: If ``True``, attempts to create all
                 directories in the destination path. Does nothing if all directories
@@ -5960,11 +6008,12 @@ class Dataset:
                 might write more or fewer rows to each file.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             encoder: Controls how dataset rows are encoded into WebDataset samples.
-                If ``True`` (default), uses the default encoder that automatically
-                handles common data types. If ``False``, disables encoding and requires
-                all values to already be bytes or strings. A string specifies a format
-                hint for the default encoder, a callable provides a custom encoding
-                function, and a list applies multiple encoders in sequence.
+                A boolean or string selects the built-in encoder, which automatically
+                handles common data types based on column-name extensions. A callable
+                receives and returns a sample dictionary, and a list applies multiple
+                encoder specifications in sequence. Set this to ``None`` to skip
+                encoding; in that case, each non-special value that isn't ``None``
+                must already be bytes or a string.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -7827,7 +7876,10 @@ class Dataset:
             block_to_arrow = block_to_arrow.options(label_selector=label_selector)
         return [block_to_arrow.remote(block) for block in block_refs]
 
-    @ConsumptionAPI(pattern="Args:")
+    @Deprecated(
+        message="`to_random_access_dataset()` is unmaintained and will be removed in a future release.",
+        warning=True,
+    )
     def to_random_access_dataset(
         self,
         key: str,

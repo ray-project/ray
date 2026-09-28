@@ -12,7 +12,7 @@ rllib.env.utils
 
 .. autosummary::
    :nosignatures:
-   :toctree: env/
+   :toctree: doc/
 
    ~try_import_open_spiel
    ~try_import_pyspiel
