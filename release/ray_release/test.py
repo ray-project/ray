@@ -367,6 +367,8 @@ class Test(dict):
         A failure to reach GitHub answers None. The caller can only read that as
         "no open issue is known here", never as "this test has no open issue".
         """
+        import requests
+
         from ray_release.github_client import GitHubException
 
         issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
@@ -374,7 +376,10 @@ class Test(dict):
             return None
         try:
             issue = ray_github.get_issue(issue_number)
-        except GitHubException as e:
+        # RequestException too: GitHubClient's timeout raises requests.Timeout,
+        # not GitHubException, and is_jailed_with_open_issue is called from
+        # filter.py with no guard around it.
+        except (GitHubException, requests.RequestException) as e:
             logger.warning(
                 f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
             )

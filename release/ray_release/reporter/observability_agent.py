@@ -104,9 +104,17 @@ FEEDBACK_REMINDER = (
 # Regions github renders verbatim: it neither parses html nor autolinks inside
 # them, so _sanitize_summary leaves them alone.
 CODE_REGION = re.compile(
-    r"^(?:```|~~~).*?(?:^(?:```|~~~)[^\n]*$|\Z)|`+[^`]*`+",
+    # A fence opener's info string may not contain a backtick, so ```x``` on one
+    # line is an inline span, not an unclosed fence swallowing the rest.
+    r"^```[^`\n]*$.*?(?:^```[^\n]*$|\Z)"
+    r"|^~~~[^\n]*$.*?(?:^~~~[^\n]*$|\Z)"
+    r"|`+[^`]*`+",
     re.DOTALL | re.MULTILINE,
 )
+
+# `meta-data` talks to buildkite's api, so it can hang. Same 30s as
+# GitHubClient.TIMEOUT.
+BUILDKITE_AGENT_TIMEOUT = 30
 
 # Creating a debug session is a quick bookkeeping call, whereas the query runs
 # the actual analysis over the job's metrics and logs.
@@ -313,6 +321,7 @@ class ObservabilityAgentReporter(Reporter):
                 ["buildkite-agent", "meta-data", *args],
                 capture_output=True,
                 text=True,
+                timeout=BUILDKITE_AGENT_TIMEOUT,
             )
         except Exception as e:
             logger.warning(f"Could not run buildkite-agent meta-data: {e}")

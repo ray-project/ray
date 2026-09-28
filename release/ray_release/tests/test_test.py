@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 import aioboto3
 import boto3
 import pytest
+import requests
 import responses
 
 from ray_release.bazel import bazel_runfile
@@ -224,6 +225,19 @@ def test_get_open_github_issue(issue, expected_open) -> None:
         assert len(responses.calls) == 1
     else:
         assert got is None
+
+
+def test_get_open_github_issue_timeout() -> None:
+    """GitHubClient's timeout raises requests.Timeout, not GitHubException, and
+    is_jailed_with_open_issue is called from filter.py with no guard."""
+    repo = _repo()
+    with patch.object(repo._client, "_get", side_effect=requests.Timeout("too slow")):
+        assert (
+            Test(name="t", github_issue_number="1").get_open_github_issue(repo) is None
+        )
+        assert not Test(
+            name="t", state="jailed", github_issue_number="1"
+        ).is_jailed_with_open_issue(repo)
 
 
 def test_get_open_github_issue_no_issue_number() -> None:

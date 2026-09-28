@@ -14,6 +14,7 @@ from ray_release.reporter.observability_agent import (
     ANALYSIS_FILE_ENV,
     ANNOTATION_CONTEXT_PREFIX,
     ANNOTATION_SCOPE,
+    BUILDKITE_AGENT_TIMEOUT,
     COMMAND_FAILURE_RETURN_CODES,
     COMMENT_CLAIM_PREFIX,
     DEBUG_SESSION_QUERY,
@@ -912,9 +913,11 @@ class FakeAgent:
     def __init__(self, meta_data=None):
         self.meta_data = dict(meta_data or {})
         self.commands = []
+        self.kwargs = []
 
     def run(self, command, **kwargs):
         self.commands.append(command)
+        self.kwargs.append(kwargs)
         if command[:2] != ["buildkite-agent", "meta-data"]:
             return FakeCompleted()  # the annotate call
         operation, key = command[2], command[3]
@@ -1124,6 +1127,44 @@ def test_a_summary_that_fits_is_not_trimmed():
     _report_on_buildkite(FakeRepo(issue=issue), FakeAgent())
 
     assert "truncated" not in issue.comments[0]
+
+
+def test_the_meta_data_calls_cannot_hang():
+    """`meta-data` talks to buildkite's api, so it can hang like any request."""
+    agent = FakeAgent()
+
+    _report_on_buildkite(FakeRepo(issue=FakeIssue(state="open")), agent)
+
+    meta = [
+        k
+        for c, k in zip(agent.commands, agent.kwargs)
+        if c[:2] == ["buildkite-agent", "meta-data"]
+    ]
+    assert meta
+    assert all(k.get("timeout") == BUILDKITE_AGENT_TIMEOUT for k in meta)
+
+
+@pytest.mark.parametrize(
+    ("summary", "expected"),
+    [
+        # A fence opener's info string cannot hold a backtick, so this is an
+        # inline span -- not an unclosed fence swallowing the prose after it.
+        ("```Err``` raised, see #1 by @someone", "@<!---->someone"),
+        ("before @a\n```\ncode @b\n```\nafter @c", "@<!---->c"),
+        ("x @a\n```python\ncode @b\n```\ny @c", "@<!---->c"),
+        ("p @a\n~~~\ncode @b\n~~~\nq @c", "@<!---->c"),
+    ],
+    ids=["one_line_span", "fenced", "fenced_with_info", "tilde_fenced"],
+)
+def test_prose_after_a_code_region_is_still_defused(summary, expected):
+    issue = FakeIssue(state="open")
+
+    _report_on_buildkite(FakeRepo(issue=issue), FakeAgent(), summary=summary)
+
+    body = issue.comments[0]
+    assert expected in body
+    # The code region itself is left exactly as the agent wrote it.
+    assert "@b" not in body or "code @b" in body
 
 
 def test_the_annotation_is_not_deduped_by_build():
