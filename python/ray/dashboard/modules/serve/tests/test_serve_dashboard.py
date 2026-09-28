@@ -1,6 +1,7 @@
 import copy
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -25,8 +26,14 @@ from ray.serve._private.common import (
     DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve._private.test_utils import get_num_alive_replicas
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_CONTROLLER_NAME,
+    SERVE_NAMESPACE,
+)
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import get_application_url, get_num_alive_replicas
 from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
@@ -205,6 +212,81 @@ def test_put_bad_tracing_exporter(ray_start_stop):
         "PUT", SERVE_HEAD_URL, json=config, timeout=60
     )
     assert put_response.status_code == 200
+
+
+def _span_file_contains(spans_dir: str, component: str, span_name: str) -> bool:
+    """Return whether a span file for ``component`` contains ``span_name``."""
+    if not os.path.isdir(spans_dir):
+        return False
+    for fname in os.listdir(spans_dir):
+        if component not in fname:
+            continue
+        try:
+            with open(os.path.join(spans_dir, fname)) as f:
+                if span_name in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_put_tracing_config_on_fresh_cluster_produces_traces(ray_start_stop):
+    """The first serve deploy's tracing_config applies end to end.
+
+    On a fresh cluster the deploy passes tracing_config into the controller
+    constructor, so proxies get it at construction and replicas at startup, and
+    a request produces traces for both.
+    """
+    config = {
+        "tracing_config": {"enabled": True, "sampling_ratio": 1.0},
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/",
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            }
+        ],
+    }
+    put_response = request_with_auth_token(
+        "PUT", SERVE_HEAD_URL, json=config, timeout=60
+    )
+    assert put_response.status_code == 200
+    wait_for_condition(
+        lambda: serve.status().applications["app1"].status == ApplicationStatus.RUNNING,
+        timeout=60,
+    )
+
+    # The controller started with the deployed tracing config.
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    tracing_config = ray.get(controller.get_tracing_config.remote())
+    assert tracing_config.enabled is True
+    assert tracing_config.sampling_ratio == 1.0
+
+    # Under HAProxy or direct ingress the Python proxy isn't in the request path,
+    # so only the replica emits request spans.
+    expect_proxy_spans = not (
+        RAY_SERVE_ENABLE_HA_PROXY or RAY_SERVE_ENABLE_DIRECT_INGRESS
+    )
+    url = get_application_url(app_name="app1")
+    spans_dir = os.path.join(get_serve_logs_dir(), "spans")
+
+    def traces_produced() -> bool:
+        requests.get(url, timeout=10)
+        replica_traced = _span_file_contains(
+            spans_dir, "replica", "replica_handle_request"
+        )
+        proxy_traced = not expect_proxy_spans or _span_file_contains(
+            spans_dir, "proxy", "proxy_http_request"
+        )
+        return replica_traced and proxy_traced
+
+    try:
+        wait_for_condition(traces_produced, timeout=60)
+    finally:
+        shutil.rmtree(spans_dir, ignore_errors=True)
 
 
 @pytest.mark.skipif(
