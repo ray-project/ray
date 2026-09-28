@@ -152,14 +152,27 @@ py_test_module_list(
     ],
 )
 
-# AutoscalingCluster simulates several Ray nodes on one host. Disable HAProxy
-# because per-node HAProxy managers cannot all bind the same host ports.
-py_test_module_list(
-    size = "medium",
-    env = {
-        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-        "RAY_SERVE_ENABLE_HA_PROXY": "0",
+# AutoscalingCluster simulates several Ray nodes on one host. The tests use a
+# head-only proxy so the HAProxy variant has one owner for its listener ports.
+MAX_REPLICAS_PER_NODE_PROXY_ENV_VARIANTS = {
+    "haproxy": {
+        "env": {
+            "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+            "RAY_SERVE_ENABLE_HA_PROXY": "1",
+        },
+        "name_suffix": "_with_haproxy",
     },
+    "python_proxy": {
+        "env": {
+            "RAY_SERVE_ENABLE_HA_PROXY": "0",
+        },
+        "name_suffix": "_with_python_proxy",
+    },
+}
+
+py_test_module_list_with_env_variants(
+    size = "medium",
+    env_variants = MAX_REPLICAS_PER_NODE_PROXY_ENV_VARIANTS,
     files = [
         "test_max_replicas_per_node.py",
     ],
@@ -753,19 +766,32 @@ py_test_module_list(
     ],
 )
 
-# This is the pack-scheduling variant of the same simulated multi-node test.
-py_test_module_list(
+# Exercise the same proxy split with pack scheduling enabled.
+MAX_REPLICAS_PER_NODE_PACK_PROXY_ENV_VARIANTS = {
+    "haproxy": {
+        "env": {
+            "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+            "RAY_SERVE_ENABLE_HA_PROXY": "1",
+            "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+        },
+        "name_suffix": "_with_pack_scheduling_and_haproxy",
+    },
+    "python_proxy": {
+        "env": {
+            "RAY_SERVE_ENABLE_HA_PROXY": "0",
+            "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+        },
+        "name_suffix": "_with_pack_scheduling_and_python_proxy",
+    },
+}
+
+py_test_module_list_with_env_variants(
     size = "medium",
     data = glob(["test_config_files/**/*"]),
-    env = {
-        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-        "RAY_SERVE_ENABLE_HA_PROXY": "0",
-        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
-    },
+    env_variants = MAX_REPLICAS_PER_NODE_PACK_PROXY_ENV_VARIANTS,
     files = [
         "test_max_replicas_per_node.py",
     ],
-    name_suffix = "_with_pack_scheduling",
     tags = [
         "exclusive",
         "no_windows",

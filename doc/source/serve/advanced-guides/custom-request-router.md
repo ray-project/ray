@@ -12,8 +12,11 @@ This API is in alpha and may change before becoming stable.
 :::
 
 :::{note}
-Custom request routers on the ingress deployment require the Python proxy. On
-Linux, set `RAY_SERVE_ENABLE_HA_PROXY=0` on every node before starting Ray.
+HAProxy selects an HTTP ingress replica before the request reaches that
+deployment's request router. Therefore, configuring `request_router_config`
+directly on an HTTP ingress deployment requires the Python proxy. On Linux, set
+`RAY_SERVE_ENABLE_HA_PROXY=0` on every node before starting Ray. This differs
+from an attached ingress request router, which requires HAProxy.
 :::
 
 Different Ray serve applications demand different logics for load balancing. For example, in serving LLMs you might want to have a different policy than balancing number of requests across replicas: e.g. balancing ongoing input tokens, balancing kv-cache utilization, etc. [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) is an abstraction in Ray Serve that allows extension and customization of load-balancing logic for each deployment.

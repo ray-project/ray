@@ -87,6 +87,9 @@ def test_basic(ray_autoscaling_cluster):
     """Test that max_replicas_per_node is honored."""
 
     ray.init()
+    # AutoscalingCluster represents multiple Ray nodes on one host. Keep the
+    # proxy on the head so the HAProxy variant owns only one set of host ports.
+    serve.start(proxy_location="HeadOnly")
 
     @serve.deployment
     class D:
@@ -159,6 +162,9 @@ def test_update_max_replicas_per_node(ray_autoscaling_cluster):
     """Test re-deploying a deployment with different max_replicas_per_node."""
 
     ray.init()
+    # AutoscalingCluster represents multiple Ray nodes on one host. Keep the
+    # proxy on the head so the HAProxy variant owns only one set of host ports.
+    serve.start(proxy_location="HeadOnly")
 
     @serve.deployment
     class D:
