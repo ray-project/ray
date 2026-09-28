@@ -12,8 +12,9 @@ progress. The merged detector's defaults are 15s and 600s.
   merged  ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` turns on
           ``NCCLRASCallback`` (#64928). On a confirmed hang it writes stack
           traces and the RAS query history, and raises ``NCCLHangError``.
-  health  ``nccl_ras_policy()`` from ``nccl_ras_health.py``, passed through
-          ``RunConfig(health_config=...)``. Pre-flight on every node, then on a
+  health  ``nccl_ras_ready_policy()`` and ``nccl_ras_policy()`` from
+          ``nccl_ras_health.py``, passed through ``RunConfig(health_config=...)``.
+          Pre-flight on every node, then on a
           confirmed hang a DIAGNOSE (stacks, nvidia-smi, RAS text report), then
           a REATTEMPT. With ``max_failures=0`` the failure policy ends the run
           with ``HealthDecisionError``.
@@ -84,7 +85,9 @@ def run(mode: str) -> dict:
         policy = nccl_ras_health.nccl_ras_policy(
             confirm_duration_s=CONFIRM_S, interval_s=POLL_S
         )
-        health_config = health.HealthConfig(policies=[policy])
+        health_config = health.HealthConfig(
+            policies=[nccl_ras_health.nccl_ras_ready_policy(), policy]
+        )
 
     events = harness.start_events()
     trainer = TorchTrainer(

@@ -4,21 +4,24 @@ Not part of Ray Train: it imports only ``ray.train.health``, which is the test
 that the public contracts are enough to bring your own probe.
 
     import ray.train.health as health
-    from nccl_ras_health import nccl_ras_policy
+    from nccl_ras_health import nccl_ras_policy, nccl_ras_ready_policy
 
-    trainer = TorchTrainer(
-        train_func,
-        run_config=RunConfig(
-            health_config=health.HealthConfig(policies=[nccl_ras_policy()]),
-        ),
+    health_config = health.HealthConfig(
+        policies=[nccl_ras_ready_policy(), nccl_ras_policy()]
     )
 
-- ``NcclRasProbe``: a ``ClusterProbe`` keyed by communicator.
-- ``NcclRasReadyProbe``: pre-flight check that a node can run RAS at all.
-- ``NcclHangEvaluator``: the merged detector's rule (#64928).
-- ``CollectiveHangEvaluator``: the same signal joined with ``health.report()``.
-- Diagnostics from #66229: ``StackTraceProbe``, ``NvidiaSmiProbe``,
-  ``RasTextReportProbe``.
+One policy per concern:
+
+- ``nccl_ras_ready_policy()``: pre-flight only. ``NcclRasReadyProbe`` checks a
+  node can run RAS at all; a node that fails is evicted before training.
+- ``nccl_ras_policy()``: ``NcclRasProbe``, a ``ClusterProbe`` keyed by
+  communicator, judged by ``NcclHangEvaluator``, the merged detector's rule
+  (#64928).
+- ``collective_hang_policy()``: the same probe judged by
+  ``CollectiveHangEvaluator``, which joins it with ``health.report()``.
+
+Both hang evaluators diagnose before deciding, with the checks from #66229:
+``StackTraceProbe``, ``NvidiaSmiProbe``, ``RasTextReportProbe``.
 
 Scripts using this module call
 ``ray.cloudpickle.register_pickle_by_value(nccl_ras_health)``, because it is
@@ -725,8 +728,11 @@ class CollectiveHangEvaluator(health.Evaluator):
 # ======================================================================
 # Policies
 # ======================================================================
-def _probes(interval_s: float) -> List[health.Probe]:
-    return [NcclRasProbe(interval_s=interval_s), NcclRasReadyProbe()]
+def nccl_ras_ready_policy() -> health.HealthPolicy:
+    """Pre-flight only: reject nodes that cannot run NCCL RAS hang detection."""
+    return health.HealthPolicy(
+        probe_creator=lambda: [NcclRasReadyProbe()], preflight=True
+    )
 
 
 def nccl_ras_policy(
@@ -734,9 +740,8 @@ def nccl_ras_policy(
 ) -> health.HealthPolicy:
     """The merged detector, expressed as a policy."""
     return health.HealthPolicy(
-        probe_creator=lambda: _probes(interval_s),
+        probe_creator=lambda: [NcclRasProbe(interval_s=interval_s)],
         evaluator_creator=lambda: [NcclHangEvaluator(confirm_duration_s)],
-        preflight=True,
     )
 
 
@@ -745,7 +750,6 @@ def collective_hang_policy(
 ) -> health.HealthPolicy:
     """NCCL RAS plus the job's own progress and parallelism layout."""
     return health.HealthPolicy(
-        probe_creator=lambda: _probes(interval_s),
+        probe_creator=lambda: [NcclRasProbe(interval_s=interval_s)],
         evaluator_creator=lambda: [CollectiveHangEvaluator(stall_factor, min_stall_s)],
-        preflight=True,
     )

@@ -62,10 +62,10 @@ python release/train_tests/health/nccl_hang.py merged    # one of them
 Same job, same `LeaveCollective(rank=1, at_step=100)`, same timing for both:
 RAS polled every 2s, a hang confirmed after 20s with no progress.
 
-| | merged `NCCLRASCallback` | `nccl_ras_policy()` on `ray.train.health` |
+| | merged `NCCLRASCallback` | `ray.train.health` |
 |---|---|---|
-| turned on by | `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` + env vars | `RunConfig(health_config=...)` |
-| before training | nothing | pre-flight: `NcclRasReadyProbe` on every GPU node |
+| turned on by | `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` + env vars | `RunConfig(health_config=HealthConfig([nccl_ras_ready_policy(), nccl_ras_policy()]))` |
+| before training | nothing | `nccl_ras_ready_policy()`: `NcclRasReadyProbe` on every GPU node |
 | on a confirmed hang | writes `hang_detector/stack_traces` and `hang_detector/nccl_ras`, raises `NCCLHangError` | `DIAGNOSE`: stacks on the stalled ranks, `nvidia-smi` and the RAS text report on their nodes, under `health_diagnostics/` |
 | then | the failure policy retries or ends the run | `REATTEMPT` if the GPUs are clean, `EVICT` if one is not; retries follow `FailureConfig` |
 | error if it ends | `NCCLHangError` | `HealthDecisionError`, carrying the decision |

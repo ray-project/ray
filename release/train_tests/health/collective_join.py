@@ -133,7 +133,9 @@ def run(name: str) -> bool:
             stall_factor=STALL_FACTOR, min_stall_s=2 * POLL_S, interval_s=POLL_S
         )
         observe = health.HealthPolicy(evaluator_creator=lambda: [ObserveFrozen()])
-        health_config = health.HealthConfig(policies=[policy, observe])
+        health_config = health.HealthConfig(
+            policies=[nccl_ras_health.nccl_ras_ready_policy(), policy, observe]
+        )
     else:
         print(f"  merged detector with a fixed {MERGED_WINDOW_S}s window")
 
