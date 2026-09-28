@@ -3000,6 +3000,45 @@ class TestFloorRelaxation:
         assert len(self._covered(cache, replicas, stopped, "zone")) == 3
 
 
+class TestDomainAffinity:
+    """Once busy nodes are full, pack fills a used slice before a new one."""
+
+    SLICE = "ray.io/tpu-slice-name"
+
+    def _schedule_third_replica(self, topology_spread):
+        d_id = DeploymentID(name="d1")
+        cache = MockClusterNodeInfoCache()
+        # a1 and b1 each fit one replica. c1 would be the tightest fit left.
+        nodes = {}
+        for name, cpus in [("a1", 1), ("a2", 4), ("b1", 1), ("b2", 4), ("c1", 1)]:
+            nodes[name] = NodeID.from_random().hex()
+            cache.add_node(nodes[name], {"CPU": cpus}, labels={self.SLICE: name[0]})
+        scheduler = make_scheduler(cache, PackNodeScorer())
+        deploy(
+            scheduler,
+            d_id,
+            ray_actor_options={"num_cpus": 1},
+            topology_spread=topology_spread,
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), nodes["a1"])
+        scheduler.on_replica_running(ReplicaID("r1", d_id), nodes["b1"])
+
+        on_scheduled = Mock()
+        scheduler.schedule(
+            upscales={d_id: [make_request(d_id, "r2", 1, on_scheduled)]},
+            downscales={},
+        )
+        chosen = scheduled_node_ids(on_scheduled)[0]
+        return next(name for name, node_id in nodes.items() if node_id == chosen)
+
+    def test_pack_prefers_an_idle_node_in_a_used_slice(self):
+        assert self._schedule_third_replica({self.SLICE: 2}) in {"a2", "b2"}
+
+    def test_without_a_slice_floor_pack_takes_the_tightest_fit(self):
+        """Serve knows which label marks a domain only from the floor."""
+        assert self._schedule_third_replica({RAY_NODE_ID_LABEL: 2}) == "c1"
+
+
 class TestSpreadNodeScorer:
     def test_prefers_fewest_replicas_of_the_same_deployment(self):
         """Replicas of other deployments do not count against a node."""
