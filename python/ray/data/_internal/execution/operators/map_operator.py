@@ -724,6 +724,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
 
         For a downstream reconstruction child task, the parent task that completes last holds the full input
         set of reconstruction blocks, and can release it to the operator's output queue.
+        TODO(ayushkum): Currently we support ordering within a task's blocks but not across tasks. Modify
+        lineage tracker to support ordering across tasks, if blocks interleaved from across parents.
         """
         held_blocks = self._reconstruction_outputs.get(plan_id, {})
         for child_task_id, requirements in self._lineage_tracker.get_pending_children(
