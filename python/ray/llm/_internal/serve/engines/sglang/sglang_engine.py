@@ -25,7 +25,10 @@ from typing import (
 
 from pydantic import BaseModel
 
-from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
+from ray.llm._internal.serve.constants import (
+    ENABLE_WORKER_PROCESS_SETUP_HOOK,
+    get_llm_serve_runtime_env,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
@@ -753,6 +756,7 @@ class SGLangServer:
         if llm_config.runtime_env:
             runtime_env.update(llm_config.runtime_env)
 
+        ray_actor_options["runtime_env"] = get_llm_serve_runtime_env(runtime_env)
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
