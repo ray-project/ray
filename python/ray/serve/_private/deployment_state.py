@@ -4809,6 +4809,15 @@ class DeploymentState:
                     self._stop_replica(replica, graceful_stop=False)
                 else:
                     self._replicas.add(original_state, replica)
+                    if (
+                        start_status == ReplicaStartupStatus.PENDING_INITIALIZATION
+                        and replica.actor_node_id is not None
+                    ):
+                        # The actor has a worker, so its node is known before
+                        # the replica finishes initializing.
+                        self._deployment_scheduler.on_replica_allocated(
+                            replica.replica_id, replica.actor_node_id
+                        )
 
         # If any gang member failed during startup, stop all other members of
         # that gang so partial gangs never exist.

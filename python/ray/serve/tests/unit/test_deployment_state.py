@@ -954,6 +954,33 @@ def check_counts(
             assert curr_count == count, msg
 
 
+def test_scheduler_learns_the_node_before_the_replica_runs(
+    mock_deployment_state_manager,
+):
+    """A starting replica's node reaches the scheduler once its actor starts."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    info_1, _ = deployment_info()
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    dsm.update()
+    replica = ds._replicas.get()[0]
+
+    with patch.object(
+        ds._deployment_scheduler, "on_replica_allocated"
+    ) as on_replica_allocated:
+        # Still waiting for a worker, so there is no node to report.
+        dsm.update()
+        on_replica_allocated.assert_not_called()
+
+        replica._actor.set_node_id("node-a")
+        replica._actor.set_status(ReplicaStartupStatus.PENDING_INITIALIZATION)
+        dsm.update()
+        on_replica_allocated.assert_called_with(replica.replica_id, "node-a")
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+
+
 def test_create_delete_single_replica(mock_deployment_state_manager):
     create_dsm, _, _, _ = mock_deployment_state_manager
     dsm: DeploymentStateManager = create_dsm()
