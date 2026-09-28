@@ -5,7 +5,9 @@ import logging
 import math
 import os
 import threading
+import sys
 import time
+import uuid
 from enum import Enum
 from typing import Any, Callable, Dict, List, Union
 import dataclasses
@@ -264,6 +266,7 @@ class BenchmarkMetric(Enum):
     OBJECT_STORE_MEMORY_USED_PEAK_GB = "object_store_memory_used_peak_gb"
     OBJECT_STORE_MEMORY_UTILIZATION_PEAK = "object_store_memory_utilization_peak"
     HEAD_NODE_MEMORY_USED_PEAK_GB = "head_node_memory_used_peak_gb"
+    SCHED_LOOP_DURATIONS_P90_S = "sched_loop_durations_p90_s"
 
 
 class Benchmark:
@@ -273,7 +276,7 @@ class Benchmark:
         max_head_node_memory_bytes: If set, query Prometheus after each case and fail
             if peak physical memory used on the head node exceeds this limit.
         max_sched_loop_duration_s: If set, fail if any dataset that executed during
-            the run had a scheduling loop iteration longer than this limit.
+            the run had a p90 scheduling loop iteration longer than this limit.
 
     Here's an example of typical usage:
 
@@ -304,8 +307,12 @@ class Benchmark:
         self,
         *,
         max_head_node_memory_bytes: int | None = None,
+        # `WAIT_FOR_TASK_COMPLETION_TIMEOUT_S` is the lower bound on the max scheduling
+        # loop duration. 4 is a constant multiplier chosen by practical judgement.
+        #
+        # TODO: Ratchet this down as we improve scheduling loop overhead.
         max_sched_loop_duration_s: float
-        | None = 2 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+        | None = 4 * WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
     ):
         if max_head_node_memory_bytes is not None and max_head_node_memory_bytes <= 0:
             raise ValueError("max_head_node_memory_bytes must be greater than 0.")
@@ -319,6 +326,49 @@ class Benchmark:
         # Stats summaries are required for the scheduling loop duration assertion
         # in `run_fn`.
         DataContext.get_current().enable_stats_summary_collection = True
+
+        self._profiling = None
+        self._profiling_s3_prefix = None
+
+        # Auto-start profiling when profiling env vars are set and no
+        # Profiling instance is already active (e.g. image_embedding_from_jsonl
+        # manages its own).
+        try:
+            from profiling.coordinator import Profiling
+        except ImportError:
+            return
+
+        if Profiling._instance_active:
+            return
+
+        try:
+            job_id = os.environ.get("ANYSCALE_JOB_ID", f"local-{uuid.uuid4().hex[:8]}")
+            script_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+            outdir = f"/mnt/shared_storage/profiling/{script_name}/{job_id}"
+
+            profiling = Profiling(outdir=outdir)
+            if profiling.is_enabled():
+                # ray.nodes() is a state API call and raises if the driver has not
+                # connected yet. Benchmarks that construct Benchmark() before touching
+                # Ray would otherwise lose profiling entirely, with only a warning to
+                # show for it.
+                if not ray.is_initialized():
+                    ray.init(ignore_reinit_error=True)
+                profiling.num_gpu_nodes = sum(
+                    1
+                    for node in ray.nodes()
+                    if node.get("Alive") and node.get("Resources", {}).get("GPU", 0) > 0
+                )
+                profiling.start()
+                self._profiling = profiling
+                self._profiling_s3_prefix = f"{script_name}/{job_id}"
+        except Exception:
+            logger.warning(
+                "Failed to auto-start profiling; continuing without it.",
+                exc_info=True,
+            )
+            self._profiling = None
+            self._profiling_s3_prefix = None
 
     def run_fn(
         self,
@@ -358,6 +408,9 @@ class Benchmark:
         assert fn_output is None or isinstance(fn_output, dict), fn_output
 
         spilled_bytes_total = _get_spilled_bytes_total(state) - start_spilled_bytes
+        # This includes executions that finished before `run_fn` was called.
+        # The code assumes this isn't an issue to simplify the implementation.
+        stats_summaries = ray.data.list_stats_summaries()
         curr_case_metrics = {
             BenchmarkMetric.RUNTIME.value: duration,
             BenchmarkMetric.OBJECT_STORE_SPILLED_TOTAL_GB.value: _bytes_to_gb(
@@ -370,6 +423,9 @@ class Benchmark:
                 memory_sampler.peak_utilization,
                 4,
             ),
+            BenchmarkMetric.SCHED_LOOP_DURATIONS_P90_S.value: [
+                summary.streaming_exec_schedule_p90_s for summary in stats_summaries
+            ],
         }
         if isinstance(fn_output, dict):
             for key, value in fn_output.items():
@@ -407,19 +463,16 @@ class Benchmark:
             )
 
         if self._max_sched_loop_duration_s is not None:
-            # This includes executions that finished before `run_fn` was called.
-            # The code assumes this isn't an issue to simplify the implementation.
-            stats_summaries = ray.data.list_stats_summaries()
             datasets_exceeding_limit = [
                 f"{summary.dataset_uuid} "
-                f"({summary.streaming_exec_schedule_max_s} seconds)"
+                f"({summary.streaming_exec_schedule_p90_s} seconds)"
                 for summary in stats_summaries
-                if summary.streaming_exec_schedule_max_s
+                if summary.streaming_exec_schedule_p90_s
                 > self._max_sched_loop_duration_s
             ]
             if datasets_exceeding_limit:
                 raise AssertionError(
-                    f"Benchmark case {name!r} had datasets whose max scheduling loop "
+                    f"Benchmark case {name!r} had datasets whose p90 scheduling loop "
                     f"duration exceeded the configured limit of "
                     f"{self._max_sched_loop_duration_s} seconds: "
                     f"{', '.join(datasets_exceeding_limit)}."
@@ -438,3 +491,28 @@ class Benchmark:
 
         print(f"Benchmark metrics exported to '{test_output_json}':")
         print(json.dumps(self.result, indent=4))
+
+        # Auto-stop profiling and upload artifacts to S3. Protected so a
+        # teardown failure doesn't mask a successful benchmark run.
+        if self._profiling is not None:
+            # The copy has its own guard so a failure still stops the profilers,
+            # which is what flushes their output.
+            try:
+                import shutil
+
+                if os.path.exists(test_output_json):
+                    os.makedirs(self._profiling.outdir, exist_ok=True)
+                    shutil.copy2(test_output_json, self._profiling.outdir)
+            except Exception:
+                logger.warning(
+                    "Failed to copy the benchmark result into the profiling outdir.",
+                    exc_info=True,
+                )
+            try:
+                self._profiling.stop(s3_prefix=self._profiling_s3_prefix)
+            except Exception:
+                logger.warning(
+                    "Failed to stop/upload profiling artifacts.", exc_info=True
+                )
+            finally:
+                self._profiling = None

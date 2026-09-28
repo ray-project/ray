@@ -137,7 +137,7 @@ for updating the model.
 
 RLlib provides all the DQN improvements evaluated in [Rainbow](https://arxiv.org/abs/1710.02298), though it doesn't enable all of them by default. For parametric or variable-length action spaces on the new API stack, see the [action masking example](https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/action_masking_rl_module.py). The example uses PPO.
 
-**Tuned examples:** [PongDeterministic-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-dqn.yaml), [Rainbow configuration](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/pong-rainbow.yaml), [{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dqn.yaml), [with Dueling and Double-Q](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-duel-ddqn.yaml), [with Distributional DQN](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/atari-dist-dqn.yaml).
+**Tuned examples:** [CartPole-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/cartpole_dqn.py), [multi-agent CartPole](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/multi_agent_cartpole_dqn.py), [StatelessCartPole](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/stateless_cartpole_dqn.py), [Atari benchmark](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/dqn/benchmark_dqn_atari.py).
 
 :::{hint}
 For a complete [rainbow](https://arxiv.org/pdf/1710.02298.pdf) setup, make the following changes to the default DQN config: `"n_step": [between 1 and 10], "noisy": True, "num_atoms": [more than 1], "v_min": -10.0, "v_max": 10.0` (set `v_min` and `v_max` according to your expected range of returns).
@@ -167,7 +167,7 @@ SAC scales out on both axes, supporting multiple EnvRunners for sample collectio
 for updating the model.
 ```
 
-**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/pendulum-sac.yaml), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/halfcheetah_sac.py).
+**Tuned examples:** [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/pendulum_sac.py), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/sac/halfcheetah_sac.py).
 
 **SAC-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
 
@@ -204,7 +204,7 @@ APPO scales out on both axes, supporting multiple EnvRunners for sample collecti
 for updating the model.
 ```
 
-**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py), [HalfCheetah-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/halfcheetah_appo.py).
+**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pong_appo.py), [Pendulum-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/appo/pendulum_appo.py).
 
 **APPO-specific configs**. See also {ref}`generic algorithm settings <rllib-algo-configuration-generic-settings>`:
 
@@ -232,7 +232,7 @@ IMPALA scales out on both axes, supporting multiple EnvRunners for sample collec
 for updating the model.
 ```
 
-**Tuned examples:** [PongNoFrameskip-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala.yaml), [vectorized configuration](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-vectorized.yaml), [multi-GPU configuration](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong-impala-fast.yaml), [{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/atari-impala.yaml).
+**Tuned examples:** [Pong-v5](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/pong_impala.py), [CartPole-v1](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/cartpole_impala.py), [multi-agent TicTacToe](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/impala/tictactoe_impala.py).
 
 ```{figure} images/impala.png
 :width: 650
