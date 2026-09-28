@@ -369,7 +369,9 @@ class ApplicationState:
     @property
     def is_router_application(self) -> bool:
         """From target state, so it survives scale-to-zero."""
-        deployment_infos = self._target_state.deployment_infos or {}
+        deployment_infos = self._target_state.deployment_infos
+        if not deployment_infos or self._ingress_deployment_name is None:
+            return False
         ingress_info = deployment_infos.get(self._ingress_deployment_name)
         return ingress_info is not None and ingress_info.router_application
 
