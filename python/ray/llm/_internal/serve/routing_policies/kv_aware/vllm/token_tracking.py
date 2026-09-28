@@ -9,12 +9,15 @@ from ray import serve
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+    ROUTING_REQUEST_ID_CONTEXT,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    LifecycleEvent,
     get_llm_router_handle,
     get_worker_id,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
+from ray.serve._private.common import DeploymentID
 from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
@@ -34,11 +37,17 @@ class LifecycleEventForwarder:
     the next one.
     """
 
-    def __init__(self, handle: DeploymentHandle, worker_id: int):
+    def __init__(
+        self,
+        handle: DeploymentHandle,
+        worker_id: int,
+        deployment_id: Optional[DeploymentID] = None,
+    ):
         self.handle = handle
         self.worker_id = worker_id
-        self._events: asyncio.Queue = asyncio.Queue()
-        self._delivery_task: Optional[asyncio.Task] = None
+        self.deployment_id = deployment_id
+        self._events: asyncio.Queue[LifecycleEvent] = asyncio.Queue()
+        self._delivery_task: Optional[asyncio.Task[None]] = None
 
     def report(self, method_name: str, *args) -> None:
         if self._delivery_task is None or self._delivery_task.done():
@@ -57,8 +66,11 @@ class LifecycleEventForwarder:
             try:
                 # return_exceptions so one failed replica cannot mask delivery
                 # to the rest; failures are logged and dropped below.
+                kwargs = (
+                    {"deployment_id": self.deployment_id} if self.deployment_id else {}
+                )
                 results = await self.handle.broadcast(
-                    "on_lifecycle_events", batch
+                    "on_lifecycle_events", batch, **kwargs
                 ).results_async(
                     timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
                     return_exceptions=True,
@@ -155,7 +167,13 @@ def enable_token_tracking(
                         serve.get_replica_context().replica_id.unique_id
                     )
                     self._lifecycle_forwarder = LifecycleEventForwarder(
-                        handle, worker_id
+                        handle,
+                        worker_id,
+                        deployment_id=getattr(
+                            serve.get_replica_context().replica_id,
+                            "deployment_id",
+                            None,
+                        ),
                     )
                 except Exception as e:
                     # Warn once: resolution is retried per request until it succeeds.
@@ -185,7 +203,9 @@ def enable_token_tracking(
                     yield output
                 return
 
-            lifecycle_request_id = get_serve_request_id() or request_id
+            lifecycle_request_id = (
+                ROUTING_REQUEST_ID_CONTEXT.get() or get_serve_request_id() or request_id
+            )
             tracker = RequestTokenTracker(
                 forwarder,
                 lifecycle_request_id,

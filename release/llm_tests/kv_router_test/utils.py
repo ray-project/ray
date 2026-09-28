@@ -87,9 +87,9 @@ async def discover_replica_endpoints(handle, expected_replicas):
         async with handle.choose_replica() as selection:
             replica = selection._replica
             if replica.backend_http_endpoint is not None:
-                endpoints[
-                    replica.replica_id.to_full_id_str()
-                ] = replica.backend_http_endpoint
+                endpoints[replica.replica_id.to_full_id_str()] = (
+                    replica.backend_http_endpoint
+                )
         if len(endpoints) == expected_replicas:
             return endpoints
         await asyncio.sleep(0.5)
@@ -140,13 +140,14 @@ class LLMRouter(_LLMRouter):
         )
         return key
 
-    async def on_lifecycle_events(self, events):
+    async def on_lifecycle_events(self, events, deployment_id):
         """Record events, then apply each hook to the tracker directly so a
         hook raising is captured in ``_errors`` rather than swallowed."""
         self._event_log.extend(events)
+        tracker = self._trackers[deployment_id]
         for hook_name, hook_args in events:
             try:
-                await getattr(self._kv_token_tracker, hook_name)(*hook_args)
+                await getattr(tracker, hook_name)(*hook_args)
             except Exception as e:  # noqa: BLE001 - recorded for assertion
                 self._errors.append((hook_name, repr(e)))
 
@@ -289,7 +290,7 @@ def patch_ingress():
     ray.cloudpickle.register_pickle_by_value(module)
     try:
         with mock.patch(
-            "ray.llm._internal.serve.core.ingress.router.LLMRouter", LLMRouter
+            "ray.llm._internal.serve.core.ingress.builder.LLMRouter", LLMRouter
         ):
             yield
     finally:

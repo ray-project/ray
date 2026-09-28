@@ -1,17 +1,36 @@
+from contextvars import ContextVar
+from enum import Enum
+from typing import Optional
+
 from ray.serve._private.constants import SERVE_INGRESS_ROUTER_HEADER_PREFIX
 from ray.serve._private.constants_utils import (
     get_env_float_positive,
     get_env_int_positive,
 )
 
+# Stable deployment name used by engine lifecycle broadcasts in both modes.
+LLM_ROUTER_DEPLOYMENT_NAME = "LLMRouter"
+
 # choose_replica kwarg carrying the prompt token IDs to KV-aware routers.
 REQUEST_TOKEN_IDS_KWARG = "request_token_ids"
+ROUTING_REQUEST_ID_KWARG = "routing_request_id"
+# Keep the routing attempt ID local to each concurrent engine request.
+ROUTING_REQUEST_ID_CONTEXT: ContextVar[Optional[str]] = ContextVar(
+    "routing_request_id", default=None
+)
+PD_ROUTING_STAGE = "pd_routing_stage"
 
-# Internal metadata for moving pre-routing prompt token IDs from the selected
-# LLMRouter replica to the selected LLMServer replica. The payload itself is
-# sent over a replica-local ZMQ side channel; HAProxy only forwards the lookup
-# key as a request header.
+
+class RoutingStage(str, Enum):
+    PREFILL = "prefill"
+    DECODE = "decode"
+
+
+# Lookup key for staged prompt tokens.
+# HAProxy forwards the key to the selected engine replica.
 KV_TOKEN_KEY_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
+# Required P/D transfer metadata, encoded as base64 JSON for HTTP forwarding.
+KV_TRANSFER_PARAMS_HEADER = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-transfer-params"
 # routing_stats key under which each LLMServer advertises its ZMQ token endpoint
 # to LLMRouter.
 KV_TOKEN_METADATA_KEY = "kv_token_metadata"

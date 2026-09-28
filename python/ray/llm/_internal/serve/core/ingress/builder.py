@@ -17,11 +17,16 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
+from ray.llm._internal.serve.core.ingress.pd_router import LLMPDRouter
+from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    LLM_ROUTER_DEPLOYMENT_NAME,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
@@ -88,7 +93,11 @@ def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> Optional[dict]:
 
 
 def _build_openai_ingress_request_router(
-    *, server: Application, llm_config: LLMConfig
+    *,
+    server: Application,
+    llm_config: LLMConfig,
+    prefill_server: Optional[Application] = None,
+    prefill_config: Optional[LLMConfig] = None,
 ) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -103,23 +112,27 @@ def _build_openai_ingress_request_router(
     Pre-routing tokenization is wired on only when ``llm_config`` configures a
     KVAwareRouter, the sole policy that scores replicas on prompt token IDs.
     """
-    from ray.llm._internal.serve.core.ingress.router import LLMRouter
-
     ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
     if is_kv_aware(llm_config):
         runtime_env = _get_tokenizing_router_runtime_env(llm_config)
         if runtime_env is not None:
             ray_actor_options["runtime_env"] = runtime_env
 
+    router_cls = LLMRouter
+    bind_kwargs = {
+        "server": server,
+        "llm_config": llm_config if is_kv_aware(llm_config) else None,
+    }
+    if prefill_server is not None:
+        router_cls = LLMPDRouter
+        bind_kwargs.update(prefill_server=prefill_server, prefill_config=prefill_config)
     deployment = serve.deployment(
-        LLMRouter,
+        router_cls,
+        name=LLM_ROUTER_DEPLOYMENT_NAME,
         max_ongoing_requests=1000,
         ray_actor_options=ray_actor_options,
     )
-    return deployment.bind(
-        server=server,
-        llm_config=llm_config if is_kv_aware(llm_config) else None,
-    )
+    return deployment.bind(**bind_kwargs)
 
 
 class IngressClsConfig(BaseModelExtended):

@@ -34,7 +34,8 @@ local function call_router(router, body, truncated_length, session_id, request_i
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
     if not sock:connect(router.host, router.port) then
-        return nil
+        sock:close()
+        return nil, true
     end
 
     local truncation_header = ""
@@ -67,12 +68,12 @@ local function call_router(router, body, truncated_length, session_id, request_i
 
     if not sock:send(req) then
         sock:close()
-        return nil
+        return nil, false
     end
 
     local response = sock:receive("*a")
     sock:close()
-    return response
+    return response, false
 end
 
 local function is_http_200(response)
@@ -173,16 +174,17 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     end
 
     -- Round-robin over the app's routers, one cursor step per request. On a
-    -- connection failure try the next router. A non-200 is the router's answer
-    -- and is not retried.
+    -- connection failure try the next router. Once sending begins, retrying
+    -- could execute a side-effecting routing operation (prefill) twice.
     local n = #pool
     local start = _rr_cursor[app] or 0
     _rr_cursor[app] = start + 1
     local response = nil
     for i = 0, n - 1 do
         local router = pool[(start + i) % n + 1]
-        response = call_router(router, body, truncated, session_id, request_id)
-        if response then
+        local retry_safe
+        response, retry_safe = call_router(router, body, truncated, session_id, request_id)
+        if response or not retry_safe then
             break
         end
     end

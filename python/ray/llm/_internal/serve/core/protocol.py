@@ -27,6 +27,28 @@ if TYPE_CHECKING:
     )
 
 
+class TokenizeError(Exception):
+    """The request was rejected the same way vLLM's native ASGI route
+    ``/tokenize`` would reject it.
+
+    Carries the HTTP ``status_code``, ``message`` and error ``type``.
+    """
+
+    def __init__(self, message: str, *, status_code: int, type: str) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
+        self.type = type
+
+
+class PromptTokenizer(Protocol):
+    async def tokenize(self, payload: Dict[str, Any]) -> Optional[List[int]]:
+        ...
+
+
+IngressRoutingResponse = Dict[str, Any]
+
+
 @dataclass
 class RawRequestInfo:
     """A serializable representation of important fields from a Starlette Request.

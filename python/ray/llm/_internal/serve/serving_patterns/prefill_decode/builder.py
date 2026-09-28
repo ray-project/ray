@@ -26,6 +26,15 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 )
 from ray.llm._internal.serve.core.server.builder import build_llm_deployment
 from ray.llm._internal.serve.observability.logging import get_logger
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_EVENTS_PORT_BASE_KEY,
+    KV_TOKEN_PORT_BASE_KEY,
+    PD_ROUTING_STAGE,
+    RoutingStage,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+    is_kv_aware,
+)
 from ray.llm._internal.serve.serving_patterns.data_parallel.builder import (
     build_dp_deployment,
 )
@@ -153,6 +162,8 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
             pd_config.ingress_cls_config,
         )
 
+    kv_aware = _configre_pd_kv_aware(pd_config)
+
     prefill_dp_size = pd_config.prefill_config.engine_kwargs.get(
         "data_parallel_size", 1
     )
@@ -187,7 +198,10 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         )
         return decode_deployment._with_ingress_request_router(
             _build_openai_ingress_request_router(
-                server=decode_deployment, llm_config=pd_config.decode_config
+                server=decode_deployment,
+                llm_config=pd_config.decode_config,
+                prefill_server=prefill_deployment if kv_aware else None,
+                prefill_config=pd_config.prefill_config if kv_aware else None,
             )
         )
 
@@ -224,3 +238,37 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
         ),
         **ingress_cls_config.ingress_extra_kwargs,
     )
+
+
+def _configre_pd_kv_aware(config: PDServingArgs) -> bool:
+    configs = (config.prefill_config, config.decode_config)
+    enabled = [is_kv_aware(c) for c in configs]
+    if not any(enabled):
+        return False
+    if not all(enabled):
+        raise ValueError(
+            "KV-aware P/D requires KVAwareRouter on both prefill and decode"
+        )
+    from ray.llm._internal.serve.routing_policies.kv_aware.utils import (
+        validate_kv_connector,
+    )
+
+    for c in configs:
+        validate_kv_connector(c)
+    if not RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        raise ValueError("KV-aware P/D requires direct streaming")
+    from ray.serve._private.constants import (
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY,
+    )
+
+    if not RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY:
+        raise ValueError(
+            "KV-aware P/D requires RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1"
+        )
+    for stage, c in zip((RoutingStage.PREFILL, RoutingStage.DECODE), configs):
+        if c.engine_kwargs.get("data_parallel_size", 1) != 1:
+            raise ValueError("KV-aware P/D does not support data parallelism")
+        c.experimental_configs[PD_ROUTING_STAGE] = stage.value
+    config.decode_config.experimental_configs.setdefault(KV_EVENTS_PORT_BASE_KEY, 15557)
+    config.decode_config.experimental_configs.setdefault(KV_TOKEN_PORT_BASE_KEY, 17557)
+    return True

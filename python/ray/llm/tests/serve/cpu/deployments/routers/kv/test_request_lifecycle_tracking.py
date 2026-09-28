@@ -128,6 +128,11 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
+        self._lifecycle_cache = OrderedDict()
+        self._selection_override = None
+        self._routing_stage = None
+        self._ingress_replica_id = None
+        self._serve_deployment_id = None
         self._pending_tasks = set()
         self._reservation_forwarder = None
         self._svc = MockSelectionService()
@@ -149,6 +154,7 @@ class RecordingKVTokenTracker(KVTokenTracker):
         if state is None:
             return None
         snapshot = asdict(state)
+        snapshot.pop("reservation", None)
         snapshot.pop("created_at", None)  # internal TTL bookkeeping, not asserted on
         return snapshot
 
@@ -179,6 +185,11 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._requests = OrderedDict()
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
+        self._lifecycle_cache = OrderedDict()
+        self._selection_override = None
+        self._routing_stage = None
+        self._ingress_replica_id = None
+        self._serve_deployment_id = None
         self._pending_tasks = set()
         self._reservation_forwarder = None
         self._svc = MockSelectionService()
@@ -189,6 +200,7 @@ class LocalKVTokenTracker(KVTokenTracker):
         if state is None:
             return None
         snapshot = asdict(state)
+        snapshot.pop("reservation", None)
         snapshot.pop("created_at", None)  # internal TTL bookkeeping, not asserted on
         return snapshot
 
@@ -239,6 +251,13 @@ class _BroadcastHandle:
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
     def _build(script, *targets, report_decode_progress=False, **engine_kwargs):
+        ray.get(
+            [
+                target.__ray_ready__.remote()
+                for target in targets
+                if isinstance(target, ray.actor.ActorHandle)
+            ]
+        )
         monkeypatch.setattr(
             "ray.llm._internal.serve.routing_policies.kv_aware.vllm."
             "token_tracking.get_llm_router_handle",
