@@ -673,12 +673,23 @@ class NodeScorer(ABC):
         candidates: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         tie_break_key: Optional[Callable[[str], Any]] = None,
+        domain_affinity: Optional[Callable[[str], int]] = None,
     ) -> Optional[str]:
+        """Picks a node, or None if no candidate fits.
+
+        `domain_affinity` counts, for a node, the deployment's floor keys on
+        which the node sits in a domain that already runs replicas. A scorer
+        that packs uses it to fill such domains before opening another one.
+        """
         raise NotImplementedError
 
 
 class PackNodeScorer(NodeScorer):
-    """Best fit, preferring nodes that already run replicas."""
+    """Best fit, preferring nodes that already run replicas.
+
+    Among idle nodes, it prefers those in domains that already run replicas,
+    so filling a slice or zone comes before opening another one.
+    """
 
     def choose(
         self,
@@ -687,20 +698,30 @@ class PackNodeScorer(NodeScorer):
         candidates: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         tie_break_key: Optional[Callable[[str], Any]] = None,
+        domain_affinity: Optional[Callable[[str], int]] = None,
     ) -> Optional[str]:
         non_idle_nodes = {
             node_id: resources
             for node_id, resources in candidates.items()
             if node_to_assigned_replicas.get(node_id)
         }
-        idle_nodes = {
-            node_id: resources
-            for node_id, resources in candidates.items()
-            if not node_to_assigned_replicas.get(node_id)
-        }
-        return _best_fit_node(
-            required_resources, non_idle_nodes, tie_break_key
-        ) or _best_fit_node(required_resources, idle_nodes, tie_break_key)
+        chosen = _best_fit_node(required_resources, non_idle_nodes, tie_break_key)
+        if chosen:
+            return chosen
+        idle_tiers: DefaultDict[int, Dict[str, AvailableNodeResources]] = defaultdict(
+            dict
+        )
+        for node_id, resources in candidates.items():
+            if not node_to_assigned_replicas.get(node_id):
+                affinity = domain_affinity(node_id) if domain_affinity else 0
+                idle_tiers[affinity][node_id] = resources
+        for affinity in sorted(idle_tiers, reverse=True):
+            chosen = _best_fit_node(
+                required_resources, idle_tiers[affinity], tie_break_key
+            )
+            if chosen:
+                return chosen
+        return None
 
 
 class SpreadNodeScorer(NodeScorer):
@@ -720,6 +741,7 @@ class SpreadNodeScorer(NodeScorer):
         candidates: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         tie_break_key: Optional[Callable[[str], Any]] = None,
+        domain_affinity: Optional[Callable[[str], int]] = None,
     ) -> Optional[str]:
         chosen_node = None
         chosen_key: Optional[Tuple[int, Resources, Any]] = None
@@ -1684,6 +1706,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         )
 
         tie_break_key = self._node_preference_key(ctx)
+        domain_affinity = self._domain_affinity(
+            constraints, node_to_assigned_replicas, ctx
+        )
         for required_resources, label_selectors in self._build_placement_candidates(
             scheduling_request
         ):
@@ -1698,10 +1723,47 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 candidates,
                 node_to_assigned_replicas,
                 tie_break_key,
+                domain_affinity,
             )
             if target_node:
                 return target_node, required_labels
         return None, required_labels
+
+    @staticmethod
+    def _domain_affinity(
+        constraints: Sequence[SchedulingConstraint],
+        node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
+        ctx: SchedulingContext,
+    ) -> Optional[Callable[[str], int]]:
+        """Counts the floor keys on which a node shares a domain with replicas.
+
+        Any replica counts, not only this deployment's, because a slice or
+        zone that runs anything is already paid for. A node floor adds
+        nothing here, since a node that runs replicas is not idle.
+        """
+        label_keys = [
+            c.label_key
+            for c in constraints
+            if isinstance(c, MinTopologyDomainsConstraint)
+            and c.label_key != RAY_NODE_ID_LABEL
+        ]
+        if not label_keys:
+            return None
+        busy_nodes = [
+            n for n, replicas in node_to_assigned_replicas.items() if replicas
+        ]
+        occupied = {
+            key: {
+                domain
+                for node_id in busy_nodes
+                if (domain := _label_value(node_id, key, ctx.node_labels)) is not None
+            }
+            for key in label_keys
+        }
+        return lambda node_id: sum(
+            _label_value(node_id, key, ctx.node_labels) in occupied[key]
+            for key in label_keys
+        )
 
     def _node_preference_key(
         self, ctx: SchedulingContext
