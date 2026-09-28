@@ -185,6 +185,19 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                     continue
 
                 assert isinstance(req, ray_client_pb2.DataRequest)
+                if (
+                    reconnect_enabled
+                    and req.WhichOneof("type") in ("put", "task")
+                    and not _should_cache(req)
+                    and response_cache.has_entry(req.req_id)
+                ):
+                    # The final chunk of this request already arrived before
+                    # a reconnect, so the client is replaying chunks we have
+                    # already consumed. Feeding them to the chunk collector
+                    # would leave it stuck on a finished request, and every
+                    # later chunked request would then fail. The final chunk
+                    # is still answered from the response cache below.
+                    continue
                 if _should_cache(req) and reconnect_enabled:
                     cached_resp = response_cache.check_cache(req.req_id)
                     if isinstance(cached_resp, Exception):
