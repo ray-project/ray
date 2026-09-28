@@ -1156,6 +1156,13 @@ class TestLoggingConfig:
 
         assert initial == reordered
 
+    def test_concatenated_fields_do_not_collide(self):
+        # Without a delimiter, "WARN" + "ING/logs" == "WARNING" + "/logs".
+        initial = LoggingConfig(log_level="WARN", logs_dir="ING/logs")
+        updated = LoggingConfig(log_level="WARNING", logs_dir="/logs")
+
+        assert initial != updated
+
 
 # This function is defined globally to be accessible via import path
 def global_f():

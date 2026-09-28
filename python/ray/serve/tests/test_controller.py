@@ -16,7 +16,7 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ApplicationStatus, ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, LoggingConfig, ServeDeploySchema
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 
 
@@ -417,6 +417,39 @@ def test_get_health_metrics(serve_instance):
     # Verify the metrics are JSON serializable
     metrics_json = json.dumps(metrics)
     assert isinstance(metrics_json, str)
+
+
+def test_reconfigure_global_logging_additional_attrs(serve_instance):
+    """Check that changing only additional_log_standard_attrs reconfigures logging."""
+
+    controller = _get_global_client()._controller
+
+    def get_controller_startup_logs():
+        _, log_file_path = ray.get(controller._get_logging_config.remote())
+        with open(log_file_path) as f:
+            return [line for line in f if "Controller starting" in line]
+
+    ray.get(
+        controller.reconfigure_global_logging_config.remote(
+            LoggingConfig(encoding="JSON", additional_log_standard_attrs=["name"])
+        )
+    )
+    updated = LoggingConfig(encoding="JSON", additional_log_standard_attrs=["module"])
+    ray.get(controller.reconfigure_global_logging_config.remote(updated))
+
+    logging_config, _ = ray.get(controller._get_logging_config.remote())
+    assert logging_config.additional_log_standard_attrs == ["module"]
+    startup_logs = get_controller_startup_logs()
+    record = json.loads(startup_logs[-1])
+    assert "module" in record
+    assert "name" not in record
+
+    # Reapplying the same config is a no-op.
+    ray.get(controller.reconfigure_global_logging_config.remote(updated))
+    assert get_controller_startup_logs() == startup_logs
+
+    # Restore the default config for other tests sharing this Serve instance.
+    ray.get(controller.reconfigure_global_logging_config.remote(LoggingConfig()))
 
 
 if __name__ == "__main__":

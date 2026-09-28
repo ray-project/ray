@@ -211,9 +211,13 @@ class LoggingConfig(BaseModel):
         return crc32(
             (
                 str(self.encoding)
+                + "\x00"
                 + str(self.log_level)
+                + "\x00"
                 + str(self.logs_dir)
+                + "\x00"
                 + str(self.enable_access_log)
+                + "\x00"
                 + str(sorted(self.additional_log_standard_attrs))
             ).encode("utf-8")
         )
