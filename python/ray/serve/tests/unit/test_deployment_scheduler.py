@@ -3148,7 +3148,7 @@ def _ray_placed_pg_request(d_id, unique_id, strategy, bundles):
 
 def test_node_floor_waits_for_groups_that_ray_places():
     """Ray chooses the node for a SPREAD group, so Serve learns it only once the
-    replica runs. Two groups in one cycle could otherwise share a node."""
+    replica's actor starts. Two groups in one cycle could otherwise share a node."""
     d_id = DeploymentID(name="pg")
     cache = MockClusterNodeInfoCache()
     nodes = [NodeID.from_random().hex() for _ in range(3)]
@@ -3180,7 +3180,8 @@ def test_node_floor_waits_for_groups_that_ray_places():
     )
     assert create_pg_fn.call_count == 1
 
-    scheduler.on_replica_running(
+    # The actor started in bundle 0, while the replica is still initializing.
+    scheduler.on_replica_allocated(
         ReplicaID(unique_id="r0", deployment_id=d_id), nodes[0]
     )
     scheduler.schedule(upscales={}, downscales={})
@@ -3189,6 +3190,24 @@ def test_node_floor_waits_for_groups_that_ray_places():
     assert create_pg_fn.call_args.args[0].bundle_label_selector == [
         {RAY_NODE_ID_LABEL: f"!in({nodes[0]})"}
     ]
+
+
+def test_allocation_keeps_a_node_serve_chose():
+    """Serve already knows the node of a replica it placed itself."""
+    d_id = DeploymentID(name="d1")
+    cache = MockClusterNodeInfoCache()
+    cache.add_node("n1", {"CPU": 4})
+    scheduler = make_scheduler(cache, PackNodeScorer())
+    deploy(scheduler, d_id)
+    replica_id = ReplicaID(unique_id="r0", deployment_id=d_id)
+    scheduler._on_replica_launching(replica_id, target_node_id="n1")
+
+    scheduler.on_replica_allocated(replica_id, "n2")
+    assert scheduler._launching_replicas[d_id][replica_id].target_node_id == "n1"
+
+    # A replica that already stopped launching is left alone.
+    scheduler.on_replica_allocated(ReplicaID(unique_id="r9", deployment_id=d_id), "n2")
+    assert list(scheduler._launching_replicas[d_id]) == [replica_id]
 
 
 def test_floor_rides_on_bundle_0_only():

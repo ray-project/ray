@@ -911,6 +911,17 @@ class DeploymentScheduler(ABC):
 
         self._running_replicas[deployment_id][replica_id] = node_id
 
+    def on_replica_allocated(self, replica_id: ReplicaID, node_id: str) -> None:
+        """Called while a starting replica's actor has a worker on a node.
+
+        The actor runs in bundle 0 of its placement group, so for a group Ray
+        placed this is the first time Serve learns the replica's domain, before
+        the replica finishes initializing.
+        """
+        info = self._launching_replicas[replica_id.deployment_id].get(replica_id)
+        if info is not None and info.target_node_id is None:
+            info.target_node_id = node_id
+
     def on_replica_recovering(self, replica_id: ReplicaID) -> None:
         """Called whenever a deployment replica is recovering."""
         deployment_id = replica_id.deployment_id
@@ -1470,9 +1481,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 and (unmet := [f.label_key for f in floors if f.floor_is_unmet(ctx)])
             ):
                 # Ray placed an earlier group for this deployment and has not
-                # reported the node it landed on. Serve reads the domain only
-                # from a running replica, so placing another group now could
-                # repeat that domain. Leave this one pending.
+                # reported the node it landed on. Serve reads the domain once
+                # that replica's actor starts, so placing another group now
+                # could repeat that domain. Leave this one pending.
                 deferred_deployments.add(deployment_id)
                 self._log_once_about_serialized_floor(deployment_id, unmet)
                 continue
@@ -1599,7 +1610,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         """True while a group Ray placed has yet to report the node it chose.
 
         Such a replica occupies a domain Serve cannot see, so any rule that
-        counts domains is working from a stale picture until it runs.
+        counts domains is working from a stale picture until its actor starts.
         """
         return any(
             info.target_node_id is None
@@ -1615,9 +1626,9 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         logger.info(
             f"Deployment {deployment_id} has a topology_spread floor on "
             f"{label_keys} and a placement group that Ray Core places. Serve "
-            "reads back the domain Ray chose only once a replica is running, so "
-            "it starts the next replica only after the previous one is up. "
-            "Scaling up is slower until the floor is met."
+            "reads back the domain Ray chose once a replica's actor starts, so "
+            "it starts the next replica only after that. Scaling up is slower "
+            "until the floor is met."
         )
 
     def _rules_for(
