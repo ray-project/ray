@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Any, Dict, Set
 
-import ray
 from ray.data._internal.utils.cached_ray_internals import get_drained_nodes
+from ray.experimental import locations
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -36,7 +36,9 @@ def all_objects_exist_for_bundle(bundle: "RefBundle") -> bool:
     Only the local core worker's view of object locations is consulted, so no
     RPCs are made.
     """
-    object_locs = ray.experimental.get_local_object_locations(bundle.block_refs)
+    object_locs = locations.get_local_object_locations(
+        bundle.block_refs  # pyrefly: ignore[bad-argument-type]
+    )
     drained_nodes = get_drained_nodes()
     return all(
         object_does_exist(obj_info, drained_nodes) for obj_info in object_locs.values()

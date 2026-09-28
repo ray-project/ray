@@ -18,15 +18,25 @@ from .reordering import ReorderingBundleQueue
 from .thread_safe import ThreadSafeBundleQueue
 
 
-def create_bundle_queue() -> QueueWithRemoval:
+def create_bundle_queue(*, preserve_order: bool = False) -> QueueWithRemoval:
+    """Create the queue used to buffer bundles between and inside operators.
+
+    Args:
+        preserve_order: Whether the executor must keep bundles in input order.
+            Pass the executor's ``ExecutionOptions.preserve_order`` rather than
+            reading ``DataContext``.
+
+    Returns:
+        An ``ObjectStoreAwareBundleQueue`` unless disabled or order must be
+        preserved, in which case a ``HashLinkedQueue``.
+    """
     from ray._common.utils import env_bool
-    from ray.data.context import DataContext
 
     if (
         env_bool("RAY_DATA_ENABLE_OBJECT_STORE_AWARE_BUNDLE_QUEUES", True)
         # The object-store-aware queue reorders inputs to serve bundles still
         # resident in the object store first, which breaks order preservation.
-        and not DataContext.get_current().execution_options.preserve_order
+        and not preserve_order
     ):
         return ObjectStoreAwareBundleQueue()
     return HashLinkedQueue()

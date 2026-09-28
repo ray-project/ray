@@ -1,13 +1,13 @@
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from typing_extensions import override
 
-import ray
 from .base import QueueWithRemoval
 from .hash_link import HashLinkedQueue
 from ray.data._internal.utils.object_utils import all_objects_exist_for_bundle
+from ray.experimental import locations
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -50,7 +50,7 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
             return bundle in self._hash_linked
 
     @override
-    def add(self, bundle: "RefBundle") -> None:
+    def add(self, bundle: "RefBundle", **kwargs: Any) -> None:
         with self._lock:
             if bundle not in self._hash_linked:
                 self._bundle_nbytes[bundle] = bundle.size_bytes()
@@ -67,8 +67,7 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
             bundle = self._hash_linked.peek_next()
             if bundle is None:
                 raise IndexError("Unexpected empty queue")
-            self.remove(bundle)
-            return bundle
+            return self.remove(bundle)
 
     @override
     def peek_next(self) -> Optional["RefBundle"]:
@@ -81,14 +80,14 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
         return self.peek_next() is not None
 
     @override
-    def remove(self, bundle: "RefBundle") -> None:
+    def remove(self, bundle: "RefBundle") -> "RefBundle":
         with self._lock:
             if bundle not in self._bundle_nbytes:
                 raise ValueError(f"Bundle {bundle} not found in the queue")
 
             # If the same bundle was added multiple times, this only removes the
             # first instance.
-            self._hash_linked.remove(bundle)
+            removed = self._hash_linked.remove(bundle)
 
             # Duplicate instances share the same objects, so the size is only
             # released once the last instance is gone.
@@ -99,6 +98,7 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
                     "Expected the total size of objects in the queue to be "
                     f"non-negative, but got {self._total_nbytes} bytes instead."
                 )
+            return removed
 
     @override
     def clear(self) -> None:
@@ -121,9 +121,9 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
 
     def _try_ensure_first_bundle_exists(self) -> None:
         """Rotate bundles with missing blocks to the back until a fully resident
-        bundle is at the front, or every distinct bundle has been checked."""
+        bundle is at the front, or every queued instance has been checked."""
         num_bundles_skipped = 0
-        while num_bundles_skipped < len(self._bundle_nbytes):
+        while num_bundles_skipped < len(self._hash_linked):
             first_bundle = self._hash_linked.peek_next()
             if first_bundle is None:
                 return
@@ -137,7 +137,9 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
 
     def _refresh_bundle_sizes(self) -> None:
         for bundle in self._bundle_nbytes:
-            object_locs = ray.experimental.get_local_object_locations(bundle.block_refs)
+            object_locs = locations.get_local_object_locations(
+                bundle.block_refs  # pyrefly: ignore[bad-argument-type]
+            )
 
             nbytes = 0
             for object_info in object_locs.values():
@@ -159,6 +161,7 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
         with self._lock:
             return self._hash_linked.num_rows()
 
+    @override
     def num_bundles(self) -> int:
         with self._lock:
             return self._hash_linked.num_bundles()

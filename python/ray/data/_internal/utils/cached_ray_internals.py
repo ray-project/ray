@@ -45,10 +45,13 @@ DRAIN_DEADLINE_BUFFER_TIME_MS = 5000
 
 
 def get_drained_nodes() -> Set[str]:
-    """Returns the set of nodes that are draining and are past their deadline."""
+    """Returns the set of nodes that are draining and are past their deadline.
+
+    Deadline 0 is idle termination, which only drains nodes holding no objects.
+    """
     now_ms = time.time() * 1000
     return {
         node_id
         for node_id, deadline_ms in get_draining_nodes().items()
-        if deadline_ms - DRAIN_DEADLINE_BUFFER_TIME_MS < now_ms
+        if deadline_ms > 0 and deadline_ms - DRAIN_DEADLINE_BUFFER_TIME_MS < now_ms
     }

@@ -14,7 +14,6 @@ from ray.data._internal.execution.bundle_queue import (
 )
 from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
 
 
 def _create_bundle(data: Any) -> RefBundle:
@@ -161,28 +160,25 @@ def test_clear():
         (None, True, HashLinkedQueue),
     ],
 )
-def test_create_bundle_queue(
-    env_value, preserve_order, expected_type, monkeypatch, restore_data_context
-):
+def test_create_bundle_queue(env_value, preserve_order, expected_type, monkeypatch):
     if env_value is not None:
         monkeypatch.setenv(
             "RAY_DATA_ENABLE_OBJECT_STORE_AWARE_BUNDLE_QUEUES", env_value
         )
-    DataContext.get_current().execution_options.preserve_order = preserve_order
 
-    assert isinstance(create_bundle_queue(), expected_type)
+    assert isinstance(create_bundle_queue(preserve_order=preserve_order), expected_type)
 
 
 def _mock_object_locations(node_ids_by_ref):
-    """Patch the local object-location lookup to return the given node IDs per ref,
-    with every object reported as 1 MiB so none are treated as inlined."""
+    """Patch the location lookup to return the given node IDs per ref, with every
+    object reported as 1 MiB so none are treated as inlined."""
     mock = MagicMock(
         side_effect=lambda refs: {
             ref: {"node_ids": list(node_ids_by_ref[ref]), "object_size": 2**20}
             for ref in refs
         }
     )
-    return patch.object(ray.experimental, "get_local_object_locations", mock)
+    return patch("ray.experimental.locations.get_local_object_locations", mock)
 
 
 def test_rotates_missing_bundles():
@@ -196,7 +192,9 @@ def test_rotates_missing_bundles():
     }
 
     queue = ObjectStoreAwareBundleQueue()
-    for bundle in (lost, resident1, resident2):
+    # Queue more lost instances than there are distinct bundles, so a rotation
+    # budget counted in distinct bundles would stop before reaching a resident.
+    for bundle in (lost, lost, lost, lost, resident1, resident2):
         queue.add(bundle)
 
     with _mock_object_locations(node_ids_by_ref), patch(
@@ -208,7 +206,8 @@ def test_rotates_missing_bundles():
         assert queue.get_next() is resident2
         # Once only lost bundles remain, they are still served rather than starved.
         assert queue.has_next()
-        assert queue.get_next() is lost
+        for _ in range(4):
+            assert queue.get_next() is lost
         assert len(queue) == 0
 
 
@@ -230,13 +229,14 @@ def test_refreshes_size():
 
 
 def test_thread_safety():
-    with patch.object(
-        ray.experimental, "get_local_object_locations", MagicMock()
-    ) as mock_locations, patch(
+    mock_locations = MagicMock(
+        return_value={"": {"node_ids": ["node1"], "object_size": 100}}
+    )
+    with patch(
+        "ray.experimental.locations.get_local_object_locations", mock_locations
+    ), patch(
         "ray.data._internal.utils.object_utils.get_drained_nodes", return_value=set()
     ):
-        mock_locations.return_value = {"": {"node_ids": ["node1"], "object_size": 100}}
-
         queue = ObjectStoreAwareBundleQueue(update_frequency_s=0)
         exceptions = []
 

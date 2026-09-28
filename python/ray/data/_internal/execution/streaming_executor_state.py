@@ -259,13 +259,16 @@ class OpBufferQueue:
         num_splits: Number of output splits operator's output is partitioned into.
             In case of `num_splits` > 1, bundles are routed to corresponding queue
              based on their `bundle.output_split_idx`.
+        preserve_order: Whether bundles must be served in insertion order. When
+            False, queues may serve bundles still in the object store first.
     """
 
-    def __init__(self, num_splits: int):
+    def __init__(self, num_splits: int, *, preserve_order: bool = False):
         assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
 
         self._queues: List[ThreadSafeBundleQueue] = [
-            ThreadSafeBundleQueue(create_bundle_queue()) for _ in range(num_splits)
+            ThreadSafeBundleQueue(create_bundle_queue(preserve_order=preserve_order))
+            for _ in range(num_splits)
         ]
 
     @property
@@ -367,7 +370,13 @@ class OpState:
     operator queues to be shared across threads.
     """
 
-    def __init__(self, op: PhysicalOperator, inqueues: List[OpBufferQueue]):
+    def __init__(
+        self,
+        op: PhysicalOperator,
+        inqueues: List[OpBufferQueue],
+        *,
+        preserve_order: bool = False,
+    ):
         # Each input queue is connected to another operator's output queue.
         assert len(inqueues) == len(op.input_dependencies), (op, inqueues)
         self.input_queues: List[OpBufferQueue] = inqueues
@@ -377,7 +386,7 @@ class OpState:
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
         self.output_queue: OpBufferQueue = OpBufferQueue(
-            num_splits=op.num_output_splits()
+            num_splits=op.num_output_splits(), preserve_order=preserve_order
         )
         self.op = op
         self.num_completed_tasks = 0
@@ -626,7 +635,7 @@ def build_streaming_topology(
             inqueues.append(parent_state.output_queue)
 
         # Create state.
-        op_state = OpState(op, inqueues)
+        op_state = OpState(op, inqueues, preserve_order=options.preserve_order)
         topology[op] = op_state
         op.start(options, block_ref_counter)
         return op_state

@@ -39,6 +39,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
+    QueueWithRemoval,
     RebundleQueue,
     create_bundle_queue,
 )
@@ -202,8 +203,9 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
 
         self._actor_pool = self._create_actor_pool(compute_strategy)
-        # A queue of bundles awaiting dispatch to actors.
-        self._bundle_queue = create_bundle_queue()
+        # A queue of bundles awaiting dispatch to actors. Created in `start()`,
+        # since the queue type depends on the executor's `preserve_order`.
+        self._dispatch_queue: Optional[QueueWithRemoval] = None
         # Cached actor class.
         self._actor_cls = None
         self._actor_locality_enabled: Optional[bool] = None
@@ -216,6 +218,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # of this operator initializes successfully (see
         # ``DataContext.max_consecutive_actor_init_deaths``).
         self._consecutive_actor_init_deaths = 0
+
+    @property
+    def _bundle_queue(self) -> QueueWithRemoval:
+        assert self._dispatch_queue is not None, "start() has not been called"
+        return self._dispatch_queue
 
     @property
     @override
@@ -293,6 +300,10 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         block_ref_counter: "BlockRefCounter",
     ):
         self._actor_locality_enabled = options.actor_locality_enabled
+        assert self._dispatch_queue is None, "start() called twice"
+        self._dispatch_queue = create_bundle_queue(
+            preserve_order=options.preserve_order
+        )
         super().start(options, block_ref_counter)
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
