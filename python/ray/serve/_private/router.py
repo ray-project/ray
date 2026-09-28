@@ -35,6 +35,7 @@ from ray.exceptions import (
     RayTaskError,
     TaskCancelledError,
 )
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -50,6 +51,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
@@ -435,9 +437,19 @@ class RouterMetricsManager:
             if self._pending_metrics_push_ref is not None:
                 if not check_obj_ref_ready_nowait(self._pending_metrics_push_ref):
                     return  # Previous push still in flight, skip and try again later
+            # Handle reports carry every replica this handle routes to, so they
+            # are the wide ones worth encoding columnar (see should_encode_columnar).
+            # The flag is the kill switch: the controller reads either format, so
+            # flipping it back needs a restart, not a redeploy.
+            report = self._get_metrics_report()
+            payload = (
+                autoscaling_metrics_codec.encode(report)
+                if RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS
+                else compress_metric_report(report)
+            )
             self._pending_metrics_push_ref = (
                 self._controller_handle.record_autoscaling_metrics_from_handle.remote(
-                    compress_metric_report(self._get_metrics_report())
+                    payload
                 )
             )
 
@@ -1291,23 +1303,18 @@ class AsyncioRouter:
             if reserve:
                 replica, slot_token = await self._pick_and_reserve_replica(pr)
             else:
-                # Fast path: synchronously ask the configured RequestRouter to
-                # pick a replica from the current snapshot, bypassing the
-                # _pending_requests_to_fulfill queue and the routing-task
-                # workers. Safe because there's no reservation -> no rejection
-                # -> no retry, so the queue's ordering/backoff guarantees are
-                # unused.
-                ranks = await self._active_request_router.choose_replicas(
-                    candidate_replicas=self._active_request_router._replicas_list,
-                    pending_request=pr,
+                # Policies can return no candidates temporarily (e.g. while
+                # waiting for multiplexed model metadata). Reuse their selection
+                # retry loop with the same PendingRequest, without probing or
+                # reserving capacity on replicas. Close the generator to clean up
+                # its backoff accounting on success and cancellation.
+                candidates = self._active_request_router._choose_replicas_with_backoff(
+                    pr
                 )
-                flat = [r for rank in ranks for r in rank]
-                candidate = flat[0] if flat else None
-                if candidate is None:
-                    raise RuntimeError(
-                        f"no replicas available for {self.deployment_id}"
-                    )
-                replica = candidate
+                try:
+                    replica = (await candidates.__anext__())[0]
+                finally:
+                    await candidates.aclose()
                 slot_token = None
 
             selection = ReplicaSelection(
@@ -1798,17 +1805,24 @@ class SingletonThreadRouter(Router):
             except Exception:
                 logger.exception("Failed to release reserved replica slot.")
 
+        reserve = request_kwargs.get("_reserve", True)
         future = asyncio.run_coroutine_threadsafe(
             enter_context(), cast(asyncio.AbstractEventLoop, self._asyncio_loop)
         )
-        # Shield so a caller cancellation does not propagate through wrap_future
-        # and cancel ``enter_context``: __aenter__ finishes and returns, so the
-        # entered CM stays reachable for release. Otherwise the CM is discarded
-        # mid-entry and the slot leaks until GC.
         try:
-            selection, context_manager = await asyncio.shield(
-                asyncio.wrap_future(future)
-            )
+            if reserve:
+                # Shield so a caller cancellation does not propagate through wrap_future
+                # and cancel ``enter_context``: __aenter__ finishes and returns, so the
+                # entered CM stays reachable for release. Otherwise the CM is discarded
+                # mid-entry and the slot leaks until GC.
+                selection, context_manager = await asyncio.shield(
+                    asyncio.wrap_future(future)
+                )
+            else:
+                # Unlike reserved requests, which shield cancellation until
+                # ``__aenter__`` completes so their slot can be released, do not shield:
+                # propagate cancellation from unreserved callers to stop selection retries.
+                selection, context_manager = await asyncio.wrap_future(future)
         except BaseException:
             # Honor the cancellation now; release the orphaned slot on the
             # router loop instead of making the cancelled caller wait on it.

@@ -254,6 +254,7 @@ while True:
         proc = run_string_as_driver_nonblocking(
             script,
             env={
+                **os.environ,
                 "PYTHONUNBUFFERED": "1",
                 "RAY_LOG_TO_DRIVER_EVENT_LEVEL": event_level,
             },

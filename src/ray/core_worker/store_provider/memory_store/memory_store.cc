@@ -152,19 +152,50 @@ inline bool IsUnhandledError(const std::shared_ptr<RayObject> &obj) {
          !obj->WasAccessed();
 }
 
-void CoreWorkerMemoryStore::GetAsync(
+CoreWorkerMemoryStore::AsyncGetCallbackId CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
   absl::MutexLock lock(&mu_);
-  auto iter = objects_.find(object_id);
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>>::iterator iter =
+      objects_.find(object_id);
   if (iter == objects_.end()) {
-    object_async_get_requests_[object_id].push_back(std::move(callback));
-    return;
+    // 0 is reserved for "already present / posted". Skip wraparound to 0.
+    ++next_async_get_callback_id_;
+    if (next_async_get_callback_id_ == 0) {
+      ++next_async_get_callback_id_;
+    }
+    object_async_get_requests_[object_id].push_back(
+        {next_async_get_callback_id_, std::move(callback)});
+    return next_async_get_callback_id_;
   }
-  auto &object_ptr = iter->second;
+  std::shared_ptr<RayObject> &object_ptr = iter->second;
   object_ptr->SetAccessed();
   io_context_.post(
       [callback = std::move(callback), object_ptr]() { callback(object_ptr); },
       "CoreWorkerMemoryStore.GetAsync.Callback");
+  return 0;
+}
+
+void CoreWorkerMemoryStore::CancelGetAsync(const ObjectID &object_id,
+                                           AsyncGetCallbackId callback_id) {
+  if (callback_id == 0) {
+    return;
+  }
+  absl::MutexLock lock(&mu_);
+  absl::flat_hash_map<ObjectID, std::vector<AsyncGetRequest>>::iterator it =
+      object_async_get_requests_.find(object_id);
+  if (it == object_async_get_requests_.end()) {
+    return;
+  }
+  std::vector<AsyncGetRequest> &callbacks = it->second;
+  callbacks.erase(std::remove_if(callbacks.begin(),
+                                 callbacks.end(),
+                                 [callback_id](const AsyncGetRequest &request) {
+                                   return request.id == callback_id;
+                                 }),
+                  callbacks.end());
+  if (callbacks.empty()) {
+    object_async_get_requests_.erase(it);
+  }
 }
 
 std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &object_id) {
@@ -185,7 +216,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
 void CoreWorkerMemoryStore::Put(const RayObject &object,
                                 const ObjectID &object_id,
                                 const bool has_reference) {
-  std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
+  std::vector<AsyncGetRequest> async_callbacks;
   std::shared_ptr<RayObject> unhandled_error;
   RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
@@ -259,8 +290,8 @@ void CoreWorkerMemoryStore::Put(const RayObject &object,
   // https://github.com/ray-project/ray/issues/47649 for more details.
   io_context_.post(
       [async_callbacks = std::move(async_callbacks), object_entry]() {
-        for (const auto &cb : async_callbacks) {
-          cb(object_entry);
+        for (const AsyncGetRequest &request : async_callbacks) {
+          request.callback(object_entry);
         }
       },
       "CoreWorkerMemoryStore.Put.get_async_callbacks");

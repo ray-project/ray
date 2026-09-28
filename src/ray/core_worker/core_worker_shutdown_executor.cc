@@ -21,11 +21,19 @@
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/observability/ray_task_event_recorder.h"
+#include "ray/stats/metric.h"
 #include "ray/util/process_utils.h"
 
 namespace ray {
 
 namespace core {
+
+namespace {
+// Bounds the flush below, which unlike ExportNow blocks. This runs on every worker exit,
+// so the bound is deliberately tight: a slow agent costs latency on a very hot path,
+// while a timed-out flush only loses what would have been lost anyway.
+constexpr int64_t kExitMetricsFlushTimeoutMs = 500;
+}  // namespace
 
 CoreWorkerShutdownExecutor::CoreWorkerShutdownExecutor(
     std::shared_ptr<CoreWorker> core_worker)
@@ -88,6 +96,9 @@ void CoreWorkerShutdownExecutor::ExecuteGracefulShutdown(
   if (core_worker->options_.worker_type != WorkerType::WORKER) {
     core_worker->event_loops_running_ = false;
   }
+  // Cancel pending WaitAsync callbacks while the interpreter is still alive
+  // (unlike ~CoreWorker). Must run before the io thread is joined.
+  core_worker->CancelAllWaitAsync();
   core_worker->io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";
@@ -363,6 +374,10 @@ void CoreWorkerShutdownExecutor::DisconnectServices(
   }
 
   opencensus::stats::StatsExporter::ExportNow();
+  // OpenTelemetry has no exporter-side ExportNow, so flush it here too: this runs on
+  // the force path as well, and anything recorded since the last periodic push would
+  // otherwise die with the process.
+  ray::stats::FlushMetrics(kExitMetricsFlushTimeoutMs);
 
   if (core_worker->connected_.exchange(false)) {
     RAY_LOG(INFO) << "Sending disconnect message to the local raylet.";

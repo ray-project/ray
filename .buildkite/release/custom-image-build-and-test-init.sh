@@ -50,6 +50,12 @@ echo "--- Generate custom build steps"
 
 if [[ "${AUTOMATIC:-0}" == "1" && "${BUILDKITE_BRANCH}" == "master" ]]; then
   export REPORT_TO_RAY_TEST_DB=1
+
+  # Every automatic master run, at whatever release frequency: a nightly, a
+  # nightly-3x and a weekly failure all get triaged, and all of them are tracked
+  # by the state machine that owns the github issue. A release branch or a
+  # manually kicked-off build is left alone, as it is for the db reporter above.
+  export TRIGGER_OBSERVABILITY_AGENT=1
 fi
 
 RUN_FLAGS=()
