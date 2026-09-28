@@ -1106,6 +1106,10 @@ enum LabelSelectorOperator {
   LABEL_OPERATOR_IN = 1;
   // This is to support not equal or not in semantics.
   LABEL_OPERATOR_NOT_IN = 2;
+  // The node has the label key, with any value.
+  LABEL_OPERATOR_EXISTS = 3;
+  // The node does not have the label key.
+  LABEL_OPERATOR_DOES_NOT_EXIST = 4;
 }
 
 // A node label constraint with a key, one or a list of values and an operator.

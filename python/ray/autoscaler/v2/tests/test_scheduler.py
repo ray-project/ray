@@ -2563,6 +2563,85 @@ def test_scale_up_node_to_satisfy_labels():
     assert to_launch == {"gpu_node": 1}
 
 
+@pytest.mark.parametrize(
+    "constraints, expected_node_types",
+    [
+        # The node must have the key and its value must not be slice-a.
+        (
+            [
+                ("slice", LabelSelectorOperator.LABEL_OPERATOR_EXISTS, []),
+                ("slice", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["slice-a"]),
+            ],
+            {"slice_b_node"},
+        ),
+        # The node must not have the key.
+        (
+            [("slice", LabelSelectorOperator.LABEL_OPERATOR_DOES_NOT_EXIST, [])],
+            {"plain_node"},
+        ),
+        # Not in alone still matches a node without the key.
+        (
+            [
+                (
+                    "slice",
+                    LabelSelectorOperator.LABEL_OPERATOR_NOT_IN,
+                    ["slice-a", "slice-b"],
+                )
+            ],
+            {"plain_node"},
+        ),
+    ],
+    ids=["exists-and-not-in", "does-not-exist", "not-in-alone"],
+)
+def test_scale_up_node_to_satisfy_exists_labels(constraints, expected_node_types):
+    """
+    Test that the exists and does not exist operators pick the expected
+    node type, alone and together with other constraints on the same key.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        "plain_node": NodeTypeConfig(
+            name="plain_node",
+            resources={"CPU": 1},
+            labels={},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "slice_a_node": NodeTypeConfig(
+            name="slice_a_node",
+            resources={"CPU": 1},
+            labels={"slice": "slice-a"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+        "slice_b_node": NodeTypeConfig(
+            name="slice_b_node",
+            resources={"CPU": 1},
+            labels={"slice": "slice-b"},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        ),
+    }
+
+    resource_request = ResourceRequestUtil.make(
+        {"CPU": 1}, label_selectors=[constraints]
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[resource_request],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert len(to_launch) == 1
+    ((node_type, count),) = to_launch.items()
+    assert node_type in expected_node_types
+    assert count == 1
+
+
 def test_label_selector_fallback_priority():
     """
     Test that a resource request with multiple label selectors scales up

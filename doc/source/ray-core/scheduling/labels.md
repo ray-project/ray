@@ -89,6 +89,14 @@ The following table shows the basic syntax for label selector operator logic:
 | Not equal | Label matches anything by one value. | `{“key”: “!value”}`
 | In | Label matches one of the provided values. | `{“key”: “in(val1,val2)”}`
 | Not in | Label matches none of the provided values. | `{“key”: “!in(val1,val2)”}`
+| Exists | Node has the label key, with any value. | `{“key”: “exists()”}`
+| Does not exist | Node doesn't have the label key. | `{“key”: “!exists()”}`
+
+Not equal and not in also match nodes that don't have the label key. To require the key, combine several expressions in one value, separated by commas. The node must satisfy all of them. Commas inside `in(...)` still separate the values of that `in`. The following example requires a node that has the `ray.io/tpu-slice-name` label with a value other than `slice-a` or `slice-b`:
+
+```python
+label_selector={"ray.io/tpu-slice-name": "exists(),!in(slice-a,slice-b)"}
+```
 
 You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node ID to be 123:
 

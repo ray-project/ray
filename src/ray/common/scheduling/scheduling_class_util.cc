@@ -101,9 +101,7 @@ std::string SchedulingClassDescriptor::DebugString() const {
   buffer << "label_selector={";
   for (const auto &constraint : label_selector.GetConstraints()) {
     buffer << constraint.GetLabelKey() << " "
-           << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
-                                                                                : "!in")
-           << " (";
+           << LabelSelectorOperatorToString(constraint.GetOperator()) << " (";
     for (const auto &val : constraint.GetLabelValues()) {
       buffer << val << ", ";
     }
@@ -125,9 +123,7 @@ std::string SchedulingClassDescriptor::DebugString() const {
         buffer << ", ";
       }
       buffer << constraint.GetLabelKey() << " "
-             << (constraint.GetOperator() == ray::LabelSelectorOperator::LABEL_IN ? "in"
-                                                                                  : "!in")
-             << " (";
+             << LabelSelectorOperatorToString(constraint.GetOperator()) << " (";
       bool is_first_value = true;
       for (const auto &val : constraint.GetLabelValues()) {
         if (!is_first_value) {

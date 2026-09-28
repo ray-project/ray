@@ -22,6 +22,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 
 namespace ray {
 
@@ -206,6 +207,194 @@ TEST(LabelSelectorTest, Deduplication) {
       "instance", LabelSelectorOperator::LABEL_IN, {"spot"});
   selector.AddConstraint(duplicate_constraint);
   ASSERT_EQ(selector.GetConstraints().size(), 4);
+}
+
+TEST(LabelSelectorTest, ExistsOperatorParsing) {
+  LabelSelector selector;
+  selector.AddConstraint("ray.io/tpu-slice-name", "exists()");
+  selector.AddConstraint("spot", "!exists()");
+
+  auto constraints = selector.GetConstraints();
+  ASSERT_EQ(constraints.size(), 2);
+
+  EXPECT_EQ(constraints[0].GetLabelKey(), "ray.io/tpu-slice-name");
+  EXPECT_EQ(constraints[0].GetOperator(), LabelSelectorOperator::LABEL_EXISTS);
+  EXPECT_TRUE(constraints[0].GetLabelValues().empty());
+
+  EXPECT_EQ(constraints[1].GetLabelKey(), "spot");
+  EXPECT_EQ(constraints[1].GetOperator(), LabelSelectorOperator::LABEL_DOES_NOT_EXIST);
+  EXPECT_TRUE(constraints[1].GetLabelValues().empty());
+}
+
+TEST(LabelSelectorTest, MultipleExpressionsParsing) {
+  LabelSelector selector;
+  selector.AddConstraint("ray.io/tpu-slice-name", "exists(),!in(slice-a,slice-b)");
+
+  auto constraints = selector.GetConstraints();
+  ASSERT_EQ(constraints.size(), 2);
+
+  EXPECT_EQ(constraints[0].GetOperator(), LabelSelectorOperator::LABEL_EXISTS);
+  EXPECT_TRUE(constraints[0].GetLabelValues().empty());
+
+  EXPECT_EQ(constraints[1].GetOperator(), LabelSelectorOperator::LABEL_NOT_IN);
+  EXPECT_EQ(constraints[1].GetLabelValues(),
+            (absl::flat_hash_set<std::string>{"slice-a", "slice-b"}));
+
+  for (const auto &constraint : constraints) {
+    EXPECT_EQ(constraint.GetLabelKey(), "ray.io/tpu-slice-name");
+  }
+}
+
+TEST(LabelSelectorTest, SplitLabelSelectorValue) {
+  using ::testing::ElementsAre;
+
+  // Existing single expression forms are not split.
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue(""), ElementsAre(""));
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue("spot"), ElementsAre("spot"));
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue("!spot"), ElementsAre("!spot"));
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue("in(a,b)"), ElementsAre("in(a,b)"));
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue("!in(a,b)"),
+              ElementsAre("!in(a,b)"));
+
+  // Commas outside parentheses separate expressions.
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue("exists(),!in(a,b)"),
+              ElementsAre("exists()", "!in(a,b)"));
+  EXPECT_THAT(LabelSelector::SplitLabelSelectorValue("in(a,b),!c,!exists()"),
+              ElementsAre("in(a,b)", "!c", "!exists()"));
+}
+
+TEST(LabelSelectorTest, ToStringMapNewOperators) {
+  LabelSelector selector;
+  selector.AddConstraint(
+      LabelConstraint("has-key", LabelSelectorOperator::LABEL_EXISTS, {}));
+  selector.AddConstraint(
+      LabelConstraint("no-key", LabelSelectorOperator::LABEL_DOES_NOT_EXIST, {}));
+
+  auto string_map = selector.ToStringMap();
+  ASSERT_EQ(string_map.size(), 2);
+  EXPECT_EQ(string_map.at("has-key"), "exists()");
+  EXPECT_EQ(string_map.at("no-key"), "!exists()");
+}
+
+TEST(LabelSelectorTest, ToStringMapKeepsEveryConstraintOnAKey) {
+  LabelSelector selector;
+  selector.AddConstraint("region", "us-west");
+  selector.AddConstraint("region", "us-east");
+  selector.AddConstraint("slice", "exists()");
+  selector.AddConstraint("slice", "!in(b,a)");
+
+  auto string_map = selector.ToStringMap();
+  ASSERT_EQ(string_map.size(), 2);
+  EXPECT_EQ(string_map.at("region"), "us-west,us-east");
+  EXPECT_EQ(string_map.at("slice"), "exists(),!in(a,b)");
+}
+
+TEST(LabelSelectorTest, ToStringMapRoundTrip) {
+  google::protobuf::Map<std::string, std::string> input;
+  input["ray.io/tpu-slice-name"] = "exists(),!in(slice-a,slice-b)";
+  input["region"] = "in(us-east,us-west)";
+  input["env"] = "!dev";
+  input["spot"] = "!exists()";
+  input["tier"] = "prod";
+
+  LabelSelector selector(input);
+  ASSERT_EQ(selector.GetConstraints().size(), 6);
+
+  auto string_map = selector.ToStringMap();
+  ASSERT_EQ(string_map.size(), input.size());
+  for (const auto &[key, value] : input) {
+    EXPECT_EQ(string_map.at(key), value) << "Mismatch for key: " << key;
+  }
+
+  // Parsing the output again gives the same constraints for each key.
+  LabelSelector reparsed(string_map);
+  EXPECT_EQ(reparsed.ToStringMap().at("ray.io/tpu-slice-name"),
+            "exists(),!in(slice-a,slice-b)");
+  EXPECT_EQ(reparsed.GetConstraints().size(), selector.GetConstraints().size());
+  for (const auto &constraint : selector.GetConstraints()) {
+    const auto &reparsed_constraints = reparsed.GetConstraints();
+    EXPECT_NE(
+        std::find(reparsed_constraints.begin(), reparsed_constraints.end(), constraint),
+        reparsed_constraints.end());
+  }
+}
+
+TEST(LabelSelectorTest, ProtoRoundTripNewOperators) {
+  LabelSelector selector;
+  selector.AddConstraint("slice", "exists(),!in(a,b)");
+  selector.AddConstraint("spot", "!exists()");
+
+  rpc::LabelSelector proto_selector;
+  selector.ToProto(&proto_selector);
+
+  ASSERT_EQ(proto_selector.label_constraints_size(), 3);
+  EXPECT_EQ(proto_selector.label_constraints(0).operator_(),
+            rpc::LabelSelectorOperator::LABEL_OPERATOR_EXISTS);
+  EXPECT_EQ(proto_selector.label_constraints(0).label_values_size(), 0);
+  EXPECT_EQ(proto_selector.label_constraints(1).operator_(),
+            rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
+  EXPECT_EQ(proto_selector.label_constraints(2).operator_(),
+            rpc::LabelSelectorOperator::LABEL_OPERATOR_DOES_NOT_EXIST);
+
+  EXPECT_EQ(LabelSelector(proto_selector), selector);
+}
+
+TEST(LabelSelectorTest, DebugStringNewOperators) {
+  LabelSelector selector;
+  selector.AddConstraint("slice", "exists(),!exists()");
+  EXPECT_EQ(selector.DebugString(), "{'slice': exists (), 'slice': !exists ()}");
+}
+
+// Returns whether a node with the given labels satisfies the selector.
+bool NodeMatches(const absl::flat_hash_map<std::string, std::string> &node_labels,
+                 const absl::flat_hash_map<std::string, std::string> &selector) {
+  NodeResources node;
+  node.labels = node_labels;
+  return node.HasRequiredLabels(LabelSelector(selector));
+}
+
+TEST(LabelSelectorTest, MatchExistingOperators) {
+  // Existing forms keep their meaning.
+  EXPECT_TRUE(NodeMatches({{"k", "a"}}, {{"k", "a"}}));
+  EXPECT_FALSE(NodeMatches({{"k", "b"}}, {{"k", "a"}}));
+  EXPECT_FALSE(NodeMatches({}, {{"k", "a"}}));
+  EXPECT_TRUE(NodeMatches({{"k", "a"}}, {{"k", "in(a,b)"}}));
+  EXPECT_FALSE(NodeMatches({{"k", "c"}}, {{"k", "in(a,b)"}}));
+  EXPECT_FALSE(NodeMatches({{"k", "a"}}, {{"k", "!a"}}));
+  EXPECT_TRUE(NodeMatches({{"k", "b"}}, {{"k", "!a"}}));
+  EXPECT_FALSE(NodeMatches({{"k", "a"}}, {{"k", "!in(a,b)"}}));
+  EXPECT_TRUE(NodeMatches({{"k", "c"}}, {{"k", "!in(a,b)"}}));
+
+  // A negated selector alone still matches a node without the key.
+  EXPECT_TRUE(NodeMatches({}, {{"k", "!a"}}));
+  EXPECT_TRUE(NodeMatches({}, {{"k", "!in(a,b)"}}));
+}
+
+TEST(LabelSelectorTest, MatchExistsOperators) {
+  EXPECT_TRUE(NodeMatches({{"k", "a"}}, {{"k", "exists()"}}));
+  EXPECT_TRUE(NodeMatches({{"k", ""}}, {{"k", "exists()"}}));
+  EXPECT_FALSE(NodeMatches({{"other", "a"}}, {{"k", "exists()"}}));
+
+  EXPECT_FALSE(NodeMatches({{"k", "a"}}, {{"k", "!exists()"}}));
+  EXPECT_TRUE(NodeMatches({{"other", "a"}}, {{"k", "!exists()"}}));
+  EXPECT_TRUE(NodeMatches({}, {{"k", "!exists()"}}));
+}
+
+TEST(LabelSelectorTest, MatchMultipleExpressions) {
+  const absl::flat_hash_map<std::string, std::string> selector = {
+      {"slice", "exists(),!in(slice-a,slice-b)"}};
+
+  // The node must have the key and its value must not be in the list.
+  EXPECT_TRUE(NodeMatches({{"slice", "slice-c"}}, selector));
+  EXPECT_FALSE(NodeMatches({{"slice", "slice-a"}}, selector));
+  EXPECT_FALSE(NodeMatches({{"slice", "slice-b"}}, selector));
+  EXPECT_FALSE(NodeMatches({}, selector));
+
+  // Expressions on one key combine with other keys using AND.
+  EXPECT_TRUE(NodeMatches({{"slice", "slice-c"}, {"zone", "z1"}},
+                          {{"slice", "exists(),!slice-a"}, {"zone", "z1"}}));
+  EXPECT_FALSE(NodeMatches({{"slice", "slice-c"}, {"zone", "z2"}},
+                           {{"slice", "exists(),!slice-a"}, {"zone", "z1"}}));
 }
 
 }  // namespace ray

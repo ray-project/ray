@@ -21,6 +21,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/util/string_utils.h"
 
 namespace ray {
@@ -612,10 +613,8 @@ std::string GcsAutoscalerStateManager::DebugString() const {
           stream << "{";
           for (const auto &constraint : selector.label_constraints()) {
             stream << constraint.label_key() << " "
-                   << (constraint.operator_() ==
-                               rpc::LabelSelectorOperator::LABEL_OPERATOR_IN
-                           ? "in"
-                           : "!in")
+                   << LabelSelectorOperatorToString(
+                          static_cast<LabelSelectorOperator>(constraint.operator_()))
                    << " [";
             for (const auto &val : constraint.label_values()) {
               stream << val << ",";

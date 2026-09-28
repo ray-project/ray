@@ -750,6 +750,14 @@ class SchedulingNode:
                         if node_val in values:
                             all_constraints_pass = False
                             break
+                    elif op == LabelSelectorOperator.LABEL_OPERATOR_EXISTS:
+                        if key not in self.labels:
+                            all_constraints_pass = False
+                            break
+                    elif op == LabelSelectorOperator.LABEL_OPERATOR_DOES_NOT_EXIST:
+                        if key in self.labels:
+                            all_constraints_pass = False
+                            break
                     else:
                         all_constraints_pass = False
                         break
