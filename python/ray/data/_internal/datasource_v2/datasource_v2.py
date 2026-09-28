@@ -39,9 +39,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
-    )
-    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
-        InMemorySizeEstimator,
+        PartitionHints,
     )
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
@@ -76,7 +74,7 @@ class DataSourceV2(ABC, Generic[InputSplit]):
 
     1. File listing, via ``_get_file_indexer()``
     2. Schema inference
-    3. Size estimation and read-task grouping
+    3. Read-task grouping, via ``get_file_partitioner()``
     4. Scanner creation
 
     Do not extend this class directly. Every datasource extends one of its two
@@ -88,8 +86,8 @@ class DataSourceV2(ABC, Generic[InputSplit]):
       catalog, table metadata or a database (Iceberg, Delta, Hudi, Lance, SQL).
 
     Implementing the abstract members is enough for a new source to work end
-    to end. ``get_size_estimator()``, ``get_file_partitioner()`` and
-    ``resolve_partitioning()`` have defaults and are optional to override.
+    to end. ``resolve_partitioning()`` has a default and is optional to
+    override.
 
     Example::
 
@@ -169,28 +167,29 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         """
         ...
 
-    def get_file_partitioner(self, **kwargs) -> Optional["FilePartitioner"]:
+    @abstractmethod
+    def get_file_partitioner(
+        self, *, hints: Optional["PartitionHints"] = None
+    ) -> Optional["FilePartitioner"]:
         """Partitioner that groups this source's listing rows into read units.
 
-        Defaults to the size-estimating ``RoundRobinPartitioner``. Override when
-        the indexer emits rows carrying richer metadata (e.g. Parquet row-group
-        stats) that a different grouping strategy can exploit.
-        """
-        from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (  # noqa: E501
-            RoundRobinPartitioner,
-        )
+        Each listing task holds its own pickled copy of the partitioner, so
+        anything it carries (such as an ``InMemorySizeEstimator``) must pickle
+        cheaply; any I/O the estimator does runs once per listing task.
+        ``RoundRobinPartitioner(estimator, hints=hints)`` fits most formats;
+        return something else when the listing rows carry metadata worth
+        grouping on (Parquet row-group stats), and ``None`` to emit each
+        listing block as one read unit.
 
-        return RoundRobinPartitioner(**kwargs)
-
-    def get_size_estimator(self) -> Optional[InMemorySizeEstimator]:
-        """Return size estimator for this datasource.
-
-        Override this to provide format-specific size estimation.
+        Args:
+            hints: Sizing hints derived from ``DataContext`` and
+                ``override_num_blocks``, always passed by keyword. Optional
+                so an override that ignores them can take ``**kwargs``.
 
         Returns:
-            InMemorySizeEstimator instance, or None if not supported.
+            The partitioner, or ``None`` to emit listing blocks unchanged.
         """
-        return None
+        ...
 
     @property
     @abstractmethod
