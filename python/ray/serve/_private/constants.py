@@ -500,11 +500,6 @@ RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     10.0,
 )
 
-# Async inference task queue metrics push interval.
-RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
-    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
-)
-
 # Serve multiplexed matching timeout.
 # This is the timeout for the matching process of multiplexed requests. To avoid
 # thundering herd problem, the timeout value will be randomized between this value
@@ -624,6 +619,19 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = get_env_bool(
 RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY",
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
+)
+
+# Cancel an in-progress node compaction after this long.
+RAY_SERVE_COMPACTION_TIMEOUT_S = get_env_float("RAY_SERVE_COMPACTION_TIMEOUT_S", 1800.0)
+
+# Deployments must be stable for this long before a new compaction starts.
+RAY_SERVE_NODE_COMPACTION_DELAY_S = get_env_float(
+    "RAY_SERVE_NODE_COMPACTION_DELAY_S", 300.0
+)
+
+# Cap on the exponential backoff between failed compaction attempts.
+RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S = get_env_float(
+    "RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S", 3600.0
 )
 
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.

@@ -150,7 +150,15 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        merged = (
+            transform_pyarrow.concat(
+                tables,
+                promote_types=True,
+                preserve_order=True,
+            )
+            if len(tables) > 1
+            else tables[0]
+        )
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
         partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
@@ -309,17 +317,20 @@ def _shuffle_reduce_task(
 
     def _flush(tables_by_input: List[List[pa.Table]]):
         nonlocal output_buffer
-        if output_buffer is None:
+        if output_buffer is None and target_max_block_size is not None:
             output_buffer = BlockOutputBuffer(
                 OutputBlockSizeOption.of(
                     target_max_block_size=target_max_block_size,
                 )
             )
         for block in reduce_fn(partition_id, tables_by_input):
-            output_buffer.add_block(block)
             # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
             # downstream of ``_reduce_output_blocks``.
-            yield from output_buffer.iter_ready_blocks()
+            if output_buffer is None:
+                yield block
+            else:
+                output_buffer.add_block(block)
+                yield from output_buffer.iter_ready_blocks()
 
     def _reduce_output_blocks():
         # Gather every input's full shard list, then call reduce_fn exactly once
@@ -355,4 +366,9 @@ def _shuffle_reduce_task(
                 map_task_context,
                 clock=TransformClock(),
             ):
+                if BlockAccessor.for_block(block).num_rows() == 0:
+                    # An unfused MapOperator bundles empty inputs with non-empty
+                    # ones, so it never emits an empty block for them; a fused
+                    # map sees one partition per task and would. Drop them.
+                    continue
                 yield from _yield_with_stats(block)

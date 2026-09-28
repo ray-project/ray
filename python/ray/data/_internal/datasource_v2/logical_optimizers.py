@@ -231,7 +231,7 @@ def derive_list_files_pushdown(
         if partition_pruner is None:
             # Defensive: unreachable today. A scanner only accepts a partition
             # predicate if it reported partition columns, and
-            # ``ArrowFileScanner`` reports none without a partitioning spec --
+            # ``FileScanner`` reports none without a partitioning spec --
             # the only case where it cannot build a pruner. Kept for other
             # implementations (e.g. partition values from a catalog, not the
             # path), where listing still must not stop early: failing safe

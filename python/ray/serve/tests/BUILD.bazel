@@ -121,7 +121,6 @@ py_test_module_list(
         "test_prometheus_autoscaling.py",
         "test_proxy_actor_wrapper.py",
         "test_proxy_response_generator.py",
-        "test_queue_monitor.py",
         "test_ray_client.py",
         "test_record_replica_metadata.py",
         "test_record_routing_stats.py",
@@ -753,6 +752,29 @@ py_test_module_list(
     env = {"RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1"},
     files = [
         "test_gang_scheduling.py",
+    ],
+    name_suffix = "_with_pack_scheduling",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Node compaction tests need a short compaction delay.
+py_test_module_list(
+    size = "large",
+    env = {
+        "RAY_SERVE_NODE_COMPACTION_DELAY_S": "1",
+        "RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY": "1",
+    },
+    files = [
+        "test_node_compaction.py",
     ],
     name_suffix = "_with_pack_scheduling",
     tags = [
