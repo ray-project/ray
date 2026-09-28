@@ -137,3 +137,9 @@ def test_supported_auth_profiles_and_secret_redaction():
     spec = HiveReadSpec(plain, query=query_text, schema=pa.schema([("id", pa.int64())]))
     assert "private-password" not in repr(spec)
     assert "private-literal" not in repr(spec)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
