@@ -240,9 +240,9 @@ def check_tracing_exporter_import_path(
 ) -> None:
     """Check that the configured tracing exporter can be imported.
 
-    This is checked before the config is persisted or broadcast. The exporter
-    may still be unavailable on a worker even if it can be imported on the
-    controller.
+    The controller checks this when it establishes the tracing config at
+    startup. The exporter may still be unavailable on a worker even if it can
+    be imported on the controller.
     """
     if not tracing_config.enabled:
         return

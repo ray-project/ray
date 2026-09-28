@@ -216,6 +216,9 @@ class ServeController:
         # rejects that -- and it survives controller recovery via the replayed
         # constructor argument, so no checkpoint is needed.
         self.global_tracing_config = _coerce_tracing_config(global_tracing_config)
+        # This is where tracing is established (it can't change afterward), so
+        # fail startup on an exporter that can't be imported.
+        check_tracing_exporter_import_path(self.global_tracing_config)
         logger.info(f"Global tracing config: {self.global_tracing_config}.")
 
         configure_component_memory_profiler(
@@ -389,10 +392,10 @@ class ServeController:
         new config. This is a no-op when the config matches what is already in
         effect (e.g. the declarative config re-applying its own value at
         startup) and raises otherwise, so a runtime change is surfaced rather
-        than silently dropped.
+        than silently dropped. The exporter is validated when the config is
+        established in __init__, not here.
         """
         global_tracing_config = _coerce_tracing_config(global_tracing_config)
-        check_tracing_exporter_import_path(global_tracing_config)
 
         if global_tracing_config != self.global_tracing_config:
             raise ValueError(

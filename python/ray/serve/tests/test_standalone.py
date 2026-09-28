@@ -22,7 +22,7 @@ from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.api import serve_start_async
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
@@ -872,20 +872,17 @@ def test_serve_start_tracing_change_on_running_serve_raises(ray_shutdown):
     serve.shutdown()
 
 
-def test_reconfigure_rejects_bad_exporter_import_path(ray_shutdown):
-    """Verify an invalid exporter path is rejected before the config is persisted."""
-    good_config = TracingConfig(enabled=True, sampling_ratio=1.0)
-    serve.start(tracing_config=good_config)
-    client = _get_global_client()
-    assert ray.get(client._controller.get_tracing_config.remote()) == good_config
+def test_serve_start_rejects_bad_exporter_import_path(ray_shutdown):
+    """serve.start fails at startup if the tracing exporter can't be imported.
 
-    bad_config = TracingConfig(enabled=True, exporter_import_path="no.such.module:nope")
-    with pytest.raises(RayTaskError):
-        ray.get(client._controller.reconfigure_global_tracing_config.remote(bad_config))
-
-    # The rejected config was not applied; the previous one is still in effect.
-    assert ray.get(client._controller.get_tracing_config.remote()) == good_config
-    serve.shutdown()
+    Tracing is established when the controller is constructed, so the exporter
+    is validated there and a bad path fails startup rather than surfacing later.
+    """
+    bad_config = TracingConfig(
+        enabled=True, exporter_import_path="serve_missing_tracing_exporter_mod:exp"
+    )
+    with pytest.raises(RayActorError, match="serve_missing_tracing_exporter_mod"):
+        serve.start(tracing_config=bad_config)
 
 
 def test_partial_tracing_config_resolves_from_controller_env(ray_shutdown, monkeypatch):
