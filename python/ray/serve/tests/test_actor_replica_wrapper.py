@@ -77,17 +77,19 @@ class SlotReservationActor:
 
 @ray.remote(num_cpus=0)
 class BlockingReserveActor:
-    """Actor whose reserve_slot blocks on a SignalActor.
+    """Actor whose reserve_slot signals entry, then blocks on a SignalActor.
 
     Records every release_slot token it receives so a test can verify the
     cancellation cleanup path in RunningReplica.reserve_slot.
     """
 
-    def __init__(self, signal_actor):
+    def __init__(self, signal_actor, executing_signal_actor):
         self._signal = signal_actor
+        self._executing_signal = executing_signal_actor
         self._released_tokens = []
 
     async def reserve_slot(self, request_metadata, slot_token: str):
+        await self._executing_signal.send.remote()
         await self._signal.wait.remote()
         return True, 1
 
@@ -290,6 +292,52 @@ async def test_send_request_with_rejection(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("accepted", [False, True])
+@pytest.mark.parametrize("is_streaming", [False, True])
+async def test_rejection_does_not_wait_async_until_accepted(
+    setup_fake_replica, accepted: bool, is_streaming: bool
+):
+    """Consume-wait starts only after an accepted unary rejection frame.
+
+    The constructor must not peek or ``_on_ready``-consume: that races
+    ``get_rejection_response`` on streaming, and hangs on rejected unary
+    (no user ref is written). Streaming never starts a consume-wait.
+    """
+    actor_handle = setup_fake_replica.get_actor_handle()
+    replica = RunningReplica(setup_fake_replica)
+    ray.get(
+        actor_handle.set_replica_queue_length_info.remote(
+            ReplicaQueueLengthInfo(accepted=accepted, num_ongoing_requests=10),
+        )
+    )
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={"is_streaming": is_streaming},
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+            is_streaming=is_streaming,
+        ),
+    )
+    replica_result = replica.try_send_request(pr, with_rejection=True)
+    assert replica_result._cancel_consume_wait is None
+
+    info = await replica_result.get_rejection_response()
+    assert info.accepted == accepted
+    if not accepted:
+        assert replica_result._cancel_consume_wait is None
+    elif is_streaming:
+        assert replica_result._cancel_consume_wait is None
+        assert await replica_result.__anext__() == "Hello-0"
+    else:
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
+        # Consume is posted to the io thread; wait until it runs.
+        await async_wait_for_condition(replica_result._obj_ref_gen._stream_exhausted)
+        assert replica_result._cancel_consume_wait is None
+
+
+@pytest.mark.asyncio
 async def test_send_request_with_rejection_cancellation(setup_fake_replica):
     """
     Verify that the downstream actor method call is cancelled if the call to send the
@@ -403,17 +451,19 @@ async def test_reserve_slot_cancellation_releases_slot_on_actor(ray_instance):
     follow-up release_slot.remote(token) so the actor doesn't leak the slot.
     """
     signal = SignalActor.remote()
+    executing_signal = SignalActor.remote()
     replica, actor = _spawn_running_replica(
-        BlockingReserveActor, "blocking-replica", signal
+        BlockingReserveActor, "blocking-replica", signal, executing_signal
     )
 
     task = get_or_create_event_loop().create_task(
         replica.reserve_slot(_dummy_request_metadata())
     )
 
-    # Let the actor enter reserve_slot and start awaiting the signal.
-    _, pending = await asyncio.wait([task], timeout=0.5)
-    assert len(pending) == 1
+    # Wait for the actor to actually enter reserve_slot. A fixed deadline does
+    # not cover actor startup, which reaches tens of seconds on a loaded host.
+    await executing_signal.wait.remote()
+    assert not task.done()
 
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
