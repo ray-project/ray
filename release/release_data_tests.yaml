@@ -803,9 +803,9 @@
     cluster_compute: fixed_size_8_cpu_compute.yaml
 
   run:
-    timeout: 3600
+    timeout: 18000
     script: >
-      python backpressure_benchmark.py --case fast-producer-slow-consumer
+      python backpressure_benchmark.py --case fast-producer-slow-consumer --num-trials 5
 
 - name: backpressure_training_prefetch
   python: "3.10"
@@ -814,18 +814,18 @@
     cluster_compute: fixed_size_8_cpu_compute.yaml
 
   run:
-    timeout: 3600
+    timeout: 18000
 
   variations:
     - __suffix__: multi_node
       run:
-        script: python backpressure_benchmark.py --case training-prefetch
+        script: python backpressure_benchmark.py --case training-prefetch --num-trials 5
 
     - __suffix__: single_node
       cluster:
         cluster_compute: fixed_size_1_cpu_compute.yaml
       run:
-        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1
+        script: python backpressure_benchmark.py --case training-prefetch --num-trainers 1 --num-trials 5
 
 
 ########################
