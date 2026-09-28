@@ -1,28 +1,18 @@
-import logging
 from dataclasses import dataclass, replace
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
-from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.listing.file_pruners import (
-    FilePruner,
-    PartitionPredicatePruner,
-)
 from ray.data._internal.datasource_v2.logical_optimizers import (
     SupportsColumnPruning,
     SupportsFilterPushdown,
     SupportsLimitPushdown,
-    SupportsPartitionPruning,
 )
 from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
-from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-
-logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -32,16 +22,15 @@ class ArrowFileScanner(
     SupportsFilterPushdown,
     SupportsColumnPruning,
     SupportsLimitPushdown,
-    SupportsPartitionPruning,
 ):
     """Base scanner for file-based datasources that use PyArrow's Dataset API.
 
     Holds shared Arrow types and options (schema, projection, filesystem,
-    partitioning, etc.). Subclasses set the file format in :meth:`create_reader`.
+    etc.). Subclasses set the file format in :meth:`create_reader`.
 
-    Provides default implementations of filter pushdown, column pruning,
-    limit pushdown, and partition pruning that work for all Arrow-backed
-    formats.
+    Provides default implementations of filter pushdown, column pruning and
+    limit pushdown that work for all Arrow-backed formats. Partition pruning
+    comes from :class:`FileScanner`.
 
     Non-Arrow file formats should subclass :class:`FileScanner` directly.
     """
@@ -50,18 +39,9 @@ class ArrowFileScanner(
     batch_size: Optional[int] = None
     columns: Optional[Tuple[str, ...]] = None
     predicate: Optional[Expr] = None
-    partition_predicate: Optional[Expr] = None
     limit: Optional[int] = None
     filesystem: Optional[FileSystem] = None
-    partitioning: Optional[Partitioning] = None
     ignore_prefixes: Optional[List[str]] = None
-
-    @property
-    def partition_columns(self) -> Set[str]:
-        """Return the set of partition column names, or empty if unpartitioned."""
-        if self.partitioning is None:
-            return set()
-        return set(self.partitioning.field_names or [])
 
     @override
     def metadata_row_count_is_exact(self) -> bool:
@@ -171,71 +151,3 @@ class ArrowFileScanner(
     @override
     def pushed_limit(self) -> Optional[int]:
         return self.limit
-
-    @override
-    def prune_partitions(self, predicate: "Expr") -> "ArrowFileScanner":
-        """Store a partition predicate for file-level pruning during plan().
-
-        The predicate is ANDed with any existing partition predicate. Actual
-        file pruning happens in :meth:`plan` when the manifest is available,
-        using :class:`PathPartitionParser` to evaluate partition values from
-        file paths.
-
-        Args:
-            predicate: Expression referencing only partition columns.
-
-        Returns:
-            New scanner with partition predicate stored.
-        """
-        if self.partition_predicate is not None:
-            combined = self.partition_predicate & predicate
-        else:
-            combined = predicate
-
-        return replace(self, partition_predicate=combined)
-
-    @override
-    def pushed_partition_predicate(self) -> Optional["Expr"]:
-        return self.partition_predicate
-
-    @override
-    def pushed_partition_pruner(self) -> Optional["FilePruner"]:
-        if self.partition_predicate is None or self.partitioning is None:
-            # No spec, no partition values -- same guard as ``prune_manifest``.
-            return None
-        return PartitionPredicatePruner(self.partitioning, self.partition_predicate)
-
-    @override
-    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Filter manifest to only files matching ``self.partition_predicate``.
-
-        Called by :func:`plan_read_files_op.do_read` for every incoming
-        manifest block. No-op when either the predicate or the
-        partitioning spec is absent. Uses
-        :class:`PathPartitionParser` to parse partition values from
-        each file path and evaluate the predicate.
-        """
-        if self.partition_predicate is None or self.partitioning is None:
-            return manifest
-
-        parser = PathPartitionParser(self.partitioning)
-        keep_indices = []
-
-        for i, path in enumerate(manifest.paths):
-            if parser.evaluate_predicate_on_partition(path, self.partition_predicate):
-                keep_indices.append(i)
-
-        if len(keep_indices) == len(manifest):
-            return manifest
-
-        pruned_count = len(manifest) - len(keep_indices)
-        logger.debug(
-            "Partition pruning removed %d of %d files",
-            pruned_count,
-            len(manifest),
-        )
-
-        block = manifest.as_block()
-        # An untyped empty list infers null indices: ArrowNotImplementedError.
-        pruned_block = block.take(pa.array(keep_indices, type=pa.int64()))
-        return FileManifest(pruned_block)

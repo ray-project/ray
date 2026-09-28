@@ -1,0 +1,426 @@
+import html
+import json
+import os
+import subprocess
+from typing import Any, Dict, Optional
+
+import requests
+
+from ray_release.exception import ExitCode
+from ray_release.logger import logger
+from ray_release.reporter.reporter import Reporter
+from ray_release.result import Result, ResultStatus
+from ray_release.test import Test
+from ray_release.util import ANYSCALE_HOST, anyscale_job_url, format_link
+
+# Result statuses that trigger the observability agent. These are the failures
+# that are attributable to the test workload itself, TIMEOUT included: it is set
+# only for ExitCode.COMMAND_TIMEOUT, the test command outrunning its own
+# timeout, and what it was doing when the clock ran out is exactly the kind of
+# question the agent is there to answer. Infra failures (INFRA_ERROR,
+# INFRA_TIMEOUT and TRANSIENT_INFRA_ERROR) are excluded, as the agent has
+# nothing to say about a job that never got to run.
+OBSERVABILITY_AGENT_TRIGGER_STATUSES = (
+    ResultStatus.RUNTIME_ERROR.value,
+    ResultStatus.ERROR.value,
+    ResultStatus.TIMEOUT.value,
+    ResultStatus.UNKNOWN.value,
+)
+
+# Return codes of the failures that are raised by the test command itself,
+# rather than by the harness around it.
+COMMAND_FAILURE_RETURN_CODES = (
+    ExitCode.COMMAND_ERROR.value,
+    ExitCode.COMMAND_ALERT.value,
+    ExitCode.COMMAND_TIMEOUT.value,
+    ExitCode.PREPARE_ERROR.value,
+)
+
+# Whether the failures in COMMAND_FAILURE_RETURN_CODES are skipped instead of
+# handed to the observability agent. Off: a command failure is still a failure
+# somebody has to explain, and the agent sees the job's metrics and logs, which
+# the exit code alone does not carry.
+#
+# Left here as a switch rather than deleted, because that judgement depends on
+# traffic nobody has seen yet. If these turn out to be mostly straightforward
+# errors whose cause is already plain from the log, turning this on skips them.
+# Note what that costs: with the trigger statuses as they are, an ERROR or
+# TIMEOUT result always carries one of these return codes, so switching it on
+# leaves only RUNTIME_ERROR and UNKNOWN triggering the agent at all.
+SKIP_COMMAND_FAILURES = False
+
+# The debug session is always asked the same question; the agent itself decides
+# which metrics and logs of the job to look at.
+DEBUG_SESSION_QUERY = "Why did this job fail?"
+
+# run_release_test.sh names a file here and prints it under its own buildkite
+# group once the test is over. Writing the analysis there instead of logging it
+# inline keeps it out of the middle of the reporting output, where it competes
+# with the other reporters and the traceback.
+ANALYSIS_FILE_ENV = "RELEASE_TEST_OBS_AGENT_FILE"
+
+# An annotation is identified by its context within its scope, and buildkite
+# defaults that context to "default". Scope already separates the attempts of a
+# retried test -- a retry is a new job, so it annotates separately whatever this
+# value is -- so the context is not what keeps their reports apart. It is the
+# test name to make the annotation identifiable in the buildkite UI, and to keep
+# it clear of anything else annotating the same job.
+ANNOTATION_CONTEXT_PREFIX = "obs-agent-"
+
+# info rather than warning or error: the analysis is advisory, and error is what
+# the build's own failures use.
+ANNOTATION_STYLE = "info"
+
+# `--scope` is what decides where buildkite displays the annotation, and it
+# defaults to "build". `--job` only records which job the annotation came from,
+# so passing it alone is not enough: without this the annotation lands on the
+# build page rather than the job it is about.
+ANNOTATION_SCOPE = "job"
+
+# Logged with every analysis. Only the summary is logged; the agent posts the
+# full report to a slack thread, which is also where it collects its feedback,
+# from the people who know what actually broke.
+FEEDBACK_REMINDER = (
+    ">>> Only the summary is logged here. The full report, with the evidence and\n"
+    ">>> next steps behind it, is in the slack thread below.\n"
+    ">>> The observability agent is under active development: please rate that\n"
+    ">>> report with the 'All good' or 'Needs correction' buttons in the thread."
+)
+
+# Creating a debug session is a quick bookkeeping call, whereas the query runs
+# the actual analysis over the job's metrics and logs.
+CREATE_DEBUG_SESSION_TIMEOUT = 60
+QUERY_DEBUG_SESSION_TIMEOUT = 900
+
+
+class ObservabilityAgentReporter(Reporter):
+    """
+    Reporter that asks the Anyscale observability agent why a release test job
+    failed, and logs its analysis.
+
+    It creates a debug session for the Anyscale job of the failed test run, then
+    queries that session. This is a no-op for test runs that did not fail with
+    one of OBSERVABILITY_AGENT_TRIGGER_STATUSES, for failures that never got as
+    far as creating an Anyscale job, and, if SKIP_COMMAND_FAILURES is ever
+    turned on, for failures raised by the test command itself.
+    """
+
+    def report_result(self, test: Test, result: Result) -> None:
+        if result.status not in OBSERVABILITY_AGENT_TRIGGER_STATUSES:
+            logger.info(
+                f"Skip triggering the observability agent for test "
+                f"{test.get_name()} with result {result.status}"
+            )
+            return
+
+        if SKIP_COMMAND_FAILURES and (
+            result.return_code in COMMAND_FAILURE_RETURN_CODES
+        ):
+            logger.info(
+                f"Skip triggering the observability agent for test "
+                f"{test.get_name()} with command failure return code "
+                f"{result.return_code}"
+            )
+            return
+
+        # The job id is the Anyscale production job id, obtained through the
+        # Anyscale SDK when the job was submitted; see AnyscaleJobManager.
+        job_id = result.job_id
+        if not job_id:
+            logger.info(
+                f"Skip triggering the observability agent for test "
+                f"{test.get_name()}; the test run has no Anyscale job id"
+            )
+            return
+
+        logger.info(
+            f"Triggering the observability agent for test {test.get_name()} "
+            f"with result {result.status}, job {job_id}"
+        )
+        try:
+            debug_session_id = self._create_debug_session(job_id)
+            response = self._query_debug_session(debug_session_id)
+
+            # The full analysis also holds the findings, issues and next steps
+            # that back the summary; those stay out of the logs to keep them
+            # readable.
+            logger.debug(f"Observability agent response: {json.dumps(response)}")
+
+            # Parsed in here rather than below, because reading the response is
+            # as able to raise as fetching it was: `or {}` covers a null field,
+            # but not a response whose shape is nothing like the one documented
+            # on _query_debug_session. glue.py does not guard the reporting
+            # loop, so anything that escapes changes the result of the test.
+            query_result = response.get("result") or {}
+            summary = (query_result.get("analysis") or {}).get("summary")
+            slack_thread = (query_result.get("metadata") or {}).get("slack_thread")
+        except Exception:
+            # The analysis is supplementary information; failing to obtain it
+            # should never change the outcome of the test run.
+            logger.exception(
+                f"Could not obtain an observability agent analysis for job {job_id}"
+            )
+            return
+
+        # Whatever the agent leaves out is called out in the message rather
+        # than left blank: the group is the prominent part of the step, so a
+        # response that came back empty has to say so there, not only in an
+        # error line buried in the reporting output above.
+        message = f"Observability agent analysis of job {job_id}:"
+        if summary:
+            message += f"\n{summary}"
+        else:
+            logger.error(
+                f"Observability agent response for job {job_id} carries no "
+                f"summary; debug session {debug_session_id}"
+            )
+            message += (
+                f"\n>>> The agent returned no summary for this job."
+                f"\n>>> Debug session: {debug_session_id}"
+            )
+
+        if slack_thread:
+            message += (
+                f"\n{FEEDBACK_REMINDER}"
+                f"\n>>> Full report and feedback: {format_link(slack_thread)}"
+            )
+        else:
+            logger.error(
+                f"Observability agent response for job {job_id} carries no slack "
+                "thread; the full report and its feedback buttons cannot be "
+                "linked from here"
+            )
+            message += (
+                "\n>>> The agent returned no slack thread, so the full report"
+                "\n>>> and its feedback buttons cannot be reached from here."
+            )
+
+        self._annotate(test, job_id, debug_session_id, summary, slack_thread)
+
+        analysis_file = self._write_analysis(message)
+        if analysis_file:
+            logger.info(
+                f"Observability agent analysis of job {job_id} written to "
+                f"{analysis_file}; it is printed at the end of this step"
+            )
+        else:
+            logger.info(message)
+
+    def _annotate(
+        self,
+        test: Test,
+        job_id: str,
+        debug_session_id: str,
+        summary: Optional[str],
+        slack_thread: Optional[str],
+    ) -> None:
+        """Annotate the buildkite job with this attempt's analysis.
+
+        The annotation is scoped to the job, so each attempt of a retried test
+        annotates its own job and buildkite shows them together on the build
+        page: every attempt's report is kept, attributed to the attempt that
+        produced it.
+
+        `--append` is passed for the case of a job annotating twice under this
+        context. That does not happen today -- one release test job runs one
+        test once -- but replacing would be the wrong behaviour if it ever did.
+        """
+        if not os.environ.get("BUILDKITE"):
+            return
+
+        # Buildkite labels the first try "Retry 1 of N", while
+        # BUILDKITE_RETRY_COUNT counts retries *after* it and so is 0 there.
+        # Rendering the raw value would put "attempt 3" on the attempt the UI
+        # calls "Retry 4 of 5"; render both, so the annotation reconciles with
+        # the label it hangs off and with the job log, which prints the raw
+        # value.
+        retry_count = os.environ.get("BUILDKITE_RETRY_COUNT", "0")
+        try:
+            attempt = str(int(retry_count) + 1)
+        except ValueError:
+            attempt = "?"
+        # Buildkite renders the body as markup, and everything interpolated
+        # below either comes from the agent's response or is a name this
+        # reporter does not control, so all of it is escaped. The summary
+        # matters most: it is free-form prose, and an unescaped `<` in it would
+        # be rendered rather than shown.
+        def esc(value: str) -> str:
+            return html.escape(str(value), quote=True)
+
+        lines = [
+            f"<strong>{esc(test.get_name())}</strong> — attempt {attempt} "
+            f"(BUILDKITE_RETRY_COUNT={esc(retry_count)}) — "
+            f'<a href="{esc(anyscale_job_url(job_id))}">{esc(job_id)}</a>',
+            "",
+            esc(summary) if summary else "The agent returned no summary for this job.",
+        ]
+        if slack_thread:
+            lines += [
+                "",
+                f'<a href="{esc(slack_thread)}">Full report and feedback</a> — rate '
+                "it with the 'All good' or 'Needs correction' buttons in the thread.",
+            ]
+        else:
+            lines += ["", f"No slack thread; debug session {esc(debug_session_id)}."]
+        lines.append("<br/>")
+
+        command = [
+            "buildkite-agent",
+            "annotate",
+            f"--style={ANNOTATION_STYLE}",
+            f"--scope={ANNOTATION_SCOPE}",
+            f"--context={ANNOTATION_CONTEXT_PREFIX}{test.get_name()}",
+            "--append",
+        ]
+        if os.environ.get("BUILDKITE_JOB_ID"):
+            command += ["--job", os.environ["BUILDKITE_JOB_ID"]]
+        # The body is the positional argument, so it stays last.
+        command.append("\n".join(lines))
+
+        # Logged so that a build is self-describing about what was actually
+        # run: which flags the annotation was created with is otherwise
+        # invisible from the job log, and it decides where the annotation lands.
+        logger.info(f"Annotating the buildkite job: {' '.join(command[:-1])}")
+        try:
+            # Not check=True: an annotation is advisory, and a missing binary or
+            # a non-zero exit must not change the outcome of the test run.
+            completed = subprocess.run(command, capture_output=True, text=True)
+        except Exception as e:
+            logger.warning(f"Could not annotate the buildkite job: {e}")
+            return
+
+        if completed.returncode != 0:
+            logger.warning(
+                f"buildkite-agent annotate exited {completed.returncode}: "
+                f"{completed.stderr.strip()}"
+            )
+
+    def _write_analysis(self, message: str) -> Optional[str]:
+        """Write the message to the file the test harness prints, if configured.
+
+        Returns the path written to, or None when no file is configured or the
+        write failed, in which case the caller logs the message inline instead.
+        """
+        analysis_file = os.environ.get(ANALYSIS_FILE_ENV)
+        if not analysis_file:
+            return None
+
+        try:
+            # The agent writes prose, so the summary carries non-ascii
+            # characters; the encoding cannot be left to the container locale.
+            with open(analysis_file, "wt", encoding="utf-8") as fp:
+                fp.write(f"{message}\n")
+        except Exception as e:
+            logger.warning(
+                f"Could not write the observability agent analysis to "
+                f"{analysis_file}: {e}"
+            )
+            return None
+
+        return analysis_file
+
+    def _create_debug_session(self, job_id: str) -> str:
+        """Create a debug session for the job and return its id."""
+        response = self._post_json(
+            f"debug_sessions/job/{job_id}",
+            timeout=CREATE_DEBUG_SESSION_TIMEOUT,
+        )
+        # `or {}` so that a null result raises the error below rather than an
+        # AttributeError.
+        debug_session_id = (response.get("result") or {}).get("debug_session_id")
+        if not debug_session_id:
+            raise RuntimeError(
+                f"Debug session response for job {job_id} contains no "
+                f"debug_session_id: {json.dumps(response)}"
+            )
+
+        logger.info(f"Created debug session {debug_session_id} for job {job_id}")
+        return debug_session_id
+
+    def _query_debug_session(self, debug_session_id: str) -> Dict[str, Any]:
+        """Query the debug session and return the full response.
+
+        The response is expected to hold the id of the queried debug session,
+        the analysis of the job, and metadata pointing at the slack thread the
+        agent posted that analysis to:
+
+            {
+                "result": {
+                    "debug_session_id": str,
+                    "analysis": {
+                        "summary": str,
+                        "metrics_findings": List[str],
+                        "log_findings": List[str],
+                        "issues": List[Dict[str, Any]],
+                        "next_steps": List[str]
+                    },
+                    "metadata": {"slack_thread": str}
+                }
+            }
+        """
+        return self._post_json(
+            f"debug_sessions/{debug_session_id}/messages",
+            json_data={"query": DEBUG_SESSION_QUERY},
+            timeout=QUERY_DEBUG_SESSION_TIMEOUT,
+        )
+
+    def _post_json(
+        self,
+        path: str,
+        timeout: int,
+        json_data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """POST to the observability agent api and return the json object sent
+        back.
+
+        Named for what it returns rather than for the verb: the json object is
+        the postcondition the two callers are written against, so it is checked
+        here rather than left for whichever `.get()` reaches it first.
+        """
+        token = os.environ.get("ANYSCALE_CLI_TOKEN")
+        if not token:
+            raise RuntimeError(
+                "ANYSCALE_CLI_TOKEN is not set, cannot call the observability agent"
+            )
+
+        url = f"{ANYSCALE_HOST}/api/v2/obs_agent/{path}"
+        response = requests.post(
+            url,
+            json=json_data,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "X-Customer-Id": "anyscale-internal",
+                # The `json=` argument sets Content-Type, which describes the
+                # body being sent; Accept is what asks for json back. Without
+                # it nothing on the wire says what this expects in return.
+                "Accept": "application/json",
+            },
+            timeout=timeout,
+        )
+        if not response.ok:
+            # A 422 carries the validation error detail, for example when the
+            # job id is not one the observability agent knows about.
+            raise RuntimeError(
+                f"POST {url} returned {response.status_code}: {response.text}"
+            )
+
+        # Asking is not receiving: a proxy or a load balancer in front of the
+        # api can still answer 200 with an html error page, and .json() raises
+        # on that. Nor does valid json promise an object -- `null`, a list and a
+        # bare string are all valid at the top level, and .json() returns each
+        # of them happily, leaving an AttributeError for whoever calls .get()
+        # next. Both are turned into a RuntimeError naming the body, so that the
+        # caller's `except` logs what the agent actually sent.
+        try:
+            body = response.json()
+        except ValueError as e:
+            raise RuntimeError(
+                f"POST {url} returned a body that is not json: {response.text}"
+            ) from e
+
+        if not isinstance(body, dict):
+            raise RuntimeError(
+                f"POST {url} returned json that is not an object: {response.text}"
+            )
+
+        return body
