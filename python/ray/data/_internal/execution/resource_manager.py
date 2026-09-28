@@ -441,6 +441,20 @@ class ResourceManager:
             and not op.has_execution_finished()
         )
 
+    def get_object_store_memory_share_per_op(self) -> Optional[int]:
+        """Return the global object store memory limit split evenly across the
+        operators eligible for memory reservation, or None if there are no such
+        operators or the limit is unbounded.
+
+        This doesn't depend on the op resource allocator, so it's available even
+        when the allocator is disabled.
+        """
+        eligible_ops = [op for op in self._topology if self.is_op_eligible(op)]
+        limit = self.get_global_limits().object_store_memory
+        if not eligible_ops or math.isinf(limit):
+            return None
+        return int(limit / len(eligible_ops))
+
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:

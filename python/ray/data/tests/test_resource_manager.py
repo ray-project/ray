@@ -538,6 +538,45 @@ class TestResourceManager:
         completed_ops_usage = resource_manager._get_completed_ops_usage()
         assert completed_ops_usage == ExecutionResources(cpu=3, object_store_memory=75)
 
+    def test_get_object_store_memory_share_per_op(self, restore_data_context):
+        """The global object store limit is split across eligible ops only."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+        o4 = mock_map_op(o3)
+
+        topo = build_streaming_topology(o4, ExecutionOptions(), noop_counter())
+        o1.mark_execution_finished()
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+        )
+
+        def set_object_store_limit(limit):
+            resource_manager._global_limits = ExecutionResources(
+                object_store_memory=limit
+            )
+            resource_manager._global_limits_last_update_time = time.time()
+
+        set_object_store_limit(1000)
+        # o1 is finished and o3 (LimitOperator) disables throttling, so only o2
+        # and o4 are eligible.
+        assert resource_manager.get_object_store_memory_share_per_op() == 500
+
+        o2.mark_execution_finished()
+        assert resource_manager.get_object_store_memory_share_per_op() == 1000
+
+        set_object_store_limit(float("inf"))
+        assert resource_manager.get_object_store_memory_share_per_op() is None
+
+        set_object_store_limit(1000)
+        o4.mark_execution_finished()
+        assert resource_manager.get_object_store_memory_share_per_op() is None
+
     def test_get_completed_ops_usage_complex_graph(self, restore_data_context):
         """
         o1 (InputDataBuffer)

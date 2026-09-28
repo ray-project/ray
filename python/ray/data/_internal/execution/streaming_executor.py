@@ -29,6 +29,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -275,6 +276,15 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager,
             config=self._data_context.autoscaling_config,
         )
+        # Size OutputSplitter's locality buffer against the object store budget.
+        # Set once: the eligible op count only shrinks as ops finish, so the
+        # initial per-op share is the most conservative.
+        object_store_memory_share_per_op = (
+            self._resource_manager.get_object_store_memory_share_per_op()
+        )
+        for op in self._topology:
+            if isinstance(op, OutputSplitter):
+                op.set_buffer_memory_budget(object_store_memory_share_per_op)
         self._no_progress_guard = NoProgressGuard(
             self._topology,
             self._data_context.execution_no_progress_timeout_s,

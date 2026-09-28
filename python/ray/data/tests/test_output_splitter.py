@@ -7,7 +7,10 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.operators.output_splitter import (
+    DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION,
+    OutputSplitter,
+)
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
@@ -275,6 +278,51 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
         f"Expected >=85% with locality-aware dispatching. "
         f"Hits: {locality_hits}/{total}"
     )
+
+
+@pytest.mark.parametrize("bounded", [False, True])
+def test_split_operator_buffer_capped_by_memory_budget(
+    ray_start_regular_shared, bounded
+):
+    """The locality buffer holds no more bundles than fit in its memory budget,
+    so bundles that no consumer prefers are dispatched before reaching 2 * n."""
+    num_splits = 4  # Default buffer cap is 2 * 4 = 8 bundles.
+    bundles = make_ref_bundles([[i] for i in range(6)])
+    bundle_bytes = bundles[0].size_bytes()
+    assert all(b.size_bytes() == bundle_bytes for b in bundles)
+
+    input_op = InputDataBuffer(DataContext.get_current(), bundles)
+    op = OutputSplitter(
+        input_op,
+        num_splits,
+        equal=False,
+        data_context=DataContext.get_current(),
+        locality_hints=[f"node{i}" for i in range(num_splits)],
+    )
+    # No bundle is local to any consumer, so only the cap releases them.
+    op._get_locations = lambda bundle: ["elsewhere"]
+    op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
+    if bounded:
+        # Budget for 3.5 bundles -> cap of 3.
+        op.set_buffer_memory_budget(
+            int(3.5 * bundle_bytes / DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION)
+        )
+
+    num_outputs = []
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        while op.has_next():
+            op.get_next()
+            num_outputs.append(op._num_input_bundles)
+
+    if bounded:
+        # Once 3 bundles are buffered, each new one releases the oldest.
+        assert num_outputs == [3, 4, 5, 6]
+        assert "[buffer cap 3/8]" in op.progress_str()
+    else:
+        # All 6 bundles are withheld below the default cap of 8.
+        assert num_outputs == []
+        assert "buffer cap" not in op.progress_str()
 
 
 if __name__ == "__main__":

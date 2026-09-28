@@ -38,6 +38,15 @@ DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
 )
 
+# Fraction of the per-op object store share (global limit / eligible ops) that the
+# locality buffer may hold. 0.25 is half of the per-op reservation guaranteed by
+# the default `DataContext.op_resource_reservation_ratio` (0.5), leaving room for
+# consumer prefetch and pending task outputs, which are charged to the same
+# upstream producers.
+DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION = env_float(
+    "RAY_DATA_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION", 0.25
+)
+
 
 class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
@@ -94,11 +103,21 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         #
         #   DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR * N
         #
-        # Where N is the number of outputs the sequence is being split into
+        # Where N is the number of outputs the sequence is being split into.
+        #
+        # The cap is further lowered to fit the object store budget (see
+        # `_effective_max_buffer_size`).
         if locality_hints:
             self._max_buffer_size = DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR * n
         else:
             self._max_buffer_size = 0
+
+        # Max bytes the locality buffer may hold, or None if unbounded. Set by the
+        # executor via `set_buffer_memory_budget`.
+        self._buffer_memory_budget: Optional[float] = None
+        # Running totals of input bundles, used to estimate the bundle size.
+        self._total_input_bytes = 0
+        self._num_input_bundles = 0
 
         self._locality_hits = 0
         self._locality_misses = 0
@@ -139,6 +158,42 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         super().start(options, block_ref_counter)
 
+    def set_buffer_memory_budget(
+        self, object_store_memory_share_per_op: Optional[int]
+    ) -> None:
+        """Bound the locality buffer by the object store budget.
+
+        Buffered bundles stay charged to the upstream operators that produced
+        them. If those producers can't afford the bundles needed to reach the
+        buffer cap, the cap is never reached and buffered bundles are never
+        dispatched, so the cap is lowered to what fits.
+
+        Args:
+            object_store_memory_share_per_op: The global object store limit split
+                evenly across eligible operators, or None for no bound.
+        """
+        if object_store_memory_share_per_op is None:
+            self._buffer_memory_budget = None
+        else:
+            self._buffer_memory_budget = (
+                object_store_memory_share_per_op
+                * DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION
+            )
+
+    def _effective_max_buffer_size(self) -> int:
+        """Return the locality buffer cap: at most `_max_buffer_size` bundles,
+        and no more bundles than fit in the buffer memory budget, based on the
+        average input bundle size seen so far."""
+        max_buffer_size = int(self._max_buffer_size)
+        if (
+            max_buffer_size == 0
+            or self._buffer_memory_budget is None
+            or self._total_input_bytes == 0
+        ):
+            return max_buffer_size
+        avg_bundle_bytes = self._total_input_bytes / self._num_input_bundles
+        return min(max_buffer_size, int(self._buffer_memory_budget / avg_bundle_bytes))
+
     def throttling_disabled(self) -> bool:
         """Disables resource-based throttling.
 
@@ -169,6 +224,8 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _add_input_inner(self, bundle, input_index) -> None:
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
+        self._total_input_bytes += bundle.size_bytes()
+        self._num_input_bundles += 1
         self._buffer.add(bundle)
         self._metrics.on_input_queued(bundle, input_index=0)
         # Try dispatch buffered bundles
@@ -221,12 +278,19 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
     def progress_str(self) -> str:
         if self._locality_hints:
-            return locality_string(self._locality_hits, self._locality_misses)
+            progress = locality_string(self._locality_hits, self._locality_misses)
+            max_buffer_size = self._effective_max_buffer_size()
+            if max_buffer_size < int(self._max_buffer_size):
+                progress += (
+                    f" [buffer cap {max_buffer_size}/{int(self._max_buffer_size)}]"
+                )
+            return progress
         else:
             return "[locality disabled]"
 
     def _try_dispatch_bundles(self, force: bool = False) -> None:
         start_time = time.perf_counter()
+        max_buffer_size = self._effective_max_buffer_size()
 
         # Currently, there are 2 modes of operation when dispatching
         # accumulated bundles:
@@ -248,7 +312,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
             if preferred_bundle:
                 target_bundle = preferred_bundle
-            elif len(self._buffer) >= self._max_buffer_size or force:
+            elif len(self._buffer) >= max_buffer_size or force:
                 # If we're not able to find a preferred bundle and buffer size is above
                 # the cap, we pop the longest awaiting and pass to the next receiver
                 target_bundle = self._buffer.peek_next()
