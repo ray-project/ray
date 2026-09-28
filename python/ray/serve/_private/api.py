@@ -4,7 +4,7 @@ import logging
 
 # Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
 from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from pydantic import BaseModel
 
@@ -12,6 +12,7 @@ import ray
 from ray import ObjectRef
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
+from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
@@ -19,6 +20,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_controller_impl
+from ray.serve._private.tracing_utils import InvalidTracingConfigError
 from ray.serve.config import (
     ControllerOptions,
     HTTPOptions,
@@ -103,6 +105,20 @@ def _check_tracing_config(
     )
 
 
+def _get_actor_init_error(error: RayActorError) -> Optional[BaseException]:
+    """Return the exception an actor's __init__ raised, if that's why it died.
+
+    For a constructor failure Ray raises ``ActorDiedError(RayTaskError)``, and
+    the ``RayTaskError``'s ``args[2]`` is the original exception.
+    """
+    if not error.actor_init_failed:
+        return None
+    try:
+        return error.args[0].args[2]
+    except (AttributeError, IndexError):
+        return None
+
+
 def _create_controller_and_proxy_refs(
     http_options: Union[None, dict, HTTPOptions],
     grpc_options: Union[None, dict, gRPCOptions],
@@ -170,15 +186,16 @@ def _create_controller_and_proxy_refs(
         proxy_location=proxy_location,
         global_tracing_config=global_tracing_config,
     )
-    # Imported lazily, like get_controller_impl does.
-    from ray.serve._private.controller import raise_if_controller_startup_failed
 
-    # An invalid config (e.g. a tracing exporter that can't be imported in the
-    # controller's env) surfaces here as a ValueError, with the half-created
-    # controller cleaned up.
-    raise_if_controller_startup_failed(controller)
-
-    proxy_handles: Any = ray.get(controller.get_proxies.remote())
+    try:
+        proxy_handles: Any = ray.get(controller.get_proxies.remote())
+    except RayActorError as e:
+        # An invalid tracing config fails the controller's constructor. Surface
+        # that as the clean config error; re-raise any other failure unchanged.
+        init_error = _get_actor_init_error(e)
+        if isinstance(init_error, InvalidTracingConfigError):
+            raise init_error from None
+        raise
     proxy_ready_refs = (
         [handle.ready.remote() for handle in proxy_handles.values()]
         if len(proxy_handles) > 0

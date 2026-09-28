@@ -44,13 +44,10 @@ class ServeControllerAvatar:
                 proxy_location=ProxyLocation.HeadOnly,
                 global_logging_config=LoggingConfig(),
             )
-            from ray.serve._private.controller import (
-                raise_if_controller_startup_failed,
-            )
-
-            # Don't leave a half-initialized controller behind if its (env
-            # var-derived) tracing config is invalid.
-            raise_if_controller_startup_failed(self._controller)
+            # Wait for the controller to finish construction, so a failed
+            # startup (e.g. an invalid tracing config) fails this avatar instead
+            # of leaving it holding a handle to a dead controller.
+            ray.get(self._controller.check_alive.remote())
 
     def check_alive(self) -> None:
         """No-op to check if this actor is alive."""

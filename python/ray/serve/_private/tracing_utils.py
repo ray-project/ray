@@ -235,6 +235,14 @@ def tracing_decorator_factory(
     return tracing_decorator
 
 
+class InvalidTracingConfigError(ValueError):
+    """The Serve tracing config is invalid (e.g. its exporter can't be imported).
+
+    Raised by the controller constructor on initial startup; serve.start
+    recovers it from the actor-creation failure and re-raises it as is.
+    """
+
+
 def check_tracing_exporter_import_path(
     tracing_config: "TracingConfig",
 ) -> None:

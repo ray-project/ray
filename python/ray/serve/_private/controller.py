@@ -22,7 +22,6 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
-from ray.exceptions import GetTimeoutError, RayActorError
 from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -83,7 +82,10 @@ from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
-from ray.serve._private.tracing_utils import check_tracing_exporter_import_path
+from ray.serve._private.tracing_utils import (
+    InvalidTracingConfigError,
+    check_tracing_exporter_import_path,
+)
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -150,39 +152,6 @@ def _coerce_tracing_config(
     return TracingConfig(**tracing_config.model_dump(exclude_unset=True))
 
 
-def raise_if_controller_startup_failed(controller: ActorHandle) -> None:
-    """Surface a config error from a newly created controller as a ValueError.
-
-    The controller validates its config in __init__ (in its own env) and, if
-    invalid, skips initialization instead of raising, so the error arrives here
-    as a plain ValueError rather than an opaque actor-creation failure. Kill the
-    half-initialized controller first so its name is released and a later
-    serve.start can create a fresh one.
-    """
-    try:
-        ray.get(controller.check_startup_error.remote())  # type: ignore[attr-defined]
-    except ValueError as e:
-        ray.kill(controller, no_restart=True)
-        # ray.kill is asynchronous; wait until the actor is dead so its name is
-        # free and an immediate serve.start retry can't reconnect to it.
-        deadline = time.time() + 30
-        while time.time() < deadline:
-            try:
-                ray.get(
-                    controller.check_startup_error.remote(),  # type: ignore[attr-defined]
-                    timeout=5,
-                )
-            except RayActorError:
-                break
-            except (ValueError, GetTimeoutError):
-                # The call ran before the kill landed, or is still pending.
-                time.sleep(0.1)
-        # ray.get raises a RayTaskError that is also a ValueError; re-raise the
-        # original so callers see just the config error message.
-        cause = getattr(e, "cause", None)
-        raise (cause if isinstance(cause, ValueError) else e) from None
-
-
 class ServeController:
     """Responsible for managing the state of the serving system.
 
@@ -234,27 +203,24 @@ class ServeController:
         # constructor argument, so no checkpoint is needed.
         #
         # Resolve and validate it first, in this process's env and before any
-        # state is written. An invalid config is a user error: record it and
-        # skip the rest of initialization rather than raising, so the creator
-        # gets a clean ValueError from check_startup_error() and can kill this
-        # actor (see raise_if_controller_startup_failed). On reconstruction the
-        # config was validated at first start, so log instead of refusing to
-        # recover.
-        self._startup_error: Optional[str] = None
+        # state is written. An invalid config fails the constructor: Ray does
+        # not restart an actor whose __init__ raised (even with max_restarts=-1)
+        # and releases the detached name, so no broken controller is left
+        # behind. serve.start recovers this error from the creation failure. On
+        # reconstruction the config was validated at first start, so log
+        # instead of refusing to recover.
         self.global_tracing_config = _coerce_tracing_config(global_tracing_config)
         try:
             check_tracing_exporter_import_path(self.global_tracing_config)
         except Exception as e:
-            error = (
+            error = InvalidTracingConfigError(
                 "Invalid tracing config: could not import exporter_import_path "
                 f"{self.global_tracing_config.exporter_import_path!r} "
                 f"({type(e).__name__}: {e})."
             )
-            if ray.get_runtime_context().was_current_actor_reconstructed:
-                logger.error(f"{error} Continuing controller recovery.")
-            else:
-                self._startup_error = error
-                return
+            if not ray.get_runtime_context().was_current_actor_reconstructed:
+                raise error from e
+            logger.error(f"{error} Continuing controller recovery.")
 
         self.ray_worker_namespace = ray.get_runtime_context().namespace
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
@@ -433,11 +399,6 @@ class ServeController:
     def get_tracing_config(self) -> TracingConfig:
         """Return the global tracing config."""
         return self.global_tracing_config
-
-    def check_startup_error(self) -> None:
-        """Raise if __init__ rejected its config and skipped initialization."""
-        if self._startup_error is not None:
-            raise ValueError(self._startup_error)
 
     def reconfigure_global_tracing_config(
         self, global_tracing_config: Optional[TracingConfig]
