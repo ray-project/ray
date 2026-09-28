@@ -1,169 +1,195 @@
-# Ray Train health loop — the NCCL RAS case study
+# Ray Train health: release tests
 
-The REP's Collect → Decide → Act loop, exercised the way a user would use it:
-the user brings a probe, wraps it in a `HealthPolicy`, and passes it to the
-training run. Ray Train's `HealthManager` runs the probes and evaluators inside
-the controller and acts on the `HealthDecision` they produce.
+These scripts run the REP's Collect → Decide → Act loop on real GPUs, with NCCL
+RAS as the case study. They answer three questions:
 
-```python
-import ray.train.health as health
-from ray.train import RunConfig
-from nccl_ras_health import nccl_ras_policy   # user code, lives here
+1. **Baseline.** What does today's merged NCCL RAS hang detector
+   (`NCCLRASCallback`, #64928) do on a real hang, and what does it emit?
+2. **Parity.** Does the same detection, written as a user policy on
+   `ray.train.health`, catch the same hang just as fast?
+3. **Why in Ray.** Does joining the probe with the training loop's own metrics
+   do something the probe alone cannot?
 
-trainer = TorchTrainer(
-    train_func,
-    run_config=RunConfig(
-        health_config=health.HealthConfig(policies=[nccl_ras_policy()]),
-    ),
-)
+`STATUS.md` has what is built, the REP component table, metrics and risks.
 
-# inside train_func, optional:
-health.report({"step_time_s": dt, "tp_rank": tp}, step=step)
+| file | what it is |
+|---|---|
+| `nccl_hang.py` | questions 1 and 2: one hang, both detectors, compared |
+| `collective_join.py` | question 3: slow step vs hang, with and without the join |
+| `local_e2e.py` | the whole loop on a laptop with toy probes, no GPU |
+| `harness.py` | the injected faults and the `Timeline` that records what happened |
+| `nccl_ras_health.py` | the NCCL RAS policy, written as a user would; imports only `ray.train.health` |
+
+## What gets injected
+
+Both faults are in `harness.py` and print their own description.
+
+| fault | what it does | what RAS sees | right answer |
+|---|---|---|---|
+| `LeaveCollective(rank, at_step)` | the rank stops calling the collective and sleeps, staying alive | the communicator is MISMATCH, every rank RUNNING, op counts frozen | a hang: act |
+| `SlowStep(rank, every, pause_s)` | the rank pauses before its collective every few steps, like a checkpoint save | the same, for `pause_s` | not a hang: stay silent |
+
+`SlowStep` is the interesting one: for the length of the pause it is
+indistinguishable from the start of a hang. Only the job knows its own step
+time.
+
+Next faults to add are gradual degradations rather than hangs (a rank getting
+steadily slower, a GPU starting to throttle), to test evaluators that keep a
+window of `HealthState` history instead of reacting to one poll.
+
+## The `Timeline`
+
+`harness.Timeline` is a controller callback. It records, with a timestamp,
+every health decision and every error the controller acts on, from either
+detector. Faults record when they fire, so each script prints something like:
+
+```
+  timeline (seconds after the fault fired):
+       -8.0s  RUNNING      worker group started
+       +0.0s  INJECT       rank 1 stops calling the collective at step 100 ...
+      +21.9s  DIAGNOSE     1 of 1 NCCL communicators (...) made no progress for 20s; ...
+      +24.1s  REATTEMPT    ...; diagnostics found no hardware fault, so this is software or data
+      +24.1s  SHUTTINGDOWN HealthDecisionError: ...
 ```
 
-Two halves, deliberately separated:
+## `nccl_hang.py`: baseline and parity
 
-| | where | what |
+```bash
+python release/train_tests/health/nccl_hang.py           # merged, then health
+python release/train_tests/health/nccl_hang.py merged    # one of them
+```
+
+Same job, same `LeaveCollective(rank=1, at_step=100)`, same timing for both:
+RAS polled every 2s, a hang confirmed after 20s with no progress.
+
+| | merged `NCCLRASCallback` | `nccl_ras_policy()` on `ray.train.health` |
 |---|---|---|
-| **framework** | `python/ray/train/health/` | public contracts (probes, `HealthState`, `HealthDecision`, `Evaluator`, `HealthPolicy`, `HealthConfig`, `report()`), and under `_internal/` the `HealthManager`, `OnDemandRunner` and controller callback |
-| **user code** | `release/train_tests/health/nccl_ras_health.py` | `NcclRasProbe`, the `NcclRasReadyProbe` pre-flight check, `NcclHangEvaluator`, `CollectiveHangEvaluator`, the #66229 diagnostics, and the two policy factories |
+| turned on by | `RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1` + env vars | `RunConfig(health_config=...)` |
+| before training | nothing | pre-flight: `NcclRasReadyProbe` on every GPU node |
+| on a confirmed hang | writes `hang_detector/stack_traces` and `hang_detector/nccl_ras`, raises `NCCLHangError` | `DIAGNOSE`: stacks on the stalled ranks, `nvidia-smi` and the RAS text report on their nodes, under `health_diagnostics/` |
+| then | the failure policy retries or ends the run | `REATTEMPT` if the GPUs are clean, `EVICT` if one is not; retries follow `FailureConfig` |
+| error if it ends | `NCCLHangError` | `HealthDecisionError`, carrying the decision |
 
-`nccl_ras_health.py` imports only `ray.train.health`, which is the test that
-the public contracts are enough to write a real policy from outside Ray Train.
+It prints both timelines, the artifact files each one wrote, and PASS if both
+detected the hang within a few seconds of each other.
 
-## Getting your changes onto the cluster
-
-The image installs a Ray wheel, so `import ray.train` resolves to the wheel,
-not your checkout. Symlink the installed `ray/train` to your working tree once:
+## `collective_join.py`: the join
 
 ```bash
-git pull && git checkout <your-branch>
-python python/ray/setup-dev.py -y --allow train
+python release/train_tests/health/collective_join.py              # all three
+python release/train_tests/health/collective_join.py slow_step    # one
 ```
 
-Every edit under `python/ray/train/` then takes effect on the next
-`ray.init()`. Verify it took:
+The job has real TP and PP subgroups over 4 ranks and calls
+`health.report({"tp_rank", "pp_rank", "step_time_s"}, step=...)`.
+`CollectiveHangEvaluator` sets the stall threshold to 5 × the reported step
+time (30s), names a frozen communicator by the ranks' reported coordinates, and
+diagnoses on the nodes involved before deciding.
+
+| scenario | fault | detector | pass |
+|---|---|---|---|
+| `slow_step` | `SlowStep`: 18s pause every 5 steps | our policy | no decision, although RAS reports frozen communicators on every pause |
+| `slow_step_merged` | the same | merged, fixed 10s window | fires: the false positive the join avoids |
+| `wedge` | `LeaveCollective` at step 6 | our policy | fires, and the decision names the TP group |
+
+About 10 minutes for all three.
+
+## On a laptop
+
+`local_e2e.py` starts a 4-node Ray cluster locally and runs the real controller
+through five scenarios with toy probes: no config, broken components,
+pre-flight rejection, DIAGNOSE → REATTEMPT from a stalled `health.report()`,
+and EVICT from a node-keyed `ClusterProbe`. About 100s. It needs Ray Core from a
+wheel and `ray/train` from this checkout:
 
 ```bash
+python -m venv ~/health-venv && source ~/health-venv/bin/activate
+pip install "ray[train] @ https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp312-cp312-macosx_12_0_arm64.whl"
+python python/ray/setup-dev.py -y --allow train
+python release/train_tests/health/local_e2e.py
+```
+
+Run it from any directory except `/tmp`: Ray's `/tmp/ray` shadows the package.
+
+## Unit tests
+
+```bash
+pytest python/ray/train/v2/tests/test_health*.py
+```
+
+`test_health_controller.py` and `test_health_node_exclusion.py` need a local
+Ray; the rest need nothing.
+
+## The GPU cluster
+
+**Shape: 4 × 1-GPU nodes** (A10G, T4 or L4; nothing here depends on the
+architecture). Four ranks is the floor for the TP × PP layout in
+`collective_join.py`, and one rank per node puts every node-scoped diagnostic
+on a different host. A CPU head node is fine.
+
+**NCCL ≥ 2.28 on both sides.** `ncclras -f json` appeared in 2.28. The client
+binary comes from the apt `libnccl-dev` package, not the pip wheel; the library
+the training process loads comes from the torch wheel. `torch==2.11.0+cu128`
+pins NCCL 2.28.9, so no `LD_PRELOAD` is needed. RAS is on by default since
+2.24; nothing needs to be set. Check both:
+
+```bash
+ncclras --version 2>&1
+python -c "import torch; print(torch.cuda.nccl.version())"
+```
+
+The pre-flight probe checks the same two versions on every node, so a node
+with an old stack is evicted before training and the log says why.
+
+**The image.** `anyscale/ray:nightly-py312-cu128` ships `ncclras` 2.25.1, and
+an unpinned `pip install torch` pulls a CUDA 13 build. Verified on Anyscale:
+
+```dockerfile
+FROM anyscale/ray:nightly-py312-cu128
+
+RUN pip uninstall -y ray && \
+    pip install <your-ray-wheel-url> && \
+    python -c "import ray"
+
+RUN pip install "torch==2.11.0+cu128" \
+      --index-url https://download.pytorch.org/whl/cu128
+
+# The ncclras client is an 18 KB binary in libnccl-dev that links only libc.
+# Extract it rather than going through apt: the Anyscale base has no NVIDIA
+# apt repo, runs as a non-root user, and its builder's apt cache ignores
+# added repos.
+ARG NCCL_VER=2.28.9-1+cuda12.9
+ARG NCCL_REPO=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64
+RUN cd /tmp && \
+    wget -q "${NCCL_REPO}/libnccl-dev_${NCCL_VER}_amd64.deb" && \
+    dpkg-deb --fsys-tarfile "libnccl-dev_${NCCL_VER}_amd64.deb" \
+      | sudo tar -xf - -C / ./usr/bin/ncclras && \
+    rm -f /tmp/libnccl-dev_*.deb
+
+# Fail the build, not the run. `&&`, not `;`, so the check counts, and `2>&1`
+# because `ncclras --version` writes to stderr.
+RUN ncclras --version 2>&1 | grep -E '2\.(2[89]|3[0-9])\.' && \
+    python -c "import torch; v=torch.cuda.nccl.version(); assert v[:2]>=(2,28), v"
+```
+
+Use `ubuntu2404` in `NCCL_REPO` if the base is 24.04.
+
+**Your checkout on the cluster.** The image has a Ray wheel. Point its
+`ray/train` at your checkout once, on the head node:
+
+```bash
+python python/ray/setup-dev.py -y --allow train
 python -c "import ray.train, os; print(os.path.realpath(ray.train.__file__))"
 ```
 
-> The symlink exists only on the head node. That covers the controller and the
-> driver. Code that must run *inside a training worker* on another node needs a
-> new wheel or `runtime_env={"py_modules": [...]}`. `nccl_ras_health.py` avoids
-> this: the scripts ship it by value with
-> `ray.cloudpickle.register_pickle_by_value`.
+The controller and driver then run your code. The scripts ship `harness.py`
+and `nccl_ras_health.py` to the workers by value.
 
-## Unit tests (no GPU)
+**Storage.** The scripts write to `/mnt/cluster_storage` when it exists, so
+diagnostics written on any node can be listed from the driver. Without shared
+storage each node keeps its own files.
 
-```bash
-pytest python/ray/train/v2/tests/test_health*.py           # framework
-pytest release/train_tests/health/test_nccl_ras_health.py  # user-side policy
-```
-
-The second one parses real captures from an A10G cluster in `data/`.
-
-## The GPU steps
-
-Run them in order. Each one fails fast if the previous was not really passing.
-
-```bash
-python release/train_tests/health/01_nccl_ras.py         # is RAS producing data?
-python release/train_tests/health/02_injected_fault.py   # does anything react?
-python release/train_tests/health/03_collective_join.py  # does it react for the right reason?
-```
-
-### Pre-flight
-
-There is no separate pre-flight script. Both policies set `preflight=True`, so
-before the first worker group is scheduled on a node, the controller runs
-`NcclRasReadyProbe` there: `ncclras` ≥ 2.28, in-process NCCL ≥ 2.28, and
-whether `py-spy` can capture native stacks (reported, not failed). A failing
-node is evicted, which you see as an `EVICT` from `after_health_decision` and a
-`ray.io/node-id: !in(...)` selector on the worker group. A passing run logs
-`[Health] pre-flight passed on N node(s)`.
-
-### 01_nccl_ras.py
-
-Starts a real all-reduce job and queries `ncclras` on every GPU node while it
-runs, saving `ncclras -f json`, `ncclras -f text` and `nvidia-smi -q` per node.
-
-```bash
-python release/train_tests/health/01_nccl_ras.py            # healthy job
-python release/train_tests/health/01_nccl_ras.py --hang     # one rank wedged
-```
-
-Keep the `--hang` output: that is the input the probe actually parses, and it
-is what the fixtures in `data/` came from.
-
-A bare `ncclras` on an idle node always fails with *"Connection refused …
-Failed to connect to the NCCL RAS service"*. That is correct: RAS is not a
-daemon. Its threads live inside the NCCL processes, so the service exists only
-while a job runs, and only on nodes hosting a rank.
-
-### 02_injected_fault.py
-
-One rank stops calling the collective while staying alive, so its op count
-falls a step behind and every peer blocks inside the all-reduce.
-
-```bash
-python release/train_tests/health/02_injected_fault.py            # A
-python release/train_tests/health/02_injected_fault.py --ported   # B
-```
-
-**A** is the merged detector (#64928), no new code. It should raise
-`NCCLHangError`. Run it first — if it does not fire, the cluster is the
-problem, not this change.
-
-**B** is the same detection brought as a user policy through
-`RunConfig(health_config=...)`. Expect, in the controller log, the pre-flight
-line, then a `DIAGNOSE` (stack dumps, `nvidia-smi`, the RAS text report, pushed
-at the stalled ranks and their nodes, with output paths under
-`health_diagnostics/`), then a `REATTEMPT` that fails the run with
-`HealthDecisionError`. The script's
-`UserCallback.after_health_decision` prints each decision as it happens.
-
-Pass criterion for the port: B confirms at the same time A does. Detection
-latency is the confirm window in both; the port changes what happens *after*
-detection, not how fast it is.
-
-Knobs: `--workers`, `--hang-rank` (keep it non-zero), `--hang-step`,
-`--poll-s`, `--confirm-s`.
-
-### 03_collective_join.py
-
-Why the UDF signal belongs in the same loop as the probe. RAS flags a
-communicator that is mismatched and not advancing. A hang looks like that — and
-so does a *legitimately slow step*: one rank pauses before the collective (a
-checkpoint save, a GC pause, a slow shard) and its peers wait inside the
-all-reduce until it arrives. A fixed confirm window is right for one job's step
-time and wrong for another's.
-
-The job builds real TP and PP subgroups over 4 ranks and reports its layout
-and normal step time with `health.report()`. `CollectiveHangEvaluator` sets the
-stall threshold to `stall_factor × median step_time_s`, and names the frozen
-communicator by the ranks' reported coordinates.
-
-```bash
-python release/train_tests/health/03_collective_join.py --no-hang                   # phase 1
-python release/train_tests/health/03_collective_join.py                             # phases 1 + 2
-python release/train_tests/health/03_collective_join.py --no-hang --merged-control  # control
-```
-
-- **phase 1** — rank 1 pauses 18s before its TP all-reduce every 5 steps.
-  Threshold is 5 × 6s = 30s, so the policy must stay silent. The script counts
-  frozen-communicator observations and reports *INCONCLUSIVE* rather than PASS
-  if it never saw one, so silence cannot pass vacuously.
-- **phase 2** — rank 1 leaves its TP all-reduce for good. Must fire, and the
-  decision must name the TP group.
-- **control** — the same phase 1 under the merged detector with a fixed window
-  shorter than the pause. It should fire: that is the false positive the join
-  avoids.
-
-Needs an even worker count (tp=2) and at least 4 ranks.
-
-## Reference
-
-- `STATUS.md` — what is built, what is wired, what each script proves.
-- `CLUSTER_SETUP.md` — cluster shape, GPU types, the Dockerfile.
-- `METRICS_AND_RISKS.md` — milestone metrics and risks.
+**Stack dumps and ptrace.** `py-spy` has to attach to the training process.
+With Ubuntu's default `ptrace_scope=1` and no `SYS_PTRACE` capability, stacks
+fall back to Python-only, which loses the native frames a NCCL hang sits in.
+The pre-flight probe reports this per node; it does not fail the node.

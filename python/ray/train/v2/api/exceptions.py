@@ -1,9 +1,10 @@
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ray.train.v2._internal.exceptions import RayTrainError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
+    from ray.train.health import HealthDecision
     from ray.train.v2.api.preemption import PreemptionInfo
 
 
@@ -36,6 +37,24 @@ class WorkerGroupError(TrainingFailedError):
 @DeveloperAPI
 class NCCLHangError(WorkerGroupError):
     """Exception raised when the NCCL RAS subsystem detects a hung training job."""
+
+
+@PublicAPI(stability="alpha")
+class HealthDecisionError(WorkerGroupError):
+    """Raised when a health policy's ``Reattempt`` or ``Evict`` decision
+    restarts the worker group. ``FailureConfig`` applies as for any worker error.
+
+    Args:
+        error_message: The decision's reason.
+        decision: The ``HealthDecision`` that caused the restart.
+    """
+
+    def __init__(self, error_message: str, decision: Optional["HealthDecision"] = None):
+        super().__init__(error_message, worker_failures={})
+        self.decision = decision
+
+    def __reduce__(self):
+        return (self.__class__, (self._error_message, self.decision))
 
 
 @PublicAPI(stability="alpha")

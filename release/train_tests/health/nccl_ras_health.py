@@ -156,17 +156,15 @@ class NcclRasProbe(health.ClusterProbe):
     """
 
     name = "NcclRasProbe"
-    entity = "communicator"
 
-    def __init__(self, interval_s: float = 15.0, binary: str = "ncclras"):
+    def __init__(self, interval_s: float = 15.0):
         self.interval_s = interval_s
-        self._binary = binary
         self._prev: Optional[Dict[str, RasComm]] = None
 
     def query(self, ctx: health.ClusterContext) -> Optional[str]:
         """Raw ``ncclras -f json`` from the first node that answers."""
         nodes = list(dict.fromkeys(ctx.rank_to_node.values())) or ctx.node_ids
-        cmd = f"{self._binary} -f json -t {int(_RAS_QUERY_TIMEOUT_S - 3)}"
+        cmd = f"ncclras -f json -t {int(_RAS_QUERY_TIMEOUT_S - 3)}"
         for node_id in nodes:
             try:
                 rc, out, err = ray.get(
@@ -180,9 +178,9 @@ class NcclRasProbe(health.ClusterProbe):
             except Exception:  # noqa: BLE001
                 continue
             if "invalid option -- 'f'" in err:
-                raise RuntimeError(f"{self._binary} is too old for `-f json`")
+                raise RuntimeError("ncclras is too old for `-f json`")
             if rc == 127:
-                raise RuntimeError(f"{self._binary} not found on {node_id}")
+                raise RuntimeError(f"ncclras not found on {node_id}")
             if rc == 0 and out.strip():
                 return out
             # "Connection refused" until the communicators exist; try the next.
@@ -547,15 +545,9 @@ class NcclHangEvaluator(health.Evaluator):
     healthy node.
     """
 
-    def __init__(
-        self,
-        confirm_duration_s: float = 600.0,
-        diagnostics: Optional[List[health.OnDemandProbe]] = None,
-        clock=time.monotonic,
-    ):
+    def __init__(self, confirm_duration_s: float = 600.0):
         self._confirm_s = confirm_duration_s
-        self._diagnostics = list(diagnostics or [])
-        self._clock = clock
+        self._diagnostics = hang_diagnostics()
         self._frozen_since: Dict[str, float] = {}
         self._diagnosed: set = set()
 
@@ -565,7 +557,7 @@ class NcclHangEvaluator(health.Evaluator):
 
     def evaluate(self, state: health.HealthState) -> List[health.HealthDecision]:
         comms = state.results(NcclRasProbe)
-        now = self._clock()
+        now = time.monotonic()
         frozen = {c for c, r in comms.items() if "frozen" in r.events}
         for comm_id in list(self._frozen_since):
             if comm_id not in frozen:
@@ -600,7 +592,7 @@ def _attribute(evaluator, state, confirmed, ranks, reason) -> health.HealthDecis
         )
 
     undiagnosed = [c for c in confirmed if c not in evaluator._diagnosed]
-    if evaluator._diagnostics and undiagnosed:
+    if undiagnosed:
         evaluator._diagnosed.update(undiagnosed)
         return health.Diagnose(
             cause=health.Cause.NO_PROGRESS,
@@ -610,29 +602,26 @@ def _attribute(evaluator, state, confirmed, ranks, reason) -> health.HealthDecis
             target_nodes=sorted({n for n in map(state.node_of, ranks) if n}),
         )
 
-    if not evaluator._diagnostics:
-        why = "no diagnostics are configured, so nothing examined the hardware"
-    elif not state.on_demand_probe_results(NvidiaSmiProbe):
+    if not state.on_demand_probe_results(NvidiaSmiProbe):
         why = "diagnostics were requested but have not reported back"
     else:
         why = "diagnostics found no hardware fault, so this is software or data"
     return health.Reattempt(cause=health.Cause.NO_PROGRESS, reason=f"{reason}; {why}")
 
 
-#: `health.report()` keys naming a rank's position on each parallelism axis.
-DEFAULT_AXES = ("dp_rank", "tp_rank", "pp_rank", "ep_rank")
+# `health.report()` keys naming a rank's position on each parallelism axis.
+_AXES = ("dp_rank", "tp_rank", "pp_rank", "ep_rank")
+_MAX_STALL_S = 900.0
 
 
-def parallelism_groups(
-    reported: Dict[int, dict], axes=DEFAULT_AXES
-) -> Dict[FrozenSet[int], str]:
+def parallelism_groups(reported: Dict[int, dict]) -> Dict[FrozenSet[int], str]:
     """``{rank_set: axis}`` for every group the reported coordinates imply.
 
     The group for axis A containing rank r is every rank agreeing with r on
     every *other* axis: with tp=2, pp=2 over 4 ranks, TP groups are {0,1},{2,3}
     and PP groups are {0,2},{1,3}.
     """
-    present = [a for a in axes if any(a in m for m in reported.values())]
+    present = [a for a in _AXES if any(a in m for m in reported.values())]
     coords = {
         r: tuple(m[a] for a in present)
         for r, m in reported.items()
@@ -661,7 +650,7 @@ class CollectiveHangEvaluator(health.Evaluator):
 
     - **The threshold is in the job's own units**: ``stall_factor x median
       step time`` from ``health.report()``, clamped to
-      ``[min_stall_s, max_stall_s]``. A 30s pause is a hang for a job whose
+      ``[min_stall_s, _MAX_STALL_S]``. A 30s pause is a hang for a job whose
       steps take 0.2s and noise for one whose steps take 10s; a single fixed
       confirm window is wrong for one of them.
     - **The communicator gets a name.** Matching its rank set against the
@@ -669,24 +658,13 @@ class CollectiveHangEvaluator(health.Evaluator):
       is what a person reading the decision needs. Only done when the probe
       translated ranks to global ranks; otherwise the group is left unnamed.
 
-    A job that reports nothing falls back to ``max_stall_s``.
+    A job that reports nothing falls back to ``_MAX_STALL_S``.
     """
 
-    def __init__(
-        self,
-        stall_factor: float = 5.0,
-        min_stall_s: float = 30.0,
-        max_stall_s: float = 900.0,
-        axes=DEFAULT_AXES,
-        diagnostics: Optional[List[health.OnDemandProbe]] = None,
-        clock=time.monotonic,
-    ):
+    def __init__(self, stall_factor: float = 5.0, min_stall_s: float = 30.0):
         self._stall_factor = stall_factor
         self._min_stall_s = min_stall_s
-        self._max_stall_s = max_stall_s
-        self._axes = tuple(axes)
-        self._diagnostics = list(diagnostics or [])
-        self._clock = clock
+        self._diagnostics = hang_diagnostics()
         self._frozen_since: Dict[str, float] = {}
         self._diagnosed: set = set()
 
@@ -701,13 +679,13 @@ class CollectiveHangEvaluator(health.Evaluator):
             if isinstance(m.get("step_time_s"), (int, float))
         ]
         if not times:
-            return self._max_stall_s
+            return _MAX_STALL_S
         derived = statistics.median(times) * self._stall_factor
-        return max(self._min_stall_s, min(self._max_stall_s, derived))
+        return max(self._min_stall_s, min(_MAX_STALL_S, derived))
 
     def evaluate(self, state: health.HealthState) -> List[health.HealthDecision]:
         comms = state.results(NcclRasProbe)
-        now = self._clock()
+        now = time.monotonic()
         frozen = {c: r for c, r in comms.items() if "frozen" in r.events}
         for comm_id in list(self._frozen_since):
             if comm_id not in frozen:
@@ -715,7 +693,7 @@ class CollectiveHangEvaluator(health.Evaluator):
                 self._diagnosed.discard(comm_id)
 
         threshold = self.stall_threshold(state)
-        groups = parallelism_groups(state.reported, self._axes)
+        groups = parallelism_groups(state.reported)
         confirmed, named = [], []
         for comm_id, result in sorted(frozen.items()):
             held = now - self._frozen_since.setdefault(comm_id, now)
@@ -752,42 +730,22 @@ def _probes(interval_s: float) -> List[health.Probe]:
 
 
 def nccl_ras_policy(
-    *,
-    confirm_duration_s: float = 600.0,
-    interval_s: float = 15.0,
-    diagnose: bool = True,
-    preflight: bool = True,
+    *, confirm_duration_s: float = 600.0, interval_s: float = 15.0
 ) -> health.HealthPolicy:
     """The merged detector, expressed as a policy."""
     return health.HealthPolicy(
         probe_creator=lambda: _probes(interval_s),
-        preflight=preflight,
-        evaluator_creator=lambda: [
-            NcclHangEvaluator(
-                confirm_duration_s=confirm_duration_s,
-                diagnostics=hang_diagnostics() if diagnose else None,
-            )
-        ],
+        evaluator_creator=lambda: [NcclHangEvaluator(confirm_duration_s)],
+        preflight=True,
     )
 
 
 def collective_hang_policy(
-    *,
-    stall_factor: float = 5.0,
-    min_stall_s: float = 30.0,
-    interval_s: float = 15.0,
-    diagnose: bool = True,
-    preflight: bool = True,
+    *, stall_factor: float = 5.0, min_stall_s: float = 30.0, interval_s: float = 15.0
 ) -> health.HealthPolicy:
     """NCCL RAS plus the job's own progress and parallelism layout."""
     return health.HealthPolicy(
         probe_creator=lambda: _probes(interval_s),
-        preflight=preflight,
-        evaluator_creator=lambda: [
-            CollectiveHangEvaluator(
-                stall_factor=stall_factor,
-                min_stall_s=min_stall_s,
-                diagnostics=hang_diagnostics() if diagnose else None,
-            )
-        ],
+        evaluator_creator=lambda: [CollectiveHangEvaluator(stall_factor, min_stall_s)],
+        preflight=True,
     )

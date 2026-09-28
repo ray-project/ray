@@ -105,16 +105,12 @@ class ClusterContext:
 class ClusterProbe(Probe):
     """Runs on the controller and reports many entities in one read.
 
-    For sources that already describe the whole run from one place, such as
-    NCCL RAS. Returns ``{entity_id: ProbeResult}``.
-
-    ``entity`` names what the keys are. With ``"node"``, results are merged
-    into ``HealthState.nodes``; any other value is opaque to the framework.
+    Returns ``{entity_id: ProbeResult}``, keyed by whatever the probe measures
+    (a node, a communicator, a queue). Results land in ``HealthState.cluster``.
     Polled on a background thread, so it may keep state between polls.
     """
 
     interval_s: float = 10.0
-    entity: str = "node"
 
     @abc.abstractmethod
     def poll(self, ctx: ClusterContext) -> Dict[str, ProbeResult]:
@@ -131,13 +127,6 @@ WORKER_SCOPE = "WORKER"
 
 @DeveloperAPI
 @dataclass(frozen=True)
-class NodeInfo:
-    node_id: str
-    ranks: List[int] = field(default_factory=list)
-
-
-@DeveloperAPI
-@dataclass(frozen=True)
 class OnDemandProbeContext:
     """Passed to an on-demand probe when it is pushed.
 
@@ -145,7 +134,7 @@ class OnDemandProbeContext:
         entity_id: The node id for a node-scoped probe, the rank otherwise.
         node_id: The node the probe runs on.
         rank: The world rank, for a worker-scoped probe.
-        nodes: Every node taking part in this push.
+        nodes: ``{node_id: [world_rank, ...]}`` for every node in this push.
         timeout_s: The budget for this invocation.
         upload: ``upload(name, {filename: contents}) -> path`` into run
             storage, or ``None`` when there is no storage yet (pre-flight).
@@ -154,7 +143,7 @@ class OnDemandProbeContext:
     entity_id: str = ""
     node_id: str = ""
     rank: Optional[int] = None
-    nodes: List[NodeInfo] = field(default_factory=list)
+    nodes: Dict[str, List[int]] = field(default_factory=dict)
     timeout_s: float = 60.0
     upload: Optional[Callable[[str, Dict[str, str]], str]] = None
 

@@ -17,19 +17,22 @@ from ray.train.health import (
     HealthPolicy,
     HealthState,
     NodeHealth,
+    NodeProbe,
     Noop,
     OnDemandProbe,
     ProbeResult,
     Reattempt,
     WorkerHealth,
 )
-from ray.train.health._internal.callback import build_node_exclusion_selector
 from ray.train.health._internal.manager import HealthManager, merge_decisions
+from ray.train.v2._internal.callbacks.health_callback import (
+    build_node_exclusion_selector,
+)
+from ray.util.annotations import _get_annotation_type
 
 
 class NodeTemps(ClusterProbe):
     name = "NodeTemps"
-    entity = "node"
 
     def __init__(self, temps: Dict[str, float]):
         self.temps = temps
@@ -44,10 +47,14 @@ class NodeTemps(ClusterProbe):
 
 class Queues(ClusterProbe):
     name = "Queues"
-    entity = "queue"
 
     def poll(self, ctx):
         return {"q1": ProbeResult(metrics={"depth": 3.0})}
+
+
+class HostTemp(NodeProbe):
+    def poll(self, ctx):
+        return None
 
 
 class EvictHot(Evaluator):
@@ -66,6 +73,17 @@ def test_public_api():
         assert hasattr(health, name), name
     for internal in ("HealthManager", "OnDemandRunner", "merge_decisions"):
         assert not hasattr(health, internal)
+
+
+def test_exports_are_annotated():
+    """End-user entry points are PublicAPI; the extension contract is DeveloperAPI."""
+    public = {"HealthConfig", "HealthPolicy", "HealthDecisionError", "report"}
+    for name in health.__all__:
+        obj = getattr(health, name)
+        if isinstance(obj, str):
+            continue
+        expected = "PublicAPI" if name in public else "DeveloperAPI"
+        assert _get_annotation_type(obj) == expected, name
 
 
 def test_report_outside_a_train_worker_raises():
@@ -138,10 +156,10 @@ def test_health_state_typed_reads():
             0: WorkerHealth(0, "nA", 1.0, step=10, reported={"grad_norm": 1.8}),
             1: WorkerHealth(1, "nB", 1.0, step=10),
         },
-        nodes={"nB": NodeHealth("nB", 1.0, {"NodeTemps": ProbeResult(detail="x")})},
-        entities={"Queues": {"q1": ProbeResult(detail="y")}},
+        nodes={"nB": NodeHealth("nB", 1.0, {"HostTemp": ProbeResult(detail="x")})},
+        cluster={"Queues": {"q1": ProbeResult(detail="y")}},
     )
-    assert state.results(NodeTemps)["nB"].detail == "x"
+    assert state.results(HostTemp)["nB"].detail == "x"
     assert state.results(Queues)["q1"].detail == "y"
     assert state.ranks_on("nB") == [1]
     assert state.node_of(0) == "nA"
@@ -159,21 +177,19 @@ def test_policy_creators_run_per_run_not_at_import():
     assert built == [1]
 
 
-def test_node_keyed_results_land_in_the_node_map():
+def test_cluster_probe_results_land_in_state_cluster():
     manager = HealthManager(
-        [HealthPolicy(probe_creator=lambda: [NodeTemps({"n1": 60, "n2": 95})])]
+        [
+            HealthPolicy(
+                probe_creator=lambda: [NodeTemps({"n1": 60, "n2": 95}), Queues()]
+            )
+        ]
     )
     manager.run_cluster_probes(ClusterContext(node_ids=["n1", "n2"]))
     state = manager.build_state()
-    assert set(state.nodes) == {"n1", "n2"}
-    assert state.results(NodeTemps)["n2"].passed is False
-
-
-def test_non_node_entities_never_invent_a_host():
-    manager = HealthManager([HealthPolicy(probe_creator=lambda: [Queues()])])
-    manager.run_cluster_probes(ClusterContext(node_ids=["n1"]))
-    state = manager.build_state()
     assert state.nodes == {}
+    assert set(state.cluster) == {"NodeTemps", "Queues"}
+    assert state.results(NodeTemps)["n2"].passed is False
     assert set(state.results(Queues)) == {"q1"}
 
 
@@ -223,7 +239,6 @@ def test_a_raising_evaluator_is_disabled_not_fatal():
 
 class Flaky(ClusterProbe):
     name = "Flaky"
-    entity = "node"
 
     def __init__(self):
         self.calls = 0

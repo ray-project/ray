@@ -6,7 +6,7 @@ from typing import Callable, List, Optional
 from ray.train.health.decision import HealthDecision
 from ray.train.health.probe import Probe
 from ray.train.health.state import HealthState
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
 @DeveloperAPI
@@ -29,7 +29,7 @@ ProbeCreator = Callable[[], List[Probe]]
 EvaluatorCreator = Callable[[], List[Evaluator]]
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 @dataclass
 class HealthPolicy:
     """A bundle of probes and the evaluators that judge them.
@@ -46,7 +46,7 @@ class HealthPolicy:
     preflight: bool = False
 
 
-@DeveloperAPI
+@PublicAPI(stability="alpha")
 @dataclass
 class HealthConfig:
     """Passed via ``RunConfig(health_config=...)``. Empty means off."""

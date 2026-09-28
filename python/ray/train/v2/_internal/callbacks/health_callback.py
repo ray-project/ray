@@ -1,15 +1,15 @@
-"""Controller integration of the health loop: Collect -> Decide -> Act.
+"""Health monitoring for the Ray Train v2 controller: Collect, plus the
+capabilities the controller uses to Decide and Act.
 
-Registered when ``RunConfig.health_config`` has policies.
+The controller owns every decision. It calls:
 
-- Collect: ``health.report()`` rides ``WorkerStatus.health`` on the existing
-  poll; cluster probes run on a background thread.
-- Decide: ``HealthManager.poll_decision()`` once per controller poll.
-- Act: ``UserCallback.after_health_decision`` first. ``DIAGNOSE`` pushes
-  on-demand probes; ``REATTEMPT`` and ``EVICT`` raise ``HealthDecisionError``
-  into the failure policy; evicted nodes are excluded by label selector.
-- Pre-flight: before each worker group is scheduled, pre-flight probes run on
-  candidate nodes not yet screened, and rejected nodes are evicted.
+- ``run_preflight()`` before scheduling a worker group,
+- ``poll_decision()`` on each worker poll, which ingests ``WorkerStatus.health``
+  and cluster probe results and returns the ``HealthManager``'s decision,
+- ``diagnose()`` to carry out a ``Diagnose``.
+
+As a callback, this only keeps the health state in step with the worker group
+lifecycle and keeps evicted nodes out of new worker groups.
 
 Not wired yet: ``WorkerProbe`` execution, the ``NodeMonitor`` (node-scoped
 probes run in a task pinned to the node instead), and ``stop_workers``.
@@ -27,8 +27,7 @@ from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Set, Union
 import ray
 from ray.train.health._internal.manager import HealthManager, Results
 from ray.train.health._internal.on_demand import OnDemandRunner
-from ray.train.health.decision import Action, Diagnose, HealthDecision
-from ray.train.health.exceptions import HealthDecisionError
+from ray.train.health.decision import Diagnose, Evict, HealthDecision
 from ray.train.health.policy import HealthConfig
 from ray.train.health.probe import (
     ClusterContext,
@@ -46,13 +45,11 @@ from ray.train.v2._internal.execution.storage import _upload_to_fs_path
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
-    from ray.train.v2._internal.execution.context import TrainRunContext
     from ray.train.v2._internal.execution.worker_group import (
         WorkerGroup,
         WorkerGroupContext,
         WorkerGroupPollStatus,
     )
-    from ray.train.v2.api.callback import UserCallback
     from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
@@ -169,23 +166,16 @@ class _ClusterProbeThread:
                 next_due[id(probe)] = time.monotonic() + max(probe.interval_s, 0.1)
                 results = self._manager.poll_cluster_probe(probe, self._ctx)
                 if results is not None:
-                    self._results.put((probe, results, time.time()))
+                    self._results.put((probe, results))
             wait = min(next_due.values()) - time.monotonic()
             self._stop.wait(max(0.05, wait))
 
 
 class HealthCallback(ControllerCallback, WorkerGroupCallback):
-    """Owns the run's ``HealthManager`` and carries out its decisions."""
+    """Owns the run's ``HealthManager``. Created by the controller."""
 
-    def __init__(
-        self,
-        health_config: HealthConfig,
-        user_callbacks: Optional[List["UserCallback"]] = None,
-        train_run_context: Optional["TrainRunContext"] = None,
-    ):
+    def __init__(self, health_config: HealthConfig):
         self._manager = HealthManager(health_config.policies)
-        self._user_callbacks = list(user_callbacks or [])
-        self._train_run_context = train_run_context
         self._rank_to_node: Dict[int, str] = {}
         self._probe_thread: Optional[_ClusterProbeThread] = None
         self._runner: Optional[OnDemandRunner] = None
@@ -198,16 +188,15 @@ class HealthCallback(ControllerCallback, WorkerGroupCallback):
     # ------------------------------------------------------------------
     # Pre-flight and scheduling
     # ------------------------------------------------------------------
-    def on_controller_start_worker_group(
-        self, *, scaling_config: "ScalingConfig", num_workers: int
-    ) -> Optional[Dict[str, str]]:
-        self._run_preflight(scaling_config._resources_per_worker_not_none)
-        return build_node_exclusion_selector(self._manager.evicted_nodes)
+    def run_preflight(self, resources_per_worker: Dict[str, float]) -> Optional[Evict]:
+        """Screen candidate nodes not yet screened. Returns the eviction, if any.
 
-    def _run_preflight(self, resources_per_worker: Dict[str, float]) -> None:
+        Rejected nodes are already excluded from the next worker group when this
+        returns.
+        """
         probes = self._manager.preflight_probes()
         if not probes:
-            return
+            return None
         evicted = set(self._manager.evicted_nodes)
         candidates = [
             n
@@ -215,7 +204,7 @@ class HealthCallback(ControllerCallback, WorkerGroupCallback):
             if n not in self._screened and n not in evicted
         ]
         if not candidates:
-            return
+            return None
         self._screened.update(candidates)
 
         try:
@@ -224,12 +213,16 @@ class HealthCallback(ControllerCallback, WorkerGroupCallback):
             )
         except Exception:
             logger.exception("[Health] pre-flight failed to run.")
-            return
+            return None
         decision = self._manager.evaluate_preflight(results)
         if decision is None:
             logger.info("[Health] pre-flight passed on %d node(s).", len(candidates))
-            return
-        self._notify(decision)
+        return decision
+
+    def on_controller_start_worker_group(
+        self, *, scaling_config: "ScalingConfig", num_workers: int
+    ) -> Optional[Dict[str, str]]:
+        return build_node_exclusion_selector(self._manager.evicted_nodes)
 
     # ------------------------------------------------------------------
     # Worker group lifecycle
@@ -282,53 +275,34 @@ class HealthCallback(ControllerCallback, WorkerGroupCallback):
         self._runner = None
 
     # ------------------------------------------------------------------
-    # Collect -> Decide -> Act
+    # Collect and decide
     # ------------------------------------------------------------------
-    def after_worker_group_poll_status(
+    def poll_decision(
         self, worker_group_status: "WorkerGroupPollStatus"
-    ) -> None:
+    ) -> Optional[HealthDecision]:
+        """Ingest this poll's health signals and return the merged decision.
+
+        Never raises: a bug in a probe, an evaluator or this code skips the poll.
+        """
         if not self._manager.enabled:
-            return
+            return None
         try:
             for status in worker_group_status.worker_statuses.values():
                 if isinstance(status.health, WorkerHealth):
                     self._manager.ingest_worker_health(status.health)
             if self._probe_thread is not None:
-                for probe, results, at in self._probe_thread.drain():
-                    self._manager.ingest_cluster_results(probe, results, at)
-            decision = self._manager.poll_decision()
+                for probe, results in self._probe_thread.drain():
+                    self._manager.ingest_cluster_results(probe, results)
+            return self._manager.poll_decision()
         except Exception:
             logger.exception("[Health] loop failed; skipping this poll.")
-            return
-        if decision is not None:
-            self._act(decision)
+            return None
 
-    def _act(self, decision: HealthDecision) -> None:
-        self._notify(decision)
-        if decision.action is Action.DIAGNOSE:
-            self._diagnose(decision)
-        elif decision.action in (Action.REATTEMPT, Action.EVICT):
-            raise HealthDecisionError(decision.reason, decision=decision)
-
-    def _notify(self, decision: HealthDecision) -> None:
-        logger.warning(
-            "[Health] %s (%s): %s",
-            decision.action.name,
-            decision.cause.name,
-            decision.reason,
-        )
-        for callback in self._user_callbacks:
-            try:
-                callback.after_health_decision(
-                    run_context=self._train_run_context, health_decision=decision
-                )
-            except Exception:
-                logger.exception(
-                    "[Health] %s.after_health_decision raised.",
-                    type(callback).__name__,
-                )
-
-    def _diagnose(self, decision: Diagnose) -> None:
+    # ------------------------------------------------------------------
+    # Act
+    # ------------------------------------------------------------------
+    def diagnose(self, decision: Diagnose) -> None:
+        """Run the decision's on-demand probes; results reach the next poll."""
         if self._runner is None:
             return
         try:

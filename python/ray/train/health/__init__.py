@@ -32,7 +32,6 @@ if is_v2_enabled():
         Noop,
         Reattempt,
     )
-    from ray.train.health.exceptions import HealthDecisionError
     from ray.train.health.policy import (
         Evaluator,
         HealthConfig,
@@ -44,7 +43,6 @@ if is_v2_enabled():
         ClusterContext,
         ClusterProbe,
         NodeContext,
-        NodeInfo,
         NodeProbe,
         OnDemandProbe,
         OnDemandProbeContext,
@@ -52,8 +50,11 @@ if is_v2_enabled():
         ProbeResult,
         WorkerProbe,
     )
-    from ray.train.health.report import report
     from ray.train.health.state import HealthState, NodeHealth, WorkerHealth
+
+    # Ray Train-specific: they go through the train function and the controller.
+    from ray.train.v2.api.exceptions import HealthDecisionError
+    from ray.train.v2.api.health import report
 
     __all__ = [
         "Action",
@@ -71,7 +72,6 @@ if is_v2_enabled():
         "NODE_SCOPE",
         "NodeContext",
         "NodeHealth",
-        "NodeInfo",
         "NodeProbe",
         "Noop",
         "OnDemandProbe",

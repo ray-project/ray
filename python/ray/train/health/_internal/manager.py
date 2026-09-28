@@ -1,6 +1,5 @@
 """The Decide stage: fuse every health stream into one decision per poll."""
 import logging
-import time
 from dataclasses import replace
 from typing import Dict, Iterable, List, Optional, Sequence, Set
 
@@ -113,7 +112,7 @@ class HealthManager:
 
         self._workers: Dict[int, WorkerHealth] = {}
         self._nodes: Dict[str, NodeHealth] = {}
-        self._entities: Results = {}
+        self._cluster: Results = {}
         self._on_demand: Results = {}
 
         # Kept across restarts: an evicted node stays out for the whole run.
@@ -179,18 +178,9 @@ class HealthManager:
         return results
 
     def ingest_cluster_results(
-        self,
-        probe: ClusterProbe,
-        results: Dict[str, ProbeResult],
-        snapshot_at: Optional[float] = None,
+        self, probe: ClusterProbe, results: Dict[str, ProbeResult]
     ) -> None:
-        name = probe.probe_name()
-        if probe.entity != "node":
-            self._entities[name] = dict(results)
-            return
-        now = snapshot_at if snapshot_at is not None else time.time()
-        for node_id, result in results.items():
-            self.ingest_node_health(NodeHealth(node_id, now, {name: result}))
+        self._cluster[probe.probe_name()] = dict(results)
 
     def run_cluster_probes(self, ctx: ClusterContext) -> None:
         """Poll and ingest every cluster probe synchronously."""
@@ -206,7 +196,7 @@ class HealthManager:
         return HealthState(
             workers=dict(self._workers),
             nodes=dict(self._nodes),
-            entities={k: dict(v) for k, v in self._entities.items()},
+            cluster={k: dict(v) for k, v in self._cluster.items()},
             on_demand_probes={k: dict(v) for k, v in self._on_demand.items()},
         )
 
@@ -260,7 +250,7 @@ class HealthManager:
     def on_worker_group_start(self) -> None:
         self._workers.clear()
         self._nodes.clear()
-        self._entities.clear()
+        self._cluster.clear()
         self._on_demand.clear()
         for evaluator in self._evaluators:
             try:

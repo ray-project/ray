@@ -6,7 +6,6 @@ from ray.train.health._internal.manager import Results
 from ray.train.health.decision import Diagnose
 from ray.train.health.probe import (
     NODE_SCOPE,
-    NodeInfo,
     OnDemandProbe,
     OnDemandProbeContext,
     ProbeResult,
@@ -52,7 +51,7 @@ class OnDemandRunner:
 
         No targets means every rank and node of the worker group.
         """
-        nodes = _node_infos(rank_to_node)
+        nodes = _ranks_by_node(rank_to_node)
         results: Results = {}
         paused = False
         try:
@@ -70,7 +69,7 @@ class OnDemandRunner:
         self, probes: Sequence[OnDemandProbe], node_ids: Sequence[str]
     ) -> Results:
         """Run node-scoped probes once on each candidate node."""
-        nodes = [NodeInfo(node_id=n) for n in node_ids]
+        nodes = {n: [] for n in node_ids}
         results: Results = {}
         for probe in probes:
             if probe.scope != NODE_SCOPE:
@@ -88,7 +87,7 @@ class OnDemandRunner:
         self,
         probe: OnDemandProbe,
         targets: List[Tuple[str, str, Optional[int]]],
-        nodes: List[NodeInfo],
+        nodes: Dict[str, List[int]],
     ) -> Dict[str, ProbeResult]:
         if not targets:
             return {}
@@ -154,8 +153,8 @@ def _targets(
     return [(n, n, None) for n in dict.fromkeys(nodes) if n]
 
 
-def _node_infos(rank_to_node: Dict[int, str]) -> List[NodeInfo]:
+def _ranks_by_node(rank_to_node: Dict[int, str]) -> Dict[str, List[int]]:
     ranks: Dict[str, List[int]] = {}
     for rank, node in sorted(rank_to_node.items()):
         ranks.setdefault(node, []).append(rank)
-    return [NodeInfo(node_id=n, ranks=r) for n, r in sorted(ranks.items())]
+    return ranks

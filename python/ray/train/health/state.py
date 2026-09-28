@@ -35,21 +35,20 @@ class HealthState:
     Attributes:
         workers: ``{world_rank: WorkerHealth}``.
         nodes: ``{node_id: NodeHealth}``.
-        entities: ``{probe_name: {entity_id: ProbeResult}}`` for cluster
-            probes whose entity is not a node.
+        cluster: ``{probe_name: {entity_id: ProbeResult}}`` from cluster probes.
         on_demand_probes: ``{probe_name: {entity_id: ProbeResult}}``.
     """
 
     workers: Mapping[int, WorkerHealth] = field(default_factory=dict)
     nodes: Mapping[str, NodeHealth] = field(default_factory=dict)
-    entities: Mapping[str, Dict[str, ProbeResult]] = field(default_factory=dict)
+    cluster: Mapping[str, Dict[str, ProbeResult]] = field(default_factory=dict)
     on_demand_probes: Mapping[str, Dict[str, ProbeResult]] = field(default_factory=dict)
 
     def results(self, probe: Type[Probe]) -> Dict[str, ProbeResult]:
-        """Latest results of ``probe`` as ``{entity_id: ProbeResult}``."""
+        """Latest results of a ``ClusterProbe`` or ``NodeProbe``, by entity."""
         name = probe.probe_name()
-        if name in self.entities:
-            return dict(self.entities[name])
+        if name in self.cluster:
+            return dict(self.cluster[name])
         return {
             node_id: node.probe_results[name]
             for node_id, node in self.nodes.items()

@@ -1,4 +1,4 @@
-"""HealthCallback driven through the controller's hooks with a fake worker group."""
+"""HealthCallback: collection, and the capabilities the controller calls."""
 import sys
 import threading
 import time
@@ -15,16 +15,15 @@ from ray.train.health import (
     Evaluator,
     Evict,
     HealthConfig,
-    HealthDecisionError,
     HealthPolicy,
     OnDemandProbe,
     ProbeResult,
     Reattempt,
     WorkerHealth,
 )
-from ray.train.health._internal import callback as callback_module
-from ray.train.health._internal.callback import HealthCallback
 from ray.train.health._internal.on_demand import OnDemandRunner
+from ray.train.v2._internal.callbacks import health_callback as callback_module
+from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.execution.context import TrainContext
 from ray.train.v2._internal.execution.worker_group.poll import (
     WorkerGroupPollStatus,
@@ -58,9 +57,12 @@ def _status(health_by_rank=None):
     )
 
 
+def _callback(*policies):
+    return HealthCallback(HealthConfig(policies=list(policies)))
+
+
 class Stuck(ClusterProbe):
     name = "Stuck"
-    entity = "comm"
     interval_s = 0.01
 
     def poll(self, ctx):
@@ -74,47 +76,32 @@ class RetryWhenStuck(Evaluator):
         return []
 
 
-class Recorder:
-    def __init__(self):
-        self.decisions = []
-
-    def after_health_decision(self, run_context, health_decision):
-        self.decisions.append(health_decision)
-
-
-def _poll_until_raises(callback, timeout_s=3.0):
+def _poll_until_decision(callback, timeout_s=3.0):
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
-        callback.after_worker_group_poll_status(_status())
+        decision = callback.poll_decision(_status())
+        if decision is not None:
+            return decision
         time.sleep(0.02)
-    pytest.fail("no decision reached the controller")
+    pytest.fail("no decision")
 
 
 # ----------------------------------------------------------------------
-# Collect -> Decide -> Act, end to end
+# Collect and decide
 # ----------------------------------------------------------------------
-def test_a_cluster_probe_decision_reaches_the_failure_path():
-    recorder = Recorder()
-    callback = HealthCallback(
-        HealthConfig(
-            policies=[
-                HealthPolicy(
-                    probe_creator=lambda: [Stuck()],
-                    evaluator_creator=lambda: [RetryWhenStuck()],
-                )
-            ]
-        ),
-        user_callbacks=[recorder],
+def test_a_cluster_probe_on_its_thread_yields_a_decision():
+    callback = _callback(
+        HealthPolicy(
+            probe_creator=lambda: [Stuck()],
+            evaluator_creator=lambda: [RetryWhenStuck()],
+        )
     )
     callback.after_worker_group_start(_worker_group())
     try:
-        with pytest.raises(HealthDecisionError) as info:
-            _poll_until_raises(callback)
+        decision = _poll_until_decision(callback)
     finally:
         callback.before_worker_group_shutdown(None)
-
-    assert info.value.decision.action is Action.REATTEMPT
-    assert [d.action for d in recorder.decisions] == [Action.REATTEMPT]
+    assert decision.action is Action.REATTEMPT
 
 
 def test_worker_health_reaches_evaluators():
@@ -125,11 +112,9 @@ def test_worker_health_reaches_evaluators():
             seen.append(dict(state.reported))
             return []
 
-    callback = HealthCallback(
-        HealthConfig(policies=[HealthPolicy(evaluator_creator=lambda: [Watch()])])
-    )
+    callback = _callback(HealthPolicy(evaluator_creator=lambda: [Watch()]))
     callback.after_worker_group_start(_worker_group())
-    callback.after_worker_group_poll_status(
+    callback.poll_decision(
         _status(
             {
                 0: WorkerHealth(0, "node0", 1.0, step=5, reported={"loss": 2.0}),
@@ -141,41 +126,15 @@ def test_worker_health_reaches_evaluators():
     assert seen[-1] == {0: {"loss": 2.0}, 1: {"loss": 2.1}}
 
 
-def test_a_broken_evaluator_never_fails_the_run():
+def test_a_broken_evaluator_yields_no_decision():
     class Boom(Evaluator):
         def evaluate(self, state):
             raise RuntimeError("detector bug")
 
-    callback = HealthCallback(
-        HealthConfig(policies=[HealthPolicy(evaluator_creator=lambda: [Boom()])])
-    )
+    callback = _callback(HealthPolicy(evaluator_creator=lambda: [Boom()]))
     callback.after_worker_group_start(_worker_group())
-    callback.after_worker_group_poll_status(_status())
+    assert callback.poll_decision(_status()) is None
     callback.before_worker_group_shutdown(None)
-
-
-def test_a_raising_user_hook_does_not_stop_the_action():
-    class BadHook:
-        def after_health_decision(self, run_context, health_decision):
-            raise RuntimeError("webhook down")
-
-    callback = HealthCallback(
-        HealthConfig(
-            policies=[
-                HealthPolicy(
-                    probe_creator=lambda: [Stuck()],
-                    evaluator_creator=lambda: [RetryWhenStuck()],
-                )
-            ]
-        ),
-        user_callbacks=[BadHook()],
-    )
-    callback.after_worker_group_start(_worker_group())
-    try:
-        with pytest.raises(HealthDecisionError):
-            _poll_until_raises(callback)
-    finally:
-        callback.before_worker_group_shutdown(None)
 
 
 # ----------------------------------------------------------------------
@@ -196,12 +155,8 @@ class DiagnoseThenRetry(Evaluator):
         return [Diagnose(reason="look first", on_demand_probes=[Stacks()])]
 
 
-def test_diagnose_pushes_probes_and_the_next_poll_reads_them():
-    callback = HealthCallback(
-        HealthConfig(
-            policies=[HealthPolicy(evaluator_creator=lambda: [DiagnoseThenRetry()])]
-        )
-    )
+def test_diagnose_results_reach_the_next_decision():
+    callback = _callback(HealthPolicy(evaluator_creator=lambda: [DiagnoseThenRetry()]))
     callback.after_worker_group_start(_worker_group())
 
     def direct(probe, contexts):
@@ -209,13 +164,13 @@ def test_diagnose_pushes_probes_and_the_next_poll_reads_them():
 
     callback._runner = OnDemandRunner(run_on_node=direct, run_on_worker=direct)
 
-    callback.after_worker_group_poll_status(_status())
+    decision = callback.poll_decision(_status())
+    assert decision.action is Action.DIAGNOSE
+    callback.diagnose(decision)
     state = callback.manager.build_state()
     assert sorted(state.on_demand_probe_results(Stacks)) == ["0", "1"]
 
-    with pytest.raises(HealthDecisionError) as info:
-        callback.after_worker_group_poll_status(_status())
-    assert "diagnosed" in info.value.decision.reason
+    assert "diagnosed" in callback.poll_decision(_status()).reason
     callback.before_worker_group_shutdown(None)
 
 
@@ -238,25 +193,15 @@ def test_preflight_evicts_failing_nodes_and_screens_each_node_once(monkeypatch):
     monkeypatch.setattr(callback_module, "_candidate_nodes", lambda _: list(nodes))
     monkeypatch.setattr(callback_module, "_run_on_nodes", run_on_nodes)
 
-    recorder = Recorder()
-    callback = HealthCallback(
-        HealthConfig(
-            policies=[HealthPolicy(probe_creator=lambda: [Screen()], preflight=True)]
-        ),
-        user_callbacks=[recorder],
-    )
-    scaling_config = SimpleNamespace(_resources_per_worker_not_none={"GPU": 1})
-
-    selector = callback.on_controller_start_worker_group(
-        scaling_config=scaling_config, num_workers=1
-    )
-    assert selector == {"ray.io/node-id": "!in(bad)"}
-    assert isinstance(recorder.decisions[0], Evict)
+    callback = _callback(HealthPolicy(probe_creator=lambda: [Screen()], preflight=True))
+    decision = callback.run_preflight({"GPU": 1})
+    assert isinstance(decision, Evict) and decision.target_nodes == ["bad"]
+    assert callback.on_controller_start_worker_group(
+        scaling_config=None, num_workers=1
+    ) == {"ray.io/node-id": "!in(bad)"}
 
     nodes.append("new")
-    callback.on_controller_start_worker_group(
-        scaling_config=scaling_config, num_workers=1
-    )
+    assert callback.run_preflight({"GPU": 1}) is None
     assert screened == ["good", "bad", "new"]
 
 
