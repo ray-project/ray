@@ -23,15 +23,15 @@
 #include <vector>
 
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/task_manager_interface.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/fake_actor_creator.h"
+#include "ray/core_worker/fake_task_manager_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/raylet_rpc_client/raylet_client_interface.h"
@@ -95,7 +95,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
-class MockWorkerClient : public rpc::FakeCoreWorkerClient {
+class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
   void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
                       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
@@ -141,12 +141,12 @@ class MockWorkerClient : public rpc::FakeCoreWorkerClient {
   std::list<rpc::ClientCallback<rpc::CancelTaskReply>> cancel_callbacks;
 };
 
-class MockTaskManager : public MockTaskManagerInterface {
+class FakeTaskManager : public FakeTaskManagerInterface {
   // TODO(ray-core): Consider adding an integration test between TaskManager and
   // NormalTaskSubmitter, due to the complexity of the interaction between the two.
   // https://github.com/ray-project/ray/issues/54922
  public:
-  MockTaskManager() {}
+  FakeTaskManager() {}
 
   void CompletePendingTask(const TaskID &task_id,
                            const rpc::PushTaskReply &,
@@ -219,7 +219,7 @@ class MockTaskManager : public MockTaskManagerInterface {
   int num_generator_failed_and_resubmitted = 0;
 };
 
-class MockRayletClient : public rpc::FakeRayletClient {
+class FakeRayletClientForTest : public rpc::FakeRayletClient {
  public:
   void ReturnWorkerLease(int worker_port,
                          const LeaseID &lease_id,
@@ -395,7 +395,7 @@ class MockRayletClient : public rpc::FakeRayletClient {
     cancel_local_task_callbacks.pop_front();
   }
 
-  ~MockRayletClient() = default;
+  ~FakeRayletClientForTest() = default;
 
   // Protects all internal fields.
   std::mutex mu_;
@@ -417,7 +417,7 @@ class MockRayletClient : public rpc::FakeRayletClient {
   std::list<rpc::ClientCallback<rpc::CancelLocalTaskReply>> cancel_local_task_callbacks;
 };
 
-class MockLeasePolicy : public LeasePolicyInterface {
+class FakeLeasePolicy : public LeasePolicyInterface {
  public:
   void SetNodeID(NodeID node_id) { fallback_rpc_address_.set_node_id(node_id.Binary()); }
 
@@ -450,20 +450,22 @@ class NormalTaskSubmitterTest : public testing::Test {
  public:
   NormalTaskSubmitterTest()
       : local_node_id(NodeID::FromRandom()),
-        raylet_client_pool(std::make_shared<rpc::RayletClientPool>(
-            [](const rpc::Address &) { return std::make_shared<MockRayletClient>(); })),
-        raylet_client(std::make_shared<MockRayletClient>()),
-        worker_client(std::make_shared<MockWorkerClient>()),
+        raylet_client_pool(
+            std::make_shared<rpc::RayletClientPool>([](const rpc::Address &) {
+              return std::make_shared<FakeRayletClientForTest>();
+            })),
+        raylet_client(std::make_shared<FakeRayletClientForTest>()),
+        worker_client(std::make_shared<FakeWorkerClient>()),
         store_io_context_("NormalTaskSubmitterTest"),
         store(std::make_shared<CoreWorkerMemoryStore>(store_io_context_.GetIoService(),
                                                       clock_)),
         client_pool(std::make_shared<rpc::CoreWorkerClientPool>(
             [&](const rpc::Address &) { return worker_client; })),
-        task_manager(std::make_unique<MockTaskManager>()),
+        task_manager(std::make_unique<FakeTaskManager>()),
         actor_creator(std::make_shared<FakeActorCreator>()),
-        lease_policy(std::make_unique<MockLeasePolicy>()),
+        lease_policy(std::make_unique<FakeLeasePolicy>()),
         lease_policy_ptr(lease_policy.get()),
-        mock_gcs_client_(std::make_shared<gcs::MockGcsClient>()),
+        fake_gcs_client_(std::make_shared<gcs::FakeGcsClient>()),
         io_work_(boost::asio::make_work_guard(io_context)) {
     address.set_node_id(local_node_id.Binary());
     lease_policy_ptr->SetNodeID(local_node_id);
@@ -496,7 +498,7 @@ class NormalTaskSubmitterTest : public testing::Test {
         raylet_client,
         client_pool,
         raylet_client_pool,
-        mock_gcs_client_,
+        fake_gcs_client_,
         std::move(lease_policy),
         // Use the caller-provided store if given, otherwise fall back to the fixture's
         // store.
@@ -517,19 +519,19 @@ class NormalTaskSubmitterTest : public testing::Test {
   NodeID local_node_id;
   rpc::Address address;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
-  std::shared_ptr<MockRayletClient> raylet_client;
-  std::shared_ptr<MockWorkerClient> worker_client;
+  std::shared_ptr<FakeRayletClientForTest> raylet_client;
+  std::shared_ptr<FakeWorkerClient> worker_client;
   InstrumentedIOContextWithThread store_io_context_;
   FakeClock clock_;
   std::shared_ptr<CoreWorkerMemoryStore> store;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
-  std::unique_ptr<MockTaskManager> task_manager;
+  std::unique_ptr<FakeTaskManager> task_manager;
   std::shared_ptr<FakeActorCreator> actor_creator;
   // Note: Use lease_policy_ptr in tests, not lease_policy since it has to be moved into
   // the submitter.
-  std::unique_ptr<MockLeasePolicy> lease_policy;
-  MockLeasePolicy *lease_policy_ptr = nullptr;
-  std::shared_ptr<gcs::MockGcsClient> mock_gcs_client_;
+  std::unique_ptr<FakeLeasePolicy> lease_policy;
+  FakeLeasePolicy *lease_policy_ptr = nullptr;
+  std::shared_ptr<gcs::FakeGcsClient> fake_gcs_client_;
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work_;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
@@ -666,17 +668,15 @@ TEST_F(NormalTaskSubmitterTest, TestCancellationWhileHandlingTaskFailure) {
   // For an example of a python integration test, see
   // https://github.com/ray-project/ray/blob/2b6807f4d9c4572e6309f57bc404aa641bc4b185/python/ray/tests/test_cancel.py#L35
 
-  // Set up GCS node mock to return node as alive
-  using testing::_;
-
+  // Set up GCS node fake to return node as alive.
   rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(local_node_id.Binary());
   node_info.set_node_manager_address("127.0.0.1");
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor, GetNodeAddressAndLiveness(_, false))
-      .WillRepeatedly(testing::Return(std::make_optional(node_info)));
+  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[local_node_id] =
+      node_info;
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
@@ -1315,10 +1315,11 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestSpillback) {
-  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_raylet_clients;
+  absl::flat_hash_map<int, std::shared_ptr<FakeRayletClientForTest>>
+      remote_raylet_clients;
   auto raylet_client_factory = [&remote_raylet_clients](const rpc::Address &addr) {
     RAY_CHECK(remote_raylet_clients.count(addr.port()) == 0);
-    auto client = std::make_shared<MockRayletClient>();
+    auto client = std::make_shared<FakeRayletClientForTest>();
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
@@ -1369,11 +1370,12 @@ TEST_F(NormalTaskSubmitterTest, TestSpillback) {
 }
 
 TEST_F(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
-  absl::flat_hash_map<int, std::shared_ptr<MockRayletClient>> remote_raylet_clients;
+  absl::flat_hash_map<int, std::shared_ptr<FakeRayletClientForTest>>
+      remote_raylet_clients;
   auto raylet_client_factory = [&](const rpc::Address &addr) {
     // We should not create a connection to the same raylet more than once.
     RAY_CHECK(remote_raylet_clients.count(addr.port()) == 0);
-    auto client = std::make_shared<MockRayletClient>();
+    auto client = std::make_shared<FakeRayletClientForTest>();
     remote_raylet_clients[addr.port()] = client;
     return client;
   };
@@ -1452,17 +1454,17 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   rpc::Address address;
   ray::observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   auto local_node_id = NodeID::FromRandom();
-  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto raylet_client = std::make_shared<FakeRayletClientForTest>();
   auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
       [&](const rpc::Address &addr) { return raylet_client; });
-  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto worker_client = std::make_shared<FakeWorkerClient>();
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
-  auto task_manager = std::make_unique<MockTaskManager>();
+  auto task_manager = std::make_unique<FakeTaskManager>();
   auto actor_creator = std::make_shared<FakeActorCreator>();
-  auto lease_policy = std::make_unique<MockLeasePolicy>();
+  auto lease_policy = std::make_unique<FakeLeasePolicy>();
   lease_policy->SetNodeID(local_node_id);
-  auto mock_gcs_client = std::make_shared<gcs::MockGcsClient>();
+  auto fake_gcs_client = std::make_shared<gcs::FakeGcsClient>();
   instrumented_io_context io_context;
   Clock clock;
   NormalTaskSubmitter submitter(
@@ -1470,7 +1472,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
       raylet_client,
       client_pool,
       raylet_client_pool,
-      mock_gcs_client,
+      fake_gcs_client,
       std::move(lease_policy),
       store,
       *task_manager,
@@ -1746,10 +1748,8 @@ TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
-              GetNodeAddressAndLiveness(local_node_id, false))
-      .WillOnce(testing::Return(std::make_optional(node_info)))
-      .WillOnce(testing::Return(std::make_optional(node_info)));
+  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[local_node_id] =
+      node_info;
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));
@@ -1873,10 +1873,8 @@ TEST_F(NormalTaskSubmitterTest, TestCancelBeforeAfterQueueGeneratorForResubmit) 
   node_info.set_node_manager_port(9999);
   node_info.set_state(rpc::GcsNodeInfo::ALIVE);
 
-  EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
-              GetNodeAddressAndLiveness(local_node_id, false))
-      .WillOnce(testing::Return(std::make_optional(node_info)))
-      .WillOnce(testing::Return(std::make_optional(node_info)));
+  fake_gcs_client_->fake_node_accessor->node_address_and_liveness[local_node_id] =
+      node_info;
 
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1));

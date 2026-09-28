@@ -14,16 +14,15 @@
 
 #include "ray/object_manager/plasma/eviction_policy.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <optional>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/object_manager/plasma/object_store.h"
 
 using ray::ObjectID;
-using testing::_;
-using testing::Return;
-using testing::Test;
 
 namespace plasma {
 TEST(LRUCacheTest, Test) {
@@ -80,35 +79,56 @@ TEST(LRUCacheTest, Test) {
   EXPECT_EQ(1024, cache.OriginalCapacity());
 }
 
-class MockAllocator : public IAllocator {
+// Hand-written fake allocator exposing settable return fields for the const getters
+// used by EvictionPolicy.
+class FakeAllocator : public IAllocator {
  public:
-  MOCK_METHOD1(Allocate, std::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(FallbackAllocate, std::optional<Allocation>(size_t bytes));
-  MOCK_METHOD1(Free, void(Allocation));
-  MOCK_CONST_METHOD0(GetFootprintLimit, int64_t());
-  MOCK_CONST_METHOD0(Allocated, int64_t());
-  MOCK_CONST_METHOD0(FallbackAllocated, int64_t());
+  std::optional<Allocation> Allocate(size_t bytes) override { return std::nullopt; }
+  std::optional<Allocation> FallbackAllocate(size_t bytes) override {
+    return std::nullopt;
+  }
+  void Free(Allocation allocation) override {}
+  int64_t GetFootprintLimit() const override { return footprint_limit; }
+  int64_t Allocated() const override { return allocated; }
+  int64_t FallbackAllocated() const override { return fallback_allocated; }
+
+  int64_t footprint_limit = 0;
+  int64_t allocated = 0;
+  int64_t fallback_allocated = 0;
 };
 
-class MockObjectStore : public IObjectStore {
+// Hand-written fake object store. GetObject returns values from a settable queue in
+// call order, repeating the last element once the queue is exhausted (mirrors the
+// WillOnce/WillRepeatedly behavior of the original mock).
+class FakeObjectStore : public IObjectStore {
  public:
-  MOCK_METHOD3(CreateObject,
-               const LocalObject *(const ray::ObjectInfo &,
-                                   plasma::flatbuf::ObjectSource,
-                                   bool));
-  MOCK_CONST_METHOD1(GetObject, const LocalObject *(const ObjectID &));
-  MOCK_METHOD1(SealObject, const LocalObject *(const ObjectID &));
-  MOCK_METHOD1(DeleteObject, bool(const ObjectID &));
-  MOCK_CONST_METHOD0(GetNumBytesCreatedTotal, int64_t());
-  MOCK_CONST_METHOD0(GetNumBytesUnsealed, int64_t());
-  MOCK_CONST_METHOD0(GetNumObjectsUnsealed, int64_t());
-  MOCK_CONST_METHOD1(GetDebugDump, void(std::stringstream &buffer));
+  const LocalObject *CreateObject(const ray::ObjectInfo &,
+                                  plasma::flatbuf::ObjectSource,
+                                  bool) override {
+    return nullptr;
+  }
+  const LocalObject *GetObject(const ObjectID &object_id) const override {
+    get_object_call_count++;
+    if (get_object_returns.empty()) {
+      return nullptr;
+    }
+    if (get_object_index < get_object_returns.size()) {
+      return get_object_returns[get_object_index++];
+    }
+    return get_object_returns.back();
+  }
+  const LocalObject *SealObject(const ObjectID &object_id) override { return nullptr; }
+  bool DeleteObject(const ObjectID &object_id) override { return false; }
+
+  std::vector<const LocalObject *> get_object_returns;
+  mutable size_t get_object_index = 0;
+  mutable int get_object_call_count = 0;
 };
 
 TEST(EvictionPolicyTest, Test) {
-  MockAllocator allocator;
-  MockObjectStore store;
-  EXPECT_CALL(allocator, GetFootprintLimit()).WillRepeatedly(Return(100));
+  FakeAllocator allocator;
+  FakeObjectStore store;
+  allocator.footprint_limit = 100;
   ObjectID key1 = ObjectID::FromRandom();
   ObjectID key2 = ObjectID::FromRandom();
   ObjectID key3 = ObjectID::FromRandom();
@@ -128,18 +148,17 @@ TEST(EvictionPolicyTest, Test) {
   object4.object_info_.metadata_size = 0;
 
   auto init_object_store = [&](EvictionPolicy &policy) {
-    EXPECT_CALL(store, GetObject(_))
-        .Times(4)
-        .WillOnce(Return(&object1))
-        .WillOnce(Return(&object2))
-        .WillOnce(Return(&object3))
-        .WillOnce(Return(&object4));
+    store.get_object_returns = {&object1, &object2, &object3, &object4};
+    store.get_object_index = 0;
+    int get_object_count_before = store.get_object_call_count;
     policy.ObjectCreated(key1);
     policy.ObjectCreated(key2);
     policy.ObjectCreated(key3);
     policy.ObjectCreated(key4);
+    // Each ObjectCreated should query the store exactly once.
+    EXPECT_EQ(store.get_object_call_count, get_object_count_before + 4);
 
-    EXPECT_CALL(allocator, Allocated()).WillRepeatedly(Return(10 + 20 + 30 + 40));
+    allocator.allocated = 10 + 20 + 30 + 40;
   };
 
   {
@@ -179,7 +198,9 @@ TEST(EvictionPolicyTest, Test) {
     EvictionPolicy policy(store, allocator);
     init_object_store(policy);
 
-    EXPECT_CALL(store, GetObject(_)).WillRepeatedly(Return(&object1));
+    // Any subsequent GetObject call returns object1.
+    store.get_object_returns = {&object1};
+    store.get_object_index = 0;
     EXPECT_TRUE(policy.IsObjectExists(key1));
     policy.BeginObjectAccess(key1);
     EXPECT_FALSE(policy.IsObjectExists(key1));

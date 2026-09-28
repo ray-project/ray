@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/random/mock_distributions.h"
-#include "absl/random/mocking_bit_gen.h"
-#include "gmock/gmock.h"
+#include <cstdint>
+#include <limits>
+#include <utility>
+#include <vector>
+
+#include "absl/random/bit_gen_ref.h"
 #include "gtest/gtest.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
 
@@ -22,8 +25,31 @@ namespace ray {
 
 namespace raylet_scheduling_policy {
 
-using namespace ::testing;
 using namespace ray::raylet;
+
+// Deterministic fake uniform-random-bit generator. It advertises a full 64-bit
+// range so that absl::Uniform consumes exactly one value per draw and returns it
+// unmodified as the source bits. For absl::Uniform<size_t>(gen, 0, 3) the returned
+// index is floor(bits * 3 / 2^64), so the values below map to fixed indices:
+//   0x8000000000000000 -> 1, 0xF000000000000000 -> 2, 1 -> 0.
+class FakeBitGen {
+ public:
+  using result_type = uint64_t;
+  static constexpr result_type(min)() { return 0; }
+  static constexpr result_type(max)() {
+    return (std::numeric_limits<result_type>::max)();
+  }
+  explicit FakeBitGen(std::vector<uint64_t> values) : values_(std::move(values)) {}
+  result_type operator()() {
+    result_type value = values_[index_ % values_.size()];
+    ++index_;
+    return value;
+  }
+
+ private:
+  std::vector<uint64_t> values_;
+  size_t index_ = 0;
+};
 
 NodeResources CreateNodeResources(double available_cpu,
                                   double total_cpu,
@@ -88,15 +114,12 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNode) {
                                  /*preferred_node_score*/ 1));
   }
 
-  // Test return 3 node calls to the random generator.
+  // Test return 3 node calls to the random generator. The fake generator is set up
+  // so that the three draws yield indices 1, 2, and 0 respectively.
   {
-    absl::MockingBitGen mock;
-    EXPECT_CALL(absl::MockUniform<size_t>(), Call(mock, 0u, 3u))
-        .WillOnce(Return(1))
-        .WillOnce(Return(2))
-        .WillOnce(Return(0));
+    FakeBitGen fake({0x8000000000000000ULL, 0xF000000000000000ULL, 1ULL});
     HybridSchedulingPolicy policy{local_node, {}, [](auto) { return true; }};
-    policy.bitgenref_ = absl::BitGenRef{mock};
+    policy.bitgenref_ = absl::BitGenRef{fake};
     EXPECT_EQ(n2,
               policy.GetBestNode(node_scores,
                                  /*num_candidate_nodes*/ 3,

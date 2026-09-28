@@ -22,8 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/gcs/gcs_kv_manager.h"
-#include "mock/ray/gcs/gcs_node_manager.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
@@ -31,10 +29,12 @@
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/actor/gcs_actor.h"
 #include "ray/gcs/actor/gcs_actor_scheduler.h"
+#include "ray/gcs/fake_gcs_kv_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
@@ -44,18 +44,20 @@
 namespace ray {
 namespace gcs {
 
-using ::testing::_;
-using ::testing::Return;
-
-class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
+// Hand-written fake scheduler. Records calls in public vectors and exposes
+// settable return fields so tests can drive behavior and assert with plain
+// gtest (replaces gmock EXPECT_CALL usage).
+class FakeActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
-  MockActorScheduler() {}
+  FakeActorScheduler() {}
 
-  void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
-  void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
-  void ReleaseUnusedActorWorkers(
-      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
-  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {
+  void Schedule(std::shared_ptr<gcs::GcsActor> actor) override {
+    actors.push_back(actor);
+  }
+  void Reschedule(std::shared_ptr<gcs::GcsActor> actor) override {}
+  void ReleaseUnusedActorWorkers(const absl::flat_hash_map<NodeID, std::vector<WorkerID>>
+                                     &node_to_workers) override {}
+  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) override {
     const auto &actor_id = actor->GetActorID();
     auto pending_it =
         std::find_if(actors.begin(),
@@ -68,20 +70,39 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
     }
   }
 
-  MOCK_CONST_METHOD0(DebugString, std::string());
-  MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
-  MOCK_METHOD2(CancelOnWorker, ActorID(const NodeID &node_id, const WorkerID &worker_id));
-  MOCK_METHOD3(CancelOnLeasing,
-               void(const NodeID &node_id,
-                    const ActorID &actor_id,
-                    const LeaseID &lease_id));
+  std::string DebugString() const override { return ""; }
+
+  std::vector<ActorID> CancelOnNode(const NodeID &node_id) override {
+    cancel_on_node_calls.push_back(node_id);
+    return cancel_on_node_return;
+  }
+
+  ActorID CancelOnWorker(const NodeID &node_id, const WorkerID &worker_id) override {
+    cancel_on_worker_calls.push_back(std::make_pair(node_id, worker_id));
+    return cancel_on_worker_return;
+  }
+
+  void CancelOnLeasing(const NodeID &node_id,
+                       const ActorID &actor_id,
+                       const LeaseID &lease_id) override {
+    cancel_on_leasing_calls.push_back(std::make_tuple(node_id, actor_id, lease_id));
+  }
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
+
+  // Recorded calls (replacing gmock EXPECT_CALL).
+  std::vector<NodeID> cancel_on_node_calls;
+  std::vector<std::pair<NodeID, WorkerID>> cancel_on_worker_calls;
+  std::vector<std::tuple<NodeID, ActorID, LeaseID>> cancel_on_leasing_calls;
+
+  // Settable return values.
+  std::vector<ActorID> cancel_on_node_return;
+  ActorID cancel_on_worker_return = ActorID::Nil();
 };
 
-class MockWorkerClient : public rpc::FakeCoreWorkerClient {
+class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
-  explicit MockWorkerClient(instrumented_io_context &io_service)
+  explicit FakeWorkerClient(instrumented_io_context &io_service)
       : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
@@ -142,7 +163,7 @@ class GcsActorManagerTest : public ::testing::Test {
   "maximum_gcs_destroyed_actor_cached_count": 10
 }
   )");
-    worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
+    worker_client_ = std::make_shared<FakeWorkerClient>(io_service_);
     raylet_client_ = std::make_shared<rpc::FakeRayletClient>();
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
@@ -162,10 +183,10 @@ class GcsActorManagerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
-    kv_ = std::make_unique<gcs::MockInternalKVInterface>();
+    kv_ = std::make_unique<gcs::FakeInternalKV>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
-    auto scheduler = std::make_unique<MockActorScheduler>();
-    mock_actor_scheduler_ = scheduler.get();
+    auto scheduler = std::make_unique<FakeActorScheduler>();
+    fake_actor_scheduler_ = scheduler.get();
     raylet_client_pool_ = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &address) { return raylet_client_; });
     worker_client_pool_ = std::make_unique<rpc::CoreWorkerClientPool>(
@@ -252,7 +273,7 @@ class GcsActorManagerTest : public ::testing::Test {
   }
 
   std::unique_ptr<gcs::GcsActorManager> CreateActorManagerForInitializeTest() {
-    auto scheduler = std::make_unique<MockActorScheduler>();
+    auto scheduler = std::make_unique<FakeActorScheduler>();
     return std::make_unique<gcs::GcsActorManager>(
         std::move(scheduler),
         gcs_table_storage_.get(),
@@ -317,8 +338,8 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_actor_manager_->HandleCreateActor(
         create_request1, &create_reply1, send_reply_callback);
 
-    actor = mock_actor_scheduler_->actors.back();
-    mock_actor_scheduler_->actors.pop_back();
+    actor = fake_actor_scheduler_->actors.back();
+    fake_actor_scheduler_->actors.pop_back();
 
     // Mock actor connecting to the gcs
     rpc::Address address = RandomAddress();
@@ -356,8 +377,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   // Actor scheduler's ownership lies in actor manager.
-  MockActorScheduler *mock_actor_scheduler_ = nullptr;
-  std::shared_ptr<MockWorkerClient> worker_client_;
+  FakeActorScheduler *fake_actor_scheduler_ = nullptr;
+  std::shared_ptr<FakeWorkerClient> worker_client_;
   std::shared_ptr<rpc::FakeRayletClient> raylet_client_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
@@ -369,7 +390,7 @@ class GcsActorManagerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
-  std::unique_ptr<gcs::MockInternalKVInterface> kv_;
+  std::unique_ptr<gcs::FakeInternalKV> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_actor_by_state_gauge_;
@@ -396,9 +417,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
                1);
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   actor->UpdateAddress(RandomAddress());
@@ -426,8 +447,8 @@ TEST_F(GcsActorManagerTest, TestActorStateMetrics) {
                                          const rpc::PushTaskReply &reply,
                                          const Status &) {});
   RAY_CHECK_OK(status);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
   actor->UpdateAddress(RandomAddress());
   gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
   io_service_.run_one();
@@ -489,8 +510,8 @@ TEST_F(GcsActorManagerTest, TestDeadCount) {
                                            const rpc::PushTaskReply &reply,
                                            const Status &) {});
     RAY_CHECK_OK(status);
-    auto actor = mock_actor_scheduler_->actors.back();
-    mock_actor_scheduler_->actors.pop_back();
+    auto actor = fake_actor_scheduler_->actors.back();
+    fake_actor_scheduler_->actors.pop_back();
     // Check that the actor is in state `ALIVE`.
     actor->UpdateAddress(RandomAddress());
     gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -561,8 +582,8 @@ TEST_F(GcsActorManagerTest, TestNonDeadEntryEvictionDecrementsCounter) {
                                            const rpc::PushTaskReply &reply,
                                            const Status &) {});
     RAY_CHECK_OK(status);
-    auto actor = mock_actor_scheduler_->actors.back();
-    mock_actor_scheduler_->actors.pop_back();
+    auto actor = fake_actor_scheduler_->actors.back();
+    fake_actor_scheduler_->actors.pop_back();
     // Check that the actor is in state `ALIVE`.
     actor->UpdateAddress(RandomAddress());
     gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
@@ -607,8 +628,8 @@ TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {
       });
 
   // Get the actor instance from the scheduler.
-  ASSERT_FALSE(mock_actor_scheduler_->actors.empty());
-  auto actor = mock_actor_scheduler_->actors.back();
+  ASSERT_FALSE(fake_actor_scheduler_->actors.empty());
+  auto actor = fake_actor_scheduler_->actors.back();
 
   // Manually simulate success state (ALIVE) without triggering storage write.
   auto address = RandomAddress();
@@ -622,11 +643,10 @@ TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestart) {
   // Verify it hasn't been invoked yet since OnActorCreationSuccess is not called.
   ASSERT_FALSE(callback_invoked);
 
-  // Mock CancelOnWorker to return the actor_id, simulating worker death during creation.
-  EXPECT_CALL(*mock_actor_scheduler_,
-              CancelOnWorker(NodeID::FromBinary(address.node_id()),
-                             WorkerID::FromBinary(address.worker_id())))
-      .WillOnce(testing::Return(actor_id));
+  // Program CancelOnWorker to return the actor_id, simulating worker death during
+  // creation. If this is not invoked the downstream assertions below fail.
+  fake_actor_scheduler_->cancel_on_worker_return = actor_id;
+  fake_actor_scheduler_->cancel_on_worker_calls.clear();
 
   // Trigger worker death.
   gcs_actor_manager_->OnWorkerDead(NodeID::FromBinary(address.node_id()),
@@ -670,8 +690,8 @@ TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestartActorNotAlive) {
       });
 
   // Get the actor instance from the scheduler.
-  ASSERT_FALSE(mock_actor_scheduler_->actors.empty());
-  auto actor = mock_actor_scheduler_->actors.back();
+  ASSERT_FALSE(fake_actor_scheduler_->actors.empty());
+  auto actor = fake_actor_scheduler_->actors.back();
 
   // Simulate a state where the actor is in PENDING_CREATION (not ALIVE yet).
   auto address = RandomAddress();
@@ -681,11 +701,10 @@ TEST_F(GcsActorManagerTest, TestActorCreationRaceWithRestartActorNotAlive) {
   // Verify it hasn't been invoked yet.
   ASSERT_FALSE(callback_invoked);
 
-  // Mock CancelOnWorker to return the actor_id, simulating worker death during creation.
-  EXPECT_CALL(*mock_actor_scheduler_,
-              CancelOnWorker(NodeID::FromBinary(address.node_id()),
-                             WorkerID::FromBinary(address.worker_id())))
-      .WillOnce(testing::Return(actor_id));
+  // Program CancelOnWorker to return the actor_id, simulating worker death during
+  // creation. If this is not invoked the downstream assertions below fail.
+  fake_actor_scheduler_->cancel_on_worker_return = actor_id;
+  fake_actor_scheduler_->cancel_on_worker_calls.clear();
 
   // Trigger worker death.
   gcs_actor_manager_->OnWorkerDead(NodeID::FromBinary(address.node_id()),
@@ -718,16 +737,16 @@ TEST_F(GcsActorManagerTest, TestSchedulingFailed) {
       }));
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.clear();
 
   gcs_actor_manager_->OnActorSchedulingFailed(
       actor,
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
       "");
   io_service_.run_one();
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 0);
 }
 
 TEST_F(GcsActorManagerTest, TestWorkerFailure) {
@@ -747,9 +766,9 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
       }));
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -761,8 +780,10 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Killing another worker does not affect this actor.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnWorker(node_id, _));
+  fake_actor_scheduler_->cancel_on_worker_calls.clear();
   gcs_actor_manager_->OnWorkerDead(node_id, WorkerID::FromRandom());
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_worker_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_worker_calls.back().first, node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Remove worker and then check that the actor is dead.
@@ -773,7 +794,7 @@ TEST_F(GcsActorManagerTest, TestWorkerFailure) {
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "worker process has died."));
   // No more actors to schedule.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
 }
@@ -794,9 +815,9 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -806,22 +827,25 @@ TEST_F(GcsActorManagerTest, TestNodeFailure) {
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Killing another node does not affect this actor.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(_));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(NodeID::FromRandom());
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Remove node and then check that the actor is dead.
   auto node_id = NodeID::FromBinary(address.node_id());
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
 
   OnNodeDead(node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());
   ASSERT_TRUE(absl::StrContains(
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "node has died."));
   // No more actors to schedule.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
 }
@@ -844,9 +868,9 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -857,13 +881,15 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Remove worker and then check that the actor is being restarted.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
   // Add node and check that the actor is restarted.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  fake_actor_scheduler_->actors.clear();
   ASSERT_EQ(finished_actors.size(), 1);
   auto node_id2 = NodeID::FromRandom();
   address.set_node_id(node_id2.Binary());
@@ -876,20 +902,23 @@ TEST_F(GcsActorManagerTest, TestActorReconstruction) {
   ASSERT_EQ(actor->GetNodeID(), node_id2);
 
   // Killing another worker does not affect this actor.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(_));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(NodeID::FromRandom());
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Remove worker and then check that the actor is dead.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id2));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id2);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id2);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());
   ASSERT_TRUE(absl::StrContains(
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
       "node has died."));
   // No more actors to schedule.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 0);
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 0);
 
   ASSERT_TRUE(worker_client_->Reply());
 }
@@ -916,9 +945,9 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart) {
         finished_actors.emplace_back(result_actor);
       }));
 
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // First incarnation: alive.
   auto address1 = RandomAddress();
@@ -930,8 +959,10 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart) {
   ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 0);
 
   // Kill node1 → restart triggered → (worker_id1, node_id1) recorded.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id1));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id1);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
   ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 1);
   ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
@@ -940,8 +971,8 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart) {
             node_id1.Binary());
 
   // Second incarnation on a *different* node.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  fake_actor_scheduler_->actors.clear();
   auto address2 = RandomAddress();
   auto node_id2 = NodeID::FromBinary(address2.node_id());
   auto worker_id2 = WorkerID::FromBinary(address2.worker_id());
@@ -954,8 +985,10 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart) {
 
   // Kill node2 → second entry appended, in order. The prior entry must
   // still carry the *original* node_id, not the current actor's node_id.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id2));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id2);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id2);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
   ASSERT_EQ(actor->GetActorTableData().previous_incarnations_size(), 2);
   ASSERT_EQ(actor->GetActorTableData().previous_incarnations(0).worker_id(),
@@ -997,9 +1030,9 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsBoundedByLimit) {
         finished_actors.emplace_back(result_actor);
       }));
 
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Drive 3 restarts. After each, verify the list never exceeds the limit
   // and retains the newest entries.
@@ -1017,12 +1050,14 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsBoundedByLimit) {
     }
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
-    EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_ids.back()));
+    fake_actor_scheduler_->cancel_on_node_calls.clear();
     OnNodeDead(node_ids.back());
+    ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+    ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_ids.back());
     ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
-    ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-    mock_actor_scheduler_->actors.clear();
+    ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+    fake_actor_scheduler_->actors.clear();
   }
 
   // After 3 restarts with a cap of 2, expect only indices [1] and [2];
@@ -1066,9 +1101,9 @@ TEST_F(GcsActorManagerTest, TestPreviousIncarnationsIdempotentOnRetriedRestart) 
         finished_actors.emplace_back(result_actor);
       }));
 
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   auto address = RandomAddress();
   auto node_id = NodeID::FromBinary(address.node_id());
@@ -1121,9 +1156,9 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
       }));
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
   const auto owner_node_id = actor->GetOwnerNodeID();
 
   // Check that the actor is in state `ALIVE`.
@@ -1135,8 +1170,10 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Remove the owner's node.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(owner_node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), owner_node_id);
   // The child actor should be marked as dead.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());
@@ -1148,10 +1185,12 @@ TEST_F(GcsActorManagerTest, TestActorRestartWhenOwnerDead) {
 
   // Remove the actor's node and check that the actor is not restarted, since
   // its owner has died.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
-  ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
+  ASSERT_TRUE(fake_actor_scheduler_->actors.empty());
 }
 
 TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
@@ -1173,9 +1212,9 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
       }));
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
   const auto owner_node_id = actor->GetOwnerNodeID();
 
   // Check that the actor is in state `ALIVE`.
@@ -1185,8 +1224,10 @@ TEST_F(GcsActorManagerTest, TestDetachedActorRestartWhenCreatorDead) {
   ASSERT_EQ(finished_actors.size(), 1);
 
   // Remove the owner's node.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(owner_node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), owner_node_id);
   // The child actor should not be marked as dead.
   ASSERT_TRUE(raylet_client_->killed_actors.empty());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
@@ -1296,8 +1337,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionWorkerFailure) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -1370,8 +1411,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -1381,8 +1422,10 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNodeFailure) {
   io_service_.run_one();
 
   // Remove node and then check that the actor is dead.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());
   ASSERT_TRUE(absl::StrContains(
@@ -1427,8 +1470,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -1475,9 +1518,9 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
       }));
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.clear();
 
   // Simulate the reply of WaitForActorRefDeleted request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
@@ -1512,9 +1555,9 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
       }));
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
   const auto owner_node_id = actor->GetOwnerNodeID();
   const auto owner_worker_id = actor->GetOwnerID();
 
@@ -1527,9 +1570,12 @@ TEST_F(GcsActorManagerTest, TestRaceConditionCancelLease) {
   actor->UpdateAddress(address);
   const auto &actor_id = actor->GetActorID();
   // LeaseID is randomly generated, so we can't check for a specific lease ID.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnLeasing(node_id, actor_id, _));
+  fake_actor_scheduler_->cancel_on_leasing_calls.clear();
   gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
   io_service_.run_one();
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_leasing_calls.size(), 1);
+  ASSERT_EQ(std::get<0>(fake_actor_scheduler_->cancel_on_leasing_calls[0]), node_id);
+  ASSERT_EQ(std::get<1>(fake_actor_scheduler_->cancel_on_leasing_calls[0]), actor_id);
   ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_died_error_context());
   ASSERT_TRUE(absl::StrContains(
       actor->GetActorTableData().death_cause().actor_died_error_context().error_message(),
@@ -1542,7 +1588,7 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
   // Make sure the actor state is `DEPENDENCIES_UNREADY`.
   ASSERT_EQ(registered_actor->GetState(), rpc::ActorTableData::DEPENDENCIES_UNREADY);
   // Make sure the actor has not been scheduled yet.
-  ASSERT_TRUE(mock_actor_scheduler_->actors.empty());
+  ASSERT_TRUE(fake_actor_scheduler_->actors.empty());
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   rpc::CreateActorRequest request;
@@ -1556,9 +1602,9 @@ TEST_F(GcsActorManagerTest, TestRegisterActor) {
         finished_actors.emplace_back(result_actor);
       }));
   // Make sure the actor is scheduling.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
   // Make sure the actor state is `PENDING`.
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
 
@@ -1681,8 +1727,8 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
                          const Status &) {
         finished_actors.emplace_back(result_actor);
       }));
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   auto address = RandomAddress();
   actor->UpdateAddress(address);
@@ -1697,10 +1743,13 @@ TEST_F(GcsActorManagerTest, TestOwnerAndChildDiedAtTheSameTimeRaceCondition) {
   const auto actor_id = actor->GetActorID();
   // Make worker & owner fail at the same time, but owner's failure comes first.
   gcs_actor_manager_->OnWorkerDead(owner_node_id, owner_worker_id);
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnWorker(child_node_id, child_worker_id))
-      .WillOnce(Return(actor_id));
+  fake_actor_scheduler_->cancel_on_worker_return = actor_id;
+  fake_actor_scheduler_->cancel_on_worker_calls.clear();
   gcs_actor_manager_->OnWorkerDead(child_node_id, child_worker_id);
   io_service_.run_one();
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_worker_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_worker_calls[0].first, child_node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_worker_calls[0].second, child_worker_id);
 }
 
 TEST_F(GcsActorManagerTest, TestRayNamespace) {
@@ -1797,8 +1846,8 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
                          const Status &) { finished_actors.emplace_back(result_actor); });
 
   ASSERT_TRUE(create_status.ok());
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   actor->UpdateAddress(RandomAddress());
@@ -1929,9 +1978,9 @@ TEST_F(GcsActorManagerTest, TestKillActorWhenActorIsCreating) {
   RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Make sure actor in the phase of creating, that is the worker id is not nil and the
   // actor state is not alive yet.
@@ -1987,9 +2036,9 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
                         const Status &) { created_actors.emplace_back(result_actor); }));
 
   ASSERT_EQ(created_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -2001,14 +2050,16 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::ALIVE);
 
   // Remove node and then check that the actor is being restarted.
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
   fake_ray_event_recorder_->FlushBuffer();
 
   // Add node and check that the actor is restarted.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  fake_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
   auto node_id2 = NodeID::FromRandom();
   address.set_node_id(node_id2.Binary());
@@ -2091,8 +2142,8 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
   ASSERT_TRUE(found_lineage_restart_event);
 
   // Add node and check that the actor is restarted.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  fake_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
   auto node_id3 = NodeID::FromRandom();
   address.set_node_id(node_id3.Binary());
@@ -2149,9 +2200,9 @@ TEST_F(GcsActorManagerTest, TestRestartPermanentlyDeadActorForLineageReconstruct
                         const Status &) { created_actors.emplace_back(result_actor); }));
 
   ASSERT_EQ(created_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -2163,8 +2214,10 @@ TEST_F(GcsActorManagerTest, TestRestartPermanentlyDeadActorForLineageReconstruct
 
   // Remove owner node and then check that the actor is dead.
   const auto owner_node_id = actor->GetOwnerNodeID();
-  EXPECT_CALL(*mock_actor_scheduler_, CancelOnNode(owner_node_id));
+  fake_actor_scheduler_->cancel_on_node_calls.clear();
   OnNodeDead(owner_node_id);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.size(), 1);
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_node_calls.back(), owner_node_id);
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
 
   // Restart on an invalid or permanently dead actor should fail.
@@ -2205,9 +2258,9 @@ TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstructio
                         const Status &) { created_actors.emplace_back(result_actor); }));
 
   ASSERT_EQ(created_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   auto address = RandomAddress();
@@ -2244,8 +2297,8 @@ TEST_F(GcsActorManagerTest, TestIdempotencyOfRestartActorForLineageReconstructio
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::RESTARTING);
 
   // Add node and check that the actor is restarted.
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  mock_actor_scheduler_->actors.clear();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  fake_actor_scheduler_->actors.clear();
   ASSERT_EQ(created_actors.size(), 1);
   auto node_id = NodeID::FromRandom();
   address.set_node_id(node_id.Binary());
@@ -2293,9 +2346,9 @@ TEST_F(GcsActorManagerTest, TestDestroyActorWhenActorIsCreating) {
   RAY_CHECK_OK(status);
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Make sure actor in the phase of creating, that is the worker id is not nil and the
   // actor state is not alive yet.
@@ -2345,10 +2398,10 @@ TEST_F(GcsActorManagerTest, TestDestroyWhileRegistering) {
   rpc::KillActorViaGcsReply kill_reply;
   gcs_actor_manager_->HandleKillActorViaGcs(
       kill_request, &kill_reply, [](auto, auto, auto) {});
-  // Run all kv operations and callbacks
-  for (int i = 0; i < 5; i++) {
-    io_service_.run_one();
-  }
+  // Run all kv operations and callbacks. FakeInternalKV actually posts its
+  // callbacks (the previous gmock mock silently dropped them), so drain the
+  // io_context fully instead of pumping a fixed number of handlers.
+  drain_io_context();
   ASSERT_EQ(register_reply.status().code(),
             static_cast<int>(StatusCode::SchedulingCancelled));
   ASSERT_EQ(kill_reply.status().code(), static_cast<int>(StatusCode::OK));
@@ -2399,9 +2452,9 @@ TEST_F(GcsActorManagerTest, TestNodeFailureDestroysAllOwnedActors) {
         [](std::shared_ptr<gcs::GcsActor>, const rpc::PushTaskReply &, const Status &) {
         }));
 
-    ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-    std::shared_ptr<gcs::GcsActor> scheduled_actor = mock_actor_scheduler_->actors.back();
-    mock_actor_scheduler_->actors.pop_back();
+    ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+    std::shared_ptr<gcs::GcsActor> scheduled_actor = fake_actor_scheduler_->actors.back();
+    fake_actor_scheduler_->actors.pop_back();
 
     // Make the actor alive on a different node (not the owner's node)
     rpc::Address actor_address = RandomAddress();
@@ -2457,9 +2510,9 @@ TEST_F(GcsActorManagerTest, TestRestartPreemptedActor) {
                                          const Status &) {});
   RAY_CHECK_OK(status);
 
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Make the actor alive on a specific node
   auto address = RandomAddress();
@@ -2692,10 +2745,10 @@ TEST_F(GcsActorManagerTest, TestRegisterNamedActorOnDeletedActorRefCreatesNewAct
   gcs_actor_manager_->HandleCreateActor(
       create_request, &create_reply, send_reply_callback);
 
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1)
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1)
       << "Failed to schedule the be to created actor. Was the actor created correctly?";
-  std::shared_ptr<gcs::GcsActor> new_actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  std::shared_ptr<gcs::GcsActor> new_actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Mock new actor connecting to the gcs manager
   rpc::Address new_address = RandomAddress();

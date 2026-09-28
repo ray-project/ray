@@ -15,6 +15,8 @@
 #pragma once
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/pubsub/publisher_interface.h"
 
@@ -30,10 +32,14 @@ class FakePublisher : public PublisherInterface {
     return StatusT::OK();
   }
 
-  void Publish(rpc::PubMessage pub_message) override {}
+  void Publish(rpc::PubMessage pub_message) override {
+    publish_calls.push_back(std::move(pub_message));
+  }
 
   void PublishFailure(const rpc::ChannelType channel_type,
-                      const std::string &key_id) override {}
+                      const std::string &key_id) override {
+    publish_failure_calls.emplace_back(channel_type, key_id);
+  }
 
   void ConnectToSubscriber(
       const rpc::PubsubLongPollingRequest &request,
@@ -48,6 +54,10 @@ class FakePublisher : public PublisherInterface {
   void UnregisterSubscriber(const UniqueID &subscriber_id) override {}
 
   std::string DebugString() const override { return "FakePublisher"; }
+
+  // Recorded calls (for plain-gtest assertions replacing gmock expectations).
+  std::vector<rpc::PubMessage> publish_calls;
+  std::vector<std::pair<rpc::ChannelType, std::string>> publish_failure_calls;
 };
 
 }  // namespace pubsub

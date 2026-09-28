@@ -1,4 +1,4 @@
-// Copyright  The Ray Authors.
+// Copyright The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,68 +14,26 @@
 
 #pragma once
 
-#include <gmock/gmock.h>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/gcs/gcs_kv_manager.h"
 
 namespace ray {
 namespace gcs {
 
-class MockInternalKVInterface : public InternalKVInterface {
+// Hand-written fake for InternalKVInterface that stores keys and values in an
+// in-memory map. Supports all operations: Get, MultiGet, Put, Del, Exists, Keys.
+// Warning: Naively prepends the namespace to the key, so e.g. the
+// (namespace, key) pairs ("a", "bc") and ("ab", "c") will collide which is a bug.
+class FakeInternalKV : public InternalKVInterface {
  public:
-  MockInternalKVInterface() {}
+  FakeInternalKV() = default;
 
-  MOCK_METHOD(void,
-              Get,
-              (const std::string &ns,
-               const std::string &key,
-               Postable<void(std::optional<std::string>)> callback),
-              (override));
-  MOCK_METHOD(void,
-              MultiGet,
-              (const std::string &ns,
-               const std::vector<std::string> &keys,
-               Postable<void(absl::flat_hash_map<std::string, std::string>)> callback),
-              (override));
-  MOCK_METHOD(void,
-              Put,
-              (const std::string &ns,
-               const std::string &key,
-               std::string value,
-               bool overwrite,
-               Postable<void(bool)> callback),
-              (override));
-  MOCK_METHOD(void,
-              Del,
-              (const std::string &ns,
-               const std::string &key,
-               bool del_by_prefix,
-               Postable<void(int64_t)> callback),
-              (override));
-  MOCK_METHOD(void,
-              Exists,
-              (const std::string &ns,
-               const std::string &key,
-               Postable<void(bool)> callback),
-              (override));
-  MOCK_METHOD(void,
-              Keys,
-              (const std::string &ns,
-               const std::string &prefix,
-               Postable<void(std::vector<std::string>)> callback),
-              (override));
-};
-
-// Fake internal KV interface that stores keys and values in a C++ map.
-// Supports all operations: Get, MultiGet, Put, Del, Exists, Keys.
-// Warning: Naively prepends the namespace to the key, so e.g.
-// the (namespace, key) pairs ("a", "bc") and ("ab", "c") will collide which is a bug.
-
-class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
- public:
-  FakeInternalKVInterface() = default;
-
-  // The C++ map.
+  // The in-memory store.
   std::unordered_map<std::string, std::string> kv_store_;
 
   void Get(const std::string &ns,
@@ -84,9 +42,9 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
     std::string full_key = ns + key;
     auto it = kv_store_.find(full_key);
     if (it == kv_store_.end()) {
-      std::move(callback).Post("FakeInternalKVInterface.Get.notfound", std::nullopt);
+      std::move(callback).Post("FakeInternalKV.Get.notfound", std::nullopt);
     } else {
-      std::move(callback).Post("FakeInternalKVInterface.Get.found", it->second);
+      std::move(callback).Post("FakeInternalKV.Get.found", it->second);
     }
   }
 
@@ -102,7 +60,7 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
         result[key] = it->second;
       }
     }
-    std::move(callback).Post("FakeInternalKVInterface.MultiGet.result", result);
+    std::move(callback).Post("FakeInternalKV.MultiGet.result", result);
   }
 
   void Put(const std::string &ns,
@@ -112,10 +70,10 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
            Postable<void(bool)> callback) override {
     std::string full_key = ns + key;
     if (kv_store_.find(full_key) != kv_store_.end() && !overwrite) {
-      std::move(callback).Post("FakeInternalKVInterface.Put.false", false);
+      std::move(callback).Post("FakeInternalKV.Put.false", false);
     } else {
       kv_store_[full_key] = value;
-      std::move(callback).Post("FakeInternalKVInterface.Put.true", true);
+      std::move(callback).Post("FakeInternalKV.Put.true", true);
     }
   }
 
@@ -125,10 +83,9 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
            Postable<void(int64_t)> callback) override {
     int64_t deleted_count = 0;
     if (del_by_prefix) {
-      // Delete all keys with the given prefix
       std::string prefix = ns + key;
       for (auto it = kv_store_.begin(); it != kv_store_.end();) {
-        if (it->first.find(prefix) == 0) {  // starts with prefix
+        if (it->first.find(prefix) == 0) {
           it = kv_store_.erase(it);
           ++deleted_count;
         } else {
@@ -136,7 +93,6 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
         }
       }
     } else {
-      // Delete exact key
       std::string full_key = ns + key;
       auto it = kv_store_.find(full_key);
       if (it != kv_store_.end()) {
@@ -144,7 +100,7 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
         deleted_count = 1;
       }
     }
-    std::move(callback).Post("FakeInternalKVInterface.Del.result", deleted_count);
+    std::move(callback).Post("FakeInternalKV.Del.result", deleted_count);
   }
 
   void Exists(const std::string &ns,
@@ -152,7 +108,7 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
               Postable<void(bool)> callback) override {
     std::string full_key = ns + key;
     bool exists = kv_store_.find(full_key) != kv_store_.end();
-    std::move(callback).Post("FakeInternalKVInterface.Exists.result", exists);
+    std::move(callback).Post("FakeInternalKV.Exists.result", exists);
   }
 
   void Keys(const std::string &ns,
@@ -162,11 +118,10 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
     std::string search_prefix = ns + prefix;
     for (const auto &pair : kv_store_) {
       if (pair.first.find(search_prefix) == 0) {
-        // Extract the key part (remove namespace)
         result.push_back(pair.first.substr(ns.length()));
       }
     }
-    std::move(callback).Post("FakeInternalKVInterface.Keys.result", result);
+    std::move(callback).Post("FakeInternalKV.Keys.result", result);
   }
 };
 

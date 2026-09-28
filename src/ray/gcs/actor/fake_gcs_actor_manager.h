@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 
 #pragma once
 
-#include <gmock/gmock.h>
+#include <memory>
+#include <string>
 
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
@@ -26,17 +27,19 @@
 namespace ray {
 namespace gcs {
 
-class MockGcsActorManager : public GcsActorManager {
+// Hand-written fake for GcsActorManager. Subclasses the concrete manager with a
+// null scheduler/storage/publisher and fake dependencies, and overrides the RPC
+// handlers with no-op bodies (replaces gmock EXPECT_CALL usage).
+class FakeGcsActorManager : public GcsActorManager {
  public:
-  MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
+  FakeGcsActorManager(RuntimeEnvManager &runtime_env_manager,
                       GCSFunctionManager &function_manager,
                       rpc::RayletClientPool &raylet_client_pool,
                       rpc::CoreWorkerClientPool &worker_client_pool)
       : GcsActorManager(
-            /*scheduler=*/
-            nullptr,
+            /*scheduler=*/nullptr,
             /*gcs_table_storage=*/nullptr,
-            /*io_context=*/mock_io_context_do_not_use_,
+            /*io_context=*/fake_io_context_,
             /*gcs_publisher=*/nullptr,
             runtime_env_manager,
             function_manager,
@@ -56,51 +59,30 @@ class MockGcsActorManager : public GcsActorManager {
     return holder.get();
   }
 
-  MOCK_METHOD(void,
-              HandleRegisterActor,
-              (rpc::RegisterActorRequest request,
-               rpc::RegisterActorReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleCreateActor,
-              (rpc::CreateActorRequest request,
-               rpc::CreateActorReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleGetActorInfo,
-              (rpc::GetActorInfoRequest request,
-               rpc::GetActorInfoReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleGetNamedActorInfo,
-              (rpc::GetNamedActorInfoRequest request,
-               rpc::GetNamedActorInfoReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleListNamedActors,
-              (rpc::ListNamedActorsRequest request,
-               rpc::ListNamedActorsReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleGetAllActorInfo,
-              (rpc::GetAllActorInfoRequest request,
-               rpc::GetAllActorInfoReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
-  MOCK_METHOD(void,
-              HandleKillActorViaGcs,
-              (rpc::KillActorViaGcsRequest request,
-               rpc::KillActorViaGcsReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
+  void HandleRegisterActor(rpc::RegisterActorRequest request,
+                           rpc::RegisterActorReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleCreateActor(rpc::CreateActorRequest request,
+                         rpc::CreateActorReply *reply,
+                         rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleGetActorInfo(rpc::GetActorInfoRequest request,
+                          rpc::GetActorInfoReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleGetNamedActorInfo(rpc::GetNamedActorInfoRequest request,
+                               rpc::GetNamedActorInfoReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleListNamedActors(rpc::ListNamedActorsRequest request,
+                             rpc::ListNamedActorsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
+                             rpc::GetAllActorInfoReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {}
+  void HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
+                             rpc::KillActorViaGcsReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override {}
 
   Clock clock_;
-  instrumented_io_context mock_io_context_do_not_use_;
+  instrumented_io_context fake_io_context_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   observability::FakeGauge fake_actor_by_state_gauge_;
   observability::FakeGauge fake_gcs_actor_by_state_gauge_;

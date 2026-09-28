@@ -18,18 +18,38 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "mock/ray/gcs/gcs_kv_manager.h"
-#include "mock/ray/pubsub/publisher.h"
-#include "mock/ray/rpc/worker/core_worker_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
+#include "ray/core_worker_rpc_client/fake_core_worker_client.h"
+#include "ray/gcs/fake_gcs_kv_manager.h"
 #include "ray/gcs/gcs_kv_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/util/clock.h"
 
 namespace ray {
+
+// Fake core worker client whose NumPendingTasks reply reports a configurable
+// number of running tasks (replaces the gmock-based mock).
+class FakeCoreWorkerClientConfigurableRunningTasks : public rpc::FakeCoreWorkerClient {
+ public:
+  explicit FakeCoreWorkerClientConfigurableRunningTasks(int num_running_tasks)
+      : num_running_tasks_(num_running_tasks) {}
+
+  void NumPendingTasks(std::unique_ptr<rpc::NumPendingTasksRequest> request,
+                       const rpc::ClientCallback<rpc::NumPendingTasksReply> &callback,
+                       int64_t timeout_ms = -1) override {
+    rpc::NumPendingTasksReply reply;
+    reply.set_num_pending_tasks(num_running_tasks_);
+    callback(Status::OK(), std::move(reply));
+  }
+
+ private:
+  int num_running_tasks_;
+};
 
 class GcsJobManagerTest : public ::testing::Test {
  public:
@@ -43,20 +63,20 @@ class GcsJobManagerTest : public ::testing::Test {
     });
     promise.get_future().get();
 
-    gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
-    kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>();
+    kv_ = std::make_unique<gcs::FakeInternalKV>();
+    fake_kv_ = std::make_unique<gcs::FakeInternalKV>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
 
-    // Mock client pool which abuses the "address" argument to return a
+    // Fake client pool which abuses the "address" argument to return a
     // CoreWorkerClient whose number of running tasks equal to the address port. This is
     // just for testing purposes.
     worker_client_pool_ =
         std::make_unique<rpc::CoreWorkerClientPool>([](const rpc::Address &address) {
-          return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
+          return std::make_shared<FakeCoreWorkerClientConfigurableRunningTasks>(
               address.port());
         });
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
@@ -88,8 +108,8 @@ class GcsJobManagerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
-  std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
+  std::unique_ptr<gcs::FakeInternalKV> kv_;
+  std::unique_ptr<gcs::FakeInternalKV> fake_kv_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};

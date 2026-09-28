@@ -159,7 +159,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
 
 /// A mock manager that manages all test buffers. This mocks
 /// that memory pressure is able to be awared.
-class MockBufferManager {
+class FakeBufferManager {
  public:
   int64_t GetBuferPressureInBytes() const { return buffer_pressure_in_bytes_; }
 
@@ -173,7 +173,7 @@ class MockBufferManager {
 
 class TestBuffer : public Buffer {
  public:
-  explicit TestBuffer(MockBufferManager &manager, std::string data)
+  explicit TestBuffer(FakeBufferManager &manager, std::string data)
       : manager_(manager), data_(std::move(data)) {}
 
   uint8_t *Data() const override {
@@ -186,23 +186,23 @@ class TestBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  const MockBufferManager &GetBufferManager() const { return manager_; }
+  const FakeBufferManager &GetBufferManager() const { return manager_; }
 
  private:
-  MockBufferManager &manager_;
+  FakeBufferManager &manager_;
   std::string data_;
 };
 
 TEST(TestMemoryStore, TestObjectAllocator) {
-  MockBufferManager mock_buffer_manager;
-  auto my_object_allocator = [&mock_buffer_manager](const ray::RayObject &object,
+  FakeBufferManager fake_buffer_manager;
+  auto my_object_allocator = [&fake_buffer_manager](const ray::RayObject &object,
                                                     const ObjectID &object_id) {
     auto buf = object.GetData();
-    mock_buffer_manager.AcquireMemory(buf->Size());
-    auto data_factory = [&mock_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
+    fake_buffer_manager.AcquireMemory(buf->Size());
+    auto data_factory = [&fake_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
       auto inner_buf = object.GetData();
       std::string data(reinterpret_cast<char *>(inner_buf->Data()), inner_buf->Size());
-      return std::make_shared<TestBuffer>(mock_buffer_manager, data);
+      return std::make_shared<TestBuffer>(fake_buffer_manager, data);
     };
 
     return std::make_shared<ray::RayObject>(object.GetMetadata(),
@@ -230,7 +230,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
         std::make_shared<ray::RayObject>(hello_buffer, nullptr, nested_refs, true);
     memory_store->Put(*hello_object, ObjectID::FromRandom(), /*has_reference=*/true);
   }
-  ASSERT_EQ(max_rounds * hello.size(), mock_buffer_manager.GetBuferPressureInBytes());
+  ASSERT_EQ(max_rounds * hello.size(), fake_buffer_manager.GetBuferPressureInBytes());
 }
 
 class TestMemoryStoreWait : public ::testing::Test {
