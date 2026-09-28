@@ -71,13 +71,3 @@ file ends with the `if __name__ == "__main__": sys.exit(pytest.main(...))`
 block or the `pytest_format` lint fails. Before pushing, run `ruff`, `black`
 and `pydoclint` at the versions pinned in `.pre-commit-config.yaml`, and
 `pyrefly` via `ci/lint/pyrefly-check.sh`.
-
-## Conventions reviewers hold you to
-
-- Pass arguments by keyword at every hook call; an override may take
-  `**kwargs`.
-- Do not use "batch" in a name; in Ray Data it already means two other things.
-- Name a value for exactly what it is (`unprocessed_rg_ids`, not
-  `all_rg_indices`; `rows_before`, not `offset`).
-- A `pa.Table` deserialized from external input must pass through
-  `raise_on_pickle_object_columns` before it is yielded.
