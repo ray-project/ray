@@ -11,7 +11,7 @@ import logging
 import math
 from enum import Enum
 from itertools import chain
-from typing import Any, NamedTuple, Optional, Tuple, Union
+from typing import Any, Iterable, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -601,16 +601,13 @@ def _try_prepare_variable_tensor_take(
         )
     chunks, starts = [], []
     row_start, largest_row = 0, 0
-    smallest_row = source_values
     for storage in storages:
         chunk = _prepare_variable_chunk(storage, tensor_type.ndim, value_dtype)
         if chunk is None:
             return _log_take_fallback(
                 _TakeFallbackReason.UNSAFE_CHUNK_STORAGE, column=column
             )
-        row_lengths = np.diff(chunk.offsets)
-        largest_row = max(largest_row, int(np.max(row_lengths)))
-        smallest_row = min(smallest_row, int(np.min(row_lengths)))
+        largest_row = max(largest_row, int(np.max(np.diff(chunk.offsets))))
         chunks.append(chunk)
         starts.append(row_start)
         row_start += len(storage)
@@ -626,7 +623,10 @@ def _try_prepare_variable_tensor_take(
     if not _passes_variable_oversampling_gate(
         source_bytes=source_bytes,
         max_output_rows=max_output_rows,
-        min_row_bytes=smallest_row * value_dtype.itemsize,
+        chunk_min_row_bytes=(
+            int(np.min(np.diff(chunk.offsets))) * value_dtype.itemsize
+            for chunk in chunks
+        ),
     ):
         return _log_take_fallback(
             _TakeFallbackReason.BELOW_SIZE_THRESHOLD, column=column
@@ -660,17 +660,17 @@ def _passes_variable_size_gates(
 
 
 def _passes_variable_oversampling_gate(
-    *, source_bytes: int, max_output_rows: int, min_row_bytes: int
+    *, source_bytes: int, max_output_rows: int, chunk_min_row_bytes: Iterable[int]
 ) -> bool:
     """Cover repeated-row cost with avoided source copying or a minimum row size.
 
     Repeated indices can select only tiny rows despite a large source average.
     Ordinary shuffle generations satisfy the source budget because their output
-    row bound never exceeds the source row count.
+    row bound never exceeds the source row count. Consume chunk minima lazily:
+    when that budget suffices, no additional row-offset scan is needed.
     """
-    return (
-        source_bytes >= max_output_rows * _MIN_VARIABLE_ROW_BYTES
-        or min_row_bytes >= _MIN_VARIABLE_ROW_BYTES
+    return source_bytes >= max_output_rows * _MIN_VARIABLE_ROW_BYTES or all(
+        row_bytes >= _MIN_VARIABLE_ROW_BYTES for row_bytes in chunk_min_row_bytes
     )
 
 

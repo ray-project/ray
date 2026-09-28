@@ -317,27 +317,37 @@ def test_variable_take_size_gate_boundaries(
 
 
 @pytest.mark.parametrize(
-    "source_bytes,output_rows,min_row_bytes,eligible",
+    "source_bytes,output_rows,chunk_min_row_bytes,eligible",
     [
-        (8 * 1024**2, 1024, 0, True),  # Source budget exactly covers the request.
-        (8 * 1024**2 - 1, 1024, 0, False),
-        (8 * 1024**2, 1025, 8191, False),  # Neither budget covers oversampling.
-        (8 * 1024**2, 1025, 8192, True),  # Minimum row size independently suffices.
-        (8 * 1024**2, 0, 0, True),
-        (2**63, 2**50 + 1, 0, False),  # No fixed-width arithmetic overflow.
+        (8 * 1024**2, 1024, (0, 8192), True),  # Source budget covers the request.
+        (8 * 1024**2 - 1, 1024, (0, 8192), False),
+        (8 * 1024**2, 1025, (8192, 8191), False),  # A single small row disqualifies.
+        (8 * 1024**2, 1025, (8192, 8192), True),  # Minimum row size suffices.
+        (8 * 1024**2, 0, (0, 8192), True),
+        (2**63, 2**50 + 1, (0, 8192), False),  # No fixed-width arithmetic overflow.
     ],
 )
 def test_variable_oversampling_gate_boundaries(
-    source_bytes, output_rows, min_row_bytes, eligible
+    source_bytes, output_rows, chunk_min_row_bytes, eligible
 ):
     assert (
         take_module._passes_variable_oversampling_gate(
             source_bytes=source_bytes,
             max_output_rows=output_rows,
-            min_row_bytes=min_row_bytes,
+            chunk_min_row_bytes=iter(chunk_min_row_bytes),
         )
         == eligible
     )
+
+
+def test_variable_oversampling_gate_skips_unneeded_offset_scans():
+    chunk_minima = iter((0, 8192))
+    assert take_module._passes_variable_oversampling_gate(
+        source_bytes=8 * 1024**2,
+        max_output_rows=1024,
+        chunk_min_row_bytes=chunk_minima,
+    )
+    assert next(chunk_minima) == 0  # The source budget leaves the iterator untouched.
 
 
 def test_variable_take_counts_empty_chunks_in_cost_gate():
