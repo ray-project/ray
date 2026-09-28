@@ -363,8 +363,7 @@ def test_schema_repr(ray_start_regular_shared):
 
 
 def _check_none_computed(ds):
-    # In streaming executor, ds.take() will not invoke partial execution
-    # in LazyBlocklist.
+    # ds.take() should not leave the Dataset with computed output.
     assert not ds._has_computed_output()
 
 

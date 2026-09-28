@@ -39,10 +39,7 @@ TEAM_API_CONFIGS = {
         # (reachable from api.rst's toctree).
         "head_modules": {"ray.data", "ray.data.grouped_data", "ray.data.llm"},
         "head_doc_file": "doc/source/data/api/api.md",
-        "white_list_apis": {
-            # special case where we cannot deprecate although we want to
-            "ray.data.random_access_dataset.RandomAccessDataset",
-        },
+        "white_list_apis": set(),
         "tracked_doc_debt": {
             # not sure what to do
             "ray.data.dataset.MaterializedDataset",
@@ -50,6 +47,7 @@ TEAM_API_CONFIGS = {
             # deprecated-only page, then drop these.
             "ray.data.aggregate.AggregateFn",
             "ray.data.dataset.Dataset.iter_tf_batches",
+            "ray.data.dataset.Dataset.to_random_access_dataset",
             "ray.data.read_api.read_unity_catalog",
             # Private-named accessor classes documented under expressions.rst
             # "Expression namespaces". Document the public accessor surface, or

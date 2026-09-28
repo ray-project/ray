@@ -3,12 +3,12 @@ import sys
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import requests
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.dashboard.runtime_env_redaction import (
@@ -270,7 +270,9 @@ def _actor_with_secret_env_var():
 
 
 def _runtime_envs(url, headers):
-    resp = requests.get(f"{url}/api/v0/runtime_envs", headers=headers, timeout=30)
+    resp = request_with_auth_token(
+        "GET", f"{url}/api/v0/runtime_envs", headers=headers, timeout=30
+    )
     resp.raise_for_status()
     return resp.text
 
@@ -306,7 +308,9 @@ def test_jobs_endpoint_redacts_only_for_browsers(dashboard_url):
     """`/api/jobs/` is what the dashboard UI renders on the job detail page."""
 
     def get_jobs(headers):
-        resp = requests.get(f"{dashboard_url}/api/jobs/", headers=headers, timeout=30)
+        resp = request_with_auth_token(
+            "GET", f"{dashboard_url}/api/jobs/", headers=headers, timeout=30
+        )
         resp.raise_for_status()
         return resp.json()
 
@@ -327,8 +331,8 @@ def test_jobs_endpoint_redacts_only_for_browsers(dashboard_url):
         if job.get("runtime_env", {}).get("env_vars", {}).get("MY_SECRET")
     )
     for headers in BROWSER_HEADERS:
-        resp = requests.get(
-            f"{dashboard_url}/api/jobs/{job_id}", headers=headers, timeout=30
+        resp = request_with_auth_token(
+            "GET", f"{dashboard_url}/api/jobs/{job_id}", headers=headers, timeout=30
         )
         resp.raise_for_status()
         assert SECRET not in resp.text, f"secret leaked for headers {headers}"
@@ -350,8 +354,11 @@ def test_serve_applications_endpoint_redacts_only_for_browsers(dashboard_url):
     try:
 
         def get_applications(headers):
-            resp = requests.get(
-                f"{dashboard_url}/api/serve/applications/", headers=headers, timeout=45
+            resp = request_with_auth_token(
+                "GET",
+                f"{dashboard_url}/api/serve/applications/",
+                headers=headers,
+                timeout=45,
             )
             resp.raise_for_status()
             return resp.text
@@ -370,7 +377,9 @@ def test_serve_applications_endpoint_redacts_only_for_browsers(dashboard_url):
 
 
 def test_runtime_env_redaction_endpoint_reports_flag(dashboard_url):
-    resp = requests.get(f"{dashboard_url}/api/v0/runtime_env_redaction", timeout=30)
+    resp = request_with_auth_token(
+        "GET", f"{dashboard_url}/api/v0/runtime_env_redaction", timeout=30
+    )
     resp.raise_for_status()
     assert resp.json()["data"]["redactionEnabled"] is True
 
@@ -386,7 +395,9 @@ def redaction_disabled(monkeypatch):
 def test_flag_off_serves_plaintext_to_browsers(redaction_disabled, dashboard_url):
     handle = _actor_with_secret_env_var()  # noqa: F841 -- keep the actor alive
 
-    resp = requests.get(f"{dashboard_url}/api/v0/runtime_env_redaction", timeout=30)
+    resp = request_with_auth_token(
+        "GET", f"{dashboard_url}/api/v0/runtime_env_redaction", timeout=30
+    )
     resp.raise_for_status()
     assert resp.json()["data"]["redactionEnabled"] is False
 
