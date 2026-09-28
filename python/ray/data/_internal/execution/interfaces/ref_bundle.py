@@ -108,7 +108,7 @@ class RefBundle:
     # a tuple of (data_task_id, plan_id) if the consuming task is a reconstruction task.
     # Otherwise, this is set to None for input bundles of fresh tasks.
     # If this bundle is stamped, the consuming operator skips its bundler and submits the task with
-    # the same logical task ID (given that this is a re-execution).
+    # the same logical task ID (since this is a re-execution).
     # Also, the consuming operator will use this stamp to identify which output blocks of this
     # reconstruction task need to be reused.
     #

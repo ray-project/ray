@@ -709,18 +709,23 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _release_reconstruction_blocks_to_child(
         self, data_task_id: str, plan_id: str, task_index: int
     ) -> None:
-        """Release the reconstruction blocks that are now ready to be consumer by a child reconstruction task.
+        """Release the reconstruction blocks that are now ready to be consumed by a child reconstruction task,
+        as part of a reconstruction plan. Called from the completing parent's task completed callback.
 
-        Called from the completing parent's task-done callback. 
+        We 'release' blocks when the required block inputs for a downstream child task as part of the given plan_id
+        are now ready to be consumed. We do this in the following steps:
+        1. Pop the reconstruction outputs withheld for a particular plan_id
+        2. Merge the popped blocks into a single RefBundle, setting the 'reconstruction stamp' attribute of this bundle
+        3. Add the bundle to the operator's output queue, so the child task can be scheduled.
+
+        A child task is scheduled, and consumes the bundle from the operator's output queue. On discovering that it is a
+        reconstruction task (from the stamp attribute on the bundle), the child task knows the correct task ID to register
+        with and which reconstruction plan it belongs to.
+
         For a downstream reconstruction child task, the parent task that completes last holds the full input
-        set of reconstruction blocks, and can release it to the operator's output queue for the child task to be
-        scheduled and consume.
-
-        The assembled bundle carries the reconstruction child task's data task ID and plan ID as its
-        ``reconstruction_stamp``, because a reconstruction child task must be submitted
-        under its *original* id, and the current reconstruction plan.
+        set of reconstruction blocks, and can release it to the operator's output queue.
         """
-        held = self._reconstruction_outputs.get(plan_id, {})
+        held_blocks = self._reconstruction_outputs.get(plan_id, {})
         for child_task_id, requirements in self._lineage_tracker.get_pending_children(
             data_task_id, plan_id
         ).items():
@@ -734,7 +739,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 for parent_task_id, output_indices in requirements.items()
                 for output_index in output_indices
             ]
-            missing = [slot for slot in slots if slot not in held]
+            missing = [slot for slot in slots if slot not in held_blocks]
             if missing:
                 # Some parent of this child has not re-produced its share yet. Wait:
                 # every parent serving the plan runs this on completion, and a parent's
@@ -749,7 +754,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                     len(missing),
                     missing,
                     sorted(
-                        held,
+                        held_blocks,
                         key=lambda slot: (slot.parent_data_task_id, slot.output_index),
                     ),
                 )
@@ -758,7 +763,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Create a complete RefBundle containing all reconstruction blocks wittheld for a child task,
             # stamp it with the child's data task ID and the current reconstruction plan ID.
             inputs = replace(
-                RefBundle.merge_ref_bundles([held.pop(slot) for slot in slots]),
+                RefBundle.merge_ref_bundles([held_blocks.pop(slot) for slot in slots]),
                 reconstruction_stamp=ReconstructionStamp(
                     data_task_id=child_task_id, plan_id=plan_id
                 ),
@@ -767,7 +772,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._output_queue.add(inputs, key=task_index)
             self._metrics.on_output_queued(inputs)
 
-        if not held:
+        if not held_blocks:
             self._reconstruction_outputs.pop(plan_id, None)
 
     def _submit_data_task(
@@ -964,7 +969,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         assert self._started
         return self._output_queue.has_next()
 
-    def _held_reconstruction_bundles(self) -> Iterator[RefBundle]:
+    def _iter_reconstruction_outputs(self) -> Iterator[RefBundle]:
         """The re-produced outputs withheld for reconstruction children not yet ready."""
         for held in self._reconstruction_outputs.values():
             yield from held.values()
@@ -977,13 +982,13 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # while it holds a child's inputs would leave that child unsubmitted and drop
         # its rows silently.
         return super().internal_output_queue_num_blocks() + sum(
-            len(bundle.blocks) for bundle in self._held_reconstruction_bundles()
+            len(bundle.blocks) for bundle in self._iter_reconstruction_outputs()
         )
 
     @override
     def internal_output_queue_num_bytes(self) -> int:
         return super().internal_output_queue_num_bytes() + sum(
-            bundle.size_bytes() for bundle in self._held_reconstruction_bundles()
+            bundle.size_bytes() for bundle in self._iter_reconstruction_outputs()
         )
 
     @override
