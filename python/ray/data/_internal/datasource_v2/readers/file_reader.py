@@ -41,6 +41,7 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
 
 class FileFormat(str, Enum):
     PARQUET = "parquet"
+    ORC = "orc"
     CSV = "csv"
     FEATHER = "feather"
     JSON = "json"
@@ -52,10 +53,9 @@ class FileFormat(str, Enum):
 class FileReader(Reader[FileManifest]):
     """Reader for file-based sources.
 
-    This reader uses PyArrow's Dataset API which automatically handles:
-    - Column pruning
-    - Filter pushdown (row group pruning)
-    - Batch-level filtering
+    PyArrow's Dataset API handles column pruning and batch-level filtering.
+    Metadata pruning depends on the file format; for example, Parquet can
+    prune row groups while ORC filters are applied after reading.
     """
 
     def __init__(
