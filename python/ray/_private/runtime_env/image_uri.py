@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import shlex
 import tempfile
 from typing import List, Optional
 
@@ -80,7 +81,7 @@ def _modify_context_impl(
         container_driver,
         "run",
         "-v",
-        ray_tmp_dir + ":" + ray_tmp_dir,
+        shlex.quote(f"{ray_tmp_dir}:{ray_tmp_dir}"),
         "--cgroup-manager=cgroupfs",
         "--network=host",
         "--pid=host",
@@ -97,10 +98,14 @@ def _modify_context_impl(
         "--userns=keep-id",
     ]
 
-    # Bind mounts expose the destination path verbatim inside the container, so
-    # this check is intentionally lexical rather than based on host symlinks.
-    if logs_dir is not None and not is_path_within_lexically(logs_dir, ray_tmp_dir):
-        container_command.extend(["-v", f"{logs_dir}:{logs_dir}"])
+    if logs_dir is not None:
+        # Workers receive the physical log path from Node. A symlink below the
+        # temp directory can point outside the mounted tree, so mount its target.
+        logs_dir = os.path.realpath(logs_dir)
+        # Keep the temp mount's literal destination: its host-side realpath may
+        # not be exposed at the same path inside the container.
+        if not is_path_within_lexically(logs_dir, ray_tmp_dir):
+            container_command.extend(["-v", shlex.quote(f"{logs_dir}:{logs_dir}")])
 
     # Environment variables to set in container
     env_vars = dict()

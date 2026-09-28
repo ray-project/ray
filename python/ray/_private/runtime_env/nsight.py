@@ -2,6 +2,7 @@ import asyncio
 import copy
 import logging
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ default_logger = logging.getLogger(__name__)
 # Nsight options used when runtime_env={"_nsight": "default"}
 NSIGHT_DEFAULT_CONFIG = {
     "t": "cuda,cudnn,cublas,nvtx",
-    "o": "'worker_process_%p'",
+    "o": "worker_process_%p",
     "stop-on-exit": "true",
 }
 
@@ -131,6 +132,9 @@ class NsightPlugin(RuntimeEnvPlugin):
                 "nsight profile failed to run with the following "
                 f"error message:\n {error_msg}"
             )
+        # Keep the node-specific output path out of the shared default and
+        # caller's configuration.
+        nsight_config = copy.deepcopy(nsight_config)
         # add set output path to logs dir
         nsight_config["o"] = str(
             Path(self._nsight_dir) / nsight_config.get("o", NSIGHT_DEFAULT_CONFIG["o"])
@@ -147,4 +151,4 @@ class NsightPlugin(RuntimeEnvPlugin):
         logger: Optional[logging.Logger] = default_logger,
     ):
         logger.info("Running nsight profiler")
-        context.py_executable = " ".join(self.nsight_cmd) + " python"
+        context.py_executable = shlex.join(self.nsight_cmd + ["python"])

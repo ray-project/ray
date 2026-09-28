@@ -796,11 +796,18 @@ class Node:
         self._session_dir = os.path.join(self.temp_dir, self._session_name)
         session_symlink = os.path.join(self.temp_dir, ray_constants.SESSION_LATEST)
         self._sockets_dir = os.path.join(self._session_dir, "sockets")
-        default_logs_dir = os.path.normpath(os.path.join(self._session_dir, "logs"))
+        default_logs_dir = os.path.join(self._session_dir, "logs")
         configured_logs_dir = self._ray_params.logs_dir
         if configured_logs_dir is None and node_to_connect_info is not None:
             configured_logs_dir = getattr(node_to_connect_info, "logs_dir", None)
-        self._logs_dir = os.path.normpath(configured_logs_dir or default_logs_dir)
+        # Resolve configured paths before passing them to workers and container
+        # plugins. Lexically collapsing ".." after a symlink can change which
+        # directory the path refers to.
+        self._logs_dir = (
+            os.path.realpath(configured_logs_dir)
+            if configured_logs_dir
+            else default_logs_dir
+        )
         old_logs_dir = os.path.join(self._logs_dir, "old")
         # Create a directory to be used for runtime environment.
         self._runtime_env_dir = os.path.join(
@@ -868,17 +875,28 @@ class Node:
             )
             return
 
+        try:
+            if os.path.samefile(default_logs_dir, self._logs_dir):
+                return
+        except (OSError, ValueError):
+            # The compatibility path usually does not exist yet.
+            pass
+
         try_to_symlink(default_logs_dir, self._logs_dir)
-        if not os.path.islink(default_logs_dir):
-            # try_to_symlink swallows failures, and on platforms without
-            # symlink support this path is all some tools know about.
-            logger.warning(
-                "Failed to create the %s compatibility symlink to %s. Tools "
-                "that read logs from the session directory rather than from "
-                "get_logs_dir_path() will not find this node's logs.",
-                default_logs_dir,
-                self._logs_dir,
-            )
+        try:
+            if os.path.samefile(default_logs_dir, self._logs_dir):
+                return
+        except (OSError, ValueError):
+            pass
+        # try_to_symlink swallows failures, including a failure to replace an
+        # existing link. Verify its target instead of just checking islink().
+        logger.warning(
+            "Failed to create the %s compatibility symlink to %s. Tools "
+            "that read logs from the session directory rather than from "
+            "get_logs_dir_path() will not find this node's logs.",
+            default_logs_dir,
+            self._logs_dir,
+        )
 
     def get_resource_and_label_spec(self):
         """Resolve and return the current ResourceAndLabelSpec for the node."""

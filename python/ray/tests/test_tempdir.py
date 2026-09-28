@@ -116,8 +116,8 @@ def test_custom_logs_dir(ray_start_cluster, request):
     )
     cluster.wait_for_nodes()
 
-    assert head_node.get_logs_dir_path() == head_logs_dir
-    assert worker_node.get_logs_dir_path() == worker_logs_dir
+    assert head_node.get_logs_dir_path() == os.path.realpath(head_logs_dir)
+    assert worker_node.get_logs_dir_path() == os.path.realpath(worker_logs_dir)
     assert head_node.get_runtime_env_dir_path().startswith(head_temp_dir)
     assert worker_node.get_runtime_env_dir_path().startswith(worker_temp_dir)
 
@@ -126,8 +126,8 @@ def test_custom_logs_dir(ray_start_cluster, request):
         node_info.temp_dir: node_info.logs_dir
         for node_info in gcs_client.get_all_node_info().values()
     }
-    assert node_logs_dirs[head_temp_dir] == head_logs_dir
-    assert node_logs_dirs[worker_temp_dir] == worker_logs_dir
+    assert node_logs_dirs[head_temp_dir] == os.path.realpath(head_logs_dir)
+    assert node_logs_dirs[worker_temp_dir] == os.path.realpath(worker_logs_dir)
 
     if sys.platform != "win32":
         for cluster_node, logs_dir in (
@@ -157,7 +157,7 @@ def test_logs_dir_containing_session_dir_skips_symlink(ray_start_cluster, reques
     node = cluster.add_node(num_cpus=1, temp_dir=base_dir, logs_dir=base_dir)
     cluster.wait_for_nodes()
 
-    assert node.get_logs_dir_path() == base_dir
+    assert node.get_logs_dir_path() == os.path.realpath(base_dir)
     # session_dir/logs would resolve to an ancestor of itself, so walking the
     # logs directory recursively would never terminate.
     assert not os.path.exists(os.path.join(node.get_session_dir_path(), "logs"))
