@@ -4076,6 +4076,122 @@ class TestApplicationLevelAutoscaling:
         assert d1_id in decisions
         assert decisions[d1_id] == 3  # Our policy scales to 3
 
+    def _create_two_deployment_app_config(self, has_policy: bool):
+        """App config with two autoscaling deployments, d1 and d2."""
+        autoscaling_config = {
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "initial_replicas": 1,
+        }
+        return self._create_app_config(
+            has_policy=has_policy,
+            deployments=[
+                DeploymentSchema(
+                    name="d1", autoscaling_config=dict(autoscaling_config)
+                ),
+                DeploymentSchema(
+                    name="d2", autoscaling_config=dict(autoscaling_config)
+                ),
+            ],
+        )
+
+    @pytest.mark.parametrize("has_policy", [False, True])
+    def test_get_decision_num_replicas_skips_untargeted_deployment(
+        self, mocked_application_state_manager, has_policy
+    ):
+        """A deployment that left the app's target state must not raise KeyError.
+
+        A deployment stays registered with the autoscaling state manager until
+        it is fully torn down, but it drops out of the application's target
+        deployments -- and therefore out of `deployment_to_target_num_replicas`
+        -- as soon as the new target state is set. Autoscaling must skip it
+        rather than indexing the caller's dict with a key it doesn't have.
+        """
+        app_state_manager, _, _ = mocked_application_state_manager
+
+        app_config = self._create_two_deployment_app_config(has_policy)
+        self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        assert asm.should_autoscale_deployment(d2_id)
+
+        # d2 has been removed from the app but is still registered because its
+        # replicas haven't finished stopping, so the caller only reports d1.
+        decisions = asm.get_decision_num_replicas("test_app", {d1_id: 1})
+
+        assert d1_id in decisions
+        assert d2_id not in decisions
+
+    def test_autoscale_after_deployment_removed_from_app(
+        self, mocked_application_state_manager
+    ):
+        """Removing one deployment must not stop the app's control loop.
+
+        `ApplicationStateManager.update` calls `autoscale()` before `update()`,
+        so a raise in `autoscale()` would prevent the removed deployment from
+        ever being deleted -- and therefore from ever being deregistered --
+        leaving the application unreconciled on every subsequent loop.
+        """
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+        asm = app_state_manager._autoscaling_state_manager
+
+        autoscaling_config = {
+            "target_ongoing_requests": 1,
+            "min_replicas": 1,
+            "max_replicas": 5,
+            "upscale_delay_s": 0.0,
+            "downscale_delay_s": 0.0,
+        }
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+
+        app_state_manager.deploy_app(
+            "test_app",
+            [
+                deployment_params(
+                    "d1", "/hi", autoscaling_config=dict(autoscaling_config)
+                ),
+                deployment_params("d2", autoscaling_config=dict(autoscaling_config)),
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        app_state = app_state_manager._application_states["test_app"]
+        app_state_manager.update()
+        for deployment_id in (d1_id, d2_id):
+            deployment_state_manager.set_deployment_healthy(deployment_id)
+            asm.register_deployment(
+                deployment_id,
+                deployment_state_manager.deployment_infos[deployment_id],
+                1,
+            )
+
+        # Redeploy without d2. It drops out of the target state immediately but
+        # stays registered for autoscaling until its replicas finish stopping.
+        app_state_manager.deploy_app(
+            "test_app",
+            [
+                deployment_params(
+                    "d1", "/hi", autoscaling_config=dict(autoscaling_config)
+                )
+            ],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+        assert app_state.target_deployments == ["d1"]
+        assert asm.should_autoscale_deployment(d2_id)
+
+        app_state_manager.update()
+
+        # d2 is marked for deletion only if `autoscale()` returned normally and
+        # `update()` got to run.
+        assert deployment_state_manager.deleting[d2_id] is True
+
     def test_multiple_applications_autoscaling_isolation(
         self, mocked_application_state_manager
     ):

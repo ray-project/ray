@@ -539,6 +539,9 @@ def _read_datasource_v2(
         _build_pruners,
         sample_files,
     )
+    from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+        PartitionHints,
+    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
     ctx = DataContext.get_current()
@@ -622,13 +625,9 @@ def _read_datasource_v2(
         partitioning=resolved_partitioning,
     )
 
-    # Size-balanced bucketing for the listing output. The partitioner is
-    # captured in a pickled closure and runs inside worker tasks, so its
-    # estimator must be I/O-free and pickle-safe — use the datasource's
-    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
-    # encoding-ratio multiplier). ``num_buckets`` is a hint;
-    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
-    # first, so the actual bucket count scales with total data size.
+    # Sizing hints for the datasource's partitioner. ``num_buckets`` is a
+    # hint; ``RoundRobinPartitioner`` honors the ``[min, max]`` block-size
+    # limits first, so the actual bucket count scales with total data size.
     # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
     # back to sentinel bounds so the partitioner just rolls every file
     # into a single bucket.
@@ -644,14 +643,14 @@ def _read_datasource_v2(
     # (``-1`` when unset). Honoring it here per-read avoids mutating the
     # process-global ``DataContext.read_op_min_num_blocks``.
     num_buckets = parallelism if parallelism != -1 else ctx.read_op_min_num_blocks
-    # The datasource chooses how listing rows are grouped into read units. The
-    # default is the size-estimate ``RoundRobinPartitioner``; a datasource whose
-    # listing carries richer metadata can supply a partitioner that uses it.
+    # The datasource chooses how listing rows are grouped into read units and
+    # which size estimator, if any, its partitioner uses.
     partitioner = datasource.get_file_partitioner(
-        in_memory_size_estimator=datasource.get_size_estimator(),
-        min_bucket_size=min_bucket_size,
-        max_bucket_size=max_bucket_size,
-        num_buckets=num_buckets,
+        hints=PartitionHints(
+            min_bucket_size=min_bucket_size,
+            max_bucket_size=max_bucket_size,
+            num_buckets=num_buckets,
+        )
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning
