@@ -25,7 +25,7 @@ namespace gcs {
 
 // Hand-written fake for GcsPlacementGroupSchedulerInterface. Records calls in
 // public vectors and exposes settable return fields / hooks so tests can drive
-// behavior (replaces gmock EXPECT_CALL usage).
+// behavior.
 class FakeGcsPlacementGroupSchedulerInterface
     : public GcsPlacementGroupSchedulerInterface {
  public:

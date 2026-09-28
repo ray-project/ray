@@ -27,15 +27,14 @@ namespace ray {
 namespace gcs {
 
 // File-scope helpers used by the default/2-arg constructors. Each translation
-// unit that includes this header gets its own copies (internal linkage), which
-// mirrors the previous gmock-based mock.
+// unit that includes this header gets its own copies (internal linkage).
 static instrumented_io_context __fake_resource_manager_io_context_;
 static ClusterResourceManager __fake_cluster_resource_manager_(
     PeriodicalRunner::Create(__fake_resource_manager_io_context_));
 static FakeGcsNodeManager __fake_gcs_node_manager_for_resource_manager_;
 
 // Hand-written fake for GcsResourceManager. Overrides the two autoscaler RPC
-// handlers with no-op recording bodies (replaces gmock EXPECT_CALL usage).
+// handlers with no-op recording bodies.
 class FakeGcsResourceManager : public GcsResourceManager {
  public:
   using GcsResourceManager::GcsResourceManager;

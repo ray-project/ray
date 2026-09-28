@@ -98,8 +98,7 @@ class FakeAllocator : public IAllocator {
 };
 
 // Hand-written fake object store. GetObject returns values from a settable queue in
-// call order, repeating the last element once the queue is exhausted (mirrors the
-// WillOnce/WillRepeatedly behavior of the original mock).
+// call order, repeating the last element once the queue is exhausted.
 class FakeObjectStore : public IObjectStore {
  public:
   const LocalObject *CreateObject(const ray::ObjectInfo &,

@@ -26,7 +26,7 @@ namespace ray::raylet {
 
 // Hand-written fake for WorkerPoolInterface. Methods default to trivial
 // return values; public fields let tests program return values and inspect
-// recorded calls (replaces gmock return/EXPECT_CALL usage).
+// recorded calls.
 class FakeWorkerPool : public WorkerPoolInterface {
  public:
   // --- WorkerPoolInterface ---

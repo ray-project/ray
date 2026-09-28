@@ -140,7 +140,7 @@ rpc::ReportGeneratorItemReturnsRequest GetEoFTaskReturn(int64_t idx,
   return request;
 }
 
-// Hand-written fake for TaskEventBuffer (no gmock). Methods are no-ops with
+// Hand-written fake for TaskEventBuffer. Methods are no-ops with
 // trivial returns; RecordTaskStatusEventIfNeeded forwards to an optional hook so
 // tests can record the statuses passed to it.
 class FakeTaskEventBuffer : public worker::TaskEventBuffer {
@@ -178,7 +178,7 @@ class FakeTaskEventBuffer : public worker::TaskEventBuffer {
 
   int64_t GetCurrentTimestampNanos() const override { return 0; }
 
-  // Optional hook to observe status events (replaces gmock EXPECT_CALL).
+  // Optional hook to observe status events.
   std::function<bool(rpc::TaskStatus)> record_task_status_event_hook;
 };
 

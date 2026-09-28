@@ -46,8 +46,7 @@ namespace gcs {
 
 using json = nlohmann::json;
 
-// Hand-written fake actor scheduler with plain overrides (replaces the
-// gmock-based mock; no expectations were set on the mocked methods).
+// Hand-written fake actor scheduler with plain overrides.
 class FakeActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
   FakeActorScheduler() = default;

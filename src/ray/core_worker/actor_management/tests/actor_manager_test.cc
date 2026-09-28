@@ -34,7 +34,7 @@
 namespace ray {
 namespace core {
 
-// Hand-written fake (no gmock) that records how many times ConnectActor and
+// Hand-written fake that records how many times ConnectActor and
 // DisconnectActor are invoked so tests can assert on the counts.
 class FakeActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:

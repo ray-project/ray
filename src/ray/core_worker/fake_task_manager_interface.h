@@ -26,7 +26,7 @@ namespace core {
 
 // Hand-written fake for TaskManagerInterface. Methods default to trivial return
 // values; public fields let tests program return values and inspect recorded
-// calls (replaces gmock return/EXPECT_CALL usage).
+// calls.
 class FakeTaskManagerInterface : public TaskManagerInterface {
  public:
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,

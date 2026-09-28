@@ -38,7 +38,7 @@ namespace ray {
 namespace gcs {
 
 // Hand-written fake for the schedule success/failure handlers. Records the
-// actors it was invoked with (replaces the gmock-based MockCallback).
+// actors it was invoked with.
 struct FakeCallback {
   void operator()(std::shared_ptr<GcsActor> a) { actors.push_back(std::move(a)); }
   std::vector<std::shared_ptr<GcsActor>> actors;

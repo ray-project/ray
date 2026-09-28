@@ -45,8 +45,7 @@ namespace ray {
 namespace gcs {
 
 // Hand-written fake scheduler. Records calls in public vectors and exposes
-// settable return fields so tests can drive behavior and assert with plain
-// gtest (replaces gmock EXPECT_CALL usage).
+// settable return fields so tests can drive behavior and assert on the results.
 class FakeActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
   FakeActorScheduler() {}
@@ -90,7 +89,7 @@ class FakeActorScheduler : public gcs::GcsActorSchedulerInterface {
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 
-  // Recorded calls (replacing gmock EXPECT_CALL).
+  // Recorded calls for tests to assert on.
   std::vector<NodeID> cancel_on_node_calls;
   std::vector<std::pair<NodeID, WorkerID>> cancel_on_worker_calls;
   std::vector<std::tuple<NodeID, ActorID, LeaseID>> cancel_on_leasing_calls;
@@ -2399,8 +2398,8 @@ TEST_F(GcsActorManagerTest, TestDestroyWhileRegistering) {
   gcs_actor_manager_->HandleKillActorViaGcs(
       kill_request, &kill_reply, [](auto, auto, auto) {});
   // Run all kv operations and callbacks. FakeInternalKV actually posts its
-  // callbacks (the previous gmock mock silently dropped them), so drain the
-  // io_context fully instead of pumping a fixed number of handlers.
+  // callbacks, so drain the io_context fully instead of pumping a fixed number
+  // of handlers.
   drain_io_context();
   ASSERT_EQ(register_reply.status().code(),
             static_cast<int>(StatusCode::SchedulingCancelled));

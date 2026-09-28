@@ -31,9 +31,9 @@
 namespace ray {
 namespace gcs {
 
-// Hand-written fakes that replace the gmock-based accessor mocks. Each fake
-// subclasses the same real accessor base class the mock subclassed and overrides
-// exactly the methods the mock overrode. The generic bodies:
+// Hand-written fakes for the accessor interfaces. Each fake subclasses a real
+// accessor base class and overrides exactly the methods tests exercise. The
+// generic bodies:
 //   - record the salient arguments of each call in a public vector (or bump a
 //     public counter when the args aren't interesting),
 //   - stash the last callback passed to async methods in a public member so
@@ -247,8 +247,7 @@ class FakeTaskInfoAccessor : public TaskInfoAccessor {
   std::vector<std::unique_ptr<rpc::TaskEventData>> async_add_task_event_data_calls;
   rpc::StatusCallback async_add_task_event_data_callback;
   int async_add_task_event_data_call_count = 0;
-  // Optional hook to observe data / drive the completion callback inline
-  // (replaces gmock WillOnce/WillRepeatedly actions).
+  // Optional hook to observe data / drive the completion callback inline.
   std::function<void(std::unique_ptr<rpc::TaskEventData>, rpc::StatusCallback)>
       async_add_task_event_data_hook;
 };

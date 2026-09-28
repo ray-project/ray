@@ -35,7 +35,7 @@ namespace ray {
 namespace gcs {
 
 // Hand-written fake scheduler. Records calls in public vectors so tests can
-// assert on them with plain gtest (replaces gmock EXPECT_CALL usage).
+// assert on them.
 class FakePlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterface {
  public:
   FakePlacementGroupScheduler() = default;
@@ -85,7 +85,7 @@ class FakePlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
   std::vector<int64_t> bundles_on_dead_node_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups_;
 
-  // Recorded calls (replacing gmock EXPECT_CALL).
+  // Recorded calls for tests to assert on.
   std::vector<PlacementGroupID> destroy_bundle_resources_calls_;
   std::vector<PlacementGroupID> mark_schedule_cancelled_calls_;
   int release_unused_bundles_calls_ = 0;

@@ -47,7 +47,7 @@ namespace core {
 
 namespace worker {
 
-// Hand-written fake for EventAggregatorClient (no gmock). Counts AddEvents calls
+// Fake EventAggregatorClient that counts AddEvents calls
 // and forwards to an optional hook so tests can inspect the request and drive the
 // completion callback inline.
 class FakeEventAggregatorClient : public ray::rpc::EventAggregatorClient {

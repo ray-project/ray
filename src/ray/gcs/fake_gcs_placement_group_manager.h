@@ -29,7 +29,7 @@ namespace gcs {
 // Hand-written fake for GcsPlacementGroupManager. Uses the protected
 // testing-only base constructor. Overrides the RPC handlers with no-op recording
 // bodies and exposes settable return fields for GetBundlesOnNode /
-// GetPlacementGroupLoad (replaces gmock EXPECT_CALL usage).
+// GetPlacementGroupLoad.
 class FakeGcsPlacementGroupManager : public GcsPlacementGroupManager {
  public:
   explicit FakeGcsPlacementGroupManager(

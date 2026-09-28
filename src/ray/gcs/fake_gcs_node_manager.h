@@ -31,7 +31,7 @@ namespace gcs {
 // Hand-written fake for GcsNodeManager. Subclasses the concrete manager and
 // overrides the RPC handlers/DrainNode with no-op recording bodies. Public
 // record vectors + optional std::function hooks let tests inspect calls and
-// program behavior (replaces gmock EXPECT_CALL usage).
+// program behavior.
 class FakeGcsNodeManager : public GcsNodeManager {
  public:
   FakeGcsNodeManager()

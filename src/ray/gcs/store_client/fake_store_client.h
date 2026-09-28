@@ -28,7 +28,6 @@ namespace gcs {
 // call arguments in a public vector and stores the last callback it received (in
 // a unique_ptr, since Postable is not default-constructible) so tests can drive
 // completions manually via `std::move(*fake.last_async_put_callback).Post(...)`.
-// This replaces the gmock-based MockStoreClient with SaveArg/SaveArgToUniquePtr.
 class FakeStoreClient : public StoreClient {
  public:
   void AsyncPut(const std::string &table_name,

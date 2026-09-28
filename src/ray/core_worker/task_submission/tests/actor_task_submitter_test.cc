@@ -36,8 +36,8 @@
 
 namespace ray::core {
 
-// Asserts that `actual` equals `expected` element-by-element (plain-gtest
-// replacement for gmock's ElementsAre on the recorded sequence numbers).
+// Asserts that `actual` equals `expected` element-by-element on the recorded
+// sequence numbers.
 void ExpectSeqNosEq(const std::vector<int64_t> &actual,
                     const std::vector<int64_t> &expected) {
   ASSERT_EQ(actual.size(), expected.size());

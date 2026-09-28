@@ -24,9 +24,8 @@
 namespace ray {
 namespace syncer {
 
-// Reporter whose CreateSyncMessage behavior is injected via a callback. Mirrors
-// the old gmock `ON_CALL(..., CreateSyncMessage).WillByDefault(WithArg<0>(...))`
-// usage, which only forwarded the version argument.
+// Reporter whose CreateSyncMessage behavior is injected via a callback. The
+// callback receives the current_version argument.
 class FakeReporterInterface : public ReporterInterface {
  public:
   // Invoked with the `current_version` argument; returns std::nullopt if unset.

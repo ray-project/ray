@@ -24,8 +24,8 @@
 namespace ray {
 namespace gcs {
 
-// Hand-written fake replacement for MockGcsClient (no gmock). Installs the
-// hand-written Fake accessors (and the existing FakeActorInfoAccessor for the
+// Hand-written fake GcsClient. Installs the
+// hand-written Fake accessors (and the FakeActorInfoAccessor for the
 // actor accessor) into the protected GcsClient::*_accessor_ members and exposes
 // them as public typed pointers so tests can inspect recorded calls and drive
 // stored callbacks. Connect/Disconnect/GetGcsServerAddress/DebugString are
@@ -67,7 +67,7 @@ class FakeGcsClient : public GcsClient {
 
   std::string DebugString() const override { return "FakeGcsClient"; }
 
-  // Settable return / recorded state for Connect (replaces gmock expectations).
+  // Settable return / recorded state for Connect.
   Status connect_status = Status::OK();
   int connect_call_count = 0;
 

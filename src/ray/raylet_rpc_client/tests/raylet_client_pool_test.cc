@@ -55,7 +55,7 @@ Address CreateRandomAddress(const std::string &addr) {
 
 // Hand-written fake node accessor. GetNodeAddressAndLiveness and
 // AsyncGetAllNodeAddressAndLiveness serve queued responses (keyed by node id) in
-// call order and record the calls, replacing the gmock sequenced expectations.
+// call order and record the calls for tests to assert on.
 class FakeGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
  public:
   explicit FakeGcsClientNodeAccessor(bool is_subscribed_to_node_change)
@@ -87,8 +87,7 @@ class FakeGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
     callback(Status::OK(), std::move(response));
   }
 
-  // Returns true when every queued response has been consumed, mirroring gmock's
-  // WillOnce exhaustion check.
+  // Returns true when every queued response has been consumed.
   bool AllResponsesConsumed() const {
     for (const auto &entry : get_node_address_and_liveness_responses) {
       if (!entry.second.empty()) {

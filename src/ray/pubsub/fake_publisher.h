@@ -55,7 +55,7 @@ class FakePublisher : public PublisherInterface {
 
   std::string DebugString() const override { return "FakePublisher"; }
 
-  // Recorded calls (for plain-gtest assertions replacing gmock expectations).
+  // Recorded calls for tests to assert on.
   std::vector<rpc::PubMessage> publish_calls;
   std::vector<std::pair<rpc::ChannelType, std::string>> publish_failure_calls;
 };

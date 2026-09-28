@@ -23,7 +23,7 @@ namespace ray {
 
 // Hand-written fake for ObjectManagerInterface. Methods default to trivial
 // return values; public fields let tests program return values and inspect
-// recorded calls (hand-written replacement for the old gmock-based mock).
+// recorded calls.
 class FakeObjectManager : public ObjectManagerInterface {
  public:
   uint64_t Pull(const std::vector<rpc::ObjectReference> &object_refs,

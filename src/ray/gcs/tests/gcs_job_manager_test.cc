@@ -33,7 +33,7 @@
 namespace ray {
 
 // Fake core worker client whose NumPendingTasks reply reports a configurable
-// number of running tasks (replaces the gmock-based mock).
+// number of running tasks.
 class FakeCoreWorkerClientConfigurableRunningTasks : public rpc::FakeCoreWorkerClient {
  public:
   explicit FakeCoreWorkerClientConfigurableRunningTasks(int num_running_tasks)

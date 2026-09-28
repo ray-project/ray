@@ -29,7 +29,7 @@ namespace gcs {
 
 // Hand-written fake for GcsActorManager. Subclasses the concrete manager with a
 // null scheduler/storage/publisher and fake dependencies, and overrides the RPC
-// handlers with no-op bodies (replaces gmock EXPECT_CALL usage).
+// handlers with no-op bodies.
 class FakeGcsActorManager : public GcsActorManager {
  public:
   FakeGcsActorManager(RuntimeEnvManager &runtime_env_manager,
