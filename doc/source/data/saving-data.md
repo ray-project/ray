@@ -88,7 +88,7 @@ ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
 Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how to configure your credentials to be compatible with PyArrow, see their [GCS Filesystem docs](https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system).
 :::
 
-:::{tab-item} ABS
+:::{tab-item} Azure Blob Storage
 
 To save data to Azure Blob Storage, install the [Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
 

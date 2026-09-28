@@ -276,7 +276,7 @@ Ray Data relies on PyArrow for authentication with Google Cloud Storage. For mor
 
 :::
 
-:::{tab-item} ABS
+:::{tab-item} Azure Blob Storage
 
 To read files from Azure Blob Storage, install the [Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage](https://pypi.org/project/adlfs/)
 
@@ -1241,7 +1241,7 @@ data    ArrowTensorTypeV2(shape=(64, 64), dtype=int64)
 
 ## Loading other datasources
 
-If Ray Data can't load your data, subclass {class}`~ray.data.Datasource`. Then, construct an instance of your custom datasource and pass it to {func}`~ray.data.read_datasource`. To write results, you might also need to subclass {class}`ray.data.Datasink`. Then, create an instance of your custom datasink and pass it to {func}`~ray.data.Dataset.write_datasink`. For more details, see {ref}`Advanced: Read and Write Custom File Types <custom_datasource>`.
+If Ray Data can't load your data, subclass {class}`~ray.data.Datasource`. Then, construct an instance of your custom datasource and pass it to {func}`~ray.data.read_datasource`. To write results, you might also need to subclass {class}`ray.data.Datasink`. Then, create an instance of your custom datasink and pass it to {func}`~ray.data.Dataset.write_datasink`. For more details, see {ref}`Advanced: Read and write custom file types <custom_datasource>`.
 
 ```{testcode}
 :skipif: True
