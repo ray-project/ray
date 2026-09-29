@@ -36,6 +36,10 @@ class LoadCheckpointCallback(ExecutionCallback):
     def after_execution_succeeds(self, executor: StreamingExecutor):
         assert self._config is executor._data_context.checkpoint_config
 
+        # Disable checkpoint restoration for subsequent executions.
+        if self._config._restore_only_first_execution:
+            self._config._should_restore = False
+
         # Delete checkpoint data.
         try:
             if self._config.delete_checkpoint_on_success:

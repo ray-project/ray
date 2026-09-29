@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.utils.torch_utils import FinalizeFn
+    from ray.data.checkpoint.data_iterator_checkpointer import (
+        DataIteratorCheckpointer,
+    )
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -214,12 +217,48 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
         )
 
+    @PublicAPI(stability="alpha")
+    def state_dict(self) -> Dict[str, Any]:
+        """Returns the state of the iterator.
+
+        This snapshot is useful upon restoration for resuming the dataset
+        and iterator to the same state.
+
+        Returns:
+            A dictionary containing the state of the iterator.
+
+        Raises:
+            ValueError: If checkpointing is not enabled on this iterator.
+        """
+        checkpointer = self._get_checkpointer()
+        if not checkpointer:
+            raise ValueError("Checkpointing is not enabled on this iterator.")
+
+        return checkpointer.state_dict()
+
+    def _enable_checkpointing(self, checkpointer: "DataIteratorCheckpointer") -> None:
+        self._checkpointer = checkpointer
+
+    def _get_checkpointer(self) -> Optional["DataIteratorCheckpointer"]:
+        return getattr(self, "_checkpointer", None)
+
     def _create_batch_iterator(
         self,
         ref_bundles_iter: Iterator[RefBundle],
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
         **kwargs,
     ) -> BatchIterator:
+        checkpointer = self._get_checkpointer()
+        if checkpointer is not None:
+            from ray.data.checkpoint.iterator import CheckpointingBatchIterator
+
+            return CheckpointingBatchIterator(
+                ref_bundles_iter,
+                checkpointer=checkpointer,
+                prefetch_bytes_callback=prefetch_bytes_callback,
+                **kwargs,
+            )
+
         return BatchIterator(
             ref_bundles_iter,
             prefetch_bytes_callback=prefetch_bytes_callback,
