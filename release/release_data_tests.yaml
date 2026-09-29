@@ -1293,9 +1293,6 @@
     timeout: 5400
     script: python tpch/tpch_{{query}}.py --sf 1000
 
-# Disk-based shuffle counterpart of the nightly TPC-H runs above. A separate
-# test (rather than a variation) so the existing tests keep their names and
-# perf history.
 - name: "tpch_{{query}}_disk_shuffle"
   python: "3.10"
   group: data-tpch
