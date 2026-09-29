@@ -5,6 +5,7 @@ import logging
 import os
 import signal
 import sys
+from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -32,6 +33,7 @@ from ray.dashboard.event_loop_monitor import (
     EVENT_LOOP_MONITOR_ENABLED,
     EventLoopMonitor,
 )
+from ray.exceptions import GcsPassiveError
 
 logger = logging.getLogger(__name__)
 
@@ -211,6 +213,61 @@ class DashboardAgent:
     def get_node_id(self) -> str:
         return self.node_id
 
+    async def _put_agent_address(self, http_port: int, grpc_port: int) -> bool:
+        """Publish this agent's address under both of the keys that resolve it.
+
+        DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
+        DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
+
+        Returns whether the write landed, i.e. was not refused as passive. The
+        write is attempted rather than predicted with is_gcs_leader(): it has to
+        happen anyway, so its answer is a leadership probe that costs nothing.
+        """
+        put_by_node_id = self.gcs_client.async_internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
+            json.dumps([self.ip, http_port, grpc_port]).encode(),
+            True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+        put_by_ip = self.gcs_client.async_internal_kv_put(
+            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
+            json.dumps([self.node_id, http_port, grpc_port]).encode(),
+            True,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        )
+        try:
+            await asyncio.gather(put_by_node_id, put_by_ip)
+        except Exception as e:
+            if not (
+                ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
+                and isinstance(e, GcsPassiveError)
+            ):
+                raise
+            return False
+        return True
+
+    async def _register_agent_address(
+        self, http_port: int, grpc_port: int
+    ) -> Optional[asyncio.Task]:
+        """Publish this agent's address, handing a refused write to a retry task."""
+        if await self._put_agent_address(http_port, grpc_port):
+            return None
+        # A passive head's agent talks to its own passive GCS, which refuses the
+        # write.
+        logger.warning(
+            "GCS is in passive mode and refused the agent address registration. "
+            "Retrying until this GCS is promoted."
+        )
+        return asyncio.create_task(self._retry_agent_address(http_port, grpc_port))
+
+    async def _retry_agent_address(self, http_port: int, grpc_port: int):
+        """Re-attempt the registration until the local GCS stops refusing it."""
+        registered = False
+        while not registered:
+            await asyncio.sleep(dashboard_consts.GCS_REGISTER_RETRY_INTERVAL_S)
+            registered = await self._put_agent_address(http_port, grpc_port)
+        logger.info("GCS was promoted to leader. Registered the agent address.")
+
     async def run(self):
         # Start a grpc asyncio server.
         if self.server:
@@ -245,29 +302,17 @@ class DashboardAgent:
             self.listen_port if self.http_server and launch_http_server else -1,
         )
 
+        retry_task = None
         if launch_http_server:
             # Writes agent address to kv.
-            # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
-            # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
             # -1 should indicate that http server is not started.
             http_port = -1 if not self.http_server else self.http_server.http_port
             grpc_port = -1 if not self.server else self.grpc_port
-            put_by_node_id = self.gcs_client.async_internal_kv_put(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
-                json.dumps([self.ip, http_port, grpc_port]).encode(),
-                True,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-            put_by_ip = self.gcs_client.async_internal_kv_put(
-                f"{dashboard_consts.DASHBOARD_AGENT_ADDR_IP_PREFIX}{self.ip}".encode(),
-                json.dumps([self.node_id, http_port, grpc_port]).encode(),
-                True,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
-
-            await asyncio.gather(put_by_node_id, put_by_ip)
+            retry_task = await self._register_agent_address(http_port, grpc_port)
 
         tasks = [m.run(self.server) for m in modules]
+        if retry_task is not None:
+            tasks.append(retry_task)
 
         if sys.platform not in ["win32", "cygwin"]:
 
