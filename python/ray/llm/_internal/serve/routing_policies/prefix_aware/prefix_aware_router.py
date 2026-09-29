@@ -1,5 +1,6 @@
 # These imports are used for metrics tracking, will remove for PR
 import logging
+import random
 import time
 from typing import (
     Any,
@@ -19,9 +20,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.request_router import (
-    PowerOfTwoChoicesRequestRouter,
-)
 from ray.serve._private.request_router.common import (
     PendingRequest,
 )
@@ -338,26 +336,17 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self,
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[RunningReplica]:
-        """One iteration of the power of two choices procedure that chooses
-         (at most) two random available replicas.
+    ) -> List[List[RunningReplica]]:
+        """Chooses replicas by prefix match, falling back to power of two choices.
 
         For multiplexing, this will first attempt to choose replicas that have the
         requested model ID for a configured timeout. If no replicas with the matching
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        # Start Sphinx tag: __begin_pow2_router_base__
-        # Get fallback replicas from PowerOfTwoChoicesRequestRouter
-        fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
-            self,
-            candidate_replicas=candidate_replicas,
-            pending_request=pending_request,
-        )
-        if pending_request is None or not fallback_replicas:
-            return fallback_replicas
-        # End Sphinx tag: __end_pow2_router_base__
-
+        # Compute the candidates once per attempt. apply_multiplex_routing and
+        # apply_locality_routing advance per-request state, such as the locality
+        # tier, so a second call would return the next tier's candidates.
         if (
             pending_request is not None
             and pending_request.metadata.multiplexed_model_id
@@ -372,15 +361,10 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                 pending_request=pending_request,
             )
         if not candidate_replica_ids:
-            return fallback_replicas
+            return []
 
-        # Convert candidate replica IDs to RunningReplica objects.
-        replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in candidate_replicas
-        }
         candidate_replicas = [
-            replica_id_to_replica_map[candidate_replica_id]
-            for candidate_replica_id in candidate_replica_ids
+            self._replicas[replica_id] for replica_id in candidate_replica_ids
         ]
         chosen_replicas = await self._prefix_match_best_replicas(
             pending_request, candidate_replicas
@@ -388,7 +372,14 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         if chosen_replicas[0]:
             return chosen_replicas
 
-        return fallback_replicas
+        # Start Sphinx tag: __begin_pow2_router_base__
+        # Fall back to power of two choices: two random candidates, of which the one
+        # with the shorter queue is chosen.
+        fallback_replicas = random.sample(
+            candidate_replicas, k=min(2, len(candidate_replicas))
+        )
+        # End Sphinx tag: __end_pow2_router_base__
+        return [fallback_replicas]
 
     # Start Sphinx tag: __begin_on_request_routed__
     def on_request_routed(

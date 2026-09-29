@@ -83,7 +83,9 @@ class ChatRequest:
         self.messages = messages
 
 
-def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
+def fake_pending_request(
+    prompt=None, messages=None, multiplexed_model_id=""
+) -> PendingRequest:
     if prompt is not None:
         args = [PromptRequest(prompt)]
     elif messages is not None:
@@ -97,7 +99,7 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         metadata=RequestMetadata(
             request_id=generate_request_id(),
             internal_request_id=generate_request_id(),
-            multiplexed_model_id="",
+            multiplexed_model_id=multiplexed_model_id,
         ),
         created_at=time.time(),
     )
@@ -252,6 +254,27 @@ class TestPrefixAwareLogic:
             assert (
                 await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
+
+    @pytest.mark.asyncio
+    async def test_multiplexed_request_matches_replicas_with_model(
+        self, prefix_request_router
+    ):
+        """Prefix matching uses the replicas that have the requested model."""
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        ray.get(
+            prefix_request_router._tree_actor.insert.remote(
+                "hello", r1.replica_id.to_full_id_str(), time.time()
+            )
+        )
+
+        # r1 has both the model and the prefix. r2 has the fewest models, the
+        # candidates a second apply_multiplex_routing call in one attempt returns.
+        req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
+        assert await prefix_request_router._choose_replica_for_request(req) == r1
 
 
 class TestEvictionBehavior:
