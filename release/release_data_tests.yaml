@@ -31,19 +31,21 @@
 ###############
 
 - name: "read_parquet_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
-      --iter-bundles
+      --iter-bundles --sf 10
 
 - name: "read_large_parquet_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     byod:
@@ -51,7 +53,7 @@
         # Footer read tuning.
         RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1073741824"
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
@@ -63,40 +65,44 @@
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
-      --iter-bundles --memory 3650722201
+      --iter-bundles --memory 3650722201 --sf 10
 
 - name: "read_images_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles --sf 10
 
 - name: read_tfrecords
+  group: data-reads
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
+    cluster_compute: read_benchmark_compute.yaml
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal-us-west-2/imagenet/tfrecords --format tfrecords
-      --iter-bundles
+      --iter-bundles --sf 10
 
 - name: "read_from_uris_fixed_size"
+  group: data-reads
   python: "3.10"
   cluster:
     anyscale_sdk_2026: true
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: read_benchmark_compute.yaml
 
   run:
     timeout: 5400
-    script: python read_from_uris_benchmark.py
+    script: python read_from_uris_benchmark.py --sf 10
 
 ###############
 # Writing tests
@@ -370,7 +376,7 @@
 # Join key = 'l_orderkey', 'o_orderkey' respectively from 'LINEITEM', 'ORDERS' dataset. In the generated dataset,
 # * For 'LINEITEM' dataset, 'column_00' corresponds to l_orderkey
 # * For 'ORDERS' dataset, 'column_0' corresponds to o_orderkey.
-# Join type = inner, left_join, right_join and full_join
+# Join type = inner, left_outer, right_outer and full_outer
 #
 # Dataset TPCH Scale Factor (SF) for CSV files. Note that parquet files will be low smaller with column compression.
 # SF1 = 1GB
@@ -384,40 +390,11 @@
 
 - name: "joins_{{dataset}}_{{join_type}}"
   python: "3.10"
+  group: data-joins
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        # Footer read tuning.
-        RAY_DATA_PARQUET_BIN_PACKING_BYTES: "1342177280"
-        # Shuffles are all-to-all, so high object store utilization is expected
-        # here and the DEFAULTS cap doesn't apply. A negative value disables it.
-        RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
-    cluster_compute: fixed_size_all_to_all_compute.yaml
-
-  matrix:
-    setup:
-      dataset: [sf100]
-      join_type: [inner, left_outer, right_outer, full_outer]
-
-  run:
-    timeout: 3600
-    script: >
-      python join_benchmark.py
-      --left_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/lineitem
-      --right_dataset s3://ray-benchmark-data/tpch/parquet/{{dataset}}/orders
-      --left_join_keys column00
-      --right_join_keys column0
-      --join_type {{join_type}}
-      --num_partitions 50
-
-- name: "joins_{{dataset}}_{{join_type}}_shuffle_v2"
-  python: "3.10"
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      runtime_env:
-        RAY_DATA_DEFAULT_SHUFFLE_STRATEGY: "shuffle_v2"
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
@@ -440,15 +417,14 @@
       --join_type {{join_type}}
       --num_partitions 1000
 
-# Joins through the disk-based (file-transport) hash shuffle:
-# the shuffle_v2 variants above with RAY_DATA_ENABLE_DISK_SHUFFLE=1.
-- name: "joins_{{dataset}}_{{join_type}}_shuffle_v2_disk"
+# The SF1000 joins above, through the disk-based (file-transport) hash shuffle.
+- name: "joins_{{dataset}}_{{join_type}}_disk"
   python: "3.10"
+  group: data-joins
   cluster:
     anyscale_sdk_2026: true
     byod:
       runtime_env:
-        RAY_DATA_DEFAULT_SHUFFLE_STRATEGY: "shuffle_v2"
         RAY_DATA_ENABLE_DISK_SHUFFLE: "1"
         RAY_max_direct_call_object_size: "8192"
         # Shuffles are all-to-all, so high object store utilization is expected
@@ -1275,6 +1251,7 @@
 
 - name: "tpch_{{query}}"
   python: "3.10"
+  group: data-tpch
   frequency: manual
   matrix:
     setup:
@@ -1296,6 +1273,7 @@
 
 - name: "tpch_{{query}}"
   python: "3.10"
+  group: data-tpch
   frequency: nightly
   matrix:
     setup:

@@ -53,7 +53,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args):
-    benchmark = Benchmark()
+    # 1.5 is ~2x the p90 scheduling loop duration observed on Ray 2.59.
+    #
+    # TODO: Ratchet this down as we improve scheduling loop overhead.
+    benchmark = Benchmark(max_sched_loop_duration_s=1.5)
     consume_fn = get_consume_fn(args)
 
     def benchmark_fn():
