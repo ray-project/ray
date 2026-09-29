@@ -537,7 +537,7 @@ class MockReplicaActorWrapper:
         self._log_file_path: Optional[str] = None
         self._actor_id: Optional[str] = None
         self._internal_grpc_port = None
-        self._http_port = None
+        self._http_port: Optional[int] = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path: Optional[str] = None
@@ -609,6 +609,10 @@ class MockReplicaActorWrapper:
     @property
     def availability_zone(self) -> Optional[str]:
         return None
+
+    @property
+    def http_port(self) -> Optional[int]:
+        return self._http_port
 
     @property
     def node_ip(self) -> Optional[str]:
@@ -684,6 +688,9 @@ class MockReplicaActorWrapper:
 
     def set_actor_id(self, actor_id: str):
         self._actor_id = actor_id
+
+    def set_http_port(self, http_port: int):
+        self._http_port = http_port
 
     def start(
         self,
