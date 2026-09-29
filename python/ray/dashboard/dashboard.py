@@ -59,6 +59,8 @@ class Dashboard:
             If nothing is specified, all modules are loaded.
         proxy_server_url: The url to redirect api requests to
             Ex: proxy_server_url=http://historyserver:8080
+        tracing_startup_hook: The `module:function` tracing hook this node was
+            started with, republished after a promotion.
     """
 
     def __init__(
@@ -81,6 +83,7 @@ class Dashboard:
         serve_frontend: bool = True,
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
+        tracing_startup_hook: Optional[str] = None,
     ):
         self.dashboard_head = dashboard_head.DashboardHead(
             http_host=host,
@@ -101,6 +104,7 @@ class Dashboard:
             serve_frontend=serve_frontend,
             modules_to_load=modules_to_load,
             proxy_server_url=proxy_server_url,
+            tracing_startup_hook=tracing_startup_hook,
         )
 
     async def run(self):
@@ -243,6 +247,14 @@ if __name__ == "__main__":
         help="The proxy server url to redirect requests to"
         "Ex: --proxy-server-url=http://historyserver:8080 ",
     )
+    parser.add_argument(
+        "--tracing-startup-hook",
+        required=False,
+        type=str,
+        default="",
+        help="The module:function tracing hook this node was started with, "
+        "republished to the KV store after a promotion.",
+    )
 
     args = parser.parse_args()
 
@@ -297,6 +309,7 @@ if __name__ == "__main__":
             serve_frontend=(not args.disable_frontend),
             modules_to_load=modules_to_load,
             proxy_server_url=args.proxy_server_url,
+            tracing_startup_hook=args.tracing_startup_hook,
         )
 
         def sigterm_handler():

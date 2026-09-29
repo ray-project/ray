@@ -28,6 +28,7 @@ HTTP_PORT = 8265
 SESSION_NAME = "session_2026-01-01_00-00-00_000000_1"
 METRICS_ADDRESS = f"{NODE_IP}:{head_module.DASHBOARD_METRIC_PORT}"
 DASHBOARD_ADDRESS = f"{NODE_IP}:{HTTP_PORT}"
+TRACING_HOOK = "my.module:setup_tracing"
 
 
 def _passive_gcs_rejection():
@@ -119,7 +120,7 @@ def _set_leader(gcs_client, leader):
 
 @pytest.fixture
 def make_head(monkeypatch, tmp_path):
-    def factory(*, leader, minimal=False):
+    def factory(*, leader, minimal=False, tracing_startup_hook=None):
         # Otherwise _setup_metrics binds a real metrics HTTP server.
         monkeypatch.setattr(head_module, "prometheus_client", None)
         # DashboardHead derives session_name from the session directory name.
@@ -142,6 +143,7 @@ def make_head(monkeypatch, tmp_path):
             session_dir=str(session_dir),
             minimal=minimal,
             serve_frontend=False,
+            tracing_startup_hook=tracing_startup_hook,
         )
         # Assigned by run(), which these tests do not go through.
         head.gcs_client = _gcs_client(leader=leader)
@@ -311,6 +313,55 @@ async def test_head_replaces_the_previous_head_s_cluster_metadata(make_head):
     # The dashboard never sees Node's ctor argument, and a standby head is
     # always started by `ray start --head`.
     assert metadata["ray_init_cluster"] is False
+
+
+async def test_head_replays_the_tracing_startup_hook(make_head):
+    """`ray start --tracing-startup-hook` writes it, and that head is gone."""
+    head = make_head(leader=False, tracing_startup_hook=TRACING_HOOK)
+    head._dashboard_address = DASHBOARD_ADDRESS
+    await _register_dashboard_address(head)
+
+    _set_leader(head.gcs_client, True)
+    await _await_registration(head)
+
+    assert _put_args(head.gcs_client, b"tracing_startup_hook") == (
+        TRACING_HOOK.encode(),
+        True,
+        ray_constants.KV_NAMESPACE_TRACING,
+    )
+
+
+async def test_head_replays_all_named_replay_keys_on_promotion(make_head):
+    """Assert every key in HEAD_PROMOTION_REPLAY_KEYS is replayed on promotion."""
+    head = make_head(leader=False, tracing_startup_hook=TRACING_HOOK)
+    await head._setup_metrics()
+    head._dashboard_address = DASHBOARD_ADDRESS
+    await _register_dashboard_address(head)
+    head.gcs_client.async_internal_kv_put.reset_mock()
+
+    _set_leader(head.gcs_client, True)
+    await _await_registration(head)
+
+    replayed = {
+        (call.args[0], call.kwargs.get("namespace"))
+        for call in head.gcs_client.async_internal_kv_put.call_args_list
+    }
+    expected = set(dashboard_consts.HEAD_PROMOTION_REPLAY_KEYS)
+    assert replayed == expected
+
+
+@pytest.mark.parametrize("hook", [None, ""])
+async def test_head_has_no_tracing_startup_hook_to_replay(make_head, hook):
+    """services.py passes "" when the node was started without the flag."""
+    head = make_head(leader=False, tracing_startup_hook=hook)
+    head._dashboard_address = DASHBOARD_ADDRESS
+    await _register_dashboard_address(head)
+
+    _set_leader(head.gcs_client, True)
+    await _await_registration(head)
+
+    assert _put_args(head.gcs_client, b"tracing_startup_hook") is None
+    assert not head._waiting_for_promotion
 
 
 async def test_head_stops_polling_once_registered(make_head):
