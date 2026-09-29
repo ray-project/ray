@@ -6,10 +6,14 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
+from ray.data._internal.datasource_v2.logical_optimizers import (
+    SupportsPartitionPruning,
+)
 from ray.data._internal.datasource_v2.readers.supports_metadata import (
     MetadataType,
     SupportsMetadata,
 )
+from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
 from ray.data._internal.logical.interfaces import LogicalPlan, Rule
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.map_operator import MapBatches, Project
@@ -18,7 +22,29 @@ from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFi
 if TYPE_CHECKING:
     import pyarrow as pa
 
+    from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
+
 logger = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass(frozen=True, repr=False, eq=False)
+class CountFilesMapBatches(MapBatches):
+    """The ``MapBatches`` :class:`PushdownCountFiles` rewrites a ``Count`` into.
+
+    Exists only to be recognised by
+    :class:`~ray.data._internal.logical.rules.derive_list_files_pushdown.
+    DeriveListFilesPushdown`. That rule clears every listing constraint when a
+    ``ListFiles`` is consumed by anything other than a ``ReadFiles``, because it
+    cannot know an arbitrary ``MapBatches`` drops the same files the constraint
+    would. This one it can: ``count_rows`` calls ``prune_manifest`` itself, so
+    the pruner is safe to keep and listing need not ship the whole manifest.
+
+    ``partition_pruner`` restates what ``count_rows`` applies, so the rule reads
+    it off the node instead of re-deriving it from a scanner that is no longer
+    in the plan.
+    """
+
+    partition_pruner: Optional["FilePruner"] = None
 
 
 class PushdownCountFiles(Rule):
@@ -42,6 +68,11 @@ class PushdownCountFiles(Rule):
     (``metadata_row_count_is_exact``), and the listing must emit each file
     exactly once (``as_whole_file_indexer``). Both hooks default to "no": a
     wrong count is silent, while declining just falls back to a real read.
+
+    A scanner that drops whole files is still countable, because ``count_rows``
+    calls ``prune_manifest`` before reading any footer -- the same call the read
+    path makes, so both plans count the same files. Without it the rewrite would
+    delete the only operator applying the predicate and over-count.
 
     Note this *replaces* metadata-aware indexers such as the footer-based
     Parquet one, rather than reconfiguring them: those override ``list_files``
@@ -89,6 +120,10 @@ class PushdownCountFiles(Rule):
         )
         list_files = read_files.input_dependencies[0]
         assert isinstance(list_files, ListFiles), list_files
+        # ``ListFiles`` emits a ``FileManifest``, so the scanner consuming it is
+        # a ``FileScanner``. Bind it typed for ``count_rows`` below.
+        assert isinstance(scanner, FileScanner), scanner
+        file_scanner: FileScanner = scanner
 
         # Rebuild ``ListFiles`` to list each file exactly once: disable
         # partitioning and swap in a plain whole-file indexer. Mutating the
@@ -108,6 +143,17 @@ class PushdownCountFiles(Rule):
             )
             return plan
 
+        # Keep pruning by path while listing. Without it the manifest crosses
+        # the object store whole -- at 100k files over 1000 partitions, every
+        # row of it -- for ``count_rows`` to discard in the task. Recorded on
+        # the ``CountFilesMapBatches`` below; ``DeriveListFilesPushdown`` reads
+        # it back off that node and puts it on ``ListFiles``.
+        partition_pruner = (
+            scanner.pushed_partition_pruner()
+            if isinstance(scanner, SupportsPartitionPruning)
+            else None
+        )
+
         # ``ListFiles`` is frozen, so ``replace`` it with a fresh indexer.
         list_files = dataclasses.replace(
             list_files,
@@ -125,12 +171,16 @@ class PushdownCountFiles(Rule):
             import pyarrow as pa
 
             assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
+            # Same call ``do_read`` makes, so the counted files are exactly
+            # the files a real read would keep. Before any footer is read.
+            manifest = file_scanner.prune_manifest(FileManifest(batch))
             total_rows = 0
-            for block_metadata in metadata_reader.read_metadata(FileManifest(batch)):
+            for block_metadata in metadata_reader.read_metadata(manifest):
                 total_rows += block_metadata.num_rows or 0
             return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
 
-        count_rows_op = MapBatches(
+        count_rows_op = CountFilesMapBatches(
+            partition_pruner=partition_pruner,
             fn=count_rows,
             input_dependencies=[list_files],
             batch_format="pyarrow",
