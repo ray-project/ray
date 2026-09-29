@@ -535,7 +535,6 @@ message DeploymentArgs {
   optional string docs_path = 7;
   bool ingress_request_router = 8;
   bool uses_multiplexing = 9;
-  // Set on a router application's ingress. See `Application._as_router_application`.
   bool router_application = 10;
 }
 

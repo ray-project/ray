@@ -61,7 +61,7 @@ class Application:
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
         self._ingress_request_router: Optional["Application"] = None
-        # See `_as_router_application`.
+        # Whether this application serves as an application level router.
         self._is_router_application: bool = False
 
     def _with_ingress_request_router(
