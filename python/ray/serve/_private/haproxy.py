@@ -127,9 +127,7 @@ def _haproxy_fmt_literal(value: Any) -> str:
     return '"' + s + '"'
 
 
-def _load_lua_template(
-    file_name: str = "ingress_request_router.lua.tmpl",
-) -> string.Template:
+def _load_lua_template(file_name: str) -> string.Template:
     path = Path(__file__).parent / file_name
     try:
         return string.Template(path.read_text())
@@ -1352,7 +1350,7 @@ class HAProxyApi(ProxyApi):
             metrics_post = ""
             metrics_set_truncated = ""
 
-        content = _load_lua_template().substitute(
+        content = _load_lua_template("ingress_request_router.lua.tmpl").substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
             # HAProxy's req_get_headers() returns lowercase header keys,
