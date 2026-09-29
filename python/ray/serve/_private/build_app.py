@@ -20,11 +20,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 K = TypeVar("K")
 V = TypeVar("V")
 
-ROUTER_APPLICATION_REQUIRES_HAPROXY_ERROR = (
-    "Router applications require HAProxy. "
-    "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
-)
-
 ROUTER_APPLICATION_REQUIRES_HTTP_ERROR = (
     "Router applications route HTTP requests and require a route prefix. "
     "Application '{name}' has none."
@@ -35,8 +30,8 @@ ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR = (
     "choose the replica for requests to the application."
 )
 
-INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
-    "`ingress_request_router` requires HAProxy. "
+REQUIRES_HAPROXY_ERROR = (
+    "{feature} requires HAProxy. "
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
 )
 
@@ -160,10 +155,14 @@ def build_app(
             "`Deployment.bind()`."
         )
     if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
-        raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
+        raise RayServeException(
+            REQUIRES_HAPROXY_ERROR.format(feature="`ingress_request_router`")
+        )
     if app._is_router_application:
         if not RAY_SERVE_ENABLE_HA_PROXY:
-            raise RayServeException(ROUTER_APPLICATION_REQUIRES_HAPROXY_ERROR)
+            raise RayServeException(
+                REQUIRES_HAPROXY_ERROR.format(feature="A router application")
+            )
         if ingress_request_router is not None:
             raise RayServeException(
                 ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR

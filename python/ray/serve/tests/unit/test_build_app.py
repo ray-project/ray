@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from ray import serve
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
-    ROUTER_APPLICATION_REQUIRES_HAPROXY_ERROR,
+    REQUIRES_HAPROXY_ERROR,
     ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR,
     BuiltApplication,
     build_app,
@@ -978,7 +978,9 @@ class TestRouterApplication:
 
         with pytest.raises(RayServeException) as exc_info:
             self._build(Router.bind()._as_router_application())
-        assert str(exc_info.value) == ROUTER_APPLICATION_REQUIRES_HAPROXY_ERROR
+        assert str(exc_info.value) == REQUIRES_HAPROXY_ERROR.format(
+            feature="A router application"
+        )
 
     @pytest.mark.parametrize("router_first", [True, False])
     def test_rejects_ingress_request_router(self, router_first):
