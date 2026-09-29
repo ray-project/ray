@@ -237,6 +237,8 @@ On Linux, Ray Serve uses [HAProxy](https://www.haproxy.org/) by default to route
 
 :::{note}
 HAProxy mode is supported only on Linux. Ray Serve continues to use the Python HTTP/gRPC proxy by default on macOS and Windows.
+
+If you configure both `HTTPOptions.ssl_keyfile` and `HTTPOptions.ssl_certfile`, Ray Serve automatically uses the Python proxy because HAProxy mode doesn't currently terminate TLS.
 :::
 
 When HAProxy mode is enabled:

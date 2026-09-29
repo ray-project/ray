@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import logging
+import os
 
 # Exists on all supported versions; pyrefly mis-resolves it at python-version 3.9.
 from types import FunctionType  # pyrefly: ignore[missing-module-attribute]
@@ -10,11 +11,13 @@ from pydantic import BaseModel
 
 import ray
 from ray import ObjectRef
+from ray._common.network_utils import get_localhost_ip
 from ray._common.usage import usage_lib
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
+    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
@@ -35,6 +38,47 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_ENABLE_HAPROXY_ENV_VAR = "RAY_SERVE_ENABLE_HA_PROXY"
+
+
+def _apply_haproxy_compatibility(
+    http_options: HTTPOptions, controller_options: ControllerOptions
+) -> Tuple[HTTPOptions, ControllerOptions]:
+    """Use the Python proxy when configured HTTPS requires TLS termination."""
+    if not (http_options.ssl_keyfile and http_options.ssl_certfile):
+        return http_options, controller_options
+
+    runtime_env = dict(controller_options.runtime_env or {})
+    env_vars = dict(runtime_env.get("env_vars", {}))
+    explicitly_enabled = env_vars.get(_ENABLE_HAPROXY_ENV_VAR) == "1"
+    env_vars[_ENABLE_HAPROXY_ENV_VAR] = "0"
+    runtime_env["env_vars"] = env_vars
+    controller_options = controller_options.model_copy(
+        update={"runtime_env": runtime_env}
+    )
+
+    # HAProxy mode changes the default host to all interfaces so replicas are
+    # reachable cross-node. Restore the normal Python-proxy default when the
+    # user did not configure a host explicitly.
+    if RAY_SERVE_ENABLE_HA_PROXY and "host" not in http_options.model_fields_set:
+        http_options = http_options.model_copy(
+            update={
+                "host": os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST")
+                or get_localhost_ip()
+            }
+        )
+
+    if RAY_SERVE_ENABLE_HA_PROXY or explicitly_enabled:
+        logger.warning(
+            "HAProxy does not terminate TLS; using the Python Serve proxy because "
+            "HTTPOptions.ssl_keyfile and ssl_certfile are configured."
+        )
+
+    # The controller runtime environment is inherited by the proxies and
+    # deployment replicas it creates, keeping their process-level feature flags
+    # consistent with the selected proxy implementation.
+    return http_options, controller_options
 
 
 def _coerce_controller_options(
@@ -122,6 +166,7 @@ def _create_controller_and_proxy_refs(
         http_options = HTTPOptions.model_validate(http_options)
     if http_options is None:
         http_options = HTTPOptions()
+    assert isinstance(http_options, HTTPOptions)
 
     proxy_location = ProxyLocation._normalize(proxy_location)
 
@@ -135,6 +180,10 @@ def _create_controller_and_proxy_refs(
 
     if isinstance(global_tracing_config, dict):
         global_tracing_config = TracingConfig(**global_tracing_config)
+
+    http_options, controller_options = _apply_haproxy_compatibility(
+        http_options, controller_options
+    )
 
     controller_impl = get_controller_impl(controller_options=controller_options)
     controller = controller_impl.remote(
