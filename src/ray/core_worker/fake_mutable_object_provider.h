@@ -17,7 +17,7 @@
 #include <memory>
 #include <vector>
 
-#include "ray/core_worker/experimental_mutable_object_provider.h"
+#include "ray/core_worker/experimental_mutable_object_provider_interface.h"
 
 namespace ray {
 namespace core {

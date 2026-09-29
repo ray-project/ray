@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/object_manager/object_manager.h"
+#include "ray/object_manager/object_manager_interface.h"
 
 namespace ray {
 

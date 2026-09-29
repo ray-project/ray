@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/raylet/worker_pool.h"
+#include "ray/raylet/worker_pool_interface.h"
 
 namespace ray::raylet {
 
