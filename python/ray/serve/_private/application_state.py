@@ -15,7 +15,7 @@ from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
-    ROUTER_APPLICATION_REQUIRES_HTTP_ERROR,
+    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR,
     BuiltApplication,
     build_app,
 )
@@ -2087,13 +2087,13 @@ def override_deployment_info(
             app_route_prefix is not DEFAULT.VALUE
             and deployment.route_prefix is not None
         ):
+            if deployment.router_application and app_route_prefix is None:
+                raise RayServeException(
+                    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR.format(
+                        name=override_config.name
+                    )
+                )
             deployment.route_prefix = app_route_prefix
-
-    for info in deployment_infos.values():
-        if info.router_application and info.route_prefix is None:
-            raise RayServeException(
-                ROUTER_APPLICATION_REQUIRES_HTTP_ERROR.format(name=override_config.name)
-            )
 
     # build_app cannot see config overrides, so re-check the post-override
     # ingress router here.
