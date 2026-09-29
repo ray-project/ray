@@ -639,6 +639,17 @@ ROUND_TRIP = {
 }
 
 
+def transform_frame(preprocessor, frame: pd.DataFrame) -> pd.DataFrame:
+    """`transform_batch` on a pandas frame, narrowed to the frame it returns.
+
+    `transform_batch` is typed to return any batch format; asserting the type
+    checks pandas-in, pandas-out and lets the type checker follow.
+    """
+    out = preprocessor.transform_batch(frame)
+    assert isinstance(out, pd.DataFrame), f"expected a DataFrame, got {type(out)}"
+    return out
+
+
 def assert_column_equals(rows, name, expected):
     """The column must hold the expected numbers, not a cast-back rendering.
 
@@ -668,7 +679,7 @@ def test_transform_batch_inside_a_pandas_udf(name, arrow_backed, restore_data_co
     make, columns, column, expected = ROUND_TRIP[name]
     preprocessor = make().fit(ray.data.from_arrow(pa.table(columns)))
 
-    def udf(batch: pd.DataFrame, preprocessor=preprocessor) -> pd.DataFrame:
+    def udf(batch, preprocessor=preprocessor):
         return preprocessor.transform_batch(batch)
 
     rows = (
@@ -695,7 +706,7 @@ def test_transform_batch_on_an_arrow_backed_pandas_block(name):
     frame = pd.DataFrame(columns).convert_dtypes(dtype_backend="pyarrow")
     preprocessor = make().fit(ray.data.from_pandas(frame))
 
-    def udf(batch: pd.DataFrame, preprocessor=preprocessor) -> pd.DataFrame:
+    def udf(batch, preprocessor=preprocessor):
         return preprocessor.transform_batch(batch)
 
     rows = (
@@ -721,7 +732,7 @@ def test_transform_batch_passes_through_an_untouched_list_column():
     )
     scaler = StandardScaler(columns=["x"]).fit(ray.data.from_arrow(table))
 
-    def udf(batch: pd.DataFrame, scaler=scaler) -> pd.DataFrame:
+    def udf(batch, scaler=scaler):
         return scaler.transform_batch(batch)
 
     rows = ray.data.from_arrow(table).map_batches(udf, batch_format="pandas").take_all()
@@ -741,7 +752,7 @@ def test_transform_batch_on_an_empty_batch(arrow_backed):
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     assert len(out) == 0
     assert "n" in out.columns
@@ -763,7 +774,7 @@ def test_transform_batch_matches_the_input_backing(arrow_backed):
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     backed = {
         name: isinstance(dtype, pd.ArrowDtype) for name, dtype in out.dtypes.items()
@@ -801,7 +812,7 @@ def test_transform_batch_keeps_pass_through_extension_dtypes(name):
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     assert (
         str(out["passthrough"].dtype) == expected_dtype
@@ -831,7 +842,7 @@ def test_transform_batch_decides_the_backing_per_column():
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     assert {name: str(dtype) for name, dtype in out.dtypes.items()} == {
         "n": "float64",  # transformed, and NumPy in means NumPy out
@@ -857,7 +868,7 @@ def test_transform_batch_keeps_arrow_backing_with_the_flag_off(
     frame = pd.DataFrame(columns).convert_dtypes(dtype_backend="pyarrow")
     restore_data_context.enable_arrow_backed_pandas_conversion = False
 
-    out = preprocessor.transform_batch(frame)
+    out = transform_frame(preprocessor, frame)
 
     assert isinstance(
         out[column].dtype, pd.ArrowDtype
@@ -896,7 +907,7 @@ def test_transform_batch_preserves_the_index(name, arrow_backed):
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     np.testing.assert_allclose(
         np.asarray(out["n"], dtype=float),
@@ -935,7 +946,7 @@ def test_transform_batch_leaves_untouched_columns_exactly_as_they_were(name):
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     pd.testing.assert_series_equal(out["other"], frame["other"])
 
@@ -953,7 +964,7 @@ def test_transform_batch_keeps_integer_column_labels():
     scaler = StandardScaler(columns=["n"]).fit(
         ray.data.from_arrow(pa.table({"n": [1, 2, 3, 4]}))
     )
-    out = scaler.transform_batch(frame)
+    out = transform_frame(scaler, frame)
 
     assert list(out.columns) == [0, 1, "n"]
 
