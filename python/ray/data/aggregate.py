@@ -2022,7 +2022,7 @@ class ApproximateTopK(AggregateFnV2):
 
 
 @PublicAPI
-class TopKUnique(AggregateFnV2[Dict[str, List], List[Any]]):
+class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
     """Defines an exact top-k-by-frequency unique aggregation.
 
     Counts value frequencies globally (summed across all blocks) and returns the
@@ -2032,11 +2032,12 @@ class TopKUnique(AggregateFnV2[Dict[str, List], List[Any]]):
 
     Unlike :class:`ApproximateTopK`, the result is exact, no third-party
     dependency is required, and the output is a plain list of values (like
-    :class:`Unique`) rather than value/count records.
+    :class:`Unique`) rather than value/count records. The price is that the
+    accumulator holds every distinct value with its count until the final
+    ranking, so memory grows with the number of distinct values.
 
     Ties are broken deterministically: values with equal counts are ordered by
-    value, falling back to their string representation when values aren't
-    comparable with each other.
+    value (ascending), with nulls last.
 
     Example:
 
@@ -2099,8 +2100,12 @@ class TopKUnique(AggregateFnV2[Dict[str, List], List[Any]]):
             # Whole lists are treated as single values. There's no vectorized
             # `value_counts` kernel for list types, so count in Python over
             # tuples (mirroring how `Unique` makes whole-list values hashable).
+            #
+            # NOTE: A row in a list column is either list-like or missing, and
+            #       missing rows can be None, NaN or pd.NA depending on the block
+            #       type - none of which is iterable.
             counter = collections.Counter(
-                None if value is None else tuple(value)
+                tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else None
                 for value in accessor.to_pylist()
             )
             value_counts = {
@@ -2145,6 +2150,9 @@ class TopKUnique(AggregateFnV2[Dict[str, List], List[Any]]):
         current_accumulator: Dict[str, List],
         new_accumulator: Dict[str, List],
     ) -> Dict[str, List]:
+        # NOTE: The engine merges whole accumulator columns through
+        #       `_combine_column`. This pairwise merge is the row-wise
+        #       equivalent, kept as a fallback for values Arrow can't group.
         values = [self._normalize_value(v) for v in current_accumulator["values"]]
         counts = list(current_accumulator["counts"])
 
@@ -2161,16 +2169,72 @@ class TopKUnique(AggregateFnV2[Dict[str, List], List[Any]]):
 
         return {"values": values, "counts": counts}
 
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        # NOTE: The result must itself be a valid accumulator: the reduce side
+        #       repeatedly re-combines partially combined blocks before
+        #       finalizing. In particular, counts are kept and the top-k cut is
+        #       only applied in `finalize`.
+        if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
+            try:
+                # Null accumulator rows (empty groups) flatten to nothing.
+                merged = (
+                    pa.table(
+                        {
+                            "value": pc.list_flatten(
+                                pc.struct_field(accumulator_col, "values")
+                            ),
+                            "count": pc.list_flatten(
+                                pc.struct_field(accumulator_col, "counts")
+                            ),
+                        }
+                    )
+                    .group_by("value")
+                    .aggregate([("count", "sum")])
+                )
+                return {
+                    "values": merged["value"].to_pylist(),
+                    "counts": merged["count_sum"].to_pylist(),
+                }
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+                # Values Arrow can't group by (e.g. whole lists)
+                pass
+
+        merged_accumulator = self._zero_accumulator()
+        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+            if accumulator is not None:
+                merged_accumulator = self.combine(merged_accumulator, accumulator)
+        return merged_accumulator
+
     def finalize(self, accumulator: Dict[str, List]) -> List[Any]:
-        pairs = list(zip(accumulator["values"], accumulator["counts"]))
+        values, counts = accumulator["values"], accumulator["counts"]
+        if not values:
+            return []
+
         try:
-            pairs.sort(key=lambda pair: (-pair[1], pair[0]))
+            table = pa.table(
+                {"value": pa.array(values), "count": pa.array(counts, pa.int64())}
+            )
+            # NOTE: Arrow places nulls last, matching the fallback below.
+            ranked = pc.sort_indices(
+                table, sort_keys=[("count", "descending"), ("value", "ascending")]
+            )
+            return pc.take(table["value"], ranked[: self._k]).to_pylist()
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+            # Values Arrow can't sort (e.g. whole lists, mixed types)
+            pass
+
+        pairs = list(zip(values, counts))
+        try:
+            pairs.sort(key=lambda pair: (-pair[1], pair[0] is None, pair[0]))
         except TypeError:
-            # Values aren't mutually comparable (e.g. mixed types, or None
-            # among them) - fall back to their string representation for a
-            # deterministic tie-break.
-            pairs.sort(key=lambda pair: (-pair[1], str(pair[0])))
+            # Values aren't mutually comparable (mixed types) - fall back to
+            # their string representation for a deterministic tie-break.
+            pairs.sort(key=lambda pair: (-pair[1], pair[0] is None, str(pair[0])))
         return [value for value, _ in pairs[: self._k]]
+
+    @staticmethod
+    def _zero_accumulator() -> Dict[str, List]:
+        return {"values": [], "counts": []}
 
     @staticmethod
     def _normalize_value(value: Any) -> Any:
