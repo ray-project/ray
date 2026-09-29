@@ -55,6 +55,12 @@ _SPILL_SEGMENT_BYTES = 16 * 1024 * 1024
 # one flush, and how much is read back into memory to make it.
 _SPILL_WRITE_BYTES = 4 * 1024 * 1024
 
+# How far memory may run past its limit before a flush starts. Flushing the
+# moment it was crossed wrote whatever the last pipe read added -- for a
+# process printing a line at a time, one ~2 KB write per flush, each a thread
+# hop and a file open. Waiting for this much makes every flush a large one.
+_SPILL_BATCH_BYTES = 1024 * 1024
+
 # How much output one sandbox may spill, across all of its streams. Set from
 # the actor's environment, in any form parse_memory_bytes accepts ("8Gi",
 # "512Mi"); 0 turns spilling off.
@@ -78,12 +84,18 @@ _SPILL_MAX_HEADROOM = 16 * 1024**3
 # sandbox could rewrite is output the caller cannot trust.
 _SPILL_ROOT = "/tmp/ray/sandbox-output"
 
-# How many finished exec sessions stay readable. Each holds up to
-# _DEFAULT_BUFFER_LIMIT per stream in memory, so this bounds the actor's
-# retained output in memory at roughly 2 * _MAX_RETAINED_EXECS *
-# _DEFAULT_BUFFER_LIMIT in the worst case; what they spilled counts against the
-# sandbox's spill limit instead.
-_MAX_RETAINED_EXECS = 16
+# How many finished exec sessions stay readable. Only a bound on bookkeeping --
+# a finished session with little output costs a few kilobytes -- and set high
+# because Modal keeps an exec's output: a caller that starts a batch of
+# commands, waits for all of them and then reads each, must find every output
+# still there. What finished sessions hold in memory is bounded separately,
+# below.
+_MAX_RETAINED_EXECS = 1024
+
+# Output that finished sessions may hold in memory, together. Past it the
+# oldest finished session's output moves to spill files; only where the
+# sandbox cannot spill is a whole finished session dropped instead.
+_FINISHED_OUTPUT_MEMORY = 64 * 1024 * 1024
 
 # How many *exit codes* outlive the sessions they belong to. An entry is two
 # ints and a dict, so this costs kilobytes where the sessions it replaces cost
@@ -93,12 +105,20 @@ _MAX_RETAINED_EXITS = 1024
 
 _READ_SIZE = 65536
 
-# Cap on a single yield from `stream_output`. Ray inlines a task return value
-# into the reply when it is strictly smaller than `max_direct_call_object_size`
-# (100 KiB), and stores it in the plasma store otherwise. Staying under that
-# keeps every chunk in the caller's in-memory store, so a chunk never makes a
-# round trip through shared memory. The margin covers serialization overhead.
-_MAX_YIELD_BYTES = 96 * 1024
+# Small pipe reads are gathered into chunks of about this size. A process
+# writing a line at a time hands the pump one line per read, and kept as its
+# own chunk each made memory ~100k tiny objects once a stream passed its 8 MiB
+# window: 2-3x the payload in object overhead, and a scan to find a reader's
+# cursor that cost ~7 ms of the actor's loop per read, measured.
+_CHUNK_GATHER_BYTES = 64 * 1024
+
+# Cap on a single yield from `stream_output`. Above Ray's inline limit
+# (`max_direct_call_object_size`, 100 KiB) a value travels through the object
+# store rather than in the reply -- and that still wins: every yield costs about
+# a millisecond whatever it carries, so a stream moved ~93 MiB/s in 96 KiB
+# yields and ~465 MiB/s in 1 MiB ones, measured. Output that arrives a little at
+# a time is yielded as it comes, well under this, and stays inline.
+_MAX_YIELD_BYTES = 1024 * 1024
 
 # Coalescing a burst into one yield only works while chunks are queued, and a
 # consumer that keeps up leaves at most one queued -- so a line-buffered
@@ -215,9 +235,20 @@ class _OutputBuffer:
     ):
         # (start_offset, data) pairs for the bytes held in memory, which are
         # always the newest: [_mem_start, _written). Offsets rather than a
-        # running sum, so locating a cursor is comparisons.
-        self._chunks: Deque[Tuple[int, bytes]] = collections.deque()
+        # running sum, so locating a cursor is comparisons. Small reads are
+        # gathered into a growing bytearray at the tail (see _append).
+        self._chunks: Deque[Tuple[int, Union[bytes, bytearray]]] = collections.deque()
         self._limit = limit
+        # The limit as configured. _limit drops to 0 while a finished stream
+        # moves its memory to disk, and comes back if spilling stops.
+        self._memory_limit = limit
+        self._evacuating = False
+        # Memory is trimmed a chunk at a time, so a chunk must stay small next
+        # to the limit or the limit stops holding: a sixteenth of it at most.
+        self._gather_bytes = max(1, min(_CHUNK_GATHER_BYTES, limit // 16))
+        # Likewise for the batch a flush waits for: an eighth of the limit at
+        # most, so a small window still spills soon after it fills.
+        self._spill_batch_bytes = min(_SPILL_BATCH_BYTES, limit // 8)
         self._retain = retain
         self._spill = spill
         self._spill_stopped = False
@@ -261,6 +292,11 @@ class _OutputBuffer:
         return sum(segment.size for segment in self._segments)
 
     @property
+    def memory_bytes(self) -> int:
+        """Bytes of this stream currently held in memory."""
+        return self._written - self._mem_start
+
+    @property
     def spill_files(self) -> int:
         return len(self._segments)
 
@@ -271,7 +307,7 @@ class _OutputBuffer:
     def feed(self, data: bytes) -> None:
         if not data or self._closed:
             return
-        self._chunks.append((self._written, data))
+        self._append(data)
         self._written += len(data)
         if self._retain is not None:
             self._advance_base(self._written - self._retain)
@@ -281,14 +317,54 @@ class _OutputBuffer:
         elif self._spilling:
             # The disk writes happen off the event loop, in the flush task.
             # pace() is what keeps the pump from running too far ahead of it.
+            # A flush waits for a batch past the limit, then takes memory back
+            # down to it, so each one writes a lot rather than a little.
             if (
                 self._flush_task is None
-                and self._written - self._mem_start > self._limit
+                and self._written - self._mem_start
+                > self._limit + self._spill_batch_bytes
             ):
                 self._flush_task = asyncio.ensure_future(self._flush())
         else:
             self._drop_oldest_in_memory()
         self._event.set()
+
+    def _append(self, data: bytes) -> None:
+        """Hold ``data`` in memory, gathering small reads into one chunk.
+
+        A read smaller than the gather size extends a bytearray at the tail
+        until it reaches that size; larger reads are kept as they came.
+        Memory is then a few hundred chunks rather than one per line.
+        """
+        if len(data) >= self._gather_bytes:
+            self._chunks.append((self._written, data))
+            return
+        if self._chunks:
+            tail = self._chunks[-1][1]
+            if type(tail) is bytearray and len(tail) < self._gather_bytes:
+                tail += data
+                return
+        self._chunks.append((self._written, bytearray(data)))
+
+    def move_to_disk(self) -> bool:
+        """Spill everything this stream holds in memory.
+
+        For a finished command's stream, which nothing appends to any more and
+        which a reader can serve from disk as well as from memory: finished
+        output is the least likely to be read, so it is the first to leave
+        memory. If spilling stops part-way, the stream keeps its usual window
+        in memory instead.
+
+        Returns:
+            False if the stream cannot spill, so its memory stays where it is.
+        """
+        if self._closed or self._paced or not self._spilling:
+            return False
+        self._evacuating = True
+        self._limit = 0
+        if self._flush_task is None and self._written > self._mem_start:
+            self._flush_task = asyncio.ensure_future(self._flush())
+        return True
 
     def feed_eof(self) -> None:
         self._eof = True
@@ -391,6 +467,12 @@ class _OutputBuffer:
 
     def _stop_spilling(self, reason: str) -> None:
         self._spill_stopped = True
+        if self._evacuating:
+            # Moving a finished stream to disk, with memory's limit at zero:
+            # dropping down to that would lose nearly everything. The stream
+            # keeps its usual window, and the actor decides what else goes.
+            self._evacuating = False
+            self._limit = self._memory_limit
         self._spill.warn_dropping(reason)
         # A file that was opened but never written to.
         if self._segments and self._segments[-1].size == 0:
@@ -400,12 +482,19 @@ class _OutputBuffer:
     async def _flush(self) -> None:
         """Move memory beyond ``limit`` into spill files, oldest bytes first."""
         store = self._spill
+        # The first write takes memory down to the limit. Another follows only
+        # once a whole batch has built up again behind it -- otherwise a slow
+        # producer's next line or two became a write of their own. A finished
+        # stream moving to disk (limit 0) writes everything regardless.
+        batch = 0
         try:
             while (
                 not self._closed
                 and self._spilling
-                and self._written - self._mem_start > self._limit
+                and self._written - self._mem_start > self._limit + batch
             ):
+                if not self._evacuating:
+                    batch = self._spill_batch_bytes
                 if self._segments and self._segments[-1].size < store.segment_bytes:
                     segment = self._segments[-1]
                 else:
@@ -602,11 +691,10 @@ class _OutputBuffer:
                 break
             pieces.append(piece)
             total += len(piece)
-        # Once coalescing has done its work a read is usually satisfied by one
-        # chunk, and that chunk can be handed straight back. Accumulating into
-        # a bytearray and converting would walk every byte twice more, on top
-        # of the copy Ray makes when it serializes.
-        if len(pieces) == 1:
+        # A whole chunk that arrived as one large read can be handed straight
+        # back. Anything else -- several pieces, or part of a gathered
+        # bytearray that is still growing -- is copied out into bytes.
+        if len(pieces) == 1 and type(pieces[0]) is bytes:
             return start, pieces[0]
         return start, b"".join(pieces)
 
@@ -822,6 +910,12 @@ class _ExecSession:
         self.buffers: Dict[int, Optional[_OutputBuffer]] = {}
         self.pump_tasks: List[asyncio.Task] = []
         self.stdin_closed = False
+        # How many bytes have been handed to the command's stdin, and a signal
+        # each time that grows or stdin closes. Ray runs an async actor's calls
+        # in no guaranteed order, so each write names the offset it belongs at
+        # and waits here for everything before it.
+        self.stdin_offset = 0
+        self.stdin_progress = asyncio.Event()
         # Set when this command was killed for exceeding its own timeout, so
         # its exit is reported as Modal's -1 rather than the 137 the SIGKILL
         # would otherwise produce.
@@ -830,6 +924,32 @@ class _ExecSession:
         # Retires the session the moment its process exits, so reclamation does
         # not depend on anyone calling exec_wait.
         self.reaper_task: Optional[asyncio.Task] = None
+
+    def close_stdin_for_good(self) -> None:
+        """Mark stdin closed and wake every write still waiting for its turn.
+
+        For when the command can no longer take input -- it exited, or its
+        session is being dropped. A write waiting on an offset whose
+        predecessor will now never arrive would otherwise wait forever.
+        """
+        self.stdin_closed = True
+        self.stdin_progress.set()
+
+    async def await_stdin_turn(self, offset: int) -> bool:
+        """Wait until every byte before ``offset`` has been written.
+
+        Args:
+            offset: Where in the stdin stream the caller's bytes begin.
+
+        Returns:
+            True once it is the caller's turn, False if stdin closed first.
+        """
+        while self.stdin_offset < offset and not self.stdin_closed:
+            # No await between the check and the clear, so a write landing in
+            # between cannot be missed: it sets the event this then waits on.
+            self.stdin_progress.clear()
+            await self.stdin_progress.wait()
+        return not self.stdin_closed
 
 
 @ray.remote
@@ -974,19 +1094,15 @@ class _SandboxActor:
         """
         if self._runtime is None or not self._create_kwargs.get("image"):
             return {}
-        image = self._create_kwargs["image"]
-        image_manager = self._runtime.image_manager
-        # The version this sandbox runs, not whatever the image names now: if
-        # it was replaced since the sandbox was created, its Cmd could differ.
-        entry = self._runtime.backend.image_entry(self._instance_id)
-
-        def read() -> Dict[str, Any]:
-            if entry is None:
-                return image_manager.get_image_config(image)
-            with image_manager.pinned(image, entry):
-                return image_manager.get_image_config(image)
-
-        config = await asyncio.to_thread(read)
+        # The config the backend kept when it created the sandbox, not the
+        # cached image's as it is now: a force_build since then would have
+        # swapped in an image whose Cmd could differ.
+        config = self._runtime.backend.image_config(self._instance_id)
+        if config is None:
+            image_manager = self._runtime.image_manager
+            config = await asyncio.to_thread(
+                image_manager.get_image_config, self._create_kwargs["image"]
+            )
         return config.get("config", {}) or {}
 
     async def launch_main(self, main_command: List[str]) -> Optional[str]:
@@ -1058,11 +1174,12 @@ class _SandboxActor:
                 try:
                     returncode = await self.exec_wait(exec_id)
                 finally:
-                    # exec_wait only *retires* the session, which leaves it in
-                    # the bounded _MAX_RETAINED_EXECS window. At a 100ms
-                    # interval this loop would cycle that whole window in under
-                    # seven seconds and evict the output of the caller's own
-                    # execs. Nothing ever reads a probe's output, so release it.
+                    # exec_wait only *retires* the session, which leaves it
+                    # among the finished sessions the actor keeps, up to
+                    # _MAX_RETAINED_EXECS of them. At a 100ms interval this loop
+                    # would reach that bound within two minutes and start
+                    # evicting the output of the caller's own execs. Nothing
+                    # ever reads a probe's output, so release it.
                     await self.exec_release(exec_id)
                 if returncode == 0:
                     self._finish_probe("ready")
@@ -1359,6 +1476,7 @@ class _SandboxActor:
                     session.deadline_task = None
                 for task in session.pump_tasks:
                     task.cancel()
+                session.close_stdin_for_good()
                 if session.process.returncode is None:
                     try:
                         session.process.kill()
@@ -1493,6 +1611,8 @@ class _SandboxActor:
         bounds the retirement queue, which only ``exec_wait`` ever wrote to.
         """
         await session.process.wait()
+        # Nothing reads stdin any more: release writes waiting their turn.
+        session.close_stdin_for_good()
         _unlink_quietly(session.pid_file)
         # Let the pumps observe EOF so buffered output is not lost.
         # asyncio.wait rather than awaiting each pump: a pump cancelled by the
@@ -1628,7 +1748,25 @@ class _SandboxActor:
             cursor = offset + len(data)
             yield offset, data
 
-    async def write_stdin(self, exec_id: str, data: bytes) -> None:
+    async def write_stdin(
+        self, exec_id: str, data: bytes, offset: Optional[int] = None
+    ) -> None:
+        """Write ``data`` to a command's stdin, at byte ``offset`` of the stream.
+
+        Ray runs an async actor's calls in whatever order they become ready,
+        not the order they were sent, so a caller with several writes in
+        flight -- an upload keeps a window of them -- cannot rely on arrival
+        order: pipelined uploads used to land with their chunks scrambled.
+        Each write therefore names where it belongs and waits for everything
+        before it. Bytes already written, in whole or in part, are skipped,
+        so a retried write is harmless -- as Modal's stdin offsets make it.
+
+        Args:
+            exec_id: The command's exec id.
+            data: The bytes to write.
+            offset: Where ``data`` begins in the stdin stream. None appends,
+                for a caller that never has more than one write in flight.
+        """
         session = self._execs.get(exec_id)
         if session is None:
             # A retired session's process has exited, so its stdin is closed;
@@ -1636,23 +1774,44 @@ class _SandboxActor:
             # command that stopped reading.
             self._require_retired(exec_id)
             return
-        if session.stdin_closed or session.process.stdin is None:
+        if offset is None:
+            offset = session.stdin_offset
+        if not await session.await_stdin_turn(offset):
             return
-        session.process.stdin.write(data)
+        if session.process.stdin is None:
+            return
+        already_written = session.stdin_offset - offset
+        if already_written >= len(data):
+            return
+        chunk = data[already_written:] if already_written else data
+        # Synchronous, so the next write in order can follow it into the pipe
+        # while this one waits on drain below: write() calls keep their order.
+        session.process.stdin.write(chunk)
+        session.stdin_offset += len(chunk)
+        session.stdin_progress.set()
         try:
             await session.process.stdin.drain()
         except (BrokenPipeError, ConnectionResetError):
             # The command exited without consuming its input.
-            session.stdin_closed = True
+            session.close_stdin_for_good()
 
-    async def close_stdin(self, exec_id: str) -> None:
+    async def close_stdin(self, exec_id: str, offset: Optional[int] = None) -> None:
+        """Close a command's stdin once ``offset`` bytes have been written.
+
+        Args:
+            exec_id: The command's exec id.
+            offset: The stream's total length, so the close cannot overtake a
+                write still waiting its turn. None closes at once.
+        """
         session = self._execs.get(exec_id)
         if session is None:
             self._require_retired(exec_id)
             return
+        if offset is not None and not await session.await_stdin_turn(offset):
+            return
         if session.stdin_closed or session.process.stdin is None:
             return
-        session.stdin_closed = True
+        session.close_stdin_for_good()
         try:
             session.process.stdin.close()
         except (BrokenPipeError, ConnectionResetError):
@@ -1691,15 +1850,18 @@ class _SandboxActor:
         return _session_returncode(session)
 
     def _retire(self, exec_id: str) -> None:
-        """Note that an exec finished, and drop the oldest ones past the cap.
+        """Note that an exec finished, and bound what finished ones hold.
 
         Sessions cannot be released the moment they exit: their output stays
         readable afterwards, which is how Modal behaves and how most callers
         use exec. But nothing releases them either -- `exec_release` is reached
         only from the filesystem helpers -- so a long-lived sandbox driving many
-        execs accumulates two buffers per exec, each up to
-        _DEFAULT_BUFFER_LIMIT. Retaining a bounded window keeps the common
-        read-after-wait pattern working while capping the cost.
+        execs accumulates them. Two bounds apply. The count is only
+        bookkeeping, and set high: a batch of commands that all finish before
+        any is read must all still be readable, as on Modal, where the old cap
+        of sixteen lost the first finishers. The real cost is output held in
+        memory, bounded by _FINISHED_OUTPUT_MEMORY -- see
+        _trim_finished_output.
         """
         if exec_id == self._main_exec_id:
             return
@@ -1709,14 +1871,51 @@ class _SandboxActor:
         while len(self._finished_execs) > _MAX_RETAINED_EXECS:
             evicted = self._finished_execs.popleft()
             session = self._execs.pop(evicted, None)
-            if session is None:
+            if session is not None:
+                self._evict(evicted, session)
+        self._trim_finished_output()
+
+    def _evict(self, exec_id: str, session: "_ExecSession") -> None:
+        """Drop a finished session that is already out of the tables.
+
+        Its exit code is kept first, before _discard cancels the tasks it is
+        read from: what the buffers held is gone either way, but a client
+        still holding this exec's handle needs what the process exited with.
+        """
+        self._entomb(exec_id, session)
+        self._discard(session)
+
+    def _trim_finished_output(self) -> None:
+        """Keep finished sessions' in-memory output under its budget.
+
+        Oldest first, each session's output moves to spill files, where a
+        reader still finds all of it. Only where it cannot -- no room to
+        spill, or spilling stopped -- is the whole session dropped instead,
+        its exit code kept, as sessions past the count cap are.
+        """
+        held = {
+            exec_id: _session_memory(self._execs[exec_id])
+            for exec_id in self._finished_execs
+            if exec_id in self._execs
+        }
+        total = sum(held.values())
+        for exec_id in list(self._finished_execs):
+            if total <= _FINISHED_OUTPUT_MEMORY:
+                return
+            if not held.get(exec_id):
                 continue
-            # Before _discard, which cancels the tasks the exit code is read
-            # from. What the buffers held is gone either way; what the process
-            # exited with is not, and a client still holding this exec's handle
-            # needs it.
-            self._entomb(evicted, session)
-            self._discard(session)
+            session = self._execs[exec_id]
+            buffers = [
+                buffer
+                for buffer in session.buffers.values()
+                if buffer is not None and buffer.memory_bytes
+            ]
+            # Counted as freed once the move starts: the flush runs on.
+            if not all(buffer.move_to_disk() for buffer in buffers):
+                self._finished_execs.remove(exec_id)
+                del self._execs[exec_id]
+                self._evict(exec_id, session)
+            total -= held[exec_id]
 
     def _entomb(self, exec_id: str, session: "_ExecSession") -> None:
         """Keep an evicted session's exit code and stream sizes."""
@@ -1763,10 +1962,9 @@ class _SandboxActor:
         if exec_id == self._main_exec_id:
             return
         # Un-retire as well as drop. Leaving the id queued would let released
-        # sessions occupy slots in the bounded retention window, so a probe
-        # exec'ing every interval_ms would fill all _MAX_RETAINED_EXECS of them
-        # within seconds and start evicting the caller's real exec sessions --
-        # exactly what releasing is meant to prevent.
+        # sessions count against _MAX_RETAINED_EXECS, so a probe exec'ing
+        # every interval_ms would soon fill it and start evicting the caller's
+        # real exec sessions -- exactly what releasing is meant to prevent.
         if exec_id in self._finished_execs:
             self._finished_execs.remove(exec_id)
         # No exit code is kept either. Releasing is the caller saying they are
@@ -1802,6 +2000,7 @@ class _SandboxActor:
                 task.cancel()
         for task in session.pump_tasks:
             task.cancel()
+        session.close_stdin_for_good()
         stopping = None
         if session.process.returncode is None:
             # The task holds the session, so its pipes stay open until the
@@ -1823,7 +2022,7 @@ class _SandboxActor:
 
         A finished command's output is the least likely to be read again, so
         it goes before a running command loses any of its own. The exit code
-        survives, as it does when a session ages out of the retention window.
+        survives, as it does when a session is evicted for any other reason.
         """
         for exec_id in list(self._finished_execs):
             session = self._execs.get(exec_id)
@@ -1834,8 +2033,7 @@ class _SandboxActor:
                 continue
             self._finished_execs.remove(exec_id)
             del self._execs[exec_id]
-            self._entomb(exec_id, session)
-            self._discard(session)
+            self._evict(exec_id, session)
             return True
         return False
 
@@ -1919,6 +2117,13 @@ async def _pump(stream: asyncio.StreamReader, buffer: _OutputBuffer) -> None:
         pass
     finally:
         buffer.feed_eof()
+
+
+def _session_memory(session: "_ExecSession") -> int:
+    """Bytes of output a session holds in memory, across its streams."""
+    return sum(
+        buffer.memory_bytes for buffer in session.buffers.values() if buffer is not None
+    )
 
 
 def _session_returncode(session: "_ExecSession") -> Optional[int]:

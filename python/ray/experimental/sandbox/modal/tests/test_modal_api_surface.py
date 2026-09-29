@@ -245,8 +245,8 @@ def test_create_refuses_a_readiness_probe_that_is_not_a_probe(value):
 def test_network_allowlists_are_refused_and_say_why(name):
     """The one rejection with a security consequence.
 
-    block_network=False runs in the host network namespace, so quietly
-    dropping an allowlist would leave the sandbox reaching host loopback,
+    block_network=False egresses through the node with no destination
+    filter, so quietly dropping an allowlist would leave the sandbox reaching
     private ranges and cloud instance metadata while the caller believes
     egress is filtered.
     """
@@ -816,8 +816,8 @@ def test_wait_racing_terminate_reports_termination_not_a_vanished_sandbox():
 
 
 def test_creating_a_sandbox_warns_that_the_network_is_not_isolated(caplog, monkeypatch):
-    """block_network=False means this node's network namespace here, where the
-    same default on Modal is an isolated network. The default is kept for
+    """block_network=False egresses through this node's network here, where
+    the same default on Modal is an isolated network. The default is kept for
     parity, so the difference has to be said out loud."""
     monkeypatch.setattr(sandbox_mod, "_host_network_warned", False)
 

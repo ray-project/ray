@@ -10,12 +10,18 @@ that builds. The runsc-free half of the Image coverage lives in
 ``sandbox/modal/tests/test_modal_image.py``.
 """
 
+import hashlib
+import os
 import sys
 
 import pytest
 
 import ray
 from ray.experimental.sandbox import modal
+
+# Sandboxes here run on Modal's default network, network="public", which
+# needs slirp4netns and a host that allows a per-sandbox network namespace.
+pytestmark = pytest.mark.usefixtures("ensure_slirp4netns")
 
 # busybox has a shell but no package managers; the python image has GNU
 # coreutils rather than busybox applets.
@@ -153,6 +159,24 @@ def test_copy_false_files_do_not_enter_the_image(tmp_path):
 
     # Pushed per sandbox rather than baked in, so the reference is still the base.
     assert image.reference == MINIMAL_IMAGE
+
+
+def test_a_copy_false_file_of_many_chunks_is_pushed_byte_for_byte(tmp_path):
+    """A startup file travels the same upload path as write_bytes, and one
+    larger than a chunk used to arrive with its chunks out of order."""
+    payload = os.urandom(5 * 1024 * 1024 + 123)
+    source = tmp_path / "blob.bin"
+    source.write_bytes(payload)
+    image = modal.Image.from_registry(MINIMAL_IMAGE).add_local_file(
+        source, "/data/blob.bin"
+    )
+    sandbox = modal.Sandbox.create(image=image, timeout=300)
+    try:
+        process = sandbox.exec("sh", "-c", "sha256sum /data/blob.bin | cut -d' ' -f1")
+        assert process.stdout.read().strip() == hashlib.sha256(payload).hexdigest()
+        assert process.wait() == 0
+    finally:
+        sandbox.terminate()
 
 
 def test_a_local_directory_is_pushed_whole(tmp_path):

@@ -28,6 +28,10 @@ from ray.experimental.sandbox.modal._actor import (
     _SPILL_SEGMENT_BYTES,
 )
 
+# Sandboxes here run on Modal's default network, network="public", which
+# needs slirp4netns and a host that allows a per-sandbox network namespace.
+pytestmark = pytest.mark.usefixtures("ensure_slirp4netns")
+
 IMAGE = "busybox:latest"
 _MIB = 1024 * 1024
 

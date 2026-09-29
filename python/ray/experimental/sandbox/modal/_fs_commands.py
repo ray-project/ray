@@ -202,8 +202,10 @@ def make_read_file_command(
         remote_path: Absolute path to read.
         limit: Refuse a file larger than this many bytes, exiting
             ``EXIT_FILE_TOO_LARGE`` with the size on stderr before reading
-            any of it -- Modal refuses a 6 GiB file in milliseconds. None
-            reads the whole file.
+            any of it -- Modal refuses a 6 GiB file in milliseconds. A file
+            whose size stat under-reports is not caught here; a streaming
+            caller enforces the limit on what it receives. None reads the
+            whole file.
         inline: Exit ``EXIT_NOT_INLINE``, again before reading anything, for
             a file larger than this. For a caller that takes small files in
             one reply and streams the rest.
@@ -214,16 +216,20 @@ def make_read_file_command(
     size_checks = ""
     if limit is not None or inline is not None:
         # The size stat reports, which is 0 for /proc files and devices that
-        # have plenty to say. `head -c` below caps those; the caller sees one
-        # byte past the cap and knows.
+        # have plenty to say -- so the checks below are not the whole story.
         size_checks = 's=$(stat -L -c %s "$p" 2>/dev/null) || s=0; '
     if limit is not None:
         size_checks += f'[ "$s" -le {limit} ] || {{ echo "$s" >&2; exit {EXIT_FILE_TOO_LARGE}; }}; '
     if inline is not None:
         size_checks += f'[ "$s" -le {inline} ] || exit {EXIT_NOT_INLINE}; '
-    cap = inline if inline is not None else limit
-    # busybox and coreutils both have `head -c`.
-    body = 'cat "$p"' if cap is None else f'head -c {cap + 1} "$p"'
+    # A one-reply read is capped here, one byte past the inline size, so a file
+    # stat under-reports cannot grow the reply without bound; the caller sees
+    # the extra byte and streams instead. A streamed read is not: its reader
+    # counts what arrives against ``limit`` and stops the command itself. `cat`
+    # rather than `head -c` for it, because busybox's head reads in small
+    # blocks and is syscall-bound under gVisor: a 64 MiB read ran at 18 MiB/s
+    # through head and 78 MiB/s through cat, measured.
+    body = 'cat "$p"' if inline is None else f'head -c {inline + 1} "$p"'
     script = (
         'p="$1"; '
         # A file in the way is ENOTDIR, which Modal reports for a read as the

@@ -447,14 +447,40 @@ def test_base_url_override():
     return True
 
 
+def test_markdown_hint():
+    """llms_txt_markdown_hint adds the Accept: text/markdown pointer, and is off
+    by default so a host that doesn't negotiate Markdown never advertises it."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = _build(Path(tmp), extra_conf="\nllms_txt_markdown_hint = True\n")
+        index = (out / "llms.txt").read_text(encoding="utf-8")
+        _check(
+            "Accept: text/markdown" in index,
+            "markdown hint missing when llms_txt_markdown_hint is True",
+        )
+        # The pointer belongs in the header, before the first section.
+        _check(
+            index.index("Accept: text/markdown") < index.index("## "),
+            "markdown hint rendered after the first section heading",
+        )
+    with tempfile.TemporaryDirectory() as tmp:
+        out = _build(Path(tmp))
+        index = (out / "llms.txt").read_text(encoding="utf-8")
+        _check(
+            "Accept: text/markdown" not in index,
+            "markdown hint present without llms_txt_markdown_hint",
+        )
+    return True
+
+
 if __name__ == "__main__":
     test_llms_txt()
     test_notebook_exclusion()
     test_build_gate()
     test_clean_coercion()
+    test_markdown_hint()
     test_base_url_override()
     print(
         "PASS: llms_txt extension produced a correct index, Optional section, "
-        "llms-full shards, excludes notebooks by source type, and honors the "
-        "llms_txt_build gate."
+        "llms-full shards, excludes notebooks by source type, gates the "
+        "Markdown pointer, and honors the llms_txt_build gate."
     )

@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Deploy a RayCluster on Kubernetes, run a job in the head pod or through the job submission SDK, and open the Ray Dashboard."
+    description: "Deploy a RayCluster on Kubernetes, run a job in the head pod or through the job submission SDK, and open the Ray dashboard."
 ---
 
 (kuberay-raycluster-quickstart)=
@@ -34,7 +34,7 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
 
 ```sh
 # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-helm install raycluster kuberay/ray-cluster --version 1.6.0
+helm install raycluster kuberay/ray-cluster --version 1.7.0
 ```
 
 
@@ -101,7 +101,7 @@ kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.clust
 
 ### Method 2: Submit a Ray job to the RayCluster using [ray job submission SDK](jobs-quickstart)
 
-Unlike Method 1, this method doesn't require you to execute commands in the Ray head pod. Instead, you can use the [Ray job submission SDK](jobs-quickstart) to submit Ray jobs to the RayCluster through the Ray Dashboard port where Ray listens for Job requests. The KubeRay operator configures a [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) targeting the Ray head Pod.
+Unlike Method 1, this method doesn't require you to execute commands in the Ray head pod. Instead, you can use the [Ray job submission SDK](jobs-quickstart) to submit Ray jobs to the RayCluster through the Ray dashboard port where Ray listens for Job requests. The KubeRay operator configures a [Kubernetes service](https://kubernetes.io/docs/concepts/services-networking/service/) targeting the Ray head Pod.
 
 ```sh
 kubectl get service raycluster-kuberay-head-svc
@@ -112,14 +112,14 @@ NAME                          TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   
 raycluster-kuberay-head-svc   ClusterIP   None          <none>        10001/TCP,8265/TCP,6379/TCP,8080/TCP,8000/TCP   57s
 ```
 
-Now that the service name is available, use port-forwarding to access the Ray Dashboard port which is 8265 by default.
+Now that the service name is available, use port-forwarding to access the Ray dashboard port which is 8265 by default.
 
 ```sh
 # Execute this in a separate shell.
 kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265 > /dev/null &
 ```
 
-Now that the Dashboard port is accessible, submit jobs to the RayCluster:
+Now that the dashboard port is accessible, submit jobs to the RayCluster:
 
 ```sh
 # The following job's logs will show the Ray cluster's total resource capacity, including 2 CPUs.
@@ -158,11 +158,11 @@ Job 'raysubmit_8vJ7dKqYrWKbd17i' succeeded
 ------------------------------------------
 ```
 
-## Step 5: Access the Ray Dashboard
+## Step 5: Access the Ray dashboard
 
-Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`. See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
+Visit `${YOUR_IP}:8265` in your browser for the dashboard. For example, `127.0.0.1:8265`. See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
 
-![Ray Dashboard](../images/ray-dashboard.png)
+![Ray dashboard](../images/ray-dashboard.png)
 
 ## Step 6: Cleanup
 

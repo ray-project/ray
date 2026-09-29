@@ -1,113 +1,101 @@
-"""Parquet file-level chunking helpers for DataSourceV2.
+"""Parquet chunk helpers for DataSourceV2.
 
-Maps planner chunk metadata (``ParquetFileChunkMetadata``) to row-group
-ranges and PyArrow ``ParquetFileFragment`` subsets for parallel reads.
+Maps ``ParquetRowGroupChunkMetadata`` (the explicit surviving row groups a bin
+assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading, and
+names the read unit each subset stands for.
 """
-from typing import List, Optional, Tuple
+from typing import Callable, Iterable, List, TypeVar
 
 import pyarrow.dataset as pds
 
-from ray.data._internal.datasource_v2.chunkers.file_chunker import (
-    ParquetFileChunkMetadata,
-)
+from ray._common.retry import call_with_retry
+from ray.data._internal.datasource_v2.read_units import ReadUnit, ReadUnitFragment
+
+R = TypeVar("R")
 
 
-def _calculate_row_group_range(
-    chunk_idx: int, total_num_chunks: int, total_row_groups: int
-) -> Optional[Tuple[int, int]]:
-    """Compute the half-open row-group range for a given chunk.
+def _row_group_unit_id(path: str, row_group_id: int) -> str:
+    """Stable :attr:`ReadUnit.id` of one physical row group of a Parquet file.
 
-    Distributes row groups as evenly as possible across chunks. If row groups
-    don't divide evenly, earlier chunks get the extra row groups.
-
-    Example:
-        - 10 row groups, 3 chunks -> [0:4), [4:7), [7:10)
-        - 11 row groups, 3 chunks -> [0:4), [4:8), [8:11)
-
-    Args:
-        chunk_idx: Index of the current chunk (0-based).
-        total_num_chunks: Total number of chunks.
-        total_row_groups: Total number of row groups to distribute.
-
-    Returns:
-        Tuple ``(start_row_group, end_row_group)`` where ``end`` is exclusive,
-        or ``None`` if ``chunk_idx`` falls beyond the actual number of row
-        groups (i.e. the planner over-estimated the chunk count).
+    The reader reports it for each row group it scans on its own, and the
+    footer reader accepts the same id in ``excluded_read_unit_ids`` to leave
+    that row group out of a listing. Nothing parses it.
     """
-    assert (
-        total_row_groups >= 0
-    ), f"total_row_groups must be non-negative, got {total_row_groups}"
-    assert (
-        total_num_chunks > 0
-    ), f"total_num_chunks must be positive, got {total_num_chunks}"
-    assert (
-        chunk_idx < total_num_chunks
-    ), f"chunk_idx must be less than total_num_chunks, got {chunk_idx} and {total_num_chunks}"
-    assert chunk_idx >= 0, f"chunk_idx must be non-negative, got {chunk_idx}"
-
-    # Handle the case where ``chunk_idx`` exceeds the actual number of chunks
-    # needed. This happens when the planner overestimated the number of chunks
-    # (the chunker doesn't fetch metadata).
-    if chunk_idx >= total_row_groups:
-        return None
-
-    base_row_groups_per_chunk = total_row_groups // total_num_chunks
-    remainder = total_row_groups % total_num_chunks
-
-    # Chunks 0 through (remainder-1) get one extra row group.
-    if chunk_idx < remainder:
-        row_groups_in_this_chunk = base_row_groups_per_chunk + 1
-        start = chunk_idx * row_groups_in_this_chunk
-    else:
-        row_groups_in_this_chunk = base_row_groups_per_chunk
-        start = (
-            remainder * (base_row_groups_per_chunk + 1)
-            + (chunk_idx - remainder) * base_row_groups_per_chunk
-        )
-
-    end = start + row_groups_in_this_chunk
-
-    assert (
-        0 <= start <= end <= total_row_groups
-    ), f"Invalid range [{start}, {end}) for {total_row_groups} row groups"
-
-    return start, end
+    return f"{path}#rg{row_group_id}"
 
 
-def _fragments_from_chunk_metadata(
-    fragment: pds.ParquetFileFragment,
-    chunk_metadata: ParquetFileChunkMetadata,
-) -> List[Tuple[pds.ParquetFileFragment, int]]:
-    """Slice ``fragment`` into per-row-group sub-fragments per chunk metadata.
+def _with_io_retry(f: Callable[[], R], description: str) -> R:
+    """Run ``f``, retrying the transient IO errors configured on the context.
 
-    Returns one ``(ParquetFileFragment, file_row_offset)`` pair per row group
-    covered by the chunk, where ``file_row_offset`` is the sum of ``num_rows``
-    across all row groups that precede the sub-fragment in the underlying
-    file. Callers seed per-fragment hashing offsets with this value so
-    sub-fragments of the same file don't collide on ``(path, 0, n)``.
-
-    Returns an empty list when the chunk index falls beyond the file's actual
-    row-group count (the planner over-estimated; we silently drop the slice).
+    ``ParquetFileFragment.subset`` and ``.metadata`` both open the file to read
+    its footer, so on remote storage they fail with the same transient errors
+    (S3 timeouts, throttling) the rest of the read path already retries.
     """
-    chunk_idx = chunk_metadata["chunk_idx"]
-    total_num_chunks = chunk_metadata["total_num_chunks"]
-    metadata = fragment.metadata
-    total_row_groups = metadata.num_row_groups
+    from ray.data.context import DataContext
 
-    row_group_range = _calculate_row_group_range(
-        chunk_idx, total_num_chunks, total_row_groups
+    return call_with_retry(
+        f,
+        description=description,
+        match=DataContext.get_current().retried_io_errors,
     )
 
-    if row_group_range is None:
+
+def _fragments_from_row_group_ids(
+    fragment: pds.ParquetFileFragment,
+    row_group_ids: Iterable[int],
+    *,
+    per_row_group_offsets: bool,
+) -> List[ReadUnitFragment]:
+    """Slice ``fragment`` to the explicit physical ``row_group_ids`` of one bin.
+
+    Used by the footer-based chunking path, where ``ParquetRowGroupChunkMetadata``
+    names the exact surviving row groups for a file (predicate pruning + bin
+    packing already happened upstream), so no size-based reconciliation is needed.
+
+    Returns one :class:`ReadUnitFragment` per sub-fragment.
+
+    When ``per_row_group_offsets`` is False (the common case) the file's groups are
+    scanned together as a single sub-fragment with a row offset of 0 -- this
+    lets PyArrow coalesce reads across the groups -- and the read unit names
+    the whole file. When True (a synthesized column needs read unit
+    boundaries), one sub-fragment per row group is returned, each paired with
+    a :class:`ReadUnit` named ``"<path>#rg<index>"`` and its cumulative
+    pre-filter row offset within the file, so per-row values stay unique and
+    match physical row positions even when pruned groups make the surviving
+    set non-contiguous. This branch reads the footer once for the offsets.
+    """
+    ids = sorted(row_group_ids)
+    if not ids:
         return []
 
-    start, end = row_group_range
-
-    file_row_offset = sum(metadata.row_group(i).num_rows for i in range(start))
-    sub_fragments: List[Tuple[pds.ParquetFileFragment, int]] = []
-    for row_group_index in range(start, end):
-        sub_fragments.append(
-            (fragment.subset(row_group_ids=[row_group_index]), file_row_offset)
+    def _subset(rg_ids: List[int]) -> pds.ParquetFileFragment:
+        return _with_io_retry(
+            lambda: fragment.subset(row_group_ids=rg_ids),
+            f"subset row groups {rg_ids} of {fragment.path}",
         )
-        file_row_offset += metadata.row_group(row_group_index).num_rows
-    return sub_fragments
+
+    path = fragment.path
+    if not per_row_group_offsets:
+        return [ReadUnitFragment(_subset(ids), ReadUnit(id=path, source=path, count=1))]
+
+    metadata = _with_io_retry(
+        lambda: fragment.metadata, f"read Parquet footer for {path}"
+    )
+    # prefix[i] == pre-filter index in the file of row group i's first row.
+    prefix = [0] * (metadata.num_row_groups + 1)
+    for i in range(metadata.num_row_groups):
+        prefix[i + 1] = prefix[i] + metadata.row_group(i).num_rows
+    return [
+        ReadUnitFragment(
+            _subset([rg_id]),
+            ReadUnit(
+                id=_row_group_unit_id(path, rg_id),
+                source=path,
+                index=rg_id,
+                count=metadata.num_row_groups,
+                num_rows=metadata.row_group(rg_id).num_rows,
+            ),
+            unit_start_row=prefix[rg_id],
+        )
+        for rg_id in ids
+    ]

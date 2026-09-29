@@ -892,10 +892,8 @@ def resolve_image(image: Union["Image", str, None]) -> Optional[ResolvedImage]:
 
     return ResolvedImage(
         reference=image.reference,
-        # A moved tag is picked up on its own -- the node checks it against the
-        # registry when a sandbox is created -- so this only matters when that
-        # check cannot tell: a registry that is unreachable, or content that
-        # changed under an unchanged digest record.
+        # A cached tag stays pinned on each node, as on Modal, so this is the
+        # only way to pick up a tag that has since moved.
         force_pull=image._force_pull,
         env=dict(image._env),
         workdir=image._workdir,

@@ -14,15 +14,15 @@ This guide explains how to profile JAX workloads running on Ray TPU workers in a
 
 To profile JAX workloads on TPU workers, make sure your environment meets the following requirements:
 
-- Use a Ray Docker image with Ray 2.57 or later, or a custom image built with JAX profiler support. The image needs `jax`, `tensorflow`, `tensorboard`, and `tensorboard-plugin-profile` installed in the container's base Python environment. The Ray Dashboard `ReporterAgent` uses `tensorflow` on worker nodes to capture JAX profiles.
+- Use a Ray Docker image with Ray 2.57 or later, or a custom image built with JAX profiler support. The image needs `jax`, `tensorflow`, `tensorboard`, and `tensorboard-plugin-profile` installed in the container's base Python environment. The Ray dashboard `ReporterAgent` uses `tensorflow` on worker nodes to capture JAX profiles.
   :::{note}
   This feature doesn't support installing `tensorflow` dynamically with `runtime_env`.
   :::
-- Set the environment variable `RAY_DASHBOARD_ENABLE_PROFILING=1` on the Ray head node container in your KubeRay `RayJob` or `RayCluster` YAML specification. The Ray Dashboard profiling endpoints are disabled by default for security reasons.
+- Set the environment variable `RAY_DASHBOARD_ENABLE_PROFILING=1` on the Ray head node container in your KubeRay `RayJob` or `RayCluster` YAML specification. The Ray dashboard profiling endpoints are disabled by default for security reasons.
 
 ## Initialize the JAX profiler in user code
 
-In your remote Ray task or actor executing JAX code on the TPU worker, call `init_jax_profiler()` after importing Ray. This call starts an in-process gRPC profiling server inside the worker process, on port 9999 by default. The call also registers the port in the Ray GCS internal key-value store so the Ray Dashboard can discover it:
+In your remote Ray task or actor executing JAX code on the TPU worker, call `init_jax_profiler()` after importing Ray. This call starts an in-process gRPC profiling server inside the worker process, on port 9999 by default. The call also registers the port in the Ray GCS internal key-value store so the Ray dashboard can discover it:
 
 ```python
 import ray
@@ -54,7 +54,7 @@ kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/r
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.tpu-jax.yaml
 ```
 
-If you use your own `RayJob` manifest, set `RAY_DASHBOARD_ENABLE_PROFILING` to `"1"` on the head pod container so the Ray Dashboard profiling endpoints are reachable:
+If you use your own `RayJob` manifest, set `RAY_DASHBOARD_ENABLE_PROFILING` to `"1"` on the head pod container so the Ray dashboard profiling endpoints are reachable:
 
 ```yaml
 # Under headGroupSpec.template.spec.containers:
@@ -74,9 +74,9 @@ kubectl get pods -w
 
 The output lists a head pod named `<RAY_JOB_NAME>-head-...` and a TPU worker pod named `<RAY_JOB_NAME>-worker-...`. Both reach the `Running` state.
 
-## Port-forward the Ray Dashboard
+## Port-forward the Ray dashboard
 
-Expose the Ray Dashboard port on the head node locally so you can call the API endpoints:
+Expose the Ray dashboard port on the head node locally so you can call the API endpoints:
 
 ```bash
 kubectl port-forward svc/<RAY_JOB_NAME>-head-svc 8265:8265
@@ -90,18 +90,18 @@ To trigger profiling dynamically, identify the worker node ID or IP address and 
 
 ### Get the node ID
 
-Query the Ray State API from your local terminal through the port-forwarded Ray Dashboard:
+Query the Ray State API from your local terminal through the port-forwarded Ray dashboard:
 
 ```bash
 RAY_ADDRESS=http://localhost:8265 ray list nodes --detail
 ```
 
-Alternatively, open the Ray Dashboard in your browser at `http://localhost:8265` and copy the hexadecimal node ID from the **Cluster** nodes view.
+Alternatively, open the Ray dashboard in your browser at `http://localhost:8265` and copy the hexadecimal node ID from the **Cluster** nodes view.
 
 ### Get the worker process PID
 
 You can find the PID of the Python worker process executing your JAX task or actor in two ways:
-- Open the Ray Dashboard at `http://localhost:8265` and go to the **Workers**, **Tasks**, or **Actors** tab to view the PID and node ID.
+- Open the Ray dashboard at `http://localhost:8265` and go to the **Workers**, **Tasks**, or **Actors** tab to view the PID and node ID.
 - Alternatively, use the Ray State CLI:
 
   ```bash
@@ -110,7 +110,7 @@ You can find the PID of the Python worker process executing your JAX task or act
 
 ## Trigger JAX profiling dynamically
 
-Open a new terminal window and run the following `curl` command to trigger JAX profiling through the Ray Dashboard. Replace `<WORKER_PID>` and `<NODE_ID_HEX>` with the values you resolved:
+Open a new terminal window and run the following `curl` command to trigger JAX profiling through the Ray dashboard. Replace `<WORKER_PID>` and `<NODE_ID_HEX>` with the values you resolved:
 
 ```bash
 curl -G "http://localhost:8265/worker/jax_profile" \
@@ -119,11 +119,11 @@ curl -G "http://localhost:8265/worker/jax_profile" \
   --data-urlencode "duration=5"
 ```
 
-You can pass `ip=<WORKER_IP>` instead of `node_id=<NODE_ID_HEX>`. The Ray Dashboard discovers the profiler port from the GCS registry, including a custom port that you passed to `init_jax_profiler()` or set through the `JAX_PROFILER_PORT` environment variable. Pass `port=<PORT>` only to bypass that lookup, or when the endpoint reports that it couldn't discover the port.
+You can pass `ip=<WORKER_IP>` instead of `node_id=<NODE_ID_HEX>`. The Ray dashboard discovers the profiler port from the GCS registry, including a custom port that you passed to `init_jax_profiler()` or set through the `JAX_PROFILER_PORT` environment variable. Pass `port=<PORT>` only to bypass that lookup, or when the endpoint reports that it couldn't discover the port.
 
 ### Expected endpoint response
 
-The Ray Dashboard looks up the JAX profiler port in the GCS registry, queries the TPU worker's in-process profiling server, collects the trace, and returns the following:
+The Ray dashboard looks up the JAX profiler port in the GCS registry, queries the TPU worker's in-process profiling server, collects the trace, and returns the following:
 
 ```json
 {

@@ -1,41 +1,43 @@
-import contextlib
+import errno
 import fcntl
 import hashlib
 import io
 import json
 import logging
+import mmap
 import os
 import platform
 import re
 import shutil
-import stat
+import subprocess
 import tarfile
 import tempfile
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from typing import BinaryIO, Callable, Dict, Optional, Tuple, Union
+from collections import deque
+from functools import lru_cache
+from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
 
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
-# Per-user, and created 0700. A shared path in /tmp is both a poisoning vector
-# -- planting a rootfs plus its .extracted marker makes every later pull of that
-# name short-circuit onto attacker content -- and, once one user creates it, an
-# unusable directory for everyone else on the box.
-DEFAULT_IMAGES_DIR = f"/tmp/ray-{os.getuid()}/sandbox/images"
-
-# Scratch directories and partial files are cleaned up on the error paths that
-# raise, but not when a process is killed outright. Anything older than this is
-# from a build or pull that will never finish.
-_STALE_TEMP_AGE_SECONDS = 6 * 60 * 60
-# Image config metadata, stored at the root of an image's cache directory --
-# beside `rootfs/`, not inside it.
-IMAGE_CONFIG_FILENAME = ".image_config.json"
+DEFAULT_IMAGES_DIR = "/tmp/ray/sandbox/images"
 _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
+
+# A cached image is an EROFS image of its root filesystem. gVisor mounts it
+# inside the Sentry, so the image's uids and gids never need a host
+# representation: files keep their real owners and in-sandbox chown works for
+# any uid, all from an unprivileged worker.
+ROOTFS_IMAGE = "rootfs.erofs"
+# Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
+# extracted-directory cache left by an earlier Ray, say) re-pulls the image
+# once; sandboxes already running on the old cache keep it until they exit.
+_EXTRACT_FORMAT = 3
+# The erofs-utils release that added ``mkfs.erofs --tar``.
+_MKFS_EROFS_MIN_VERSION = "1.7"
 
 
 def _registry_request(
@@ -55,59 +57,19 @@ def _registry_request(
     return req
 
 
-# Bumped when the cache key changes shape, so entries written by an older
-# layout are missed rather than misread.
-_CACHE_KEY_VERSION = "v2"
-
-
 def sanitize_image_name(image: str) -> str:
-    """Derive a stable, collision-free cache key for an image reference.
-
-    The readable prefix is for humans reading the cache directory; the digest
-    suffix is what makes the key unique.
-
-    Sanitizing alone is not sufficient. It maps ``/``, ``:`` and ``@`` all to
-    ``_``, so ``org/repo:v1`` and the distinct Docker Hub image ``org_repo_v1``
-    collide; and it reduces a ``.tar`` path to its basename, so
-    ``/a/rootfs.tar`` and ``/b/rootfs.tar`` share one directory -- where the
-    mtime check then silently serves one the other's filesystem. A local tar
-    could likewise land on the entry for a registry image of a similar name.
-    """
+    """Sanitize container image name into a safe directory and filename."""
     if not isinstance(image, str):
         raise TypeError(f"Expected image to be a string, got {type(image).__name__}")
 
-    # Validate the raw reference, before normalization. parse_image_ref happily
-    # turns "" into "library/:latest" and "..." into "library/...:latest", so a
-    # check on the normalized form would no longer reject either -- the caller
-    # would get a plausible-looking cache key and a confusing pull failure much
-    # later instead of an error naming what they passed.
-    if not re.search(r"[a-zA-Z0-9]", image):
-        raise ValueError(f"Invalid image name '{image}': cannot be safely sanitized.")
-
     if image.endswith(".tar"):
-        # Keyed on location, not content: the mtime check handles a rewritten
-        # tar by re-extracting into this same entry, whereas keying on content
-        # would strand the old directory on every edit.
-        identity = f"file\0{os.path.realpath(image)}"
-        readable = os.path.basename(image)[:-4]
-    else:
-        registry, repo, reference = parse_image_ref(image)
-        # Normalized, so `busybox` and `docker.io/library/busybox:latest` share
-        # one entry instead of being pulled twice. The readable half has to come
-        # from the normalized form too -- deriving it from the raw string would
-        # give those two spellings different directory names despite their
-        # identical digests, which is the same cache miss by another route.
-        identity = f"registry\0{registry}\0{repo}\0{reference}"
-        readable = f"{repo}_{reference}"
+        image = os.path.basename(image)[:-4]
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", readable).lstrip(".")
+    safe = re.sub(r"[^a-zA-Z0-9_.-]", "_", image)
+    safe = safe.lstrip(".")
     if not safe:
         raise ValueError(f"Invalid image name '{image}': cannot be safely sanitized.")
-
-    digest = hashlib.sha256(
-        f"{_CACHE_KEY_VERSION}\0{identity}".encode("utf-8")
-    ).hexdigest()
-    return f"{safe[:48]}-{digest[:16]}"
+    return safe
 
 
 _DOCKER_HUB_REGISTRIES = (
@@ -116,6 +78,60 @@ _DOCKER_HUB_REGISTRIES = (
     "registry-1.docker.io",
     "registry.hub.docker.com",
 )
+
+
+_REGISTRY_MIRROR_ENV = "RAY_SANDBOX_REGISTRY_MIRROR"
+
+
+def registry_base_url(registry: str) -> str:
+    """Return the registry as a base URL.
+
+    Bare hosts default to https. An explicit ``http://`` scheme is honored,
+    which in-cluster pull-through proxies (a plain ``registry:2``) need.
+
+    Args:
+        registry: Registry host, optionally carrying an explicit scheme.
+
+    Returns:
+        The registry with a scheme, without a trailing slash.
+    """
+    if registry.startswith(("http://", "https://")):
+        return registry
+    return f"https://{registry}"
+
+
+def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
+    """Route Docker Hub pulls through a configured pull-through mirror.
+
+    ``RAY_SANDBOX_REGISTRY_MIRROR`` names a registry that mirrors Docker Hub
+    as ``host[:port][/repo-prefix]`` — e.g. an ECR pull-through cache
+    (``<acct>.dkr.ecr.<region>.amazonaws.com/dockerhub``), an Artifact
+    Registry remote repository, or an in-cluster ``registry:2`` proxy. It
+    avoids Docker Hub's anonymous rate limits and pulls over the local
+    network instead of the WAN. Only Docker Hub pulls are rewritten; other
+    registries pass through untouched. When set, the mirror is
+    authoritative (no fallback to the upstream), and it is used with the
+    same anonymous token flow as any registry.
+
+    Args:
+        registry: Registry host chosen by ``parse_image_ref``.
+        repo: Repository path chosen by ``parse_image_ref``.
+
+    Returns:
+        The possibly rewritten ``(registry, repo)`` pair.
+    """
+    mirror = os.environ.get(_REGISTRY_MIRROR_ENV, "").strip().strip("/")
+    if not mirror or registry != "registry-1.docker.io":
+        return registry, repo
+    scheme = ""
+    for candidate in ("http://", "https://"):
+        if mirror.startswith(candidate):
+            scheme, mirror = candidate, mirror[len(candidate) :]
+            break
+    host, _, prefix = mirror.partition("/")
+    if scheme:
+        host = scheme + host
+    return host, f"{prefix}/{repo}" if prefix else repo
 
 
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
@@ -176,7 +192,7 @@ def get_registry_auth_headers(
     timeout: float = 30.0,
 ) -> Dict[str, str]:
     """Retrieve bearer authentication token headers for registry repository."""
-    url = f"https://{registry}/v2/{repo}/manifests/{reference}"
+    url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
     req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         urllib.request.urlopen(req, timeout=timeout)
@@ -192,15 +208,6 @@ def get_registry_auth_headers(
         if not realm_m:
             return {}
         realm = realm_m.group(1)
-        # The realm is chosen by whoever answered the request. No credentials
-        # are sent today, but the moment any are, an http:// or off-host realm
-        # is a credential-exfiltration path -- so constrain it now.
-        if urllib.parse.urlparse(realm).scheme != "https":
-            logger.warning(
-                f"Ignoring non-https authentication realm '{realm}' offered by "
-                f"registry '{registry}'."
-            )
-            return {}
 
         service_m = re.search(
             r'service=["\']?([^"\',\s]+)["\']?', auth_hdr, re.IGNORECASE
@@ -236,51 +243,129 @@ def get_registry_auth_headers(
     return {}
 
 
+def _drop_ownership_children(
+    ownership: Dict[str, Tuple[int, int]], parent: str
+) -> None:
+    """Forget recorded owners for everything under ``parent`` ("." for all)."""
+    if parent == ".":
+        ownership.clear()
+        return
+    prefix = parent + "/"
+    for key in [k for k in ownership if k.startswith(prefix)]:
+        del ownership[key]
+
+
+def _drop_ownership_subtree(ownership: Dict[str, Tuple[int, int]], name: str) -> None:
+    """Forget recorded owners for a deleted path and everything under it."""
+    ownership.pop(name, None)
+    _drop_ownership_children(ownership, name)
+
+
+# Linux's MAXSYMLINKS: the hop count past which path resolution gives ELOOP.
+_MAX_SYMLINK_HOPS = 40
+
+
+def _resolve_in_root(root: str, rel: str) -> Tuple[str, str]:
+    """Resolve ``rel`` under ``root`` the way a sandbox rooted there would.
+
+    Every symlink met along the way is followed with the extracted tree as
+    ``/``: an absolute target restarts at ``root`` and ``..`` never climbs
+    above it, so the result stays inside the tree whatever the image's links
+    point at on the host. Components that do not exist yet are kept as-is.
+    Callers that must not dereference a path's last component resolve its
+    parent and append the last component themselves.
+
+    Args:
+        root: Host directory holding the extracted tree.
+        rel: Path to resolve, relative to ``root``; may be empty.
+
+    Returns:
+        The host path, and the canonical path relative to ``root`` ("." for
+        ``root`` itself): the path the re-pack walk finds the entry at.
+
+    Raises:
+        OSError: ``ELOOP`` on a symlink chain longer than the kernel allows.
+    """
+    pending: Deque[str] = deque(p for p in rel.split("/") if p not in ("", "."))
+    resolved: List[str] = []
+    hops = 0
+    while pending:
+        part = pending.popleft()
+        if part == "..":
+            if resolved:
+                resolved.pop()
+            continue
+        host = os.path.join(root, *resolved, part)
+        if os.path.islink(host):
+            hops += 1
+            if hops > _MAX_SYMLINK_HOPS:
+                raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), host)
+            target = os.readlink(host)
+            if target.startswith("/"):
+                resolved = []
+            pending.extendleft(
+                reversed([p for p in target.split("/") if p not in ("", ".")])
+            )
+            continue
+        resolved.append(part)
+    return os.path.join(root, *resolved), "/".join(resolved) or "."
+
+
+def _create_nofollow(path: str) -> None:
+    """Create ``path`` as an empty file if absent, never through a symlink at it."""
+    os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644))
+
+
 def extract_tar_layer(
     tar_input: Union[bytes, io.IOBase, BinaryIO],
     dest_dir: str,
+    ownership: Optional[Dict[str, Tuple[int, int]]] = None,
 ) -> None:
     """Extract a tar archive layer onto dest_dir with OCI whiteout handling.
 
-    Args:
-        tar_input: Archive bytes or a readable file object.
-        dest_dir: Root filesystem directory to extract into.
+    Member paths are resolved as the sandbox will see them, with ``dest_dir``
+    as ``/`` (see ``_resolve_in_root``), so a member under a symlinked
+    directory (UsrMerge's ``bin -> usr/bin``, an absolute ``/var/run ->
+    /run``) lands where the image means it to and never outside the tree.
+
+    ``ownership``, shared by the caller across an image's layers, records the
+    final {canonical path: (uid, gid)} of every member shipped with a
+    non-root owner, keyed by the resolved path the re-pack walk finds the
+    entry at; whiteouts and root-owned replacements drop entries. The
+    extracted files themselves stay owned by the extracting user; the EROFS
+    image build restores the recorded owners.
     """
     if isinstance(tar_input, bytes):
         tar_fileobj = io.BytesIO(tar_input)
     else:
         tar_fileobj = tar_input
 
+    dir_mtimes = []
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
         for member in tar.getmembers():
             name = member.name.lstrip("/")
 
             # Prevent path traversal
-            if ".." in name.split(os.sep) or name.startswith(os.sep):
+            if ".." in name.split("/"):
                 continue
 
-            target_path = os.path.abspath(os.path.join(dest_dir, name))
-            dest_abs = os.path.abspath(dest_dir)
-
-            # Prevent symlink traversal
-            dirname = os.path.dirname(name)
-            parent_dir = os.path.abspath(os.path.join(dest_dir, dirname))
-            real_parent_dir = os.path.realpath(parent_dir)
-            dest_real = os.path.realpath(dest_dir)
-
-            if not (
-                target_path == dest_abs or target_path.startswith(dest_abs + os.sep)
-            ) or not (
-                real_parent_dir == dest_real
-                or real_parent_dir.startswith(dest_real + os.sep)
-            ):
+            # The parent is resolved inside dest_dir, so every operation below
+            # stays in the tree and ``rel`` is the canonical path. The last
+            # component is never dereferenced: a symlink there is replaced or
+            # kept as such, not written through.
+            dirname, basename = os.path.split(os.path.normpath(name))
+            try:
+                parent_dir, parent_rel = _resolve_in_root(dest_dir, dirname)
+            except OSError:
                 continue
-
-            basename = os.path.basename(name)
+            target_path = os.path.join(parent_dir, basename)
+            rel = os.path.normpath(os.path.join(parent_rel, basename))
 
             # Handle OCI opaque whiteout (.wh..wh..opq)
             if basename == ".wh..wh..opq":
-                if os.path.exists(parent_dir):
+                if ownership is not None:
+                    _drop_ownership_children(ownership, parent_rel)
+                if os.path.isdir(parent_dir):
                     for item in os.listdir(parent_dir):
                         item_path = os.path.join(parent_dir, item)
                         if os.path.isdir(item_path) and not os.path.islink(item_path):
@@ -295,7 +380,13 @@ def extract_tar_layer(
             # Handle OCI deletion whiteout (.wh.<filename>)
             if basename.startswith(".wh."):
                 del_name = basename[4:]
+                if not del_name:
+                    continue
                 del_path = os.path.join(parent_dir, del_name)
+                if ownership is not None:
+                    _drop_ownership_subtree(
+                        ownership, os.path.normpath(os.path.join(parent_rel, del_name))
+                    )
                 if os.path.isdir(del_path) and not os.path.islink(del_path):
                     shutil.rmtree(del_path, ignore_errors=True)
                 elif os.path.exists(del_path) or os.path.islink(del_path):
@@ -326,20 +417,37 @@ def extract_tar_layer(
             member.name = name
             if member.isreg():
                 os.makedirs(parent_dir, exist_ok=True)
-                f_in = tar.extractfile(member)
-                # Strip setuid/setgid. Ownership is not preserved, so these bits
-                # would land on a host path owned by whoever runs the extraction
-                # -- a setuid-root binary from a user-supplied image, executable
-                # by any local user unless the cache happens to sit on a nosuid
-                # mount.
-                mode = (member.mode or 0o644) & ~(stat.S_ISUID | stat.S_ISGID)
-                with open(target_path, "wb") as f_out:
+                # The conflict pass above removed any symlink at target_path;
+                # O_NOFOLLOW turns a leftover one into an error, not a write
+                # through it.
+                fd = os.open(
+                    target_path,
+                    os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW,
+                    0o666,
+                )
+                with open(fd, "wb") as f_out:
+                    f_in = tar.extractfile(member)
                     if f_in:
                         shutil.copyfileobj(f_in, f_out)
                 if member.mode:
-                    os.chmod(target_path, mode)
+                    os.chmod(target_path, member.mode)
+                # Preserve the archived mtime: tools inside the sandbox rely
+                # on it (apt revalidates its package lists with
+                # If-Modified-Since from the file mtime, and a reset-to-now
+                # mtime makes mirrors answer 304 for stale baked lists).
+                # Best-effort, like the directory pass below.
+                try:
+                    os.utime(target_path, (member.mtime, member.mtime))
+                except OSError:
+                    pass
             elif member.isdir():
                 os.makedirs(target_path, exist_ok=True)
+                # Deferred to the post-loop pass: tar lists a directory
+                # before its contents, so a restrictive archived mode (0500)
+                # applied here would break extracting the children. Preserved
+                # symlinks (UsrMerge) are skipped: chmod/utime follow them.
+                if not os.path.islink(target_path):
+                    dir_mtimes.append((target_path, member.mode, member.mtime))
             elif member.issym():
                 os.makedirs(parent_dir, exist_ok=True)
                 try:
@@ -348,515 +456,574 @@ def extract_tar_layer(
                     pass
             elif member.islnk():
                 os.makedirs(parent_dir, exist_ok=True)
-                # realpath, not abspath: abspath normalizes ".." but leaves
-                # symlinks unresolved, and os.link follows them. A layer can
-                # ship `escape -> /` and then a hardlink naming
-                # `escape/etc/shadow`; that passes a lexical containment check
-                # and hardlinks a host file into the rootfs, which is then
-                # mounted into the sandbox. Resolving first closes that.
-                link_target = os.path.realpath(
-                    os.path.join(dest_dir, member.linkname.lstrip("/"))
-                )
-                if link_target == dest_real or link_target.startswith(
-                    dest_real + os.sep
-                ):
+                link_name = member.linkname.lstrip("/")
+                if ".." not in link_name.split("/"):
+                    link_dir, link_base = os.path.split(os.path.normpath(link_name))
                     try:
-                        os.link(link_target, target_path)
+                        link_parent, _ = _resolve_in_root(dest_dir, link_dir)
+                        # A hardlink names another member; if that is a
+                        # symlink, link the symlink itself, not what it
+                        # points at on the host.
+                        os.link(
+                            os.path.join(link_parent, link_base),
+                            target_path,
+                            follow_symlinks=False,
+                        )
                     except OSError:
                         pass
 
+            # Hardlinks are recorded under their own name too: the re-pack
+            # looks owners up by path, and whichever name of the inode it
+            # emits first decides the owner mkfs.erofs stores.
+            if ownership is not None and rel != ".":
+                if member.uid or member.gid:
+                    ownership[rel] = (member.uid, member.gid)
+                else:
+                    # A later layer re-shipping the path as root wins.
+                    ownership.pop(rel, None)
 
-_MANIFEST_ACCEPT = (
-    "application/vnd.docker.distribution.manifest.v2+json, "
-    "application/vnd.docker.distribution.manifest.list.v2+json, "
-    "application/vnd.oci.image.manifest.v1+json, "
-    "application/vnd.oci.image.index.v1+json"
-)
-
-# An index pointing at an index is legal; an unbounded chain is not.
-_MAX_INDEX_DEPTH = 4
-
-# Records which manifest a cached entry was built from, so a mutable tag can be
-# revalidated instead of being pinned forever.
-MANIFEST_DIGEST_FILENAME = ".manifest_digest"
-
-
-def _assert_owned_by_us(path: str) -> None:
-    """Refuse to use a cache directory belonging to somebody else.
-
-    The directory decides which root filesystem a sandbox runs. If another user
-    can write it, they choose what this one executes.
-    """
-    st = os.stat(path)
-    if st.st_uid != os.getuid():
-        raise SandboxCreationError(
-            f"Image cache '{path}' is owned by uid {st.st_uid}, not {os.getuid()}. "
-            f"Refusing to use it; set a different images_dir."
-        )
-    if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        raise SandboxCreationError(
-            f"Image cache '{path}' is group- or world-writable "
-            f"({stat.filemode(st.st_mode)}). Refusing to use it."
-        )
-
-
-def _sweep_stale_temporaries(images_dir: str) -> None:
-    """Drop scratch left behind by a killed pull.
-
-    Best-effort and never fatal: losing a sweep is far cheaper than failing a
-    pull over it.
-    """
-    cutoff = time.time() - _STALE_TEMP_AGE_SECONDS
-    try:
-        entries = os.listdir(images_dir)
-    except OSError:
-        return
-    for name in entries:
-        if not (
-            _STAGING_NAME.match(name)
-            or _STAGED_LINK_NAME.match(name)
-            or name.endswith(".partial")
-        ):
-            continue
-        path = os.path.join(images_dir, name)
+    # Children first, so a parent's restrictive mode cannot block them.
+    for dir_path, mode, mtime in reversed(dir_mtimes):
         try:
-            if os.lstat(path).st_mtime >= cutoff:
-                continue
-            if os.path.isdir(path) and not os.path.islink(path):
-                shutil.rmtree(path, ignore_errors=True)
-            else:
-                os.unlink(path)
+            if mode:
+                os.chmod(dir_path, mode)
+            os.utime(dir_path, (mtime, mtime))
         except OSError:
-            continue
-
-
-# The gVisor backend's layout: where it writes each sandbox's OCI bundle, and
-# where runsc keeps each container's state. The cache reads both to tell which
-# versions a running sandbox still uses.
-SANDBOX_BUNDLES_DIR = "/tmp/ray/sandbox"
-RUNSC_STATE_DIR = "/tmp/runsc"
-
-# Every published image is an immutable version directory, "<key>.v.<32 hex>",
-# and "<key>" is a symlink naming the current one. A sandbox's bundle names the
-# version itself, so what it runs from cannot change under it: publishing a new
-# version only repoints the link, and an old version is deleted once it has
-# been retired for _RETIRED_GRACE_SECONDS and no live bundle names it.
-#
-# Matched exactly: a key is "<readable>-<16 hex>", and its readable half can
-# itself contain ".old." or ".tmp." -- an image named "x.old.y" used to be
-# swept as scratch.
-_STAGING_NAME = re.compile(r"^.+\.tmp\.[0-9a-f]{32}$")
-_STAGED_LINK_NAME = re.compile(r"^.+\.lnk\.[0-9a-f]{32}$")
-_VERSION_NAME = re.compile(r"^(.+)\.v\.[0-9a-f]{32}$")
-# An entry published before versions existed: a plain directory at "<key>",
-# set aside under this name when replaced.
-_LEGACY_NAME = re.compile(r"^(.+)\.old\.[0-9a-f]{32}$")
-
-# Written into a version when it stops being current; its mtime says when.
-_RETIRED_MARKER = ".retired"
-
-# How long a retired version is kept even if no bundle names it. A sandbox
-# that resolved the version just before it was retired may not have written
-# its bundle yet, or its container may not have recorded its state yet; either
-# way it would be invisible to the in-use check for those few seconds.
-_RETIRED_GRACE_SECONDS = 10 * 60
-
-
-def entry_identity(entry_dir: str) -> str:
-    """Which version ``entry_dir`` resolves to right now, as ``dev:ino``."""
-    st = os.stat(entry_dir)
-    return f"{st.st_dev}:{st.st_ino}"
-
-
-@contextlib.contextmanager
-def _key_lock(images_dir: str, key: str, blocking: bool = True):
-    """Hold the per-image lock publishing takes. Yields whether it was taken."""
-    with open(os.path.join(images_dir, f"{key}.lock"), "a", encoding="utf-8") as f:
-        try:
-            fcntl.flock(f, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            if blocking:
-                raise
-            yield False
-            return
-        try:
-            yield True
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
-
-
-def _mark_retired(version_dir: str) -> None:
-    try:
-        with open(os.path.join(version_dir, _RETIRED_MARKER), "wb"):
             pass
+
+
+@lru_cache(maxsize=1)
+def mkfs_erofs_path() -> Optional[str]:
+    """Path of a ``mkfs.erofs`` that can build images from tarballs, or None.
+
+    Building from a tar (erofs-utils 1.7+) is what lets an unprivileged
+    worker record the image's real uid/gid: a directory source would only
+    carry the worker's own ownership.
+    """
+    path = shutil.which("mkfs.erofs")
+    if path is None:
+        return None
+    try:
+        res = subprocess.run(
+            [path, "--help"], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if "--tar" not in res.stdout + res.stderr:
+        return None
+    return path
+
+
+def require_mkfs_erofs() -> str:
+    """``mkfs_erofs_path()``, or a ``SandboxCreationError`` naming what to install."""
+    path = mkfs_erofs_path()
+    if path is not None:
+        return path
+    found = shutil.which("mkfs.erofs")
+    if found is None:
+        problem = "mkfs.erofs is not in PATH"
+    else:
+        problem = f"{found} predates --tar (erofs-utils {_MKFS_EROFS_MIN_VERSION})"
+    raise SandboxCreationError(
+        "Ray Sandbox caches container images as EROFS root filesystems, which "
+        f"needs mkfs.erofs {_MKFS_EROFS_MIN_VERSION} or later (erofs-utils) on "
+        f"every worker node, but {problem}. Install erofs-utils "
+        f"{_MKFS_EROFS_MIN_VERSION}+ on the node image: on nodes with 4 KiB "
+        "pages, use the Ubuntu 24.04 or Debian 13 package directly; on older "
+        "distributions or nodes with 64 KiB pages, build it from source (with "
+        "`./configure MAX_BLOCK_SIZE=65536` for 64 KiB pages)."
+    )
+
+
+def expected_extract_marker() -> str:
+    """The ``.extracted`` content a cache entry of the current format carries."""
+    return json.dumps({"format": _EXTRACT_FORMAT}, sort_keys=True)
+
+
+def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
+    """``tar.add`` filter giving members the image's recorded owners."""
+
+    def _filter(ti: tarfile.TarInfo) -> tarfile.TarInfo:
+        ids = ownership.get(os.path.normpath(ti.name))
+        ti.uid, ti.gid = ids if ids else (0, 0)
+        ti.uname = ti.gname = ""
+        return ti
+
+    return _filter
+
+
+def _seed_tmp(rootfs_dir: str) -> None:
+    """Docker parity for /tmp: world-writable, sticky, and non-empty.
+
+    runsc mounts a private tmpfs over an *empty* /tmp, which breaks
+    rename(2) from /tmp with EXDEV; one dotfile keeps /tmp on the rootfs.
+    A ``tmp`` symlink is followed inside the tree (``_resolve_in_root``):
+    the directory it names in the image is what gets the mode and the file.
+    """
+    try:
+        tmp_dir, _ = _resolve_in_root(rootfs_dir, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        os.chmod(tmp_dir, 0o1777)
+        _create_nofollow(os.path.join(tmp_dir, ".ray-sandbox-keep"))
     except OSError:
-        # Without the marker, the reclaim goes by when it was renamed.
         pass
 
 
-def _point_at(link: str, version: str) -> None:
-    """Make ``link`` name ``version``, retiring what it named before.
+# Mount points runsc needs in the root filesystem: its mandatory mounts plus
+# the ones Ray's OCI spec adds. A read-only root gets no overlay (runsc drops
+# it for spec.root.readonly), so an immutable EROFS image must ship them.
+_MOUNTPOINT_DIRS = ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp")
+_MOUNTPOINT_FILES = ("etc/resolv.conf", "etc/hosts", "etc/hostname")
 
-    One atomic replace of a symlink: a reader resolves the link to one
-    complete version or the other, never to nothing. The caller holds the
-    image's lock.
+
+def _seed_mountpoints(rootfs_dir: str) -> None:
+    """Create the mount points runsc expects, where the image lacks them.
+
+    Each parent is resolved inside the tree (``_resolve_in_root``), so an
+    image whose ``etc`` or ``dev`` is a symlink to a host directory gets its
+    seeds where the sandbox will look for them, never on the host. A last
+    component that already exists, as a symlink included, is left alone.
     """
-    previous = None
-    if os.path.islink(link):
-        previous = os.path.realpath(link)
-    elif os.path.isdir(link):
-        # Published before versions existed. Set aside, the way a version is
-        # retired; once, the first time this image is replaced.
-        previous = f"{link}.old.{uuid.uuid4().hex}"
-        os.rename(link, previous)
-    staged_link = f"{link}.lnk.{uuid.uuid4().hex}"
-    os.symlink(os.path.basename(version), staged_link)
+    for rel in _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
+        try:
+            parent, _ = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
+            path = os.path.join(parent, os.path.basename(rel))
+            if os.path.lexists(path):
+                continue
+            if rel in _MOUNTPOINT_DIRS:
+                os.makedirs(path, mode=0o755)
+            else:
+                os.makedirs(parent, exist_ok=True)
+                _create_nofollow(path)
+        except OSError:
+            pass
+
+
+def build_erofs_image(
+    rootfs_dir: str, ownership: Dict[str, Tuple[int, int]], out_path: str
+) -> None:
+    """Build an EROFS image of ``rootfs_dir`` carrying the image's real owners.
+
+    The tree is re-packed as a tar whose headers hold the recorded uid/gid
+    (the files on disk belong to the worker), and ``mkfs.erofs --tar``
+    turns that into the image. gVisor's EROFS reader maps the image and
+    only reads the flat-plain data layout, hence ``-E^inline_data``. It also
+    only mounts an image whose block size is a multiple of the host's page
+    size, so we use the page size itself (4 KiB on most hosts, 64 KiB on
+    64K-page kernels).
+
+    Args:
+        rootfs_dir: Extracted root filesystem.
+        ownership: {path: (uid, gid)} recorded during extraction.
+        out_path: Destination image file.
+    """
+    mkfs = require_mkfs_erofs()
+    flat_tar = f"{out_path}.tar"
     try:
-        os.replace(staged_link, link)
-    except OSError:
-        with contextlib.suppress(OSError):
-            os.unlink(staged_link)
-        if previous is not None and _LEGACY_NAME.match(os.path.basename(previous)):
-            os.rename(previous, link)
-        raise
-    if previous is not None:
-        _mark_retired(previous)
+        with tarfile.open(flat_tar, "w") as tar:
+            tar.add(rootfs_dir, arcname=".", filter=_owner_filter(ownership))
+        res = subprocess.run(
+            [
+                mkfs,
+                "--tar=f",
+                f"-b{mmap.PAGESIZE}",
+                "-E^inline_data",
+                out_path,
+                flat_tar,
+            ],
+            capture_output=True,
+            text=True,
+        )
+    finally:
+        try:
+            os.remove(flat_tar)
+        except OSError:
+            pass
+    if res.returncode != 0:
+        raise SandboxCreationError(
+            f"mkfs.erofs failed: {(res.stderr or res.stdout).strip()[-500:]}"
+        )
 
 
-def retire_entry(entry_dir: str) -> None:
-    """Take an image out of the cache, deleting it once nothing runs from it.
+_IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
+# Subdirectory of each cached image holding one marker file per live sandbox.
+_USERS_SUBDIR = ".users"
 
-    Deleting it outright emptied the root filesystem of every sandbox still
-    running from it: the container's gofer serves files from this directory,
-    so anything the container had not opened yet vanished -- measured, a
-    running sandbox's ``ls /etc`` came back empty after another sandbox on the
-    node forced a re-pull of the same image.
+
+def image_cache_max_bytes(images_dir: str) -> int:
+    """Return the image cache size cap in bytes, or 0 for no cap.
+
+    ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES`` sets the cap explicitly; ``0``
+    disables eviction. Unset, the cap defaults to half of the filesystem
+    that holds ``images_dir``.
 
     Args:
-        entry_dir: The image's path in the cache, ``<images_dir>/<key>``.
+        images_dir: Root image cache directory.
+
+    Returns:
+        The cap in bytes; 0 disables eviction.
     """
-    images_dir, key = os.path.split(entry_dir)
-    with _key_lock(images_dir, key):
-        if os.path.islink(entry_dir):
-            version = os.path.realpath(entry_dir)
-            os.unlink(entry_dir)
-            _mark_retired(version)
-        elif os.path.isdir(entry_dir):
-            aside = f"{entry_dir}.old.{uuid.uuid4().hex}"
-            os.rename(entry_dir, aside)
-            _mark_retired(aside)
-    reclaim_retired_entries(images_dir)
+    raw = os.environ.get(_IMAGE_CACHE_MAX_BYTES_ENV)
+    if raw is not None and raw.strip():
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            logger.warning(
+                "Ignoring %s=%r: expected an integer number of bytes.",
+                _IMAGE_CACHE_MAX_BYTES_ENV,
+                raw,
+            )
+    try:
+        return shutil.disk_usage(images_dir).total // 2
+    except OSError:
+        return 0
 
 
-def reclaim_retired_entries(images_dir: str, bundles_dir: Optional[str] = None) -> None:
-    """Delete the versions that are retired, past their grace, and unused.
+def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
+    """Record ``instance_id`` as a live user of the cached image.
 
-    Best-effort and never fatal, like the rest of the sweep. Each image is
-    reclaimed under its own lock, taken without blocking: an image being
-    published right now is left for a later sweep, and a version is never
-    judged while its link is being repointed.
+    Called by ``pull_and_extract_container_image`` while it holds the
+    image's lock, so eviction (which re-checks users under the same lock)
+    can never remove an image between its pull and its first use.
+    """
+    users_dir = os.path.join(image_dir, _USERS_SUBDIR)
+    os.makedirs(users_dir, exist_ok=True)
+    with open(os.path.join(users_dir, instance_id), "w", encoding="utf-8"):
+        pass
+
+
+def _release_image_use(image_dir: str, instance_id: str) -> None:
+    """Drop ``instance_id``'s in-use record; a no-op if it was never marked."""
+    try:
+        os.remove(os.path.join(image_dir, _USERS_SUBDIR, instance_id))
+    except OSError:
+        pass
+
+
+def _has_users(image_dir: str) -> bool:
+    try:
+        return bool(os.listdir(os.path.join(image_dir, _USERS_SUBDIR)))
+    except OSError:
+        return False
+
+
+def _drop_stale_rootfs_tree(image_dir: str) -> None:
+    """Delete an extracted ``rootfs/`` tree once no sandbox uses the image.
+
+    A re-pull keeps the tree of an earlier cache format next to the new
+    ``rootfs.erofs`` while sandboxes are still running on it.
+    """
+    stale = os.path.join(image_dir, "rootfs")
+    if os.path.isdir(stale) and not _has_users(image_dir):
+        shutil.rmtree(stale, ignore_errors=True)
+
+
+def _dir_size_bytes(path: str) -> int:
+    total = 0
+    for dirpath, _, filenames in os.walk(path):
+        for name in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def _file_size_bytes(path: str) -> int:
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return 0
+
+
+def evict_least_recently_used_images(
+    images_dir: str, max_bytes: int, keep: Optional[str] = None
+) -> None:
+    """Evict least-recently-extracted images until the cache fits ``max_bytes``.
+
+    Nodes cache every image they ever ran, so without a cap a long-lived
+    node eventually fills its disk. Candidates are fully extracted images
+    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
+    by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
+    per-image lock is held (a pull in progress), or when it is ``keep``. The
+    in-use check is repeated under the lock, which is also where pulls
+    register their users, so a marked image is never removed.
 
     Args:
-        images_dir: The image cache to reclaim from.
-        bundles_dir: Where live sandbox bundles are; ``SANDBOX_BUNDLES_DIR``
-            by default.
+        images_dir: Root image cache directory.
+        max_bytes: The cache size cap in bytes.
+        keep: Sanitized name of an image that must survive this pass.
     """
     try:
         names = os.listdir(images_dir)
     except OSError:
         return
-    by_key: Dict[str, list] = {}
+    entries = []  # (mtime, name, image_dir or None, tar_path, size)
     for name in names:
-        match = _VERSION_NAME.match(name) or _LEGACY_NAME.match(name)
-        if match:
-            by_key.setdefault(match.group(1), []).append(name)
-    in_use = None
-    now = time.time()
-    for key, candidates in by_key.items():
+        path = os.path.join(images_dir, name)
+        if name.endswith(".tar") and os.path.isfile(path):
+            stem = name[: -len(".tar")]
+            if not os.path.isdir(os.path.join(images_dir, stem)):
+                # Archive without an image: left by an earlier Ray version.
+                try:
+                    entries.append(
+                        (
+                            os.path.getmtime(path),
+                            stem,
+                            None,
+                            path,
+                            _file_size_bytes(path),
+                        )
+                    )
+                except OSError:
+                    pass
+            continue
+        marker = os.path.join(path, ".extracted")
         try:
-            with _key_lock(images_dir, key, blocking=False) as locked:
-                if not locked:
-                    continue
-                link = os.path.join(images_dir, key)
-                current = os.path.realpath(link) if os.path.islink(link) else None
-                for name in candidates:
-                    path = os.path.join(images_dir, name)
-                    if path == current:
-                        continue
-                    retired_at = _retired_at(path)
-                    if retired_at is None or now - retired_at < _RETIRED_GRACE_SECONDS:
-                        continue
-                    if in_use is None:
-                        in_use = _versions_in_use(bundles_dir or SANDBOX_BUNDLES_DIR)
-                    # A bundle from before versions names the image by its
-                    # link path; its container runs from a set-aside entry.
-                    if path in in_use or (_LEGACY_NAME.match(name) and link in in_use):
-                        continue
-                    shutil.rmtree(path, ignore_errors=True)
+            if not (os.path.isdir(path) and os.path.exists(marker)):
+                continue
+            mtime = os.path.getmtime(marker)
         except OSError:
+            continue  # Concurrently deleted; keep going.
+        tar_path = os.path.join(images_dir, f"{name}.tar")
+        size = _dir_size_bytes(path) + _file_size_bytes(tar_path)
+        entries.append((mtime, name, path, tar_path, size))
+
+    total = sum(entry[-1] for entry in entries)
+    for _, name, img_dir, tar_path, size in sorted(entries):
+        if total <= max_bytes:
+            return
+        if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
-
-
-def _retired_at(path: str) -> Optional[float]:
-    """When ``path`` stopped being current, or None if unreadable."""
-    try:
-        return os.path.getmtime(os.path.join(path, _RETIRED_MARKER))
-    except OSError:
-        pass
-    # No marker: set aside before markers existed, or a version orphaned by a
-    # crash between being renamed into place and being pointed at. A rename
-    # sets the change time, so that is when it stopped being current.
-    try:
-        return os.stat(path).st_ctime
-    except OSError:
-        return None
-
-
-def _container_is_live(sandbox_id: str) -> bool:
-    """Whether the container behind a bundle directory still exists.
-
-    A sandbox whose actor was killed never deletes its bundle or its runsc
-    state, so a bundle alone proves nothing -- measured, a node held 89 such
-    containers, every one ``stopped``. This asks what ``runsc list`` asks: is
-    the sandbox process recorded in the container's state still alive.
-    Anything unreadable counts as live, so doubt keeps a version rather than
-    deleting one in use. A container still starting has no state yet; the
-    retirement grace period covers it.
-    """
-    state = os.path.join(RUNSC_STATE_DIR, f"{sandbox_id}_sandbox:{sandbox_id}.state")
-    try:
-        with open(state, encoding="utf-8") as f:
-            pid = int((json.load(f).get("sandbox") or {}).get("pid") or 0)
-    except FileNotFoundError:
-        # Deleted by runsc, so there is no container to protect.
-        return False
-    except (OSError, ValueError, AttributeError, TypeError):
-        return True
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except OSError:
-        # Alive, and someone else's.
-        return True
-    return True
-
-
-def _versions_in_use(bundles_dir: str) -> set:
-    """The directories live bundles run from: a version, or a legacy link path."""
-    in_use = set()
-    try:
-        bundles = os.listdir(bundles_dir)
-    except OSError:
-        return in_use
-    for bundle in bundles:
-        if not _container_is_live(bundle):
-            continue
+        lock_path = os.path.join(images_dir, f"{name}.lock")
         try:
-            with open(
-                os.path.join(bundles_dir, bundle, "config.json"), encoding="utf-8"
-            ) as f:
-                spec = json.load(f)
-        except (OSError, ValueError):
-            continue
-        root = (spec.get("root") or {}).get("path") if isinstance(spec, dict) else None
-        if root:
-            in_use.add(os.path.dirname(os.path.normpath(root)))
-    return in_use
-
-
-def _verify_digest(
-    payload: Optional[bytes],
-    expected: str,
-    image: str,
-    what: str,
-    actual: Optional[str] = None,
-) -> None:
-    """Check content against the digest the manifest named for it.
-
-    Only ``sha256:`` is checked; an algorithm this code does not implement is
-    passed over rather than treated as a mismatch.
-    """
-    if not expected.startswith("sha256:"):
-        return
-    if actual is None:
-        actual = f"sha256:{hashlib.sha256(payload).hexdigest()}"
-    if actual != expected:
-        raise SandboxCreationError(
-            f"Digest mismatch on the {what} for image '{image}': the registry "
-            f"named {expected} but returned {actual}."
-        )
-
-
-def _manifest_url(registry: str, repo: str, reference: str) -> str:
-    """URL for one manifest, with the caller-supplied parts escaped.
-
-    ``repo`` and ``reference`` come from a user string. Unescaped, a ``?`` or
-    ``#`` in either silently rewrites the request target.
-    """
-    safe_repo = urllib.parse.quote(repo, safe="/")
-    safe_reference = urllib.parse.quote(reference, safe="")
-    return f"https://{registry}/v2/{safe_repo}/manifests/{safe_reference}"
-
-
-def _blob_url(registry: str, repo: str, digest: str) -> str:
-    safe_repo = urllib.parse.quote(repo, safe="/")
-    safe_digest = urllib.parse.quote(digest, safe="")
-    return f"https://{registry}/v2/{safe_repo}/blobs/{safe_digest}"
-
-
-def _select_platform_manifest(manifests: list, image: str) -> str:
-    """Pick this host's manifest from an index.
-
-    Falling back to the first entry picks whatever the registry happened to
-    list first -- routinely a BuildKit attestation manifest tagged
-    ``unknown/unknown``, or a windows build. Both produce a confusing "no
-    layers" error or an unrunnable root filesystem, so an absent variant is
-    reported as what it is.
-    """
-    target_arch = get_platform_arch()
-    for m in manifests:
-        plat = m.get("platform", {})
-        if plat.get("os") == "linux" and plat.get("architecture") == target_arch:
-            return m["digest"]
-
-    available = sorted(
-        {
-            f"{m.get('platform', {}).get('os', '?')}/"
-            f"{m.get('platform', {}).get('architecture', '?')}"
-            for m in manifests
-        }
-    )
-    raise SandboxCreationError(
-        f"Image '{image}' has no linux/{target_arch} variant. "
-        f"The registry offers: {', '.join(available) or 'nothing'}."
-    )
-
-
-def _remote_manifest_digest(image: str, timeout_seconds: float) -> Optional[str]:
-    """The digest a reference currently resolves to, or None if unknown."""
-    try:
-        registry, repo, reference = parse_image_ref(image)
-        auth_headers = get_registry_auth_headers(
-            registry, repo, reference=reference, timeout=timeout_seconds
-        )
-        headers = {"User-Agent": _USER_AGENT, "Accept": _MANIFEST_ACCEPT}
-        req = _registry_request(
-            _manifest_url(registry, repo, reference),
-            headers,
-            auth_headers.get("Authorization"),
-        )
-        req.get_method = lambda: "HEAD"
-        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-            return resp.headers.get("Docker-Content-Digest")
-    except Exception as err:
-        logger.debug(f"Could not revalidate '{image}': {err}")
-        return None
-
-
-# How long this process trusts an entry it has just revalidated. Keyed by the
-# entry's identity as well as its path, so a replaced entry is checked afresh.
-_REVALIDATE_AFTER_SECONDS = 60
-_confirmed_current: Dict[Tuple[str, str], float] = {}
-
-
-def _cached_entry_is_current(
-    image: str, target_dir: str, timeout_seconds: float
-) -> bool:
-    """Whether a cached registry image still matches its reference.
-
-    A tag is mutable. Without this check an entry is pinned for the life of the
-    directory, so a node that pulled ``busybox:latest`` a month ago keeps
-    running it while a node that joined today runs something else.
-
-    A digest reference is immutable, so it is trusted without a round trip, and
-    an unreachable registry keeps the cached entry rather than failing a pull
-    that would otherwise have worked offline.
-
-    An answer holds for ``_REVALIDATE_AFTER_SECONDS`` in this process. One
-    sandbox creation resolves its image three times -- the runtime, the
-    backend and the OCI spec each pull -- and each check is three registry
-    round trips: measured, nine requests and over two seconds for a cached
-    image.
-    """
-    if "@" in image:
-        return True
-
-    try:
-        memo_key = (target_dir, entry_identity(target_dir))
-    except OSError:
-        return True
-    confirmed = _confirmed_current.get(memo_key)
-    if (
-        confirmed is not None
-        and time.monotonic() - confirmed < _REVALIDATE_AFTER_SECONDS
-    ):
-        return True
-
-    recorded_path = os.path.join(target_dir, MANIFEST_DIGEST_FILENAME)
-    try:
-        with open(recorded_path, "r", encoding="utf-8") as f:
-            recorded = f.read().strip()
-    except OSError:
-        # Written by an older version, or never recorded. Nothing to compare.
-        return True
-
-    remote = _remote_manifest_digest(image, timeout_seconds)
-    if remote is None or not recorded or remote == recorded:
-        # Unreachable counts too: retrying straight away would only wait out
-        # the same network timeout again.
-        _confirmed_current[memo_key] = time.monotonic()
-        return True
-
-    logger.info(
-        f"Image '{image}' changed upstream ({recorded[:19]}... -> "
-        f"{remote[:19]}...); re-pulling."
-    )
-    return False
+            with open(lock_path, "w", encoding="utf-8") as f_lock:
+                fcntl.flock(f_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                # A pull may have registered a user since the scan.
+                if img_dir is not None and _has_users(img_dir):
+                    continue
+                if img_dir is not None:
+                    shutil.rmtree(img_dir, ignore_errors=True)
+                try:
+                    os.remove(tar_path)
+                except OSError:
+                    pass
+        except OSError:
+            continue  # Locked by an in-progress pull; try the next one.
+        total -= size
+        logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
 def pull_and_extract_container_image(
     image: str,
     images_dir: str = DEFAULT_IMAGES_DIR,
     timeout_seconds: float = 120.0,
+    instance_id: Optional[str] = None,
 ) -> str:
-    """Resolve an image reference to an extracted root filesystem on this node.
+    """Pull a container image and cache it as an EROFS root filesystem.
 
     Args:
-        image: Container image name (e.g. 'python:3.10-slim') or a path to a
-            local tar archive.
+        image: Container image name (e.g. 'python:3.10-slim') or path to local tar archive.
         images_dir: Root directory for caching container images.
         timeout_seconds: Network request timeout.
+        instance_id: When given, the sandbox instance is registered as a
+            user of the image under the image lock, so cache eviction
+            leaves the image alone until the instance releases it.
 
     Returns:
-        Absolute directory path containing the extracted container filesystem.
+        Absolute path of the image's cache directory. It holds
+        ``rootfs.erofs``, the image config, and the ``.extracted`` marker.
     """
-    # Gate every path: the directory this returns is mounted as a container's
-    # root, so it has to be ours before we hand it back. publish_image repeats
-    # this for the paths that reach it, which is cheap and keeps it correct
-    # when called directly.
     try:
-        os.makedirs(images_dir, mode=0o700, exist_ok=True)
-        _assert_owned_by_us(images_dir)
-    except SandboxCreationError:
-        raise
+        os.makedirs(images_dir, mode=0o777, exist_ok=True)
     except Exception as err:
         raise SandboxCreationError(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
 
     safe_name = sanitize_image_name(image)
+    target_dir = os.path.join(images_dir, safe_name)
+    lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
-    if os.path.isfile(image):
-        return publish_image(
-            images_dir,
-            safe_name,
-            materialize=_materialize_local_tar(image),
-            is_current=lambda entry: _local_tar_is_current(image, entry),
+    max_cache = image_cache_max_bytes(images_dir)
+    if max_cache > 0:
+        evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
+
+    expected_marker = expected_extract_marker()
+
+    def _finish() -> str:
+        if instance_id is not None:
+            _mark_image_in_use(target_dir, instance_id)
+        return target_dir
+
+    with open(lock_path, "w", encoding="utf-8") as f_lock:
+        try:
+            fcntl.flock(f_lock, fcntl.LOCK_EX)
+            marker_path = os.path.join(target_dir, ".extracted")
+            if os.path.isdir(target_dir) and os.path.exists(marker_path):
+                try:
+                    with open(marker_path, "r", encoding="utf-8") as f_mark:
+                        marker_current = f_mark.read() == expected_marker
+                except OSError:
+                    marker_current = False
+                # A cache of another format re-pulls once.
+                if marker_current and (
+                    not os.path.isfile(image)
+                    or os.path.getmtime(marker_path) >= os.path.getmtime(image)
+                ):
+                    _drop_stale_rootfs_tree(target_dir)
+                    return _finish()
+
+            # Checked before any download: without it the pull cannot finish.
+            require_mkfs_erofs()
+
+            tmp_extract_dir = os.path.join(
+                images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
+            )
+            os.makedirs(tmp_extract_dir, mode=0o755, exist_ok=True)
+            tmp_rootfs_dir = os.path.join(tmp_extract_dir, "rootfs")
+            os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
+            try:
+                ownership = _extract_image_layers(
+                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
+                )
+                _seed_tmp(tmp_rootfs_dir)
+                _seed_mountpoints(tmp_rootfs_dir)
+                build_erofs_image(
+                    tmp_rootfs_dir,
+                    ownership,
+                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                )
+            except Exception:
+                shutil.rmtree(tmp_extract_dir, ignore_errors=True)
+                raise
+            # The image replaces the tree; nothing reads the tree once the
+            # Sentry mounts the image.
+            shutil.rmtree(tmp_rootfs_dir, ignore_errors=True)
+
+            with open(
+                os.path.join(tmp_extract_dir, ".extracted"), "w", encoding="utf-8"
+            ) as f_mark:
+                f_mark.write(expected_marker)
+
+            # Swap the new cache in. A re-pull replaces a cache of another
+            # format; sandboxes already running on it keep their pins, and an
+            # extracted ``rootfs/`` tree their gofer still serves moves over
+            # intact (a rename leaves its open root fd alone) and goes once no
+            # sandbox uses the image.
+            try:
+                users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
+            except OSError:
+                users = []
+            old_tree = os.path.join(target_dir, "rootfs")
+            if users and os.path.isdir(old_tree):
+                os.replace(old_tree, tmp_rootfs_dir)
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir, ignore_errors=True)
+            os.replace(tmp_extract_dir, target_dir)
+            for user in users:
+                _mark_image_in_use(target_dir, user)
+
+            return _finish()
+        finally:
+            try:
+                fcntl.flock(f_lock, fcntl.LOCK_UN)
+            except Exception:
+                pass
+
+
+def _verify_digest(expected: str, actual_sha256: str, image: str, what: str) -> None:
+    """Refuse content that does not match the digest the manifest named for it.
+
+    Blobs are content-addressed, so a mismatch means a mirror, a proxy or a
+    truncated transfer handed back something other than what was asked for;
+    caching it would run that in every sandbox built from this image. Only
+    ``sha256:`` is checked: an algorithm this code does not implement is
+    passed over rather than treated as a mismatch.
+
+    Args:
+        expected: The descriptor's digest, ``algorithm:hex``.
+        actual_sha256: Hex sha256 of the content received.
+        image: The image reference, for the message.
+        what: Which piece of the image this is, for the message.
+
+    Raises:
+        SandboxCreationError: The content does not match.
+    """
+    if not expected.startswith("sha256:"):
+        return
+    if expected != f"sha256:{actual_sha256}":
+        raise SandboxCreationError(
+            f"Digest mismatch on the {what} for image '{image}': the registry "
+            f"named {expected} but returned sha256:{actual_sha256}."
         )
 
+
+def invalidate_cached_image(image: str, images_dir: str = DEFAULT_IMAGES_DIR) -> None:
+    """Make the next pull of ``image`` rebuild it from the registry.
+
+    Only the entry's ``.extracted`` marker goes, under the image's lock. The
+    next :func:`pull_and_extract_container_image` then rebuilds the image and
+    swaps it in, carrying over the in-use records of sandboxes still running
+    on the old one -- which keep their mounted ``rootfs.erofs`` regardless,
+    since an open file outlives its unlink. Eviction skips an entry with no
+    marker, so nothing removes the old image under a running sandbox.
+
+    Args:
+        image: Container image name or tar path.
+        images_dir: Root directory of the image cache.
+    """
+    safe_name = sanitize_image_name(image)
+    target_dir = os.path.join(images_dir, safe_name)
+    if not os.path.isdir(target_dir):
+        return
+    lock_path = os.path.join(images_dir, f"{safe_name}.lock")
+    with open(lock_path, "w", encoding="utf-8") as f_lock:
+        fcntl.flock(f_lock, fcntl.LOCK_EX)
+        try:
+            os.remove(os.path.join(target_dir, ".extracted"))
+        except FileNotFoundError:
+            pass
+        finally:
+            fcntl.flock(f_lock, fcntl.LOCK_UN)
+
+
+def _extract_image_layers(
+    image: str,
+    rootfs_dir: str,
+    image_dir: str,
+    timeout_seconds: float,
+    blob_dir: str,
+) -> Dict[str, Tuple[int, int]]:
+    """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
+
+    ``image`` is a local tar archive or a registry reference. A registry
+    image's config is written to ``image_dir/.image_config.json`` and its
+    layer blobs are spooled through ``blob_dir``.
+
+    Args:
+        image: Container image name or path to a local tar archive.
+        rootfs_dir: Empty directory that receives the flattened tree.
+        image_dir: Directory that receives the image config.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for temporary layer blobs.
+
+    Returns:
+        {path: (uid, gid)} for every path shipped with a non-root owner.
+
+    Raises:
+        SandboxCreationError: When the image cannot be fetched or extracted.
+    """
+    ownership: Dict[str, Tuple[int, int]] = {}
+    if os.path.isfile(image):
+        try:
+            with open(image, "rb") as f:
+                extract_tar_layer(f, rootfs_dir, ownership=ownership)
+        except Exception as err:
+            raise SandboxCreationError(
+                f"Failed to extract local image archive '{image}': {err}"
+            ) from err
+        return ownership
     if (
         image.endswith(".tar")
         or image.startswith("/")
@@ -864,273 +1031,128 @@ def pull_and_extract_container_image(
         or image.startswith("../")
     ):
         raise SandboxCreationError(f"Local image archive '{image}' not found.")
-
-    return publish_image(
-        images_dir,
-        safe_name,
-        materialize=_materialize_registry(image, timeout_seconds),
-        is_current=lambda entry: _cached_entry_is_current(
-            image, entry, timeout_seconds
-        ),
-    )
-
-
-def _local_tar_is_current(image: str, target_dir: str) -> bool:
-    """Whether a cached entry is at least as new as the tar it came from."""
     try:
-        marker = os.path.join(target_dir, ".extracted")
-        return os.path.getmtime(marker) >= os.path.getmtime(image)
-    except OSError:
-        return False
+        registry, repo, reference = parse_image_ref(image)
+        registry, repo = apply_registry_mirror(registry, repo)
+        auth_headers = get_registry_auth_headers(
+            registry,
+            repo,
+            reference=reference,
+            timeout=timeout_seconds,
+        )
+        headers = {
+            "User-Agent": _USER_AGENT,
+            "Accept": (
+                "application/vnd.docker.distribution.manifest.v2+json, "
+                "application/vnd.docker.distribution.manifest.list.v2+json, "
+                "application/vnd.oci.image.manifest.v1+json, "
+                "application/vnd.oci.image.index.v1+json"
+            ),
+        }
+        auth_header = auth_headers.get("Authorization")
 
+        manifest_url = f"{registry_base_url(registry)}/v2/{repo}/manifests/{reference}"
+        req = _registry_request(manifest_url, headers, auth_header)
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            manifest_bytes = resp.read()
+        # A tag names no digest to check against; a digest reference does.
+        _verify_digest(
+            reference, hashlib.sha256(manifest_bytes).hexdigest(), image, "manifest"
+        )
+        manifest_data = json.loads(manifest_bytes.decode("utf-8"))
 
-def _materialize_local_tar(image: str):
-    """Producer for a local tar archive holding a flat root filesystem."""
-
-    def materialize(rootfs_dir: str) -> Dict[str, bytes]:
-        try:
-            with open(image, "rb") as f:
-                extract_tar_layer(f, rootfs_dir)
-        except Exception as err:
-            raise SandboxCreationError(
-                f"Failed to extract local image archive '{image}': {err}"
-            ) from err
-        # A bare root filesystem carries no image config of its own.
-        return {}
-
-    return materialize
-
-
-def _materialize_registry(image: str, timeout_seconds: float):
-    """Producer that pulls an image over the Registry v2 HTTP API."""
-
-    def materialize(rootfs_dir: str) -> Dict[str, bytes]:
-        # Layer blobs stage beside the rootfs, inside the entry's own staging
-        # directory, so a killed pull discards them along with it.
-        tmp_extract_dir = os.path.dirname(rootfs_dir)
-        try:
-            registry, repo, reference = parse_image_ref(image)
-            auth_headers = get_registry_auth_headers(
-                registry,
-                repo,
-                reference=reference,
-                timeout=timeout_seconds,
-            )
-            headers = {
-                "User-Agent": _USER_AGENT,
-                "Accept": _MANIFEST_ACCEPT,
-            }
-            auth_header = auth_headers.get("Authorization")
-
-            manifest_url = _manifest_url(registry, repo, reference)
-            req = _registry_request(manifest_url, headers, auth_header)
-            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
-                resolved_digest = resp.headers.get("Docker-Content-Digest")
-                manifest_data = json.loads(resp.read().decode("utf-8"))
-
-            # Resolve a manifest list / OCI index down to one manifest.
-            # An index can point at another index, so this loops rather
-            # than resolving a single level.
-            for _ in range(_MAX_INDEX_DEPTH):
-                if "manifests" not in manifest_data:
+        # Resolve multi-architecture manifest list / OCI index
+        if "manifests" in manifest_data:
+            target_arch = get_platform_arch()
+            chosen_digest = None
+            for m in manifest_data["manifests"]:
+                plat = m.get("platform", {})
+                if (
+                    plat.get("os") == "linux"
+                    and plat.get("architecture") == target_arch
+                ):
+                    chosen_digest = m["digest"]
                     break
-                chosen_digest = _select_platform_manifest(
-                    manifest_data["manifests"], image
-                )
-                sub_req = _registry_request(
-                    _manifest_url(registry, repo, chosen_digest),
-                    headers,
-                    auth_header,
-                )
-                with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
-                    manifest_data = json.loads(resp.read().decode("utf-8"))
-            else:
-                raise SandboxCreationError(
-                    f"Manifest for image '{image}' nests more than "
-                    f"{_MAX_INDEX_DEPTH} index levels deep."
-                )
+            if not chosen_digest:
+                chosen_digest = manifest_data["manifests"][0]["digest"]
 
-            # Extract the image config, which carries Env and WorkingDir.
-            # This must be fatal rather than best-effort: publishing ends by
-            # writing the .extracted marker, and a cached entry is revalidated
-            # only against its manifest digest, so swallowing a transient
-            # failure here pins an image with no PATH and no WORKDIR on this
-            # node -- and the damage shows up much later as a container
-            # behaving subtly wrong.
-            config_desc = manifest_data.get("config")
-            if not (config_desc and "digest" in config_desc):
-                raise SandboxCreationError(
-                    f"Manifest for image '{image}' has no config "
-                    f"descriptor, so its environment cannot be "
-                    f"determined."
-                )
-            config_digest = config_desc["digest"]
-            config_req = _registry_request(
-                _blob_url(registry, repo, config_digest), headers, auth_header
+            sub_req = _registry_request(
+                f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",
+                headers,
+                auth_header,
             )
+            with urllib.request.urlopen(sub_req, timeout=timeout_seconds) as resp:
+                manifest_bytes = resp.read()
+            _verify_digest(
+                chosen_digest,
+                hashlib.sha256(manifest_bytes).hexdigest(),
+                image,
+                "platform manifest",
+            )
+            manifest_data = json.loads(manifest_bytes.decode("utf-8"))
+
+        # extract image config so we can reference metadata bout the image later.
+        config_desc = manifest_data.get("config")
+        if config_desc and "digest" in config_desc:
+            config_digest = config_desc["digest"]
+            config_url = (
+                f"{registry_base_url(registry)}/v2/{repo}/blobs/{config_digest}"
+            )
+            config_req = _registry_request(config_url, headers, auth_header)
+            config_bytes = None
             try:
                 with urllib.request.urlopen(
                     config_req, timeout=timeout_seconds
                 ) as resp:
                     config_bytes = resp.read()
-            except Exception as err:
-                raise SandboxCreationError(
-                    f"Failed to fetch the image config blob "
-                    f"({config_digest}) for '{image}': {err}"
-                ) from err
-            _verify_digest(config_bytes, config_digest, image, "config blob")
-
-            layers = manifest_data.get("layers", [])
-            if not layers:
-                raise SandboxCreationError(
-                    f"No layers found in manifest for image '{image}'"
+            except Exception as e:
+                logger.warning(f"Failed to fetch image config blob: {e}")
+            if config_bytes is not None:
+                # Outside the try above: a config that fails to arrive is
+                # tolerated, but one that arrives altered is not -- it carries
+                # the Env, Cmd and Entrypoint every sandbox would run with.
+                _verify_digest(
+                    config_digest,
+                    hashlib.sha256(config_bytes).hexdigest(),
+                    image,
+                    "config blob",
                 )
+                with open(
+                    os.path.join(image_dir, ".image_config.json"),
+                    "wb",
+                ) as f_cfg:
+                    f_cfg.write(config_bytes)
 
-            for layer in layers:
-                digest = layer["digest"]
-                blob_req = _registry_request(
-                    _blob_url(registry, repo, digest), headers, auth_header
-                )
-                with urllib.request.urlopen(
-                    blob_req, timeout=timeout_seconds
-                ) as blob_resp:
-                    with tempfile.NamedTemporaryFile(
-                        dir=tmp_extract_dir, suffix=".partial", delete=True
-                    ) as tmp_blob_file:
-                        # Hash while streaming: a layer is content
-                        # addressed, and extracting one that does not
-                        # match its digest means trusting a mirror or a
-                        # truncated transfer to have handed back what
-                        # the manifest actually named.
-                        hasher = hashlib.sha256()
-                        for chunk in iter(lambda: blob_resp.read(64 * 1024), b""):
-                            hasher.update(chunk)
-                            tmp_blob_file.write(chunk)
-                        _verify_digest(
-                            None,
-                            digest,
-                            image,
-                            f"layer {digest[:19]}...",
-                            actual=f"sha256:{hasher.hexdigest()}",
-                        )
-                        tmp_blob_file.seek(0)
-                        extract_tar_layer(tmp_blob_file, rootfs_dir)
-
-            sidecars = {IMAGE_CONFIG_FILENAME: config_bytes}
-            if resolved_digest:
-                sidecars[MANIFEST_DIGEST_FILENAME] = resolved_digest.encode("utf-8")
-            return sidecars
-
-        except SandboxCreationError:
-            raise
-        except Exception as err:
+        layers = manifest_data.get("layers", [])
+        if not layers:
             raise SandboxCreationError(
-                f"Failed to pull and extract container image '{image}': {err}"
-            ) from err
+                f"No layers found in manifest for image '{image}'"
+            )
 
-    return materialize
+        for layer in layers:
+            digest = layer["digest"]
+            blob_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
+            blob_req = _registry_request(blob_url, headers, auth_header)
+            with urllib.request.urlopen(blob_req, timeout=timeout_seconds) as blob_resp:
+                with tempfile.NamedTemporaryFile(
+                    dir=blob_dir, delete=True
+                ) as tmp_blob_file:
+                    # Hashed while spooling and checked before a byte of the
+                    # layer is extracted.
+                    hasher = hashlib.sha256()
+                    for chunk in iter(lambda: blob_resp.read(64 * 1024), b""):
+                        hasher.update(chunk)
+                        tmp_blob_file.write(chunk)
+                    _verify_digest(
+                        digest, hasher.hexdigest(), image, f"layer {digest[:19]}..."
+                    )
+                    tmp_blob_file.seek(0)
+                    extract_tar_layer(tmp_blob_file, rootfs_dir, ownership=ownership)
 
-
-def _write_sidecar(path: str, data: bytes) -> None:
-    """Write one of a cache entry's metadata files.
-
-    Centralized so every producer agrees on the mode: a sidecar written through
-    a temporary file lands at 0600, while one written through ``open()`` lands
-    at 0644, which would leave two entries in one cache disagreeing about an
-    identically named file.
-    """
-    with open(path, "wb") as f:
-        f.write(data)
-    os.chmod(path, 0o644)
-
-
-def publish_image(
-    images_dir: str,
-    cache_key: str,
-    *,
-    materialize: Callable[[str], Dict[str, bytes]],
-    is_current: Callable[[str], bool] = lambda target_dir: True,
-) -> str:
-    """Build a cache entry in a staging directory and publish it atomically.
-
-    Takes from a producer only the two things that actually differ between one
-    and another -- how to fill a root filesystem, and whether an existing entry
-    may be reused -- and supplies everything else: the ownership check, the
-    lock, the staging directory, the metadata ordering, and the atomic swap.
-
-    ``materialize`` fills the ``rootfs`` directory it is handed and *returns*
-    the sidecar files to place beside it. Returning them rather than writing
-    them is what makes the ordering structural: a producer cannot publish an
-    entry whose metadata lands after the swap, because the swap is not its to
-    perform. Writing an image config after publishing leaves a window in which
-    an entry has a root filesystem but no config, and a sandbox started in that
-    window comes up with no PATH and no WORKDIR.
-
-    ``materialize`` may also use the staging directory -- the parent of the path
-    it is given -- for scratch of any size. It is discarded wholesale on
-    failure, so nothing a producer stages there can outlive a crash.
-
-    The entry is published as a new immutable version that ``<cache_key>`` is
-    then pointed at; see ``_VERSION_NAME``.
-
-    Args:
-        images_dir: Root directory for cached images.
-        cache_key: Name for this entry, from ``sanitize_image_name``.
-        materialize: Populates ``rootfs`` and returns ``{filename: bytes}``.
-        is_current: Whether an already-published entry may be reused as-is.
-
-    Returns:
-        The version directory now current: an absolute path that keeps naming
-        this exact content even after the image is replaced, so a caller that
-        builds a sandbox from it is not moved onto a different version midway.
-    """
-    try:
-        # The *leaf*, with an explicit mode. CPython's makedirs drops `mode` on
-        # its recursive call, so creating this path as an intermediate of a
-        # deeper directory would leave it at 0o777 & ~umask -- which
-        # _assert_owned_by_us then rejects under a group-writable umask.
-        os.makedirs(images_dir, mode=0o700, exist_ok=True)
-        _assert_owned_by_us(images_dir)
-    except SandboxCreationError:
-        raise
     except Exception as err:
+        if isinstance(err, SandboxCreationError):
+            raise
         raise SandboxCreationError(
-            f"Failed to create images directory '{images_dir}': {err}"
+            f"Failed to pull and extract container image '{image}': {err}"
         ) from err
-
-    _sweep_stale_temporaries(images_dir)
-
-    target_dir = os.path.join(images_dir, cache_key)
-    with _key_lock(images_dir, cache_key):
-        marker_path = os.path.join(target_dir, ".extracted")
-        if (
-            os.path.isdir(target_dir)
-            and os.path.exists(marker_path)
-            and is_current(target_dir)
-        ):
-            published = os.path.realpath(target_dir)
-        else:
-            staging = os.path.join(images_dir, f"{cache_key}.tmp.{uuid.uuid4().hex}")
-            os.makedirs(staging, mode=0o755, exist_ok=True)
-            rootfs_dir = os.path.join(staging, "rootfs")
-            os.makedirs(rootfs_dir, mode=0o755, exist_ok=True)
-            version = os.path.join(images_dir, f"{cache_key}.v.{uuid.uuid4().hex}")
-            try:
-                sidecars = materialize(rootfs_dir) or {}
-                for name, data in sidecars.items():
-                    _write_sidecar(os.path.join(staging, name), data)
-                _write_sidecar(os.path.join(staging, ".extracted"), b"ok")
-                os.rename(staging, version)
-                _point_at(target_dir, version)
-            except BaseException:
-                shutil.rmtree(staging, ignore_errors=True)
-                # Renamed into place but never pointed at: nothing can be
-                # running from it.
-                if os.path.realpath(target_dir) != version:
-                    shutil.rmtree(version, ignore_errors=True)
-                raise
-            published = version
-    # After the lock is released, so the reclaim can take this image's lock too
-    # and retire what the new version replaced.
-    reclaim_retired_entries(images_dir)
-    return published
+    return ownership

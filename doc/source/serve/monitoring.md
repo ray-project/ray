@@ -16,7 +16,7 @@ This section helps you debug and monitor your Serve applications by:
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
 
-## Ray Dashboard
+## Ray dashboard
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states. This includes details such as:
 * the number of deployment replicas currently running
@@ -777,7 +777,6 @@ cardinality stays bounded at scale.
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
 | `ray_serve_autoscaling_replica_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_handle_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
-| `ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms` | Gauge | `deployment`, `application` | Time taken for async inference task queue metrics (from QueueMonitor) to reach the controller in milliseconds. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
 
@@ -906,4 +905,4 @@ Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexib
 
 [Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
 
-To integrate with Arize, add Arize client code directly into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))
+To integrate with Arize, add Arize client code directly into your Serve deployment code.

@@ -70,6 +70,8 @@ class UploadActor:
         self._streams: Dict[int, bytes] = {STDERR_FD: stderr}
         self._released = False
         self.writes: List[bytes] = []
+        self.offsets: List[Optional[int]] = []
+        self.close_offset: Optional[int] = None
         self.stdin_closed = False
         self.command: Optional[List[str]] = None
         self.pending = 0
@@ -89,7 +91,7 @@ class UploadActor:
         self.command = command
         return "exec-1"
 
-    def _write_stdin(self, exec_id, data):
+    def _write_stdin(self, exec_id, data, offset=None):
         # Counted at call time rather than inside the coroutine: what is under
         # test is how many the caller lets pile up before awaiting any.
         self.pending += 1
@@ -98,15 +100,17 @@ class UploadActor:
         async def _do():
             self._require_live()
             self.writes.append(data)
+            self.offsets.append(offset)
 
         return _Ref(_do(), on_await=self._settled)
 
     def _settled(self):
         self.pending -= 1
 
-    async def _close_stdin(self, exec_id):
+    async def _close_stdin(self, exec_id, offset=None):
         self._require_live()
         self.stdin_closed = True
+        self.close_offset = offset
 
     async def _exec_wait(self, exec_id, timeout):
         self._require_live()
@@ -228,15 +232,31 @@ def test_an_upload_bounds_how_many_writes_are_outstanding(tmp_path, monkeypatch)
     assert b"".join(actor.writes) == b"x" * 400
 
 
-def test_chunks_arrive_in_order(tmp_path, monkeypatch):
+@pytest.mark.parametrize("upload", ["copy_from_local", "write_bytes"])
+def test_every_chunk_names_its_offset_and_the_close_the_total(
+    tmp_path, monkeypatch, upload
+):
+    """Ray runs an async actor's calls in no guaranteed order, so arrival order
+    proves nothing -- this fake runs them in order, which is how scrambled
+    uploads once passed here. What orders the bytes is each write's offset,
+    which the actor waits on (see test_modal_exec_retention.py)."""
     monkeypatch.setattr(fs_mod, "_COPY_CHUNK_SIZE", 4)
-    source = tmp_path / "payload.bin"
-    source.write_bytes(bytes(range(64)))
+    payload = bytes(range(62))
     actor = UploadActor()
 
-    run(filesystem(actor).copy_from_local(source, "/dest/file"))
+    if upload == "copy_from_local":
+        source = tmp_path / "payload.bin"
+        source.write_bytes(payload)
+        run(filesystem(actor).copy_from_local(source, "/dest/file"))
+    else:
+        run(filesystem(actor).write_bytes(payload, "/dest/file"))
 
-    assert b"".join(actor.writes) == bytes(range(64))
+    assert actor.offsets == list(range(0, 62, 4))
+    assert all(
+        payload[offset : offset + len(chunk)] == chunk
+        for offset, chunk in zip(actor.offsets, actor.writes)
+    )
+    assert actor.close_offset == 62
 
 
 def test_an_aborted_upload_settles_its_writes_before_releasing(tmp_path, monkeypatch):
@@ -363,7 +383,11 @@ def test_a_file_past_the_inline_size_is_streamed_paced():
     actor = ReadActor(content, collect_returncode=_fs.EXIT_NOT_INLINE)
     assert run(filesystem(actor).read_bytes("/some/file")) == content
     assert actor.stream_kwargs == {"paced": True}
-    assert f"head -c {fs_mod.MAX_READ_FILE_BYTES + 1} " in actor.stream_command[2]
+    script = actor.stream_command[2]
+    # Refused up front past Modal's limit, then read with cat: busybox's
+    # `head -c` is syscall-bound under gVisor.
+    assert f"-le {fs_mod.MAX_READ_FILE_BYTES} " in script
+    assert "head -c" not in script and 'cat "$p"' in script
     assert actor.released
 
 

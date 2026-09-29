@@ -29,6 +29,10 @@ from ray.experimental.sandbox.modal.exception import (
     SandboxTimeoutError,
 )
 
+# Sandboxes here run on Modal's default network, network="public", which
+# needs slirp4netns and a host that allows a per-sandbox network namespace.
+pytestmark = pytest.mark.usefixtures("ensure_slirp4netns")
+
 # No package manager, but a shell and the coreutils applets a workflow needs.
 # Everything that does not specifically exercise the toolchain uses this: a
 # debian_slim build is ~619MB and minutes on a cold cache.

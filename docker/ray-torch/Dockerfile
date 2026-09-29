@@ -26,7 +26,6 @@ sudo apt-get update \
         libosmesa6 \
         libosmesa6-dev \
         libglfw3 \
-        patchelf \
         unzip \
         unrar \
         zlib1g-dev

@@ -32,6 +32,10 @@ _CACHE_ENTRIES = {
     "WITH_TRACE_TOOLS": "OFF",
     "WITH_EXAMPLES": "OFF",
     "WITH_GFLAGS": "OFF",
+    # LOCAL BUILD WORKAROUND -- not part of the merge. RocksDB's CMakeLists
+    # uses ccache as its link launcher when it finds one, which breaks the
+    # static-archive rule (`: && ar qc ...`).
+    "CCACHE_FOUND": "OFF",
 
     # No compression deps for the initial cut — the REP's tuning
     # table calls for LZ4 on cold levels, which can be enabled in a

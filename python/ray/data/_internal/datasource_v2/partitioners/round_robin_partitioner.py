@@ -3,6 +3,7 @@ import logging
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
     FilePartitioner,
+    PartitionHints,
 )
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     InMemorySizeEstimator,
@@ -38,15 +39,13 @@ class RoundRobinPartitioner(FilePartitioner):
         self,
         in_memory_size_estimator: InMemorySizeEstimator,
         *,
-        min_bucket_size: int,
-        max_bucket_size: int,
-        num_buckets: int,
+        hints: PartitionHints,
     ):
         self._in_memory_size_estimator = in_memory_size_estimator
         self._partitioner = WeightedRoundRobinPartitioner(
-            min_bucket_size=min_bucket_size,
-            max_bucket_size=max_bucket_size,
-            num_buckets=num_buckets,
+            min_bucket_size=hints.min_bucket_size,
+            max_bucket_size=hints.max_bucket_size,
+            num_buckets=hints.num_buckets,
         )
 
     def add_input(self, input_manifest: FileManifest):
@@ -80,9 +79,9 @@ class RoundRobinPartitioner(FilePartitioner):
         partition = self._partitioner.next_partition()
         paths, file_sizes, file_chunk_metadatas = zip(*partition)
         return FileManifest.construct_manifest(
-            list(paths),
-            list(file_sizes),
-            list(file_chunk_metadatas),
+            paths=list(paths),
+            sizes=list(file_sizes),
+            chunk_metadatas=list(file_chunk_metadatas),
         )
 
     def finalize(self):

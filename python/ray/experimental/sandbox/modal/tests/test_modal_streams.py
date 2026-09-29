@@ -17,7 +17,7 @@ from typing import Dict, List, Optional
 import pytest
 
 import ray
-from ray.experimental.sandbox.modal import _actor
+from ray.experimental.sandbox.modal import _actor, _sync
 from ray.experimental.sandbox.modal._actor import (
     _COALESCE_IDLE_GAP,
     _COALESCE_MAX_WINDOW,
@@ -40,7 +40,7 @@ from ray.experimental.sandbox.modal.exception import (
 from ray.experimental.sandbox.modal.io_streams import (
     MAX_BUFFER_SIZE,
     StreamReader,
-    _split_lines,
+    _LineSplitter,
     _StreamReader,
     _StreamWriter,
 )
@@ -91,6 +91,8 @@ class FakeActor:
         self._base_offset = base_offset
         self.stream_calls: List[int] = []
         self.stdin_writes: List[bytes] = []
+        self.stdin_offsets: List[Optional[int]] = []
+        self.stdin_close_offset: Optional[int] = None
         self.stdin_closed = False
 
     def __getattr__(self, name):
@@ -123,11 +125,13 @@ class FakeActor:
                 yield _FakeRef((begin, chunk[begin - offset :]))
             offset = end
 
-    async def _write_stdin(self, exec_id, data):
+    async def _write_stdin(self, exec_id, data, offset=None):
         self.stdin_writes.append(data)
+        self.stdin_offsets.append(offset)
 
-    async def _close_stdin(self, exec_id):
+    async def _close_stdin(self, exec_id, offset=None):
         self.stdin_closed = True
+        self.stdin_close_offset = offset
 
 
 class GoneActor:
@@ -223,6 +227,72 @@ def test_line_buffering_splits_on_newlines(chunks, expected):
 def test_line_buffering_requires_text_mode():
     with pytest.raises(ValueError, match="line-buffering is only supported"):
         make_reader([b"x"], text=False, by_line=True)
+
+
+@pytest.mark.parametrize(
+    "chunks,expected",
+    [
+        # A line across several chunks, and lines ending exactly at a chunk's end.
+        ([b"lo", b"ng li", b"ne\nnext\n"], ["long line\n", "next\n"]),
+        ([b"a\n", b"b\n"], ["a\n", "b\n"]),
+        ([b"\n\n"], ["\n", "\n"]),
+        # Only \n ends a line, as on Modal: \r and the other separators
+        # str.splitlines() honours stay inside the line.
+        ([b"a\r\nb\x0bc\x1cd\n"], ["a\r\n", "b\x0bc\x1cd\n"]),
+        # A multi-byte character cut across chunks, inside a line.
+        ([b"caf\xc3", b"\xa9\n"], ["café\n"]),
+    ],
+)
+def test_line_buffering_across_chunk_boundaries(chunks, expected):
+    reader = make_reader(chunks, text=True, by_line=True)
+
+    async def collect():
+        return [line async for line in reader]
+
+    assert run(collect()) == expected
+
+
+def test_invalid_utf8_fails_at_its_own_line_after_the_lines_before_it():
+    """Lines are decoded a chunk at a time now, but still one by one: the
+    lines ahead of a bad byte arrive, as they did when each was yielded
+    singly."""
+    reader = make_reader(
+        [b"good\nalso good\nbad \xff\nnever\n"], text=True, by_line=True
+    )
+
+    async def collect():
+        seen = []
+        with pytest.raises(UnicodeDecodeError):
+            async for line in reader:
+                seen.append(line)
+        return seen
+
+    assert run(collect()) == ["good\n", "also good\n"]
+
+
+def test_blocking_line_iteration_crosses_to_the_loop_per_batch_not_per_line(
+    monkeypatch,
+):
+    """Per line, a task and a loop turn used to cap iteration near 60k lines/s."""
+    lines = [b"%06d\n" % i for i in range(20000)]
+    reader = make_reader(
+        [b"".join(lines[i : i + 5000]) for i in range(0, 20000, 5000)],
+        text=True,
+        by_line=True,
+    )
+    crossings = []
+    real_run = _sync._loop_thread.run
+
+    def counting_run(coro):
+        crossings.append(1)
+        return real_run(coro)
+
+    monkeypatch.setattr(_sync._loop_thread, "run", counting_run)
+
+    got = list(StreamReader._from_impl(reader))
+
+    assert got == [line.decode() for line in lines]
+    assert len(crossings) <= 20
 
 
 def test_aiter_is_memoized_so_a_second_pass_yields_nothing():
@@ -607,14 +677,28 @@ def test_read_from_waits_for_the_first_chunk():
     assert run(attempt()) == (0, b"late")
 
 
-def test_read_from_caps_each_yield_below_the_inline_threshold():
-    """Yields must stay under Ray's inline limit or they spill to plasma."""
+def test_read_from_caps_each_yield():
+    """Large enough to amortize a yield's fixed cost, bounded all the same."""
     buffer = _OutputBuffer()
     buffer.feed(b"a" * _MAX_YIELD_BYTES)
     buffer.feed(b"b" * _MAX_YIELD_BYTES)
     offset, first = run(buffer.read_from(0))
     assert offset == 0
     assert first == b"a" * _MAX_YIELD_BYTES
+
+
+def test_a_reader_behind_gets_large_yields_and_one_keeping_up_small_ones():
+    """Bulk output moves in ~1 MiB yields, measured five times faster than
+    96 KiB ones; a trickle is yielded as it comes and stays inline."""
+    buffer = _OutputBuffer()
+    for _ in range(48):
+        buffer.feed(b"z" * 65536)  # 3 MiB, as the pump reads a busy pipe
+    _, behind = run(buffer.read_from(0))
+    assert len(behind) == 1024 * 1024
+
+    buffer.feed(b"one line\n")
+    _, keeping_up = run(buffer.read_from(buffer.written - len(b"one line\n")))
+    assert keeping_up == b"one line\n"
 
 
 def test_read_from_splits_an_oversized_chunk_without_losing_bytes():
@@ -1056,6 +1140,63 @@ def test_stale_spill_directories_of_dead_processes_are_swept(tmp_path, monkeypat
     )
 
 
+# -- a line-at-a-time producer ---------------------------------------------
+#
+# The common slow producer: every pipe read is one short line. Measured before
+# these fixes, a stream like that past its 8 MiB window held ~100k tiny chunks,
+# each read scanned them from the head (~7 ms of the actor's loop), and spilling
+# wrote each line or two as a file write of its own.
+
+_LINE = b"y" * 79 + b"\n"
+_MIB = 1024 * 1024
+
+
+def test_small_reads_are_gathered_rather_than_kept_one_per_chunk():
+    buffer = _OutputBuffer()
+    for _ in range(8 * _MIB // len(_LINE)):
+        buffer.feed(_LINE)
+
+    # A few hundred chunks for 8 MiB, not one per line.
+    assert len(buffer._chunks) <= 8 * _MIB // _actor._CHUNK_GATHER_BYTES + 2
+
+    tail = buffer.written - 3 * len(_LINE)
+    offset, data = run(buffer.read_from(tail))
+    assert (offset, data) == (tail, _LINE * 3)
+    assert type(data) is bytes, "a gathered bytearray must not leak out"
+
+
+def test_a_line_at_a_time_producer_spills_in_large_writes(tmp_path, monkeypatch):
+    writes = []
+    real_append = _actor._append_file
+
+    def recording_append(path, data):
+        writes.append(len(data))
+        real_append(path, data)
+
+    monkeypatch.setattr(_actor, "_append_file", recording_append)
+    store = spill_store(tmp_path, segment_bytes=16 * _MIB)
+    buffer = _OutputBuffer(spill=store)
+
+    async def produce():
+        fed = 0
+        while fed < 12 * _MIB:
+            buffer.feed(_LINE)
+            fed += len(_LINE)
+            await buffer.pace()
+            # A slow producer lets the loop turn between lines, which is when
+            # a flush in flight used to pick up each line or two on its own.
+            await asyncio.sleep(0)
+        buffer.feed_eof()
+        while buffer._flush_task is not None:
+            await asyncio.sleep(0.01)
+        return fed, await read_all(buffer)
+
+    fed, (first, data) = run(produce())
+    assert (first, len(data)) == (0, fed)
+    assert writes, "past its window the stream spilled"
+    assert min(writes) >= _actor._SPILL_BATCH_BYTES
+
+
 def test_reading_from_a_gone_sandbox_reports_not_found():
     """Modal answers NotFoundError; a raw RayActorError used to escape."""
     reader = _StreamReader(GoneActor(), "exec-1", STDOUT_FD)
@@ -1124,6 +1265,88 @@ def test_write_beyond_buffer_limit_raises():
     writer = _StreamWriter(FakeActor(), "exec-1")
     with pytest.raises(BufferError, match="Call drain"):
         writer.write(b"x" * (MAX_BUFFER_SIZE + 1))
+
+
+class OffsetStdinActor:
+    """Applies stdin writes the way the actor does: at their offset, once each.
+
+    ``delay`` holds each write for a round trip, so a test can act while one is
+    in flight. ``failures`` makes that many writes raise, before or after their
+    bytes land -- a reply lost on the way back is the case a retry must not
+    duplicate.
+    """
+
+    def __init__(self, delay=0.0, failures=0, fail_after_write=False):
+        self.received = bytearray()
+        self.closed_at: Optional[int] = None
+        self._delay = delay
+        self._failures = failures
+        self._fail_after_write = fail_after_write
+        self.write_stdin = _RemoteShim(self._write)
+        self.close_stdin = _RemoteShim(self._close)
+
+    async def _write(self, exec_id, data, offset):
+        await asyncio.sleep(self._delay)
+        failing = self._failures > 0
+        self._failures -= failing
+        if failing and not self._fail_after_write:
+            raise RuntimeError("transient")
+        assert offset <= len(self.received), "the writer skipped bytes"
+        self.received += data[len(self.received) - offset :]
+        if failing:
+            raise RuntimeError("transient")
+
+    async def _close(self, exec_id, offset):
+        self.closed_at = offset
+
+
+def test_a_write_made_while_a_drain_is_in_flight_is_delivered():
+    """It used to be cleared along with what that drain had sent, and lost."""
+    actor = OffsetStdinActor(delay=0.05)
+    writer = _StreamWriter(actor, "exec-1")
+
+    async def scenario():
+        writer.write(b"first\n")
+        in_flight = asyncio.ensure_future(writer.drain())
+        await asyncio.sleep(0.01)
+        writer.write(b"second\n")
+        await in_flight
+        await writer.drain()
+
+    run(scenario())
+    assert bytes(actor.received) == b"first\nsecond\n"
+
+
+def test_concurrent_drains_deliver_every_byte_exactly_once():
+    actor = OffsetStdinActor(delay=0.02)
+    writer = _StreamWriter(actor, "exec-1")
+
+    async def scenario():
+        writer.write(b"abc")
+        first = asyncio.ensure_future(writer.drain())
+        await asyncio.sleep(0)
+        writer.write(b"def")
+        second = asyncio.ensure_future(writer.drain())
+        await asyncio.gather(first, second)
+        writer.write_eof()
+        await writer.drain()
+
+    run(scenario())
+    assert bytes(actor.received) == b"abcdef"
+    assert actor.closed_at == 6
+
+
+@pytest.mark.parametrize("fail_after_write", [False, True])
+def test_a_failed_drain_is_retried_without_duplicating_bytes(fail_after_write):
+    actor = OffsetStdinActor(failures=1, fail_after_write=fail_after_write)
+    writer = _StreamWriter(actor, "exec-1")
+    writer.write(b"payload")
+
+    with pytest.raises(RuntimeError, match="transient"):
+        run(writer.drain())
+    run(writer.drain())
+
+    assert bytes(actor.received) == b"payload"
 
 
 # -- coalescing behaviour and cost -----------------------------------------
@@ -1212,19 +1435,10 @@ def test_coalescing_stops_at_the_target_without_waiting_for_more():
 
 
 def _time_split(payload: bytes) -> float:
-    async def drain():
-        async def source():
-            yield payload
-
-        count = 0
-        async for _ in _split_lines(source()):
-            count += 1
-        return count
-
     best = float("inf")
     for _ in range(5):
         started = time.perf_counter()
-        run(drain())
+        _LineSplitter().feed(payload)
         best = min(best, time.perf_counter() - started)
     return best
 

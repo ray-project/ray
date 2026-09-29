@@ -26,19 +26,20 @@ from ray.experimental.sandbox.modal.types import (
 
 logger = logging.getLogger(__name__)
 
-# Ray inlines a task argument below `max_direct_call_object_size` (100 KiB) and
-# puts anything larger through the plasma store -- a shared-memory allocation
-# and a copy on each side, per chunk. Staying under it keeps an upload chunk in
-# the RPC itself, matching what `_MAX_YIELD_BYTES` does for the download side.
-_COPY_CHUNK_SIZE = 96 * 1024
+# Upload chunk size. Past Ray's inline limit (`max_direct_call_object_size`,
+# 100 KiB) a chunk travels through the object store, a shared-memory copy per
+# chunk -- and a transfer still runs about five times faster for it, measured:
+# each call costs about a millisecond whatever it carries, so a large transfer
+# pays for the number of calls, not the bytes.
+_COPY_CHUNK_SIZE = 1024 * 1024
 
-# How many chunk writes may be outstanding before the next one waits. Actor
-# calls are ordered, so not awaiting each reply is what keeps a large upload off
-# the round-trip treadmill -- but an unbounded run of them queues the whole file
-# as pending actor tasks, and the actor's stdin transport holds every chunk it
-# has not yet handed to the container. A window keeps both bounded while still
-# hiding the latency: at 96 KiB a chunk this is ~3 MiB in flight.
-_COPY_WINDOW = 32
+# How many chunk writes may be outstanding before the next one waits. Keeping
+# several in flight hides the round trip. Ray runs an async actor's calls in no
+# guaranteed order, so each write carries its offset and the actor puts them in
+# order (see _SandboxActor.write_stdin), holding each until its turn -- which
+# makes this window also the bound on what the actor holds: ~8 MiB at 1 MiB a
+# chunk.
+_COPY_WINDOW = 8
 
 # The largest file read_bytes() and read_text() return: Modal's, which its
 # helper enforces before reading a byte. copy_to_local() has no such cap here.
@@ -496,14 +497,16 @@ class _SandboxFilesystem:
         # holding its output buffers and possibly a live process, for as long as
         # the sandbox exists.
         try:
-            # Replies are not awaited one at a time -- actor calls are ordered,
-            # so the writes still arrive in sequence, and awaiting each turned a
-            # large file into one network round trip per chunk -- but only
-            # _COPY_WINDOW of them may be outstanding at once.
+            # Replies are not awaited one at a time -- awaiting each turned a
+            # large file into one round trip per chunk -- but only _COPY_WINDOW
+            # may be outstanding at once. Each names its offset: Ray may run
+            # them in any order, and the actor writes them in this one.
             writes = collections.deque()
+            offset = 0
             try:
                 async for chunk in chunks:
-                    writes.append(actor.write_stdin.remote(exec_id, chunk))
+                    writes.append(actor.write_stdin.remote(exec_id, chunk, offset))
+                    offset += len(chunk)
                     while len(writes) >= _COPY_WINDOW:
                         await writes.popleft()
                 while writes:
@@ -515,7 +518,7 @@ class _SandboxFilesystem:
                 aborted = True
                 await asyncio.gather(*writes, return_exceptions=True)
                 raise
-            await actor.close_stdin.remote(exec_id)
+            await actor.close_stdin.remote(exec_id, offset)
             returncode = await actor.exec_wait.remote(exec_id, None)
             if returncode != 0:
                 # Inside the `try`, so the drain happens before the `finally`

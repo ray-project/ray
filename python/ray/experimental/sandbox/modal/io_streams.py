@@ -8,11 +8,12 @@ decided here.
 
 import asyncio
 import codecs
+import collections
 import io
 import logging
 import sys
 import time
-from typing import AsyncGenerator, Optional, Tuple, Union
+from typing import AsyncGenerator, Deque, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.sandbox.modal._sync import synchronize_api
@@ -39,9 +40,10 @@ EXEC_MAX_BUFFER_SIZE = TASK_COMMAND_ROUTER_MAX_BUFFER_SIZE
 # Ray runs a streaming generator eagerly, so without this a chatty process
 # would push its whole output into the caller's memory store as fast as it can
 # write. At this bound the actor parks on an asyncio.Event until the client
-# catches up, which keeps roughly a megabyte in flight: enough to hide the
+# catches up. Chunks run up to 1 MiB for bulk output (_MAX_YIELD_BYTES), so
+# this keeps at most ~8 MiB in flight per stream: enough to hide the
 # round-trip latency, little enough to stay bounded for an endless stream.
-_STREAM_BACKPRESSURE_OBJECTS = 16
+_STREAM_BACKPRESSURE_OBJECTS = 8
 
 _DEVNULL_MESSAGE = "{} is not supported for a stream configured with StreamType.DEVNULL"
 _STDOUT_MESSAGE = "Output can only be retrieved using the PIPE stream type."
@@ -134,7 +136,7 @@ class _StreamReader:
         self._stream_type = stream_type
         self._text = text
         self._by_line = by_line
-        self._read_gen: Optional[AsyncGenerator] = None
+        self._read_gen: Optional["_Flatten"] = None
         self._print_task: Optional[asyncio.Task] = None
         # Absolute position in the stream, so a generator that is cancelled or
         # replaced resumes exactly. Modal keeps the same state as
@@ -179,14 +181,15 @@ class _StreamReader:
         # caller it is re-chunking whose result is discarded. Skipping it is
         # byte-for-byte identical, since a newline cannot occur inside a
         # multi-byte UTF-8 sequence.
-        async for chunk in self._decoded(by_line=False, start=0):
-            buffer.write(chunk)
+        async for batch in self._decoded_batches(by_line=False, start=0):
+            for chunk in batch:
+                buffer.write(chunk)
         return buffer.getvalue()
 
-    def __aiter__(self) -> AsyncGenerator:
+    def __aiter__(self) -> "_Flatten":
         self._check_readable("__aiter__")
         if self._read_gen is None:
-            self._read_gen = self._decoded()
+            self._read_gen = _Flatten(self._decoded_batches())
         return self._read_gen
 
     async def __anext__(self) -> Union[str, bytes]:
@@ -281,20 +284,26 @@ class _StreamReader:
                 "Sandbox output was truncated: %d bytes on fd %d were no "
                 "longer retained when this reader reached them. A Sandbox's "
                 "own output keeps only its newest 256 MiB, as on Modal; an "
-                "exec's output is kept whole unless the sandbox ran out of "
-                "room to spill it (RAY_SANDBOX_OUTPUT_SPILL_LIMIT, or the "
-                "node's disk nearing full -- the sandbox's log says which) or "
-                "the command was evicted from the finished-session window. "
+                "exec's output is kept whole unless the sandbox had no room "
+                "to spill it (RAY_SANDBOX_OUTPUT_SPILL_LIMIT, or the node's "
+                "disk nearing full -- the sandbox's log says which), when the "
+                "oldest output goes to bound memory, finished commands' first. "
                 "Further gaps on this stream are counted in .bytes_lost but "
                 "not logged.",
                 lost,
                 self._file_descriptor,
             )
 
-    async def _decoded(
+    async def _decoded_batches(
         self, by_line: Optional[bool] = None, start: Optional[int] = None
-    ) -> AsyncGenerator[Union[str, bytes], None]:
-        """Apply text decoding and line buffering to the raw chunk stream.
+    ) -> AsyncGenerator[List[Union[str, bytes]], None]:
+        """Decode and line-split the raw stream, one chunk's items per list.
+
+        Items are produced a whole chunk at a time -- a 1 MiB chunk of short
+        lines is thousands of them -- rather than one async step each: per
+        line, a generator hop and, for blocking iteration, a task and a loop
+        turn used to cost ~16 us, capping iteration near 60k lines/s.
+        :class:`_Flatten` hands them out singly again.
 
         ``by_line`` overrides the reader's own setting, for a caller whose
         output does not depend on where the chunk boundaries fall. ``start``
@@ -302,26 +311,42 @@ class _StreamReader:
         """
         if by_line is None:
             by_line = self._by_line
+        decoder = (
+            codecs.getincrementaldecoder("utf-8")(errors="strict")
+            if self._text
+            else None
+        )
+        splitter = _LineSplitter() if by_line else None
         source = self._raw(start)
-        if by_line:
-            source = _split_lines(source)
-        if not self._text:
-            async for chunk in source:
-                yield chunk
-            return
-
-        decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
         try:
             async for chunk in source:
-                decoded = decoder.decode(chunk)
-                if decoded:
-                    yield decoded
-            # Flush any bytes held back mid-character. Only on normal
-            # completion: if the consumer stopped early, yielding here would
-            # fire inside a closing generator.
-            tail = decoder.decode(b"", final=True)
+                if splitter is None:
+                    item = decoder.decode(chunk) if decoder else chunk
+                    if item:
+                        yield [item]
+                    continue
+                items: List[Union[str, bytes]] = []
+                try:
+                    # Split as bytes, then decode each line: the same lines,
+                    # since a newline cannot occur inside a multi-byte UTF-8
+                    # sequence, and invalid UTF-8 still fails at its own line
+                    # with every line before it delivered first.
+                    for line in splitter.feed(chunk):
+                        items.append(decoder.decode(line) if decoder else line)
+                except UnicodeDecodeError:
+                    if items:
+                        yield items
+                    raise
+                if items:
+                    yield items
+            # What is held back -- an unfinished line, bytes of a character
+            # cut off mid-sequence -- goes out only on normal completion: if
+            # the consumer stopped early, yielding here would fire inside a
+            # closing generator.
+            rest = splitter.finish() if splitter is not None else b""
+            tail = decoder.decode(rest, final=True) if decoder else rest
             if tail:
-                yield tail
+                yield [tail]
         finally:
             await source.aclose()
 
@@ -349,33 +374,65 @@ class _StreamReader:
             )
 
 
-async def _split_lines(
-    source: AsyncGenerator[bytes, None]
-) -> AsyncGenerator[bytes, None]:
-    """Re-chunk a byte stream so each yielded item is one complete line."""
-    # A bytearray scanned by index, rather than bytes re-sliced per line:
-    # dropping the consumed head on every newline copies the remainder of the
-    # chunk each time, which is quadratic in the number of lines it holds and
-    # costs milliseconds per chunk once the actor coalesces bursts into full
-    # 96 KiB yields. One slice per line plus one memmove per chunk is linear.
-    buffer = bytearray()
-    try:
-        async for chunk in source:
-            buffer += chunk
-            start = 0
-            while True:
-                newline = buffer.find(b"\n", start)
-                if newline == -1:
-                    break
-                yield bytes(buffer[start : newline + 1])
-                start = newline + 1
-            if start:
-                del buffer[:start]
-        # Trailing partial line, on normal completion only.
-        if buffer:
-            yield bytes(buffer)
-    finally:
-        await source.aclose()
+class _LineSplitter:
+    """Cuts a byte stream into complete lines, a chunk at a time.
+
+    Only ``\\n`` ends a line, as on Modal. Linear in the input: each chunk is
+    split once, in C, and an unfinished line is carried in a bytearray, so
+    neither many lines in a chunk nor one line across many chunks is copied
+    over and over.
+    """
+
+    def __init__(self):
+        self._partial = bytearray()
+
+    def feed(self, chunk: bytes) -> List[bytes]:
+        """The lines ``chunk`` completes, each ending in its newline."""
+        parts = chunk.split(b"\n")
+        if len(parts) == 1:
+            self._partial += chunk
+            return []
+        if self._partial:
+            self._partial += parts[0]
+            parts[0] = bytes(self._partial)
+        self._partial = bytearray(parts.pop())
+        return [part + b"\n" for part in parts]
+
+    def finish(self) -> bytes:
+        """Whatever trails the last newline: an unterminated final line."""
+        rest = bytes(self._partial)
+        self._partial = bytearray()
+        return rest
+
+
+class _Flatten:
+    """Hands out a batch generator's items one at a time.
+
+    ``take_ready`` gives up the items already produced without waiting, all at
+    once. The blocking iterator uses it (see ``_sync._BlockingIterator``) to
+    cross to its event loop once per batch instead of once per item.
+    """
+
+    def __init__(self, batches: AsyncGenerator[List, None]):
+        self._batches = batches
+        self._ready: Deque = collections.deque()
+
+    def __aiter__(self) -> "_Flatten":
+        return self
+
+    async def __anext__(self):
+        while not self._ready:
+            self._ready.extend(await self._batches.__anext__())
+        return self._ready.popleft()
+
+    def take_ready(self, limit: int) -> List:
+        """Up to ``limit`` items that are already here, oldest first."""
+        count = min(limit, len(self._ready))
+        return [self._ready.popleft() for _ in range(count)]
+
+    async def aclose(self) -> None:
+        self._ready.clear()
+        await self._batches.aclose()
 
 
 class _StreamWriter:
@@ -390,6 +447,10 @@ class _StreamWriter:
         self._max_buffer_size = max_buffer_size
         self._buffer = bytearray()
         self._is_closed = False
+        # Where the buffer's first byte sits in the stdin stream: everything
+        # before it has been written. Sent with each write, so the actor can
+        # order writes and drop a repeated one.
+        self._offset = 0
 
     def write(self, data: Union[bytes, bytearray, memoryview, str]) -> None:
         """Buffer data to be sent on the next ``drain``."""
@@ -419,11 +480,19 @@ class _StreamWriter:
         with _sandbox_gone_as_not_found():
             if self._buffer:
                 data = bytes(self._buffer)
-                # Clear only after the write succeeds, so drain is retryable.
-                await self._actor.write_stdin.remote(self._exec_id, data)
-                self._buffer.clear()
+                offset = self._offset
+                await self._actor.write_stdin.remote(self._exec_id, data, offset)
+                # Only what was sent is dropped, and only after it was written,
+                # so a failed drain can simply be retried. Not clear(): a
+                # write() made while this drain was in flight belongs to the
+                # next one. And only if no other drain already accounted for
+                # these bytes -- two concurrent drains send the same offset,
+                # and the actor writes it once.
+                if self._offset == offset:
+                    del self._buffer[: len(data)]
+                    self._offset = offset + len(data)
             if self._is_closed:
-                await self._actor.close_stdin.remote(self._exec_id)
+                await self._actor.close_stdin.remote(self._exec_id, self._offset)
 
 
 StreamReader = synchronize_api(_StreamReader)

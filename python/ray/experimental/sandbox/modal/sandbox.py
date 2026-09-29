@@ -178,25 +178,26 @@ def _warn_host_network() -> None:
 
     The default is kept at Modal's -- flipping it would silently cut egress out
     from under every ported program -- but the two are not equivalent, and the
-    difference is the kind that matters. `block_network=False` maps to runsc's
-    host networking, so the Sandbox shares this node's network namespace: host
-    loopback, where Ray's own GCS and raylet ports listen; the private ranges
-    this node can reach; and the cloud instance-metadata endpoint, which hands
-    out the node's credentials. On Modal the same default is a genuinely
-    isolated network.
+    difference is the kind that matters. `block_network=False` maps to
+    network="public": the Sandbox gets a network namespace of its own, with
+    private ports and loopback, but its egress leaves through this node's own
+    sockets with no destination filter. So it still reaches the private ranges
+    this node can reach -- other Ray nodes, the head node's GCS among them --
+    and the cloud instance-metadata endpoint, which hands out the node's
+    credentials. On Modal the same default is an isolated network.
     """
     global _host_network_warned
     if _host_network_warned:
         return
     _host_network_warned = True
     logger.warning(
-        "Sandbox is running in this node's network namespace, which is what "
+        "Sandbox egress leaves through this node's network, which is what "
         "block_network=False means on this backend. Code in the Sandbox can "
-        "reach host loopback (including Ray's own ports), private network "
-        "ranges, and the cloud instance-metadata endpoint -- unlike Modal, "
-        "where the default network is isolated. Pass block_network=True to "
-        "cut off the network entirely when running code you do not trust. "
-        "This is logged once per process."
+        "reach private network ranges (including other Ray nodes) and the "
+        "cloud instance-metadata endpoint -- unlike Modal, where the default "
+        "network is isolated. Pass block_network=True to cut off the network "
+        "entirely when running code you do not trust. This is logged once "
+        "per process."
     )
 
 
@@ -418,9 +419,9 @@ class _Sandbox:
         )
         # Separated from the block above only for the message. Silently
         # ignoring an egress restriction is the one rejection with a security
-        # consequence: block_network=False runs in the host network namespace,
-        # so an unenforced allowlist leaves the sandbox reaching host loopback,
-        # private ranges, and cloud instance metadata.
+        # consequence: block_network=False egresses through the node with no
+        # destination filter, so an unenforced allowlist leaves the sandbox
+        # reaching private ranges and cloud instance metadata.
         # `allowlist_name`, not `name`: `name` is one of this method's own
         # parameters, and rebinding it here left it holding a leftover string
         # for the rest of the call.

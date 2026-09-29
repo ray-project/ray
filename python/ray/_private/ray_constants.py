@@ -183,6 +183,10 @@ RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S",
 # Enable profiling endpoints in the dashboard.
 RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
+# Redact `runtime_env` secrets (e.g. `env_vars` values) in dashboard responses to
+# browser-originated requests. Set to 0 to return the plaintext values instead.
+RAY_DASHBOARD_REDACT_RUNTIME_ENV = env_bool("RAY_DASHBOARD_REDACT_RUNTIME_ENV", True)
+
 # --- Default values for dashboard profiling parameters (py-spy / memray). ---
 # Each applies only when the corresponding request query param is omitted, so
 # behavior is unchanged unless an operator overrides it on the Ray head node.
@@ -434,6 +438,10 @@ LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
 RAY_FLUSH_DRIVER_LOGS = env_bool("RAY_FLUSH_DRIVER_LOGS", False)
+# Skip prepending the "(task/actor name pid=...)" prefix to worker log lines
+# forwarded to the driver's stdout/stderr, without disabling forwarding itself
+# or requiring a job-level LoggingConfig.
+RAY_DISABLE_WORKER_LOG_PREFIX = env_bool("RAY_DISABLE_WORKER_LOG_PREFIX", False)
 # How many seconds of messages to buffer for log deduplication.
 RAY_DEDUP_LOGS_AGG_WINDOW_S = env_integer("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
 

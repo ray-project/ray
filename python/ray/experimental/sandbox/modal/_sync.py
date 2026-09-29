@@ -366,6 +366,12 @@ def _translate_args(args, kwargs):
 # so this never delays output that has not arrived.
 _ITER_BATCH_LIMIT = 256
 
+# The same bound for an iterator with a ``take_ready(limit)`` method, which
+# returns the items it already holds without waiting (see
+# ``io_streams._Flatten``). Those cost nothing to collect, so a crossing takes
+# far more of them: a 1 MiB chunk of short lines is thousands.
+_READY_BATCH_LIMIT = 4096
+
 
 class _Lookahead:
     """Items taken off a generator ahead of the caller, and the fetch in flight.
@@ -438,13 +444,22 @@ class _BlockingIterator:
         leaves them there for the next loop instead of dropping them.
         """
         state = self._state
+        # An iterator that can say what it already holds hands it all over in
+        # one call; probing item by item below costs a task and a loop turn
+        # each, so only what it does not hold yet is probed for.
+        take_ready = getattr(self._agen, "take_ready", None)
+        limit = _ITER_BATCH_LIMIT if take_ready is None else _READY_BATCH_LIMIT
         task = state.pending or asyncio.ensure_future(self._agen.__anext__())
         state.pending = None
         try:
             # Shielded, so that cancelling this fill leaves the fetch running
             # rather than cancelling it too.
             state.buffer.append(await asyncio.shield(task))
-            for _ in range(_ITER_BATCH_LIMIT - 1):
+            while True:
+                if take_ready is not None:
+                    state.buffer.extend(take_ready(limit - len(state.buffer)))
+                if len(state.buffer) >= limit:
+                    return
                 task = asyncio.ensure_future(self._agen.__anext__())
                 # One turn is all a ready item needs: a task runs until it
                 # returns or hits a real suspension, so anything still pending

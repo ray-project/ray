@@ -1,5 +1,5 @@
 import collections
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_builder import BlockBuilder
@@ -58,14 +58,21 @@ class DelegatingBlockBuilder(BlockBuilder):
             return True
         return self._builder.will_build_yield_copy()
 
-    def build(self) -> Block:
+    def build(self, *, additional_blocks: Sequence[Block] = ()) -> Block:
         if self._builder is None:
+            if additional_blocks:
+                builder = DelegatingBlockBuilder()
+                if self._empty_block is not None:
+                    builder.add_block(self._empty_block)
+                for block in additional_blocks:
+                    builder.add_block(block)
+                return builder.build()
             if self._empty_block is not None:
                 self._builder = BlockAccessor.for_block(self._empty_block).builder()
                 self._builder.add_block(self._empty_block)
             else:
                 self._builder = ArrowBlockBuilder()
-        return self._builder.build()
+        return self._builder.build(additional_blocks=additional_blocks)
 
     def num_rows(self) -> int:
         return self._builder.num_rows() if self._builder is not None else 0

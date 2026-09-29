@@ -43,16 +43,18 @@ Image building is not implemented.
     those are applied when the sandbox is created rather than baked into a
     layer. Building is planned; every stub above is a body away from working.
 
-Images are pulled and cached per node, and tags are not pinned.
-    Each node keeps extracted images in ``/tmp/ray-<uid>/sandbox/images``,
-    shared with ``ray.experimental.sandbox.Sandbox``. Modal builds an image
-    once and pins it until ``force_build=True``. Here a tag is checked against
-    the registry when a sandbox is created, and a node re-pulls it once it has
-    moved, so a long-running program can see a tag change between sandboxes.
-    Pass a digest (``repo@sha256:...``) to pin one. ``force_build=True``
-    re-pulls rather than rebuilds. A replaced image stays on disk until no
-    sandbox on the node runs from it. Cached images are never evicted: clear
-    the directory yourself while no sandboxes are running.
+Images are pulled and cached per node.
+    Each node keeps images in ``/tmp/ray/sandbox/images`` as EROFS root
+    filesystems, shared with ``ray.experimental.sandbox.Sandbox``; building
+    them needs ``mkfs.erofs`` 1.7 or later on the node. As on Modal, a tag is
+    pinned once pulled: later sandboxes on that node reuse the cached image
+    until ``force_build=True``, which pulls again rather than rebuilding.
+    Unlike Modal, the pin is per node, so two nodes can hold different
+    versions of a tag that moved between their pulls; pass a digest
+    (``repo@sha256:...``) to pin one everywhere. A sandbox keeps the image it
+    started on whatever happens to the cache. The cache is bounded by least
+    recently used eviction (``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES``), which
+    never removes an image a sandbox is running on.
 
 ``Image.env()`` accepts ``None`` to mean "unset".
     Modal rejects any non-string value here; the None-means-unset convention
@@ -84,13 +86,17 @@ Output is kept as Modal keeps it, up to a disk budget.
     output is deleted by ``terminate()``; a sandbox that is killed instead
     leaves it until the next sandbox on that node sweeps it up.
 
-    Whole ``exec`` sessions are retained in a bounded window too, so the output
-    of a command becomes unreadable once enough later commands have finished.
-    Its *exit code* is not: that outlives the session, so ``poll()`` and
-    ``wait()`` on a ``ContainerProcess`` keep answering however many other
-    commands have run since, which is what Modal does. A read of an evicted
-    session's stream reports the whole stream as lost, through the same
-    ``truncated`` / ``bytes_lost`` route as a partial overrun.
+    A finished command's output stays readable, as on Modal -- a batch of
+    commands can all finish before any of them is read. What finished
+    commands hold in memory is bounded (64 MiB together): past it, the oldest
+    one's output moves to spill files, where it still reads back whole. Only
+    where the sandbox cannot spill is a finished command's output dropped
+    instead, oldest first, and past 1024 finished commands the oldest go
+    regardless. Its *exit code* outlives it either way, so ``poll()`` and
+    ``wait()`` on a ``ContainerProcess`` keep answering, which is what Modal
+    does. A read of a dropped command's stream reports the whole stream as
+    lost, through the same ``truncated`` / ``bytes_lost`` route as a partial
+    overrun.
 
 ``Probe.with_tcp()`` is unimplemented.
     The backend publishes no ports and has no tunnels, so a TCP check would
@@ -112,12 +118,15 @@ Readiness probing starts with the main process, not with the container.
 
 Network access is all-or-nothing, and the default is not Modal's isolation.
     ``block_network=True`` cuts the network off entirely; otherwise the Sandbox
-    runs in *this node's* network namespace, where Modal's same default gives a
-    genuinely isolated network. Code in such a Sandbox reaches host loopback --
-    including Ray's own GCS and raylet ports -- the private ranges the node can
-    reach, and the cloud instance-metadata endpoint. The default is kept at
-    Modal's so that ported programs keep their egress, and creating a Sandbox
-    without ``block_network=True`` logs a warning once per process saying so.
+    gets a network namespace of its own (``network="public"``, bridged by
+    ``slirp4netns``, which the node needs) with private ports and loopback, but
+    its egress leaves through the node with no destination filter. So where
+    Modal's same default gives an isolated network, code here still reaches
+    the private ranges the node can reach -- other Ray nodes, the head node's
+    GCS among them -- and the cloud instance-metadata endpoint. The default is
+    kept at Modal's so that ported programs keep their egress, and creating a
+    Sandbox without ``block_network=True`` logs a warning once per process
+    saying so.
     Modal's CIDR and domain allowlists are rejected rather than approximated,
     because silently failing to enforce an egress restriction is worse than
     refusing it.

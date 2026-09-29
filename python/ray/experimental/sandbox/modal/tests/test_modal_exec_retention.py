@@ -1,7 +1,8 @@
 """Unit tests for what survives an exec session being reclaimed.
 
-The actor keeps only ``_MAX_RETAINED_EXECS`` sessions, because each holds two
-output buffers. These drive the real ``_SandboxActor`` implementation class
+The actor keeps a bounded number of finished sessions (``_MAX_RETAINED_EXECS``),
+and bounds what their output holds in memory (``_FINISHED_OUTPUT_MEMORY``).
+These drive the real ``_SandboxActor`` implementation class
 with locally spawned processes standing in for ``runsc exec``, so they need
 neither runsc nor a Ray cluster -- what is under test is the bookkeeping around
 a session, not the container it would have run in.
@@ -9,14 +10,15 @@ a session, not the container it would have run in.
 
 import asyncio
 import os
+import random
 import sys
 import time
 import types
 
 import pytest
 
+from ray.experimental.sandbox.modal import _actor as actor_module
 from ray.experimental.sandbox.modal._actor import (
-    _MAX_RETAINED_EXECS,
     _MAX_RETAINED_EXITS,
     STDERR_FD,
     STDOUT_FD,
@@ -36,6 +38,17 @@ requires_posix_shell = pytest.mark.skipif(
 # The plain class behind the @ray.remote decorator, so it can be driven
 # directly without a cluster.
 _ActorImpl = _SandboxActor.__ray_metadata__.modified_class
+
+
+# Production keeps up to _MAX_RETAINED_EXECS finished sessions, a number set
+# high because it bounds only bookkeeping. These tests exercise the count
+# mechanism itself, at a size that keeps them quick.
+_CAP = 16
+
+
+@pytest.fixture(autouse=True)
+def _small_retention_cap(monkeypatch):
+    monkeypatch.setattr(actor_module, "_MAX_RETAINED_EXECS", _CAP)
 
 
 def make_actor() -> "_ActorImpl":
@@ -100,11 +113,11 @@ def run(coro):
 def test_only_a_bounded_number_of_sessions_is_retained():
     async def scenario():
         actor = make_actor()
-        await run_and_retire(actor, _MAX_RETAINED_EXECS + 4)
+        await run_and_retire(actor, _CAP + 4)
         return len(actor._execs), len(actor._retired_execs)
 
     live, retired = run(scenario())
-    assert live == _MAX_RETAINED_EXECS
+    assert live == _CAP
     assert retired == 4, "every evicted session leaves its exit code behind"
 
 
@@ -115,14 +128,14 @@ def test_only_a_bounded_number_of_sessions_is_retained():
 def test_wait_still_returns_the_exit_code_of_an_evicted_exec():
     """The pattern that used to break: launch a batch, then collect it.
 
-    Past _MAX_RETAINED_EXECS the oldest sessions are reclaimed, and asking one
+    Past _CAP the oldest sessions are reclaimed, and asking one
     for its exit code raised KeyError -- reaching the caller as
     RayTaskError(KeyError), which is in no Modal except clause.
     """
 
     async def scenario():
         actor = make_actor()
-        ids = await run_and_retire(actor, _MAX_RETAINED_EXECS + 3)
+        ids = await run_and_retire(actor, _CAP + 3)
         # ids[0] is certainly evicted; its script exits 0 % 5 == 0.
         return await actor.exec_wait(ids[0], None), await actor.exec_poll(ids[0])
 
@@ -133,7 +146,7 @@ def test_wait_still_returns_the_exit_code_of_an_evicted_exec():
 def test_every_evicted_exit_code_is_the_one_its_command_returned():
     async def scenario():
         actor = make_actor()
-        ids = await run_and_retire(actor, _MAX_RETAINED_EXECS + 5)
+        ids = await run_and_retire(actor, _CAP + 5)
         evicted = ids[:5]
         return [await actor.exec_poll(exec_id) for exec_id in evicted]
 
@@ -150,7 +163,7 @@ def test_reading_an_evicted_stream_reports_the_whole_stream_as_lost():
 
     async def scenario():
         actor = make_actor()
-        ids = await run_and_retire(actor, _MAX_RETAINED_EXECS + 1)
+        ids = await run_and_retire(actor, _CAP + 1)
         return await drain(actor, ids[0])
 
     # "out0\n" is five bytes, none of which are still held.
@@ -161,11 +174,11 @@ def test_reading_an_evicted_stream_reports_the_whole_stream_as_lost():
 def test_a_retained_session_still_serves_its_output():
     async def scenario():
         actor = make_actor()
-        ids = await run_and_retire(actor, _MAX_RETAINED_EXECS + 1)
+        ids = await run_and_retire(actor, _CAP + 1)
         return await drain(actor, ids[-1])
 
     offset, chunk = run(scenario())[0]
-    assert (offset, chunk) == (0, b"out%d\n" % (_MAX_RETAINED_EXECS))
+    assert (offset, chunk) == (0, b"out%d\n" % (_CAP))
 
 
 @requires_posix_shell
@@ -176,7 +189,7 @@ def test_writing_to_an_evicted_exec_is_discarded_rather_than_an_error(call):
 
     async def scenario():
         actor = make_actor()
-        ids = await run_and_retire(actor, _MAX_RETAINED_EXECS + 1)
+        ids = await run_and_retire(actor, _CAP + 1)
         if call == "write_stdin":
             await actor.write_stdin(ids[0], b"ignored")
         else:
@@ -569,6 +582,172 @@ def test_terminate_deletes_spilled_output(tmp_path):
         return os.path.exists(spill.directory)
 
     assert run(scenario()) is False
+
+
+# -- finished output: bounded by memory, not by count ------------------------
+
+_PRODUCTION_CAP = actor_module._MAX_RETAINED_EXECS
+
+
+@requires_posix_shell
+def test_a_batch_that_finishes_before_it_is_read_is_all_still_there(monkeypatch):
+    """Start many, wait for all, then read each: the old cap of sixteen lost
+    the first finishers' output, where Modal keeps every exec's."""
+    monkeypatch.setattr(actor_module, "_MAX_RETAINED_EXECS", _PRODUCTION_CAP)
+
+    async def scenario():
+        actor = make_actor()
+        ids = [await start(actor, f"e{i}", f"echo out{i}") for i in range(40)]
+        for exec_id in ids:
+            await actor.exec_wait(exec_id, None)
+        return [await _stdout_of(actor, exec_id) for exec_id in ids]
+
+    assert run(scenario()) == [b"out%d\n" % i for i in range(40)]
+
+
+async def _settle_flushes(actor):
+    """Wait for any move of finished output to disk to land."""
+    for _ in range(500):
+        busy = [
+            buffer
+            for session in actor._execs.values()
+            for buffer in session.buffers.values()
+            if buffer is not None and buffer._flush_task is not None
+        ]
+        if not busy:
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("flushes did not settle")
+
+
+@requires_posix_shell
+def test_finished_output_past_the_memory_budget_moves_to_disk_whole(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(actor_module, "_FINISHED_OUTPUT_MEMORY", 256 * 1024)
+
+    async def scenario():
+        actor = make_actor()
+        spill = attach_spill(actor, tmp_path)
+        ids = []
+        for i in range(6):
+            # 128 KiB each: all of it fits the stream's own window, so only
+            # the budget for finished output sends any of it to disk.
+            ids.append(
+                await start(actor, f"e{i}", "head -c 131072 /dev/zero", spill=spill)
+            )
+            await actor.exec_wait(ids[-1], None)
+        await _settle_flushes(actor)
+        in_memory = sum(
+            actor_module._session_memory(actor._execs[exec_id]) for exec_id in ids
+        )
+        lengths = [await stream_length(actor, exec_id) for exec_id in ids]
+        return in_memory, spill.used, lengths
+
+    in_memory, spilled, lengths = run(scenario())
+    assert in_memory <= 256 * 1024
+    assert spilled >= 6 * 131072 - 256 * 1024
+    assert lengths == [131072] * 6, "moved to disk, and still read back whole"
+
+
+@requires_posix_shell
+def test_without_room_to_spill_the_oldest_finished_sessions_go_whole(monkeypatch):
+    """No spill store, as on a node too full to spill: the budget is kept by
+    dropping whole sessions, oldest first, and their exit codes survive."""
+    monkeypatch.setattr(actor_module, "_FINISHED_OUTPUT_MEMORY", 256 * 1024)
+
+    async def scenario():
+        actor = make_actor()
+        ids = []
+        for i in range(6):
+            ids.append(
+                await start(actor, f"e{i}", f"head -c 131072 /dev/zero; exit {i}")
+            )
+            await actor.exec_wait(ids[-1], None)
+        kept = [exec_id for exec_id in ids if exec_id in actor._execs]
+        codes = [await actor.exec_wait(exec_id, None) for exec_id in ids]
+        return kept, codes
+
+    kept, codes = run(scenario())
+    assert kept == ["e4", "e5"], "the newest fit the budget; the oldest went"
+    assert codes == list(range(6))
+
+
+# -- stdin ordering ----------------------------------------------------------
+
+
+def _pieces(data: bytes, size: int):
+    return [
+        (offset, data[offset : offset + size]) for offset in range(0, len(data), size)
+    ]
+
+
+async def _stdout_of(actor, exec_id: str) -> bytes:
+    await actor.exec_wait(exec_id, None)
+    return b"".join(chunk for _, chunk in await drain(actor, exec_id))
+
+
+@requires_posix_shell
+@pytest.mark.parametrize("order", ["reversed", "shuffled"])
+def test_stdin_writes_land_in_offset_order_whatever_order_they_run_in(order):
+    """Ray runs an async actor's calls in no guaranteed order, which is how
+    pipelined uploads used to land with their chunks scrambled. Here every
+    write, and the close, runs out of order at once."""
+    data = os.urandom(256 * 1024)
+    pieces = _pieces(data, 8192)
+    if order == "reversed":
+        pieces.reverse()
+    else:
+        random.Random(7).shuffle(pieces)
+
+    async def scenario():
+        actor = make_actor()
+        exec_id = await start(actor, "cat", "cat")
+        await asyncio.gather(
+            actor.close_stdin(exec_id, len(data)),
+            *(actor.write_stdin(exec_id, chunk, offset) for offset, chunk in pieces),
+        )
+        return await _stdout_of(actor, exec_id)
+
+    assert run(scenario()) == data
+
+
+@requires_posix_shell
+def test_repeated_and_overlapping_stdin_writes_are_written_once():
+    """A retried write is harmless: whatever was already written is skipped."""
+    data = b"0123456789abcdefghij"
+
+    async def scenario():
+        actor = make_actor()
+        exec_id = await start(actor, "cat", "cat")
+        await actor.write_stdin(exec_id, data[0:10], 0)
+        await actor.write_stdin(exec_id, data[0:10], 0)
+        await actor.write_stdin(exec_id, data[5:15], 5)
+        await actor.write_stdin(exec_id, data[15:20], 15)
+        await actor.close_stdin(exec_id, 20)
+        return await _stdout_of(actor, exec_id)
+
+    assert run(scenario()) == data
+
+
+@requires_posix_shell
+@pytest.mark.parametrize("ending", ["released", "exited"])
+def test_a_write_waiting_on_a_missing_chunk_is_let_go(ending):
+    """A predecessor that never arrives must not hang its successors: they are
+    released when the session is dropped or the command exits."""
+
+    async def scenario():
+        actor = make_actor()
+        script = "cat" if ending == "released" else "sleep 0.2"
+        exec_id = await start(actor, "e", script)
+        waiting = asyncio.ensure_future(actor.write_stdin(exec_id, b"later", 100))
+        await asyncio.sleep(0.05)
+        assert not waiting.done()
+        if ending == "released":
+            await actor.exec_release(exec_id)
+        await asyncio.wait_for(waiting, 5)
+
+    run(scenario())
 
 
 if __name__ == "__main__":

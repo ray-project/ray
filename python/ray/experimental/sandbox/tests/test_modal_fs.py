@@ -9,6 +9,7 @@ These need runsc and a Ray cluster, so they run only under ``TEST_SANDBOX=1``.
 
 import asyncio
 import hashlib
+import os
 import sys
 import time
 
@@ -26,6 +27,10 @@ from ray.experimental.sandbox.modal.exception import (
     SandboxFilesystemNotFoundError,
     SandboxFilesystemPathAlreadyExistsError,
 )
+
+# Sandboxes here run on Modal's default network, network="public", which
+# needs slirp4netns and a host that allows a per-sandbox network namespace.
+pytestmark = pytest.mark.usefixtures("ensure_slirp4netns")
 
 # busybox applets on one side, GNU coreutils on the other.
 IMAGES = ["busybox:latest", "debian:stable-slim"]
@@ -427,6 +432,34 @@ def test_a_large_copy_to_local_arrives_whole(sandbox, tmp_path):
     destination = tmp_path / "big.bin"
     sandbox.filesystem.copy_to_local("/tmp/big", destination)
     assert hashlib.md5(destination.read_bytes()).hexdigest() == digest
+
+
+def _sandbox_sha256(sandbox, path: str) -> str:
+    return sh(sandbox, f"sha256sum {path} | cut -d' ' -f1")
+
+
+def test_a_large_random_write_bytes_lands_byte_for_byte(sandbox):
+    """Checked inside the sandbox, on content that never repeats. The round
+    trips above use periodic payloads, which read back identical even with
+    their chunks out of order -- which is how uploads scrambled by Ray's
+    unordered actor calls passed this suite."""
+    payload = os.urandom(64 * 1024 * 1024)
+    sandbox.filesystem.write_bytes(payload, "/tmp/written.bin")
+    assert (
+        _sandbox_sha256(sandbox, "/tmp/written.bin")
+        == hashlib.sha256(payload).hexdigest()
+    )
+
+
+def test_a_large_random_copy_from_local_lands_byte_for_byte(sandbox, tmp_path):
+    payload = os.urandom(40 * 1024 * 1024)
+    source = tmp_path / "upload.bin"
+    source.write_bytes(payload)
+    sandbox.filesystem.copy_from_local(source, "/tmp/copied.bin")
+    assert (
+        _sandbox_sha256(sandbox, "/tmp/copied.bin")
+        == hashlib.sha256(payload).hexdigest()
+    )
 
 
 def test_an_aborted_upload_leaves_the_destination_and_nothing_running(sandbox):

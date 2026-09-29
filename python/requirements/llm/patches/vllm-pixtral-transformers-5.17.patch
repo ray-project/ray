@@ -1,0 +1,69 @@
+diff --git a/vllm/model_executor/models/pixtral.py b/vllm/model_executor/models/pixtral.py
+index b6848b09d..1f5af8907 100644
+--- a/vllm/model_executor/models/pixtral.py
++++ b/vllm/model_executor/models/pixtral.py
+@@ -9,18 +9,16 @@ from typing import Annotated, Literal
+ import numpy as np
+ import torch
+ import torch.nn as nn
++import transformers
+ from mistral_common.protocol.instruct.chunk import ImageChunk, TextChunk
+ from mistral_common.protocol.instruct.messages import UserMessage
+ from mistral_common.protocol.instruct.request import ChatCompletionRequest
++from packaging.version import Version
+ from transformers import BatchFeature, PixtralVisionConfig
+ from transformers.models.pixtral.image_processing_pixtral import (
+     _num_image_tokens as _get_pixtral_hf_num_image_tokens,
+ )
+-from transformers.models.pixtral.modeling_pixtral import (
+-    PixtralRotaryEmbedding,
+-    apply_rotary_pos_emb,
+-    position_ids_in_meshgrid,
+-)
++from transformers.models.pixtral.modeling_pixtral import apply_rotary_pos_emb
+ 
+ from vllm.config import VllmConfig
+ from vllm.config.multimodal import BaseDummyOptions
+@@ -91,6 +89,33 @@ from .vision import (
+ 
+ PATCH_MERGE = "patch_merge"
+ 
++TRANSFORMERS_WITH_AXIAL_PIXTRAL_ROPE = Version(transformers.__version__) >= Version(
++    "5.17.0.dev0"
++)
++
++if TRANSFORMERS_WITH_AXIAL_PIXTRAL_ROPE:
++    from transformers.models.pixtral.modeling_pixtral import (
++        PixtralVisionRotaryEmbedding as PixtralRotaryEmbedding,
++    )
++else:
++    from transformers.models.pixtral.modeling_pixtral import PixtralRotaryEmbedding
++
++
++def _pixtral_position_ids(
++    patch_embeds_list: list[torch.Tensor], max_width: int
++) -> torch.Tensor:
++    positions = []
++    for patch in patch_embeds_list:
++        height, width = patch.shape[-2:]
++        h_grid, w_grid = torch.meshgrid(
++            torch.arange(height), torch.arange(width), indexing="ij"
++        )
++        if TRANSFORMERS_WITH_AXIAL_PIXTRAL_ROPE:
++            positions.append(torch.stack([h_grid.flatten(), w_grid.flatten()], dim=-1))
++        else:
++            positions.append(h_grid.flatten() * max_width + w_grid.flatten())
++    return torch.cat(positions)
++
+ 
+ def _make_packed_sequence_metadata(
+     sequence_lengths: list[int],
+@@ -1501,7 +1526,7 @@ class PixtralHFVisionModel(nn.Module):
+         patch_embeds = self.ln_pre(patch_embeds)
+ 
+         # positional embeddings
+-        position_ids = position_ids_in_meshgrid(
++        position_ids = _pixtral_position_ids(
+             patch_embeds_list,
+             max_width=self.config.image_size // self.config.patch_size,
+         ).to(self.device)

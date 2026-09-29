@@ -342,6 +342,13 @@ class NodeResourceInfoAccessor {
   virtual void AsyncGetDrainingNodes(
       const rpc::ItemCallback<std::unordered_map<NodeID, int64_t>> &callback);
 
+  /// Get draining nodes from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param reply The draining nodes returned by GCS.
+  /// \return Status
+  virtual Status GetDrainingNodes(int64_t timeout_ms, rpc::GetDrainingNodesReply &reply);
+
   /// Get newest resource usage of all nodes from GCS asynchronously.
   ///
   /// \param callback Callback that will be called after lookup finishes.

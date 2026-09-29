@@ -1,4 +1,3 @@
-import contextlib
 import copy
 import functools
 import json
@@ -6,18 +5,19 @@ import logging
 import os
 import subprocess
 import tempfile
-import threading
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
-    IMAGE_CONFIG_FILENAME,
+    ROOTFS_IMAGE,
+    _release_image_use,
+    invalidate_cached_image,
     pull_and_extract_container_image,
-    retire_entry,
     sanitize_image_name,
 )
 from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 _OCI_CAPABILITY_SETS = ("bounding", "effective", "permitted")
 
 _RESOLV_CONF = "/etc/resolv.conf"
+_ETC_HOSTS = "/etc/hosts"
 
 
 def _merge_env(*layers: List[str]) -> List[str]:
@@ -90,17 +91,45 @@ class BaseImageManager(ABC):
         self,
         image: str,
         timeout_seconds: float = 120.0,
+        instance_id: Optional[str] = None,
     ) -> str:
-        """Pull container image and extract rootfs into local cache or storage.
+        """Pull a container image into the local cache or storage.
 
         Args:
             image: Container image reference (e.g. 'python:3.10-slim') or path to local tar archive.
             timeout_seconds: Timeout for network operations.
+            instance_id: The sandbox instance that will use the image. When
+                given, the image is pinned in the cache until
+                ``release_image`` is called for the same instance.
 
         Returns:
-            Absolute directory path containing the extracted container filesystem.
+            Absolute path of the directory holding the cached image.
         """
         pass
+
+    def release_image(self, image: str, instance_id: str) -> None:
+        """Release an instance's pin on an image taken by ``pull_image``.
+
+        Managers without a cache need not override this.
+
+        Args:
+            image: Container image reference or tar path passed to ``pull_image``.
+            instance_id: The sandbox instance that no longer uses the image.
+        """
+        return None
+
+    def invalidate_image(self, image: str) -> None:
+        """Make the next ``pull_image`` of ``image`` fetch it afresh.
+
+        A cached tag stays pinned to what was first pulled; this is how a
+        caller asks for a newer one (Modal's ``force_build``). Sandboxes
+        already running on the cached image are unaffected. Managers without
+        a cache need not override this.
+
+        Args:
+            image: Container image reference or tar path.
+        """
+        return None
 
     @abstractmethod
     def get_image_dir(self, image: str) -> str:
@@ -115,18 +144,6 @@ class BaseImageManager(ABC):
         pass
 
     @abstractmethod
-    def get_rootfs_path(self, image: str) -> str:
-        """Get the rootfs directory path for an image.
-
-        Args:
-            image: Container image name or tar path.
-
-        Returns:
-            Absolute path to rootfs directory inside the image cache.
-        """
-        pass
-
-    @abstractmethod
     def get_image_config(self, image: str) -> Dict[str, Any]:
         """Read and parse the container image configuration metadata.
 
@@ -137,53 +154,6 @@ class BaseImageManager(ABC):
             Dictionary representation of container image configuration.
         """
         pass
-
-    @contextlib.contextmanager
-    def pinned(self, image: str, entry_dir: str) -> Iterator[None]:
-        """Resolve ``image`` to ``entry_dir`` for the calls made inside.
-
-        A sandbox is built from several lookups -- its root filesystem, its
-        working directory, its environment -- and each resolves the image
-        afresh. If the image is replaced between two of them, the sandbox gets
-        one version's files and another's metadata. Pinning makes them all
-        answer from the version ``pull_image`` returned.
-
-        This default pins nothing, for managers whose ``pull_image`` result
-        is already immutable.
-
-        Args:
-            image: Container image name or tar path.
-            entry_dir: What ``pull_image`` returned for it.
-
-        Yields:
-            None: the pin holds for the body of the ``with``.
-        """
-        yield
-
-    def invalidate_image(self, image: str) -> None:
-        """Drop an image's cache entry so the next use re-fetches it.
-
-        Concrete rather than abstract: it is defined purely in terms of
-        ``get_image_dir``, and making it abstract would break existing
-        implementors of this interface.
-
-        A moved tag is normally picked up by the revalidation each pull does;
-        this is what ``force_pull`` reaches for when that cannot tell -- an
-        unreachable registry, or an entry with no recorded digest.
-
-        Args:
-            image: Container image name or tar path.
-        """
-        img_dir = self.get_image_dir(image)
-        if not os.path.isdir(img_dir):
-            return
-        # Retired rather than removed: a sandbox already running from this
-        # directory keeps it until it ends, instead of having files vanish
-        # underneath it.
-        try:
-            retire_entry(img_dir)
-        except OSError:
-            logger.warning(f"Could not invalidate image cache at '{img_dir}'")
 
     @abstractmethod
     def get_workdir(self, image: str) -> Optional[str]:
@@ -222,7 +192,9 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
+        hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
+        root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -243,7 +215,14 @@ class BaseImageManager(ABC):
                 spec's empty network namespace.
             resolv_conf_source: Optional file to bind-mount read-only at
                 /etc/resolv.conf.
+            hosts_source: Optional file to bind-mount read-write at
+                /etc/hosts (a per-sandbox copy, like the one container
+                engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            root_path: Host directory for ``root.path``. The rootfs itself
+                comes from the gVisor annotations (the cached EROFS image);
+                this directory only anchors the overlay's backing file.
+                Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -296,70 +275,57 @@ class ImageManager(BaseImageManager):
 
     def __init__(self, images_dir: str = DEFAULT_IMAGES_DIR):
         self._images_dir = images_dir
-        # Per thread: sandboxes created concurrently each pin their own.
-        self._pins = threading.local()
 
     @property
     def images_dir(self) -> str:
         """Root directory for caching container images."""
         return self._images_dir
 
-    @contextlib.contextmanager
-    def pinned(self, image: str, entry_dir: str) -> Iterator[None]:
-        """Resolve ``image`` to ``entry_dir`` for the calls made inside.
-
-        See :meth:`BaseImageManager.pinned`. Inside, ``pull_image`` returns
-        ``entry_dir`` without touching the registry, and every lookup reads
-        from that version rather than whatever the image points at now.
-
-        Args:
-            image: Container image name or tar path.
-            entry_dir: The version directory ``pull_image`` returned.
-
-        Yields:
-            None: the pin holds for the body of the ``with``.
-        """
-        pins = self._current_pins()
-        previous = pins.get(image)
-        pins[image] = entry_dir
-        try:
-            yield
-        finally:
-            if previous is None:
-                pins.pop(image, None)
-            else:
-                pins[image] = previous
-
-    def _current_pins(self) -> Dict[str, str]:
-        pins = getattr(self._pins, "by_image", None)
-        if pins is None:
-            pins = self._pins.by_image = {}
-        return pins
-
     def pull_image(
         self,
         image: str,
         timeout_seconds: float = 120.0,
+        instance_id: Optional[str] = None,
     ) -> str:
         """Pull container image and extract rootfs into local images cache directory.
+
+        The cache is bounded (see ``RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES``);
+        passing ``instance_id`` pins the image until ``release_image``.
 
         Args:
             image: Container image name (e.g. 'busybox:latest') or path to local tar archive.
             timeout_seconds: Timeout for network operations.
+            instance_id: The sandbox instance that will use the image.
 
         Returns:
-            Absolute directory path containing the extracted container
-            filesystem: the image's current version, which keeps naming the
-            same content after the image is replaced.
+            Absolute directory path containing the extracted container filesystem.
         """
-        pinned = self._current_pins().get(image)
-        if pinned is not None:
-            return pinned
         return pull_and_extract_container_image(
             image,
             images_dir=self._images_dir,
             timeout_seconds=timeout_seconds,
+            instance_id=instance_id,
         )
+
+    def release_image(self, image: str, instance_id: str) -> None:
+        """Release an instance's pin on a cached image.
+
+        Args:
+            image: Container image name or tar path passed to ``pull_image``.
+            instance_id: The sandbox instance that no longer uses the image.
+        """
+        _release_image_use(self.get_image_dir(image), instance_id)
+
+    def invalidate_image(self, image: str) -> None:
+        """Make the next ``pull_image`` of ``image`` rebuild it.
+
+        See :func:`invalidate_cached_image`: sandboxes running on the cached
+        image keep it, and the rebuild carries their in-use records over.
+
+        Args:
+            image: Container image name or tar path.
+        """
+        invalidate_cached_image(image, images_dir=self._images_dir)
 
     def get_image_dir(self, image: str) -> str:
         """Get the cached local directory path for an image.
@@ -368,47 +334,31 @@ class ImageManager(BaseImageManager):
             image: Container image name or tar path.
 
         Returns:
-            Absolute directory path for the image cache directory -- the
-            pinned version inside :meth:`pinned`.
+            Absolute directory path for the image cache directory.
         """
-        pinned = self._current_pins().get(image)
-        if pinned is not None:
-            return pinned
-        return self._entry_link(image)
+        safe_name = sanitize_image_name(image)
+        return os.path.join(self._images_dir, safe_name)
 
-    def _entry_link(self, image: str) -> str:
-        """The image's name in the cache, whichever version it points at."""
-        return os.path.join(self._images_dir, sanitize_image_name(image))
-
-    def invalidate_image(self, image: str) -> None:
-        """Drop an image's cache entry so the next use re-fetches it.
-
-        The image itself, never a version pinned for a sandbox being built;
-        see :meth:`BaseImageManager.invalidate_image`.
-
-        Args:
-            image: Container image name or tar path.
-        """
-        link = self._entry_link(image)
-        if not os.path.lexists(link):
-            return
-        try:
-            retire_entry(link)
-        except OSError:
-            logger.warning(f"Could not invalidate image cache at '{link}'")
-
-    def get_rootfs_path(self, image: str) -> str:
-        """Get the rootfs directory path for an image.
+    def get_rootfs_image(self, image: str) -> str:
+        """Path of the cached image's EROFS root filesystem.
 
         Args:
             image: Container image name or tar path.
 
         Returns:
-            Absolute path to rootfs directory inside the image cache: in the
-            image's current version, so it keeps naming the same files after
-            the image is replaced.
+            Absolute path of the image's ``rootfs.erofs``.
+
+        Raises:
+            SandboxCreationError: If the image is not in the cache; call
+                ``pull_image`` first.
         """
-        return os.path.join(os.path.realpath(self.get_image_dir(image)), "rootfs")
+        path = os.path.join(self.get_image_dir(image), ROOTFS_IMAGE)
+        if not os.path.isfile(path):
+            raise SandboxCreationError(
+                f"Image '{image}' has no cached root filesystem at {path}; "
+                "pull it first."
+            )
+        return path
 
     def is_image_extracted(self, image: str) -> bool:
         """Check if an image has already been extracted to the local cache.
@@ -433,7 +383,7 @@ class ImageManager(BaseImageManager):
             Dictionary representation of container image configuration.
         """
         img_dir = self.get_image_dir(image)
-        config_path = os.path.join(img_dir, IMAGE_CONFIG_FILENAME)
+        config_path = os.path.join(img_dir, ".image_config.json")
         if os.path.exists(config_path):
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
@@ -478,7 +428,9 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         resolv_conf_source: Optional[str] = None,
+        hosts_source: Optional[str] = None,
         base_spec: Optional[Dict[str, Any]] = None,
+        root_path: Optional[str] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> Dict[str, Any]:
         """Construct an OCI container configuration specification dictionary.
@@ -499,7 +451,14 @@ class ImageManager(BaseImageManager):
                 spec's empty network namespace.
             resolv_conf_source: Optional file to bind-mount read-only at
                 /etc/resolv.conf.
+            hosts_source: Optional file to bind-mount read-write at
+                /etc/hosts (a per-sandbox copy, like the one container
+                engines inject).
             base_spec: Optional base OCI spec dict to modify instead of generating a default.
+            root_path: Host directory for ``root.path``. The rootfs itself
+                comes from the gVisor annotations (the cached EROFS image);
+                this directory only anchors the overlay's backing file.
+                Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -512,12 +471,35 @@ class ImageManager(BaseImageManager):
         )
 
         image_dir = self.pull_image(image)
-        rootfs = os.path.join(image_dir, "rootfs")
-
+        erofs_image = os.path.join(image_dir, ROOTFS_IMAGE)
+        if not os.path.isfile(erofs_image):
+            raise SandboxCreationError(
+                f"Cached image '{image}' at {image_dir} has no {ROOTFS_IMAGE}; "
+                "the cache entry is incomplete. Delete it to pull again."
+            )
         spec.setdefault("root", {})
-        # A version directory, not the image's link: this path keeps naming
-        # what the sandbox runs from after the image is replaced, and is what
-        # keeps that version from being reclaimed while the sandbox lives.
+        # gVisor mounts the EROFS image inside the Sentry; root.path is only
+        # the anchor under which the "self" overlay keeps the writable upper
+        # layer's backing file, so make it per sandbox.
+        rootfs = root_path or os.path.join(image_dir, "root")
+        os.makedirs(rootfs, exist_ok=True)
+        annotations = spec.setdefault("annotations", {})
+        annotations["dev.gvisor.spec.rootfs.source"] = erofs_image
+        annotations["dev.gvisor.spec.rootfs.type"] = "erofs"
+        # runsc applies no overlay to a read-only root, and an immutable image
+        # can't grow a mount point for an arbitrary workdir, so a readonly
+        # sandbox with an explicit workdir gets a private writable overlay
+        # instead (its writes are discarded with it).
+        if readonly and workdir_path is not None:
+            logger.warning(
+                "readonly=True with an explicit workdir: runsc cannot create "
+                "the workdir mount point in a read-only EROFS image, so this "
+                "sandbox runs on a private writable overlay (its writes are "
+                "discarded with it)."
+            )
+            readonly = False
+        if not readonly:
+            annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
 
@@ -527,13 +509,12 @@ class ImageManager(BaseImageManager):
 
         # Layer the environment: image config first, then user-provided values.
         #
-        # PATH alone is carried over from the base spec as a floor, and only when
-        # nothing else supplies one. An image that arrives as a bare root
+        # PATH alone is carried over from the base spec as a floor, and only
+        # when nothing else supplies one. An image that arrives as a bare root
         # filesystem (a local tar, say) has no config to inherit PATH from,
-        # and would otherwise be unable to resolve
-        # even the `sleep` above. The rest of the runtime's defaults are
-        # deliberately not merged: TERM in particular would then appear in every
-        # sandbox that never had it.
+        # and would otherwise be unable to resolve even the `sleep` above. The
+        # rest of the runtime's defaults are deliberately not merged: TERM in
+        # particular would then appear in every sandbox that never had it.
         base_path = [
             entry
             for entry in (spec["process"].get("env") or [])
@@ -607,6 +588,31 @@ class ImageManager(BaseImageManager):
                 }
             )
             existing_dests.add(_RESOLV_CONF)
+
+        # Read-write like the file container engines inject; the source
+        # is always a per-sandbox copy, never the node's own file.
+        if hosts_source and _ETC_HOSTS not in existing_dests:
+            mounts.append(
+                {
+                    "destination": _ETC_HOSTS,
+                    "type": "bind",
+                    "source": hosts_source,
+                    "options": ["rbind", "rw"],
+                }
+            )
+            existing_dests.add(_ETC_HOSTS)
+
+        # Keep /tmp writable on a readonly rootfs, as it is under Docker.
+        if readonly and "/tmp" not in existing_dests:
+            mounts.append(
+                {
+                    "destination": "/tmp",
+                    "type": "tmpfs",
+                    "source": "tmpfs",
+                    "options": ["nosuid", "nodev", "mode=1777"],
+                }
+            )
+            existing_dests.add("/tmp")
 
         spec["mounts"] = mounts
 
@@ -687,6 +693,22 @@ class ImageManager(BaseImageManager):
             elif os.path.exists(_RESOLV_CONF):
                 resolv_conf_source = _RESOLV_CONF
 
+        # Engines inject /etc/hosts at run time; without it `localhost`
+        # does not resolve. Host networking also inherits the node's entries.
+        hosts_source = os.path.join(root_dir, "hosts")
+        host_entries = ""
+        if network == "host" and os.path.exists(_ETC_HOSTS):
+            try:
+                with open(_ETC_HOSTS, "r", encoding="utf-8", errors="replace") as f:
+                    host_entries = f.read()
+            except OSError:
+                host_entries = ""
+        with open(hosts_source, "w", encoding="utf-8") as f:
+            f.write("127.0.0.1\tlocalhost\n")
+            f.write("::1\tlocalhost ip6-localhost ip6-loopback\n")
+            if host_entries:
+                f.write(host_entries)
+
         spec = self.create_oci_spec(
             image=image,
             container_cwd=container_cwd,
@@ -698,6 +720,8 @@ class ImageManager(BaseImageManager):
             capabilities=capabilities,
             network=network,
             resolv_conf_source=resolv_conf_source,
+            hosts_source=hosts_source,
+            root_path=rootfs_dir,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
         )
 

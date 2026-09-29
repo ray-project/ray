@@ -1,4 +1,5 @@
 import asyncio
+import platform
 import sys
 import time
 from types import SimpleNamespace
@@ -8,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from vllm.entrypoints.openai.cli_args import make_arg_parser
+from vllm.entrypoints.launchers.cli_args import make_arg_parser
 from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 
@@ -516,6 +517,10 @@ class TestLLMServer:
             await server.start()
             mock_push_telemetry.assert_called_once()
 
+    @pytest.mark.skipif(
+        platform.machine().lower() in ("aarch64", "arm64"),
+        reason="TPOT jitter comparison is unreliable on ARM CI workers.",
+    )
     @pytest.mark.parametrize("api_type", ["chat", "completions"])
     @pytest.mark.parametrize("stream", [True])
     @pytest.mark.parametrize("max_tokens", [64])

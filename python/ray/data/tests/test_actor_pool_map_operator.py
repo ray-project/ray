@@ -979,6 +979,51 @@ def test_setting_initial_size_for_actor_pool():
     ray.shutdown()
 
 
+def test_max_concurrent_calls_per_actor_raises_on_invalid():
+    # The value must be positive.
+    with pytest.raises(ValueError, match="max_concurrent_calls_per_actor"):
+        ActorPoolStrategy(max_concurrent_calls_per_actor=0)
+
+
+def test_max_concurrent_calls_per_actor_passed_to_actor_pool():
+    data_context = DataContext.get_current()
+    # Use 2 instead of the default 1 so the test fails if the option is ignored.
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_concurrent_calls_per_actor=2,
+    )
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+    )
+
+    # Verify that the value is passed to the operator's actor pool.
+    pools = op.get_autoscaling_actor_pools()
+    assert len(pools) == 1, len(pools)
+    assert pools[0].max_actor_concurrency() == 2
+
+
+def test_max_concurrent_calls_per_actor_warns_on_conflict():
+    data_context = DataContext.get_current()
+    # Set the new actor concurrency option.
+    compute_strategy = ActorPoolStrategy(
+        size=1,
+        max_concurrent_calls_per_actor=2,
+    )
+
+    # Warn that max_concurrent_calls_per_actor takes precedence over max_concurrency.
+    with pytest.warns(UserWarning, match="takes precedence"):
+        MapOperator.create(
+            map_transformer=MagicMock(),
+            input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+            data_context=data_context,
+            compute_strategy=compute_strategy,
+            ray_remote_args={"max_concurrency": 1},
+        )
+
+
 def _create_bundle_with_single_row(row):
     block = pa.Table.from_pylist([row])
     block_ref = ray.put(block)
@@ -1167,11 +1212,14 @@ def test_min_max_resource_requirements(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # min_resource_usage: 1 actor * (1 gpu, 3 obj_store_mem)
-    # max_resource_usage: 2 actors * (1 gpu)
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
+    # GPU ops default to 1 CPU per actor.
+    # min_resource_usage: 1 actor * (1 cpu, 1 gpu, 3 obj_store_mem)
+    # max_resource_usage: 2 actors * (1 cpu, 1 gpu)
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
     assert max_resource_usage_bound == ExecutionResources(
-        gpu=2, object_store_memory=float("inf")
+        cpu=2, gpu=2, object_store_memory=float("inf")
     )
 
 
@@ -1193,10 +1241,12 @@ def test_min_max_resource_requirements_unbounded(restore_data_context):
         max_resource_usage_bound,
     ) = op.min_max_resource_requirements()
 
-    # Unbounded pools should return infinite max resources for GPU (which is used),
-    # but 0 for CPU/memory (which are not specified) to prevent hoarding.
-    assert min_resource_usage_bound == ExecutionResources(gpu=1, object_store_memory=0)
-    assert max_resource_usage_bound == ExecutionResources.for_limits(cpu=0, memory=0)
+    # Unbounded pools should return infinite max resources for GPU and CPU (GPU
+    # ops default to 1 CPU), but 0 for memory (not specified) to prevent hoarding.
+    assert min_resource_usage_bound == ExecutionResources(
+        cpu=1, gpu=1, object_store_memory=0
+    )
+    assert max_resource_usage_bound == ExecutionResources.for_limits(memory=0)
 
 
 def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
