@@ -22,8 +22,10 @@ The process for generating and configuring authentication tokens differs dependi
 
 Other cluster launching methods require that you generate a token before starting the cluster. You can `ray get-auth-token [--generate]` to retrieve your existing token or generate a new one.
 
-:::{note}
-Authentication is disabled by default in Ray 2.52.0. Ray plans to enable token authentication by default in a future release. We recommend enabling token authentication to protect your cluster from unauthorized access.
+:::{warning}
+**Token authentication rollout.** Ray 2.59 turns on token authentication by default for local clusters. `ray.init()` without an `address` enables authentication and generates a token at `~/.ray/auth_token` when none exists. `ray start --head` enables authentication when a token is already available, and otherwise warns that it started an unauthenticated cluster. Set `RAY_AUTH_MODE=disabled` to opt out.
+
+Ray 2.61 extends the default to all clusters, including remote and multi-node clusters. From that release, every node in a cluster and every client that connects to it needs the same token. Set up token distribution before you upgrade, as described in [Configure token authentication for remote clusters](#configure-token-authentication-for-remote-clusters).
 :::
 
 (what-token-does-ray-use)=

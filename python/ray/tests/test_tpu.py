@@ -9,6 +9,7 @@ import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 from ray._private.accelerators.tpu import RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
+from ray._private.test_utils import mock_accelerator_detection
 from ray.util.tpu import (
     SlicePlacementGroup,
     SubslicePlacementGroup,
@@ -2724,32 +2725,30 @@ def test_tpu_resource_and_label_spec_resolution_with_visible_chips(monkeypatch):
     """
     monkeypatch.setenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, "0,1,2,3")
     monkeypatch.delenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
-    monkeypatch.setattr(
-        TPUAcceleratorManager, "get_current_node_num_accelerators", lambda: 8
-    )
 
-    # Default host-level accounting: one TPU resource per physical chip.
-    spec_default = ResourceAndLabelSpec()
-    spec_default.resolve(is_head=False)
-    assert spec_default.to_resource_dict()["TPU"] == 4
+    with mock_accelerator_detection(TPUAcceleratorManager, 8):
+        # Default host-level accounting: one TPU resource per physical chip.
+        spec_default = ResourceAndLabelSpec()
+        spec_default.resolve(is_head=False)
+        assert spec_default.to_resource_dict()["TPU"] == 4
 
-    # Opt-in per-device accounting: the mask expands to all 8 logical devices.
-    monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
-    spec_opt_in = ResourceAndLabelSpec()
-    spec_opt_in.resolve(is_head=False)
-    assert spec_opt_in.to_resource_dict()["TPU"] == 8
+        # Opt-in per-device accounting: the mask expands to all 8 logical devices.
+        monkeypatch.setenv(RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "2")
+        spec_opt_in = ResourceAndLabelSpec()
+        spec_opt_in.resolve(is_head=False)
+        assert spec_opt_in.to_resource_dict()["TPU"] == 8
 
-    spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
-    spec_override.resolve(is_head=False)
-    assert spec_override.to_resource_dict()["TPU"] == 8
+        spec_override = ResourceAndLabelSpec(resources={"TPU": 8})
+        spec_override.resolve(is_head=False)
+        assert spec_override.to_resource_dict()["TPU"] == 8
 
-    # A task holding half the node narrows the mask to the chips it owns.
-    # patch.dict restores the bounds the setter writes alongside the mask.
-    with patch.dict("os.environ", {}):
-        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
-            ["0", "1", "2", "3"]
-        )
-        assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0,1"
+        # A task holding half the node narrows the mask to the chips it owns.
+        # patch.dict restores the bounds the setter writes alongside the mask.
+        with patch.dict("os.environ", {}):
+            TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+                ["0", "1", "2", "3"]
+            )
+            assert os.environ[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] == "0,1"
 
 
 def test_util_tpu_resolves_resource_per_chip_from_env(monkeypatch):

@@ -7,7 +7,7 @@ myst:
 <!--
 GENERATED FILE -- DO NOT EDIT.
 
-Vendored from ray-project/kuberay:docs/reference/api.md at release tag v1.7.0.
+Vendored from ray-project/kuberay:docs/reference/api.md at release tag v1.7.1.
 The permalink pins the commit that last modified the artifact at that ref:
   https://github.com/ray-project/kuberay/blob/97509c3a7216cf3440af381646560a1885afb53b/docs/reference/api.md
 
@@ -28,7 +28,7 @@ overwritten by the next sync.
 
 This page is the generated field reference for the `ray.io/v1` custom resource definitions. It covers `RayCluster`, `RayCronJob`, `RayJob`, and `RayService`, along with the supporting types their fields refer to.
 
-The fields are those of KubeRay v1.7.0. Fields added to KubeRay after that release don't appear here.
+The fields are those of KubeRay v1.7.1. Fields added to KubeRay after that release don't appear here.
 
 ## Resource Types
 - [RayCluster](#raycluster)
