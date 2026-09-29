@@ -11,6 +11,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
+from ray._private.gcs_passive_utils import PassiveLatch
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
@@ -49,6 +50,15 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         )
 
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
+        self._address_passive_latch = PassiveLatch(
+            "dashboard http address",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode or dashboard address not published yet. "
+                "Waiting for dashboard address."
+            ),
+            action_desc_promoted="Dashboard http address resolved: %s",
+        )
 
     async def _get_dashboard_http_address(self):
         """
@@ -70,9 +80,15 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 if not address.startswith(("http://", "https://")):
                     address = f"http://{address}"
                 self._dashboard_http_address = address
+                self._address_passive_latch.promoted(address)
                 return self._dashboard_http_address
-            except Exception:
-                logger.exception("Get dashboard http address failed.")
+            except Exception as e:
+                if ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
+                    e, ValueError
+                ):
+                    self._address_passive_latch.note_passive()
+                else:
+                    logger.exception("Get dashboard http address failed.")
             await asyncio.sleep(1)
 
     @async_loop_forever(event_consts.EVENT_AGENT_REPORT_INTERVAL_SECONDS)

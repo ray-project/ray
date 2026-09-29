@@ -1,7 +1,7 @@
 # Unit tests for how usage reporting behaves on a passive GCS.
 import json
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,8 +19,10 @@ def leader_election_on(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def reset_internal_kv():
+    ray_usage_lib.reset_global_state()
     yield
     internal_kv._internal_kv_reset()
+    ray_usage_lib.reset_global_state()
 
 
 @pytest.fixture
@@ -131,6 +133,90 @@ def test_get_cluster_metadata_decodes_a_stored_value():
 
 def test_is_ray_init_cluster_is_false_when_metadata_is_absent():
     assert ray_usage_lib.is_ray_init_cluster(_reader(None)) is False
+
+
+#
+# Usage tag replay
+#
+
+
+def _tag_writes(gcs_client):
+    return [call.args[0] for call in gcs_client.internal_kv_put.call_args_list]
+
+
+def _async_tag_writes(gcs_client):
+    return [call.args[0] for call in gcs_client.async_internal_kv_put.call_args_list]
+
+
+def test_a_refused_tag_is_replayed():
+    """The recording sites run once, so the replay is the only second chance."""
+    from ray._common.usage.usage_lib import TagKey
+
+    gcs_client = MagicMock()
+    gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
+    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
+    gcs_client.internal_kv_put.reset_mock(side_effect=True)
+
+    ray_usage_lib.put_recorded_extra_usage_tags(gcs_client)
+
+    assert _tag_writes(gcs_client) == [b"extra_usage_tag__test1"]
+
+
+def test_every_recorded_tag_is_replayed():
+    from ray._common.usage.usage_lib import TagKey
+
+    gcs_client = MagicMock()
+    gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
+    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
+    ray_usage_lib.record_extra_usage_tag(TagKey._TEST2, "v2", gcs_client)
+    gcs_client.internal_kv_put.reset_mock(side_effect=True)
+
+    ray_usage_lib.put_recorded_extra_usage_tags(gcs_client)
+
+    assert sorted(_tag_writes(gcs_client)) == [
+        b"extra_usage_tag__test1",
+        b"extra_usage_tag__test2",
+    ]
+
+
+def test_the_replay_is_a_no_op_without_recorded_tags():
+    gcs_client = MagicMock()
+
+    ray_usage_lib.put_recorded_extra_usage_tags(gcs_client)
+
+    assert _tag_writes(gcs_client) == []
+
+
+@pytest.mark.asyncio
+async def test_async_a_refused_tag_is_replayed():
+    from ray._common.usage.usage_lib import TagKey
+
+    gcs_client = MagicMock()
+    gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
+    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
+    gcs_client.async_internal_kv_put = AsyncMock()
+
+    await ray_usage_lib.async_put_recorded_extra_usage_tags(gcs_client)
+
+    assert _async_tag_writes(gcs_client) == [b"extra_usage_tag__test1"]
+
+
+@pytest.mark.asyncio
+async def test_async_every_recorded_tag_is_replayed():
+    from ray._common.usage.usage_lib import TagKey
+
+    gcs_client = MagicMock()
+    gcs_client.internal_kv_put.side_effect = RuntimeError("passive rejection")
+    ray_usage_lib.record_extra_usage_tag(TagKey._TEST1, "v1", gcs_client)
+    ray_usage_lib.record_extra_usage_tag(TagKey._TEST2, "v2", gcs_client)
+    gcs_client.async_internal_kv_put = AsyncMock()
+
+    await ray_usage_lib.async_put_recorded_extra_usage_tags(gcs_client)
+
+    assert sorted(_async_tag_writes(gcs_client)) == [
+        b"extra_usage_tag__test1",
+        b"extra_usage_tag__test2",
+    ]
 
 
 if __name__ == "__main__":
