@@ -12,6 +12,10 @@ local FORWARD_BODY = ${FORWARD_BODY}
 -- Forwarding it makes the router's selection reservation use the same ID as
 -- the data-plane replica's engine lifecycle events.
 local REQUEST_ID_HEADER = "x-request-id"
+-- The model ID is forwarded even when request-body forwarding is disabled.
+-- The frontend accepts both supported separator spellings and stores the
+-- selected value in a transaction variable before stripping client metadata.
+local MODEL_ID_HEADER = "serve_multiplexed_model_id"
 -- Name of the client header that carries the session id Serve should
 -- pin on. Filled from SERVE_SESSION_ID (set via the env var
 -- RAY_SERVE_SESSION_ID_HEADER_KEY) in lowercase form. Forwarded on the
@@ -29,7 +33,9 @@ local REPLICA_TARGETS = ${REPLICA_TARGETS}
 -- lua-load-per-thread, so rotation needs no cross-thread synchronization.
 local _rr_cursor = {}
 
-local function call_router(router, body, truncated_length, session_id, request_id)
+local function call_router(
+    router, body, truncated_length, session_id, request_id, model_id
+)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -53,6 +59,11 @@ local function call_router(router, body, truncated_length, session_id, request_i
         request_id_header = REQUEST_ID_HEADER .. ": " .. request_id .. "\r\n"
     end
 
+    local model_id_header = ""
+    if model_id and model_id ~= "" then
+        model_id_header = MODEL_ID_HEADER .. ": " .. model_id .. "\r\n"
+    end
+
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
         .. "Host: " .. router.host_header .. "\r\n"
@@ -62,6 +73,7 @@ local function call_router(router, body, truncated_length, session_id, request_i
         .. truncation_header
         .. session_header
         .. request_id_header
+        .. model_id_header
         .. "\r\n"
         .. body
 
@@ -172,6 +184,11 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
         end
     end
 
+    -- The frontend saves this before stripping client-supplied routing
+    -- metadata. The router returns the trusted value for HAProxy to restore on
+    -- the data-plane request.
+    local model_id = txn:get_var("txn.multiplexed_model_id")
+
     -- Round-robin over the app's routers, one cursor step per request. On a
     -- connection failure try the next router. A non-200 is the router's answer
     -- and is not retried.
@@ -181,7 +198,9 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     local response = nil
     for i = 0, n - 1 do
         local router = pool[(start + i) % n + 1]
-        response = call_router(router, body, truncated, session_id, request_id)
+        response = call_router(
+            router, body, truncated, session_id, request_id, model_id
+        )
         if response then
             break
         end

@@ -383,7 +383,6 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     return True
 
 
-@skip_if_haproxy("model multiplexing is not supported for direct ingress deployments")
 def test_multiplexed_e2e(serve_instance):
     """Test multiplexed function end to end"""
 

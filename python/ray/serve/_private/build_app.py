@@ -10,6 +10,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
+from ray.serve._private.utils import _callable_uses_multiplexing
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -167,6 +168,23 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
+
+    # HAProxy selects an ingress replica before the replica can read the model
+    # ID from the request. Delegate that selection to Serve's model-aware
+    # request router so repeated requests reuse a replica with the model loaded.
+    if (
+        ingress_request_router is None
+        and RAY_SERVE_ENABLE_HA_PROXY
+        and _callable_uses_multiplexing(app._bound_deployment.func_or_class)
+    ):
+        from ray.serve._private.multiplex_ingress_router import (
+            MultiplexedIngressRequestRouter,
+        )
+
+        ingress_request_router = MultiplexedIngressRequestRouter.bind(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+            handles[app]
+        )
+
     ingress_request_router_deployment = None
     if ingress_request_router is not None:
         ingress_request_router_deployments = _build_app_recursive(

@@ -583,6 +583,47 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
+def test_build_app_adds_model_multiplexing_ingress_request_router(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class MultiplexedIngress:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+    built_app = build_app(
+        MultiplexedIngress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    router = built_app.ingress_request_router_deployment
+    assert router is not None
+    assert router.name == "MultiplexedIngressRequestRouter"
+    assert router.init_args == (FakeDeploymentHandle("MultiplexedIngress", "default"),)
+
+
+def test_build_app_does_not_add_model_multiplexing_router_without_haproxy(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False)
+
+    @serve.deployment
+    class MultiplexedIngress:
+        @serve.multiplexed
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+    built_app = build_app(
+        MultiplexedIngress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert built_app.ingress_request_router_deployment is None
+
+
 def test_build_app_requires_ingress_request_router_to_be_single_deployment(
     monkeypatch,
 ):
