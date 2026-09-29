@@ -9,6 +9,7 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router i
     PrefixCacheAffinityRouter,
 )
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
+    PrefixTree,
     PrefixTreeActor,
 )
 from ray.serve._private.common import (
@@ -101,6 +102,37 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         ),
         created_at=time.time(),
     )
+
+
+@ray.remote
+class SlowPrefixTreeActor(PrefixTree):
+    """Prefix tree actor whose lookups and inserts each take delay_s."""
+
+    def __init__(self, delay_s: float):
+        super().__init__()
+        self._delay_s = delay_s
+
+    def prefix_match(self, *args, **kwargs):
+        time.sleep(self._delay_s)
+        return super().prefix_match(*args, **kwargs)
+
+    def insert(self, *args, **kwargs):
+        time.sleep(self._delay_s)
+        return super().insert(*args, **kwargs)
+
+    def get_tenant_to_char_count(self):
+        return self.tenant_to_char_count
+
+
+def make_router(tree_actor) -> PrefixCacheAffinityRouter:
+    router = PrefixCacheAffinityRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        use_replica_queue_len_cache=False,
+        get_curr_time_s=TIMER.time,
+    )
+    router.initialize_state(tree_actor=tree_actor)
+    return router
 
 
 # === Tests ===
@@ -252,6 +284,74 @@ class TestPrefixAwareLogic:
             assert (
                 await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
+
+
+class TestNonBlockingTreeCalls:
+    """Tests that the router doesn't block its event loop on the tree actor."""
+
+    @pytest.mark.asyncio
+    async def test_tree_lookup_does_not_block_event_loop(self):
+        tree_actor = SlowPrefixTreeActor.remote(delay_s=0.5)
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        router.update_replicas([r1])
+
+        routing = asyncio.ensure_future(
+            router._choose_replica_for_request(fake_pending_request(prompt="hello"))
+        )
+        # Keep ticking the loop while the lookup is in flight. Blocking on the
+        # actor would stall the loop for the whole lookup.
+        max_gap_s = 0.0
+        last = time.monotonic()
+        while not routing.done():
+            await asyncio.sleep(0.01)
+            now = time.monotonic()
+            max_gap_s = max(max_gap_s, now - last)
+            last = now
+        assert await routing == r1
+        assert max_gap_s < 0.25
+        ray.kill(tree_actor)
+
+    @pytest.mark.asyncio
+    async def test_on_request_routed_does_not_wait_for_insert(self):
+        tree_actor = SlowPrefixTreeActor.remote(delay_s=0.5)
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        router.update_replicas([r1])
+
+        start = time.monotonic()
+        router.on_request_routed(
+            fake_pending_request(prompt="hello"), r1.replica_id, result=None
+        )
+        assert time.monotonic() - start < 0.25
+        # The insert still lands before later calls from this process.
+        tenant_to_char_count = ray.get(tree_actor.get_tenant_to_char_count.remote())
+        assert tenant_to_char_count[r1.replica_id.to_full_id_str()] == 5
+        ray.kill(tree_actor)
+
+    @pytest.mark.asyncio
+    async def test_replica_removed_during_tree_lookup_is_not_chosen(self):
+        tree_actor = SlowPrefixTreeActor.remote(delay_s=0.5)
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        router.update_replicas([r1, r2])
+        ray.get(tree_actor.insert.remote("hello", r2.replica_id.to_full_id_str(), 0.0))
+
+        routing = asyncio.ensure_future(
+            router._choose_replica_for_request(
+                fake_pending_request(prompt="hello world")
+            )
+        )
+        # Let the routing task send its lookup, which will match r2, then
+        # remove r2 while the lookup is still in flight.
+        await asyncio.sleep(0.1)
+        router.update_replicas([r1])
+        assert await asyncio.wait_for(routing, timeout=10) == r1
+        ray.kill(tree_actor)
 
 
 class TestEvictionBehavior:
