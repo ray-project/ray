@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import ray._common.usage.usage_lib as ray_usage_lib
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
 from ray.autoscaler._private import monitor as v1_monitor_module
@@ -68,8 +69,10 @@ def leader_election_on(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def reset_internal_kv():
+    ray_usage_lib.reset_global_state()
     yield
     _internal_kv_reset()
+    ray_usage_lib.reset_global_state()
 
 
 @pytest.fixture
@@ -416,6 +419,13 @@ def test_v2_monitor_takes_over_the_metrics_address_on_promotion(
     assert not monitor._waiting_for_promotion
     assert len(_metrics_address_writes(monitor.gcs_client)) == refused_writes + 1
     assert _count_logged(v2_logs, "Resuming autoscaling") == 1
+    # Check that autoscaler v2 usage tag is published on promotion.
+    usage_writes = [
+        call
+        for call in monitor.gcs_client.internal_kv_put.call_args_list
+        if call.args and b"autoscaler_version" in call.args[0]
+    ]
+    assert len(usage_writes) >= 1
 
 
 def test_v2_monitor_survives_a_demotion_racing_the_promotion_write(

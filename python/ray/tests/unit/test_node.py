@@ -170,6 +170,23 @@ def test_start_api_server_keeps_the_dashboard_when_passive(monkeypatch):
     assert node.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] == [process_info]
 
 
+def test_start_api_server_forwards_the_tracing_startup_hook(monkeypatch):
+    """The dashboard head needs it to republish the key after a promotion."""
+    node = _prepare_for_api_server(_make_node(passive=True), monkeypatch)
+    node._ray_params.tracing_startup_hook = "my.module:hook"
+    forwarded = {}
+
+    def fake_start_api_server(*args, **kwargs):
+        forwarded.update(kwargs)
+        return None, MagicMock()
+
+    monkeypatch.setattr("ray._private.services.start_api_server", fake_start_api_server)
+
+    node.start_api_server(include_dashboard=True, raise_on_failure=True)
+
+    assert forwarded["tracing_startup_hook"] == "my.module:hook"
+
+
 @pytest.mark.parametrize("passive", [True, False])
 def test_start_head_processes_forwards_the_passive_gcs_state(monkeypatch, passive):
     node = _prepare_for_api_server(_make_node(passive=passive), monkeypatch)

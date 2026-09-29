@@ -16,7 +16,13 @@ def dashboard_process(monkeypatch):
     """Stub out the dashboard subprocess and the GCS client services.py builds."""
     process_info = MagicMock()
     process_info.process.poll.return_value = None
-    monkeypatch.setattr(services, "start_ray_process", lambda *a, **kw: process_info)
+    process_info.command = None
+
+    def fake_start_ray_process(command, *args, **kwargs):
+        process_info.command = command
+        return process_info
+
+    monkeypatch.setattr(services, "start_ray_process", fake_start_ray_process)
     monkeypatch.setattr(services, "GcsClient", MagicMock())
     monkeypatch.setattr(
         ray._private.utils, "get_dashboard_dependency_error", lambda: None
@@ -26,7 +32,13 @@ def dashboard_process(monkeypatch):
     internal_kv._internal_kv_reset()
 
 
-def _start_api_server(*, gcs_is_passive, raise_on_failure=True, logdir="/tmp/ray/logs"):
+def _start_api_server(
+    *,
+    gcs_is_passive,
+    raise_on_failure=True,
+    logdir="/tmp/ray/logs",
+    tracing_startup_hook=None,
+):
     return services.start_api_server(
         include_dashboard=True,
         raise_on_failure=raise_on_failure,
@@ -38,6 +50,7 @@ def _start_api_server(*, gcs_is_passive, raise_on_failure=True, logdir="/tmp/ray
         logdir=logdir,
         session_dir="/tmp/ray/session",
         gcs_is_passive=gcs_is_passive,
+        tracing_startup_hook=tracing_startup_hook,
     )
 
 
@@ -58,6 +71,17 @@ def test_start_api_server_reports_the_address_when_active(dashboard_process):
 
     assert dashboard_url == DASHBOARD_URL
     assert process_info is dashboard_process
+
+
+@pytest.mark.parametrize(
+    "hook, expected", [("my.module:hook", "my.module:hook"), (None, "")]
+)
+def test_start_api_server_passes_the_tracing_startup_hook(
+    dashboard_process, hook, expected
+):
+    _start_api_server(gcs_is_passive=True, tracing_startup_hook=hook)
+
+    assert f"--tracing-startup-hook={expected}" in dashboard_process.command
 
 
 def test_start_api_server_still_fails_on_a_dead_dashboard(dashboard_process):

@@ -23,7 +23,10 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.usage.usage_lib import record_extra_usage_tag
+from ray._common.usage.usage_lib import (
+    put_recorded_extra_usage_tags,
+    record_extra_usage_tag,
+)
 from ray._private import logging_utils
 from ray._private.authentication.http_token_authentication import (
     start_metrics_http_server,
@@ -186,6 +189,9 @@ class AutoscalerMonitor:
         self._waiting_for_promotion = False
         logger.info("GCS was promoted to leader. Resuming autoscaling.")
         self._publish_metrics_address()
+        # __init__ recorded the autoscaler version before the cluster had a
+        # leader, so its write was dropped.
+        put_recorded_extra_usage_tags(self.gcs_client)
 
     def _refused_by_passive_gcs(self, exc: Exception) -> bool:
         """Returns whether the exception was a refusal by a passive GCS."""
