@@ -33,6 +33,9 @@ RAY_DASHBOARD_STATS_UPDATING_INTERVAL = env_integer(
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
 GCS_CHECK_ALIVE_INTERVAL_SECONDS = env_integer("GCS_CHECK_ALIVE_INTERVAL_SECONDS", 5)
+# How long the dashboard head and agent wait before retrying an address
+# registration that a passive GCS refused.
+GCS_REGISTER_RETRY_INTERVAL_S = 5.0
 GCS_RPC_TIMEOUT_SECONDS = env_integer("RAY_DASHBOARD_GCS_RPC_TIMEOUT_SECONDS", 60)
 # aiohttp_cache
 AIOHTTP_CACHE_TTL_SECONDS = 2
