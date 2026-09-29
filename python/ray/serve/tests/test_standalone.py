@@ -311,12 +311,13 @@ def _all_ingress_urls(**kwargs) -> List[str]:
 def test_http_root_path(ray_shutdown, root_path: str):
     """`root_path` follows the ASGI spec.
 
-    Serve runs behind a proxy that strips root_path, so requests arrive without
-    it. The app gets the full path in scope["path"] and its mount point,
-    root_path + route_prefix, in scope["root_path"]. Like uvicorn, Serve uses
-    root_path verbatim, so "/serve/" puts "//" in the path. Runs against the HTTP
-    proxy by default, and against HAProxy and direct ingress with
-    RAY_SERVE_ENABLE_HA_PROXY=1.
+    Serve sits behind a proxy that strips `root_path`, so requests arrive without it.
+    The app sees the full path in `scope["path"]` and its mount point (`root_path + route_prefix`)
+    in `scope["root_path"]`. Like uvicorn, Serve uses `root_path` as-is, so a value like `"/serve/"`
+    results in `"//"` in the path.
+
+    By default, this runs against the HTTP proxy. With `RAY_SERVE_ENABLE_HA_PROXY=1`, it also runs
+    against HAProxy and direct ingress.
     """
     app = FastAPI()
 
