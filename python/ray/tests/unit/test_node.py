@@ -51,7 +51,7 @@ def _make_node(*, passive, is_rocksdb=False):
 def test_write_cluster_info_survives_a_passive_gcs():
     node = _make_node(passive=True)
 
-    node._write_cluster_info_to_kv()
+    assert node._write_cluster_info_to_kv() is True
 
 
 def test_write_cluster_info_still_fails_on_an_unreachable_gcs():
@@ -87,7 +87,7 @@ def test_write_cluster_info_writes_everything_when_active():
     node = _make_node(passive=False)
     node._ray_params.tracing_startup_hook = "my.module:hook"
 
-    node._write_cluster_info_to_kv()
+    assert node._write_cluster_info_to_kv() is False
 
     written_keys = [
         call.args[0] for call in node._gcs_client.internal_kv_put.call_args_list
@@ -145,6 +145,51 @@ def test_start_api_server_still_fails_with_leader_election_off(monkeypatch):
 
     with pytest.raises(GcsPassiveError):
         node.start_api_server(include_dashboard=True, raise_on_failure=True)
+
+
+def test_start_api_server_keeps_the_dashboard_when_passive(monkeypatch):
+    node = _prepare_for_api_server(_make_node(passive=True), monkeypatch)
+    process_info = MagicMock()
+    forwarded = {}
+
+    def fake_start_api_server(*args, **kwargs):
+        forwarded.update(kwargs)
+        # A passive GCS never accepts the dashboard's address.
+        return None, process_info
+
+    monkeypatch.setattr("ray._private.services.start_api_server", fake_start_api_server)
+
+    node.start_api_server(
+        include_dashboard=True, raise_on_failure=True, gcs_is_passive=True
+    )
+
+    assert forwarded["gcs_is_passive"] is True
+    # The dashboard head writes webui:url once this head is promoted.
+    node._gcs_client.internal_kv_put.assert_not_called()
+    # It is still a child of this node, so it must be shut down with it.
+    assert node.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] == [process_info]
+
+
+@pytest.mark.parametrize("passive", [True, False])
+def test_start_head_processes_forwards_the_passive_gcs_state(monkeypatch, passive):
+    node = _prepare_for_api_server(_make_node(passive=passive), monkeypatch)
+    node._gcs_address = None
+    node._gcs_client = None
+    node._ray_params.no_monitor = True
+    node._ray_params.ray_client_server_port = None
+    node._ray_params.include_dashboard = None
+    node.start_gcs_server = MagicMock()
+    node.get_gcs_client = lambda: MagicMock()
+    node._write_cluster_info_to_kv = MagicMock(return_value=passive)
+    node.start_api_server = MagicMock()
+
+    node.start_head_processes()
+
+    node.start_api_server.assert_called_once_with(
+        include_dashboard=None,
+        raise_on_failure=False,
+        gcs_is_passive=passive,
+    )
 
 
 if __name__ == "__main__":
