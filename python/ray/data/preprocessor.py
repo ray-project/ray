@@ -391,6 +391,7 @@ class Preprocessor(abc.ABC):
         import pandas as pd
         import pyarrow
 
+        from ray.data._internal.arrow_block import _arrow_backed_pandas_dtype
         from ray.data.block import BlockAccessor
 
         inputs = self.get_input_columns() or list(df.columns)
@@ -422,7 +423,13 @@ class Preprocessor(abc.ABC):
                 if replaced is not None
                 else arrow_backed
             )
-            if as_arrow:
+            arrow_dtype = _arrow_backed_pandas_dtype(column.type) if as_arrow else None
+            if arrow_dtype is not None:
+                # Arrow-backed stays Arrow-backed: the conversion flag governs
+                # Ray's own blocks, not the caller's columns.
+                out[name] = arrow_dtype.__from_arrow__(column)
+            elif as_arrow:
+                # A type Ray never maps to Arrow-backed; convert it as Ray does.
                 converted = BlockAccessor.for_block(result.select([name])).to_pandas()
                 out[name] = converted[name].array
             else:

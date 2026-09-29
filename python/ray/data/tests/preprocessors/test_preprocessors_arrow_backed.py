@@ -841,6 +841,29 @@ def test_transform_batch_decides_the_backing_per_column():
     }
 
 
+@pytest.mark.parametrize("name", list(ROUND_TRIP))
+def test_transform_batch_keeps_arrow_backing_with_the_flag_off(
+    name, restore_data_context
+):
+    """A rewritten Arrow-backed column stays Arrow-backed when the flag is off.
+
+    `enable_arrow_backed_pandas_conversion` governs how Ray converts its own
+    blocks. A frame that arrives Arrow-backed anyway -- a pandas block built from
+    `pd.read_parquet(..., dtype_backend="pyarrow")`, say -- is the caller's, and
+    rewriting one column should not leave it NumPy-backed beside the rest.
+    """
+    make, columns, column, _ = ROUND_TRIP[name]
+    preprocessor = make().fit(ray.data.from_arrow(pa.table(columns)))
+    frame = pd.DataFrame(columns).convert_dtypes(dtype_backend="pyarrow")
+    restore_data_context.enable_arrow_backed_pandas_conversion = False
+
+    out = preprocessor.transform_batch(frame)
+
+    assert isinstance(
+        out[column].dtype, pd.ArrowDtype
+    ), f"{column!r} came back {out[column].dtype}"
+
+
 INDEXES = {
     "named_int64": lambda: pd.Index([10, 20, 30, 40], name="rid"),
     "multi": lambda: pd.MultiIndex.from_tuples(
