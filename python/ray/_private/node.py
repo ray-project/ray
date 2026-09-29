@@ -66,6 +66,13 @@ logger = logging.getLogger(__name__)
 KILLED_PROCESS_REAP_TIMEOUT_SECONDS = 30
 
 
+def _refused_by_passive_gcs(exc: Exception) -> bool:
+    """Returns whether the exception was a refusal by a passive GCS."""
+    return ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION and isinstance(
+        exc, GcsPassiveError
+    )
+
+
 class Node:
     """An encapsulation of the Ray processes on a single node.
 
@@ -1311,7 +1318,11 @@ class Node:
         ]
 
     def start_api_server(
-        self, *, include_dashboard: Optional[bool], raise_on_failure: bool
+        self,
+        *,
+        include_dashboard: Optional[bool],
+        raise_on_failure: bool,
+        gcs_is_passive: bool = False,
     ):
         """Start the dashboard.
 
@@ -1322,6 +1333,8 @@ class Node:
             raise_on_failure: If true, this will raise an exception
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
+            gcs_is_passive: Whether the GCS already rejected this node's writes
+                because it is passive.
         """
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
             "dashboard", unique=True, create_out=True, create_err=True
@@ -1343,26 +1356,31 @@ class Node:
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
             proxy_server_url=self._ray_params.proxy_server_url,
+            gcs_is_passive=gcs_is_passive,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            try:
-                self.get_gcs_client().internal_kv_put(
-                    b"webui:url",
-                    self._webui_url.encode(),
-                    True,
-                    ray_constants.KV_NAMESPACE_DASHBOARD,
-                )
-            except GcsPassiveError:
-                if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
-                    raise
-                # The dashboard head registers webui:url once this GCS is promoted.
-                logger.warning(
-                    "GCS is in passive mode. Skipping writing webui:url to KV."
-                )
+            # A passive head has no url to write: the dashboard defers its
+            # registration, so start_api_server() returns None for it.
+            if self._webui_url is not None:
+                try:
+                    self.get_gcs_client().internal_kv_put(
+                        b"webui:url",
+                        self._webui_url.encode(),
+                        True,
+                        ray_constants.KV_NAMESPACE_DASHBOARD,
+                    )
+                except Exception as e:
+                    if not _refused_by_passive_gcs(e):
+                        raise
+                    # The dashboard head registers webui:url once this GCS is
+                    # promoted.
+                    logger.warning(
+                        "GCS is in passive mode. Skipping writing webui:url to KV."
+                    )
 
     def start_gcs_server(self):
         """Start the gcs server."""
@@ -1595,11 +1613,14 @@ class Node:
             process_info
         ]
 
-    def _write_cluster_info_to_kv(self):
+    def _write_cluster_info_to_kv(self) -> bool:
         """Write the cluster metadata to GCS.
         Cluster metadata is always recorded, but they are
         not reported unless usage report is enabled.
         Check `usage_stats_head.py` for more details.
+
+        Returns:
+            Whether a passive GCS rejected the writes.
         """
         # Make sure the cluster metadata wasn't reported before.
         import ray._common.usage.usage_lib as ray_usage_lib
@@ -1653,8 +1674,8 @@ class Node:
                     True,
                     ray_constants.KV_NAMESPACE_TRACING,
                 )
-        except GcsPassiveError:
-            if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+        except Exception as e:
+            if not _refused_by_passive_gcs(e):
                 raise
             # The cluster metadata describes the head that is currently active --
             # it is rewritten with overwrite=True on every head start -- so a head
@@ -1664,6 +1685,8 @@ class Node:
                 "GCS is in passive mode. Skipping writing cluster metadata or "
                 "session_name to KV."
             )
+            return True
+        return False
 
     def start_head_processes(self):
         """Start head processes on the node."""
@@ -1675,7 +1698,10 @@ class Node:
 
         self.start_gcs_server()
         assert self.get_gcs_client() is not None
-        self._write_cluster_info_to_kv()
+        # A rejected write is the authoritative answer to "is this GCS passive?",
+        # unlike is_gcs_leader(), whose cache starts out false and is only
+        # corrected by a CheckAlive that may time out.
+        gcs_is_passive = self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
             self.start_monitor()
@@ -1692,6 +1718,7 @@ class Node:
         self.start_api_server(
             include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
+            gcs_is_passive=gcs_is_passive,
         )
 
     def start_ray_processes(self):
