@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "metrics",
+    srcs = ["metrics.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/metrics",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+    ],
+)
+
+go_test(
+    name = "metrics_test",
+    srcs = ["metrics_test.go"],
+    embed = [":metrics"],
+    deps = [
+        "//go/internal/dashboard/head",
+    ],
+)

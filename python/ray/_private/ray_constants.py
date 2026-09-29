@@ -452,6 +452,8 @@ ENABLE_GO_SETUP_WORKER = env_bool("RAY_ENABLE_GO_SETUP_WORKER", False)
 
 ENABLE_GO_LOG_MONITOR = env_bool("RAY_ENABLE_GO_LOG_MONITOR", False)
 
+ENABLE_GO_DASHBOARD_HEAD = env_bool("RAY_ENABLE_GO_DASHBOARD_HEAD", False)
+
 # Subcommands supported by the Go raygo executable.
 RAYGO_AVAILABLE_COMMAND_SETUP_WORKER = "setup_worker"
 RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER = "defaultworker"

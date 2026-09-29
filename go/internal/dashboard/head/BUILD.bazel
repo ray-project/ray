@@ -1,0 +1,88 @@
+# Copyright 2025 The Ray Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "head",
+    srcs = [
+        "auth.go",
+        "config.go",
+        "gcs_client.go",
+        "head.go",
+        "http_server.go",
+        "lazy_init.go",
+        "metrics.go",
+        "objects.go",
+        "options.go",
+        "pubsub.go",
+        "rest_response.go",
+        "state_api.go",
+        "task_state.go",
+        "timeline.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/gcs/native",
+        "//go/internal/runtime/base",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/version",
+        "//go/proto",
+        "@com_github_go_logr_logr//:logr",
+        "@com_github_prometheus_client_golang//prometheus",
+        "@com_github_prometheus_client_golang//prometheus/promhttp",
+        "@com_github_prometheus_procfs//:procfs",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//credentials",
+        "@org_golang_google_grpc//credentials/insecure",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_protobuf//reflect/protoreflect",
+    ],
+)
+
+go_test(
+    name = "head_test",
+    srcs = [
+        "config_test.go",
+        "gcs_client_test.go",
+        "http_server_test.go",
+        "lazy_init_test.go",
+        "lineage_test.go",
+        "objects_test.go",
+        "pubsub_test.go",
+        "rest_response_test.go",
+        "state_api_test.go",
+        "timeline_test.go",
+    ],
+    embed = [":head"],
+    deps = [
+        "//go/pkg/log",
+        "//go/proto",
+        "@com_github_coder_websocket//:websocket",
+        "@com_github_go_logr_logr//:logr",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//metadata",
+        "@org_golang_google_grpc//status",
+    ],
+)

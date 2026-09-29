@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "insight",
+    srcs = ["insight.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/insight",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/log",
+    ],
+)
+
+go_test(
+    name = "insight_test",
+    srcs = ["insight_test.go"],
+    embed = [":insight"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

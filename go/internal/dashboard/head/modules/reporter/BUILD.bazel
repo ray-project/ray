@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "reporter",
+    srcs = [
+        "debug_status.go",
+        "debug_status_v2.go",
+        "format_info.go",
+        "profiling.go",
+        "reporter.go",
+        "sd.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/reporter",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/log",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//credentials/insecure",
+    ],
+)
+
+go_test(
+    name = "reporter_test",
+    srcs = ["reporter_test.go"],
+    embed = [":reporter"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

@@ -244,6 +244,40 @@ func setHandle(h contract.RuntimeHandle) {
 	shutdownComplete.Store(false)
 }
 
+// SetRuntimeHandleForWorker sets the runtime handle for worker processes that
+// initialize the runtime through the internal base.Initialize path (instead of
+// api.InitWithOptions). This makes handle-dependent API functions (e.g.
+// ExitActor) work inside user code executing on the worker, including code
+// loaded from Go plugins, which share this package's state.
+//
+// It is a no-op if the runtime has already been initialized or if h is nil.
+//
+// Internal use only (worker startup); application code should use
+// InitWithOptions. Note: unlike the driver path, a worker shuts down via
+// base.Shutdown (internal), which does not clear the api handle, so
+// handle-dependent functions remain callable until process exit. Do not call
+// api.Shutdown from worker-side code: it would tear down the worker's runtime.
+func SetRuntimeHandleForWorker(h contract.RuntimeHandle) {
+	initMu.Lock()
+	defer initMu.Unlock()
+
+	if initialized.Load() || h == nil {
+		return
+	}
+	currentHandle.Store(h)
+	initialized.Store(true)
+	// Start the release worker and create its queue BEFORE resetting
+	// shutdownComplete: a finalizer that observes the runtime ready
+	// (shutdownComplete=false) must always find a non-nil releaseQueue to
+	// enqueue into, otherwise its release request is silently dropped.
+	initReleaseWorker()
+	// A re-init after Shutdown must reset shutdownComplete: the previous
+	// clearHandle set it true, and without a reset every new ObjectRef finalizer
+	// would observe it true and skip RemoveLocalReference, leaking local
+	// references in the C++ object store (plasma).
+	shutdownComplete.Store(false)
+}
+
 // clearHandle clears the handle after shutdown.
 //
 // This function acquires a write lock on finalizerMu to prevent finalizers

@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // ExportNodeData defines the event_data stored by the export API
 // for EXPORT_NODE type events. This schema is public and any changes must

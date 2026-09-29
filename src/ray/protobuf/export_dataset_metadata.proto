@@ -18,6 +18,7 @@ import "google/protobuf/struct.proto";
 
 option cc_enable_arenas = true;
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // Represents a sub-stage within an operator
 message SubStage {

@@ -16,6 +16,7 @@ syntax = "proto3";
 
 option cc_enable_arenas = true;
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // This message defines the event_data stored by the export API for
 // EXPORT_DATASET_OPERATOR_SCHEMA type events from Ray Data operators.

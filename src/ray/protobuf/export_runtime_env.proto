@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 /// The runtime env information which is transferred between ray core processes.
 // ExportRuntimeEnvInfo is used in the event_data stored by the export API

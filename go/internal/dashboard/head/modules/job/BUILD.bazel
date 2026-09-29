@@ -1,0 +1,33 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "job",
+    srcs = [
+        "agent_client.go",
+        "job.go",
+        "job_info_client.go",
+        "job_models.go",
+        "job_utils.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/job",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/log",
+        "//go/pkg/version",
+        "//go/proto",
+        "@com_github_coder_websocket//:websocket",
+    ],
+)
+
+go_test(
+    name = "job_test",
+    srcs = ["job_test.go"],
+    embed = [":job"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/proto",
+        "@com_github_coder_websocket//:websocket",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

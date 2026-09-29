@@ -95,6 +95,8 @@ python/ray/_raylet.pyd
 *_pb2.py
 *.pb.h
 *.pb.cc
+# Generated Go protos under //go/proto (written by its install_go_proto genrule)
+/go/proto/*.pb.go
 
 # Ray cluster configuration
 scripts/nodes.txt

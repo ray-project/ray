@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.serialization;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // This is the protocol for python object serialization with pickle5.
 //

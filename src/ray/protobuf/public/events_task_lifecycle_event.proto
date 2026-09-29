@@ -18,6 +18,7 @@ import "google/protobuf/timestamp.proto";
 import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // Message containing the lifecycle information of a task (can apply to both normal
 // tasks and actor tasks).

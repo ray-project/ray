@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "train",
+    srcs = ["train.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/train",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/internal/dashboard/head/modules/job",
+        "//go/pkg/errors",
+        "//go/pkg/log",
+        "//go/pkg/runtime/api",
+        "//go/proto",
+    ],
+)
+
+go_test(
+    name = "train_test",
+    srcs = ["train_test.go"],
+    embed = [":train"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

@@ -19,6 +19,7 @@ import (
 
 	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
 
 // ============================================================================
@@ -92,6 +93,70 @@ func GetActorWithNamespace[T any](name string, namespace string) (*ActorHandleIm
 // Returns:
 //   - error: always returns a RayIntentionalSystemExitException
 //
+// GetPythonActorWithNamespace retrieves an existing named Python actor by its
+// name and namespace, and wraps it in a PythonActorHandle usable with ActorTask.
+//
+// This is the cross-language counterpart of Python's ray.get_actor(name,
+// namespace): it looks up an already-created actor from GCS and does NOT create
+// it (for creation semantics, use RemotePythonActor(...).WithName(...).
+// WithNamespace(...).Create(args...)).
+//
+// The moduleName and className of the actor class are required: the GCS lookup
+// returns only the actor ID, while ActorTask needs the Python module/class to
+// build the method descriptor (module/class/method) for the call. className may
+// be empty for module-level function actors.
+//
+// Parameters:
+//   - name: The name of the actor.
+//   - namespace: The namespace of the actor (empty string for default namespace).
+//   - moduleName: The Python module path of the actor class (e.g. "ray.serve._private.controller").
+//   - className: The Python actor class name (e.g. "ServeController"); empty for module-level functions.
+//
+// Returns:
+//   - *PythonActorHandle: a handle to the actor, usable with ActorTask.
+//   - error: any error encountered during retrieval.
+func GetPythonActorWithNamespace(name, namespace, moduleName, className string) (*PythonActorHandle, error) {
+	handle, ok := tryGetHandle()
+	if !ok || handle == nil {
+		return nil, errors.ErrRuntimeNotInitialized
+	}
+
+	// Get the task submitter to retrieve the actor
+	submitter, ok := tryGetTaskSubmitter()
+	if !ok {
+		return nil, errors.ErrRuntimeNotInitialized
+	}
+	if submitter == nil {
+		// Submitter itself is nil even though runtime is available.
+		// This indicates an internal inconsistency.
+		return nil, errors.NewRuntimeError("get_actor", "submitter_not_available")
+	}
+
+	// Validate input
+	if name == "" {
+		return nil, errors.NewRayInvalidArgumentException("actor name cannot be empty")
+	}
+
+	// Call submitter.GetActor to retrieve the actor from GCS
+	actorHandle, err := submitter.GetActor(name, namespace)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get actor '%s' in namespace '%s': %w", name, namespace, err)
+	}
+
+	if actorHandle == nil {
+		return nil, fmt.Errorf("actor '%s' not found in namespace '%s'", name, namespace)
+	}
+
+	// Wrap the retrieved actor ID into a PythonActorHandle. The module/class
+	// names are taken from the caller because the GCS lookup only yields the
+	// actor ID (see Create in PythonActorCreator for the same construction).
+	return &PythonActorHandle{
+		nativeHandle: object.NewNativeActorHandle(actorHandle.ID(), object.LanguagePython),
+		moduleName:   moduleName,
+		className:    className,
+	}, nil
+}
+
 // Usage example:
 //
 //	func (a *MyActor) ProcessAndExit(data []Data) {

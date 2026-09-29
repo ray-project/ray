@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
@@ -879,6 +880,19 @@ message GetTaskEventsReply {
   int64 num_filtered_on_gcs = 6;
   // Number of task events truncated due to the limit.
   int64 num_truncated = 7;
+}
+
+service InternalPubSubGcsService {
+  /// The request to sent to GCS to publish messages.
+  /// Currently only supporting error info, logs and Python function messages.
+  rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
+  /// The long polling request sent to GCS for pubsub operations.
+  /// The long poll request will be replied once there are a batch of messages that
+  /// need to be published to the caller (subscriber).
+  rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);
+  /// A batch of subscribe / unsubscribe requests sent by the subscriber.
+  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
+      returns (GcsSubscriberCommandBatchReply);
 }
 
 // Service for task info access.

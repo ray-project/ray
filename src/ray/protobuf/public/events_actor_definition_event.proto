@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.rpc.events;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 message ActorDefinitionEvent {
   // The ID of the actor that was created.

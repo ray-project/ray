@@ -17,6 +17,7 @@ syntax = "proto3";
 import "google/protobuf/timestamp.proto";
 
 package ray.rpc.events;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // Message containing the definition of a node, as observed via GCS.
 // The message is expected to be emitted once per node creation.

@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "state",
+    srcs = ["state.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/state",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/internal/dashboard/head/modules/job",
+        "//go/internal/dashboard/head/modules/log",
+    ],
+)
+
+go_test(
+    name = "state_test",
+    srcs = ["state_test.go"],
+    embed = [":state"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.serve;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 option java_package = "io.ray.serve.generated";
 

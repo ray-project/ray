@@ -6,7 +6,7 @@ load("@rules_proto//proto:defs.bzl", "proto_library")
 # Generates only JobConfig/WorkerType (common.proto), GcsNodeInfo
 # (gcs.proto), RuntimeEnvInfo (public/runtime_environment.proto), and the
 # RuntimeEnv/RuntimeEnvConfig types they need. Used by //go/proto.
-load("@rules_proto_grpc//go:defs.bzl", "go_proto_compile")
+load("@rules_proto_grpc//go:defs.bzl", "go_grpc_compile", "go_proto_compile")
 load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 
 package(default_visibility = ["//visibility:public"])
@@ -551,6 +551,31 @@ go_proto_compile(
         ":profile_events_proto",
         ":runtime_env_agent_proto",
         ":runtime_env_common_proto",
+        "//src/ray/protobuf/public:runtime_environment_proto",
+    ],
+)
+
+# Full Go proto set (messages + gRPC service stubs) for the Go dashboard head.
+# The dashboard head connects straight to the GCS and node dashboards over
+# gRPC, so unlike go_runtime_min_go_proto this must emit *_grpc.pb.go. Consumed
+# by //go/proto and only there, so the extra gRPC stack stays out of
+# go_runtime.so.
+go_grpc_compile(
+    name = "core_go_proto",
+    deps = [
+        ":autoscaler_proto",
+        ":common_proto",
+        ":event_proto",
+        ":events_event_aggregator_service_proto",
+        ":gcs_proto",
+        ":gcs_service_proto",
+        ":instance_manager_proto",
+        ":node_manager_proto",
+        ":pubsub_proto",
+        ":reporter_proto",
+        ":runtime_env_agent_proto",
+        ":runtime_env_common_proto",
+        ":usage_proto",
         "//src/ray/protobuf/public:runtime_environment_proto",
     ],
 )

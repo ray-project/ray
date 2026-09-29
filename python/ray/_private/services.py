@@ -1377,30 +1377,50 @@ def start_api_server(
 
         include_dash: bool = True if include_dashboard is None else include_dashboard
 
-        # Start the dashboard process.
-        dashboard_dir = "dashboard"
-        dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
+        # Start the dashboard process. When RAY_ENABLE_GO_DASHBOARD_HEAD is set,
+        # launch the Go dashboard head via the monolithic raygo binary (same as
+        # the other migrated processes) with the same CLI contract; otherwise
+        # launch the Python dashboard.py.
+        if ray_constants.ENABLE_GO_DASHBOARD_HEAD:
+            command = [
+                RAYGO_EXECUTABLE,
+                "dashboard",
+                f"--host={host}",
+                f"--port={port}",
+                f"--port-retries={port_retries}",
+                f"--temp-dir={temp_dir}",
+                f"--log-dir={logdir}",
+                f"--session-dir={session_dir}",
+                f"--logging-rotate-bytes={max_bytes}",
+                f"--logging-rotate-backup-count={backup_count}",
+                f"--gcs-address={gcs_address}",
+                f"--cluster-id-hex={cluster_id_hex}",
+                f"--node-ip-address={node_ip_address}",
+            ]
+        else:
+            dashboard_dir = "dashboard"
+            dashboard_filepath = os.path.join(RAY_PATH, dashboard_dir, "dashboard.py")
 
-        command = [
-            *_build_python_executable_command_memory_profileable(
-                ray_constants.PROCESS_TYPE_DASHBOARD,
-                session_dir,
-                unbuffered=False,
-            ),
-            dashboard_filepath,
-            f"--host={host}",
-            f"--port={port}",
-            f"--port-retries={port_retries}",
-            f"--temp-dir={temp_dir}",
-            f"--log-dir={logdir}",
-            f"--session-dir={session_dir}",
-            f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}",
-            f"--gcs-address={gcs_address}",
-            f"--cluster-id-hex={cluster_id_hex}",
-            f"--node-ip-address={node_ip_address}",
-            f"--proxy-server-url={proxy_server_url or ''}",
-        ]
+            command = [
+                *_build_python_executable_command_memory_profileable(
+                    ray_constants.PROCESS_TYPE_DASHBOARD,
+                    session_dir,
+                    unbuffered=False,
+                ),
+                dashboard_filepath,
+                f"--host={host}",
+                f"--port={port}",
+                f"--port-retries={port_retries}",
+                f"--temp-dir={temp_dir}",
+                f"--log-dir={logdir}",
+                f"--session-dir={session_dir}",
+                f"--logging-rotate-bytes={max_bytes}",
+                f"--logging-rotate-backup-count={backup_count}",
+                f"--gcs-address={gcs_address}",
+                f"--cluster-id-hex={cluster_id_hex}",
+                f"--node-ip-address={node_ip_address}",
+                f"--proxy-server-url={proxy_server_url or ''}",
+            ]
 
         if stdout_filepath:
             command.append(f"--stdout-filepath={stdout_filepath}")

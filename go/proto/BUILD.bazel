@@ -12,56 +12,97 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Minimal generated Go protos for the Go runtime local-mode closed loop.
+# Full generated Go protos (messages + gRPC service stubs) for the Go runtime.
 #
-# The genrule below unzips the go_proto_compile outputs into declared .pb.go
-# files (hermetic), and go_library compiles them with package name "proto".
-# go_proto_compile emits messages only (no *_grpc.pb.go), so this library never
-# pulls the gRPC stack into go_runtime.so.
+# The genrule below unzips the go_grpc_compile outputs of //src/ray/protobuf:core_go_proto
+# into declared .pb.go files (hermetic) and go_library compiles them with the
+# package name "proto". The dashboard head connects to the GCS, node raylets
+# and the dashboard agents over gRPC, so unlike the minimal local-mode set this
+# includes *_grpc stubs (the legacy grpc plugin embeds them in the .pb.go).
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 
-# Generated .pb.go files produced from go_runtime_min_go_proto.
+# .pb.go files produced by //src/ray/protobuf:core_go_proto.
 PROTO_SRCS = [
     "autoscaler.pb.go",
     "common.pb.go",
+    "dependency.pb.go",
+    "event.pb.go",
+    "events_actor_definition_event.pb.go",
+    "events_actor_lifecycle_event.pb.go",
+    "events_actor_task_definition_event.pb.go",
+    "events_base_event.pb.go",
+    "events_driver_job_definition_event.pb.go",
+    "events_driver_job_lifecycle_event.pb.go",
+    "events_event_aggregator_service.pb.go",
+    "events_node_definition_event.pb.go",
+    "events_node_lifecycle_event.pb.go",
+    "events_placement_group_definition_event.pb.go",
+    "events_placement_group_lifecycle_event.pb.go",
+    "events_submission_job_definition_event.pb.go",
+    "events_submission_job_lifecycle_event.pb.go",
+    "events_task_definition_event.pb.go",
+    "events_task_lifecycle_event.pb.go",
+    "events_task_profile_events.pb.go",
+    "events_worker_definition_event.pb.go",
+    "events_worker_lifecycle_event.pb.go",
     "gcs.pb.go",
+    "gcs_service.pb.go",
+    "instance_manager.pb.go",
+    "logging.pb.go",
+    "metrics.pb.go",
+    "node_manager.pb.go",
+    "platform_event.pb.go",
     "profile_events.pb.go",
+    "pubsub.pb.go",
+    "reporter.pb.go",
+    "resource.pb.go",
     "runtime_env_agent.pb.go",
     "runtime_env_common.pb.go",
     "runtime_environment.pb.go",
+    "usage.pb.go",
 ]
 
 pkg_files(
-    name = "go_runtime_min_go_proto_files",
-    srcs = ["//src/ray/protobuf:go_runtime_min_go_proto"],
+    name = "core_go_proto_files",
+    srcs = ["//src/ray/protobuf:core_go_proto"],
     prefix = "proto",
     visibility = ["//visibility:private"],
 )
 
 pkg_zip(
-    name = "go_runtime_min_go_proto_zip",
-    srcs = [":go_runtime_min_go_proto_files"],
-    out = "go_runtime_min_go_proto.zip",
+    name = "core_go_proto_zip",
+    srcs = [":core_go_proto_files"],
+    out = "core_go_proto.zip",
     visibility = ["//visibility:private"],
 )
 
 genrule(
     name = "install_go_proto",
     srcs = [
-        ":go_runtime_min_go_proto_zip",
+        ":core_go_proto_zip",
     ],
     outs = PROTO_SRCS,
     cmd = """
         set -euo pipefail
         rm -rf $(@D)/tmp_unzip
-        unzip -o -q $(location :go_runtime_min_go_proto_zip) -d $(@D)/tmp_unzip
+        unzip -o -q $(location :core_go_proto_zip) -d $(@D)/tmp_unzip
         cp $(@D)/tmp_unzip/proto/*.pb.go $(@D)/
         rm -rf $(@D)/tmp_unzip
-        # Canonicalize the go package to "proto" for all generated files.
-        for f in $(@D)/*.pb.go; do
-            sed -i 's/^package [a-zA-Z0-9_]*/package proto/' "$$f"
+        # Rewrite the opencensus-proto generated package to "proto" so it folds
+        # into this library.
+        sed -i -E 's/package v1/package proto/' $(@D)/*.pb.go
+        # Drop the opencensus-proto import.
+        sed -i '\\#v1 "github.com/census-instrumentation/opencensus-proto/gen-go/\\(resource\\|metrics\\)/v1"#d' $(@D)/*.pb.go
+        # Rewrite the opencensus references (v1.Resource => Resource).
+        sed -i -E 's/(^|[^.])v1\\.([a-zA-Z])/\\1\\2/g' $(@D)/*.pb.go
+        # gcs.proto declares DrainNodeRequest/DrainNodeReply in both the gcs
+        # and node_manager messages; rename them in the gcs files only. Skip the
+        # rawDesc string region so the descriptor length-prefixed message names
+        # are not rewritten (that would panic at descriptor parse time).
+        for f in $(@D)/gcs*.pb.go; do
+            sed -i -E '/_rawDesc = ""/,/^var /!s/DrainNodeRe/GcsDrainNodeRe/g' "$$f"
         done
     """,
     local = 1,
@@ -73,8 +114,12 @@ go_library(
     importpath = "github.com/ray-project/ray/go/proto",
     visibility = ["//visibility:public"],
     deps = [
-        "@org_golang_google_protobuf//proto",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
         "@org_golang_google_protobuf//reflect/protoreflect",
         "@org_golang_google_protobuf//runtime/protoimpl",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+        "@org_golang_google_protobuf//types/known/wrapperspb",
     ],
 )

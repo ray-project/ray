@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "data",
+    srcs = ["data.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/data",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/errors",
+        "//go/pkg/log",
+        "//go/pkg/runtime/api",
+    ],
+)
+
+go_test(
+    name = "data_test",
+    srcs = ["data_test.go"],
+    embed = [":data"],
+    deps = ["//go/internal/dashboard/head"],
+)

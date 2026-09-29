@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "log",
+    srcs = ["log.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/log",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/log",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+        "@org_golang_google_grpc//credentials/insecure",
+    ],
+)
+
+go_test(
+    name = "log_test",
+    srcs = ["log_test.go"],
+    embed = [":log"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/proto",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

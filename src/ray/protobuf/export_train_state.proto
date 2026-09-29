@@ -17,6 +17,7 @@ syntax = "proto3";
 option cc_enable_arenas = true;
 
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 import "google/protobuf/struct.proto";
 

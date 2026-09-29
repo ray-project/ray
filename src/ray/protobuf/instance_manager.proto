@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.rpc.autoscaler.im;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // A status code to be used for operations in the Instance Manager
 // and other components.

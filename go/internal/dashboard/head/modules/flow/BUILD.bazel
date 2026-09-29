@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "flow",
+    srcs = ["flow.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/flow",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/internal/dashboard/head/modules/job",
+        "//go/pkg/errors",
+        "//go/pkg/log",
+        "//go/pkg/runtime/api",
+        "@com_github_coder_websocket//:websocket",
+    ],
+)
+
+go_test(
+    name = "flow_test",
+    srcs = ["flow_test.go"],
+    embed = [":flow"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/internal/dashboard/head/modules/job",
+        "//go/proto",
+        "@com_github_coder_websocket//:websocket",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)

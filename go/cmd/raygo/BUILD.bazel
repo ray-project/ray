@@ -20,6 +20,7 @@ go_library(
     importpath = "github.com/ray-project/ray/go/cmd/raygo",
     visibility = ["//visibility:private"],
     deps = [
+        "//go/cmd/raygo/dashboard",
         "//go/cmd/raygo/default_worker",
         "//go/cmd/raygo/log_monitor",
         "//go/cmd/raygo/runtime_env_agent",

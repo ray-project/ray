@@ -18,6 +18,7 @@ import "src/ray/protobuf/public/runtime_environment.proto";
 import "src/ray/protobuf/common.proto";
 
 package ray.rpc.events;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // Message containing the definition information of an actor task.
 // The message is expected to be emitted once per task attempt.

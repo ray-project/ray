@@ -207,6 +207,12 @@ def gazelle_dependencies():
         version = "v0.0.0-20260202195803-dba9d589def2",
     )
     go_repository(
+        name = "com_github_coder_websocket",
+        importpath = "github.com/coder/websocket",
+        sum = "h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA=",
+        version = "v1.8.15",
+    )
+    go_repository(
         name = "com_github_cpuguy83_go_md2man_v2",
         importpath = "github.com/cpuguy83/go-md2man/v2",
         sum = "h1:qMCsGGgs+MAzDFyp9LpAe1Lqy/fY/qCovCm0qnXZOBM=",
@@ -770,8 +776,8 @@ def gazelle_dependencies():
     go_repository(
         name = "org_golang_google_grpc",
         importpath = "google.golang.org/grpc",
-        sum = "h1:VnnIIZ88UzOOKLukQi+ImGz8O1Wdp8nAGGnvOfEIWQQ=",
-        version = "v1.81.1",
+        sum = "h1:pWFv03aZoHzlRKHWicjsZytKAiYCtNS0dHbXnIdq7jQ=",
+        version = "v1.70.0",
     )
     go_repository(
         name = "org_golang_google_protobuf",

@@ -15,6 +15,7 @@
 syntax = "proto3";
 
 package ray.rpc;
+option go_package = "github.com/ray-project/ray/go/proto";
 
 // A batch of logs with metadata and multiple log lines.
 message LogBatch {

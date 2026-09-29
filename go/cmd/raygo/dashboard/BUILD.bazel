@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "dashboard",
+    srcs = ["dashboard.go"],
+    importpath = "github.com/ray-project/ray/go/cmd/raygo/dashboard",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/dashboard/head",
+        "//go/internal/dashboard/head/modules/data",
+        "//go/internal/dashboard/head/modules/event",
+        "//go/internal/dashboard/head/modules/flow",
+        "//go/internal/dashboard/head/modules/insight",
+        "//go/internal/dashboard/head/modules/job",
+        "//go/internal/dashboard/head/modules/log",
+        "//go/internal/dashboard/head/modules/metrics",
+        "//go/internal/dashboard/head/modules/node",
+        "//go/internal/dashboard/head/modules/reporter",
+        "//go/internal/dashboard/head/modules/serve",
+        "//go/internal/dashboard/head/modules/state",
+        "//go/internal/dashboard/head/modules/train",
+        "//go/internal/dashboard/head/modules/usage_stats",
+        "//go/internal/runtime_env",
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "@com_github_spf13_cobra//:cobra",
+    ],
+)

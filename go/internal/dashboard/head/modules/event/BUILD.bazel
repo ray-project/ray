@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "event",
+    srcs = ["event.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/event",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/log",
+    ],
+)
+
+go_test(
+    name = "event_test",
+    srcs = ["event_test.go"],
+    embed = [":event"],
+    deps = [
+        "//go/internal/dashboard/head",
+    ],
+)

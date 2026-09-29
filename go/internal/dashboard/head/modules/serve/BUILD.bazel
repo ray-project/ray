@@ -1,0 +1,26 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "serve",
+    srcs = ["serve.go"],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/head/modules/serve",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/errors",
+        "//go/pkg/log",
+        "//go/pkg/runtime/api",
+        "//go/pkg/version",
+        "@org_golang_google_protobuf//encoding/protowire",
+    ],
+)
+
+go_test(
+    name = "serve_test",
+    srcs = ["serve_test.go"],
+    embed = [":serve"],
+    deps = [
+        "//go/internal/dashboard/head",
+        "//go/pkg/errors",
+    ],
+)
