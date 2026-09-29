@@ -1,8 +1,12 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import ray
+from ray.data.checkpoint.data_iterator_checkpointer import (
+    RowIDBasedDataIteratorCheckpointer,
+    RowIDBasedStateDict,
+)
 from ray.exceptions import GetTimeoutError
 from ray.train.v2._internal.data_integration.interfaces import (
     DatasetShardMetadata,
@@ -11,6 +15,8 @@ from ray.train.v2._internal.data_integration.interfaces import (
 
 if TYPE_CHECKING:
     from ray.data import DataContext, DataIterator, Dataset, NodeIdStr
+    from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.interfaces import TrainingIngestCheckpointConfig
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +40,9 @@ class DatasetManager:
             if data_config._datasets_to_split == "all"
             else set(data_config._datasets_to_split)
         )
+        self._dataset_checkpoint_configs: Dict[
+            str, "TrainingIngestCheckpointConfig"
+        ] = (getattr(data_config, "dataset_checkpoint_configs", None) or {})
         self._world_size = world_size
         self._worker_node_ids = worker_node_ids
         self._coordinator_actors: List[ray.actor.ActorHandle] = []
@@ -48,6 +57,121 @@ class DatasetManager:
         from ray.data import DataContext
 
         DataContext._set_current(data_context)
+
+    def _configure_checkpoint_save_on_iterators(
+        self,
+        dataset_info: DatasetShardMetadata,
+        dataset_iterators: List["DataIterator"],
+    ) -> None:
+        """Configures the dataset iterators per rank to save checkpoint state.
+
+        Args:
+            dataset_info: The metadata of the dataset shard,
+                which can contain a `state_dict` passed in by the user.
+            dataset_iterators: The dataset iterators for each rank.
+        """
+        if dataset_info.dataset_name not in self._datasets_to_split:
+            return
+
+        if dataset_info.dataset_name not in self._dataset_checkpoint_configs:
+            return
+
+        state_dict = (
+            RowIDBasedStateDict.from_dict(dataset_info.state_dict)
+            if dataset_info.state_dict
+            else None
+        )
+        for rank, dataset_iterator in enumerate(dataset_iterators):
+            checkpointer = RowIDBasedDataIteratorCheckpointer(
+                checkpoint_config=self._dataset_checkpoint_configs[
+                    dataset_info.dataset_name
+                ],
+                world_rank=rank,
+                world_size=len(dataset_iterators),
+                state_dict=state_dict,
+            )
+            dataset_iterator._enable_checkpointing(checkpointer)
+
+    def _configure_checkpoint_restore_on_base_dataset(
+        self, dataset_info: DatasetShardMetadata, base_dataset: "Dataset"
+    ) -> None:
+        """Sets the restoration checkpointing config on the base dataset.
+
+        Args:
+            dataset_info: The metadata of the dataset shard,
+                which can contain a `state_dict` passed in by the user.
+            base_dataset: The base unsharded dataset.
+        """
+        dataset_name = dataset_info.dataset_name
+
+        # Checkpointing is not enabled.
+        if dataset_name not in self._dataset_checkpoint_configs:
+            if dataset_info.state_dict:
+                logger.warning(
+                    "Dataset checkpointing is not enabled for dataset with key "
+                    f"'{dataset_name}', but a state dict was passed in. "
+                    "Ignoring the dataset state. Iteration will yield from the beginning."
+                )
+            return
+
+        if dataset_name not in self._datasets_to_split:
+            # TODO: [unsharded-data-ckpt] Remove this once unsharded data checkpointing is supported.
+            raise NotImplementedError(
+                "Data checkpointing is not currently supported for unsharded datasets. "
+                f"Please add '{dataset_name}' to `DataConfig.datasets_to_split` "
+                "or remove the `DataConfig.dataset_checkpoint_configs` key for this dataset. "
+            )
+
+        state_dict = None
+        if not dataset_info.state_dict:
+            logger.info(
+                "Dataset checkpointing is enabled, but no dataset state passed "
+                f"in via `ray.train.get_dataset_shard('{dataset_name}', state_dict=...)`. "
+                "Iteration will yield from the beginning. "
+                "This is expected when starting the run from scratch rather than "
+                "resuming from a checkpoint."
+            )
+        else:
+            state_dict = RowIDBasedStateDict.from_dict(dataset_info.state_dict)
+            base_dataset.context._execution_idx = state_dict.epoch_idx
+
+        base_dataset.context.checkpoint_config = (
+            self._build_restoration_checkpoint_config(
+                self._dataset_checkpoint_configs[dataset_name], state_dict
+            )
+        )
+
+    def _build_restoration_checkpoint_config(
+        self,
+        dataset_checkpoint_config: "TrainingIngestCheckpointConfig",
+        state_dict: Optional[RowIDBasedStateDict],
+    ) -> "CheckpointConfig":
+        """Translate the training ingest checkpoint config to the CheckpointConfig
+        expected by the base dataset for configuring restoration.
+
+        If there is no state dict provided, or the state dict was captured at an
+        epoch boundary, disable checkpoint restoration.
+        """
+        from ray.data.checkpoint import CheckpointConfig
+
+        should_restore = bool(state_dict and state_dict.should_restore())
+        checkpoint_path_partition_filter = (
+            state_dict.restoration_checkpoint_path_filter if should_restore else None
+        )
+
+        restore_checkpoint_config = CheckpointConfig(
+            id_column=dataset_checkpoint_config.id_column,
+            checkpoint_path=dataset_checkpoint_config.checkpoint_path,
+            checkpoint_path_partition_filter=checkpoint_path_partition_filter,
+            override_filesystem=dataset_checkpoint_config.override_filesystem,
+            # Do not delete checkpoint files on success, since users may want to
+            # restore from checkpoints of previous epochs.
+            delete_checkpoint_on_success=False,
+        )
+        # Restoration is disabled after the first execution,
+        # so only the first epoch after resuming skips the checkpointed rows.
+        restore_checkpoint_config._should_restore = should_restore
+        return restore_checkpoint_config
 
     def _create_dataset_iterators(
         self, dataset_info: DatasetShardMetadata, base_dataset: "Dataset"
@@ -103,9 +227,12 @@ class DatasetManager:
                 # In this case, the dataset iterators have not been created yet.
                 # The dataset only needs to be configured once globally for all workers.
                 # Do it only when the rank 0 worker calls this method.
-                iterators = self._create_dataset_iterators(
-                    dataset_info, self._datasets[dataset_name]
+                base_dataset = self._datasets[dataset_name]
+                self._configure_checkpoint_restore_on_base_dataset(
+                    dataset_info, base_dataset
                 )
+                iterators = self._create_dataset_iterators(dataset_info, base_dataset)
+                self._configure_checkpoint_save_on_iterators(dataset_info, iterators)
                 iterator = iterators[world_rank]
 
                 # Cache the split coordinators for resource cleanup.

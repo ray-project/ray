@@ -136,6 +136,7 @@ See {ref}`train-deprecated-api` for the old API references and the [Ray Train V2
 
     ~train.CheckpointConfig
     ~train.DataConfig
+    ~train.DatasetCheckpointConfig
     ~train.FailureConfig
     ~train.LoggingConfig
     ~train.RunConfig
