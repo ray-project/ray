@@ -122,6 +122,9 @@ def test_get_auth_token_cli(use_generate):
             assert (
                 "generating new authentication token..." in result.stderr.lower()
             ), "Should log generation to stderr"
+            if sys.platform != "win32":
+                token_path = Path.home() / ".ray" / "auth_token"
+                assert token_path.stat().st_mode & 0o777 == 0o600
 
 
 @pytest.mark.skipif(
