@@ -3064,9 +3064,19 @@ void NodeManager::RecordMetrics() {
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+    const NodeID node_id = NodeID::FromBinary(message->node_id());
+    // Resource sync and node liveness notifications can arrive out of order.
+    // SetNodeLabels/ResourceCreateUpdated below can recreate a removed node, so
+    // reject late resource views before mutating any resource-manager state.
+    // Do not require IsNodeAlive(): a new node's resource view may arrive before
+    // its ALIVE notification. Only an explicitly observed DEAD is terminal.
+    if (failed_nodes_cache_.contains(node_id)) {
+      RAY_LOG(DEBUG).WithField(node_id)
+          << "Ignoring resource view from a node already marked dead.";
+      return;
+    }
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
     // Set node labels when node added.
     auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
     cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
