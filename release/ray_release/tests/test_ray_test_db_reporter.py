@@ -1,5 +1,6 @@
 import sys
 from contextlib import contextmanager
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
@@ -15,8 +16,12 @@ init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 _POSTMERGE_PIPELINE = get_global_config()["ci_pipeline_postmerge"][0]
 
 
-def _env(branch: str, pipeline: str = _POSTMERGE_PIPELINE) -> dict:
-    return {"BUILDKITE_BRANCH": branch, "BUILDKITE_PIPELINE_ID": pipeline}
+def _env(branch: Optional[str], pipeline: str = _POSTMERGE_PIPELINE) -> dict:
+    """None omits the key, so `unset` means unset rather than empty."""
+    env = {"BUILDKITE_PIPELINE_ID": pipeline}
+    if branch is not None:
+        env["BUILDKITE_BRANCH"] = branch
+    return env
 
 
 def _failed_result() -> Result:
@@ -44,7 +49,7 @@ def _sinks():
 
 @pytest.mark.parametrize(
     "branch",
-    ["releases/2.58.0", "releases/1.0.0", "sai-miduthuri/some-branch", ""],
+    ["releases/2.58.0", "releases/1.0.0", "sai-miduthuri/some-branch", None],
     ids=["release_branch", "old_release_branch", "feature_branch", "unset"],
 )
 def test_nothing_is_recorded_off_master(branch) -> None:

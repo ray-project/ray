@@ -58,7 +58,7 @@ fi
 # session and posts to slack, but writes nothing this repo records. Automatic
 # builds only: release branch tests are always triggered through automation.
 if [[ "${AUTOMATIC:-0}" == "1" ]] &&
-   [[ "${BUILDKITE_BRANCH}" == "master" || "${BUILDKITE_BRANCH}" == "releases/"* ]]; then
+   [[ "${BUILDKITE_BRANCH:-}" == "master" || "${BUILDKITE_BRANCH:-}" == "releases/"* ]]; then
   export TRIGGER_OBSERVABILITY_AGENT=1
 fi
 
