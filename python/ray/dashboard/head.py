@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 import ray
+import ray._common.usage.usage_lib as ray_usage_lib
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
@@ -140,6 +141,9 @@ class DashboardHead:
         self._subprocess_module_procs: Dict[int, psutil.Process] = {}
         self.proxy_server_url = proxy_server_url
 
+        # Created in run(), before the modules that share it are loaded.
+        self.gcs_client: Optional[GcsClient] = None
+
         # Set once this head is known to be standing by for a promotion.
         self._waiting_for_promotion = False
         # Filled in as each server binds; None means there is nothing to publish.
@@ -220,6 +224,7 @@ class DashboardHead:
                 ray_constants.KV_NAMESPACE_DASHBOARD,
             ),
             await self._insert_session_name(),
+            await self._put_cluster_metadata(),
         ]
         if all(registered):
             self._waiting_for_promotion = False
@@ -238,6 +243,28 @@ class DashboardHead:
             overwrite=False,
             namespace=ray_constants.KV_NAMESPACE_SESSION,
         )
+
+    async def _put_cluster_metadata(self) -> bool:
+        """Store this head's cluster metadata, overwriting a previous head's.
+
+        `Node.__init__` does exactly this on every head start, and a promotion
+        is the same event for a process that never restarted. Leaving the old
+        head's copy would make every joining worker version-check against a
+        head that is gone, which breaks a rolling upgrade.
+
+        Returns:
+            Whether the write landed, i.e. was not refused as passive.
+        """
+        try:
+            # A standby head is always started by `ray start --head`.
+            await ray_usage_lib.async_put_cluster_metadata(
+                self.gcs_client, ray_init_cluster=False
+            )
+        except Exception as e:
+            if not self._refused_by_passive_gcs(e):
+                raise
+            return False
+        return True
 
     def _refused_by_passive_gcs(self, exc: Exception) -> bool:
         """Returns whether the exception was a refusal by a passive GCS."""
@@ -341,6 +368,7 @@ class DashboardHead:
             ip=self.ip,
             http_host=self.http_host,
             http_port=self.http_port,
+            gcs_client=self.gcs_client,
         )
 
         # Select modules to load.
