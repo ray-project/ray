@@ -544,6 +544,31 @@ def put_cluster_metadata(gcs_client: GcsClient, *, ray_init_cluster: bool) -> di
     return metadata
 
 
+async def async_put_cluster_metadata(
+    gcs_client: GcsClient, *, ray_init_cluster: bool
+) -> dict:
+    """Async version of `put_cluster_metadata`.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT.
+        ray_init_cluster: Whether the cluster is started by ray.init()
+
+    Raises:
+        gRPC exceptions: If PUT fails.
+
+    Returns:
+        The cluster metadata.
+    """
+    metadata = _generate_cluster_metadata(ray_init_cluster=ray_init_cluster)
+    await gcs_client.async_internal_kv_put(
+        usage_constant.CLUSTER_METADATA_KEY,
+        json.dumps(metadata).encode(),
+        True,
+        namespace=ray_constants.KV_NAMESPACE_CLUSTER,
+    )
+    return metadata
+
+
 def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     """Return the total number of running jobs in the cluster excluding internal ones"""
     try:
@@ -840,7 +865,7 @@ def get_cluster_config_to_report(
         return ClusterConfigToReport()
 
 
-def get_cluster_metadata(gcs_client: GcsClient) -> dict:
+def get_cluster_metadata(gcs_client: GcsClient) -> Optional[dict]:
     """Get the cluster metadata from GCS.
 
     It is a blocking API.
@@ -856,17 +881,22 @@ def get_cluster_metadata(gcs_client: GcsClient) -> dict:
     Raises:
         RuntimeError: If it fails to obtain cluster metadata from GCS.
     """
-    return json.loads(
-        gcs_client.internal_kv_get(
-            usage_constant.CLUSTER_METADATA_KEY,
-            namespace=ray_constants.KV_NAMESPACE_CLUSTER,
-        ).decode("utf-8")
+    metadata = gcs_client.internal_kv_get(
+        usage_constant.CLUSTER_METADATA_KEY,
+        namespace=ray_constants.KV_NAMESPACE_CLUSTER,
     )
+    if metadata is None:
+        return None
+    return json.loads(metadata.decode("utf-8"))
 
 
 def is_ray_init_cluster(gcs_client: ray._raylet.GcsClient) -> bool:
     """Return whether the cluster is started by ray.init()"""
     cluster_metadata = get_cluster_metadata(gcs_client)
+    # No head has stored the metadata yet, and a ray.init() cluster always has
+    # one that did.
+    if cluster_metadata is None:
+        return False
     return cluster_metadata["ray_init_cluster"]
 
 

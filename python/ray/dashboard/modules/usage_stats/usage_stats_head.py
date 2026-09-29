@@ -8,6 +8,7 @@ import requests
 
 import ray
 import ray._common.usage.usage_lib as ray_usage_lib
+import ray._private.ray_constants as ray_constants
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import build_address
 from ray._common.utils import get_or_create_event_loop
@@ -37,6 +38,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         # prometheus at any point in time during a ray session.
         self._grafana_ran_before = False
         self._prometheus_ran_before = False
+        # Set once this head is known to be standing by for a promotion.
+        self._waiting_for_promotion = False
 
     if ray._private.utils.get_dashboard_dependency_error() is None:
         import aiohttp
@@ -159,10 +162,34 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
             logger.exception(e)
             logger.info(f"Usage report failed: {e}")
 
+    def _is_passive_gcs(self) -> bool:
+        """Returns whether the local GCS is passive, meaning do not report.
+
+        A standby's report reaches the collector under the same session id as
+        the leader's but nearly empty, since every GCS query behind it is
+        refused and falls back to a default. The cache read here is fresh and
+        free: `DashboardHead._gcs_check_alive()` refreshes it on this same
+        client.
+        """
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            return False
+        if self.gcs_client.is_gcs_leader_local():
+            self._waiting_for_promotion = False
+            return False
+        if self._waiting_for_promotion:
+            return True
+        self._waiting_for_promotion = True
+        # Logged once per passive window, not once per report interval.
+        logger.warning(
+            "GCS is in passive mode. Skipping the usage report until promoted."
+        )
+        return True
+
     async def _report_usage_async(self):
         if not self.usage_stats_enabled:
             return
-
+        if self._is_passive_gcs():
+            return
         loop = get_or_create_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
             await loop.run_in_executor(executor, lambda: self._report_usage_sync())
@@ -181,6 +208,8 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     async def _report_disabled_usage_async(self):
         assert not self.usage_stats_enabled
+        if self._is_passive_gcs():
+            return
 
         loop = get_or_create_event_loop()
         with ThreadPoolExecutor(max_workers=1) as executor:
