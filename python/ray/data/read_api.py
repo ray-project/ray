@@ -143,7 +143,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource_v2.datasource_v2 import DataSourceV2
+    from ray.data._internal.datasource_v2.interfaces.datasource_v2 import DataSourceV2
     from ray.data.catalog import Catalog
 
 T = TypeVar("T")
@@ -531,15 +531,15 @@ def _read_datasource_v2(
     """
     import time
 
-    from ray.data._internal.datasource_v2.datasource_v2 import (
-        DataSourceWithMetadata,
-        FileDataSourceV2,
-    )
-    from ray.data._internal.datasource_v2.listing.listing_utils import (
+    from ray.data._internal.datasource_v2.common.listing_utils import (
         _build_pruners,
         sample_files,
     )
-    from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
+        DataSourceWithMetadata,
+        FileDataSourceV2,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         PartitionHints,
     )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
@@ -1915,7 +1915,7 @@ def read_parquet(
                 "Use `ray.data.read_parquet(path).filter(expr=expr)` instead."
             )
 
-        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
             ParquetDatasourceV2,
         )
 
