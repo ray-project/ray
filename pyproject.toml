@@ -24,6 +24,8 @@ extend-exclude = [
     "python/ray/serve/tests/test_config_files/syntax_error.py",
     "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2.py",
     "rllib/examples/envs/classes/multi_agent/footsies/game/proto/footsies_service_pb2_grpc.py",
+    "python/ray/experimental/sandbox/http/_proto/*_pb2.py",
+    "python/ray/experimental/sandbox/http/_proto/*_grpc.py",
 ]
 
 [tool.ruff.lint]

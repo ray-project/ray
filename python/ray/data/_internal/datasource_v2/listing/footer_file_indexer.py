@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import logging
 from collections import deque
-from typing import TYPE_CHECKING, Deque, Iterable, Iterator, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Deque,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+)
 
 import ray
 from ray._common.utils import env_integer
@@ -156,7 +165,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self,
         paths: "BlockColumn",
         *,
-        filesystem: "FileSystem",
+        filesystem: Optional["FileSystem"],
         pruners: Optional[List["FilePruner"]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
@@ -164,6 +173,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         projected_columns: Optional[List[str]] = None,
         shuffle_config: Optional["FileShuffleConfig"] = None,
         execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         file_infos = self._iter_file_infos_for_list(
             paths,
@@ -172,7 +182,10 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             preserve_order=preserve_order,
             shuffle_config=shuffle_config,
             execution_idx=execution_idx,
+            excluded_read_unit_ids=excluded_read_unit_ids,
         )
+        # Whole files were dropped above; row-group ids are applied by the
+        # footer reader once it knows each file's row groups.
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
@@ -180,6 +193,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 predicate,
                 projected_columns,
                 self._coalesce_bytes,
+                excluded_read_unit_ids=excluded_read_unit_ids,
             )
             for _ in range(self._num_actors)
         ]

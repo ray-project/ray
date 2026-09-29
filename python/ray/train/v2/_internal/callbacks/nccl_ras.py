@@ -28,10 +28,21 @@ import subprocess
 import tempfile
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Deque,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._private.ray_constants import env_float
@@ -40,6 +51,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_NCCL_RAS_ACTION,
     DEFAULT_NCCL_RAS_CONFIRM_DURATION_S,
     DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S,
+    HANG_DETECTOR_DIRNAME,
     NCCL_RAS_ACTION_ENV_VAR,
     NCCL_RAS_ACTION_FAIL,
     NCCL_RAS_ACTION_OBSERVE,
@@ -60,6 +72,18 @@ logger = logging.getLogger(__name__)
 # Query timeout lengths
 _STACK_DUMP_TIMEOUT_S: float = 30.0
 _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
+
+# Every diagnostic is uploaded to
+# `<experiment_fs_path>/<HANG_DETECTOR_DIRNAME>/<tool>/`.
+_STACK_TRACES_TOOL: str = "stack_traces"
+_NCCL_RAS_TOOL: str = "nccl_ras"
+
+# Polls of RAS history kept on top of the ones a confirmation consumes, so the
+# saved history always starts before the communicator stalled.
+_RAS_HISTORY_MARGIN_POLLS: int = 10
+
+# Characters not kept when a RAS timestamp is turned into a filename.
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^0-9A-Za-z._-]")
 
 # User-facing escalation milestones
 _FIRST_SUSPICION_AFTER_S: float = 60.0
@@ -190,11 +214,13 @@ class RASReport:
             majority logic).
         comm_rank_status: Maps each communicator and their ranks with their
             status. A hang requires that the rank to be RUNNING.
+        raw_json: The ``ncclras`` output this report was parsed from
     """
 
     timestamp: str
     comm_op_counts: Dict[str, Dict[int, Dict[str, int]]]
     comm_rank_status: Dict[str, Dict[int, str]]
+    raw_json: str = ""
 
     @property
     def comm_op_skews(self) -> Dict[str, Dict[str, int]]:
@@ -338,7 +364,7 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
                 for rank in comm["ranks"]
             }
 
-        return RASReport(data["timestamp"], comm_op_counts, comm_rank_status)
+        return RASReport(data["timestamp"], comm_op_counts, comm_rank_status, ras_json)
     except (KeyError, TypeError, ValueError) as e:
         logger.info(
             "NCCL RAS JSON did not match the expected schema: %s",
@@ -552,6 +578,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     reset by any healthy poll. ``RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S``
     expresses how long that run should take and is converted to a poll count
     with the poll interval.
+
+    Every poll is added to a circular buffer so users have a history of ncclras
+    queries and for improving the detection.
     """
 
     def __init__(self):
@@ -594,13 +623,15 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 f"got {self._action!r}."
             )
 
-        # The train worker group (for stack dumps) and the poller fetching its
-        # RAS reports in the background; both live for one worker group.
         self._worker_group: Optional[WorkerGroup] = None
         self._ras_poller: Optional[RASPoller] = None
 
         # The previous successful poll's report
         self.prev_report: Optional[RASReport] = None
+        # Circular buffer of ncclras json queries
+        self.ras_history: Deque[RASReport] = deque(
+            maxlen=self._confirm_poll_counts + _RAS_HISTORY_MARGIN_POLLS
+        )
         # Per-communicator consecutive frozen-poll streaks ({comm_id: polls}).
         # As a deadlock requires the whole comm to be frozen (no op advancing),
         # any op progressing would indicate the comm overall isn't deadlocked.
@@ -612,6 +643,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
+        self.ras_history.clear()
         self.reset_hang_counters()
 
     def reset_hang_counters(self):
@@ -641,9 +673,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             return
 
         # This hook runs on the controller's poll loop, so any error here must
-        # never crash training. A confirmed hang (NCCLHangError) is the intended
-        # fail action and must propagate; every other exception is a detector bug
-        # -- log it and disable detection for the rest of the run.
+        # never crash training.
         try:
             result = self._ras_poller.next_result()
             if result is None:
@@ -657,6 +687,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 )
                 self._is_ras_degraded = True
                 return
+
+            self.ras_history.append(result)
 
             if result.mismatched_comms:
                 self.evaluate_comm_mismatch(result)
@@ -753,11 +785,13 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if ras_human_output:
             logger.warning("%s", ras_human_output)
 
-        try:
-            dump_dir = self.dump_workers_stack_traces()
-        except Exception:
-            logger.exception("Trying to dump worker stack traces failed.")
-            dump_dir = None
+        ras_history_dir = self.capture_diagnostic(
+            "`ncclras` query history",
+            lambda: self.dump_ras_query_history(ras_human_output),
+        )
+        stack_trace_dir = self.capture_diagnostic(
+            "worker stack traces", self.dump_workers_stack_traces
+        )
 
         message = (
             f"{len(confirmed_comm_hangs)} of "
@@ -771,8 +805,17 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             "collective was launched with a mismatched shape, dtype, or call order.\n"
             "To debug:\n"
             "  - Read NCCL RAS report in the logs (identifies the deadlocked ranks/communicators)\n"
-            f"  - Your experiment directory contains the per-rank stack traces ({dump_dir})\n"
         )
+        if stack_trace_dir:
+            message += (
+                "  - Your experiment directory contains the per-rank stack traces "
+                f"({stack_trace_dir})\n"
+            )
+        if ras_history_dir:
+            message += (
+                "  - The `ncclras` query history shows how each rank's collective "
+                f"counts drifted over the polls before the hang ({ras_history_dir})\n"
+            )
         if self._action == NCCL_RAS_ACTION_FAIL:
             raise NCCLHangError(message, worker_failures={})
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
@@ -855,6 +898,49 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.info("Could not fetch the `ncclras` text report (%s).", e)
             return None
 
+    @staticmethod
+    def capture_diagnostic(
+        name: str, capture: Callable[[], Optional[str]]
+    ) -> Optional[str]:
+        """Run one diagnostic capture, logging rather than raising on failure.
+
+        Args:
+            name: What is being captured, for the log message.
+            capture: The capture, returning where it was uploaded.
+
+        Returns:
+            Where the diagnostic was uploaded, or ``None`` if it failed.
+        """
+        try:
+            return capture()
+        except Exception:  # noqa: BLE001
+            logger.exception("Trying to capture the %s failed.", name)
+            return None
+
+    def dump_ras_query_history(
+        self, human_report: Optional[str] = None
+    ) -> Optional[str]:
+        """Write the retained RAS polls to the run's storage.
+
+        Args:
+            human_report: The ``ncclras -f text`` report fetched at confirmation,
+                or ``None`` if no worker could produce one.
+
+        Returns:
+            The path to the folder with the history, or ``None`` if no poll has
+            been recorded yet.
+        """
+        files = {
+            f"ncclras_{_UNSAFE_FILENAME_CHARS.sub('-', report.timestamp)}.json": report.raw_json
+            for report in self.ras_history
+        }
+        if human_report:
+            files["ncclras_report.txt"] = human_report
+
+        if files:
+            return self.upload_diagnostics(_NCCL_RAS_TOOL, files)
+        return None
+
     def dump_workers_stack_traces(self) -> Optional[str]:
         """Fan out a native stack dump to every worker and write it to the log dir.
 
@@ -889,36 +975,42 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             list(dump_refs), num_returns=len(dump_refs), timeout=_STACK_DUMP_TIMEOUT_S
         )
 
+        files = {f"rank_{rank}.log": text for rank, text in launch_failures.items()}
+        for ref, rank in dump_refs.items():
+            if ref in not_ready:
+                logger.warning(
+                    "Stack dump on rank %d did not finish within %.0fs. "
+                    "Its trace will be missing from the hang diagnostics.",
+                    rank,
+                    _STACK_DUMP_TIMEOUT_S,
+                )
+                text = f"stack dump timed out after {_STACK_DUMP_TIMEOUT_S:.0f}s"
+            else:
+                try:
+                    text = ray.get(ref)
+                except Exception as e:  # noqa: BLE001
+                    logger.info("Failed to collect stack on rank %d: %s", rank, e)
+                    text = f"failed to collect stack trace: {e}"
+            files[f"rank_{rank}.log"] = text
+
+        return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
+
+    def upload_diagnostics(self, tool: str, files: Dict[str, str]) -> str:
+        """Upload one tool's files to the run's storage filesystem.
+
+        Args:
+            tool: The sub-directory of ``hang_detector/`` to write to.
+            files: ``{filename: contents}`` to write into that directory.
+
+        Returns:
+            The path the files were uploaded to, which survives cluster teardown.
+        """
+        storage_context = self._worker_group._storage_context
+        fs_path = os.path.join(
+            storage_context.experiment_fs_path, HANG_DETECTOR_DIRNAME, tool
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
-            for rank, text in launch_failures.items():
-                (Path(temp_dir) / f"rank_{rank}.log").write_text(text)
-
-            for ref, rank in dump_refs.items():
-                file = Path(temp_dir) / f"rank_{rank}.log"
-                if ref in not_ready:
-                    logger.warning(
-                        "Stack dump on rank %d did not finish within %.0fs. "
-                        "Its trace will be missing from the hang diagnostics.",
-                        rank,
-                        _STACK_DUMP_TIMEOUT_S,
-                    )
-                    file.write_text(
-                        f"stack dump timed out after {_STACK_DUMP_TIMEOUT_S:.0f}s"
-                    )
-                else:
-                    try:
-                        file.write_text(ray.get(ref))
-                    except Exception as e:  # noqa: BLE001
-                        logger.info("Failed to collect stack on rank %d: %s", rank, e)
-                        file.write_text(f"failed to collect stack trace: {e}")
-
-            stack_trace_folder = os.path.join(
-                self._worker_group._storage_context.experiment_fs_path,
-                "nccl_ras_hang_stack_traces",
-            )
-            _upload_to_fs_path(
-                temp_dir,
-                self._worker_group._storage_context.storage_filesystem,
-                stack_trace_folder,
-            )
-            return stack_trace_folder
+            for name, contents in files.items():
+                (Path(temp_dir) / name).write_text(contents)
+            _upload_to_fs_path(temp_dir, storage_context.storage_filesystem, fs_path)
+        return fs_path

@@ -57,6 +57,7 @@ from ray.data._internal.operator_schema_exporter import (
 )
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.stats_summary_actor import report_stats_summary
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
@@ -346,9 +347,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
-            stats_summary_string = self._final_stats.to_summary().to_string(
-                include_parent=False
-            )
+            final_summary = self._final_stats.to_summary()
+            if self._data_context.enable_stats_summary_collection:
+                report_stats_summary(final_summary)
+            stats_summary_string = final_summary.to_string(include_parent=False)
             # Reset the scheduling loop duration gauge + resource manager budgets/usages.
             self._resource_manager.update_usages()
             self.update_metrics(0)
