@@ -601,7 +601,7 @@ class BackendConfig:
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
 
-    # See `Application._as_router_application`.
+    # When set, the application serves as an application level router.
     is_router_application: bool = False
 
     # The app name for this backend.
