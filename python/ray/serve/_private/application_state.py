@@ -290,6 +290,7 @@ class ApplicationState:
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
         self._ingress_request_router_deployment_name: Optional[str] = None
+        self._is_router_application = False
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -368,12 +369,7 @@ class ApplicationState:
 
     @property
     def is_router_application(self) -> bool:
-        """From target state, so it survives scale-to-zero."""
-        deployment_infos = self._target_state.deployment_infos
-        if not deployment_infos or self._ingress_deployment_name is None:
-            return False
-        ingress_info = deployment_infos.get(self._ingress_deployment_name)
-        return ingress_info is not None and ingress_info.router_application
+        return self._is_router_application
 
     @property
     def api_type(self) -> APIType:
@@ -446,11 +442,13 @@ class ApplicationState:
 
         ingress_deployment_name = None
         ingress_request_router_deployment_name = None
+        is_router_application = False
 
         if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     ingress_deployment_name = name
+                    is_router_application = info.router_application
                 if info.ingress_request_router:
                     ingress_request_router_deployment_name = name
 
@@ -481,6 +479,7 @@ class ApplicationState:
         self._ingress_request_router_deployment_name = (
             ingress_request_router_deployment_name
         )
+        self._is_router_application = is_router_application
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
