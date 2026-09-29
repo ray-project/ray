@@ -522,12 +522,12 @@ class StreamingExecutor(Executor, threading.Thread):
         # Size OutputSplitter's locality buffer against the object store budget.
         # Refreshed every step: the global limit grows as the cluster autoscaler
         # reserves resources, and the eligible op count shrinks as ops finish.
-        object_store_memory_share_per_op = (
-            self._resource_manager.get_object_store_memory_share_per_op()
-        )
-        for op in topology:
-            if isinstance(op, OutputSplitter):
-                op.set_buffer_memory_budget(object_store_memory_share_per_op)
+        # OutputSplitter can only be the terminal op (from `Dataset.streaming_split`).
+        output_op, _ = self._output_node
+        if isinstance(output_op, OutputSplitter):
+            output_op.set_buffer_memory_budget(
+                self._resource_manager.get_object_store_memory_share_per_op()
+            )
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
