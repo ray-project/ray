@@ -106,6 +106,9 @@ class DashboardHeadModuleConfig:
     ip: str
     http_host: str
     http_port: int
+    # The head's own client, shared so that modules observe the leadership its
+    # CheckAlive loop caches. A private client would never see a promotion.
+    gcs_client: GcsClient
 
 
 class DashboardHeadModule(abc.ABC):
@@ -116,7 +119,6 @@ class DashboardHeadModule(abc.ABC):
             config: The DashboardHeadModuleConfig instance.
         """
         self._config = config
-        self._gcs_client = None
         self._aiogrpc_gcs_channel = None  # lazy init
         self._http_session = None  # lazy init
 
@@ -173,14 +175,7 @@ class DashboardHeadModule(abc.ABC):
 
     @property
     def gcs_client(self):
-        if self._gcs_client is None:
-            self._gcs_client = GcsClient(
-                address=self._config.gcs_address,
-                cluster_id=self._config.cluster_id_hex,
-            )
-            if not internal_kv._internal_kv_initialized():
-                internal_kv._initialize_internal_kv(self._gcs_client)
-        return self._gcs_client
+        return self._config.gcs_client
 
     @property
     def aiogrpc_gcs_channel(self):
@@ -687,7 +682,7 @@ def ray_address_to_api_server_url(address: Optional[str]) -> str:
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = GcsClient(address=address)
 
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    internal_kv._initialize_internal_kv(gcs_client)
     api_server_url = ray._private.utils.internal_kv_get_with_retry(
         gcs_client,
         ray_constants.DASHBOARD_ADDRESS,
