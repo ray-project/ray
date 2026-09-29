@@ -86,7 +86,7 @@ def get_llm_serve_runtime_env(
         name: os.environ.get(name, default)
         for name, default in _RAY_SERVE_LLM_REPLICA_ENV_DEFAULTS.items()
     }
-    env_vars.update(runtime_env.get("env_vars", {}))
+    env_vars.update(runtime_env.get("env_vars") or {})
     runtime_env["env_vars"] = env_vars
     return runtime_env
 
