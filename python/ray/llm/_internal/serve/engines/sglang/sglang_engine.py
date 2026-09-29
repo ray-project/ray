@@ -15,6 +15,7 @@ import signal
 import time
 import uuid
 from typing import (
+    TYPE_CHECKING,
     Any,
     AsyncGenerator,
     List,
@@ -25,8 +26,12 @@ from typing import (
 
 from pydantic import BaseModel
 
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
 from ray.llm._internal.serve.constants import ENABLE_WORKER_PROCESS_SETUP_HOOK
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.llm_config import (
+    DiskMultiplexConfig,
+    LLMConfig,
+)
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -41,10 +46,82 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TokenizeRequest,
     TokenizeResponse,
 )
+from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+
+if TYPE_CHECKING:
+    from ray.llm._internal.serve.core.configs.openai_api_models import (
+        ErrorResponse,
+        TranscriptionRequest,
+        TranscriptionResponse,
+    )
 from ray.llm._internal.serve.core.server.llm_server import (
     _add_openai_models_retrieve_route,
 )
+
+
+class SGLangEngineConfig(BaseModel):
+    """Minimal engine config for SGLang, exposing the fields telemetry needs.
+
+    Unlike VLLMEngineConfig, this does not drive engine construction —
+    SGLangServer.__init__ passes engine_kwargs to sglang.Engine directly.
+    What it does carry: the model source fields. Node initialization reads
+    them to download the weights, then writes hf_model_id back as the on-disk
+    path. Usage telemetry reads them too.
+
+    It stays minimal so get_engine_config() works without vLLM installed.
+    """
+
+    tensor_parallel_degree: int
+    num_devices: int
+    model_id: str
+    # The HuggingFace id / local path SGLang loads from. None for a pure
+    # CloudMirrorConfig source (mirror fetched under model_id); actual_hf_model_id
+    # then falls back to model_id. Overwritten with the on-disk path after
+    # download (see SGLangServer._download_and_resolve_model).
+    hf_model_id: Optional[str] = None
+    # Cloud bucket the weights are mirrored from, when model_source is a remote
+    # URI or a CloudMirrorConfig. None for local / HF-hub sources.
+    mirror_config: Optional["CloudMirrorConfig"] = None
+
+    @property
+    def actual_hf_model_id(self) -> str:
+        return self.hf_model_id or self.model_id
+
+    @classmethod
+    def from_llm_config(cls, llm_config: "LLMConfig") -> "SGLangEngineConfig":
+        from ray.llm._internal.common.utils.cloud_utils import (
+            CloudMirrorConfig,
+            is_remote_path,
+        )
+
+        tp_size = llm_config.engine_kwargs.get("tp_size", 1)
+        pp_size = llm_config.engine_kwargs.get("pp_size", 1)
+
+        # Mirror the vLLM mapping: resolve model_source into (hf_model_id,
+        # mirror_config). A remote URI or CloudMirrorConfig is a download
+        # address, not a HF id — the weights are fetched under model_id.
+        hf_model_id, mirror_config = None, None
+        model_source = llm_config.model_loading_config.model_source
+        if model_source is None:
+            hf_model_id = llm_config.model_id
+        elif isinstance(model_source, str):
+            if is_remote_path(model_source):
+                hf_model_id = llm_config.model_id
+                mirror_config = CloudMirrorConfig(bucket_uri=model_source)
+            else:
+                hf_model_id = model_source
+        else:
+            mirror_config = model_source
+
+        return cls(
+            tensor_parallel_degree=tp_size,
+            num_devices=tp_size * pp_size,
+            model_id=llm_config.model_id,
+            hf_model_id=hf_model_id,
+            mirror_config=mirror_config,
+        )
+
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +165,7 @@ class SGLangWakeupConfig(BaseModel):
 _SLEEP_TAGS: frozenset[str] = frozenset({"kv_cache", "weights", "cuda_graph"})
 
 
-class SGLangServer:
+class SGLangServer(LLMEngine):
     def __init__(self, llm_config: LLMConfig):
 
         self._llm_config = llm_config
@@ -104,6 +181,12 @@ class SGLangServer:
                 "Please run `pip install sglang[all, ray]` to install required "
                 "dependencies."
             ) from e
+
+        # Must run BEFORE engine_kwargs is snapshotted below: for SGLang PD the
+        # connector's setup() mutates engine_kwargs in place (host,
+        # disaggregation_bootstrap_port), and a snapshot taken first would not
+        # carry those into sglang.Engine.
+        llm_config.setup_engine_backend()
 
         # Route SGLang engine metrics through Ray's metric agent (Ray's
         # Prometheus endpoint / dashboard). RayEngine runs schedulers as Ray
@@ -141,12 +224,76 @@ class SGLangServer:
             # Returns default handler to satisfy signal.signal() return signature
             return signal.SIG_DFL
 
+        # Inject model_path from model_loading_config unless the user set it
+        # explicitly in engine_kwargs (explicit always wins).
+        engine_init_kwargs = dict(self.engine_kwargs)
+
+        if "model_path" not in engine_init_kwargs:
+            engine_init_kwargs["model_path"] = self._download_and_resolve_model(
+                llm_config
+            )
+
+        if not engine_init_kwargs.get("model_path"):
+            raise ValueError(
+                "SGLang engine requires 'model_path' but it could not be determined. "
+                "Set it via model_loading_config.model_source or "
+                "engine_kwargs['model_path'] directly."
+            )
+
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = Engine(**self.engine_kwargs)
+            self.engine = Engine(**engine_init_kwargs)
         finally:
             signal.signal = original_signal_func
+
+    @staticmethod
+    def _download_and_resolve_model(llm_config: LLMConfig) -> str:
+        """Download the model (if mirrored) and return the path SGLang loads from.
+
+        SGLang builds its in-process engine here in ``__init__`` and, unlike the
+        vLLM path, does not go through ``initialize_node``. So the download must
+        happen on this replica's node before the engine starts:
+
+        Mirrored weights end up loading from the on-disk copy Ray fetched, never
+        a HuggingFace id pointing at weights meant to come from the mirror.
+        """
+        from ray.llm._internal.common.utils.download_utils import (
+            STREAMING_LOAD_FORMATS,
+            NodeModelDownloadable,
+            download_model_files,
+            get_model_location_on_disk,
+        )
+
+        engine_config = llm_config.get_engine_config()
+
+        # STREAMING_LOAD_FORMATS pull weights lazily at load time; don't
+        # pre-download (matches the vLLM callback ctx decision).
+        if llm_config.engine_kwargs.get("load_format") in STREAMING_LOAD_FORMATS:
+            download_model = NodeModelDownloadable.NONE
+        else:
+            download_model = NodeModelDownloadable.MODEL_AND_TOKENIZER
+
+        local_path = download_model_files(
+            model_id=engine_config.actual_hf_model_id,
+            mirror_config=engine_config.mirror_config,
+            download_model=download_model,
+            download_extra_files=True,
+        )
+
+        # download_model_files returns the local path for a mirror, else the id.
+        # For a local path or plain HF id (no mirror), still prefer an existing
+        # on-disk snapshot (mirror or HF cache).
+        if not (local_path and local_path != engine_config.actual_hf_model_id):
+            local_path = get_model_location_on_disk(engine_config.actual_hf_model_id)
+
+        # Write the resolved path back onto the cached engine config so later
+        # readers of actual_hf_model_id see the on-disk location, not the
+        # pre-download id (mirrors the vLLM path in vllm_engine.py).
+        if local_path and local_path != engine_config.actual_hf_model_id:
+            engine_config.hf_model_id = local_path
+
+        return local_path
 
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
@@ -278,6 +425,23 @@ class SGLangServer:
         # this integration does not run. Keep the protocol hook as a no-op.
         return
 
+    def routing_stats(self) -> dict:
+        # Required by the EngineProtocol ABC. SGLang has no KV-events routing
+        # integration (unlike VLLMEngine), so there is nothing to surface --
+        # LLMServer.record_routing_stats forwards this empty dict to Serve.
+        return {}
+
+    async def build_asgi_app(self) -> Any:
+        """Engine-protocol entry point; forwards to the Serve deployment hook.
+
+        ``SGLangServer`` fills two roles. Non-PD deploys it directly as
+        ``server_cls``, where Ray Serve calls ``__serve_build_asgi_app__`` on
+        the replica. P/D instead uses it as ``LLMServer``'s engine, and
+        ``LLMServer.__serve_build_asgi_app__`` calls ``engine.build_asgi_app()``
+        -- the engine-protocol name. Both roles build the same app.
+        """
+        return await self.__serve_build_asgi_app__()
+
     async def __serve_build_asgi_app__(self) -> Any:
         """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
 
@@ -336,6 +500,20 @@ class SGLangServer:
         sampling_params = self._build_sampling_params(request)
         if sampling_params:
             generate_kwargs["sampling_params"] = sampling_params
+
+        # bootstrap_* are stamped by the SGLang PD connector (pd_connector.py):
+        # on the decode request before the local engine call, and on the prefill
+        # request before it is forwarded to the prefill server.
+        bootstrap_room = getattr(request, "bootstrap_room", None)
+        if bootstrap_room is not None:
+            generate_kwargs["bootstrap_room"] = bootstrap_room
+            bootstrap_host = getattr(request, "bootstrap_host", None)
+            if bootstrap_host is not None:
+                generate_kwargs["bootstrap_host"] = bootstrap_host
+            bootstrap_port = getattr(request, "bootstrap_port", None)
+            if bootstrap_port is not None:
+                generate_kwargs["bootstrap_port"] = bootstrap_port
+
         return generate_kwargs
 
     async def _generate_raw(
@@ -577,6 +755,33 @@ class SGLangServer:
         )
 
         yield resp
+
+    async def resolve_lora(self, lora_model: DiskMultiplexConfig) -> None:
+        """Not supported: SGLang multi-LoRA is not wired up in Ray Serve LLM.
+
+        ``LLMServer`` only calls this for a multiplexed request, which requires
+        ``lora_config``; SGLang deployments do not set it, so this is
+        unreachable in practice. Declared because ``LLMEngine`` requires it.
+        """
+        raise NotImplementedError(
+            "LoRA multiplexing is not supported by the SGLang engine."
+        )
+
+    async def transcriptions(
+        self,
+        request: "TranscriptionRequest",
+        raw_request_info: Optional[RawRequestInfo] = None,
+    ) -> AsyncGenerator[Union[str, "TranscriptionResponse", "ErrorResponse"], None]:
+        """Not supported: SGLang has no audio transcription endpoint here.
+
+        Declared because ``LLMEngine`` requires it; the ``yield`` keeps this an
+        async generator so callers fail on iteration, matching the protocol's
+        return type.
+        """
+        raise NotImplementedError(
+            "Transcriptions are not supported by the SGLang engine."
+        )
+        yield  # pragma: no cover - unreachable, marks this an async generator
 
     async def embeddings(
         self,
