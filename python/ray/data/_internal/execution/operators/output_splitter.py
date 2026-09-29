@@ -38,15 +38,6 @@ DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
 )
 
-# Fraction of the per-op object store share (global limit / eligible ops) that the
-# locality buffer may hold. 0.25 is half of the per-op reservation guaranteed by
-# the default `DataContext.op_resource_reservation_ratio` (0.5), leaving room for
-# consumer prefetch and pending task outputs, which are charged to the same
-# upstream producers.
-DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION = env_float(
-    "RAY_DATA_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION", 0.25
-)
-
 
 class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     """An operator that splits the given data into `n` output splits.
@@ -114,7 +105,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         # Max bytes the locality buffer may hold, or None if unbounded. Set by the
         # executor via `set_buffer_memory_budget`.
-        self._buffer_memory_budget: Optional[float] = None
+        self._buffer_memory_budget: Optional[int] = None
         # Running totals of input bundles, used to estimate the bundle size.
         self._total_input_bytes = 0
         self._num_input_bundles = 0
@@ -158,9 +149,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         super().start(options, block_ref_counter)
 
-    def set_buffer_memory_budget(
-        self, object_store_memory_share_per_op: Optional[int]
-    ) -> None:
+    def set_buffer_memory_budget(self, budget: Optional[int]) -> None:
         """Bound the locality buffer by the object store budget.
 
         Buffered bundles stay charged to the upstream operators that produced
@@ -169,16 +158,11 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         dispatched, so the cap is lowered to what fits.
 
         Args:
-            object_store_memory_share_per_op: The global object store limit split
-                evenly across eligible operators, or None for no bound.
+            budget: Max bytes the buffer may hold, or None for no bound. The
+                executor passes the object store memory reserved for an upstream
+                operator's outputs, as the whole buffer may be charged to it.
         """
-        if object_store_memory_share_per_op is None:
-            self._buffer_memory_budget = None
-        else:
-            self._buffer_memory_budget = (
-                object_store_memory_share_per_op
-                * DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION
-            )
+        self._buffer_memory_budget = budget
         # If the cap dropped below the buffer size, release bundles now rather
         # than waiting for another input that may never arrive.
         if self._buffer and len(self._buffer) >= self._effective_max_buffer_size():

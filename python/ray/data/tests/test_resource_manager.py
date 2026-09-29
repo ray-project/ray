@@ -538,11 +538,14 @@ class TestResourceManager:
         completed_ops_usage = resource_manager._get_completed_ops_usage()
         assert completed_ops_usage == ExecutionResources(cpu=3, object_store_memory=75)
 
-    def test_get_object_store_memory_share_per_op(self, restore_data_context):
-        """The global object store limit is split across eligible ops only."""
-        o1 = InputDataBuffer(DataContext.get_current(), [])
+    def test_get_default_op_output_reservation(self, restore_data_context):
+        """Half of each eligible op's reservation of the global object store
+        limit is reserved for its outputs."""
+        ctx = DataContext.get_current()
+        ctx.op_resource_reservation_ratio = 0.5
+        o1 = InputDataBuffer(ctx, [])
         o2 = mock_map_op(o1)
-        o3 = LimitOperator(1, o2, DataContext.get_current())
+        o3 = LimitOperator(1, o2, ctx)
         o4 = mock_map_op(o3)
 
         topo = build_streaming_topology(o4, ExecutionOptions(), noop_counter())
@@ -552,7 +555,7 @@ class TestResourceManager:
             topo,
             ExecutionOptions(),
             MagicMock(),
-            DataContext.get_current(),
+            ctx,
             BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
         )
 
@@ -564,18 +567,21 @@ class TestResourceManager:
 
         set_object_store_limit(1000)
         # o1 is finished and o3 (LimitOperator) disables throttling, so only o2
-        # and o4 are eligible.
-        assert resource_manager.get_object_store_memory_share_per_op() == 500
+        # and o4 are eligible: 1000 * 0.5 / 2 ops / 2.
+        assert resource_manager.get_default_op_output_reservation() == 125
 
         o2.mark_execution_finished()
-        assert resource_manager.get_object_store_memory_share_per_op() == 1000
+        assert resource_manager.get_default_op_output_reservation() == 250
 
+        # Unbounded or not-yet-known limits don't bound anything.
         set_object_store_limit(float("inf"))
-        assert resource_manager.get_object_store_memory_share_per_op() is None
+        assert resource_manager.get_default_op_output_reservation() is None
+        set_object_store_limit(0)
+        assert resource_manager.get_default_op_output_reservation() is None
 
         set_object_store_limit(1000)
         o4.mark_execution_finished()
-        assert resource_manager.get_object_store_memory_share_per_op() is None
+        assert resource_manager.get_default_op_output_reservation() is None
 
     def test_get_completed_ops_usage_complex_graph(self, restore_data_context):
         """

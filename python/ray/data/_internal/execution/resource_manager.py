@@ -158,6 +158,7 @@ class ResourceManager:
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
         ] = create_resource_allocator(self, data_context)
+        self._op_resource_reservation_ratio = data_context.op_resource_reservation_ratio
 
         self._object_store_memory_limit_fraction = (
             data_context.override_object_store_memory_limit_fraction
@@ -441,13 +442,16 @@ class ResourceManager:
             and not op.has_execution_finished()
         )
 
-    def get_object_store_memory_share_per_op(self) -> Optional[int]:
-        """Return the global object store memory limit split evenly across the
-        operators eligible for memory reservation, or None if there are no such
-        operators or the limit is unbounded.
+    def get_default_op_output_reservation(self) -> Optional[int]:
+        """Return the object store memory reserved for each eligible operator's
+        outputs, or None if there are no eligible operators or the limit is
+        unbounded or unknown.
 
-        This doesn't depend on the op resource allocator, so it's available even
-        when the allocator is disabled.
+        This is `op_resource_reservation_ratio * global_limit / num_eligible_ops / 2`,
+        matching the outputs reservation in
+        `ReservationOpResourceAllocator._update_reservation`. It's computed from
+        the global limit directly, so it's available even when the allocator is
+        disabled.
         """
         eligible_ops = [op for op in self._topology if self.is_op_eligible(op)]
         limit = self.get_global_limits().object_store_memory
@@ -455,7 +459,7 @@ class ResourceManager:
         # reserved resources yet), so don't bound anything by it.
         if not eligible_ops or math.isinf(limit) or limit <= 0:
             return None
-        return int(limit / len(eligible_ops))
+        return int(limit * self._op_resource_reservation_ratio / len(eligible_ops) / 2)
 
     def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator

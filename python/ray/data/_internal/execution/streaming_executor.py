@@ -526,7 +526,7 @@ class StreamingExecutor(Executor, threading.Thread):
         output_op, _ = self._output_node
         if isinstance(output_op, OutputSplitter):
             output_op.set_buffer_memory_budget(
-                self._resource_manager.get_object_store_memory_share_per_op()
+                self._resource_manager.get_default_op_output_reservation()
             )
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for

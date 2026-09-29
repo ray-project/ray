@@ -7,10 +7,7 @@ import pytest
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.output_splitter import (
-    DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION,
-    OutputSplitter,
-)
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
@@ -304,9 +301,7 @@ def test_split_operator_buffer_capped_by_memory_budget(
     op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
     if bounded:
         # Budget for 3.5 bundles -> cap of 3.
-        op.set_buffer_memory_budget(
-            int(3.5 * bundle_bytes / DEFAULT_OUTPUT_SPLITTER_BUFFER_MEMORY_FRACTION)
-        )
+        op.set_buffer_memory_budget(int(3.5 * bundle_bytes))
 
     num_outputs = []
     while input_op.has_next():
