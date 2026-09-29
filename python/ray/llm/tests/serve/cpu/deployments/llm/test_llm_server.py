@@ -865,6 +865,7 @@ class TestBuildAsgiApp:
         that drops ``POST /v1/messages`` or ``POST /v1/messages/count_tokens``
         would break Anthropic clients such as Claude Code.
         """
+        from starlette.datastructures import State
         from vllm.platforms import current_platform
 
         if not current_platform.device_type:
@@ -875,12 +876,11 @@ class TestBuildAsgiApp:
         engine._vllm_args = vllm_args
         engine._engine_client = SimpleNamespace(model_config=None)
         engine._token_receiver = None
+        # build_asgi_app copies this onto the ASGI app; it no longer calls
+        # init_app_state.
+        engine._app_state = State()
 
-        with patch(
-            "vllm.entrypoints.openai.api_server.init_app_state",
-            new_callable=AsyncMock,
-        ):
-            app = await engine.build_asgi_app()
+        app = await engine.build_asgi_app()
 
         paths = app.openapi()["paths"]
         assert "post" in paths["/v1/messages"]
