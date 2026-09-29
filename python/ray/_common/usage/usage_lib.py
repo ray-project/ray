@@ -65,6 +65,7 @@ from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_put,
+    internal_kv_get_gcs_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -268,6 +269,26 @@ def _put_extra_usage_tag(key: str, value: str, gcs_client: Optional[GcsClient] =
         logger.debug(f"Failed to put extra usage tag, {e}")
 
 
+async def _async_put_extra_usage_tag(
+    key: str, value: str, gcs_client: Optional[GcsClient] = None
+):
+    try:
+        key_bytes = f"{usage_constant.EXTRA_USAGE_TAG_PREFIX}{key}".encode()
+        val_bytes = value.encode()
+        namespace = usage_constant.USAGE_STATS_NAMESPACE.encode()
+        client = gcs_client if gcs_client is not None else internal_kv_get_gcs_client()
+        if client is not None:
+            await client.async_internal_kv_put(
+                key_bytes, val_bytes, True, namespace=namespace
+            )
+        else:
+            logger.debug(
+                f"Failed to put extra usage tag, no gcs client available: {key}"
+            )
+    except Exception as e:
+        logger.debug(f"Failed to put extra usage tag, {e}")
+
+
 def record_hardware_usage(hardware_usage: str):
     """Record hardware usage (e.g. which CPU model is used)"""
     assert _internal_kv_initialized()
@@ -315,6 +336,43 @@ def _put_pre_init_extra_usage_tags():
     assert _internal_kv_initialized()
     for k, v in _recorded_extra_usage_tags.items():
         _put_extra_usage_tag(k, v)
+
+
+def put_recorded_extra_usage_tags(gcs_client: Optional[GcsClient] = None) -> None:
+    """Re-attempt the KV write of every tag this process has recorded.
+
+    It should be called after the current head node is promoted.
+    Library usages are deliberately not replayed: their recording sites gate on
+    the worker mode, so a head process never publishes them in the first place.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
+            When None, it will try to get the global client from the internal_kv.
+    """
+    with _recorded_extra_usage_tags_lock:
+        recorded = list(_recorded_extra_usage_tags.items())
+    for key, value in recorded:
+        _put_extra_usage_tag(key, value, gcs_client)
+
+
+async def async_put_recorded_extra_usage_tags(
+    gcs_client: Optional[GcsClient] = None,
+) -> None:
+    """Async version of `put_recorded_extra_usage_tags` for asyncio event loops.
+
+    Re-attempt the KV write of every tag this process has recorded.
+    It should be called after the current head node is promoted.
+    Library usages are deliberately not replayed: their recording sites gate on
+    the worker mode, so a head process never publishes them in the first place.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
+            When None, it will try to get the global client from the internal_kv.
+    """
+    with _recorded_extra_usage_tags_lock:
+        recorded = list(_recorded_extra_usage_tags.items())
+    for key, value in recorded:
+        await _async_put_extra_usage_tag(key, value, gcs_client)
 
 
 def put_pre_init_usage_stats():
