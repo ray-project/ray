@@ -161,7 +161,7 @@ pip's backtracking resolver has a hardcoded round limit. When two requirements c
 Re-run the same resolution with uv, which has no such limit and prints the actual conflict. Below is an example of how uv can uncover dependency problems.
 
 ```bash
-# Resolve only, install nothing — surfaces the true error
+# Resolve only, install nothing. Surfaces the true error.
 uv pip install --dry-run "ax-platform==1.2.1" "jaxtyping<0.3.8"
 ```
 
@@ -195,7 +195,7 @@ pip show ax-platform botorch gpytorch jaxtyping   # who pulls what, what's insta
 
 ### Platform-specific GPU dependencies
 
-`torch` and the PyTorch Geometric packages (`torch-scatter`, `torch-sparse`, `torch-cluster`, `torch-spline-conv`) ship CPU and GPU builds as distinct PEP 440 versions (`1.2.2`, `1.2.2+pt27cpu`, `1.2.2+pt27cu128`) on separate indexes. A single compile pass resolves against one index, so you can't put both the CPU and GPU requirement files in one dependency set — the resolver is asked to satisfy `+cpu` and `+cu128` of the same package at once and declares the requirements unsatisfiable.
+`torch` and `torch-scatter` ship CPU and GPU builds as distinct PEP 440 versions (`2.9.0`, `2.9.0+cpu`, `2.9.0+cu128`; `2.1.2+cpu.torch.2.9`, `2.1.2+cu.12.8.torch.2.9`) on separate indexes (`download.pytorch.org/whl/<backend>`, `wheels.astral.sh/simple/<backend>/`). A single compile pass resolves against one index, so you can't put both the CPU and GPU requirement files in one dependency set — the resolver is asked to satisfy `+cpu` and `+cu128` of the same package at once and declares the requirements unsatisfiable.
 
 The fix is to keep CPU and GPU as separate dependency sets, each with its own `--index`. Environment markers don't work here: a CPU-only and a GPU x86_64 Linux host match the same markers, so a marker-based split installs CUDA wheels on CPU-only machines. This mirrors the existing `ci_ml_build_depset` (CPU) and `ci_ml_gpubuild_depset` (GPU) split.
 

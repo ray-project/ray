@@ -205,16 +205,22 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
   RAY_LOG(DEBUG) << "Task queue is empty; canceling lease request";
 
-  for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
+  for (auto &[lease_id, pending_lease_request] :
+       scheduling_key_entry.pending_lease_requests) {
+    // The raylet tombstones the cancellation, so cancelling the same lease again
+    // would be a no-op there and we shouldn't send it again.
+    if (pending_lease_request.cancel_requested) {
+      continue;
+    }
     // There is an in-flight lease request. Cancel it.
     auto raylet_client =
-        raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.second);
-    const auto &lease_id = pending_lease_request.first;
+        raylet_client_pool_->GetOrConnectByAddress(pending_lease_request.raylet_address);
     RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
     // The raylet tombstones CancelWorkerLease, so a later-arriving
     // RequestWorkerLease for this lease ID is rejected
     raylet_client->CancelWorkerLease(
         lease_id, [](const Status &status, const rpc::CancelWorkerLeaseReply &reply) {});
+    pending_lease_request.cancel_requested = true;
   }
 }
 
@@ -484,7 +490,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           tasks_to_fail.pop_front();
         }
       });
-  scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
+  scheduling_key_entry.pending_lease_requests.emplace(
+      lease_id, PendingLeaseRequest{*raylet_address});
 
   // Lease more workers if there are still pending tasks and
   // and we haven't hit the max_pending_lease_requests yet.

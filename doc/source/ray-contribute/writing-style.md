@@ -150,11 +150,17 @@ In prose, write "ID" (or "IDs"). Reserve `id` for code, where it's a literal ide
 
 ### Use words for symbols in prose
 
-Outside code, spell out operators and separators.
+Outside code, spell out a symbol that stands in for a word.
 
 - "X + Y" → "X and Y"
 - "X vs. Y" → "X versus Y"
 - "X/Y" → "X or Y" or "X and Y"
+
+This rule is about a symbol doing a word's job. It isn't about arithmetic. Keep the symbol when it expresses a calculation, a pair of dimensions, or an established shorthand, where spelling it out is longer and harder to read:
+
+- `4 × 0.5 GPU = 2 GPUs` and `tensor_parallel_size × pipeline_parallel_size`
+- `384×384` for a resolution and `4 rows × 23 columns` for a shape
+- `8xH100` or `4xL4` for an accelerator count
 
 ### Don't write "etc." after "such as," "for example," or "including"
 
@@ -191,6 +197,14 @@ Use sentence case for every heading. Capitalize only the first word and proper n
 
 - Use: "Configure the runtime environment"
 - Not: "Configure the Runtime Environment"
+
+When a heading opens with a short label and a colon, capitalize the first term after the colon. The label is a prefix, not the start of the sentence, so the title that follows it begins like a title. Sentence case still governs the rest of the heading.
+
+- Use: "Example: Create a custom mean aggregator"
+- Not: "Example: create a custom mean aggregator"
+- Not: "Example: Create a Custom Mean Aggregator"
+
+The same applies to "Step 2:", "Advanced:", "Guide:", and any similar prefix. The one exception is a code identifier, which keeps its real casing: "Pod configuration: headGroupSpec and workerGroupSpecs" is correct, because `headGroupSpec` is an API field name. Never capitalize an identifier to satisfy this rule.
 
 Write conceptual headings as questions and task headings as imperatives. Keep them short.
 
@@ -251,6 +265,10 @@ Don't bold ordinary prose for emphasis, and don't bold inline code. Code styling
 - Use: "supports capacity reservations, spot instances, and on-demand instances"
 - Not: "supports **capacity reservations**, **spot instances**, and **on-demand instances**"
 
+:::{note}
+To italicize a term in reStructuredText, use `*term*`. Ray sets `default_role = "code"` in `conf.py`, so a bare single-backtick `` `term` `` renders as inline code, not italics. A single backtick in an `.rst` file is intentional inline code, not a rendering bug. MyST Markdown matches this: `*term*` is italics and `` `term` `` is inline code.
+:::
+
 ### Tables
 
 Use a Markdown table for simple rows with single-line cells. Always include a header row, and introduce the table with a sentence of prose. For cells that hold code blocks, multiple lines, or other complex content, use the `list-table` directive:
@@ -279,6 +297,8 @@ Ray docs use Sphinx cross-references, which resolve at build time and survive pa
   (my-label)=
   ## The section to link
   ```
+
+  Ray docs don't enable Sphinx's `autosectionlabel` extension, so a heading's text isn't a `{ref}` target on its own. Every section you link to needs an explicit label. The tradeoff favors stability: rewording a heading can't break an existing `{ref}`, because the label is a separate line that the edit leaves untouched.
 
 - Link between `.md` pages with a standard Markdown link: `[text](other-page.md)`.
 - Link to the API reference with autodoc cross-reference roles, such as `` {py:func}`ray.init` `` or `` {py:class}`ray.data.Dataset` ``.

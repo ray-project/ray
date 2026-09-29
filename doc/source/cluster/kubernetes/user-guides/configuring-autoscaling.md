@@ -63,7 +63,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 ### Step 4: Verify the Kubernetes cluster status
@@ -85,7 +85,7 @@ kubectl get configmaps
 # ...
 ```
 
-The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container. Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that contains two Python scripts: `detached_actor.py` and `terminate_detached_actor.py`.
+The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container. Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that contains two Python scripts: `detached_actor.py` and `terminate_detached_actor.py`.
 
 * `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
   ```py
@@ -240,7 +240,7 @@ kubectl logs $HEAD_POD -c autoscaler | tail -n 20
 
 ```bash
 # Delete RayCluster and ConfigMap
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.7.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 
 # Uninstall the KubeRay operator
 helm uninstall kuberay-operator
@@ -252,7 +252,7 @@ kind delete cluster
 (kuberay-autoscaling-config)=
 ## KubeRay Autoscaling Configurations
 
-The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options. ***It's recommended to read this section in conjunction with the YAML file.***
+The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options. ***It's recommended to read this section in conjunction with the YAML file.***
 
 ### 1. Enabling autoscaling
 
@@ -284,7 +284,7 @@ Utilize the `RayCluster` CR's `autoscalerOptions` field to accomplish this. This
 
 The `autoscalerOptions` field also provides options for configuring the Autoscaler container. Usually, it's not necessary to specify these options.
 
-* **`resources`**: The `resources` sub-field of `autoscalerOptions` sets optional resource overrides for the Autoscaler sidecar container. These overrides should be specified in the standard [container resource spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#resources). The default values are indicated below:
+* **`resources`**: The `resources` sub-field of `autoscalerOptions` sets optional resource overrides for the Autoscaler sidecar container. These overrides should be specified in the standard [container resource spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#ResourceRequirements). The default values are indicated below:
   ```yaml
   resources:
     limits:
@@ -299,7 +299,7 @@ The `autoscalerOptions` field also provides options for configuring the Autoscal
 
 * **`imagePullPolicy`**: This field overrides the Autoscaler container's image pull policy. The default is `IfNotPresent`.
 
-* **`env`** and **`envFrom`**: These fields specify Autoscaler container environment variables. These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#environment-variables) for container environment variables.
+* **`env`** and **`envFrom`**: These fields specify Autoscaler container environment variables. These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#EnvVar) for container environment variables.
 
 * **`command`** and **`args`** (KubeRay >= v1.7.0):
 These fields independently override the autoscaler container's `command` and `args`.
@@ -334,7 +334,7 @@ Earlier versions only support `rayStartParams` or resource limits, and don't rec
 If you omit `rayStartParams` and want to use autoscaling, the autoscaling image must have Ray 2.45.0 or later.
 ```
 
-The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Pod's resource requirements. The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster. Therefore, without this information, the Ray Autoscaler reports an error and fails to start. Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
+The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Pod's resource requirements. The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster. Therefore, without this information, the Ray Autoscaler reports an error and fails to start. Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
 * If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
 * If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
@@ -458,7 +458,7 @@ Node: 2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
 
 2. **Stability** Autoscaler V2 makes significant improvements to idle node handling. The V1 autoscaler could stop nodes that became active during termination processing, potentially failing tasks or actors. V2 uses Ray's graceful draining mechanism, which safely stops idle nodes without disrupting ongoing work.
 
-[ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/v1.6.0/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml) is an example YAML file of a RayCluster with Autoscaler V2 enabled that works with the latest KubeRay version.
+[ray-cluster.autoscaler-v2.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.autoscaler-v2.yaml) is an example YAML file of a RayCluster with Autoscaler V2 enabled that works with the latest KubeRay version.
 
 If you're using KubeRay >= 1.4.0, enable V2 by setting `RayCluster.spec.autoscalerOptions.version: v2`.
 

@@ -1,4 +1,4 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: Ray Jobs API
   version: 4.0.0
@@ -10,8 +10,7 @@ info:
 paths:
   /api/version:
     get:
-      summary: |
-        Get Version
+      summary: Get Version
       description: |
         Get the Ray Jobs API version and the Ray version running on the cluster.
       responses:
@@ -34,8 +33,7 @@ paths:
                     type: string
   /api/jobs:
     post:
-      summary: |
-        Submit Job
+      summary: Submit Job
       description: |
         Submit a job to the cluster.
       requestBody:

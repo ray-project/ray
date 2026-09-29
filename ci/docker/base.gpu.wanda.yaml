@@ -14,6 +14,5 @@ build_args:
   - PYTHON
   - CUDA_VERSION
   - RAYCI_IMAGE_PIP_INDEX_URL
-  - RAYCI_IMAGE_PIP_TRUSTED_HOST
 tags:
   - cr.ray.io/rayproject/oss-ci-base_gpu-py$PYTHON

@@ -44,3 +44,14 @@ def test_ray_dist_jar_uses_fixed_log4j_version():
         "log4j-core": "2.25.4",
         "log4j-slf4j-impl": "2.25.4",
     }
+
+
+def test_ray_dist_jar_uses_patched_httpcore5_version():
+    java_deps = (REPO_ROOT / "java" / "dependencies.bzl").read_text()
+    match = re.search(
+        r"org\.apache\.httpcomponents\.core5:httpcore5:([0-9][^\"\s]*)",
+        java_deps,
+    )
+
+    assert match is not None
+    assert match.group(1) == "5.4.3"

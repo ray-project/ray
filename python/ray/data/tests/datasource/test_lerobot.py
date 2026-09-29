@@ -9,6 +9,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -1030,6 +1031,41 @@ def test_read_lerobot_inconsistent_task_index_raises(
                 pass
 
 
+@pytest.mark.parametrize(
+    "victim",
+    [
+        "data/chunk-000/file-000.parquet",
+        "meta/tasks.parquet",
+        "meta/episodes/chunk-000/episodes-000.parquet",
+    ],
+    ids=["data-shard", "meta-tasks", "meta-episodes"],
+)
+def test_read_lerobot_rejects_pickle_object_columns(
+    ray_start_regular_shared, lerobot_dataset_no_video, tmp_path, victim
+):
+    """A tampered data shard or metadata parquet must not be able to run its
+    embedded pickle, neither in a read task nor on the driver (lerobot parses
+    ``meta/`` itself during ``read_lerobot``)."""
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    path = os.path.join(lerobot_dataset_no_video, victim)
+    original = pq.read_table(path)
+    tampered = original.append_column(
+        "evil", ArrowPythonObjectArray.from_objects([Exploit()] * original.num_rows)
+    )
+    pq.write_table(tampered, path)
+
+    # The meta cases raise at read_lerobot() time, the shard case at take_all().
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ray.data.read_lerobot(lerobot_dataset_no_video).take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 def _fsspec_fs_with_creds():
     """An fsspec filesystem carrying credential-like storage_options."""
     import fsspec
@@ -1495,6 +1531,13 @@ def test_read_lerobot_delta_invalid_raises(
         ray.data.read_lerobot(
             lerobot_dataset_no_video, delta_timestamps={"action": [0.05]}
         )
+
+    with pytest.raises(ValueError, match="not dataset features") as exc_info:
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video,
+            delta_timestamps={"acton": [0.0, 0.1]},
+        )
+    assert "acton" in str(exc_info.value)
 
 
 if __name__ == "__main__":

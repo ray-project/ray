@@ -4,11 +4,8 @@ froms:
 build_args:
   - BUILDKITE_BAZEL_CACHE_URL
   - RAYCI_IMAGE_PIP_INDEX_URL
-  - RAYCI_IMAGE_PIP_TRUSTED_HOST
 dockerfile: ci/docker/forge.Dockerfile
 srcs:
   - ci/k8s/install-k8s-tools.sh
-  - ci/pypi_index_proxy.py
   - ci/pypi_proxy_profile.sh
-  - ci/install_pypi_proxy.sh
   - ci/bazel_mirror_downloader.sh

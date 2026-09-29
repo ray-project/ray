@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
@@ -19,6 +20,7 @@ class SandboxRuntime:
     def __init__(self):
         self._image_manager = ImageManager()
         self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
+        self._ttl_timers: Dict[str, threading.Timer] = {}
 
     @property
     def image_manager(self) -> ImageManager:
@@ -49,10 +51,12 @@ class SandboxRuntime:
         memory: Union[str, int, float] = 0,
         env: Optional[Dict[str, str]] = None,
         workdir: Optional[str] = None,
-        ttl_seconds: Optional[int] = 3600,
+        ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
         rootless: bool = True,
         network: str = "none",
+        dns: Optional[List[str]] = None,
+        capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
@@ -65,13 +69,23 @@ class SandboxRuntime:
             cpu: Number of CPU cores allocated to the sandbox.
             memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
             env: Environment variables to inject into the sandbox.
-            workdir: Default working directory inside the sandbox. By default, the
-                working directory is the only writable path in the sandbox (unless
-                ``readonly=False`` is set). If not provided, the container's WORKDIR is used.
-            ttl_seconds: Optional automatic cleanup time-to-live in seconds.
+            workdir: Working directory for commands; None uses the image's
+                WORKDIR. On a readonly rootfs an explicit workdir is also the
+                sandbox's only writable path; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+            ttl_seconds: Optional time-to-live in seconds, wall-clock from
+                creation (not idle time), enforced by this runtime with a
+                daemon timer. None (default) or <= 0 disables it.
             timeout_seconds: Timeout in seconds for sandbox creation.
             rootless: If True, run gVisor in rootless mode.
-            network: Network mode for runsc.
+            network: Network mode ("none", "public", "host", "sandbox");
+                see :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+                "public" is the recommended internet-access mode.
+            dns: Optional nameserver IPs for the generated /etc/resolv.conf
+                (public resolvers by default for "public").
+            capabilities: Linux capabilities, written exactly (None keeps
+                the runtime default; ``[]`` means none). Use
+                ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
             readonly: If True (default), mount container image rootfs in read-only mode
                 such that only ``workdir`` is writable. If False, the entire root filesystem
                 is writable. Writes are isolated within a per-sandbox copy-on-write overlay
@@ -96,13 +110,28 @@ class SandboxRuntime:
             timeout_seconds=timeout_seconds,
             rootless=rootless,
             network=network,
+            dns=dns,
+            capabilities=capabilities,
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
             **kwargs,
         )
         self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
-        return self._backend.create_sandbox(cfg)
+        instance_id = self._backend.create_sandbox(cfg)
+        if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
+            timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))
+            timer.daemon = True
+            self._ttl_timers[instance_id] = timer
+            timer.start()
+        return instance_id
+
+    def _expire(self, instance_id: str) -> None:
+        """TTL callback: best-effort delete (the sandbox may already be gone)."""
+        try:
+            self.delete(instance_id)
+        except Exception:
+            pass
 
     def exec(
         self,
@@ -111,6 +140,8 @@ class SandboxRuntime:
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox.
 
@@ -120,6 +151,12 @@ class SandboxRuntime:
             timeout: Maximum execution time in seconds.
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            user: Optional user to run as: a numeric uid, "uid:gid", or a
+                user (optionally ":group") name, resolved against the
+                /etc/passwd and /etc/group inside the running sandbox
+                (default: the image user).
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -130,6 +167,8 @@ class SandboxRuntime:
             timeout=timeout,
             cwd=cwd,
             env=env,
+            shell=shell,
+            user=user,
         )
 
     async def exec_async(
@@ -139,6 +178,8 @@ class SandboxRuntime:
         timeout: Optional[float] = None,
         cwd: Optional[str] = None,
         env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        user: Optional[str] = None,
     ) -> ExecResult:
         """Execute a command inside the specified sandbox asynchronously.
 
@@ -148,6 +189,12 @@ class SandboxRuntime:
             timeout: Maximum execution time in seconds.
             cwd: Working directory inside the sandbox for command execution.
             env: Environment variables to set for the command.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            user: Optional user to run as: a numeric uid, "uid:gid", or a
+                user (optionally ":group") name, resolved against the
+                /etc/passwd and /etc/group inside the running sandbox
+                (default: the image user).
 
         Returns:
             ExecResult containing exit code, stdout, and stderr.
@@ -159,6 +206,8 @@ class SandboxRuntime:
             timeout=timeout,
             cwd=cwd,
             env=env,
+            shell=shell,
+            user=user,
         )
 
     def upload_file(self, instance_id: str, local_path: str, remote_path: str) -> None:
@@ -191,7 +240,11 @@ class SandboxRuntime:
             f.write(content)
 
     def write_file(
-        self, instance_id: str, path: str, content: Union[str, bytes]
+        self,
+        instance_id: str,
+        path: str,
+        content: Union[str, bytes],
+        append: bool = False,
     ) -> None:
         """Write string or binary content directly to a file inside the sandbox.
 
@@ -199,8 +252,9 @@ class SandboxRuntime:
             instance_id: Unique identifier of the sandbox instance.
             path: Destination file path inside the sandbox.
             content: String or binary content to write into the file.
+            append: Append to the file instead of truncating it.
         """
-        self._backend.write_file(instance_id, path, content)
+        self._backend.write_file(instance_id, path, content, append=append)
 
     def read_file(self, instance_id: str, path: str) -> bytes:
         """Read binary content from a file inside the sandbox.
@@ -231,6 +285,9 @@ class SandboxRuntime:
         Args:
             instance_id: Unique identifier of the sandbox instance.
         """
+        timer = self._ttl_timers.pop(instance_id, None)
+        if timer is not None:
+            timer.cancel()
         self._backend.delete_sandbox(instance_id)
 
     def terminate(self, instance_id: str) -> None:

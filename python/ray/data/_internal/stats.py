@@ -29,11 +29,13 @@ from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
 from ray.data._internal.execution.interfaces.distribution_tracker import (
+    DistributionStats,
     DistributionTracker,
 )
 from ray.data._internal.execution.interfaces.execution_options import safe_round
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     NODE_UNKNOWN,
+    MetricDefinition,
     MetricsGroup,
     MetricsType,
     NodeMetrics,
@@ -57,9 +59,80 @@ STATS_ACTOR_NAME = "datasets_stats_actor"
 STATS_ACTOR_NAMESPACE = "_dataset_stats_actor"
 UNKNOWN = "unknown"
 UNKNOWN_UUID = "unknown_uuid"
+DISTRIBUTION_METRIC_STATISTICS = ("mean", "max")
 
 
 StatsDict = Dict[str, List[BlockStats]]
+DistributionPrometheusMetrics = Dict[str, Gauge]
+PrometheusMetric = Union[Metric, DistributionPrometheusMetrics]
+PrometheusMetricValue = Union[
+    int,
+    float,
+    RuntimeMetricsHistogram,
+    DistributionStats,
+    None,
+]
+
+
+def _create_prometheus_metric(
+    metric: MetricDefinition, tag_keys: Tuple[str, ...]
+) -> Optional[PrometheusMetric]:
+    if metric.metrics_type == MetricsType.Unsupported:
+        return None
+
+    metric_name = f"data_{metric.name}"
+    if metric.metrics_type == MetricsType.Gauge:
+        return Gauge(
+            metric_name,
+            description=metric.description,
+            tag_keys=tag_keys,
+        )
+    elif metric.metrics_type == MetricsType.Histogram:
+        return Histogram(
+            metric_name,
+            description=metric.description,
+            tag_keys=tag_keys,
+            **metric.metrics_args,
+        )
+    elif metric.metrics_type == MetricsType.Counter:
+        return Counter(
+            metric_name,
+            description=metric.description,
+            tag_keys=tag_keys,
+        )
+    elif metric.metrics_type == MetricsType.Distribution:
+        return {
+            statistic: Gauge(
+                f"{metric_name}_{statistic}",
+                description=f"{metric.description} ({statistic})",
+                tag_keys=tag_keys,
+            )
+            for statistic in DISTRIBUTION_METRIC_STATISTICS
+        }
+
+    return None
+
+
+def _record_prometheus_metric(
+    prom_metric: PrometheusMetric,
+    value: PrometheusMetricValue,
+    tags: Optional[Dict[str, str]] = None,
+) -> None:
+    if isinstance(prom_metric, Gauge):
+        prom_metric.set(value, tags)
+    elif isinstance(prom_metric, Counter):
+        prom_metric.inc(value, tags)
+    elif isinstance(prom_metric, Histogram):
+        if isinstance(value, RuntimeMetricsHistogram):
+            value.export_to(prom_metric, tags)
+    elif isinstance(prom_metric, dict) and isinstance(value, dict):
+        if value.get("num_samples") == 0:
+            return
+
+        for statistic, gauge in prom_metric.items():
+            statistic_value = value.get(statistic)
+            if statistic_value is not None:
+                gauge.set(statistic_value, tags)
 
 
 def fmt(seconds: float) -> str:
@@ -363,15 +436,13 @@ class _DatasetStatsBuilder:
 
 @ray.remote(num_cpus=0)
 class _StatsActor:
-    """Actor holding stats for blocks created by LazyBlockList.
+    """Actor holding execution stats and metadata for datasets.
 
     This actor is shared across all datasets created in the same cluster.
     In order to cap memory usage, we set a max number of stats to keep
     in the actor. When this limit is exceeded, the stats will be garbage
     collected in FIFO order.
-
-    TODO(ekl) we should consider refactoring LazyBlockList so stats can be
-    extracted without using an out-of-band actor."""
+    """
 
     def __init__(self, max_stats=1000):
         # Mapping from uuid -> (task_id -> list of blocks statistics).
@@ -430,6 +501,11 @@ class _StatsActor:
             description="GPUs allocated to dataset operators",
             tag_keys=op_tags_keys,
         )
+        self.memory_usage_bytes = Gauge(
+            "data_memory_usage_bytes",
+            description="Heap memory allocated to dataset operators",
+            tag_keys=op_tags_keys,
+        )
         self.output_bytes = Gauge(
             "data_output_bytes",
             description="Bytes outputted by dataset operators",
@@ -478,14 +554,6 @@ class _StatsActor:
         self.execution_metrics_actors = (
             self._create_prometheus_metrics_for_execution_metrics(
                 metrics_group=MetricsGroup.ACTORS,
-                tag_keys=op_tags_keys,
-            )
-        )
-
-        # Miscellaneous metrics
-        self.execution_metrics_misc = (
-            self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group=MetricsGroup.MISC,
                 tag_keys=op_tags_keys,
             )
         )
@@ -681,34 +749,14 @@ class _StatsActor:
 
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
-    ) -> Dict[str, Metric]:
-        metrics = {}
+    ) -> Dict[str, PrometheusMetric]:
+        metrics: Dict[str, PrometheusMetric] = {}
         for metric in OpRuntimeMetrics.get_metrics():
             if not metric.metrics_group == metrics_group:
                 continue
-            if metric.metrics_type == MetricsType.Unsupported:
-                continue
-            metric_name = f"data_{metric.name}"
-            metric_description = metric.description
-            if metric.metrics_type == MetricsType.Gauge:
-                metrics[metric.name] = Gauge(
-                    metric_name,
-                    description=metric_description,
-                    tag_keys=tag_keys,
-                )
-            elif metric.metrics_type == MetricsType.Histogram:
-                metrics[metric.name] = Histogram(
-                    metric_name,
-                    description=metric_description,
-                    tag_keys=tag_keys,
-                    **metric.metrics_args,
-                )
-            elif metric.metrics_type == MetricsType.Counter:
-                metrics[metric.name] = Counter(
-                    metric_name,
-                    description=metric_description,
-                    tag_keys=tag_keys,
-                )
+            prom_metric = _create_prometheus_metric(metric, tag_keys)
+            if prom_metric is not None:
+                metrics[metric.name] = prom_metric
         return metrics
 
     def _create_prometheus_metrics_for_per_node_metrics(self) -> Dict[str, Gauge]:
@@ -731,24 +779,11 @@ class _StatsActor:
     def update_execution_metrics(
         self,
         dataset_tag: str,
-        op_metrics: List[Dict[str, int | float]],
+        op_metrics: List[Dict[str, Any]],
         operator_tags: List[str],
         state: Dict[str, Any],
         per_node_metrics: Optional[Dict[str, Dict[str, int | float]]] = None,
     ):
-        def _record(
-            prom_metric: Metric,
-            value: Union[int, float, List[int]],
-            tags: Dict[str, str] = None,
-        ):
-            if isinstance(prom_metric, Gauge):
-                prom_metric.set(value, tags)
-            elif isinstance(prom_metric, Counter):
-                prom_metric.inc(value, tags)
-            elif isinstance(prom_metric, Histogram):
-                if isinstance(value, RuntimeMetricsHistogram):
-                    value.export_to(prom_metric, tags)
-
         for stats, operator_tag in zip(op_metrics, operator_tags):
             tags = self._create_tags(dataset_tag, operator_tag)
 
@@ -759,25 +794,23 @@ class _StatsActor:
             self.output_rows.set(stats.get("row_outputs_taken", 0), tags)
             self.cpu_usage_cores.set(stats.get("cpu_usage", 0), tags)
             self.gpu_usage_cores.set(stats.get("gpu_usage", 0), tags)
+            self.memory_usage_bytes.set(stats.get("memory_usage", 0), tags)
             for field_name, prom_metric in self.execution_metrics_inputs.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
             for field_name, prom_metric in self.execution_metrics_outputs.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_tasks.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
             for (
                 field_name,
                 prom_metric,
             ) in self.execution_metrics_obj_store_memory.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
             for field_name, prom_metric in self.execution_metrics_actors.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
-
-            for field_name, prom_metric in self.execution_metrics_misc.items():
-                _record(prom_metric, stats.get(field_name, 0), tags)
+                _record_prometheus_metric(prom_metric, stats.get(field_name, 0), tags)
 
         # Update per node metrics if they exist, the creation of these metrics is controlled
         # by the _data_context.enable_per_node_metrics flag in the streaming executor but
@@ -796,7 +829,7 @@ class _StatsActor:
                 tags = self._create_tags(dataset_tag=dataset_tag, node_ip_tag=node_ip)
                 for metric_name, metric_value in node_metrics.items():
                     prom_metric = self.per_node_metrics[metric_name]
-                    _record(prom_metric, metric_value, tags)
+                    _record_prometheus_metric(prom_metric, metric_value, tags)
 
         # This update is called from a dataset's executor,
         # so all tags should contain the same dataset
@@ -1699,7 +1732,17 @@ class OperatorStatsSummary:
     block_execution_summary_str: str
     wall_time: Optional[StatsSummary] = None
     cpu_time: Optional[StatsSummary] = None
-    udf_time: Optional[StatsSummary] = None
+    # Time in the map transform chain. The four fields below decompose it.
+    block_transform_time: Optional[StatsSummary] = None
+    # Time turning input blocks into the batches or rows the transforms consume.
+    input_prep_time: Optional[StatsSummary] = None
+    # Time inside the stage bodies themselves, Ray Data's as well as yours.
+    function_body_time: Optional[StatsSummary] = None
+    # Time assembling transform output back into blocks.
+    output_build_time: Optional[StatsSummary] = None
+    # The same total split per fused stage instead of per phase, in chain
+    # order. `None` unless `DataContext.per_stage_map_timing` is set.
+    stage_time: Optional[List[StatsSummary]] = None
     total_input_num_rows: Optional[int] = None
     output_num_rows: Optional[StatsSummary] = None
     output_size_bytes: Optional[StatsSummary] = None
@@ -1747,7 +1790,11 @@ class OperatorStatsSummary:
         # Single pass over block_stats to collect all metrics.
         wall_time_acc: _StatsAccumulator = _StatsAccumulator()
         cpu_time_acc: _StatsAccumulator = _StatsAccumulator()
-        udf_time_acc: _StatsAccumulator = _StatsAccumulator()
+        block_transform_time_acc: _StatsAccumulator = _StatsAccumulator()
+        input_prep_time_acc: _StatsAccumulator = _StatsAccumulator()
+        function_body_time_acc: _StatsAccumulator = _StatsAccumulator()
+        output_build_time_acc: _StatsAccumulator = _StatsAccumulator()
+        stage_time_accs: List[_StatsAccumulator] = []
         output_rows_acc: _StatsAccumulator = _StatsAccumulator()
         output_sizes_acc: _StatsAccumulator = _StatsAccumulator()
         rows_per_task: DefaultDict[int, int] = collections.defaultdict(int)
@@ -1768,8 +1815,22 @@ class OperatorStatsSummary:
                     wall_time_acc.add(es.wall_time_s)
                 if es.cpu_time_s is not None:
                     cpu_time_acc.add(es.cpu_time_s)
-                if es.udf_time_s is not None:
-                    udf_time_acc.add(es.udf_time_s)
+                if es.block_transform_time_s is not None:
+                    block_transform_time_acc.add(es.block_transform_time_s)
+                if es.input_prep_time_s is not None:
+                    input_prep_time_acc.add(es.input_prep_time_s)
+                if es.function_body_time_s is not None:
+                    function_body_time_acc.add(es.function_body_time_s)
+                if es.output_build_time_s is not None:
+                    output_build_time_acc.add(es.output_build_time_s)
+                if es.stage_time_s is not None:
+                    # Sized on first sight. Every block a chain produces has the
+                    # same number of stages, but a retry that re-planned could
+                    # in principle differ, so grow rather than assume.
+                    while len(stage_time_accs) < len(es.stage_time_s):
+                        stage_time_accs.append(_StatsAccumulator())
+                    for acc, seconds in zip(stage_time_accs, es.stage_time_s):
+                        acc.add(seconds)
                 tasks_per_node[es.node_id].add(es.task_idx)
                 if es.start_time_s is not None:
                     earliest_start_time = min(earliest_start_time, es.start_time_s)
@@ -1812,7 +1873,20 @@ class OperatorStatsSummary:
         # Execution stats.
         wall_time_stats = wall_time_acc.get()
         cpu_stats = cpu_time_acc.get()
-        udf_stats = udf_time_acc.get()
+        block_transform_stats = block_transform_time_acc.get()
+        # A chain that measured only its total leaves the phase accumulators
+        # empty. Report that as None rather than a zero-valued summary, so a
+        # consumer can tell "not measured" from "measured as zero" -- the phases
+        # are absent for row-based transforms unless
+        # `DataContext.accurate_map_phase_timing` is set.
+        phases_measured = input_prep_time_acc.count > 0
+        input_prep_stats = input_prep_time_acc.get() if phases_measured else None
+        function_body_stats = function_body_time_acc.get() if phases_measured else None
+        output_build_stats = output_build_time_acc.get() if phases_measured else None
+        # Empty unless `DataContext.per_stage_map_timing` was set for a chain
+        # with more than one stage. `None`, not `[]`, for the same reason the
+        # phases are `None`: absent means not measured.
+        stage_stats = [acc.get() for acc in stage_time_accs] or None
 
         # Output stats.
         output_num_rows_stats = output_rows_acc.get()
@@ -1838,7 +1912,11 @@ class OperatorStatsSummary:
             block_execution_summary_str=exec_summary_str,
             wall_time=wall_time_stats,
             cpu_time=cpu_stats,
-            udf_time=udf_stats,
+            block_transform_time=block_transform_stats,
+            input_prep_time=input_prep_stats,
+            function_body_time=function_body_stats,
+            output_build_time=output_build_stats,
+            stage_time=stage_stats,
             total_input_num_rows=total_input_num_rows,
             output_num_rows=output_num_rows_stats,
             output_size_bytes=output_size_bytes_stats,
@@ -1875,14 +1953,43 @@ class OperatorStatsSummary:
                 fmt(self.cpu_time.sum),
             )
 
-        if self.udf_time:
+        if self.block_transform_time:
             out += indent
-            out += "* UDF time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(self.udf_time.min),
-                fmt(self.udf_time.max),
-                fmt(self.udf_time.mean),
-                fmt(self.udf_time.sum),
+            out += "* Block transform time: {} min, {} max, {} mean, {} total\n".format(
+                fmt(self.block_transform_time.min),
+                fmt(self.block_transform_time.max),
+                fmt(self.block_transform_time.mean),
+                fmt(self.block_transform_time.sum),
             )
+            # Breakdown of the line above, in execution order; these sum to
+            # it. Verbose-only, like `extra_metrics` -- the figures are on the
+            # summary either way.
+            breakdown = [
+                ("Input prep", self.input_prep_time),
+                ("Function body", self.function_body_time),
+                ("Output block build", self.output_build_time),
+            ]
+            # The same total split the other way, one line per fused stage.
+            # Numbered in chain order, so stage 0 is the leftmost name in the
+            # operator name above. These sum to the total as well.
+            breakdown += [
+                (f"Stage {idx}", stats)
+                for idx, stats in enumerate(self.stage_time or [])
+            ]
+            if DataContext.get_current().verbose_stats_logs and any(
+                s is not None for _, s in breakdown
+            ):
+                for label, stats in breakdown:
+                    if stats is None:
+                        continue
+                    out += indent
+                    out += "\t* {}: {} min, {} max, {} mean, {} total\n".format(
+                        label,
+                        fmt(stats.min),
+                        fmt(stats.max),
+                        fmt(stats.mean),
+                        fmt(stats.sum),
+                    )
 
         if self.output_num_rows:
             out += indent

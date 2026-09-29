@@ -202,18 +202,21 @@ For `HTTPMode` and `SidecarMode`, there is no standalone submitter pod, so no ad
 
 When a `RayJob` targets a pre-existing cluster with `clusterSelector`, the cluster has no `RayJob` owner reference. The operator can't automatically add a submitter ingress rule. To allow the submitter pod to reach the head dashboard port, add an opt-in label to both the `RayCluster` ingress rule and the `RayJob` submitter pod template.
 
-On the `RayCluster`, add an ingress rule under `networkIsolation` that matches the opt-in label:
+On the `RayCluster`, add an ingress rule under `head.ingressRules` that matches the opt-in label:
 
 ```yaml
 spec:
-  networkIsolation:
+  networkPolicy:
     mode: DenyAll
-    ingressRules:
-    - from:
-      - podSelector:
-          matchLabels:
-            ray.io/allow-head-access: "true"
-      ports: [ { protocol: TCP, port: 8265 } ]
+    head:
+      ingressRules:
+      - from:
+        - podSelector:
+            matchLabels:
+              ray.io/allow-head-access: "true"
+        ports:
+        - port: 8265
+          protocol: TCP
 ```
 
 On the `RayJob`, set the same label on the submitter pod via `submitterPodTemplate`:

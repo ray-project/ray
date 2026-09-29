@@ -1480,9 +1480,14 @@ grpcio==1.80.0 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   ray
+grpcio-reflection==1.80.0 \
+    --hash=sha256:a7d0b77961b1c722400b1509968f1ad3a64e9d78280d4cf5b88b6cfe5b41eb61 \
+    --hash=sha256:e9c76aabc4324279945b70bc76a3d41bc4f9396bffcf1cfc1011a571c2c56221
+    # via ray
 grpcio-status==1.80.0 \
     --hash=sha256:4b56990363af50dbf2c2ebb80f1967185c07d87aa25aa2bea45ddb75fc181dbe \
     --hash=sha256:df73802a4c89a3ea88aa2aff971e886fccce162bc2e6511408b3d67a144381cd
@@ -1686,6 +1691,7 @@ jinja2==3.1.6 \
     #   jupyterlab-server
     #   memray
     #   nbconvert
+    #   ray
 jmespath==1.1.0 \
     --hash=sha256:472c87d80f36026ae83c6ddd0f1d05d4e510134ed462851fd5f754c8c3cbb88d \
     --hash=sha256:a5663118de4908c91729bea0acadca56526eb2698e83de10cd116ae0f4e97c64
@@ -2841,6 +2847,7 @@ protobuf==6.33.6 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-proto

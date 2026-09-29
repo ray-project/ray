@@ -14,9 +14,11 @@ from ray.data._internal.datasource_v2.chunkers.file_chunker import (
 from ray.data._internal.datasource_v2.chunkers.parquet_footer_types import (
     Bin,
     BinItem,
-    FileChunks,
 )
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    FilePartitioner,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -237,13 +239,54 @@ class _SingleFileBinPool(_BinPool):
         self._path = None
 
 
-class OnlineBinPacker:
-    """Streaming per-file bin packer over row-group chunks.
+def _bin_items(manifest: FileManifest) -> List[BinItem]:
+    """Read a listing manifest as bin items, one per row.
 
-    Feed ``FileChunks`` via :meth:`add_file_chunks`; drain sealed bins (as
-    :class:`FileManifest` blocks) via :meth:`has_partition` / :meth:`next_partition`
-    as they become available; call :meth:`finalize` once all chunks are added to
-    flush the still-open bins.
+    A row carrying :class:`ParquetRowGroupChunkMetadata` becomes a row-group run
+    with exact stats. A row with no chunk metadata -- the plain whole-file
+    listing path -- becomes a single indivisible unit sized by the file itself,
+    which is what lets this partitioner sit behind any indexer rather than only
+    a footer-reading one.
+    """
+    items: List[BinItem] = []
+    for path, file_size, md in zip(
+        manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas
+    ):
+        if md is None or "row_group_ids" not in md:
+            items.append(
+                BinItem(
+                    path=str(path),
+                    rg_idx=0,
+                    uncompressed_size=int(file_size),
+                    num_rows=0,
+                )
+            )
+            continue
+        ids = md["row_group_ids"]
+        items.append(
+            BinItem(
+                path=str(path),
+                rg_idx=ids[0],
+                uncompressed_size=md["uncompressed_size"],
+                num_rows=md["num_rows"],
+                fully_matched=md["fully_matched"],
+                rg_count=len(ids),
+                rg_sizes=tuple(md["rg_sizes"]),
+                rg_rows=tuple(md["rg_rows"]),
+            )
+        )
+    return items
+
+
+class OnlineBinPacker(FilePartitioner):
+    """Streaming coloured bin packer over listing rows.
+
+    Feed manifests via :meth:`add_input`; drain sealed bins via
+    :meth:`has_partition` / :meth:`next_partition` as they become available;
+    call :meth:`finalize` once all input is added to flush the still-open bins.
+
+    Packs globally -- one pool of open bins keyed by file -- so it needs every
+    listing row, hence ``requires_global_input``.
     """
 
     def __init__(
@@ -269,23 +312,15 @@ class OnlineBinPacker:
         )  # non-isolated bins (mixed files)
         self._heavy = _SingleFileBinPool(self._cap, self._output)
 
+    @property
+    def requires_global_input(self) -> bool:
+        return True
+
     # === Feeding ===
 
-    def add_file_chunks(self, file_chunks: FileChunks) -> None:
-        path = file_chunks.path
-        for row_group in file_chunks.row_groups:
-            self._place(
-                BinItem(
-                    path=path,
-                    rg_idx=row_group.rg_idx,
-                    uncompressed_size=row_group.uncompressed_size,
-                    num_rows=row_group.num_rows,
-                    fully_matched=row_group.fully_matched,
-                    rg_count=row_group.rg_count,
-                    rg_sizes=row_group.rg_sizes,
-                    rg_rows=row_group.rg_rows,
-                )
-            )
+    def add_input(self, input_manifest: FileManifest) -> None:
+        for item in _bin_items(input_manifest):
+            self._place(item)
 
     def _units(self, item: BinItem) -> List[int]:
         # The row-group boundaries an item may be cut between, as unit sizes. A
@@ -366,12 +401,16 @@ class OnlineBinPacker:
         ids_by_path: defaultdict = defaultdict(list)
         rows_by_path: defaultdict = defaultdict(int)
         size_by_path: defaultdict = defaultdict(int)
+        matched_by_path: dict = {}
         for item in bin_.items:
             ids_by_path[item.path].extend(
                 range(item.rg_idx, item.rg_idx + item.rg_count)
             )
             rows_by_path[item.path] += item.num_rows
             size_by_path[item.path] += item.uncompressed_size
+            matched_by_path[item.path] = (
+                matched_by_path.get(item.path, True) and item.fully_matched
+            )
 
         paths: List[str] = []
         sizes: List[int] = []
@@ -385,11 +424,16 @@ class OnlineBinPacker:
                     row_group_ids=tuple(sorted(ids)),
                     num_rows=rows_by_path[path],
                     uncompressed_size=size_by_path[path],
+                    fully_matched=matched_by_path[path],
+                    rg_sizes=(),
+                    rg_rows=(),
                 )
             )
         # TypedDict invariance: ``ParquetRowGroupChunkMetadata`` has extra keys
         # beyond the empty ``ChunkMetadata`` base, so the concrete list is not
         # assignable to ``List[Optional[ChunkMetadata]]`` without a cast.
         return FileManifest.construct_manifest(
-            paths, sizes, cast(List[Optional[ChunkMetadata]], chunk_metadatas)
+            paths=paths,
+            sizes=sizes,
+            chunk_metadatas=cast(List[Optional[ChunkMetadata]], chunk_metadatas),
         )

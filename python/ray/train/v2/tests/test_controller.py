@@ -1008,6 +1008,139 @@ async def test_abort_resilient_to_callback_failure(monkeypatch):
     assert isinstance(controller.get_state(), AbortedState)
 
 
+class _CapturingWorkerGroup(DummyWorkerGroup):
+    """DummyWorkerGroup that records the context it was created with."""
+
+    contexts = []
+
+    def __init__(self, train_run_context, worker_group_context, callbacks=None):
+        type(self).contexts.append(worker_group_context)
+        super().__init__(train_run_context, worker_group_context, callbacks)
+
+
+class _StubReservationScalingPolicy(MockScalingPolicy):
+    """Scaling policy whose reservation answer is fixed by the test."""
+
+    def __init__(self, scaling_config, reserved_label_selectors):
+        super().__init__(scaling_config)
+        self._reserved_label_selectors = reserved_label_selectors
+        self.reservation_queries = 0
+
+    def get_reserved_bundle_label_selectors(self, num_workers):
+        self.reservation_queries += 1
+        return self._reserved_label_selectors
+
+
+def _reservation_controller(monkeypatch, reserved_label_selectors, **scaling_kwargs):
+    monkeypatch.setattr(TrainController, "worker_group_cls", _CapturingWorkerGroup)
+    _CapturingWorkerGroup.contexts = []
+    # `_start_worker_group` reads `placement_strategy` off the scaling policy but
+    # `label_selector`/`use_tpu` off the run context, so both need the config.
+    scaling_config = ScalingConfig(**scaling_kwargs)
+    scaling_policy = _StubReservationScalingPolicy(
+        scaling_config=scaling_config,
+        reserved_label_selectors=reserved_label_selectors,
+    )
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(scaling_config=scaling_config),
+        scaling_policy=scaling_policy,
+        failure_policy=MockFailurePolicy(failure_config=None),
+    )
+    return controller, scaling_policy
+
+
+def test_worker_group_start_waits_for_the_reservation(monkeypatch):
+    """Starting unpinned while a reservation is pending would place workers
+    on nodes the coordinator has promised to somebody else."""
+    controller, _ = _reservation_controller(
+        monkeypatch, reserved_label_selectors=None, num_workers=2
+    )
+
+    with pytest.raises(WorkerGroupStartupTimeoutError):
+        controller._start_worker_group(num_workers=2, resources_per_worker={"CPU": 1})
+
+    assert _CapturingWorkerGroup.contexts == []
+
+
+def test_worker_group_start_pins_to_the_reservation(monkeypatch):
+    """The reserved nodes become the worker label selectors, and the
+    requested placement strategy is preserved so the placement group still
+    enforces it."""
+    pins = [{"ray.io/node-id": "node-a"}, {"ray.io/node-id": "node-b"}]
+    controller, _ = _reservation_controller(
+        monkeypatch,
+        reserved_label_selectors=pins,
+        num_workers=2,
+        placement_strategy="STRICT_SPREAD",
+    )
+
+    controller._start_worker_group(num_workers=2, resources_per_worker={"CPU": 1})
+
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector == pins
+    assert context.placement_strategy == "STRICT_SPREAD"
+
+
+@pytest.mark.parametrize(
+    "num_workers,scaling_kwargs,resources_per_worker,expected_label_selector",
+    [
+        pytest.param(
+            2,
+            {},
+            {},
+            None,
+            # Zero-resource workers fit anywhere, so there is nothing to
+            # reserve and nothing to wait for.
+            id="zero_resource_workers",
+        ),
+        pytest.param(
+            2,
+            {"label_selector": {"subcluster": "mine"}},
+            {"CPU": 1},
+            [{"subcluster": "mine"}] * 2,
+            # The coordinator picks nodes by resource fit and never matches
+            # label selectors against node labels, so its pins can name a node
+            # that violates the selector. The user's selector wins.
+            id="user_label_selector",
+        ),
+        pytest.param(
+            1,
+            {"use_tpu": True, "resources_per_worker": {"TPU": 4}},
+            {"TPU": 4},
+            None,
+            # SlicePlacementGroup does its own reservation and ignores
+            # `label_selector`, so pins would only add latency.
+            id="tpu",
+        ),
+    ],
+)
+def test_worker_group_start_skips_pinning(
+    monkeypatch,
+    num_workers,
+    scaling_kwargs,
+    resources_per_worker,
+    expected_label_selector,
+):
+    """Cases where the coordinator's pins must not be applied. Each has to
+    start the worker group rather than block waiting for a reservation."""
+    pins = [{"ray.io/node-id": f"node-{i}"} for i in range(num_workers)]
+    controller, scaling_policy = _reservation_controller(
+        monkeypatch,
+        reserved_label_selectors=pins,
+        num_workers=num_workers,
+        **scaling_kwargs,
+    )
+
+    controller._start_worker_group(
+        num_workers=num_workers, resources_per_worker=resources_per_worker
+    )
+
+    assert scaling_policy.reservation_queries == 0
+    (context,) = _CapturingWorkerGroup.contexts
+    assert context.label_selector == expected_label_selector
+
+
 if __name__ == "__main__":
     import sys
 

@@ -22,7 +22,8 @@ from ray.data.datasource.partitioning import (
     PartitionStyle,
     PathPartitionFilter,
 )
-from ray.data.expressions import col
+from ray.data.datatype import DataType
+from ray.data.expressions import col, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -211,7 +212,6 @@ class TestReadHivePartitionedFiles:
             ["year=1970/country=fr/data.csv", "year=1971/data.csv"],
         ],
     )
-    @pytest.mark.skip  # TODO: Unskip this test once #28869 is fixed.
     def test_read_files_with_mismatched_fields(
         self, relative_paths, tmp_path, block_type, ray_start_regular_shared
     ):
@@ -222,7 +222,11 @@ class TestReadHivePartitionedFiles:
             write_csv({"number": [0, 0, 0]}, path)
 
         with pytest.raises(ValueError):
-            read_csv(paths, partitioning=Partitioning("hive"), block_type=block_type)
+            read_csv(
+                paths,
+                partitioning=Partitioning("hive", field_names=["year", "country"]),
+                block_type=block_type,
+            ).take_all()
 
     def test_read_files_with_conflicting_key(
         self, tmp_path, block_type, ray_start_regular_shared
@@ -278,7 +282,6 @@ class TestReadUnpartitionedFiles:
             ["1970/fr/data.csv", "1971/data.csv"],
         ],
     )
-    @pytest.mark.skip  # TODO: Unskip this test once #28869 is fixed.
     def test_read_files_with_mismatched_fields(
         self, relative_paths, tmp_path, block_type, ray_start_regular_shared
     ):
@@ -286,10 +289,10 @@ class TestReadUnpartitionedFiles:
             os.path.join(tmp_path, relative_path) for relative_path in relative_paths
         ]
         for path in paths:
-            write_csv({"number": [0, 0, 0]})
+            write_csv({"number": [0, 0, 0]}, path)
 
         # `read_csv` shouldn't raise an error if `partitioning` is set to `None`.
-        read_csv(paths, partitioning=None, block_type=block_type)
+        read_csv(paths, partitioning=None, block_type=block_type).take_all()
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])
@@ -991,6 +994,68 @@ def test_evaluate_predicate_on_unpartitioned_file():
     )
 
     assert result is False
+
+
+def test_evaluate_predicate_on_partition_type_mismatch():
+    """A type mismatch must raise, not conservatively keep every file."""
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+
+    # `year` parses as a string, so comparing it to an int has no Arrow kernel.
+    # Swallowing that returned True for every file, silently voiding the filter.
+    with pytest.raises(pa.lib.ArrowNotImplementedError):
+        parser.evaluate_predicate_on_partition(
+            "year=2020/data.parquet", col("year") == 2020
+        )
+
+    # A path carrying no value for the predicate's column is still kept.
+    assert parser.evaluate_predicate_on_partition(
+        "year=2020/data.parquet", col("month") == "01"
+    )
+
+
+@udf(DataType(int))
+def _year_as_int(year):
+    return pa.compute.cast(year, pa.int64())
+
+
+@pytest.mark.parametrize(
+    "predicate,expected",
+    [
+        # Correctly typed comparison -- the common case, both outcomes.
+        (col("year") == "2020", True),
+        (col("year") == "2019", False),
+        (col("year") != "2019", True),
+        (col("year") > "2019", True),
+        # Compound predicates over partition columns.
+        ((col("year") == "2020") & (col("month") == "01"), True),
+        ((col("year") == "2020") & (col("month") == "02"), False),
+        ((col("year") == "2019") | (col("month") == "01"), True),
+        # Non-comparison kernels.
+        (col("year").is_null(), False),
+        (col("year").is_in(["2019", "2020"]), True),
+        (col("year").is_in(["2018", "2019"]), False),
+        # A UDF over a partition column runs on the parsed value, so it can
+        # do the cast the user should have written -- and must keep working.
+        (_year_as_int(col("year")) == 2020, True),
+        # A column the path does not partition on is unknowable from the path
+        # alone, so the file is conservatively kept. This is the one case the
+        # narrowed ``except KeyError`` still swallows.
+        (col("day") == "15", True),
+        ((col("year") == "2020") & (col("day") == "15"), True),
+    ],
+)
+def test_evaluate_predicate_on_partition_unaffected_cases(predicate, expected):
+    """Everything that evaluated correctly before the narrowing still does.
+
+    ``evaluate_predicate_on_partition`` used to swallow every exception and
+    return ``True``. Narrowing that to ``KeyError`` only changes behaviour for
+    predicates that *raised*; these all returned a real answer already, and
+    must return the same one.
+    """
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+    path = "year=2020/month=01/data.parquet"
+
+    assert parser.evaluate_predicate_on_partition(path, predicate) is expected
 
 
 if __name__ == "__main__":

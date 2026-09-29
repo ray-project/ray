@@ -1,0 +1,678 @@
+import json
+import os
+import sys
+from typing import Any, Dict, List, Optional
+from unittest.mock import patch
+
+import pytest
+import requests
+
+from ray_release.exception import ExitCode
+from ray_release.logger import logger
+from ray_release.reporter.observability_agent import (
+    ANALYSIS_FILE_ENV,
+    ANNOTATION_CONTEXT_PREFIX,
+    ANNOTATION_SCOPE,
+    COMMAND_FAILURE_RETURN_CODES,
+    DEBUG_SESSION_QUERY,
+    FEEDBACK_REMINDER,
+    ObservabilityAgentReporter,
+)
+from ray_release.result import Result, ResultStatus
+from ray_release.test import Test
+
+DEBUG_SESSION_ID = "oasess_48b26c83496443debae63335d82b3aae"
+JOB_ID = "prodjob_bife7nuzw7c7t745pjvbxsj7tt"
+SLACK_THREAD = "https://anyscaleteam.slack.com/archives/C0BN5R9M3SR/p1788452541746839"
+SUMMARY = "The job ran out of object store memory."
+
+CREATE_RESPONSE = {
+    "result": {
+        "debug_session_id": DEBUG_SESSION_ID,
+        "context": {"kind": "job", "resource_id": JOB_ID},
+    }
+}
+QUERY_RESPONSE = {
+    "result": {
+        "debug_session_id": DEBUG_SESSION_ID,
+        "analysis": {
+            "summary": SUMMARY,
+            "metrics_findings": [],
+            "log_findings": ["Plasma store debug dump: 10.3 GB / 10.3 GB"],
+            "issues": [],
+            "next_steps": ["Lower the batch size."],
+        },
+        "metadata": {"slack_thread": SLACK_THREAD},
+    }
+}
+
+
+class FakeResponse:
+    def __init__(
+        self,
+        json_data: Any = None,
+        status_code: int = 200,
+        text: Optional[str] = None,
+    ):
+        self._json_data = json_data
+        self.status_code = status_code
+        self.ok = status_code < 400
+        # `text` is what a response carries when it is not json at all; passing
+        # it makes json() raise, as requests does for a body it cannot parse.
+        self._raises = text is not None
+        self.text = text if self._raises else json.dumps(json_data)
+
+    def json(self) -> Any:
+        if self._raises:
+            raise requests.exceptions.JSONDecodeError("Expecting value", self.text, 0)
+        return self._json_data
+
+
+class FakePost:
+    """Records the requests made, and replies with the given responses."""
+
+    def __init__(self, responses: List[FakeResponse]):
+        self._responses = responses
+        self.requests: List[Dict[str, Any]] = []
+
+    def __call__(
+        self,
+        url: str,
+        json: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        timeout: Optional[int] = None,
+    ) -> FakeResponse:
+        self.requests.append(
+            {"url": url, "json": json, "headers": headers, "timeout": timeout}
+        )
+        return self._responses[len(self.requests) - 1]
+
+
+def _test() -> Test:
+    return Test({"name": "test_name"})
+
+
+def _result(
+    status: str,
+    job_id: Optional[str] = JOB_ID,
+    return_code: int = ExitCode.COMMAND_ERROR.value,
+) -> Result:
+    result = Result()
+    result.status = status
+    result.job_id = job_id
+    result.return_code = return_code
+    return result
+
+
+def _report(
+    result: Result,
+    responses: List[FakeResponse],
+    skip_command_failures: bool = False,
+    analysis_file: Optional[str] = None,
+) -> FakePost:
+    fake_post = FakePost(responses)
+    env = {
+        "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+        "ANYSCALE_CLI_TOKEN": "test_token",
+    }
+    if analysis_file:
+        env[ANALYSIS_FILE_ENV] = analysis_file
+    with (
+        # clear=True: run_release_test.sh exports RELEASE_TEST_OBS_AGENT_FILE, so
+        # an ambient value would otherwise decide whether these tests log or
+        # write, and three of them would fail.
+        patch.dict(
+            os.environ,
+            env,
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch(
+            "ray_release.reporter.observability_agent.SKIP_COMMAND_FAILURES",
+            skip_command_failures,
+        ),
+    ):
+        ObservabilityAgentReporter().report_result(_test(), result)
+    return fake_post
+
+
+def test_trigger_on_error_statuses():
+    for status in (
+        ResultStatus.RUNTIME_ERROR.value,
+        ResultStatus.ERROR.value,
+        # The test command outran its own timeout; why is a question for the
+        # agent, not one the harness can answer from the exit code.
+        ResultStatus.TIMEOUT.value,
+        ResultStatus.UNKNOWN.value,
+    ):
+        fake_post = _report(
+            _result(status),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        )
+
+        create_request, query_request = fake_post.requests
+        assert create_request["url"] == (
+            "https://console.anyscale-staging.com"
+            f"/api/v2/obs_agent/debug_sessions/job/{JOB_ID}"
+        )
+        assert create_request["json"] is None
+        assert query_request["url"] == (
+            "https://console.anyscale-staging.com"
+            f"/api/v2/obs_agent/debug_sessions/{DEBUG_SESSION_ID}/messages"
+        )
+        assert query_request["json"] == {"query": "Why did this job fail?"}
+        for request in (create_request, query_request):
+            assert request["headers"] == {
+                "Authorization": "Bearer test_token",
+                "X-Customer-Id": "anyscale-internal",
+                # What asks for json back; Content-Type only describes the body
+                # being sent, and is not set at all on the create call.
+                "Accept": "application/json",
+            }
+
+
+def test_no_op_on_other_statuses():
+    for status in (
+        ResultStatus.SUCCESS.value,
+        ResultStatus.INFRA_ERROR.value,
+        ResultStatus.INFRA_TIMEOUT.value,
+        ResultStatus.TRANSIENT_INFRA_ERROR.value,
+    ):
+        assert _report(_result(status), []).requests == []
+
+
+def test_no_op_without_job_id():
+    assert _report(_result(ResultStatus.ERROR.value, job_id=None), []).requests == []
+
+
+def test_log_analysis(caplog):
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        )
+
+    assert SUMMARY in caplog.text
+    assert SLACK_THREAD in caplog.text
+    assert FEEDBACK_REMINDER in caplog.text
+    # The findings, issues and next steps are kept out of the logs.
+    assert "Plasma store debug dump" not in caplog.text
+    assert "Lower the batch size." not in caplog.text
+
+
+def test_log_analysis_without_slack_thread(caplog):
+    query_response = {"result": {"analysis": {"summary": SUMMARY}}}
+
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        )
+
+    assert SUMMARY in caplog.text
+    # The reminder points at the thread, so neither is logged without one.
+    assert FEEDBACK_REMINDER not in caplog.text
+    assert "Full report and feedback" not in caplog.text
+    # Every response is expected to carry a thread, so its absence is an error.
+    assert [record.levelname for record in caplog.records if record.levelno >= 40] == [
+        "ERROR"
+    ]
+    assert "carries no slack thread" in caplog.text
+
+
+def test_error_response_does_not_raise(caplog):
+    validation_error = {
+        "detail": [
+            {"loc": ["path", "job_id"], "msg": "invalid job id", "type": "value_error"}
+        ]
+    }
+
+    with caplog.at_level("ERROR", logger=logger.name):
+        fake_post = _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(validation_error, status_code=422)],
+        )
+
+    # The query is not attempted if the debug session could not be created.
+    assert len(fake_post.requests) == 1
+    assert "Could not obtain an observability agent analysis" in caplog.text
+    assert "invalid job id" in caplog.text
+
+
+def test_missing_debug_session_id_does_not_raise(caplog):
+    with caplog.at_level("ERROR", logger=logger.name):
+        fake_post = _report(
+            _result(ResultStatus.ERROR.value), [FakeResponse({"result": {}})]
+        )
+
+    assert len(fake_post.requests) == 1
+    assert "Could not obtain an observability agent analysis" in caplog.text
+
+
+def test_command_failure_return_codes():
+    assert COMMAND_FAILURE_RETURN_CODES == (
+        ExitCode.COMMAND_ERROR.value,
+        ExitCode.COMMAND_ALERT.value,
+        ExitCode.COMMAND_TIMEOUT.value,
+        ExitCode.PREPARE_ERROR.value,
+    )
+
+
+def test_command_failures_trigger_while_gate_is_off():
+    for return_code in COMMAND_FAILURE_RETURN_CODES:
+        fake_post = _report(
+            _result(ResultStatus.ERROR.value, return_code=return_code),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        )
+        assert len(fake_post.requests) == 2
+
+
+def test_command_failures_skipped_when_gate_is_on():
+    for return_code in COMMAND_FAILURE_RETURN_CODES:
+        fake_post = _report(
+            _result(ResultStatus.ERROR.value, return_code=return_code),
+            [],
+            skip_command_failures=True,
+        )
+        assert fake_post.requests == []
+
+
+def test_other_return_codes_trigger_when_gate_is_on():
+    fake_post = _report(
+        _result(ResultStatus.UNKNOWN.value, return_code=ExitCode.UNKNOWN.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        skip_command_failures=True,
+    )
+    assert len(fake_post.requests) == 2
+
+
+def test_query_is_constant():
+    assert DEBUG_SESSION_QUERY == "Why did this job fail?"
+
+
+@pytest.mark.parametrize(
+    "query_response",
+    [
+        {"result": None},
+        {"result": {"analysis": None}},
+        {"result": {"analysis": {"summary": SUMMARY}, "metadata": None}},
+    ],
+    ids=["null_result", "null_analysis", "null_metadata"],
+)
+def test_null_fields_in_the_query_response_do_not_raise(query_response, caplog):
+    """The agent sends explicit nulls, and `or {}` covers each of them."""
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        )
+
+    assert "Observability agent analysis" in caplog.text
+
+
+def test_null_result_in_the_create_response_is_reported_clearly(caplog):
+    """A null result must reach the error below it, not an AttributeError."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        fake_post = _report(
+            _result(ResultStatus.ERROR.value), [FakeResponse({"result": None})]
+        )
+
+    # The query is not attempted, and the failure names the missing field
+    # instead of surfacing an attribute lookup on None.
+    assert len(fake_post.requests) == 1
+    assert "contains no debug_session_id" in caplog.text
+    assert "AttributeError" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [None, [{"result": {}}], "a string", 42],
+    ids=["null", "list", "string", "number"],
+)
+def test_a_response_that_is_not_an_object_is_reported_clearly(body, caplog):
+    """Every one of these is valid json, and none of them has .get()."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(_result(ResultStatus.ERROR.value), [FakeResponse(body)])
+
+    assert "returned json that is not an object" in caplog.text
+    assert "AttributeError" not in caplog.text
+
+
+def test_a_response_that_is_not_json_is_reported_clearly(caplog):
+    """A proxy in front of the api answers 200 with an html error page."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(text="<html>502 Bad Gateway</html>")],
+        )
+
+    assert "returned a body that is not json" in caplog.text
+    assert "502 Bad Gateway" in caplog.text
+
+
+def test_a_misshapen_query_response_does_not_escape_the_reporter(caplog):
+    """The create call succeeds; the query answers something unparseable."""
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse({"result": "not an object"})],
+        )
+
+    # Caught and logged, rather than raised out into glue.py's reporting loop.
+    assert "Could not obtain an observability agent analysis" in caplog.text
+
+
+def test_analysis_written_to_file(caplog, tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            analysis_file=analysis_file,
+        )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        written = fp.read()
+    assert SUMMARY in written
+    assert SLACK_THREAD in written
+    assert FEEDBACK_REMINDER in written
+
+    # The message is handed to the file instead of being logged twice; only a
+    # pointer to it stays in the reporting output.
+    assert analysis_file in caplog.text
+    assert SUMMARY not in caplog.text
+
+
+def test_analysis_logged_when_no_file_is_configured(caplog):
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        )
+
+    assert SUMMARY in caplog.text
+
+
+def test_analysis_logged_when_the_file_cannot_be_written(caplog, tmpdir):
+    # A directory that does not exist, so open() raises.
+    analysis_file = os.path.join(tmpdir, "missing", "analysis.txt")
+
+    with caplog.at_level("INFO", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            analysis_file=analysis_file,
+        )
+
+    # The run is not failed by the write error; the analysis falls back to the
+    # log so that it is not lost.
+    assert "Could not write the observability agent analysis" in caplog.text
+    assert SUMMARY in caplog.text
+
+
+def test_no_file_written_when_the_agent_is_not_triggered(tmpdir):
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    _report(
+        _result(ResultStatus.SUCCESS.value),
+        [],
+        analysis_file=analysis_file,
+    )
+
+    assert not os.path.exists(analysis_file)
+
+
+def test_analysis_file_handles_non_ascii(tmpdir):
+    """The agent writes prose; an ascii container locale must not break it."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    summary = "No metric spikes \u2014 the runtime_env setup failed."
+    query_response = {
+        "result": {
+            "analysis": {"summary": summary},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+
+    _report(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+        analysis_file=analysis_file,
+    )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        assert summary in fp.read()
+
+
+def test_write_failures_never_propagate(caplog, tmpdir):
+    """A reporter must not fail the test run, whatever open() raises."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    with (
+        caplog.at_level("INFO", logger=logger.name),
+        # The module's own open, not every open in the process: a patch on
+        # builtins would also be satisfied by an incidental open somewhere
+        # else, and would survive _write_analysis no longer opening anything.
+        patch(
+            "ray_release.reporter.observability_agent.open",
+            side_effect=UnicodeEncodeError("ascii", "x", 0, 1, "boom"),
+            create=True,
+        ),
+    ):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+            analysis_file=analysis_file,
+        )
+
+    assert "Could not write the observability agent analysis" in caplog.text
+    assert SUMMARY in caplog.text
+
+
+def test_missing_summary_is_named_in_the_analysis(caplog, tmpdir):
+    """A response with no summary must say so where the group is read."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+    query_response = {
+        "result": {
+            "analysis": {},
+            "metadata": {"slack_thread": SLACK_THREAD},
+        }
+    }
+
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+            analysis_file=analysis_file,
+        )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        written = fp.read()
+    assert "returned no summary" in written
+    assert DEBUG_SESSION_ID in written
+    # The thread is still reachable, so the full report is not lost with it.
+    assert SLACK_THREAD in written
+    assert "None" not in written
+    assert "carries no summary" in caplog.text
+
+
+def test_empty_analysis_still_reports_the_failure(caplog, tmpdir):
+    """Neither field came back: the group must still say what happened."""
+    analysis_file = os.path.join(tmpdir, "analysis.txt")
+
+    with caplog.at_level("ERROR", logger=logger.name):
+        _report(
+            _result(ResultStatus.ERROR.value),
+            [FakeResponse(CREATE_RESPONSE), FakeResponse({"result": {}})],
+            analysis_file=analysis_file,
+        )
+
+    with open(analysis_file, "rt", encoding="utf-8") as fp:
+        written = fp.read()
+    # Non-empty, so run_release_test.sh still prints the group rather than
+    # leaving the step looking as though the agent never ran.
+    assert written.strip()
+    assert "returned no summary" in written
+    assert "no slack thread" in written
+    assert DEBUG_SESSION_ID in written
+    assert "None" not in written
+
+
+class FakeCompleted:
+    def __init__(self, returncode: int = 0, stderr: str = ""):
+        self.returncode = returncode
+        self.stderr = stderr
+
+
+def _report_annotating(result, responses, env=None):
+    """Run the reporter as if on a buildkite agent, capturing the annotate call."""
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return FakeCompleted()
+
+    fake_post = FakePost(responses)
+    full_env = {
+        "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+        "ANYSCALE_CLI_TOKEN": "test_token",
+        "BUILDKITE": "true",
+        "BUILDKITE_JOB_ID": "01a0691c-job",
+        "BUILDKITE_RETRY_COUNT": "2",
+        **(env or {}),
+    }
+    with (
+        patch.dict(os.environ, full_env, clear=True),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch("ray_release.reporter.observability_agent.subprocess.run", fake_run),
+    ):
+        ObservabilityAgentReporter().report_result(_test(), result)
+    return calls
+
+
+def test_the_annotation_is_job_scoped_and_keyed_on_the_test():
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+    )
+
+    assert len(calls) == 1
+    command = calls[0]
+    assert command[:2] == ["buildkite-agent", "annotate"]
+    assert "--append" in command
+    assert f"--context={ANNOTATION_CONTEXT_PREFIX}test_name" in command
+    assert "--style=info" in command
+    # --scope is what decides where buildkite shows the annotation; without it
+    # the default is "build", which would put it on the build page instead.
+    assert f"--scope={ANNOTATION_SCOPE}" in command
+    assert ANNOTATION_SCOPE == "job"
+    # --scope is what puts the annotation on the job; --job names which job it
+    # came from. A retry is a new job, so it annotates separately either way.
+    assert command[command.index("--job") + 1] == "01a0691c-job"
+
+    body = command[-1]
+    assert SUMMARY in body
+    assert SLACK_THREAD in body
+    # The environment says 2 retries, which buildkite labels "Retry 3 of N";
+    # both numbers appear so the annotation reconciles with the UI and the log.
+    assert "attempt 3 (BUILDKITE_RETRY_COUNT=2)" in body
+
+
+def test_no_annotation_outside_buildkite():
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        env={"BUILDKITE": ""},
+    )
+
+    assert calls == []
+
+
+def test_annotation_failures_never_propagate(caplog):
+    """An annotation is advisory; it must not change the test's outcome."""
+    fake_post = FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)])
+    with (
+        caplog.at_level("WARNING", logger=logger.name),
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+                "BUILDKITE": "true",
+            },
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch(
+            "ray_release.reporter.observability_agent.subprocess.run",
+            side_effect=FileNotFoundError("buildkite-agent"),
+        ),
+    ):
+        ObservabilityAgentReporter().report_result(
+            _test(), _result(ResultStatus.ERROR.value)
+        )
+
+    assert "Could not annotate the buildkite job" in caplog.text
+
+
+def test_a_non_zero_annotate_exit_is_logged_not_raised(caplog):
+    def fake_run(command, **kwargs):
+        return FakeCompleted(returncode=1, stderr="boom")
+
+    fake_post = FakePost([FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)])
+    with (
+        caplog.at_level("WARNING", logger=logger.name),
+        patch.dict(
+            os.environ,
+            {
+                "ANYSCALE_HOST": "https://console.anyscale-staging.com",
+                "ANYSCALE_CLI_TOKEN": "test_token",
+                "BUILDKITE": "true",
+            },
+            clear=True,
+        ),
+        patch("ray_release.reporter.observability_agent.requests.post", fake_post),
+        patch("ray_release.reporter.observability_agent.subprocess.run", fake_run),
+    ):
+        ObservabilityAgentReporter().report_result(
+            _test(), _result(ResultStatus.ERROR.value)
+        )
+
+    assert "buildkite-agent annotate exited 1" in caplog.text
+
+
+def test_the_attempt_number_matches_the_buildkite_label():
+    """BUILDKITE_RETRY_COUNT is 0 on the first try, which buildkite calls 1."""
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(QUERY_RESPONSE)],
+        env={"BUILDKITE_RETRY_COUNT": "0"},
+    )
+
+    assert "attempt 1 (BUILDKITE_RETRY_COUNT=0)" in calls[0][-1]
+
+
+def test_the_annotation_escapes_what_the_agent_sent():
+    """The summary and the thread url are the agent's data, not ours."""
+    query_response = {
+        "result": {
+            "analysis": {"summary": 'a <script>alert("x")</script> summary'},
+            "metadata": {"slack_thread": 'https://x" onmouseover="alert(1)'},
+        }
+    }
+    calls = _report_annotating(
+        _result(ResultStatus.ERROR.value),
+        [FakeResponse(CREATE_RESPONSE), FakeResponse(query_response)],
+    )
+
+    body = calls[0][-1]
+    # Nothing the agent sent can open a tag or close an attribute.
+    assert "<script>" not in body
+    assert "&lt;script&gt;" in body
+    assert 'href="https://x&quot; onmouseover=&quot;alert(1)"' in body
+    # Our own markup is still markup.
+    assert "<strong>" in body and "<br/>" in body
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

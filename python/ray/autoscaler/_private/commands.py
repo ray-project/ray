@@ -1073,6 +1073,7 @@ def _set_up_config_for_head_node(
     # drop proxy options if they exist, otherwise
     # head node won't be able to connect to workers
     remote_config["auth"].pop("ssh_proxy_command", None)
+    remote_config["auth"].pop("ssh_proxy_use_node_id", None)
 
     # Drop the head_node field if it was introduced. It is technically not a
     # valid field in the config, but it may have been introduced after

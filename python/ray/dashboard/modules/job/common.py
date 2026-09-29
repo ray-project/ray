@@ -4,9 +4,12 @@ import logging
 import time
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
+from ray._common.runtime_env_package import (
+    PACKAGE_UPLOAD_EXTENSIONS,
+    has_package_extension,
+)
 from ray._common.runtime_env_uri import parse_uri
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
@@ -422,9 +425,12 @@ class JobInfoStorageClient:
 
 
 def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
-    suffix = Path(package_uri).suffix
-    if suffix not in {".zip", ".whl"}:
-        raise ValueError(f"package_uri ({package_uri}) does not end in .zip or .whl")
+    if not has_package_extension(package_uri, PACKAGE_UPLOAD_EXTENSIONS):
+        formats = ", ".join(PACKAGE_UPLOAD_EXTENSIONS)
+        raise ValueError(
+            f"package_uri ({package_uri}) does not end in a supported format: "
+            f"{formats}"
+        )
     # We need to strip the <protocol>:// prefix to make it possible to pass
     # the package_uri over HTTP.
     protocol, package_name = parse_uri(package_uri)
