@@ -10,6 +10,9 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
     PATH_COLUMN_NAME,
 )
 from ray.data._internal.datasource_v2.listing.listing_utils import partition_files
+from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
+    PartitionHints,
+)
 from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
@@ -72,9 +75,7 @@ def test_round_robin_partitioner_produces_correct_partitions(
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=StubInMemorySizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=1,
-            max_bucket_size=3,
+            hints=PartitionHints(min_bucket_size=1, max_bucket_size=3, num_buckets=2),
         ),
     )
 
@@ -105,9 +106,7 @@ def test_round_robin_partitioner_with_no_size_estimates():
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=StubInMemorySizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=1,
-            max_bucket_size=1,
+            hints=PartitionHints(min_bucket_size=1, max_bucket_size=1, num_buckets=2),
         ),
     )
     partitions = [output[PATH_COLUMN_NAME].to_pylist() for output in outputs]

@@ -11,7 +11,10 @@ from packaging.version import parse as parse_version
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
+    _group_indices,
     _has_unhashable_pandas_types,
+    _has_unhashable_polars_types,
+    _hash_partition_vectorized,
     concat,
     hash_partition,
     shuffle,
@@ -216,6 +219,144 @@ def test_hash_partition_null_struct_consistent_across_blocks():
         return next(iter(null_pids))
 
     assert null_partition_id(p1) == null_partition_id(p2)
+
+
+def _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts):
+    # Exclusive prefix sums of counts.
+    assert np.array_equal(
+        offsets, np.concatenate(([0], np.cumsum(counts)[:-1]))
+    ), offsets
+    # Stable grouping: identical to NumPy's stable argsort.
+    assert np.array_equal(
+        np.asarray(grouped_indices), np.argsort(partition_mask, kind="stable")
+    ), grouped_indices
+
+
+@pytest.mark.parametrize(
+    "pa_type,expected",
+    [
+        # Union types fail pl.from_arrow
+        (pa.dense_union([pa.field("x", pa.int32())]), True),
+        (pa.sparse_union([pa.field("x", pa.int32())]), True),
+        (ArrowTensorTypeV2((2, 2), pa.int64()), False),
+        (ArrowPythonObjectType(), False),
+        (pa.struct([("a", pa.int32())]), False),
+        (pa.list_(pa.int32()), False),
+        (pa.map_(pa.string(), pa.int32()), False),
+        (pa.int64(), False),
+        (pa.string(), False),
+        (pa.dictionary(pa.int32(), pa.string()), False),
+    ],
+)
+def test_has_unhashable_polars_types(pa_type, expected):
+    schema = pa.schema([("c", pa_type)])
+    assert _has_unhashable_polars_types(schema) is expected
+
+
+def test_hash_partition_dictionary_encoding_consistent():
+    # Equal keys must partition identically whether they're dictionary-encoded
+    # or plain, at any nesting depth: Polars hashes Categorical differently
+    # from String, so dictionaries must be decoded before hashing.
+    pytest.importorskip("polars")
+    num_partitions = 8
+
+    values = pa.array(["apple", "banana", "apple"])
+    encoded = values.dictionary_encode()
+
+    # Top-level dictionary key.
+    assert np.array_equal(
+        _hash_partition_vectorized(pa.table({"k": encoded}), num_partitions),
+        _hash_partition_vectorized(pa.table({"k": values}), num_partitions),
+    )
+
+    # Dictionary nested in a struct key.
+    assert np.array_equal(
+        _hash_partition_vectorized(
+            pa.table({"k": pa.StructArray.from_arrays([encoded], names=["s"])}),
+            num_partitions,
+        ),
+        _hash_partition_vectorized(
+            pa.table({"k": pa.StructArray.from_arrays([values], names=["s"])}),
+            num_partitions,
+        ),
+    )
+
+    # Dictionary nested in a list key.
+    offsets = pa.array([0, 2, 3])
+    assert np.array_equal(
+        _hash_partition_vectorized(
+            pa.table({"k": pa.ListArray.from_arrays(offsets, encoded)}),
+            num_partitions,
+        ),
+        _hash_partition_vectorized(
+            pa.table({"k": pa.ListArray.from_arrays(offsets, values)}),
+            num_partitions,
+        ),
+    )
+
+
+def test_hash_partitioning_union_key():
+    union = pa.UnionArray.from_sparse(
+        pa.array([0, 1, 0], type=pa.int8()),
+        [pa.array([1, None, 3], type=pa.int32()), pa.array([None, "b", None])],
+    )
+    t = pa.table({"u": union, "v": [10, 20, 30]})
+
+    parts = hash_partition(t, hash_cols=["u"], num_partitions=4)
+
+    assert sum(p.num_rows for p in parts.values()) == t.num_rows
+    assert sorted(row for p in parts.values() for row in p["v"].to_pylist()) == [
+        10,
+        20,
+        30,
+    ]
+
+
+@pytest.mark.parametrize("num_partitions", [1, 2, 7, 64])
+def test_group_indices_matches_stable_argsort(num_partitions):
+    # The grouping must equal NumPy's stable argsort: contiguous per-partition
+    # ranges, original order preserved within each partition.
+    rng = np.random.RandomState(42)
+    for size in (0, 1, 5, 1000):
+        partition_mask = rng.randint(0, num_partitions, size=size).astype(np.int64)
+        counts = np.bincount(partition_mask, minlength=num_partitions).astype(np.int64)
+
+        grouped_indices, offsets = _group_indices(partition_mask, counts)
+        _assert_valid_grouping(grouped_indices, offsets, partition_mask, counts)
+
+
+def test_hash_partition_polars_consistent_across_blocks():
+    # Rows with equal keys must land in the same partition regardless of which
+    # block they came from (the Polars path hashes each block independently).
+    pytest.importorskip("polars")
+
+    num_partitions = 16
+    keys = [str(i) for i in range(100)]
+
+    t1 = pa.Table.from_pydict({"k": keys[:70], "v": list(range(70))})
+    t2 = pa.Table.from_pydict({"k": keys[30:], "v": list(range(30, 100))})
+
+    h1 = _hash_partition_vectorized(t1.select(["k"]), num_partitions)
+    h2 = _hash_partition_vectorized(t2.select(["k"]), num_partitions)
+
+    key_to_partition = dict(zip(t1["k"].to_pylist(), h1.tolist()))
+    for key, pid in zip(t2["k"].to_pylist(), h2.tolist()):
+        assert key_to_partition.setdefault(key, pid) == pid, key
+
+
+def test_hash_partition_falls_back_when_polars_fails(monkeypatch):
+    # A PolarsError inside the fast path must not fail the partitioning.
+    pl = pytest.importorskip("polars")
+    from polars.exceptions import PolarsError
+
+    def _raise(*args, **kwargs):
+        raise PolarsError("simulated failure")
+
+    monkeypatch.setattr(pl.DataFrame, "hash_rows", _raise)
+
+    t = pa.Table.from_pydict({"k": [str(i) for i in range(30)]})
+    parts = hash_partition(t, hash_cols=["k"], num_partitions=5)
+    assert pa.concat_tables(parts.values()).sort_by("k") == t.sort_by("k")
 
 
 def test_shuffle():

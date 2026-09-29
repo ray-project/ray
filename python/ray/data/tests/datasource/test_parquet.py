@@ -3273,7 +3273,7 @@ def test_get_safe_batch_size_skips_zero_uncompressed_row_groups(tmp_path):
     size (e.g. all-null nested data) should not cause ZeroDivisionError."""
     import pyarrow.parquet as pq
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.parquet_utils import (
         _get_safe_batch_size_for_nested_types,
     )
 
@@ -3380,7 +3380,7 @@ def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_co
     import pyarrow.dataset as pds
 
     from ray.data import DataContext
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.parquet_utils import (
         _needs_nested_type_fallback,
         _resolve_read_columns,
     )
@@ -3423,7 +3423,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     """
     from unittest.mock import patch
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.parquet_utils import (
         _needs_nested_type_fallback,
     )
 
@@ -3438,11 +3438,15 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
 
     # End-to-end: reading only "id" should use the normal scanner path, not
-    # the fallback.  Patch to detect whether fallback is invoked.
+    # the fallback.  Patch to detect whether fallback is invoked. Each reader
+    # resolves the helper through its own module, so patch both.
     with patch(
         "ray.data._internal.datasource.parquet_datasource"
         "._get_safe_batch_size_for_nested_types"
-    ) as mock_safe:
+    ) as mock_safe_v1, patch(
+        "ray.data._internal.datasource_v2.readers.parquet_file_reader"
+        "._get_safe_batch_size_for_nested_types"
+    ) as mock_safe_v2:
         ds = ray.data.read_parquet(data_dir).select_columns(["id"])
         total_rows = 0
         for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
@@ -3450,7 +3454,8 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
             assert batch.column_names == ["id"]
         assert total_rows == num_rows
         # The fallback batch-size helper should never have been called.
-        mock_safe.assert_not_called()
+        mock_safe_v1.assert_not_called()
+        mock_safe_v2.assert_not_called()
 
 
 def test_parquet_sampling_fails_on_permanent_error(

@@ -81,7 +81,7 @@ transformed_ds.write_parquet("local:///tmp/iris/")
 ...
 ```
 
-```{button-ref}  ../data/data
+```{button-ref}  ../data/index
 :color: primary
 :outline:
 :expand:
