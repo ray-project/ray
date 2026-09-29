@@ -22,7 +22,8 @@ class ObjectStoreAwareBundleQueue(QueueWithRemoval):
     drained node) and would need lineage reconstruction.
 
     Bundles are otherwise kept in insertion order. A bundle whose blocks are
-    missing is rotated to the back of the queue instead of being dropped.
+    missing is rotated to the back of the queue instead of being dropped, and
+    is served once its blocks are back or nothing resident remains.
 
     This class is thread-safe.
     """
