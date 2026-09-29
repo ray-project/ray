@@ -557,6 +557,7 @@ def _report_annotating(result, responses, env=None):
     full_env = {
         "ANYSCALE_HOST": "https://console.anyscale-staging.com",
         "ANYSCALE_CLI_TOKEN": "test_token",
+        GITHUB_COMMENT_ENV: "1",
         "BUILDKITE": "true",
         "BUILDKITE_JOB_ID": "01a0691c-job",
         "BUILDKITE_RETRY_COUNT": "2",

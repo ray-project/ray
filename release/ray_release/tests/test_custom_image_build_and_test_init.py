@@ -22,6 +22,9 @@ from ray_release.scripts.custom_image_build_and_test_init import (
 
 _bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
 
+_TRIGGER = "TRIGGER_OBSERVABILITY_AGENT"
+_COMMENT = "OBS_AGENT_COMMENT_ON_GITHUB_ISSUE"
+
 
 def _expected_rayci_select_keys(sample_yaml: str) -> set:
     """Mirror the script's filter + key computation so expectations can't drift."""
@@ -486,11 +489,14 @@ def test_custom_image_build_and_test_init_uploads_chunks(
 
 
 @pytest.mark.parametrize(
-    "env_var",
-    ["TRIGGER_OBSERVABILITY_AGENT", "OBS_AGENT_COMMENT_ON_GITHUB_ISSUE"],
-    ids=["trigger", "github_comment"],
+    ("env", "expected"),
+    [
+        ({_TRIGGER: "1", _COMMENT: ""}, {_TRIGGER: "1", _COMMENT: None}),
+        ({_TRIGGER: "", _COMMENT: "1"}, {_TRIGGER: None, _COMMENT: "1"}),
+        ({_TRIGGER: "0", _COMMENT: "0"}, {_TRIGGER: None, _COMMENT: None}),
+    ],
+    ids=["trigger_only", "comment_only", "both_falsy"],
 )
-@pytest.mark.parametrize("flag", ["1", "0", ""], ids=["on", "off", "empty"])
 @patch.dict("os.environ", {"AUTOMATIC": "1"})
 @patch.dict("os.environ", {"BUILDKITE": "1"})
 @patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
@@ -506,18 +512,19 @@ def test_custom_image_build_and_test_init_threads_the_obs_agent_flags(
     mock_get_ray_repo,
     mock_is_jailed_with_open_issue,
     mock_update_from_s3,
-    flag,
-    env_var,
+    env,
+    expected,
 ):
-    """Only a 1 reaches the steps; an unset variable behaves like the empty one.
+    """Each flag reaches the steps only when set to 1, and only itself.
 
-    Both flags are threaded the same way and must stay that way: the trigger and
-    the github comment are separate decisions, but neither may leak a 0 into the
-    steps as a 1.
+    The asymmetric cases are the point: setting one flag must not export the
+    other. Two blocks that both happen to be right today would still pass if
+    they were collapsed into one, so each case sets both variables and asserts
+    both -- including the one expected to stay absent.
     """
     runner = CliRunner()
     test_jobs_output_file = "test_jobs.json"
-    with patch.dict("os.environ", {env_var: flag}):
+    with patch.dict("os.environ", env):
         result = runner.invoke(
             main,
             [
@@ -546,7 +553,8 @@ def test_custom_image_build_and_test_init_threads_the_obs_agent_flags(
         steps = json.load(f)[0]["steps"]
 
     for step in steps:
-        assert step["env"].get(env_var) == ("1" if flag == "1" else None)
+        for var, want in expected.items():
+            assert step["env"].get(var) == want
 
     assert result.exit_code == 0
 
