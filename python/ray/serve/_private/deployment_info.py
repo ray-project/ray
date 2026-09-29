@@ -55,8 +55,6 @@ class DeploymentInfo:
     def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._cached_actor_def = None
-        # Older checkpoints lack the field.
-        self.__dict__.setdefault("router_application", False)
 
     def update(
         self,
