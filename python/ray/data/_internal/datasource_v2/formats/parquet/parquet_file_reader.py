@@ -327,7 +327,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         chunk = next(
             (md for md in manifest.file_chunk_metadatas if md is not None), None
         )
-        if chunk is not None and "size_bytes" in chunk:
+        if chunk is not None:
             estimated = _estimate_batch_size_from_chunk_stats(
                 chunk["size_bytes"],
                 chunk["num_rows"],

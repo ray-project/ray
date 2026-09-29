@@ -41,6 +41,14 @@ class UnitRun:
     unit_sizes: Tuple[int, ...] = ()
     unit_rows: Tuple[int, ...] = ()
 
+    def __post_init__(self):
+        for name in ("unit_sizes", "unit_rows"):
+            breakdown = getattr(self, name)
+            assert not breakdown or len(breakdown) == len(self.unit_ids), (
+                f"{name} has {len(breakdown)} entries for {len(self.unit_ids)} "
+                "unit_ids; a breakdown is empty or has one entry per unit"
+            )
+
     def to_metadata(self) -> ChunkMetadata:
         return asdict(self)
 
