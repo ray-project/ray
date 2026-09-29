@@ -9,7 +9,7 @@ applications:
         engine_kwargs:
           tensor_parallel_size: 1
           pipeline_parallel_size: 1
-          data_parallel_size: 4
+          data_parallel_size: 2
           distributed_executor_backend: ray
           max_model_len: 1024
           max_num_seqs: 32
