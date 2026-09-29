@@ -14,6 +14,7 @@ from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.datasource_v2.readers.synthesized_columns import (  # noqa: F401
     INCLUDE_PATHS_COLUMN_NAME,
     ROW_HASH_COLUMN_NAME,
+    PathColumn,
     ReadUnitPosition,
     SynthesizedColumn,
     # Re-exported: the legacy ``ParquetDatasource`` imports it from here.
@@ -222,14 +223,22 @@ class FileReader(Reader[FileManifest]):
         # is None`` means "no projection" — read every file column and
         # synthesize every available partition/synthesized column.
         on_disk_column_names = set(dataset.schema.names)
+        synthesized_column_names = {c.name for c in self._synthesized_columns}
         if self._columns is None:
             columns_to_read_from_file: Optional[List[str]] = None
             columns_to_synthesize: Optional[Set[str]] = None
         else:
             columns_to_read_from_file = [
-                c for c in self._columns if c in on_disk_column_names
+                c
+                for c in self._columns
+                if c in on_disk_column_names and c not in synthesized_column_names
             ]
             columns_to_synthesize = set(self._columns) - on_disk_column_names
+            # A synthesized column replaces a same-named file column even when
+            # projection is active and the file schema contains that name.
+            columns_to_synthesize.update(
+                synthesized_column_names.intersection(self._columns)
+            )
 
         scanner_kwargs = {
             "columns": columns_to_read_from_file,
@@ -258,6 +267,21 @@ class FileReader(Reader[FileManifest]):
                 derived_items.extend(
                     self._partition_parser(position.unit.source).items()
                 )
+
+            # A custom path column must not hide a path-derived partition key.
+            # The public read path checks this earlier using resolved field names;
+            # direct scanners may still carry unresolved Hive partitioning.
+            if derived_items:
+                partition_names = {name for name, _ in derived_items}
+                if any(
+                    isinstance(column, PathColumn)
+                    and column.name != INCLUDE_PATHS_COLUMN_NAME
+                    and column.name in partition_names
+                    for column in self._synthesized_columns
+                ):
+                    raise ValueError(
+                        "`include_paths` column name conflicts with a partition column."
+                    )
 
             for name, value in derived_items:
                 if (

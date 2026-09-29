@@ -1,10 +1,10 @@
 """Columns a reader appends to each batch instead of reading them.
 
-``include_paths=True`` adds a ``path`` column and ``include_row_hash=True``
-adds ``row_hash``; a checkpoint ID column is the next one. Each used to be a
-boolean on the reader plus four hand-written steps: advertise the column in
-the schema, keep pyarrow from looking for it in the file, respect a
-projection that dropped it, and build it per batch. A
+``include_paths=True`` adds a ``path`` column (or a custom name with DSV2),
+and ``include_row_hash=True`` adds ``row_hash``; a checkpoint ID column is the
+next one. Each used to be a boolean on the reader plus four hand-written steps:
+advertise the column in the schema, keep pyarrow from looking for it in
+the file, respect a projection that dropped it, and build it per batch. A
 :class:`SynthesizedColumn` replaces the boolean, and the reader performs the
 four steps once for whatever columns it is given.
 
@@ -129,9 +129,9 @@ class SynthesizedColumn(ABC):
 @DeveloperAPI
 @dataclass(frozen=True)
 class PathColumn(SynthesizedColumn):
-    """The ``path`` column behind ``include_paths=True``: the source file path."""
+    """Source file path, named ``path`` by default."""
 
-    name = INCLUDE_PATHS_COLUMN_NAME
+    name: str = INCLUDE_PATHS_COLUMN_NAME
     type = pa.string()
 
     def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
