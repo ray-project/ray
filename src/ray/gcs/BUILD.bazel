@@ -523,6 +523,7 @@ ray_cc_library(
         ":grpc_services",
         ":metrics",
         "//src/ray/asio:io_context_monitor",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/util:clock",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
