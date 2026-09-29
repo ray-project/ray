@@ -50,7 +50,7 @@ serve run config.yaml
 :::
 ::::
 
-The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`.
+The deployed application exposes the engine's native routes. For vLLM those include the OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/models`. They also include the Anthropic `/v1/messages` and `/v1/messages/count_tokens`. See {ref}`direct-streaming-anthropic`.
 
 To confirm direct streaming is active, check that the application runs two deployments: your model deployment (`LLMServer:<model_id>`) and an `LLMRouter` deployment. `LLMRouter` is the ingress request router. It replaces the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app.
 
@@ -120,6 +120,41 @@ Direct streaming works with the single-model builders for the OpenAI, data paral
 - **Standard serving** (`build_openai_app`): the `LLMServer` deployment serves the engine app directly.
 - **Data parallel attention** (`build_dp_openai_app`): the `DPServer` deployment serves the engine app directly. Use this for wide expert parallelism. See {doc}`data-parallel-attention`.
 - **Prefill/decode disaggregation** (`build_pd_openai_app`): the decode server serves the engine app directly. See {doc}`prefill-decode`.
+
+(direct-streaming-anthropic)=
+## Use Anthropic clients
+
+When you enable direct streaming, the replica serves the engine's own FastAPI app. For vLLM that app includes the Anthropic Messages API, so clients such as Claude Code can call `POST /v1/messages` and `POST /v1/messages/count_tokens` on the same application. The default `OpenAiIngress` path does not expose those routes.
+
+Set both `RAY_SERVE_ENABLE_HA_PROXY=1` and `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1` in the Ray controller environment before you start Serve. Direct streaming attaches an ingress request router, and Serve rejects that topology unless HAProxy is enabled.
+
+### Configure tool calling
+
+Anthropic tool calling needs three `engine_kwargs` that match the model you serve. The following values work with Qwen3-8B. Pick the `tool_call_parser` that vLLM documents for your model. See the [vLLM tool calling guide](https://docs.vllm.ai/en/stable/features/tool_calling/).
+
+```python
+engine_kwargs = {
+    "enable_auto_tool_choice": True,
+    "tool_call_parser": "hermes",
+    "reasoning_parser": "qwen3",
+}
+```
+
+The Qwen3.5 examples earlier on this page use `tool_call_parser: qwen3_coder` because that parser matches `Qwen/Qwen3.5-0.8B`.
+
+### Point Claude Code at the application
+
+Claude Code sends the model name on each request. That name must equal `model_loading_config.model_id`. It must not be `model_source`. For the YAML example on this page, pass `qwen3.5-0.8b`, not `Qwen/Qwen3.5-0.8B`.
+
+```bash
+export ANTHROPIC_BASE_URL=http://<serve-host>:8000
+export ANTHROPIC_API_KEY=not-needed
+claude --model qwen3.5-0.8b
+```
+
+Claude Code requires a credential even when the local endpoint does not enforce authentication. Any non-empty `ANTHROPIC_API_KEY` works.
+
+Direct streaming serves one model per application and does not offer LoRA-aware routing. See {ref}`direct-streaming-limitations`. There is no Anthropic ingress you can fall back to for adapter affinity.
 
 (direct-streaming-customize)=
 ## Customize replica selection
