@@ -200,6 +200,5 @@ core.register_action("route_via_router_application", {"http-req"}, function(txn)
     if not router or #router.pool == 0 then
         return fail(txn, "router_unavailable")
     end
-    txn:set_var("txn.serve_routed_by", router.app)
     route(txn, router)
 end, 0)
