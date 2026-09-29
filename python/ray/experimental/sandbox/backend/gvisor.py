@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import os
@@ -7,6 +8,10 @@ import time
 import uuid
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.image_utils import (
+    RUNSC_STATE_DIR,
+    SANDBOX_BUNDLES_DIR,
+)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -26,10 +31,31 @@ logger = logging.getLogger(__name__)
 
 # Directory where runsc keeps container state. Every runsc invocation for a
 # sandbox must agree on this, otherwise the container cannot be looked up.
-_RUNSC_ROOT = "/tmp/runsc"
+_RUNSC_ROOT = RUNSC_STATE_DIR
 
-# Directory to store sandbox states, container images and overlay filesystem.
-_RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
+# Directory for each sandbox's bundle and overlay. Shared with the image
+# cache, which reads the bundles to tell which entries are still in use.
+_RAY_SANDBOX_DIR = SANDBOX_BUNDLES_DIR
+
+# What runsc reports when the image cannot supply the container's init process.
+_MISSING_PAUSE_BINARY = 'error finding executable "sleep"'
+
+
+def _startup_failure_hint(stderr: str) -> str:
+    """Explain a container that died because its image has no ``sleep``.
+
+    runsc reports only that it could not find the executable, which is opaque
+    unless you know the sandbox holds a container open by running
+    ``sleep infinity`` in it.
+    """
+    if _MISSING_PAUSE_BINARY not in stderr:
+        return ""
+    return (
+        "\n\nThe sandbox holds a container open by running 'sleep infinity' "
+        "inside it, so the image must provide a 'sleep' binary. Minimal images "
+        "(distroless, scratch) do not ship one. Use a base image with a shell "
+        "and coreutils, such as 'busybox' or a '-slim' distribution image."
+    )
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -51,12 +77,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
+        # Every lookup from here to the bundle answers from the one version
+        # pulled now: the image can be replaced meanwhile, and the sandbox
+        # would otherwise get one version's files and another's WORKDIR/ENV.
+        pin = contextlib.ExitStack()
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
-            self._image_manager.pull_image(
+            image_entry = self._image_manager.pull_image(
                 config.image, timeout_seconds=config.timeout_seconds
             )
+            pin.enter_context(self._image_manager.pinned(config.image, image_entry))
             # The process cwd: an explicit workdir, else the image's WORKDIR.
             container_cwd = (
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"
@@ -81,25 +112,27 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            pin.close()
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        self._image_manager.prepare_oci_bundle(
-            root_dir=root_dir,
-            workdir_path=workdir_path,
-            container_cwd=container_cwd,
-            image=config.image,
-            env_dict=config.env,
-            cpu=config.cpu,
-            memory=config.memory,
-            readonly=config.readonly,
-            capabilities=config.capabilities,
-            network=config.network,
-            dns=config.dns,
-            _oci_spec_transform_fn=config._oci_spec_transform_fn,
-        )
+        with pin:
+            self._image_manager.prepare_oci_bundle(
+                root_dir=root_dir,
+                workdir_path=workdir_path,
+                container_cwd=container_cwd,
+                image=config.image,
+                env_dict=config.env,
+                cpu=config.cpu,
+                memory=config.memory,
+                readonly=config.readonly,
+                capabilities=config.capabilities,
+                network=config.network,
+                dns=config.dns,
+                _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            )
         run_args = self._runsc_base_args(config)
         if config.network:
             # "public" = host egress + generated resolv.conf (handled in the
@@ -130,6 +163,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     stderr_str = stderr_file.read()
                     raise SandboxCreationError(
                         f"gVisor container failed to start: {stderr_str}"
+                        f"{_startup_failure_hint(stderr_str)}"
                     )
 
                 res = subprocess.run(state_args, capture_output=True, text=True)
@@ -177,8 +211,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "proc": proc,
             "stderr_file": stderr_file,
             "status": SandboxStatus.RUNNING,
+            "image_entry": image_entry,
         }
         return sandbox_id
+
+    def image_entry(self, sandbox_id: str) -> Optional[str]:
+        """The image version the sandbox runs from, as ``pull_image`` gave it.
+
+        For reading the image's config later: by then the image may have been
+        replaced, and resolving it by name would describe the new version.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+
+        Returns:
+            The version directory, or None if the sandbox is unknown.
+        """
+        meta = self._sandbox_metadata.get(sandbox_id)
+        return meta.get("image_entry") if meta else None
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
@@ -215,6 +265,72 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             shutil.rmtree(root_dir, ignore_errors=True)
 
+    def exec_argv(
+        self,
+        sandbox_id: str,
+        command: Union[str, List[str]],
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        pid_file: Optional[str] = None,
+    ) -> List[str]:
+        """Build the ``runsc exec`` argument vector for a command.
+
+        Exposed so that callers needing their own process supervision (for
+        example streaming stdout while writing stdin) can spawn the command
+        themselves instead of going through :meth:`exec_command`, without
+        duplicating the runsc flag and working-directory logic.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            command: Command string or list of argument strings.
+            cwd: Optional working directory override.
+            env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            pid_file: Optional host path runsc writes the command's pid inside
+                the sandbox to, for :meth:`kill_process_group_argv`.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        config: SandboxConfig = meta["config"]
+
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", "-cwd", cwd or meta["cwd"]])
+        if pid_file:
+            runsc_args.extend(["-internal-pid-file", pid_file])
+        if env:
+            for k, v in env.items():
+                runsc_args.extend(["-env", f"{k}={v}"])
+        if isinstance(command, list):
+            runsc_args.extend([sandbox_id] + command)
+        else:
+            runsc_args.extend([sandbox_id, shell or config.shell, "-c", command])
+        return runsc_args
+
+    def kill_process_group_argv(self, sandbox_id: str, pid: int) -> List[str]:
+        """Build the ``runsc kill`` argument vector for one command's group.
+
+        Killing the ``runsc exec`` client does not stop the command inside the
+        sandbox -- SIGKILL cannot be forwarded -- so this signals it directly.
+        Each ``runsc exec`` process leads its own process group, so killing the
+        group also takes down whatever the command started: the halves of a
+        pipeline, a ``sh -c`` script's children.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            pid: The command's pid inside the sandbox, from ``pid_file``.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        runsc_args = self._runsc_base_args(meta["config"])
+        runsc_args.extend(["kill", "-pgid", str(pid), sandbox_id, "KILL"])
+        return runsc_args
+
     def exec_command(
         self,
         sandbox_id: str,
@@ -225,26 +341,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         shell: Optional[str] = None,
     ) -> ExecResult:
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
-        meta = self._get_metadata_or_raise(sandbox_id)
-        config: SandboxConfig = meta["config"]
-
-        exec_env = {}
-        if env:
-            exec_env.update(env)
-
-        exec_cwd = cwd or meta["cwd"]
-
-        # Production execution against running container via `runsc exec`
-        runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", "-cwd", exec_cwd])
-        if env:
-            for k, v in env.items():
-                runsc_args.extend(["-env", f"{k}={v}"])
-        if isinstance(command, list):
-            runsc_args.extend([sandbox_id] + command)
-        else:
-            exec_shell = shell or config.shell
-            runsc_args.extend([sandbox_id, exec_shell, "-c", command])
+        runsc_args = self.exec_argv(sandbox_id, command, cwd=cwd, env=env, shell=shell)
 
         start_time = time.time()
 

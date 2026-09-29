@@ -3,11 +3,17 @@ import json
 import os
 import sys
 import tarfile
+import threading
 from unittest.mock import MagicMock
 
 import pytest
 
-from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
+from ray.experimental.sandbox._internal.image_utils import (
+    DEFAULT_IMAGES_DIR,
+    IMAGE_CONFIG_FILENAME,
+    publish_image,
+    sanitize_image_name,
+)
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.image_manager import (
@@ -96,6 +102,34 @@ def test_image_manager_config_parsing(tmp_path):
     assert mgr.get_image_config(str(local_tar)) == cfg_data
     assert mgr.get_workdir(str(local_tar)) == "/app"
     assert mgr.get_envs(str(local_tar)) == ["PATH=/usr/bin", "FOO=bar", "BAZ=123"]
+
+
+def test_create_oci_spec_keeps_a_path_for_an_image_without_a_config(tmp_path):
+    """A config-less image still gets the runtime's default PATH.
+
+    The container's init process is a bare `sleep`, so an empty PATH means it
+    cannot be resolved and the container never starts.
+    """
+    images_dir = str(tmp_path / "images")
+    mgr = ImageManager(images_dir=images_dir)
+
+    local_tar = tmp_path / "bare.tar"
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("bare.txt")
+        ti.size = 4
+        tar.addfile(ti, io.BytesIO(b"bare"))
+
+    mgr.pull_image(str(local_tar))
+    assert mgr.get_envs(str(local_tar)) == []
+
+    spec = mgr.create_oci_spec(image=str(local_tar))
+
+    env_keys = [entry.split("=", 1)[0] for entry in spec["process"]["env"]]
+    assert "PATH" in env_keys
+    # Only PATH is inherited from the runtime defaults. `runsc spec` also sets
+    # TERM, and picking that up would change the environment of every sandbox
+    # that never had it.
+    assert "TERM" not in env_keys
 
 
 def test_image_manager_create_oci_spec(tmp_path):
@@ -229,6 +263,52 @@ def test_sandbox_runtime_image_manager_integration(tmp_path):
     created_cfg: SandboxConfig = mock_backend.create_sandbox.call_args[0][0]
     assert created_cfg.image == str(local_tar)
     assert created_cfg.cpu == 1.0
+
+
+def test_a_sandbox_is_built_from_one_version_even_if_its_image_is_replaced(
+    tmp_path,
+):
+    """Its files, WORKDIR and ENV are separate lookups. Replaced between two of
+    them, the sandbox got one version's files and the other's metadata."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    image = "registry.example.com/app:1"
+    key = sanitize_image_name(image)
+
+    def version(workdir):
+        def materialize(rootfs_dir):
+            config = {"config": {"WorkingDir": workdir, "Env": [f"V={workdir}"]}}
+            return {IMAGE_CONFIG_FILENAME: json.dumps(config).encode()}
+
+        return materialize
+
+    first = publish_image(mgr.images_dir, key, materialize=version("/one"))
+    with mgr.pinned(image, first):
+        # Replaced mid-creation, as a moved tag or a force_build elsewhere does.
+        publish_image(
+            mgr.images_dir, key, materialize=version("/two"), is_current=lambda d: False
+        )
+        assert mgr.pull_image(image) == first
+        assert mgr.get_workdir(image) == "/one"
+        assert mgr.get_envs(image) == ["V=/one"]
+        assert mgr.get_rootfs_path(image) == os.path.join(first, "rootfs")
+        spec = mgr.create_oci_spec(image, base_spec={"process": {}})
+        assert spec["root"]["path"] == os.path.join(first, "rootfs")
+        assert "V=/one" in spec["process"]["env"]
+
+    # Outside the pin, the image is the new version.
+    assert mgr.get_workdir(image) == "/two"
+
+
+def test_pins_are_per_thread(tmp_path):
+    """Concurrent creations in one process each pin their own version."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    seen = []
+    with mgr.pinned("img", "/versions/a"):
+        worker = threading.Thread(target=lambda: seen.append(mgr.get_image_dir("img")))
+        worker.start()
+        worker.join()
+        assert mgr.get_image_dir("img") == "/versions/a"
+    assert seen and seen[0] != "/versions/a"
 
 
 def test_base_image_manager_abstract():

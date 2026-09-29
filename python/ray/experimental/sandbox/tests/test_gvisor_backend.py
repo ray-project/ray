@@ -77,11 +77,13 @@ def test_gvisor_backend_container_image_support():
         assert sandbox_id.startswith("ray-sandbox-")
         assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
-        extracted_dir = "/tmp/ray/sandbox/images/busybox_latest"
-        assert os.path.exists(extracted_dir)
+        # Ask the image manager where the image went rather than hardcoding a
+        # path: the cache directory is keyed by a digest of the normalized
+        # reference, and the cache root is per-user.
+        extracted_dir = backend._image_manager.get_image_dir("busybox:latest")
         assert os.path.isdir(extracted_dir)
         assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
-        assert os.path.exists("/tmp/ray/sandbox/images/busybox_latest.tar")
+        assert os.path.isdir(os.path.join(extracted_dir, "rootfs"))
 
         res = backend.exec_command(sandbox_id, "/bin/sh -c 'echo hello from busybox'")
         assert res.exit_code == 0
@@ -89,7 +91,9 @@ def test_gvisor_backend_container_image_support():
     finally:
         backend.delete_sandbox(sandbox_id)
 
-    assert os.path.exists("/tmp/ray/sandbox/images/busybox_latest")
+    # The image cache is shared between sandboxes, so tearing one down must
+    # leave the extracted image in place for the next.
+    assert os.path.isdir(backend._image_manager.get_image_dir("busybox:latest"))
 
 
 def test_gvisor_backend_image_required():
@@ -155,8 +159,8 @@ def test_gvisor_backend_container_image_overlay_isolation():
         assert "sb2_root" in read2.stdout
 
         # Base image rootfs must not contain /overlay_test.txt
-        extracted_dir = "/tmp/ray/sandbox/images/busybox_latest"
-        assert not os.path.exists(os.path.join(extracted_dir, "overlay_test.txt"))
+        rootfs = backend._image_manager.get_rootfs_path("busybox:latest")
+        assert not os.path.exists(os.path.join(rootfs, "overlay_test.txt"))
     finally:
         backend.delete_sandbox(sb1)
         backend.delete_sandbox(sb2)

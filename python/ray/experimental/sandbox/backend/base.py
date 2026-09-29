@@ -105,6 +105,65 @@ class BaseSandboxBackend(ABC):
         """
         pass
 
+    def exec_argv(
+        self,
+        sandbox_id: str,
+        command: Union[str, List[str]],
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        pid_file: Optional[str] = None,
+    ) -> List[str]:
+        """Build the argument vector that runs a command in the sandbox.
+
+        Concrete rather than abstract: a caller that needs its own process
+        supervision -- streaming stdout while writing stdin, say -- can spawn
+        the command itself instead of going through :meth:`exec_command`. A
+        backend whose execution cannot be expressed as an argument vector may
+        leave this unimplemented.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            command: Command string or list of argument strings.
+            cwd: Optional working directory override.
+            env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            pid_file: Optional host path the command's pid inside the sandbox
+                is written to, for :meth:`kill_process_group_argv`.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+
+        Raises:
+            NotImplementedError: This backend does not expose an argument vector.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not expose an exec argument vector."
+        )
+
+    def kill_process_group_argv(self, sandbox_id: str, pid: int) -> List[str]:
+        """Build the argument vector that SIGKILLs one command's process group.
+
+        Stopping the process launched by :meth:`exec_argv` stops only the
+        client on this side; the command inside the sandbox keeps running.
+        This reaches the command itself, and everything it started.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            pid: The command's pid inside the sandbox, as recorded in the
+                ``pid_file`` given to :meth:`exec_argv`.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+
+        Raises:
+            NotImplementedError: This backend cannot signal a single command.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot signal a single command."
+        )
+
     @abstractmethod
     def write_file(
         self, sandbox_id: str, path: str, content: Union[str, bytes]

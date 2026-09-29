@@ -5,7 +5,12 @@ py_library(
     name = "sandbox_lib",
     srcs = glob(
         ["**/*.py"],
-        exclude = ["tests/**/*.py"],
+        # modal/tests lives inside the package, so it must be excluded here
+        # too or its test modules ship inside the library.
+        exclude = [
+            "tests/**/*.py",
+            "modal/tests/**/*.py",
+        ],
     ),
     visibility = [
         "//python/ray/experimental/sandbox:__pkg__",
@@ -40,6 +45,29 @@ py_test_module_list(
     ],
     deps = [
         ":conftest",
+        ":sandbox_lib",
+    ],
+)
+
+# Tests for the Modal-compatible layer that need neither runsc nor a Ray
+# cluster. They live outside tests/ so that directory's conftest -- which skips
+# everything unless TEST_SANDBOX=1 and downloads runsc -- does not apply, and
+# they therefore run with plain pytest as well as in CI.
+py_test_module_list(
+    size = "small",
+    files = glob(
+        ["modal/tests/**/*.py"],
+        exclude = ["modal/tests/__init__.py"],
+    ),
+    tags = [
+        # Deliberately NOT "sandbox_tests": that tag marks the suites needing
+        # runsc, and CI selectors that skip it where runsc is unavailable would
+        # otherwise skip these too -- defeating the point of keeping them
+        # runsc-free.
+        "sandbox_unit_tests",
+        "team:core",
+    ],
+    deps = [
         ":sandbox_lib",
     ],
 )
