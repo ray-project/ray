@@ -20,9 +20,8 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 K = TypeVar("K")
 V = TypeVar("V")
 
-ROUTER_APPLICATION_REQUIRES_HTTP_ERROR = (
-    "Router applications route HTTP requests and require a route prefix. "
-    "Application '{name}' has none."
+ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR = (
+    "A router application requires a route prefix. Application '{name}' has none."
 )
 
 ROUTER_APPLICATION_WITH_INGRESS_REQUEST_ROUTER_ERROR = (
@@ -103,6 +102,12 @@ class BuiltApplication:
                 f'Found multiple FastAPI deployments in application "{self.name}". '
                 "Please only include one deployment with @serve.ingress "
                 "in your application to avoid this issue."
+            )
+
+    def validate_router_application(self) -> None:
+        if self.is_router_application and self.route_prefix is None:
+            raise RayServeException(
+                ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR.format(name=self.name)
             )
 
 

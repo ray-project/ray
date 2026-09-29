@@ -9,10 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import StatusOverview
-from ray.serve._private.build_app import (
-    ROUTER_APPLICATION_REQUIRES_HTTP_ERROR,
-    BuiltApplication,
-)
+from ray.serve._private.build_app import BuiltApplication
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -510,15 +507,11 @@ class ServeControllerClient:
         """Check @serve.ingress of deployments across applications.
 
         Raises: RayServeException if more than one @serve.ingress
-            is found among deployments in any single application, or if a
-            router application has no route prefix.
+            is found among deployments in any single application.
         """
         for app in built_apps:
             app.validate_single_fastapi_ingress()
-            if app.is_router_application and app.route_prefix is None:
-                raise RayServeException(
-                    ROUTER_APPLICATION_REQUIRES_HTTP_ERROR.format(name=app.name)
-                )
+            app.validate_router_application()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):
