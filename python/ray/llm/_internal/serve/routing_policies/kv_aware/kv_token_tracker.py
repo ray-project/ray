@@ -49,7 +49,10 @@ LIFECYCLE_HOOKS = frozenset(
 def get_worker_id(replica_unique_id: str) -> int:
     """Deterministically derive a Dynamo worker id from a replica's unique id."""
     return int.from_bytes(
-        hashlib.blake2b(replica_unique_id.encode(), digest_size=8).digest(), "big"
+        hashlib.blake2b(
+            replica_unique_id.encode(), digest_size=8, usedforsecurity=False
+        ).digest(),
+        "big",
     )
 
 
