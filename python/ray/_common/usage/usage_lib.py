@@ -317,6 +317,23 @@ def _put_pre_init_extra_usage_tags():
         _put_extra_usage_tag(k, v)
 
 
+def put_recorded_extra_usage_tags(gcs_client: Optional[GcsClient] = None) -> None:
+    """Re-attempt the KV write of every tag this process has recorded.
+
+    It should be called after the current head node is promoted.
+    Library usages are deliberately not replayed: their recording sites gate on
+    the worker mode, so a head process never publishes them in the first place.
+
+    Params:
+        gcs_client: The GCS client to perform KV operation PUT. Defaults to None.
+            When None, it will try to get the global client from the internal_kv.
+    """
+    with _recorded_extra_usage_tags_lock:
+        recorded = list(_recorded_extra_usage_tags.items())
+    for key, value in recorded:
+        _put_extra_usage_tag(key, value, gcs_client)
+
+
 def put_pre_init_usage_stats():
     _put_pre_init_library_usages()
     _put_pre_init_extra_usage_tags()

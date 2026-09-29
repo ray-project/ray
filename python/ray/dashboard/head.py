@@ -69,6 +69,7 @@ class DashboardHead:
         serve_frontend: bool,
         modules_to_load: Optional[Set[str]] = None,
         proxy_server_url: Optional[str] = None,
+        tracing_startup_hook: Optional[str] = None,
     ):
         """
         Dashboard head
@@ -97,6 +98,8 @@ class DashboardHead:
                 minimal flags.
             proxy_server_url: The proxy url to redirect api requests to
                 Ex: proxy_server_url=http://historyserver:8080
+            tracing_startup_hook: The `module:function` tracing hook this node
+                was started with, republished after a promotion.
         """
         self.minimal = minimal
         self.serve_frontend = serve_frontend
@@ -149,6 +152,8 @@ class DashboardHead:
         # Filled in as each server binds; None means there is nothing to publish.
         self._metrics_address: Optional[str] = None
         self._dashboard_address: Optional[str] = None
+        # services.py passes "" rather than None when the flag is unset.
+        self._tracing_startup_hook = tracing_startup_hook or None
 
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
@@ -225,9 +230,12 @@ class DashboardHead:
             ),
             await self._insert_session_name(),
             await self._put_cluster_metadata(),
+            await self._put_tracing_startup_hook(),
         ]
         if all(registered):
             self._waiting_for_promotion = False
+            # Best effort, and last: telemetry must not hold up the keys above.
+            ray_usage_lib.put_recorded_extra_usage_tags()
             logger.info(
                 "GCS was promoted to leader. Registered the dashboard addresses."
             )
@@ -244,17 +252,23 @@ class DashboardHead:
             namespace=ray_constants.KV_NAMESPACE_SESSION,
         )
 
-    async def _put_cluster_metadata(self) -> bool:
-        """Store this head's cluster metadata, overwriting a previous head's.
+    async def _put_tracing_startup_hook(self) -> bool:
+        """Republish the tracing hook `ray start --tracing-startup-hook` set.
 
-        `Node.__init__` does exactly this on every head start, and a promotion
-        is the same event for a process that never restarted. Leaving the old
-        head's copy would make every joining worker version-check against a
-        head that is gone, which breaks a rolling upgrade.
-
-        Returns:
-            Whether the write landed, i.e. was not refused as passive.
+        Only a node that was started with the flag has one to publish; drivers
+        read the key to decide whether to set tracing up at all.
         """
+        if self._tracing_startup_hook is None:
+            return True
+        return await self._put_kv(
+            b"tracing_startup_hook",
+            self._tracing_startup_hook,
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_TRACING,
+        )
+
+    async def _put_cluster_metadata(self) -> bool:
+        """Store this head's cluster metadata, overwriting a previous head's."""
         try:
             # A standby head is always started by `ray start --head`.
             await ray_usage_lib.async_put_cluster_metadata(

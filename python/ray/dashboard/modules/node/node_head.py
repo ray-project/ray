@@ -16,6 +16,11 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.collections_utils import split
+from ray._private.gcs_passive_utils import (
+    PassiveLatch,
+    is_refused_by_passive_gcs,
+    wait_until_gcs_leader,
+)
 from ray._private.gcs_pubsub import (
     GcsAioActorSubscriber,
     GcsAioNodeInfoSubscriber,
@@ -36,6 +41,7 @@ from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import (
     DASHBOARD_AGENT_ADDR_IP_PREFIX,
     DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX,
+    GCS_REGISTER_RETRY_INTERVAL_S,
     GCS_RPC_TIMEOUT_SECONDS,
 )
 from ray.dashboard.modules.node import actor_consts, node_consts
@@ -178,6 +184,8 @@ class NodeHead(SubprocessModule):
         )
 
         self._background_tasks: Set[asyncio.Task] = set()
+        self._node_updates_latch = PassiveLatch("node updates", logger)
+        self._actor_updates_latch = PassiveLatch("actor updates", logger)
 
     def get_internal_states(self):
         return {
@@ -193,6 +201,12 @@ class NodeHead(SubprocessModule):
         It makes GetAllNodeInfo call only once after the subscription is done, to get
         the initial state of the nodes.
         """
+        await wait_until_gcs_leader(
+            self.gcs_client,
+            poll_interval_s=GCS_REGISTER_RETRY_INTERVAL_S,
+            latch=self._node_updates_latch,
+        )
+
         subscriber = GcsAioNodeInfoSubscriber(address=self.gcs_address)
         await subscriber.subscribe()
 
@@ -215,6 +229,11 @@ class NodeHead(SubprocessModule):
             yield node
 
         while True:
+            await wait_until_gcs_leader(
+                self.gcs_client,
+                poll_interval_s=GCS_REGISTER_RETRY_INTERVAL_S,
+                latch=self._node_updates_latch,
+            )
             try:
                 node_id_updated_info_tuples = await subscriber.poll(
                     batch_size=node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE
@@ -236,6 +255,65 @@ class NodeHead(SubprocessModule):
             except Exception:
                 logger.exception("Failed handling updated nodes.")
 
+    def _record_head_node(self, node_id: str):
+        self._registered_head_node_id = node_id
+        self._head_node_registration_time_s = time.time() - self._module_start_time
+
+    async def _put_head_node_id(self, node_id: str) -> bool:
+        """Publish the head node id for JobAgent to read.
+
+        TODO(architkulkarni): Remove once State API exposes which node is the
+        head node.
+
+        Returns whether the write landed, i.e. was not refused as passive.
+        """
+        try:
+            await self.gcs_client.async_internal_kv_put(
+                ray_constants.KV_HEAD_NODE_ID_KEY,
+                node_id.encode(),
+                overwrite=True,
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            self._record_head_node(node_id)
+            return True
+        except Exception as e:
+            if not is_refused_by_passive_gcs(e):
+                raise
+            return False
+
+    async def _delete_agent_addresses(self, node: dict):
+        """Drop a dead node's agent addresses.
+
+        A passive GCS refuses the delete, and this is not replayed on promotion:
+        the agent rewrites both keys with overwrite=True if the node rejoins, and
+        the leader that owned the cluster while this head was passive ran the same
+        cleanup.
+        """
+        keys = [
+            f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node['nodeId']}",
+            f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
+        ]
+        tasks = [
+            self.gcs_client.async_internal_kv_del(
+                key,
+                del_by_prefix=False,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            for key in keys
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        except Exception as e:
+            if not is_refused_by_passive_gcs(e):
+                raise
+            logger.debug(
+                "GCS is in passive mode. Leaving the agent addresses of dead node "
+                "%s in place.",
+                node["nodeId"],
+            )
+
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]
         if (
@@ -250,36 +328,11 @@ class NodeHead(SubprocessModule):
                     self._registered_head_node_id,
                     self.get_internal_states(),
                 )
-            self._registered_head_node_id = node_id
-            self._head_node_registration_time_s = time.time() - self._module_start_time
-            # Put head node ID in the internal KV to be read by JobAgent.
-            # TODO(architkulkarni): Remove once State API exposes which
-            # node is the head node.
-            await self.gcs_client.async_internal_kv_put(
-                ray_constants.KV_HEAD_NODE_ID_KEY,
-                node_id.encode(),
-                overwrite=True,
-                namespace=ray_constants.KV_NAMESPACE_JOB,
-                timeout=GCS_RPC_TIMEOUT_SECONDS,
-            )
+            await self._put_head_node_id(node_id)
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
         if not is_alive:
-            # Remove the agent address from the internal KV.
-            keys = [
-                f"{DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}",
-                f"{DASHBOARD_AGENT_ADDR_IP_PREFIX}{node['nodeManagerAddress']}",
-            ]
-            tasks = [
-                self.gcs_client.async_internal_kv_del(
-                    key,
-                    del_by_prefix=False,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-                for key in keys
-            ]
-            await asyncio.gather(*tasks)
+            await self._delete_agent_addresses(node)
 
             self._dead_node_queue.append(node_id)
             if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
@@ -304,7 +357,12 @@ class NodeHead(SubprocessModule):
         """
         warning_shown = False
         async for node in self._subscribe_for_node_updates():
-            await self._update_node(node)
+            try:
+                await self._update_node(node)
+            except Exception:
+                # This loop is the only writer of DataSource.nodes, so one bad
+                # update must not end the subscription.
+                logger.exception("Failed updating node %s.", node.get("nodeId"))
             if not self._head_node_registration_time_s:
                 # head node is not registered yet
                 if (
@@ -561,6 +619,12 @@ class NodeHead(SubprocessModule):
         # and the subscription is not missed.
         #
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        await wait_until_gcs_leader(
+            self.gcs_client,
+            poll_interval_s=actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS,
+            latch=self._actor_updates_latch,
+        )
+
         gcs_addr = self.gcs_address
         actor_channel_subscriber = GcsAioActorSubscriber(address=gcs_addr)
         await actor_channel_subscriber.subscribe()
@@ -597,6 +661,11 @@ class NodeHead(SubprocessModule):
 
         # Pull incremental updates from the GCS channel
         while True:
+            await wait_until_gcs_leader(
+                self.gcs_client,
+                poll_interval_s=actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS,
+                latch=self._actor_updates_latch,
+            )
             try:
                 updated_actor_table_entries = await self._poll_updated_actor_table_data(
                     actor_channel_subscriber

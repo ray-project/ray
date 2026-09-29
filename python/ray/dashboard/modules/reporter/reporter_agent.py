@@ -31,6 +31,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import utils
+from ray._private.gcs_passive_utils import PassiveLatch
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
@@ -526,6 +527,14 @@ class ReporterAgent(
         self._open_telemetry_metric_recorder = None
         self._export_failure_warned = set()
         self._session_name = dashboard_agent.session_name
+        self._physical_stats_passive_latch = PassiveLatch(
+            "node physical stats",
+            logger,
+            action_desc_passive=(
+                "GCS is in passive mode. Skipping publishing node physical stats until promoted."
+            ),
+            action_desc_promoted="GCS was promoted to leader. Resumed publishing node physical stats.",
+        )
         if not self._metrics_collection_disabled:
             stats_exporter = prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
@@ -2092,9 +2101,11 @@ class ReporterAgent(
                 await self._gcs_client.async_publish_node_resource_usage(
                     self._key, json_payload
                 )
+                self._physical_stats_passive_latch.promoted()
 
-            except Exception:
-                logger.exception("Error publishing node physical stats.")
+            except Exception as e:
+                if not self._physical_stats_passive_latch.is_refused_by_passive_gcs(e):
+                    logger.exception("Error publishing node physical stats.")
 
             await asyncio.sleep(reporter_consts.REPORTER_UPDATE_INTERVAL_MS / 1000)
 

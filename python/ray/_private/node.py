@@ -1357,6 +1357,7 @@ class Node:
             stderr_filepath=stderr_log_fname,
             proxy_server_url=self._ray_params.proxy_server_url,
             gcs_is_passive=gcs_is_passive,
+            tracing_startup_hook=self._ray_params.tracing_startup_hook,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
