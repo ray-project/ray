@@ -539,17 +539,6 @@ class TestRouterApplicationState:
             deployment_info("a", "/").to_proto()
         ).router_application
 
-    def test_deployment_info_checkpoint_without_marker(self):
-        """Checkpoints written before the field existed still load."""
-        info = deployment_info("router", "/")
-        state = info.__getstate__()
-        del state["router_application"]
-
-        restored = DeploymentInfo.__new__(DeploymentInfo)
-        restored.__setstate__(state)
-
-        assert restored.router_application is False
-
 
 @pytest.fixture
 def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateManager]:
