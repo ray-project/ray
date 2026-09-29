@@ -695,7 +695,7 @@ class FunctionActorManager:
             with self.lock:
                 actor_class = pickle.loads(pickled_class)
         except Exception:
-            logger.debug("Failed to load actor class %s.", class_name)
+            logger.exception("Failed to load actor class %s.", class_name)
             # If an exception was thrown when the actor was imported, we record
             # the traceback and notify the scheduler of the failure.
             traceback_str = format_error_message(traceback.format_exc())
