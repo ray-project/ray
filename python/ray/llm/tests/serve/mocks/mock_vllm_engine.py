@@ -40,6 +40,13 @@ from ray.serve.context import (
     _get_serve_request_context,
 )
 
+MOCK_ANTHROPIC_TEXT = "Hello from mock Anthropic."
+MOCK_ANTHROPIC_INPUT_TOKENS = 8
+
+
+def _anthropic_sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data)}\n\n"
+
 
 class MockVLLMEngine(LLMEngine):
     """Mock vLLM Engine that generates fake text responses.
